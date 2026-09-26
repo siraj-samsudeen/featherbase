@@ -2,43 +2,47 @@
 
 ## Purpose
 
-A team member can turn a body of work into a named project and begin listing its
-tasks without completing project administration first.
+A project is a named, shared group of tasks. The user can start one with just a
+name and list its tasks straight away, without filling in anything else first.
 
 ## Requirements
 
-### Requirement: lightweight_project_entry
+### Requirement: Start a project with just a name
 
-A non-empty name SHALL be sufficient to create a project. An empty project SHALL
-remain valid. The new project SHALL open with task entry ready. Each non-empty
-task title SHALL create one task in that project, starting Not started, Not
-urgent and unassigned. Pressing Enter SHALL submit project names and task titles,
-and task entry SHALL remain ready after each addition.
+A name SHALL be all it takes to create a project. A project with no tasks yet is
+fine. The new project opens straight away, ready for its first task.
 
-#### Scenario: empty_project_is_valid
-- **WHEN** a member creates `Warehouse review` without adding tasks
-- **THEN** the project exists, opens and is ready to receive tasks.
+#### Scenario: Create an empty project
 
-#### Scenario: add_initial_project_tasks
-- **GIVEN** `Warehouse review` is open
-- **WHEN** a member submits three task titles
-- **THEN** exactly three neutral tasks appear in that project
-- **AND** no full task form opens between entries.
+- **WHEN** the user creates a project called "Warehouse review"
+- **THEN** "Warehouse review" opens, empty and ready for a task to be typed in
 
-### Requirement: projects_landing_connects_directory_and_creation
+### Requirement: Add tasks to a project quickly
 
-Choosing the main Projects destination SHALL clear the selected project and open
-a central landing page. The landing page SHALL list every readable project with
-its task count and SHALL contain New project creation. Project creation SHALL NOT
-appear in the sidebar. Choosing a project SHALL open its task list. Opening one
-of those tasks SHALL retain the selected project behind the task details.
+Inside a project, typing a title and pressing Enter SHALL add a task to that
+project, and the box is left ready for the next one. New project tasks start
+with nobody responsible, so the team can decide later who takes each one.
 
-#### Scenario: inspect_all_projects_before_choosing
-- **GIVEN** two projects contain different numbers of tasks
-- **WHEN** a member chooses the main Projects destination
-- **THEN** the central landing page lists both projects with their task counts
-- **AND** New project creation is available there rather than in the sidebar.
+#### Scenario: List several tasks in a row
 
-#### Scenario: task_details_keep_project_context
-- **WHEN** a member chooses a project from the landing page and opens one of its tasks
-- **THEN** task details open without replacing the selected project context.
+- **WHEN** the user, inside "Warehouse review", types three titles, pressing Enter after each
+- **THEN** all three appear in "Warehouse review" with nobody responsible
+- **AND** no form opens between them
+
+### Requirement: One place to see and start projects
+
+The Projects page SHALL list every project with how many tasks it holds, and it
+is where new projects are started. Choosing a project opens its tasks. Opening
+one of those tasks keeps the project selected behind the task details.
+
+#### Scenario: See all projects before choosing
+
+- **WHEN** "Warehouse review" has three tasks, "Store opening" has one, and the user opens the Projects page
+- **THEN** both projects are listed, with three and one tasks
+- **AND** a new project can be started from the same page
+
+#### Scenario: Task details keep the project in view
+
+- **WHEN** the user opens "Warehouse review" from the Projects page and then opens one of its tasks
+- **THEN** the task details open
+- **AND** "Warehouse review" is still the selected project behind them

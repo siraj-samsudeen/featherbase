@@ -1,49 +1,53 @@
-# Use Task Details
+# Task Details
 
 ## Purpose
 
-A team member can open a task at the depth the work needs and understand its
-current context, discussion and changes without leaving Tasker.
+Opening a task shows what is known about it, its discussion and the history of
+its changes, at the level of detail the user wants and without leaving Tasker.
 
 ## Requirements
 
-### Requirement: task_detail_has_three_modes
+### Requirement: Choose how much detail to see
 
-Task details SHALL support compact, right-inspector and focused-page modes. The
-right inspector SHALL be the initial default. Switching modes SHALL retain the
-selected task. The chosen mode SHALL be a private server-synced preference that
-survives reload.
+Task details SHALL open in one of three layouts: a short summary above the
+list, a side panel beside the list, or a full page. The side panel is where
+everyone starts. Switching layout keeps the same task open, and the chosen
+layout is the user's own setting, remembered across reloads and devices.
 
-#### Scenario: choose_depth_without_losing_task
-- **WHEN** a member opens a task and switches from inspector to focused page and compact mode
-- **THEN** the same task remains selected and every mode remains reversible.
+#### Scenario: Switch layouts without losing the task
 
-### Requirement: task_activity_stays_in_tasker
+- **WHEN** the user opens a task in the side panel, switches to the full page and then to the summary
+- **THEN** the same task stays open throughout
+- **AND** after a reload, tasks open in the summary layout
 
-Task details SHALL show the current description, append-only comment entry,
-existing comments and shared field-change history in chronological order. Each
-activity item SHALL show its actor and time. Ordinary discussion and history
-SHALL NOT require navigation to the generic Featherbase form.
+### Requirement: Discussion and history stay in Tasker
 
-#### Scenario: comment_and_edit_are_visible
-- **WHEN** a member adds a comment and changes a shared task field
-- **THEN** Tasker shows both events with their actor and time.
+In the side panel and full page, task details SHALL show the description, a
+place to add a comment, and the task's comments and field changes in time
+order, each with who made it and when. The summary layout shows the latest of
+these. Ordinary discussion never requires leaving Tasker; attachments are still
+handled in Featherbase's standard form for the task.
 
-Attachments may continue to use the generic Featherbase surface in this slice.
+#### Scenario: See a comment and a change
 
-### Requirement: responsive_detail_preserves_workspace_context
+- **WHEN** the user adds the comment "Called the supplier" and marks the task urgent
+- **THEN** the task details show both, each with the user's name and the time
 
-Opening a task on a wide desktop SHALL use the right Inspector while retaining
-the current list or project context. At compact and mobile widths, the Inspector
-SHALL occupy the full screen, hide the workspace behind it and prevent the
-hidden page from scrolling. Closing the Inspector SHALL restore that context.
+### Requirement: Task details keep your place
 
-#### Scenario: desktop_project_task_opens_beside_project
-- **GIVEN** a project task list is open on a wide desktop
-- **WHEN** a member opens a task
-- **THEN** the right Inspector opens and the same project remains selected.
+On a wide screen, the side panel SHALL open beside the current list or project,
+which stays selected. On a tablet or phone it fills the whole screen, and the
+page behind it is hidden and does not scroll. Closing it returns the user to
+where they were.
 
-#### Scenario: compact_inspector_is_modal
-- **WHEN** a member opens a task at a compact or mobile width
-- **THEN** the Inspector fills the viewport
-- **AND** background workspace content is hidden and cannot scroll.
+#### Scenario: Open a project task on a desktop
+
+- **WHEN** the user has a project open on a wide screen and opens one of its tasks
+- **THEN** the side panel opens beside the project
+- **AND** the same project stays selected
+
+#### Scenario: Open a task on a phone
+
+- **WHEN** the user opens a task on a phone
+- **THEN** the task details fill the screen
+- **AND** the list behind them is hidden and cannot be scrolled

@@ -1,69 +1,77 @@
-# Manage Responsibility and Progress
+# Responsibility and Progress
 
 ## Purpose
 
-The team can state who is responsible, how work is progressing and what needs
-urgent attention without overloading any one signal.
+Each task says who is responsible for it, how far along it is, and whether it is
+urgent. These are separate signals, so changing one never quietly changes
+another.
 
 ## Requirements
 
-### Requirement: assignment_state_independent
+### Requirement: At most one responsible person
 
-A task SHALL have zero or one responsible person. Any team member may assign,
-reassign or take an unassigned task. Changing responsibility SHALL NOT change
-work state, and changing work state SHALL NOT change responsibility. Assignment
-controls SHALL have visible labels and work by keyboard.
+The responsible person is the one teammate who has taken on a task. A task SHALL
+have at most one. Any team member can give a task to someone, hand it on to
+someone else, or take a task nobody has taken. Creating a task does not make its
+creator responsible. Changing who is responsible never changes the task's state,
+and changing the state never changes who is responsible.
 
-#### Scenario: assign_not_started_task
-- **WHEN** a Not started task is assigned to another member
-- **THEN** that member becomes responsible and the task remains Not started.
+#### Scenario: Assign without starting
 
-### Requirement: responsibility_is_singular
+- **WHEN** the user gives a task that has not been started to Shahul
+- **THEN** Shahul is responsible for it
+- **AND** it is still Not started
 
-Responsibility SHALL be one nullable person reference, never a collection of
-assignments.
+#### Scenario: Hand a task on
 
-#### Scenario: reassign_to_one_person
-- **WHEN** a task is reassigned from one member to another
-- **THEN** only the new member remains responsible.
+- **WHEN** the user moves a task from Shahul to Siraj
+- **THEN** Siraj is responsible for it and Shahul no longer is
 
-### Requirement: completion_restores_state
+### Requirement: Ticking done can be undone
 
-Valid states SHALL be Not started, In progress, Blocked, On hold, Done and
-Cancelled. Ticking completion SHALL set Done. Unticking SHALL restore the state
-immediately preceding Done. Other states SHALL remain deliberate choices.
-Completion and state controls SHALL have visible labels, work by keyboard and
-communicate state with text rather than colour alone.
+A task's state is one of Not started, In progress, Blocked, On hold, Done and
+Cancelled. Ticking a task SHALL mark it Done, and unticking it SHALL put it back
+in the state it had just before, so an accidental tick loses nothing. Only Done
+tasks show as ticked: choosing Done from the list of states ticks the task too,
+and a Cancelled task is not ticked. Every other state is chosen on purpose.
 
-| State | Completion control | Inactive explanation |
-|---|---|---|
-| Not started | Unticked | Not offered |
-| In progress | Unticked | Not offered |
-| Blocked | Unticked | Optional |
-| On hold | Unticked | Optional |
-| Done | Ticked | Not offered |
-| Cancelled | Unticked | Optional |
+#### Scenario: Undo an accidental tick
 
-#### Scenario: undo_done_to_in_progress
-- **WHEN** an In progress task is ticked Done and then unticked
-- **THEN** it returns to In progress rather than Not started.
+- **WHEN** the user ticks an In progress task and then unticks it
+- **THEN** it is In progress again, not Not started
 
-### Requirement: discussion_stays_append_only
+#### Scenario: Cancelled is not done
 
-The description SHALL hold the current understanding while comments append
-dated discussion. Selecting Blocked, On hold or Cancelled SHALL offer, but not
-require, an explanation. Saving one SHALL NOT replace the description.
+- **WHEN** the user sets a task to Cancelled
+- **THEN** the task is not ticked
 
-#### Scenario: optional_inactive_explanation
-- **WHEN** a member puts a task On hold and saves `Waiting for warehouse count`
-- **THEN** the state changes and the explanation appears as a dated comment.
+### Requirement: Explain why work has stopped
 
-### Requirement: urgency_is_shared_binary
+A task's description holds the current understanding of it; comments add dated
+discussion underneath. When the user sets a task to Blocked, On hold or
+Cancelled from a task list, Tasker SHALL offer a place to say why, without
+requiring it. A saved explanation is added as a dated comment and does not
+replace the description.
 
-Urgency SHALL be one shared binary signal: Urgent or Not urgent. It SHALL be
-labelled, keyboard-operable, reversible and independent of responsibility and
-private focus. Urgency SHALL NOT be communicated by colour alone.
+#### Scenario: Say why a task is on hold
 
-#### Scenario: urgent_without_focus
-- **WHEN** one member marks a normal task Urgent
-- **THEN** every member sees Urgent and nobody's My Focus changes.
+- **WHEN** the user sets a task in a list to On hold and writes "Waiting for warehouse count"
+- **THEN** the task is On hold
+- **AND** "Waiting for warehouse count" appears as a dated comment, with the description unchanged
+
+#### Scenario: Skip the explanation
+
+- **WHEN** the user sets a task in a list to Blocked and skips the explanation
+- **THEN** the task is Blocked and no comment is added
+
+### Requirement: Urgent is one shared flag
+
+A task SHALL be either urgent or not, and everyone on the team sees the same
+flag. Marking a task urgent, or turning urgency off again, does not change who
+is responsible for it or anyone's My Focus (each person's private shortlist).
+
+#### Scenario: Everyone sees the same urgency
+
+- **WHEN** Siraj marks a task urgent
+- **THEN** Shahul also sees it as urgent
+- **AND** neither person's My Focus changes

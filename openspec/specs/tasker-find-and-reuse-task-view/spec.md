@@ -2,96 +2,101 @@
 
 ## Purpose
 
-A person can find a useful slice of work, understand why each task is present,
-and privately return to the same slice without changing shared tasks.
+The user can narrow any task list by searching and filtering, always see what is
+narrowing it, and save that setup as a private saved view to come back to. None
+of this changes the tasks.
 
 ## Requirements
 
-### Requirement: task_search_stays_in_scope
+### Requirement: Search stays within the list
 
-Search SHALL match task titles and current descriptions without leaving the
-open task boundary. It SHALL NOT match comments or field-change history. A
-project search SHALL remain inside that project; searching another fixed
-surface SHALL remain inside that surface.
+Search SHALL match words in task titles and descriptions, not in comments or
+change history, and only among the tasks of the list being searched. Searching
+a project never brings in tasks from other projects.
 
-#### Scenario: title_and_description_search
-- **GIVEN** a project has twelve tasks and one description contains `warehouse transfer`
-- **WHEN** a member searches that project for `warehouse`
-- **THEN** the described task matches
-- **AND** a task from another project does not appear.
+#### Scenario: Search a project
 
-### Requirement: task_filters_combine_dimensions
+- **WHEN** one task in "September stock review" has "warehouse transfer" in its description, a task in another project is titled "Warehouse keys", and the user searches "September stock review" for "warehouse"
+- **THEN** the task with "warehouse transfer" in its description is shown
+- **AND** "Warehouse keys" is not
 
-Task-bearing surfaces SHALL filter by work state, responsible person and
-urgency. A surface spanning projects SHALL also filter by project. Multiple
-choices inside one dimension SHALL combine with OR; active dimensions and
-search SHALL combine with AND.
+### Requirement: Filters combine predictably
 
-#### Scenario: or_within_and_between
-- **WHEN** State is `Not started` or `In progress`, Responsible person is `Shahul` or `Unassigned`, and Urgency is `Urgent`
-- **THEN** a task matches one selected value in every active dimension
-- **AND** a non-urgent task does not match even when its state and responsibility match.
+Task lists SHALL filter by state, responsible person and urgency, and lists that
+span several projects also filter by project. Choosing several values in one
+filter shows tasks that match any of them. Using several filters, and search,
+shows only tasks that match all of them.
 
-### Requirement: task_view_state_is_visible
+#### Scenario: Several filters at once
 
-Tasker SHALL show every active criterion as labelled removable text, together
-with the matching and available task counts. Clearing one criterion SHALL leave
-the others intact. Zero matches SHALL preserve the search and filters, say that
-no tasks match, and offer explicit clear actions; Tasker SHALL NOT silently
-relax criteria. Together SHALL retain and visibly identify its active-work
-boundary, while other unfiltered surfaces retain their existing status scope.
+- **WHEN** the user filters for Not started or In progress, for Shahul or Unassigned, and for urgent
+- **THEN** an urgent In progress task of Shahul's is shown
+- **AND** a task with the same state and person that is not urgent is not shown
 
-#### Scenario: zero_matches_are_recoverable
-- **GIVEN** twelve tasks exist in the fixed boundary
-- **WHEN** the current criteria match none
-- **THEN** Tasker shows `0 of 12 tasks` and the active criteria
-- **AND** the member can clear search or all filters without losing the boundary.
+### Requirement: The user always sees what is filtering the list
 
-### Requirement: saved_task_views_are_private_fixed
+Tasker SHALL show each search and filter in use as something the user can remove
+one at a time, along with how many tasks match out of how many in the list.
+When nothing matches, Tasker says so and keeps the search and filters, offering
+to clear them; it never quietly loosens them. In Together, Tasker shows that
+only active work is included.
 
-A named saved task view SHALL be a private, server-synced preference containing
-its fixed boundary, search text and filters. A member SHALL be able to save the
-current project boundary or an explicitly across-project boundary. Reopening,
-renaming or deleting a saved view SHALL NOT mutate any shared task or project.
-Another member SHALL NOT be able to read the name or definition.
+#### Scenario: Nothing matches
 
-#### Scenario: saved_definition_round_trip
-- **WHEN** Shahul saves `Urgent work assigned to Shahul` across projects
-- **THEN** the same search and filters reopen on Shahul's other device
-- **AND** no task field changes and no teammate receives Shahul's view.
+- **WHEN** a project has 12 tasks and the user's filters match none of them
+- **THEN** Tasker shows 0 of 12 tasks and the filters in use
+- **AND** the user can clear the search or all the filters and see the project's tasks again
 
-#### Scenario: project_view_keeps_project_boundary
-- **WHEN** a member saves the current setup as `This project` inside September stock review
-- **THEN** reopening it never includes a matching task from Store opening readiness.
+### Requirement: Saved views are private
 
-### Requirement: saved_view_changes_are_explicit
+A saved view is a named search and set of filters. The user SHALL be able to
+save the current setup either for the list they are in, such as the current
+project, or across all tasks. A saved view belongs to the user alone: it follows
+them across devices, nobody else can see its name or contents, and opening,
+renaming or deleting it never changes a task or project.
 
-Opening a saved view and changing criteria SHALL create visible unsaved changes;
-it SHALL NOT overwrite the saved definition until the member chooses Update.
-Reset SHALL restore the saved definition. Save as new, rename and delete SHALL
-be explicit actions. A saved-view URL SHALL reopen that private view for its
-owner; an unavailable view or stale project/person reference SHALL be reported
-without broadening the result set.
+#### Scenario: Reopen a view on another device
 
-#### Scenario: reset_detects_changes
-- **GIVEN** a saved view contains Blocked tasks
-- **WHEN** its owner temporarily adds In progress and then chooses Reset
-- **THEN** the saved Blocked-only definition returns unchanged.
+- **WHEN** Shahul saves "Urgent work assigned to Shahul" across all tasks and later signs in on another device
+- **THEN** the same view is there, with the same search and filters
+- **AND** no task has changed and none of his teammates can see the view
 
-#### Scenario: stale_reference_never_broadens
-- **GIVEN** a saved view refers to a project or person that is no longer readable
-- **WHEN** its owner opens the view
-- **THEN** Tasker identifies the unavailable reference
-- **AND** it does not remove that criterion and expose a broader task set.
+#### Scenario: A project view stays in its project
 
-### Requirement: task_view_controls_are_accessible
+- **WHEN** the user saves a view for "September stock review" and reopens it
+- **THEN** it never shows tasks from "Store opening readiness", even ones that match its filters
 
-The desktop workspace SHALL use a compact filter popover and the mobile
-workspace SHALL use a scrollable bottom sheet. Search, filter, view, chip,
-save, reset, rename and delete controls SHALL have visible labels, keyboard
-operation and visible focus. Escape SHALL close the filter controls, and match
-count changes SHALL be announced without relying on colour.
+### Requirement: Changing a saved view is deliberate
 
-#### Scenario: filter_without_pointer
-- **WHEN** a member uses only a keyboard to open Filter, choose two states, close it and remove one criterion
-- **THEN** focus remains visible and the matching count announces each change.
+After the user opens a saved view, changing its search or filters SHALL show
+that there are unsaved changes; the saved view only changes when the user
+chooses to update it, and they can reset back to it. Saving as a new view,
+renaming and deleting are separate, deliberate actions. A link to a saved view
+reopens it for its owner. If a saved view refers to a project or person that no
+longer exists, Tasker says so and keeps that filter rather than dropping it and
+showing more tasks.
+
+#### Scenario: Reset a changed view
+
+- **WHEN** the user opens a saved view of Blocked tasks, also ticks In progress, and then resets
+- **THEN** the view shows Blocked tasks only, and the saved view is unchanged
+
+#### Scenario: A missing project never widens a view
+
+- **WHEN** a saved view filters on a project that has since been deleted and the user opens it
+- **THEN** Tasker says the project is unavailable
+- **AND** the view does not show tasks from other projects in its place
+
+### Requirement: Filtering works by keyboard and on a phone
+
+On a phone, the filters SHALL open from the bottom of the screen and scroll; on
+a larger screen they open in a small panel beside the list. Search, filters and
+saved-view controls all work by keyboard with the focus always visible, the
+Escape key closes the filters, and changes in the number of matching tasks are
+announced to screen readers.
+
+#### Scenario: Filter without a mouse
+
+- **WHEN** the user, using only the keyboard, opens the filters, chooses two states, closes the filters and removes one of the two
+- **THEN** the focus stays visible throughout
+- **AND** each change in the number of matching tasks is announced

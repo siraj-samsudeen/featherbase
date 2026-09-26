@@ -1,60 +1,61 @@
-# Use the Tasker Workspace
+# Workspace
 
 ## Purpose
 
-A team member can move among Tasker's destinations, scan work and act on a task
-without relearning the workspace at different screen sizes.
+Tasker's workspace works the same way everywhere, so the user can move between
+their lists, scan tasks and act on them on a desktop or a phone without
+relearning anything.
 
 ## Requirements
 
-### Requirement: workspace_navigation_is_stable
+### Requirement: The places to go stay in the same order
 
-The primary destinations SHALL appear in this order: Inbox, My Work, Together,
-Personal tasks, Views and Projects. Views SHALL open the current person's
-private saved-view directory. The sidebar SHALL then list every readable
-project by name and task count. Sidebar project rows SHALL open their project
-and SHALL NOT contain star or reorder controls.
+Tasker SHALL always offer the same places, in this order: Inbox (tasks not yet
+placed), My Work (the user's focus and responsibilities), Together (the team's
+active work by person), Personal tasks (each person's personal list), Views (the
+user's private saved views) and Projects. Below Projects, every project is
+listed by name with its number of tasks, and choosing one opens it.
 
-#### Scenario: move_from_destinations_to_a_project
-- **GIVEN** Tasker has two readable projects
-- **WHEN** a member scans the sidebar
-- **THEN** the primary destinations appear in the specified order, including Views
-- **AND** both projects appear below Projects with their task counts
-- **WHEN** the member chooses one project
-- **THEN** its task list opens.
+#### Scenario: Go from the main places to a project
 
-### Requirement: task_lists_present_one_consistent_control_set
+- **WHEN** Tasker has two projects and the user looks at the navigation
+- **THEN** Inbox, My Work, Together, Personal tasks, Views and Projects appear in that order
+- **AND** both projects are listed below Projects with their task counts, and choosing one opens its tasks
 
-Every destination SHALL use one consistent task-list surface. Each row SHALL
-keep title, work state, destination, responsibility, shared urgency and private
-focus together. Blocked and On hold tasks SHALL expand their latest explanation
-without replacing those controls.
+### Requirement: Every task row offers the same controls
 
-#### Scenario: scan_shared_and_private_signals_together
-- **GIVEN** a Blocked urgent task is not in My Focus and has an explanation
-- **WHEN** it appears in any Tasker destination
-- **THEN** its state, destination, responsibility, urgency and focus controls are available in one row
-- **AND** its Blocked explanation is visible with that row.
+Every list SHALL show tasks the same way. From each row the user can tick the
+task done, change its state, its place and its responsible person, mark it
+urgent and add it to My Focus. A Blocked or On hold task also shows its latest
+explanation under its title.
 
-### Requirement: workspace_adapts_to_available_space
+#### Scenario: One row, everything at hand
 
-Tasker SHALL remain usable on wide desktop and 375-pixel mobile viewports without
-page-level horizontal overflow. On mobile, Projects creation and the project
-directory SHALL stack vertically, while the sidebar project strip MAY scroll
-horizontally rather than compressing project names beyond recognition.
+- **WHEN** a Blocked, urgent task explained with "Waiting for supplier" appears in any list
+- **THEN** its row offers all of those controls
+- **AND** "Waiting for supplier" is shown with it
 
-#### Scenario: mobile_projects_landing
-- **WHEN** a member opens Projects on a 375-pixel viewport
-- **THEN** New project and the directory stack without page-level horizontal overflow
-- **AND** the sidebar project strip remains horizontally scrollable.
+### Requirement: Works on a phone
 
-### Requirement: workspace_visual_hierarchy_is_clear
+Tasker SHALL be usable on a desktop and on a phone-sized screen without the page
+scrolling sideways. On a phone, the Projects page stacks starting a project
+above the list of projects, and the strip of project names scrolls sideways on
+its own rather than squeezing the names.
 
-The main workspace SHALL use a light canvas separated from a high-contrast dark
-sidebar. Destinations SHALL have distinct recognizable icons. Interactive
-controls and surfaces SHALL use a consistent rounded treatment, and every
-keyboard-operable control SHALL show a visible focus indicator.
+#### Scenario: Projects on a phone
 
-#### Scenario: keyboard_focus_remains_visible
-- **WHEN** a member moves keyboard focus through sidebar destinations and task controls
-- **THEN** the focused control is visibly distinguishable without relying on pointer hover.
+- **WHEN** the user opens the Projects page on a screen 375 pixels wide
+- **THEN** starting a project sits above the list of projects and the page does not scroll sideways
+- **AND** the strip of project names can be scrolled sideways
+
+### Requirement: Easy to find your way and use by keyboard
+
+Tasker SHALL keep navigation visibly separate from the work area and give each
+main place its own icon. Every control SHALL have a visible label, work by
+keyboard and show clearly when it has keyboard focus. No signal, such as state
+or urgency, is shown by colour alone.
+
+#### Scenario: Keyboard focus stays visible
+
+- **WHEN** the user moves through the navigation and a task's controls using only the keyboard
+- **THEN** the control that has focus is always clearly visible, without hovering the mouse

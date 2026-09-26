@@ -1,35 +1,33 @@
-# Share Work Across the Team
+# Shared Team Work
 
 ## Purpose
 
-The trusted team can collaborate on shared work without assignment becoming an
-access-control boundary.
-
-## Product assumptions
-
-These assumptions apply across Tasker and are not permanent product rules:
-
-| Assumption | Established | Revisit when |
-|---|---|---|
-| Shared work is acceptable to one trusted team; assignment is not access control. | Issue #296, 21-Sep-2026 | A team needs private or restricted work. |
-| Ordinary Featherbase list limits are adequate for the initial small-team product. | Issue #296, 21-Sep-2026 | Observed use approaches a list limit or makes a view slow. |
+Tasker is built for one small team whose members trust each other: everyone can
+see and work on every project and task. Being responsible for a task shows who
+is on it; it does not lock anyone else out.
 
 ## Requirements
 
-### Requirement: team_shares_tasker_work
+### Requirement: Everyone can work on everything
 
-Every signed-in team member SHALL be able to read, create and edit every Tasker
-project and task. A member SHALL NOT need to become responsible for a task to
-edit it. Personal preferences SHALL remain visible only to their owner. A stale
-shared edit SHALL be rejected rather than overwrite a newer edit.
+Every signed-in team member SHALL be able to see, create and change every
+project and task, whether or not they are responsible for it. Each person's own
+settings, such as My Focus, starred projects and saved views, stay private to
+them.
 
-#### Scenario: unassigned_member_edits_task
-- **GIVEN** a task is unassigned
-- **WHEN** another signed-in team member updates it
-- **THEN** the update succeeds
-- **AND** the task remains unassigned.
+#### Scenario: Help with a task nobody has taken
 
-#### Scenario: stale_shared_edit_is_rejected
-- **GIVEN** two members opened the same version of a task
-- **WHEN** one saves a change and the other then saves their stale copy
-- **THEN** the stale edit is rejected and the newer change remains.
+- **WHEN** Shahul marks urgent a task nobody is responsible for and adds a comment to it
+- **THEN** both changes are saved and everyone sees them
+- **AND** nobody is responsible for the task yet
+
+### Requirement: A newer change is never overwritten
+
+If two people change the same task and one saves first, the other's save SHALL
+be refused rather than silently overwriting the newer change.
+
+#### Scenario: Two people edit the same task
+
+- **WHEN** Siraj and Shahul both have the same task open, Shahul saves a change, and Siraj then saves his
+- **THEN** Siraj is told the task has changed
+- **AND** Shahul's change stays

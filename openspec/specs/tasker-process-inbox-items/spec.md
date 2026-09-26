@@ -1,64 +1,53 @@
-# Process Inbox Items
+# Process Inbox
 
 ## Purpose
 
-A team member can review work whose destination was postponed and decide where
-each item belongs without changing unrelated task information.
+The Inbox holds tasks that nobody has placed yet. The user goes through it and
+moves each task to where it belongs, either a project (a named group of shared
+work) or one person's personal list, without disturbing anything else about the
+task.
 
 ## Requirements
 
-### Requirement: inbox_is_destination
+### Requirement: What the Inbox holds
 
-Inbox SHALL contain exactly the tasks with neither a project nor a Personal
-tasks owner. Opening Inbox SHALL show each task's current shared signals without
-changing it.
+The Inbox SHALL show every task that is neither in a project nor on anyone's
+personal list, and only those tasks. Looking at the Inbox changes nothing about
+them.
 
-#### Scenario: captured_task_waits_in_inbox
-- **GIVEN** a task has no project and no Personal tasks owner
-- **WHEN** a team member opens Inbox
-- **THEN** the task appears there and remains unchanged.
+#### Scenario: A new task waits in the Inbox
 
-### Requirement: one_task_destination
+- **WHEN** the user captures "Order packing tape" and opens the Inbox
+- **THEN** "Order packing tape" is listed there
+- **AND** it stays as it was until someone moves it
 
-A task SHALL belong to exactly one of Inbox, one project, or one person's
-Personal tasks. A write supplying both a project and a Personal tasks owner
-SHALL be rejected.
+### Requirement: A task lives in one place
 
-| Destination | Project | Personal tasks owner | Responsible person |
-|---|---|---|---|
-| Inbox | None | None | Unchanged |
-| Project | One project | None | Unchanged |
-| Personal tasks | None | One person | That person |
+A task SHALL always be in exactly one place: the Inbox, one project, or one
+person's personal list. Tasker refuses any change that would put a task in a
+project and on a personal list at the same time. Moving a task to a project or
+back to the Inbox leaves its responsible person and its state as they were.
 
-#### Scenario: move_to_project_without_assignment
-- **GIVEN** an unassigned Not started task is in Inbox
-- **WHEN** it is moved to `Warehouse review` without choosing a person
-- **THEN** it leaves Inbox and remains unassigned and Not started.
+#### Scenario: Move a task to a project
 
-#### Scenario: dual_destination_rejected
-- **WHEN** one write supplies both a project and a Personal tasks owner
-- **THEN** the write is refused and the impossible state is not saved.
+- **WHEN** the user moves an Inbox task that nobody is responsible for and that has not been started into the project "Warehouse review"
+- **THEN** it leaves the Inbox and appears in "Warehouse review"
+- **AND** nobody is responsible for it and it is still not started
 
-### Requirement: personal_destination_assigns_owner
+#### Scenario: Moving takes it out of its old place
 
-Moving a task to one person's Personal tasks SHALL make that person responsible.
-Its work state and other shared information SHALL remain unchanged.
+- **WHEN** the user moves a task from "Warehouse review" to Shahul's personal list
+- **THEN** it appears on Shahul's personal list
+- **AND** it is no longer in "Warehouse review"
 
-#### Scenario: move_to_personal_tasks
-- **GIVEN** an In progress task is in Inbox
-- **WHEN** it is moved to Siraj's Personal tasks
-- **THEN** Siraj becomes responsible and it remains In progress.
+### Requirement: A personal list makes its owner responsible
 
-### Requirement: process_inbox_one_at_a_time
+A personal list is the team-visible list of tasks that belong to one person.
+Moving a task onto someone's personal list SHALL make that person responsible
+for it. Its state and everything else about it stay the same.
 
-Inbox processing SHALL present one item at a time with the remaining count. Save
-and next SHALL apply the chosen destination and open the next item. Skip SHALL
-leave the current task unchanged and open the next item.
+#### Scenario: Move a task to someone's personal list
 
-#### Scenario: save_and_continue
-- **WHEN** a member places the current Inbox item in a project and chooses Save and next
-- **THEN** that task leaves Inbox and the next item opens.
-
-#### Scenario: skip_unresolved_item
-- **WHEN** a member cannot yet decide and chooses Skip
-- **THEN** the task remains unchanged in Inbox and the next item opens.
+- **WHEN** the user moves an In progress task from the Inbox to Shahul's personal list
+- **THEN** Shahul becomes responsible for it
+- **AND** it is still In progress
