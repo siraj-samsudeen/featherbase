@@ -54,7 +54,7 @@ the calculus changes.
 > checked by CI rather than maintained by discipline.
 
 Here that means: `openspec/specs/` carries the behavior judgment and acceptance
-criteria; root `AGENTS.md` defines the mandatory OpenSpec workflow;
+criteria; the OpenSpec section below defines how behavior changes go through it;
 `docs/TESTING.md` is the single living doc for how the suites are built and
 run; `PROGRESS.md` and `docs/adr/` are the append-only history — what happened,
 and what was decided and why.
@@ -191,6 +191,8 @@ once per run, outside any sandbox transaction. It complements
 6. **Update state.** Only after verification: append a dated entry to
    `PROGRESS.md` (what was done, how it was verified, what to pick up next, any
    gotchas), and commit. Leave the working tree clean.
+7. **Hand off.** Tell the owner how to try it: the URL and login, which data to
+   look at, a few things worth trying, and any known gaps.
 
 ### Accepting delegated work
 
@@ -229,9 +231,9 @@ command, that is the first finding.
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
-- `openspec/specs/` — the sole behavior authority. Root `AGENTS.md` defines
-  the mandatory new-feature and baseline-first legacy workflows; ADR 0010
-  records why. Use plain, descriptive requirement and scenario names.
+- `openspec/specs/` — the sole behavior authority. The OpenSpec section below
+  defines the workflow; ADR 0010 records why. Use plain, descriptive
+  requirement and scenario names.
 - `docs/specs/` — frozen, non-authoritative Journey documents from before the
   2026-09-21 ruling. They are migration evidence only. Never add a behavior
   contract there.
@@ -241,24 +243,37 @@ command, that is the first finding.
   implementation (`convex-capabilities/`, preserved on the `archive/convex-v1`
   tag). Read for lineage; never as a statement about today's code.
 
+## OpenSpec
+
+Behavior specs live in `openspec/specs/`. New or changed behavior goes through
+an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
+`/openspec-propose` (Codex). Writing style for specs and proposals is set in
+`openspec/config.yaml`. The CLI is pinned to an exact version in root
+`package.json` and bumped by the weekly `openspec-update` workflow.
+
+The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md). Legacy
+files under `docs/specs/` are frozen, non-authoritative migration evidence;
+never add a new behavior specification there.
+
 ## Agent skills
 
 ### SDLC skill routing (owner directive, 2026-08-11)
 
-Use the mattpocock-skills plugin at the matching lifecycle stage — invoke
-the skill, don't improvise the equivalent:
+Use Matt Pocock's skills (installed globally with `npx skills add
+mattpocock/skills`, so Claude Code and Codex share them) at the matching
+lifecycle stage — invoke the skill, don't improvise the equivalent:
 
 | Stage | Skill |
 |---|---|
-| Building a feature or fixing a bug test-first | `mattpocock-skills:tdd` |
-| Diagnosing a bug, failure, or perf regression | `mattpocock-skills:diagnosing-bugs` |
-| Reviewing a PR, branch, or "changes since X" — code or tests | `/review` (repo-local; runs `mattpocock-skills:code-review` and `codebase-design`, plus this repo's checks) |
-| Answering a design question with throwaway code | `mattpocock-skills:prototype` |
-| Designing or deepening a module interface/seam | `mattpocock-skills:codebase-design` |
-| Pinning domain vocabulary or recording an ADR | `mattpocock-skills:domain-modeling` |
-| Delegating reading/API-fact gathering | `mattpocock-skills:research` |
-| Resolving an in-progress merge/rebase conflict | `mattpocock-skills:resolving-merge-conflicts` |
-| Stress-testing a plan before committing to it | `mattpocock-skills:grilling` |
+| Building a feature or fixing a bug test-first | `tdd` |
+| Diagnosing a bug, failure, or perf regression | `diagnosing-bugs` |
+| Reviewing a PR, branch, or "changes since X" — code or tests | `feather-code-review` (this repo's; it runs Matt's `code-review` and `codebase-design` plus this repo's checks) |
+| Answering a design question with throwaway code | `prototype` |
+| Designing or deepening a module interface/seam | `codebase-design` |
+| Pinning domain vocabulary or recording an ADR | `domain-modeling` |
+| Delegating reading/API-fact gathering | `research` |
+| Resolving an in-progress merge/rebase conflict | `resolving-merge-conflicts` |
+| Stress-testing a plan before committing to it | `grilling` |
 
 Behavior changes use the repository-generated OpenSpec skills. When spawning
 sub-sessions or task chips, name the required skills in the prompt — spawned
@@ -266,8 +281,9 @@ agents read this file, but an explicit instruction survives context loss.
 
 ### One review skill
 
-Every code and test review goes through **`/review`** (owner decision, 2026-09-26;
-it replaced `code-review-8-axes` and `test-review-3-axes`).
+Every code and test review goes through **`feather-code-review`** (owner
+decision, 2026-09-26; it replaced `code-review-8-axes` and `test-review-3-axes`).
+It lives in `.claude/skills/` and is linked into `.agents/skills/` for Codex.
 
 When a spec, the code and the tests disagree, that disagreement is not yours to
 settle silently — see "A discovered behaviour is not a requirement" above.

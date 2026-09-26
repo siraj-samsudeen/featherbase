@@ -1,24 +1,27 @@
 ---
-name: review
+name: feather-code-review
 description: Review a change in this repo — a branch, a PR, or work in progress — for whether it does what was asked, follows the repo's standards, keeps the code easy to change, and is tested once per promise. Use for every code or test review in featherbase; it runs Matt Pocock's code-review and codebase-design skills and adds this repo's own checks.
 ---
 
-# review
+# feather-code-review
 
-One review for code and tests. It leans on two of Matt Pocock's skills and adds
-four checks of this repo's own. Report everything in one place.
+One review for code and tests. It leans on two of Matt Pocock's skills
+(installed with `npx skills add mattpocock/skills` into `~/.agents/skills`) and
+adds four checks of this repo's own. Report everything in one place.
 
 ## 1. Standards and spec
 
-Run `mattpocock-skills:code-review` against the change: does it follow the
-repo's documented standards, and does it do what the issue or spec asked?
+Read and follow `~/.agents/skills/code-review/SKILL.md` against the change: does
+it follow the repo's documented standards, and does it do what the issue or spec
+asked? Go by the file path: in Claude Code the name `code-review` resolves to a
+different, built-in skill.
 
 ## 2. Module shape (only when the change reshapes a module)
 
-If the change adds a module or changes an interface, apply
-`mattpocock-skills:codebase-design`'s deep-vs-shallow test to it: can a caller
-use it without reading its body, and would deleting it push complexity back
-into its callers? Skip this step for changes inside an existing module.
+If the change adds a module or changes an interface, apply the `codebase-design`
+skill's deep-vs-shallow test to it: can a caller use it without reading its
+body, and would deleting it push complexity back into its callers? Skip this
+step for changes inside an existing module.
 
 ## 3. This repo's checks
 
