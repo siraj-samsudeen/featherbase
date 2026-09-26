@@ -1,4 +1,4 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -10,6 +10,11 @@ import { deleteTableIfExists } from './cleanup'
 // The loop used to sit inside one try, so a throw on target 2 left targets
 // 3..n unattempted and skipped the completion block — which held the sole
 // link to the log.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). The network stub (`page.route`) and
+// every wizard control here stay inside named steps; `session.visit` carries
+// navigation.
 
 const FIRST = 'Partial First'
 const THIRD = 'Partial Third'
@@ -45,46 +50,51 @@ test.beforeEach(async ({ request }) => {
   for (const n of [FIRST, THIRD, 'One', 'Two', 'Three']) await deleteTableIfExists(request, token, n)
 })
 
-test('a failing target does not abandon the rest of the run', async ({ page, request }) => {
+test('a failing target does not abandon the rest of the run', async ({ session, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
+  await session.visit('/admin')
 
-  // Make the SECOND target fail at the server, the way a real one would:
-  // refuse only its create call. The first and third must be untouched.
-  await page.route('**/api/table_def', async (route) => {
-    const body = route.request().postDataJSON() as { name?: string }
-    if (body?.name === 'Partial Second') {
-      return route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
+  await session.step(
+    'stub the second target to fail server-side, then run all three',
+    async ({ page }) => {
+      // Make the SECOND target fail at the server, the way a real one would:
+      // refuse only its create call. The first and third must be untouched.
+      await page.route('**/api/table_def', async (route) => {
+        const body = route.request().postDataJSON() as { name?: string }
+        if (body?.name === 'Partial Second') {
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
+          })
+        }
+        return route.continue()
       })
-    }
-    return route.continue()
-  })
 
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'partial failure.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
-  })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-continue').click()
+      await page.getByTestId('import-data-link').click()
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'partial failure.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: workbook(),
+      })
+      await page.getByTestId('iw-ov-master').check()
+      await page.getByTestId('iw-ov-continue').click()
 
-  await nameThree(page)
-  await page.getByTestId('iw-import').click()
+      await nameThree(page)
+      await page.getByTestId('iw-import').click()
 
-  // Target 1 imported and its result SURVIVES the later failure.
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
-  // Target 2 failed, named, in its own place.
-  await expect(page.getByTestId('iw-failure-1')).toContainText('Partial Second failed')
-  // Target 3 was still ATTEMPTED — the defect was that it never ran.
-  await expect(page.getByTestId('iw-result-2')).toContainText('Imported 2 rows')
+      // Target 1 imported and its result SURVIVES the later failure.
+      await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+      // Target 2 failed, named, in its own place.
+      await expect(page.getByTestId('iw-failure-1')).toContainText('Partial Second failed')
+      // Target 3 was still ATTEMPTED — the defect was that it never ran.
+      await expect(page.getByTestId('iw-result-2')).toContainText('Imported 2 rows')
 
-  // The run reports all of it rather than vanishing.
-  await expect(page.getByTestId('iw-done')).toContainText('1 failed')
+      // The run reports all of it rather than vanishing.
+      await expect(page.getByTestId('iw-done')).toContainText('1 failed')
+    },
+  )
 
   // And the Tables really exist / do not.
   const tables = await request.get('/api/table/Table?limit_page_length=500', { headers })
@@ -96,67 +106,79 @@ test('a failing target does not abandon the rest of the run', async ({ page, req
   for (const n of [FIRST, THIRD]) await deleteTableIfExists(request, token, n)
 })
 
-test('the committed result stays revertable after a later failure', async ({ page, request }) => {
+test('the committed result stays revertable after a later failure', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await page.route('**/api/table_def', async (route) => {
-    const body = route.request().postDataJSON() as { name?: string }
-    if (body?.name === 'Partial Second') {
-      return route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
+  await session.visit('/admin')
+
+  await session.step(
+    'stub the second target to fail, run all three, and confirm target 1 is revertable',
+    async ({ page }) => {
+      await page.route('**/api/table_def', async (route) => {
+        const body = route.request().postDataJSON() as { name?: string }
+        if (body?.name === 'Partial Second') {
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
+          })
+        }
+        return route.continue()
       })
-    }
-    return route.continue()
-  })
 
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'partial failure.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
-  })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-continue').click()
-  await nameThree(page)
-  await page.getByTestId('iw-import').click()
+      await page.getByTestId('import-data-link').click()
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'partial failure.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: workbook(),
+      })
+      await page.getByTestId('iw-ov-master').check()
+      await page.getByTestId('iw-ov-continue').click()
+      await nameThree(page)
+      await page.getByTestId('iw-import').click()
 
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
-  // Undoing what DID land must remain possible — a failure elsewhere is not
-  // a reason to strand a run that committed.
-  await expect(page.getByTestId('iw-revert-open-0')).toBeVisible()
+      await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+      // Undoing what DID land must remain possible — a failure elsewhere is not
+      // a reason to strand a run that committed.
+      await expect(page.getByTestId('iw-revert-open-0')).toBeVisible()
+    },
+  )
 
   for (const n of [FIRST, THIRD]) await deleteTableIfExists(request, token, n)
 })
 
-test('the Import Log is reachable before a run, and after one fails', async ({ page }) => {
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
+test('the Import Log is reachable before a run, and after one fails', async ({ session }) => {
+  await session.visit('/admin')
 
-  // #205: present immediately — not gated behind a clean run, which is when
-  // it is least needed.
-  await expect(page.getByTestId('iw-history-link')).toBeVisible()
+  await session.step(
+    'the history link is present before a run, and stays after every target fails',
+    async ({ page }) => {
+      await page.getByTestId('import-data-link').click()
 
-  await page.route('**/api/table_def', (route) =>
-    route.fulfill({
-      status: 500,
-      contentType: 'application/json',
-      body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
-    }),
+      // #205: present immediately — not gated behind a clean run, which is when
+      // it is least needed.
+      await expect(page.getByTestId('iw-history-link')).toBeVisible()
+
+      await page.route('**/api/table_def', (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ exception: 'ServerError', message: 'Simulated failure' }),
+        }),
+      )
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'partial failure.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: workbook(),
+      })
+      await page.getByTestId('iw-ov-master').check()
+      await page.getByTestId('iw-ov-continue').click()
+      await page.getByTestId('iw-import').click()
+
+      // Everything failed — the exact case that used to hide the link.
+      await expect(page.getByTestId('iw-done')).toContainText('failed')
+      await expect(page.getByTestId('iw-history-link')).toBeVisible()
+      await page.getByTestId('iw-history-link').click()
+      await expect(page).toHaveURL(/Import%20Log/)
+    },
   )
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'partial failure.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
-  })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-import').click()
-
-  // Everything failed — the exact case that used to hide the link.
-  await expect(page.getByTestId('iw-done')).toContainText('failed')
-  await expect(page.getByTestId('iw-history-link')).toBeVisible()
-  await page.getByTestId('iw-history-link').click()
-  await expect(page).toHaveURL(/Import%20Log/)
 })

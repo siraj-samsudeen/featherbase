@@ -6,6 +6,10 @@ import { deleteTableIfExists } from './cleanup'
 // is Excel's own. A blank row above a bad row must NOT shift the blame —
 // before the fix, the wizard would have named row 5 for a defect the user
 // sees at row 6 in Excel, and they'd go fix an innocent neighbour.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Row Number Truth'
 
@@ -26,7 +30,7 @@ function workbook() {
 }
 
 test('#115: a blank row does not shift the blame — failures name the TRUE Excel row', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
@@ -46,36 +50,38 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   })
   expect(created.status()).toBe(201)
 
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await expect(page.getByTestId('import-wizard')).toBeVisible()
+  await session.visit('/admin')
+  await session.step('drop the workbook and dry-run it', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await expect(page.getByTestId('import-wizard')).toBeVisible()
 
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'truth.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'truth.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+
+    await expect(page.getByTestId('iw-target-0')).toHaveValue(DT)
+    // The blank row is not data: 5 rows, not 6.
+    await expect(page.getByTestId('import-wizard')).toContainText('5 rows')
+
+    // Dry-run: the bad Int row is at Excel row 6 — and the wizard must say 6,
+    // not 5, despite the blank row 3 above it having been dropped.
+    await page.getByTestId('iw-check').click()
+    await expect(page.getByTestId('iw-check-0')).toContainText('4 rows ready')
+    await expect(page.getByTestId('iw-check-0')).toContainText('1 with problems')
+    await expect(page.getByTestId('iw-check-0')).toContainText('row 6:')
+    await expect(page.getByTestId('iw-check-0')).not.toContainText('row 5')
+
+    // The preview grid opens on problems and highlights the SAME rows the
+    // messages row_id: row 6 is flagged, its innocent neighbour row 5 is not,
+    // and the blank row 3 still occupies its own numbered place.
+    await expect(page.getByTestId('iw-preview-row-0-6')).toHaveAttribute('data-failed', 'true')
+    await expect(page.getByTestId('iw-preview-row-0-6')).toContainText('abc')
+    await expect(page.getByTestId('iw-preview-row-0-5')).not.toHaveAttribute('data-failed', 'true')
+    await expect(page.getByTestId('iw-preview-row-0-3')).toBeVisible()
+    await expect(page.getByTestId('iw-preview-row-0-2')).toContainText('a')
   })
-
-  await expect(page.getByTestId('iw-target-0')).toHaveValue(DT)
-  // The blank row is not data: 5 rows, not 6.
-  await expect(page.getByTestId('import-wizard')).toContainText('5 rows')
-
-  // Dry-run: the bad Int row is at Excel row 6 — and the wizard must say 6,
-  // not 5, despite the blank row 3 above it having been dropped.
-  await page.getByTestId('iw-check').click()
-  await expect(page.getByTestId('iw-check-0')).toContainText('4 rows ready')
-  await expect(page.getByTestId('iw-check-0')).toContainText('1 with problems')
-  await expect(page.getByTestId('iw-check-0')).toContainText('row 6:')
-  await expect(page.getByTestId('iw-check-0')).not.toContainText('row 5')
-
-  // The preview grid opens on problems and highlights the SAME rows the
-  // messages row_id: row 6 is flagged, its innocent neighbour row 5 is not,
-  // and the blank row 3 still occupies its own numbered place.
-  await expect(page.getByTestId('iw-preview-row-0-6')).toHaveAttribute('data-failed', 'true')
-  await expect(page.getByTestId('iw-preview-row-0-6')).toContainText('abc')
-  await expect(page.getByTestId('iw-preview-row-0-5')).not.toHaveAttribute('data-failed', 'true')
-  await expect(page.getByTestId('iw-preview-row-0-3')).toBeVisible()
-  await expect(page.getByTestId('iw-preview-row-0-2')).toContainText('a')
 
   // Teardown — self-cleaning via table deletion (spec 0003).
   const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })

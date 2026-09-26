@@ -8,6 +8,10 @@ import { deleteTableIfExists } from './cleanup'
 // column grid, arrived on a single screen — and there was nowhere to "import
 // and then go to that screen where the row is imported" and come back to,
 // because there was no *here* to come back to.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const ONE = 'Step One'
 const TWO = 'Step Two'
@@ -55,49 +59,54 @@ test.beforeEach(async ({ request }) => {
   }
 })
 
-test('three sheets are three steps, not three stacked cards', async ({ page }) => {
-  await page.goto('/admin')
-  await openColumns(page)
+test('three sheets are three steps, not three stacked cards', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('drop the workbook and open the column step', async ({ page }) => openColumns(page))
 
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 3')
-  await expect(page.getByTestId('iw-step-of')).toContainText('Alpha')
-  // Exactly one card is on screen. This is the whole point.
-  await expect(page.locator('[data-testid^="iw-sheet-"]:not([data-testid*="preview"])')).toHaveCount(
-    1,
-  )
-  await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
+  await session.step('exactly one card is on screen, but all three are reachable', async ({ page }) => {
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 3')
+    await expect(page.getByTestId('iw-step-of')).toContainText('Alpha')
+    // Exactly one card is on screen. This is the whole point.
+    await expect(
+      page.locator('[data-testid^="iw-sheet-"]:not([data-testid*="preview"])'),
+    ).toHaveCount(1)
+    await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
 
-  // But the sequence is never hidden — all three are listed and reachable.
-  await expect(page.getByTestId('iw-step-strip').locator('button')).toHaveCount(3)
-  await expect(page.getByTestId('iw-step-1')).toContainText('Beta')
+    // But the sequence is never hidden — all three are listed and reachable.
+    await expect(page.getByTestId('iw-step-strip').locator('button')).toHaveCount(3)
+    await expect(page.getByTestId('iw-step-1')).toContainText('Beta')
 
-  // Previous is disabled at the start; Next walks forward.
-  await expect(page.getByTestId('iw-prev')).toBeDisabled()
-  await page.getByTestId('iw-next').click()
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
-  await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
-  await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
+    // Previous is disabled at the start; Next walks forward.
+    await expect(page.getByTestId('iw-prev')).toBeDisabled()
+    await page.getByTestId('iw-next').click()
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
+    await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
+    await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
 
-  // Jumping by the strip lands where it says.
-  await page.getByTestId('iw-step-2').click()
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 3 of 3')
-  await expect(page.getByTestId('iw-next')).toBeDisabled()
+    // Jumping by the strip lands where it says.
+    await page.getByTestId('iw-step-2').click()
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 3 of 3')
+    await expect(page.getByTestId('iw-next')).toBeDisabled()
+  })
 })
 
 test('a step is edited, imported on its own, and the next two are untouched', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await openColumns(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook and open the column step', async ({ page }) => openColumns(page))
 
-  await page.getByTestId('iw-new-name-0').fill(ONE)
-  // The per-target button names what it will do — rows and Table, not "all".
-  await expect(page.getByTestId('iw-import-one')).toContainText(`Import 2 rows into ${ONE}`)
-  await page.getByTestId('iw-import-one').click()
+  await session.step('name step 1 and import only that target', async ({ page }) => {
+    await page.getByTestId('iw-new-name-0').fill(ONE)
+    // The per-target button names what it will do — rows and Table, not "all".
+    await expect(page.getByTestId('iw-import-one')).toContainText(`Import 2 rows into ${ONE}`)
+    await page.getByTestId('iw-import-one').click()
 
-  await expect(page.getByTestId('iw-result-0')).toContainText(`Imported 2 rows into ${ONE}`)
+    await expect(page.getByTestId('iw-result-0')).toContainText(`Imported 2 rows into ${ONE}`)
+  })
+
   // Only THAT target was committed. A per-target import that quietly ran the
   // rest would be the eleven-unwanted-Tables bug again.
   const names = await tableNames(request, token)
@@ -105,73 +114,79 @@ test('a step is edited, imported on its own, and the next two are untouched', as
   expect(names).not.toContain('Beta')
   expect(names).not.toContain('Gamma')
 
-  // The run is not over, and does not claim to be. "Import complete." after
-  // target 1 of 3 would be a lie.
-  await expect(page.getByTestId('iw-done')).toContainText('Imported 1; 2 still to import.')
-  await expect(page.getByTestId('iw-import')).toBeEnabled()
-  // And it walked on to the next thing needing a decision rather than
-  // leaving the user to find it.
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
-  await expect(page.getByTestId('iw-step-0')).toHaveAttribute('data-state', 'done')
-  await expect(page.getByTestId('iw-step-1')).toHaveAttribute('data-state', 'todo')
+  await session.step('the run is honest about not being over, and walks to the next step', async ({ page }) => {
+    // The run is not over, and does not claim to be. "Import complete." after
+    // target 1 of 3 would be a lie.
+    await expect(page.getByTestId('iw-done')).toContainText('Imported 1; 2 still to import.')
+    await expect(page.getByTestId('iw-import')).toBeEnabled()
+    // And it walked on to the next thing needing a decision rather than
+    // leaving the user to find it.
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
+    await expect(page.getByTestId('iw-step-0')).toHaveAttribute('data-state', 'done')
+    await expect(page.getByTestId('iw-step-1')).toHaveAttribute('data-state', 'todo')
+  })
 
   await deleteTableIfExists(request, token, ONE)
 })
 
 test('a finished import stays readable while you work on the next sheet', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await openColumns(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook and open the column step', async ({ page }) => openColumns(page))
 
-  await page.getByTestId('iw-new-name-0').fill(ONE)
-  await page.getByTestId('iw-import-one').click()
-  await expect(page.getByTestId('iw-result-0')).toBeVisible()
+  await session.step('import step 1, then confirm it stays readable from step 2', async ({ page }) => {
+    await page.getByTestId('iw-new-name-0').fill(ONE)
+    await page.getByTestId('iw-import-one').click()
+    await expect(page.getByTestId('iw-result-0')).toBeVisible()
 
-  // The complaint this work started from: "I clicked on see the rows
-  // imported and when I came back nothing was visible." The result lives
-  // outside the card, so stepping away cannot take it with it.
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
-  await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
-  await expect(page.getByTestId('iw-result-0')).toContainText(`Imported 2 rows into ${ONE}`)
-  // Including the way to undo it.
-  await expect(page.getByTestId('iw-revert-open-0')).toBeVisible()
+    // The complaint this work started from: "I clicked on see the rows
+    // imported and when I came back nothing was visible." The result lives
+    // outside the card, so stepping away cannot take it with it.
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 3')
+    await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
+    await expect(page.getByTestId('iw-result-0')).toContainText(`Imported 2 rows into ${ONE}`)
+    // Including the way to undo it.
+    await expect(page.getByTestId('iw-revert-open-0')).toBeVisible()
 
-  // Coming back to the finished step offers no second import of it.
-  await page.getByTestId('iw-step-0').click()
-  await expect(page.getByTestId('iw-import-one')).toHaveCount(0)
-  await expect(page.getByTestId('iw-import-one-done')).toContainText(`${ONE} imported`)
+    // Coming back to the finished step offers no second import of it.
+    await page.getByTestId('iw-step-0').click()
+    await expect(page.getByTestId('iw-import-one')).toHaveCount(0)
+    await expect(page.getByTestId('iw-import-one-done')).toContainText(`${ONE} imported`)
+  })
 
   await deleteTableIfExists(request, token, ONE)
 })
 
 test('the bulk button finishes the rest without re-importing what landed', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await openColumns(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook and open the column step', async ({ page }) => openColumns(page))
 
-  await page.getByTestId('iw-new-name-0').fill(ONE)
-  await page.getByTestId('iw-import-one').click()
-  await expect(page.getByTestId('iw-result-0')).toBeVisible()
+  await session.step('import step 1 alone, then finish the rest with the bulk button', async ({ page }) => {
+    await page.getByTestId('iw-new-name-0').fill(ONE)
+    await page.getByTestId('iw-import-one').click()
+    await expect(page.getByTestId('iw-result-0')).toBeVisible()
 
-  // Now on step 2. Name the remaining two and take them together.
-  await page.getByTestId('iw-new-name-1').fill(TWO)
-  await page.getByTestId('iw-next').click()
-  await page.getByTestId('iw-new-name-2').fill(THREE)
-  await expect(page.getByTestId('iw-import')).toContainText('Import the remaining 2 Tables')
-  await page.getByTestId('iw-import').click()
+    // Now on step 2. Name the remaining two and take them together.
+    await page.getByTestId('iw-new-name-1').fill(TWO)
+    await page.getByTestId('iw-next').click()
+    await page.getByTestId('iw-new-name-2').fill(THREE)
+    await expect(page.getByTestId('iw-import')).toContainText('Import the remaining 2 Tables')
+    await page.getByTestId('iw-import').click()
 
-  await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
-  await expect(page.getByTestId('iw-result-1')).toContainText(`Imported 2 rows into ${TWO}`)
-  await expect(page.getByTestId('iw-result-2')).toContainText(`Imported 2 rows into ${THREE}`)
-  // Step 1 was skipped by the bulk run rather than run twice — re-sending it
-  // would have doubled its rows.
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+    await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
+    await expect(page.getByTestId('iw-result-1')).toContainText(`Imported 2 rows into ${TWO}`)
+    await expect(page.getByTestId('iw-result-2')).toContainText(`Imported 2 rows into ${THREE}`)
+    // Step 1 was skipped by the bulk run rather than run twice — re-sending it
+    // would have doubled its rows.
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+  })
 
   const rows = await request.get(`/api/table/${encodeURIComponent(ONE)}:count`, {
     headers: { Authorization: `Bearer ${token}` },
