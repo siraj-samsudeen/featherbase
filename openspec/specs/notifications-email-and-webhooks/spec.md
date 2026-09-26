@@ -27,17 +27,22 @@ it — not on every later save while it keeps matching.
 - **THEN** no further email goes out for that rule; it only fires again the
   next time the row moves into the matching value
 
-### Requirement: Get notified inside Featherbase
+### Requirement: Get notified when a row is assigned to you
 
-Assigning a row to someone, or mentioning them by name in a comment, SHALL
-leave them an in-app notification linking back to the row, and their unread
-count updates without reloading the page.
+Assigning a row to someone SHALL leave them an in-app notification linking
+back to the row, and their unread count updates without reloading the page.
 
 #### Scenario: Assign a row
 
 - **WHEN** a user assigns a task row to a teammate
 - **THEN** the teammate gets a notification linking to that row and their
   unread count goes up
+
+### Requirement: Get notified when you're mentioned in a comment
+
+Mentioning someone by name in a comment SHALL leave them an in-app
+notification linking back to the row, and their unread count updates without
+reloading the page.
 
 #### Scenario: Mention someone in a comment
 
@@ -57,7 +62,7 @@ came from Featherbase.
 - **THEN** the webhook's URL receives the row's data along with a signature
   proving it came from Featherbase
 
-### Requirement: A failed delivery is retried, not lost
+### Requirement: A failed webhook delivery is retried, not lost
 
 If a webhook call fails or the receiving system doesn't confirm it,
 Featherbase SHALL try delivering it again automatically, up to a limited

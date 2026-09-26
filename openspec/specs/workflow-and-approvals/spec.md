@@ -5,7 +5,8 @@
 A workflow moves a row through named states one action at a time, and only
 lets the right people take each action. A Table can also require its rows to
 be finalised before they count as done, so a finalised row is changed only by
-cancelling it, never by editing it directly.
+cancelling it, never by editing it directly. Who may submit, cancel or amend a
+row at all is covered by permissions-and-roles, not here.
 
 ## Requirements
 
@@ -13,7 +14,9 @@ cancelling it, never by editing it directly.
 
 Opening a row under a workflow SHALL show its current state and only the
 actions the user's roles allow from that state; taking one moves the row to
-its next state and records who did it.
+its next state and records who did it. A workflow's own roles decide who may
+take its actions — separately from whoever can otherwise read or edit the
+row.
 
 #### Scenario: Approve a pending request
 
@@ -21,6 +24,13 @@ its next state and records who did it.
   approval and chooses Approve
 - **THEN** the request's state becomes Approved
 - **AND** the record of who approved it is kept with the request
+
+#### Scenario: Editing the row doesn't carry approval rights
+
+- **WHEN** a user who can otherwise edit the request does not hold the
+  Approver role
+- **THEN** they cannot take the Approve action, even though they could
+  change the request's other fields
 
 ### Requirement: An action can depend on the row, not just the user
 
@@ -75,15 +85,3 @@ fresh draft copy.
 - **WHEN** a user cancels a submitted row and then amends it
 - **THEN** a new draft copy is created, linked back to the original, ready to
   edit again
-
-### Requirement: Submitting, cancelling and amending are their own permissions
-
-Being able to edit a Table's rows SHALL NOT by itself allow submitting,
-cancelling or amending them — each of those requires its own separate
-permission.
-
-#### Scenario: Can edit but not cancel
-
-- **WHEN** a user who can edit a Table's rows, but was not given cancel
-  permission on it, tries to cancel a submitted row
-- **THEN** the cancellation is refused
