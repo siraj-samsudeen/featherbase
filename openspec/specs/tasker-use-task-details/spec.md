@@ -35,19 +35,10 @@ handled in Featherbase's standard form for the task.
 
 ### Requirement: Task details keep your place
 
-On a wide screen, the side panel SHALL open beside the current list or project,
-which stays selected. On a tablet or phone it fills the whole screen, and the
-page behind it is hidden and does not scroll. Closing it returns the user to
-where they were.
+Opening a task's details SHALL NOT lose the user's place: closing them returns
+the user to the same list or project, where they were.
 
-#### Scenario: Open a project task on a desktop
+#### Scenario: Open and close a project task
 
-- **WHEN** the user has a project open on a wide screen and opens one of its tasks
-- **THEN** the side panel opens beside the project
-- **AND** the same project stays selected
-
-#### Scenario: Open a task on a phone
-
-- **WHEN** the user opens a task on a phone
-- **THEN** the task details fill the screen
-- **AND** the list behind them is hidden and cannot be scrolled
+- **WHEN** the user has the project "Warehouse review" open, opens one of its tasks and closes it
+- **THEN** "Warehouse review" is still open where the user left it
