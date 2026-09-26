@@ -18,6 +18,12 @@ async function setup(admin: TestClient) {
     columns: [
       { column_name: 'full_name', column_type: 'Data', reqd: true },
       { column_name: 'message', column_type: 'Long Text', reqd: true },
+      {
+        column_name: 'delivery_speed',
+        label: 'Delivery speed',
+        column_type: 'Choice',
+        choices: 'Standard\nExpedited\nSame day',
+      },
       { column_name: 'secret_note', column_type: 'Data' }, // NOT whitelisted
     ],
   })
@@ -32,7 +38,7 @@ async function setup(admin: TestClient) {
         title: 'Contact',
         route,
         ref_table: DT,
-        web_fields: ['full_name', 'message'],
+        web_fields: ['full_name', 'message', 'delivery_speed'],
         published,
       },
     })
@@ -43,8 +49,19 @@ describe('WEB-002: web forms', () => {
   test('exposes only the whitelisted columns with their reqd flags', async ({ admin }) => {
     await setup(admin)
     const cfg = await getWebFormConfig('wf-srv')
-    expect(cfg.columns.map((f) => f.column_name)).toEqual(['full_name', 'message'])
-    expect(cfg.columns.every((f) => f.reqd)).toBe(true)
+    expect(cfg.columns.map((f) => f.column_name)).toEqual([
+      'full_name',
+      'message',
+      'delivery_speed',
+    ])
+    expect(cfg.columns.find((f) => f.column_name === 'full_name')?.reqd).toBe(true)
+    expect(cfg.columns.find((f) => f.column_name === 'message')?.reqd).toBe(true)
+    expect(cfg.columns.find((f) => f.column_name === 'delivery_speed')).toMatchObject({
+      label: 'Delivery speed',
+      column_type: 'Choice',
+      choices: 'Standard\nExpedited\nSame day',
+      reqd: false,
+    })
   })
 
   test('creates a document on submit and ignores non-whitelisted columns', async ({ admin }) => {
@@ -67,6 +84,17 @@ describe('WEB-002: web forms', () => {
     await expect(submitWebForm('wf-srv', { full_name: 'NoMessage' })).rejects.toMatchObject({
       type: 'ValidationError',
     })
+  })
+
+  test('still rejects a Choice value outside the Table metadata', async ({ admin }) => {
+    await setup(admin)
+    await expect(
+      submitWebForm('wf-srv', {
+        full_name: 'ForgedChoice',
+        message: 'No valid option selected',
+        delivery_speed: 'Teleport',
+      }),
+    ).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
   test('does not serve or accept an unpublished form', async ({ admin }) => {

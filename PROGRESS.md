@@ -1,5 +1,25 @@
 # Progress Log
 
+## 2026-09-26 — Public forms render and preserve Choice answers (#331)
+
+Choice options now reach public forms through a shared config contract and
+render in metadata order. Labels identify their controls. Parent review caught
+the existing blanket conversion of the string `1` to boolean true; only Check
+fields now receive that conversion. The browser regression persists both an
+ordinary answer and literal `1`, leaving an optional choice empty. Review also
+restored exact heading and required-flag assertions weakened in the first draft.
+
+Parent verification: `pnpm --filter server exec vitest run test/webform.test.ts`
+(7 passed); `E2E_ISOLATED=1 pnpm --filter web exec playwright test
+e2e/calendar.spec.ts e2e/column-editor.spec.ts e2e/task-management.spec.ts
+e2e/web-form.spec.ts` (14 passed together); shared/server/web typechecks;
+`pnpm check:specs` (45 specs, 9 changes); `pnpm check:e2e-dsl` (8 guard tests,
+76 files). Inspected a fresh 2× render with Expedited and quantity code 1
+selected, optional Contact method blank. Parent Feather review, including the
+recovered upstream code-review and codebase-design guidance, found no remaining
+in-scope blocker after the corrections. The OpenSpec delta remains unarchived
+pending acceptance; all four fixes are local commits, not published.
+
 ## 2026-09-26 — Tasker's Focus action is visibly named (#314)
 
 Task rows show `☆ Focus` and `★ Focus` while retaining their task-specific
