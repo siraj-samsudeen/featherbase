@@ -9360,3 +9360,6 @@ No database reset or product workaround was made. Desktop and coarse-pointer
 mobile screenshots under `docs/assets/issue-309/` were inspected: host controls
 are unclipped, touch targets are usable, and Tasker content/fixed details remain
 below the bar. No data-warehouse change, merge, or deployment was performed.
+Issue branch `issue-309-runtime-host-shell` was pushed and PR #345 opened for
+independent final review; the PR records the migration, architecture, evidence,
+and shared-test-database limitation.

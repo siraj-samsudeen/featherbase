@@ -20,4 +20,4 @@
 ## 4. Review and delivery
 
 - [x] 4.1 Append the dated `PROGRESS.md` outcome, inspect the final diff, and resolve material implementation findings.
-- [ ] 4.2 Run Prove Before Handoff, push the issue-named branch, and open one PR linking #309 with the contract migration, compatibility risks, verification commands, and desktop/mobile visual evidence; do not merge or deploy.
+- [x] 4.2 Run Prove Before Handoff, push the issue-named branch, and open one PR linking #309 with the contract migration, compatibility risks, verification commands, and desktop/mobile visual evidence; do not merge or deploy.
