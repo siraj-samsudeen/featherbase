@@ -49,6 +49,6 @@ exactly as it was.
 
 #### Scenario: Nothing moves after a refusal
 
-- **WHEN** a deletion is refused for any reason
+- **WHEN** a deletion is refused because another row still links to it
 - **THEN** the row and its data remain exactly as they were before the
   attempt
