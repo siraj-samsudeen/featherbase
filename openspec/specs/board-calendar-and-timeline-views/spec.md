@@ -3,8 +3,8 @@
 ## Purpose
 
 Beyond its plain list, a Table's rows can be seen as a kanban board, a
-calendar, a timeline or a checklist when its columns fit that shape — the
-same rows, arranged for a different kind of work.
+calendar or a timeline when its columns fit that shape — the same rows,
+arranged for a different kind of work.
 
 ## Requirements
 
@@ -41,33 +41,3 @@ SHALL change that row's second date to match.
 - **WHEN** the user drags the end of a task's bar three days later
 - **THEN** the bar now reaches that day, and the task's end date moves with
   it
-
-### Requirement: Run a table shaped like a checklist
-
-A table whose rows each hold their own set of checklist items SHALL offer a
-checklist view: picking a run shows its items as tap targets, ticking one
-off saves right away, and a run that has reached its last status locks —
-its items can still be reviewed, but no longer changed.
-
-#### Scenario: Tick off an item
-
-- **WHEN** the user opens a run and taps an unchecked item
-- **THEN** it shows as done immediately, and the run's progress count goes
-  up
-
-#### Scenario: A finished run is locked
-
-- **WHEN** a run has advanced to its last status
-- **THEN** its items can still be reviewed, but can no longer be ticked,
-  noted or photographed
-
-### Requirement: Record evidence on a checklist item
-
-An item that calls for a photo or a note SHALL let the user attach one while
-running the checklist — a photo taken or chosen on the spot, or a note
-explaining why the item wasn't done.
-
-#### Scenario: Attach a photo to an item
-
-- **WHEN** the user adds a photo to an item that calls for one
-- **THEN** the photo appears attached to that item, viewable from the run

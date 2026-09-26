@@ -32,10 +32,10 @@ the same heading again SHALL reverse the order.
 
 ### Requirement: Narrow the list with filters
 
-The user SHALL be able to add a filter on any column of the table, and every
-filter added SHALL narrow the list further; each filter in use is shown and
-can be removed on its own. A few of the list's own columns also carry a
-quick filter box above the list, for the filters used most.
+The user SHALL be able to add a filter on any column that holds a value, and
+every filter added SHALL narrow the list further; each filter in use is
+shown and can be removed on its own. A few of the list's own columns also
+carry a quick filter box above the list, for the filters used most.
 
 #### Scenario: Add and remove a filter
 
@@ -57,8 +57,8 @@ back in — shows it the same way.
 
 ### Requirement: Act on many rows at once
 
-Selecting several rows SHALL let the user delete them all, or set one column
-to the same value on all of them, in a single action.
+The user SHALL be able to change or delete several selected rows from one
+place.
 
 #### Scenario: Change one field for many rows
 
@@ -75,11 +75,11 @@ let the user expand it in place to see them, without leaving the list.
 - **WHEN** the user expands a row that has nested order lines
 - **THEN** its lines appear beneath it, and collapsing it hides them again
 
-### Requirement: A connected source can be browsed but not changed here
+### Requirement: A read-only connected table can be browsed but not changed here
 
-Rows that live in a connected file or database SHALL be sortable and
-filterable like any other list, but the list offers no row selection, no
-bulk change, and no way to add a row directly.
+A table connected to a source the platform can't write back to SHALL still
+be sortable and filterable like any other list, but the list offers no row
+selection, no bulk change, and no way to add a row directly.
 
 #### Scenario: A read-only source has no selection
 
