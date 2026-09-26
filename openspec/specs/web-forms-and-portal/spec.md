@@ -42,6 +42,18 @@ visitor's other answers as they typed them.
 - **THEN** the submission is refused with an explanation, and nothing the
   visitor already filled in is lost
 
+### Requirement: Repeated submissions from the same visitor are refused
+
+Submitting a published form too many times in a short span SHALL be refused,
+with a message telling the visitor to try again later.
+
+#### Scenario: Too many submissions too quickly
+
+- **WHEN** a visitor submits the same published form far more often than a
+  real visitor would in a short span
+- **THEN** the form refuses the extra submissions and tells them to try again
+  later
+
 ### Requirement: A signed-in submitter owns what they submit
 
 If the visitor is signed in when they submit a form, the row it creates SHALL
@@ -56,8 +68,9 @@ Submitting while signed out never attaches the row to anyone's portal.
 
 ### Requirement: The portal shows only what belongs to the user
 
-Signing in to the portal SHALL list only the rows that belong to the signed-in
-user, and opening a row that belongs to someone else SHALL be refused.
+The portal's own list, row pages and attachments SHALL show only the rows and
+files that belong to the signed-in user: its list names only their rows, and
+opening a row or attachment that belongs to someone else SHALL be refused.
 
 #### Scenario: Two customers, two portals
 

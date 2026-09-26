@@ -72,10 +72,7 @@ automatically, creating that page first if it doesn't exist yet.
 ### Requirement: Resume where you left off
 
 The home page SHALL offer one-click tiles back to the user's last opened
-row, last opened list, and last search. Once the user has kept returning to
-the same couple of destinations across several separate days, the home page
-SHALL also offer to pin them together, and pinning replaces that offer with
-shortcuts to those destinations that stay until the user unpins them.
+row, last opened list, and last search.
 
 #### Scenario: Tiles back to what the user was just doing
 
@@ -83,6 +80,13 @@ shortcuts to those destinations that stay until the user unpins them.
   returns to the home page
 - **THEN** they find a tile back to each of the three, ready to reopen with
   one click
+
+### Requirement: Pin a routine as shortcuts
+
+Once the user has kept returning to the same couple of destinations across
+several separate days, the home page SHALL offer to pin them together, and
+pinning replaces that offer with shortcuts to those destinations that stay
+until the user unpins them.
 
 #### Scenario: A routine gets offered as a pin
 
@@ -94,15 +98,19 @@ shortcuts to those destinations that stay until the user unpins them.
 ### Requirement: A private trail of the user's own activity
 
 The home page SHALL show the user a running trail of what they themselves
-have opened and searched, visible to no one but them. A System Manager can
-also switch to a team view, which shows everyone's changes and sign-ins but
-never what a colleague merely looked at.
+have opened and searched, visible to no one but them.
 
 #### Scenario: Only the user sees their own trail
 
 - **WHEN** the user opens a row and later runs a search
 - **THEN** both show up in their own activity trail, and nobody else can see
   it
+
+### Requirement: A team view shows changes, not views
+
+A System Manager SHALL be able to switch the activity trail to a team view,
+which shows everyone's changes and sign-ins but never what a colleague
+merely looked at.
 
 #### Scenario: The team view stays to changes, not views
 
