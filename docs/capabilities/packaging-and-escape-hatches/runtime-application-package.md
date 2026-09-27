@@ -14,7 +14,8 @@ related:
   - whole-custom-client
   - application-extraction-import
 proving_applications:
-  - Tasker
+  - tasker
+  - training
 alternatives:
   - one-time-generated-application
   - declarative-only-migrations
@@ -59,7 +60,7 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Tasker
+**Proving applications:** [Tasker](../proving-applications/tasker.md), [Training](../proving-applications/training.md)
 
 ## Design options
 

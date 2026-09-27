@@ -19,9 +19,16 @@ const DISPOSITION = {
   rejected: 'Rejected',
   superseded: 'Superseded',
 }
-const KINDS = new Set(['capability', 'capability-group', 'design-option'])
+const PROVING_STAGE = {
+  planned: 'Planned',
+  active: 'Active proof',
+  proven: 'Proven',
+  retired: 'Retired proof',
+}
+const KINDS = new Set(['capability', 'capability-group', 'design-option', 'proving-application'])
 const LIST_FIELDS = new Set([
   'alternatives',
+  'capabilities',
   'issues',
   'proving_applications',
   'related',
@@ -33,6 +40,7 @@ const SCALAR_FIELDS = new Set([
   'kind',
   'order',
   'parent',
+  'stage',
   'status',
   'summary',
   'title',
@@ -113,10 +121,15 @@ function validate(entries, root) {
     if (entry.kind === 'design-option') {
       if (!DISPOSITION[entry.disposition]) errors.push(`${entry.relativePath}: invalid or missing disposition`)
       if (entry.status) errors.push(`${entry.relativePath}: design options use disposition, not status`)
+    } else if (entry.kind === 'proving-application') {
+      if (!PROVING_STAGE[entry.stage]) errors.push(`${entry.relativePath}: invalid or missing stage`)
+      if (entry.status || entry.disposition) {
+        errors.push(`${entry.relativePath}: proving applications use stage, not status or disposition`)
+      }
     } else if (!STATUS[entry.status]) {
       errors.push(`${entry.relativePath}: invalid or missing status`)
     }
-    if (entry.kind !== 'capability-group' && !entry.parent) {
+    if (['capability', 'design-option'].includes(entry.kind) && !entry.parent) {
       errors.push(`${entry.relativePath}: missing parent`)
     }
   }
@@ -138,6 +151,28 @@ function validate(entries, root) {
     }
     for (const issue of entry.issues ?? []) {
       if (!Number.isInteger(issue) || issue <= 0) errors.push(`${entry.relativePath}: invalid issue ${issue}`)
+    }
+    for (const capability of entry.capabilities ?? []) {
+      const target = byId.get(capability)
+      if (!target) errors.push(`${entry.relativePath}: unknown capability ${capability}`)
+      else if (target.kind !== 'capability') errors.push(`${entry.relativePath}: ${capability} is not a leaf capability`)
+    }
+    for (const provingApplication of entry.proving_applications ?? []) {
+      const target = byId.get(provingApplication)
+      if (!target) errors.push(`${entry.relativePath}: unknown proving application ${provingApplication}`)
+      else if (target.kind !== 'proving-application') {
+        errors.push(`${entry.relativePath}: ${provingApplication} is not a proving application`)
+      } else if (!(target.capabilities ?? []).includes(entry.id)) {
+        errors.push(`${target.relativePath}: must list ${entry.id} to match ${entry.relativePath}`)
+      }
+    }
+    if (entry.kind === 'proving-application') {
+      for (const capability of entry.capabilities ?? []) {
+        const target = byId.get(capability)
+        if (target?.kind === 'capability' && !(target.proving_applications ?? []).includes(entry.id)) {
+          errors.push(`${target.relativePath}: must list ${entry.id} to match ${entry.relativePath}`)
+        }
+      }
     }
   }
 
@@ -203,12 +238,21 @@ function renderConnections(entry, catalog, root) {
     lines.push('', '## Sub-capabilities', '', 'No reusable sub-capabilities have been separated yet.')
   }
 
+  if (entry.kind === 'proving-application') {
+    lines.push('', '## Capabilities proved', '', '| Capability | Status | Description | Specifications | Tickets |', '| --- | --- | --- | --- | --- |')
+    for (const capability of (entry.capabilities ?? []).map(id => byId.get(id))) {
+      lines.push(`| ${entryLink(entry.filePath, capability)} | ${STATUS[capability.status]} | ${capability.summary} | ${specificationLinks(entry.filePath, root, capability.specifications)} | ${issueLinks(capability.issues)} |`)
+    }
+  }
+
   lines.push('', '## Connections')
   if (entry.parent) lines.push('', `**Parent:** ${entryLink(entry.filePath, byId.get(entry.parent))}`)
   lines.push('', `**Related capabilities:** ${(entry.related ?? []).length ? entry.related.map(id => entryLink(entry.filePath, byId.get(id))).join(', ') : 'None recorded.'}`)
   lines.push('', `**Specifications:** ${specificationLinks(entry.filePath, root, entry.specifications)}`)
   lines.push('', `**Tickets:** ${issueLinks(entry.issues)}`)
-  lines.push('', `**Proving applications:** ${(entry.proving_applications ?? []).join(', ') || 'None recorded.'}`)
+  if (entry.kind !== 'proving-application') {
+    lines.push('', `**Proving applications:** ${(entry.proving_applications ?? []).length ? entry.proving_applications.map(id => entryLink(entry.filePath, byId.get(id))).join(', ') : 'None recorded.'}`)
+  }
 
   if (alternatives.length) {
     lines.push('', '## Design options', '')
@@ -252,6 +296,13 @@ function renderIndex(catalog, root) {
     for (const child of entries.filter(entry => entry.parent === group.id && entry.kind === 'capability')) {
       output.push(`| ${entryLink(indexPath, child)} | ${STATUS[child.status]} | ${child.summary} | ${specificationLinks(indexPath, root, child.specifications)} | ${issueLinks(child.issues)} |`)
     }
+  }
+
+  const provingApplications = entries.filter(entry => entry.kind === 'proving-application')
+  output.push('', '## Proving applications', '', 'Proving applications exercise capabilities together in real application lifecycles. They are evidence and design drivers, not framework capabilities.', '', '| Application | Stage | Purpose | Capabilities |', '| --- | --- | --- | --- |')
+  for (const application of provingApplications) {
+    const capabilities = (application.capabilities ?? []).map(id => entryLink(indexPath, catalog.byId.get(id))).join(', ')
+    output.push(`| ${entryLink(indexPath, application)} | ${PROVING_STAGE[application.stage]} | ${application.summary} | ${capabilities} |`)
   }
 
   const options = entries.filter(entry => entry.kind === 'design-option')

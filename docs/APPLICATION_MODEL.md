@@ -73,6 +73,15 @@ Status is judged against the **portable application contract**. Similar behavior
 | [Namespaced server route](./capabilities/packaging-and-escape-hatches/namespaced-server-route.md) | ◇ Planned | An authenticated package-owned HTTP endpoint for behavior that does not fit a transactional action. | Not yet written | [#274](https://github.com/siraj-samsudeen/featherbase/issues/274) |
 | [Application extraction and import](./capabilities/packaging-and-escape-hatches/application-extraction-import.md) | ○ Not started | Move one application's definitions, data, files and configuration between shared and dedicated installations. | Not yet written | — |
 
+## Proving applications
+
+Proving applications exercise capabilities together in real application lifecycles. They are evidence and design drivers, not framework capabilities.
+
+| Application | Stage | Purpose | Capabilities |
+| --- | --- | --- | --- |
+| [Training](./capabilities/proving-applications/training.md) | Planned | Rebuild the existing daily-exercise course as a portable Featherbase application and use it to prove the missing generic contracts. | [Workspace](./capabilities/page-intents/workspace.md), [Record](./capabilities/page-intents/record.md), [Content block](./capabilities/core-blocks/content.md), [Field group](./capabilities/core-blocks/field-group.md), [Action group](./capabilities/core-blocks/action-group.md), [Activity timeline](./capabilities/core-blocks/activity-timeline.md), [Attachments](./capabilities/core-blocks/attachments.md), [Metadata and records](./capabilities/runtime-services/metadata-records.md), [Authentication and permissions](./capabilities/runtime-services/authentication-permissions.md), [Transactional actions](./capabilities/runtime-services/transactional-actions.md), [Workflow](./capabilities/runtime-services/workflow.md), [Files](./capabilities/runtime-services/files.md), [Audit, comments and engagement](./capabilities/runtime-services/audit-comments-engagement.md), [Runtime application package](./capabilities/packaging-and-escape-hatches/runtime-application-package.md) |
+| [Tasker](./capabilities/proving-applications/tasker.md) | Proven | The existing runtime application proving package ownership, governed records, actions and a whole custom React client. | [Collection](./capabilities/page-intents/collection.md), [Record](./capabilities/page-intents/record.md), [Custom](./capabilities/page-intents/custom.md), [Metadata and records](./capabilities/runtime-services/metadata-records.md), [Authentication and permissions](./capabilities/runtime-services/authentication-permissions.md), [Transactional actions](./capabilities/runtime-services/transactional-actions.md), [Runtime application package](./capabilities/packaging-and-escape-hatches/runtime-application-package.md), [Whole custom client](./capabilities/packaging-and-escape-hatches/whole-custom-client.md) |
+
 ## Design options
 
 Design options preserve alternatives and trade-offs without presenting them as promised product features.

@@ -15,6 +15,8 @@ related:
   - collection-block
 alternatives:
   - visual-workflow-designer
+proving_applications:
+  - training
 ---
 
 # Action group
@@ -46,7 +48,7 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** None recorded.
+**Proving applications:** [Training](../proving-applications/training.md)
 
 ## Design options
 

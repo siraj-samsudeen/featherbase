@@ -15,7 +15,7 @@ related:
   - chart-block
   - collection-block
 proving_applications:
-  - Training
+  - training
 ---
 
 # Workspace
@@ -50,6 +50,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** [#277](https://github.com/siraj-samsudeen/featherbase/issues/277)
 
-**Proving applications:** Training
+**Proving applications:** [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

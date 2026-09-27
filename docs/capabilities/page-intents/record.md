@@ -15,7 +15,8 @@ related:
   - activity-timeline-block
   - attachments-block
 proving_applications:
-  - Tasker
+  - tasker
+  - training
 ---
 
 # Record
@@ -47,6 +48,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Tasker
+**Proving applications:** [Tasker](../proving-applications/tasker.md), [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

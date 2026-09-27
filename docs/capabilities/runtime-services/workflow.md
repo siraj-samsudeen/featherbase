@@ -12,7 +12,7 @@ related:
   - action-group-block
   - transactional-actions
 proving_applications:
-  - Training
+  - training
 alternatives:
   - visual-workflow-designer
 ---
@@ -50,7 +50,7 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Training
+**Proving applications:** [Training](../proving-applications/training.md)
 
 ## Design options
 

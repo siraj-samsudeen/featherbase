@@ -72,7 +72,16 @@ issues:
 related:
   - application-ui
 proving_applications:
-  - Training
+  - training
+`)
+    writePage(root, 'proving-applications/training.md', `
+id: training
+kind: proving-application
+title: Training
+stage: planned
+summary: Rebuild the training course as a portable Featherbase application.
+capabilities:
+  - workspace-page
 `)
     writePage(root, 'design-options/component-tree-json.md', `
 id: component-tree-json
@@ -93,6 +102,8 @@ related:
     assert.match(index, /\[example-pages\]\(\.\.\/openspec\/specs\/example-pages\/spec\.md\)/)
     assert.match(index, /issues\/277/)
     assert.match(index, /Design options/)
+    assert.match(index, /Proving applications/)
+    assert.match(index, /\[Training\]\(\.\/capabilities\/proving-applications\/training\.md\)/)
     assert.doesNotMatch(index, /\.spec\.(ts|tsx)|\.test\.(ts|tsx)/)
 
     const parent = fs.readFileSync(
@@ -104,9 +115,51 @@ related:
     assert.match(parent, /workspace\.md/)
     assert.match(parent, /Arbitrary component-tree JSON/)
 
+    const workspace = fs.readFileSync(
+      path.join(root, 'docs/capabilities/application-ui/workspace.md'),
+      'utf8',
+    )
+    assert.match(workspace, /\[Training\]\(\.\.\/proving-applications\/training\.md\)/)
+
     assert.doesNotThrow(() => checkCatalog(root))
     fs.appendFileSync(path.join(root, 'docs/APPLICATION_MODEL.md'), '\nDrift\n')
     assert.throws(() => checkCatalog(root), /run `pnpm generate:capabilities`/)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('writeCatalog rejects a one-sided proving-application relationship', () => {
+  const root = temporaryRepository()
+  try {
+    writePage(root, 'application-ui/README.md', `
+id: application-ui
+kind: capability-group
+title: Application UI
+status: partial
+summary: Reusable application pages.
+`)
+    writePage(root, 'application-ui/workspace.md', `
+id: workspace-page
+kind: capability
+title: Workspace
+status: partial
+parent: application-ui
+summary: A role-aware landing page.
+proving_applications:
+  - training
+`)
+    writePage(root, 'proving-applications/training.md', `
+id: training
+kind: proving-application
+title: Training
+stage: planned
+summary: Rebuild the training course.
+capabilities:
+  - application-ui
+`)
+
+    assert.throws(() => writeCatalog(root), /must list workspace-page/)
   } finally {
     fs.rmSync(root, { recursive: true, force: true })
   }

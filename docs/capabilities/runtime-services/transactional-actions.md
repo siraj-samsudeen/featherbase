@@ -13,8 +13,8 @@ related:
   - workflow
   - namespaced-server-route
 proving_applications:
-  - Tasker
-  - Training
+  - tasker
+  - training
 ---
 
 # Transactional actions
@@ -46,6 +46,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Tasker, Training
+**Proving applications:** [Tasker](../proving-applications/tasker.md), [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

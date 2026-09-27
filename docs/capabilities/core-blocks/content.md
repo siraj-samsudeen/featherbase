@@ -12,7 +12,7 @@ related:
   - workspace-page
   - custom-page
 proving_applications:
-  - Training
+  - training
 ---
 
 # Content block
@@ -43,6 +43,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Training
+**Proving applications:** [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

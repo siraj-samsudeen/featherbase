@@ -21,13 +21,15 @@ from capability already delivered.
 `docs/APPLICATION_MODEL.md` is now generated from a navigable capability
 catalog: four parent pages, one detailed page for each of the 29 current
 capabilities, and first-class pages for twelve deferred or rejected design
-options. Structured frontmatter records status, parent, relationships,
-specifications, tickets and
-proving applications; readable bodies retain purpose, current scope, trade-offs
-and revisit conditions. Generated parent blocks and the root index prevent the
-same facts from drifting, while OpenSpec remains the behavior authority and
-GitHub issues remain the work record. No page links directly to source or test
-files. The README links the catalog from Orientation.
+options. Training and Tasker are a third, explicitly separate proving-application
+kind: evidence and design drivers, never mislabeled framework capabilities.
+Structured frontmatter records status or stage, parent, relationships,
+specifications, tickets and bidirectional proving links; readable bodies retain
+purpose, current scope, trade-offs and revisit conditions. Generated parent
+blocks and the root index prevent the same facts from drifting, while OpenSpec
+remains the behavior authority and GitHub issues remain the work record. No page
+links directly to source or test files. The README links the catalog from
+Orientation.
 
 A post-commit audit against the full design conversation added the trade-offs
 that prose alone had compressed: shared multitenant SaaS, unrestricted package
@@ -38,18 +40,26 @@ revisit condition. Parent pages now link the platform comparisons and record the
 Frappe/ERPNext, React-admin/Refine/JSON Forms and Rails admin-framework
 influences on the five-page/ten-block model.
 
+The Training proving page preserves the complete discussion boundary: the
+existing PR #3567 behavior, the five-step first release (sign in, Lessons 1 and
+2, visible-tab active time, synchronous answer result, workflow pass plus staff
+audit), what can wait, and the declaration-versus-TypeScript ownership rule.
+Every capability links back to Training or Tasker, and the checker rejects a
+one-sided proving relationship.
+
 `pnpm generate:capabilities` rebuilds the root and generated connection blocks.
 `pnpm check:capabilities` validates metadata, specifications, relationships,
 derived parent statuses and generated-document drift, and now runs in CI.
 
-**Verified:** `pnpm check:capabilities` (3 tests plus the real catalog check),
-`git diff --check`, and a link check resolving all local links across the
+**Verified:** `pnpm check:capabilities` (4 tests plus the real catalog check),
+`git diff --check`, and a link check resolving 453/453 local links across 48
 catalog documents. `pnpm check:specs` could not start because this documentation
 checkout has no installed dependencies (`openspec` was absent); no spec changed.
-Documentation tooling only; no runtime behaviour changed. **Next:** audit the
-remaining application-specific Training requirements and decide whether proving
-applications become a third catalog entry kind or stay in their own linked
-document set.
+The generated portal opened all catalog and proving-application navigation
+locally; DOM checks found 14 Training capability links and no source/test links
+or horizontal overflow, and inspected desktop and 390px captures were readable.
+Documentation tooling only; no runtime behaviour changed. **Next:** design the
+first Training vertical slice against its linked capability gaps.
 
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 

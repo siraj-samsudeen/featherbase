@@ -13,7 +13,8 @@ related:
   - field-group-block
   - relation-child-grid-block
 proving_applications:
-  - Tasker
+  - tasker
+  - training
 ---
 
 # Metadata and records
@@ -45,6 +46,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Tasker
+**Proving applications:** [Tasker](../proving-applications/tasker.md), [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

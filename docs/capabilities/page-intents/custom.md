@@ -15,7 +15,7 @@ related:
   - whole-custom-client
   - custom-block
 proving_applications:
-  - Tasker
+  - tasker
 ---
 
 # Custom
@@ -51,6 +51,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** [#277](https://github.com/siraj-samsudeen/featherbase/issues/277)
 
-**Proving applications:** Tasker
+**Proving applications:** [Tasker](../proving-applications/tasker.md)
 
 <!-- capability-catalog:end -->

@@ -14,7 +14,7 @@ related:
   - record-page
   - queries-saved-views
 proving_applications:
-  - Tasker
+  - tasker
 ---
 
 # Collection
@@ -47,6 +47,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** Tasker
+**Proving applications:** [Tasker](../proving-applications/tasker.md)
 
 <!-- capability-catalog:end -->

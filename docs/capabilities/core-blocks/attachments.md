@@ -14,7 +14,7 @@ related:
   - files
   - record-page
 proving_applications:
-  - Training
+  - training
 ---
 
 # Attachments
@@ -46,6 +46,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** [#165](https://github.com/siraj-samsudeen/featherbase/issues/165)
 
-**Proving applications:** Training
+**Proving applications:** [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

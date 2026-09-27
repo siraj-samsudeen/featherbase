@@ -14,7 +14,7 @@ related:
   - attachments-block
   - runtime-application-package
 proving_applications:
-  - Training
+  - training
 alternatives:
   - package-local-upload-storage
 ---
@@ -49,7 +49,7 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** [#165](https://github.com/siraj-samsudeen/featherbase/issues/165)
 
-**Proving applications:** Training
+**Proving applications:** [Training](../proving-applications/training.md)
 
 ## Design options
 

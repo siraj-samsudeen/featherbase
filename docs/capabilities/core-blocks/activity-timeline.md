@@ -11,6 +11,8 @@ specifications:
 related:
   - audit-comments-engagement
   - record-page
+proving_applications:
+  - training
 ---
 
 # Activity timeline
@@ -41,6 +43,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** None recorded.
+**Proving applications:** [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->

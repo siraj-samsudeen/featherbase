@@ -11,6 +11,8 @@ specifications:
 related:
   - record-page
   - metadata-records
+proving_applications:
+  - training
 ---
 
 # Field group
@@ -41,6 +43,6 @@ No reusable sub-capabilities have been separated yet.
 
 **Tickets:** —
 
-**Proving applications:** None recorded.
+**Proving applications:** [Training](../proving-applications/training.md)
 
 <!-- capability-catalog:end -->
