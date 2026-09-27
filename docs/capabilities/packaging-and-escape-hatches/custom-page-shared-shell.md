@@ -12,6 +12,8 @@ related:
   - custom-page
   - custom-block
   - whole-custom-client
+alternatives:
+  - arbitrary-core-overrides
 ---
 
 # Custom page in the shared shell
@@ -44,5 +46,9 @@ No reusable sub-capabilities have been separated yet.
 **Tickets:** [#277](https://github.com/siraj-samsudeen/featherbase/issues/277)
 
 **Proving applications:** None recorded.
+
+## Design options
+
+- [Arbitrary core overrides](../design-options/arbitrary-core-overrides.md) — **Rejected.** Let a package replace any internal Featherbase screen, component or service by name.
 
 <!-- capability-catalog:end -->

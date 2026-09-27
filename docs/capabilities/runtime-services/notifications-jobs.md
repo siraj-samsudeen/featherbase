@@ -14,6 +14,8 @@ issues:
 related:
   - runtime-application-package
   - transactional-actions
+alternatives:
+  - out-of-process-app-services
 ---
 
 # Notifications and jobs
@@ -47,5 +49,9 @@ No reusable sub-capabilities have been separated yet.
 **Tickets:** [#284](https://github.com/siraj-samsudeen/featherbase/issues/284)
 
 **Proving applications:** None recorded.
+
+## Design options
+
+- [Out-of-process application services](../design-options/out-of-process-app-services.md) — **Deferred.** Start every application service as a separate worker or process from the first version.
 
 <!-- capability-catalog:end -->

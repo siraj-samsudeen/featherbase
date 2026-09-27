@@ -20,25 +20,36 @@ from capability already delivered.
 
 `docs/APPLICATION_MODEL.md` is now generated from a navigable capability
 catalog: four parent pages, one detailed page for each of the 29 current
-capabilities, and first-class pages for four deferred design options. Structured
-frontmatter records status, parent, relationships, specifications, tickets and
+capabilities, and first-class pages for twelve deferred or rejected design
+options. Structured frontmatter records status, parent, relationships,
+specifications, tickets and
 proving applications; readable bodies retain purpose, current scope, trade-offs
 and revisit conditions. Generated parent blocks and the root index prevent the
 same facts from drifting, while OpenSpec remains the behavior authority and
 GitHub issues remain the work record. No page links directly to source or test
 files. The README links the catalog from Orientation.
 
+A post-commit audit against the full design conversation added the trade-offs
+that prose alone had compressed: shared multitenant SaaS, unrestricted package
+hooks, BEAM-style hot code swapping, one-time generation, declarative-only
+migrations, arbitrary core overrides, out-of-process services and package-local
+upload storage. Their pages retain the question, advantages, costs, decision and
+revisit condition. Parent pages now link the platform comparisons and record the
+Frappe/ERPNext, React-admin/Refine/JSON Forms and Rails admin-framework
+influences on the five-page/ten-block model.
+
 `pnpm generate:capabilities` rebuilds the root and generated connection blocks.
 `pnpm check:capabilities` validates metadata, specifications, relationships,
 derived parent statuses and generated-document drift, and now runs in CI.
 
 **Verified:** `pnpm check:capabilities` (3 tests plus the real catalog check),
-`git diff --check`, and a link check resolving all 305 local links across the 38
+`git diff --check`, and a link check resolving all local links across the
 catalog documents. `pnpm check:specs` could not start because this documentation
 checkout has no installed dependencies (`openspec` was absent); no spec changed.
 Documentation tooling only; no runtime behaviour changed. **Next:** audit the
-Training/Featherbase design discussion against the catalog, then continue the
-Training proving application.
+remaining application-specific Training requirements and decide whether proving
+applications become a third catalog entry kind or stay in their own linked
+document set.
 
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 

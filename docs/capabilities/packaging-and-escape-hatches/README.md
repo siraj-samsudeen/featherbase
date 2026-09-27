@@ -8,6 +8,10 @@ summary: Portable application ownership, governed lifecycle and ordinary-code ex
 related:
   - runtime-services
   - page-intents
+alternatives:
+  - shared-multitenant-saas-runtime
+  - unrestricted-deployment-hooks
+  - hot-code-swapping
 ---
 
 # Packaging and escape hatches
@@ -37,6 +41,14 @@ in-process but keep a lifecycle seam for future workers. This takes the useful
 separation of releases, supervision and migrations found in BEAM/Phoenix without
 making hot code swapping an initial product requirement.
 
+## Trade-off context
+
+The README keeps the balanced comparisons that led to this boundary:
+
+- [Shared SaaS or customer-owned deployment](../../../README.md#shared-saas-or-customer-owned-deployment)
+- [Governed extension platform or trusted application code](../../../README.md#governed-extension-platform-or-trusted-application-code)
+- [Generated application or durable runtime declaration](../../../README.md#generated-application-or-durable-runtime-declaration)
+
 <!-- capability-catalog:start -->
 
 ## Sub-capabilities
@@ -58,5 +70,11 @@ making hot code swapping an initial product requirement.
 **Tickets:** —
 
 **Proving applications:** None recorded.
+
+## Design options
+
+- [Shared multitenant SaaS runtime](../design-options/shared-multitenant-saas-runtime.md) — **Deferred.** Operate unrelated customers inside one provider-owned Featherbase application runtime and database boundary.
+- [Unrestricted deployment hooks](../design-options/unrestricted-deployment-hooks.md) — **Rejected.** Let installed packages run arbitrary commands during deployment, installation and lifecycle transitions.
+- [Hot code swapping](../design-options/hot-code-swapping.md) — **Deferred.** Replace running application code and transform live state without restarting the application runtime.
 
 <!-- capability-catalog:end -->

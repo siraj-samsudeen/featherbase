@@ -31,6 +31,22 @@ The goal is not to encode arbitrary React trees in JSON. An agent should be able
 to declare ordinary application pages concisely and move to normal code when
 the page is exceptional.
 
+## Influences and boundaries
+
+Frappe and ERPNext demonstrate the value of metadata-driven records, generic
+administration and installable applications. React-admin and Refine demonstrate
+resource-centered list, show, create and edit surfaces. JSON Forms demonstrates
+schema-driven field rendering. Rails, ActiveAdmin, Administrate and Avo
+demonstrate how strong conventions remove repetitive application wiring.
+
+Featherbase takes the recurring application behavior from those approaches,
+but changes the primary author from a human framework user to a coding agent.
+The result is a small page-and-block grammar with normal React escape hatches,
+not a visual builder or a JSON encoding of every possible component.
+
+The broader trade-off is documented in
+[Human visual building or agent-authored declarations](../../../README.md#human-visual-building-or-agent-authored-declarations).
+
 <!-- capability-catalog:start -->
 
 ## Sub-capabilities

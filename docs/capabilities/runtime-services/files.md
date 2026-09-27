@@ -15,6 +15,8 @@ related:
   - runtime-application-package
 proving_applications:
   - Training
+alternatives:
+  - package-local-upload-storage
 ---
 
 # Files
@@ -48,5 +50,9 @@ No reusable sub-capabilities have been separated yet.
 **Tickets:** [#165](https://github.com/siraj-samsudeen/featherbase/issues/165)
 
 **Proving applications:** Training
+
+## Design options
+
+- [Package-local upload storage](../design-options/package-local-upload-storage.md) — **Rejected.** Let each application store ordinary customer uploads directly inside its own package directory.
 
 <!-- capability-catalog:end -->

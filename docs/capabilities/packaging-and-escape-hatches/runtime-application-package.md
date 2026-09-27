@@ -15,6 +15,9 @@ related:
   - application-extraction-import
 proving_applications:
   - Tasker
+alternatives:
+  - one-time-generated-application
+  - declarative-only-migrations
 ---
 
 # Runtime application package
@@ -57,5 +60,10 @@ No reusable sub-capabilities have been separated yet.
 **Tickets:** —
 
 **Proving applications:** Tasker
+
+## Design options
+
+- [One-time generated application](../design-options/one-time-generated-application.md) — **Rejected.** Generate a standalone editable codebase from declarations and remove the Featherbase runtime dependency.
+- [Declarative-only migrations](../design-options/declarative-only-migrations.md) — **Rejected.** Permit package upgrades to express every schema and data transformation only through framework declarations.
 
 <!-- capability-catalog:end -->

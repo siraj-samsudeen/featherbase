@@ -27,6 +27,11 @@ declaratively. TypeScript is used at named extension points to compute facts or
 perform domain behavior the generic service cannot know—for example whether a
 Training answer is correct—not to replace the workflow engine itself.
 
+This boundary follows the platform's broader
+[agent-first development](../../../README.md#agent-first-development) rule:
+declarations own recurring behavior, while ordinary code owns domain-specific
+facts and integrations.
+
 <!-- capability-catalog:start -->
 
 ## Sub-capabilities
