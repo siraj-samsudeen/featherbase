@@ -1,5 +1,33 @@
 # Progress Log
 
+## 2026-09-27 — Table builder controls have usable accessible names (#294)
+
+The bounded first accessibility batch gives the Table Builder's table details,
+column grid, column cards, and shared row-naming controls stable names that
+identify their purpose and, where repeated, their column number. Existing
+labels are now associated with their controls. Appearance and behavior remain
+unchanged; a Session DSL browser regression exercises two asymmetric columns
+in both layouts and the row-naming controls entirely through semantic names.
+
+The focused browser test failed first on the unnamed Table name and row-naming
+controls, then passed after implementation. Feather review found one missed
+association between the visible Choice/Reference labels and their controls;
+that association was added before final verification. Fresh 2× grid and card
+screenshots and the accessibility snapshot showed the names without visual
+regressions.
+
+**Verified:** `pnpm --filter web e2e e2e/table-builder-accessibility.spec.ts`
+(1 passed); `NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test`
+(176 passed); `pnpm --filter web typecheck`; `pnpm check:e2e-dsl` (8 guard
+tests, 79 files); `pnpm check:specs` (45 specs, 19 changes); and `git diff
+--check`. The complete `pnpm --filter web e2e` run passed 169 tests with 28
+expected skips; its only failure was the untouched Tasker
+`project_rename_conflict` case, which a focused rerun reproduced (3 passed,
+1 failed). All Table Builder, import, validation, and naming coverage passed.
+
+**Next:** independent parent review and rerun of the scoped accessibility PR;
+the OpenSpec change remains unarchived for parent-owned sync/archive.
+
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
 Project rename now snapshots the project at edit start, following task detail

@@ -218,9 +218,15 @@ tool for API setup in `beforeAll`/`afterEach`, unchanged. A CI check
 (`pnpm check:e2e-dsl`) enforces this: every `apps/web/e2e/*.spec.ts` must
 import `test` or `anonymousTest` from `./fixtures`; a file whose first line
 is `// e2e-dsl: exempt — <reason>` is skipped. See
-`docs/testing/e2e-dsl-migration.md` for the full before/after pattern, the
-step rule, and the migration's per-file status — as of this writing 14 of 76
-files are migrated; the doc lists the rest in batches.
+`docs/testing/e2e-dsl-migration.md` for the full before/after pattern and the
+step rule.
+
+Prefer the DSL's role-and-accessible-name verbs (`fillIn`, `selectOption`,
+`check`, `clickButton`, and their assertion counterparts) whenever a control
+has that semantic contract. This makes the test exercise the same interface
+that assistive technology uses. Keep test IDs for structural containers and
+for mechanics the semantic verbs cannot express; a test ID is not a substitute
+for a missing accessible name.
 
 `pnpm --filter web e2e` sets `E2E_ISOLATED=1`: Playwright brings up its own
 database and its own API/web ports (default 8020/5193, overridable),

@@ -53,14 +53,20 @@ export function ColumnCards({
         const verdict = verdicts[i]
         const known = FRIENDLY.some((f) => f.type === c.column_type)
         return (
-          <div key={i} className="fc-card p-5" data-testid={`dt-card-${i}`}>
+          <div
+            key={i}
+            role="group"
+            aria-label={`Column ${i + 1}`}
+            className="fc-card p-5"
+            data-testid={`dt-card-${i}`}
+          >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
                 Column {i + 1}
               </span>
               {columns.length > 1 && (
                 <button
-                  aria-label="Remove column"
+                  aria-label={`Remove column ${i + 1}`}
                   onClick={() => onRemove(i)}
                   className="rounded px-1.5 text-sm text-[var(--color-ink-faint)] transition hover:bg-[var(--color-subtle)] hover:text-[var(--color-danger)]"
                 >
@@ -70,6 +76,7 @@ export function ColumnCards({
             </div>
 
             <input
+              aria-label={`Column ${i + 1} field label`}
               value={c.label}
               onChange={(e) =>
                 onPatch(i, {
@@ -86,6 +93,7 @@ export function ColumnCards({
               {FRIENDLY.map((f) => (
                 <button
                   key={f.type}
+                  aria-label={`Column ${i + 1} type ${f.label}`}
                   title={f.hint}
                   onClick={() => onPatch(i, { column_type: f.type, target: '' })}
                   className={`fc-pill border px-3 py-1 transition ${
@@ -106,8 +114,12 @@ export function ColumnCards({
 
             {c.column_type === 'Choice' && (
               <div className="mt-3">
-                <label className="fc-label">The options, comma-separated</label>
+                <label htmlFor={`dt-card-${i}-choices`} className="fc-label">
+                  The options, comma-separated
+                </label>
                 <input
+                  id={`dt-card-${i}-choices`}
+                  aria-label={`Column ${i + 1} choices`}
                   value={c.target}
                   onChange={(e) => onPatch(i, { target: e.target.value })}
                   placeholder="Small, Medium, Large"
@@ -117,8 +129,16 @@ export function ColumnCards({
             )}
             {c.column_type === 'Reference' && (
               <div className="mt-3">
-                <label className="fc-label">Which table does it link to?</label>
-                <select value={c.target} onChange={(e) => onPatch(i, { target: e.target.value })} className="fc-input">
+                <label htmlFor={`dt-card-${i}-linked-table`} className="fc-label">
+                  Which table does it link to?
+                </label>
+                <select
+                  id={`dt-card-${i}-linked-table`}
+                  aria-label={`Column ${i + 1} linked table`}
+                  value={c.target}
+                  onChange={(e) => onPatch(i, { target: e.target.value })}
+                  className="fc-input"
+                >
                   <option value="">Choose a table…</option>
                   {(tables?.data ?? []).map((t) => (
                     <option key={t.name} value={t.name}>
@@ -132,6 +152,7 @@ export function ColumnCards({
             <div className="mt-4 flex flex-wrap items-center gap-5 border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-ink-muted)]">
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input
+                  aria-label={`Column ${i + 1} required`}
                   type="checkbox"
                   checked={c.reqd}
                   onChange={(e) => onPatch(i, { reqd: e.target.checked })}
@@ -141,6 +162,7 @@ export function ColumnCards({
               </label>
               <label className="flex cursor-pointer items-center gap-1.5">
                 <input
+                  aria-label={`Column ${i + 1} show in list`}
                   type="checkbox"
                   checked={c.in_list_view}
                   onChange={(e) => onPatch(i, { in_list_view: e.target.checked })}
@@ -165,6 +187,7 @@ export function ColumnCards({
                   <>
                     {' '}
                     <button
+                      aria-label={`Column ${i + 1} use “${verdict.fix}”`}
                       onClick={() => onPatch(i, { column_name: verdict.fix, name_touched: true })}
                       className="font-semibold underline"
                     >
