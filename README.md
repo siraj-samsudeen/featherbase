@@ -32,6 +32,46 @@ Featherbase guarantees upgrade compatibility at its documented declarative and c
 
 Featherbase is not a shared multi-tenant SaaS product, a human-oriented no-code builder, or a one-time application generator. It is a self-hostable framework that gives coding agents reusable application primitives without limiting their ability to write normal code.
 
+## Why this shape
+
+The comparisons below describe Featherbase's design direction, not a claim that every contract is already complete. Featherbase is in active development; Salesforce, Airtable, Shopify, Frappe, and JHipster are mature products or ecosystems with capabilities and operational experience Featherbase does not yet have.
+
+### Shared SaaS or customer-owned deployment
+
+Salesforce and Airtable operate the application platform for their customers. A customer can begin without running infrastructure, receives platform upgrades automatically, and benefits from mature operations, integrations, and ecosystems. Shared operation also lets those platforms improve security, reliability, and performance centrally.
+
+That model makes the provider's runtime, limits, release decisions, and commercial terms part of every application. Data can be exported, but moving the complete application—its behaviour, extensions, and operating environment—to an independent deployment is not the normal product model.
+
+Featherbase chooses customer-owned deployment. A customer may operate it directly or pay someone to manage the same self-hostable product. This provides deployment control and makes moving an application between Featherbase installations a platform requirement. The cost is real: each installation must be deployed, monitored, backed up, and upgraded, and Featherbase does not initially receive the economies of a shared SaaS runtime.
+
+### Human visual building or agent-authored declarations
+
+Salesforce and Airtable provide mature visual tools through which nontechnical users can create data models, views, automations, and permissions. This shortens the path from a business need to a working system and allows many changes without a software delivery process.
+
+As requirements become more specialised, builders work within each platform's supported components, APIs, limits, and proprietary development model. Complex applications can accumulate configuration that is difficult to review, test, and reproduce as one source-controlled artifact.
+
+Featherbase optimizes instead for coding agents. Durable declarations describe the repetitive parts of an application and ordinary code handles the parts that are genuinely specific. The declarations remain diffable, testable application source rather than the transient output of a visual editing session. The trade-off is that Featherbase requires a coding agent or developer; it is not intended to provide Airtable-like self-service to a nontechnical builder.
+
+### Governed extension platform or trusted application code
+
+Salesforce tightly governs package code inside its runtime. Shopify exposes stable APIs and extension surfaces while most app backends run outside Shopify. These boundaries protect the host platform, make central upgrades possible, and support large third-party ecosystems. They also constrain which execution models, interfaces, and integrations an application may use.
+
+Featherbase applications are trusted code running on a customer's own installation. They can contribute declarations and use documented server, client, migration, job, and file extension points without an artificial shared-SaaS sandbox. This gives an application normal programming power, but also normal programming risk: a faulty application can consume resources, fail startup, or affect the installation. The operator owns the applications they install.
+
+### Generated application or durable runtime declaration
+
+JHipster demonstrates the strength of generation: describe an application and receive an ordinary standalone codebase, including broad infrastructure and tests, with no JHipster runtime in production. Its output can be changed without framework restrictions.
+
+The corresponding cost is the round-trip problem. Once generated code has been edited, regenerating from a changed model or upgrading the generator can require substantial merging, and the declaration may stop being the source of truth.
+
+Featherbase keeps declarations authoritative and interprets them at runtime. Improvements to a shared primitive can therefore benefit every application that declares it, while custom code remains attached through named extension points. Applications retain a runtime dependency on Featherbase, and Featherbase must keep those extension contracts stable.
+
+### Established framework or emerging framework
+
+Frappe is Featherbase's closest architectural predecessor. It offers a mature metadata engine, installed applications, generic administration, workflows, permissions, jobs, files, and a large body of production and operational knowledge. Choosing Frappe today provides far more completed capability and ecosystem depth than choosing Featherbase.
+
+Featherbase began by replicating Frappe's core ideas on React, Hono, and Postgres, then diverged around a different primary builder: the coding agent. Its direction emphasizes machine-readable application contracts, portable app ownership, durable declarations, and explicit code extension boundaries. The cost is immaturity: important contracts are still being designed and proved, the ecosystem is small, and early adopters participate in discovering what belongs in the framework.
+
 ## How it works
 
 | Workspace | Role |

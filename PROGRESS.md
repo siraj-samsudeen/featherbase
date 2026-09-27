@@ -10,6 +10,14 @@ prove the repetition. The definition also fixes the initial deployment boundary
 at one customer per installation, requires app packages to own what portability
 needs, and limits upgrade guarantees to documented extension points.
 
+The README follows those principles with balanced comparisons across the same
+design choices: shared SaaS versus customer-owned deployment, human visual
+building versus agent-authored declarations, governed extensions versus trusted
+code, generated applications versus durable runtime declarations, and Frappe's
+maturity versus Featherbase's emerging agent-first direction. Each comparison
+states both sides' advantage and cost, and explicitly separates intended design
+from capability already delivered.
+
 **Verified:** `git diff --check`; reviewed the rendered Markdown structure and
 links. Documentation only; no runtime behaviour changed. **Next:** continue the
 Training proving application's declarative UI-block design.
