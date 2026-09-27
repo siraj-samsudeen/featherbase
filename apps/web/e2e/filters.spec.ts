@@ -56,10 +56,8 @@ test('UI-003: filters narrow results, persist in the URL across reload, and are 
     .assertHas('[data-testid="list-rows"]', { text: 'item-27' })
 
   // reload: filters restored from URL, results still filtered
-  await session.step('reload the page', async ({ page }) => {
-    await page.reload()
-  })
   await session
+    .reload()
     .assertHas('[data-testid="filter-chip"]', { count: 3 })
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
 
@@ -124,19 +122,17 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${filters}`)
   await session
     .assertHas('[data-testid="filter-chip"]', { count: 1 })
-    .step('the list shows exactly 3 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('3 total') })
+    .within('[data-testid="list-total"]', (total) => total.assertExactText('3 total'))
   // The parameter is still in the address bar — not silently stripped.
   await session.step('the filters param is still in the address bar', async ({ page }) => {
     expect(page.url()).toContain('filters=')
   })
 
   // And it survives a reload, the same as an app-built one.
-  await session.step('reload the page', async ({ page }) => {
-    await page.reload()
-  })
   await session
+    .reload()
     .assertHas('[data-testid="filter-chip"]', { count: 1 })
-    .step('the list shows exactly 3 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('3 total') })
+    .within('[data-testid="list-total"]', (total) => total.assertExactText('3 total'))
 
   // A URL is user input. Values that parse as JSON but are the wrong shape are
   // discarded, not handed to ListView — which indexes each entry as a triple
@@ -144,7 +140,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   for (const bad of ['{}', '[null]', '["qty",">=",7]', '[["qty"]]', 'not json']) {
     await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${encodeURIComponent(bad)}`)
     await session
-      .step('the list shows exactly 10 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('10 total') })
+      .within('[data-testid="list-total"]', (total) => total.assertExactText('10 total'))
       .assertHas('[data-testid="filter-chip"]', { count: 0 })
   }
 })

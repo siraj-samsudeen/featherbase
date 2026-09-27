@@ -33,10 +33,8 @@ test('WEB-001: a published Web Page renders publicly without a session', async (
   await session
     .visit(`/web/${ROUTE}`)
     .assertHas('[data-testid="web-page"]')
-    .step('the heading and tagline show the page content exactly', async ({ page }) => {
-      await expect(page.locator('h1')).toHaveText('About This Company')
-      await expect(page.locator('#tagline')).toHaveText('We ship features.')
-    })
+    .within('h1', (heading) => heading.assertExactText('About This Company'))
+    .within('#tagline', (tagline) => tagline.assertExactText('We ship features.'))
     // We were never redirected to login.
     .assertPath(`/web/${ROUTE}`)
 })

@@ -36,32 +36,33 @@ test.beforeAll(async ({ request }) => {
 })
 
 // UI-022: Gantt bars — migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Attribute assertions (`data-start`,
-// `data-end`, `data-days`) and bounding-box/drag mechanics aren't
-// expressible by DSL verbs, so they stay in named steps.
+// (docs/testing/e2e-dsl-migration.md).
 test('UI-022: bars span the correct ranges', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}/view/gantt`).assertHas('[data-testid="gantt-view"]')
 
-  await session.step('the bar reflects the correct date range and pixel width', async ({ page }) => {
-    const barA = page.getByTestId(`gantt-bar-${taskA}`)
-    await expect(barA).toHaveAttribute('data-start', '2026-03-02')
-    await expect(barA).toHaveAttribute('data-end', '2026-03-05')
-    await expect(barA).toHaveAttribute('data-days', '4') // Mar 2,3,4,5
-
-    // The bar's pixel width reflects its span: 4 days × 40px/day = 160px.
-    const box = await barA.boundingBox()
-    expect(box).not.toBeNull()
-    expect(Math.round(box!.width)).toBe(160)
-  })
+  await session
+    .within(`[data-testid="gantt-bar-${taskA}"]`, (bar) =>
+      bar
+        .assertAttribute('data-start', '2026-03-02')
+        .assertAttribute('data-end', '2026-03-05')
+        .assertAttribute('data-days', '4'),
+    )
+    .step('the bar spans four day-columns', async ({ page }) => {
+      const barA = page.getByTestId(`gantt-bar-${taskA}`)
+      // The bar's pixel width reflects its span: 4 days × 40px/day = 160px.
+      const box = await barA.boundingBox()
+      expect(box).not.toBeNull()
+      expect(Math.round(box!.width)).toBe(160)
+    })
 })
 
 test('UI-022: resizing a bar updates the end date', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}/view/gantt`)
 
-  await session.step('drag the right handle +2 day-columns; the bar re-renders and persists', async ({ page }) => {
-    const barA = page.getByTestId(`gantt-bar-${taskA}`)
-    await expect(barA).toHaveAttribute('data-end', '2026-03-05')
-
+  await session.within(`[data-testid="gantt-bar-${taskA}"]`, (bar) =>
+    bar.assertAttribute('data-end', '2026-03-05'),
+  )
+  await session.step('drag the right handle +2 day-columns', async ({ page }) => {
     // Drag the right handle +2 day-columns (80px) → end moves 2026-03-05 → 03-07.
     const handle = page.getByTestId(`gantt-resize-${taskA}`)
     const hb = (await handle.boundingBox())!
@@ -69,12 +70,11 @@ test('UI-022: resizing a bar updates the end date', async ({ session }) => {
     await page.mouse.down()
     await page.mouse.move(hb.x + hb.width / 2 + 80, hb.y + hb.height / 2, { steps: 5 })
     await page.mouse.up()
-
-    // The bar re-renders from the persisted date.
-    await expect(barA).toHaveAttribute('data-end', '2026-03-07')
-    await expect(barA).toHaveAttribute('data-days', '6') // Mar 2..7
-
-    // And the change is persisted server-side.
+  })
+  await session.within(`[data-testid="gantt-bar-${taskA}"]`, (bar) =>
+    bar.assertAttribute('data-end', '2026-03-07').assertAttribute('data-days', '6'),
+  )
+  await session.step('the resized date persists server-side', async ({ page }) => {
     const check = await page.request.get(`/api/table/${encodeURIComponent(DT)}/${taskA}`, {
       headers: await adminAuth(page.request),
     })
