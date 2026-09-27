@@ -29,3 +29,8 @@ For a Table set up to keep change history, the user SHALL be able to see a reada
 
 - **WHEN** one edit changes both ordinary information and information the user is not allowed to see
 - **THEN** the row's history shows only the ordinary change to that user
+
+#### Scenario: Sharing a row does not reveal its sensitive history
+
+- **WHEN** a row is shared with a user who can read its ordinary information but lacks the deeper access for one sensitive column
+- **THEN** the user can read the row's comments and ordinary changes, but neither the sensitive column nor its earlier values appear

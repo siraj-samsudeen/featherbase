@@ -7,9 +7,9 @@
 Two existing behaviors constrain the fix:
 
 - Tasker deliberately uses one generic Comment list, filtered to `tasker.task`, to derive the latest explanation for up to 500 visible tasks. Removing generic Comment reads would break a shipped promise.
-- As an observed implementation behavior, not a ratified product promise, direct row shares bypass role, owner and Data Scope checks and grant full sensitive-field visibility for that parent row. Whether history should inherit that visibility is unresolved.
+- Direct row shares correctly bypass role, owner and Data Scope checks for the concrete row, but currently also grant full sensitive-field visibility. The approved policy keeps the row bypass and removes that field-tier elevation for both current values and history.
 
-#349 is now on main and exports `scopedWhere` for search. This planning branch predates that merge and must be rebased before implementation; this change does not take on #349's general search corrections.
+#349 is on main and exports `scopedWhere` for search. This change extends that shared query boundary without taking on #349's general search behavior.
 
 ## Goals / Non-Goals
 
@@ -18,11 +18,11 @@ Two existing behaviors constrain the fix:
 - Put one parent-row authorization rule beneath every ordinary Comment/Version read.
 - Preserve accurate pagination, totals and aggregates after inaccessible activity is removed.
 - Preserve Tasker's bulk Comment query and the parent-gated activity response.
-- Make Version values hidden by ordinary role tiers impossible to recover through an alternate read shape.
+- Keep restricted current values, writes and Version history behind the recipient's field tiers even when the row itself is directly shared.
 
 **Non-Goals:**
 
-- Comment creation authorization, activity retention/deletion, Files, Shares, assignments or the separate permission defects #338/#340/#341.
+- Comment creation authorization, activity retention/deletion, Files, share creation or management mechanics, assignments or the separate permission defects #338/#340/#341.
 - General global-search scoping from #349.
 - Changing trusted, System Manager-authored Query Reports, which deliberately execute with Administrator read semantics.
 - Changing the System Manager-only team feed; System Managers already bypass row and field restrictions.
@@ -51,25 +51,25 @@ Alternative rejected: call `getDoc` once for every returned activity row. Beside
 
 After loading a Comment or Version row by ID, generic detail/print/row-action reads authorize its target before returning any value. The check retains the activity Table grant for generic access. The shared helper must accept already-loaded `ref_table` and `ref_name` so detail does not depend on caller-supplied filters.
 
-### 4. Sanitize Version data once, after parent authorization
+### 4. A share grants baseline row fields, not restricted field tiers
 
-Extract the Version-change sanitizer currently embedded in `documentActivity`. For ordinary role reads, its visible-field set comes from the parent as the caller sees it and therefore uses permitted tiers. Apply it to document activity, generic Version detail and every generic list/report result that selects Version data. Filtering, ordering or grouping by the JSON payload remains governed by Version's own column permission; the payload returned to the caller is still sanitized.
+A direct read share authorizes the concrete row and baseline/basic fields. A direct write share similarly authorizes edits to baseline/basic fields. For both actions, add any restricted tier only when the recipient's roles grant that tier on the parent Table; the share itself never contributes restricted access. Apply this to native and source-bound single-row reads, and to native shared writes, while preserving the existing row-level bypass of role, owner and Data Scope checks.
+
+This requires a small shared tier calculation for a granted action: baseline/basic plus any deeper tier already granted to the user. It must not call the ordinary row-permission gate, because the share is precisely what grants the row action.
+
+Alternative rejected: use `permittedTiers` unchanged for a share recipient with no Table role. That produces an empty tier set and makes a readable shared row useless by hiding ordinary fields too.
+
+### 5. Sanitize Version data once, after parent authorization
+
+Extract the Version-change sanitizer currently embedded in `documentActivity`. Its visible-field set comes from the parent after applying the field tiers above. Apply it to document activity, generic Version detail and every generic list/report result that selects Version data. Filtering, ordering or grouping by the JSON payload remains governed by Version's own column permission; the payload returned to the caller is still sanitized.
 
 Alternative rejected: hide the entire Version whenever one changed field is restricted. That also hides allowed changes from the same edit and disagrees with current document-activity behavior.
 
-**Owner decision required before apply:** choose the sensitive-field rule for a directly shared parent.
-
-1. History matches current `getDoc`: the share reveals all current sensitive fields and their historical changes.
-2. History remains tier-filtered even though the same share currently reveals the row's sensitive current values. This is more conservative for history but intentionally inconsistent.
-3. First change direct-share field semantics so both the row and its history honor tiers. This is the coherent privacy alternative but is broader than #342 and needs its own approved scope.
-
-The current code establishes only the implementation fact behind option 1; it does not establish that option as product intent. Do not implement direct-share Version expectations until the owner ratifies one option.
-
-### 5. Use document activity in row UI; retain Tasker's scoped bulk query
+### 6. Use document activity in row UI; retain Tasker's scoped bulk query
 
 Admin Comments and ActivityTimeline share one cached document-activity request rather than issuing independent generic lists. Posting a comment invalidates that activity key. Tasker's task-detail request already uses document activity and stays unchanged. Its app-wide latest-explanation query remains a generic Comment list and is protected by the new parent scope.
 
-### 6. Do not expose broad activity realtime channels
+### 7. Do not expose broad activity realtime channels
 
 The current `list:Comment` and `list:Version` channels disclose row IDs and cannot apply a different parent predicate to each event. Refuse those broad subscriptions to non-bypass users. A `row:Comment:<id>` or `row:Version:<id>` subscription requires the generic Table grant plus authorization of the loaded activity target. Parent-row channels and the payload-free manager feed remain unchanged.
 
@@ -81,7 +81,8 @@ Alternative rejected: make publish asynchronous and authorize every event for ev
 - **[Source-bound targets require extra remote work]** → Group candidate IDs by target Table and batch through the source dispatcher before applying pagination; add an asymmetric source-backed regression if comments can be attached there.
 - **[A future read path bypasses the helper]** → Put list/count/aggregate enforcement inside `scopedWhere`, detail enforcement inside `getDoc`, and keep a route inventory regression for search/reports/realtime rather than route-local patches.
 - **[Version JSON leaks through a new projection]** → Centralize sanitization and test full serialized responses for forbidden old and new values, not only field names.
-- **[Integration with #349 conflicts]** → Rebase onto current main before implementation, retain its exported `scopedWhere`, and let the new activity predicate flow through it; do not duplicate or revert its search tests.
+- **[Share field filtering accidentally removes ordinary fields]** → Give a valid share baseline/basic tier explicitly, then union only role-granted deeper tiers; test recipients with no Table role and with a restricted-tier role.
+- **[Integration with #349 conflicts]** → Retain its exported `scopedWhere` and let the new activity predicate flow through it; do not duplicate or revert its search tests.
 
 ## Migration Plan
 

@@ -2,18 +2,20 @@
 
 ## 1. Pin the authorization contract
 
-- [ ] 1.1 Obtain and record the owner's choice for directly shared sensitive-field history from design decision 4; update the spec delta and remaining direct-share tasks to that choice, then rerun strict OpenSpec validation before writing product code.
-- [ ] 1.2 Add failing server regressions for a caller with broad Comment/Version read but access to only one of two parent rows; prove generic list data and total, detail, `:count`, dashboard count/chart and `:aggregate` expose only activity of the readable parent, then run the focused test file and confirm the failures identify the current leak.
-- [ ] 1.3 Extend the regressions with asymmetric owner-only, direct Data Scope, reference Data Scope and source-bound parent cases; verify readable activity remains and forbidden activity never changes result values, counts or pagination.
-- [ ] 1.4 Add direct-share cases proving document activity works without a Comment/Version Table grant, generic reads still require that grant, and a generic read with the grant includes only the shared parent's activity; assert sensitive Version values exactly as ratified in 1.1 and verify the focused cases fail before implementation.
-- [ ] 1.5 Add ordinary role-based Version cases with one basic and one restricted field changed in the same edit; assert full serialized document-activity, generic list and generic detail responses contain the basic old/new values but neither restricted value, and verify the focused cases fail before implementation.
+- [ ] 1.1 Add failing direct-share regressions for a recipient with no Table role: a read share returns ordinary fields but omits a restricted field, and a write share saves ordinary changes while silently dropping a restricted-field change; cover native reads/writes and source-bound reads, then verify the focused cases expose the current elevation.
+- [ ] 1.2 Add a second share recipient with an explicit restricted tier and verify the same shared row includes the restricted field and accepts its write, proving the share preserves rather than replaces role-granted field tiers.
+- [ ] 1.3 Add failing server regressions for a caller with broad Comment/Version read but access to only one of two parent rows; prove generic list data and total, detail, `:count`, dashboard count/chart and `:aggregate` expose only activity of the readable parent, then run the focused test file and confirm the failures identify the current leak.
+- [ ] 1.4 Extend the regressions with asymmetric owner-only, direct Data Scope, reference Data Scope and source-bound parent cases; verify readable activity remains and forbidden activity never changes result values, counts or pagination.
+- [ ] 1.5 Add direct-share activity cases proving document activity works without a Comment/Version Table grant, generic reads still require that grant, and a generic read with the grant includes only the shared parent's activity; verify a bare share shows ordinary changes but neither old nor new restricted values, while a share recipient with restricted read sees them.
+- [ ] 1.6 Add ordinary role-based Version cases with one basic and one restricted field changed in the same edit; assert full serialized document-activity, generic list and generic detail responses contain the basic old/new values but neither restricted value, and verify the focused cases fail before implementation.
 
 ## 2. Enforce parent scope in core reads
 
-- [ ] 2.1 Implement the shared polymorphic activity-target scope for local, Settings and source-bound parents, including owner, Data Scope and activity-only direct-share widening; run the regressions from 1.1-1.3 until list/count/group/aggregate pagination and totals pass.
-- [ ] 2.2 Apply the same target authorization to generic Comment/Version detail reads without weakening their Table grant; run the focused direct-detail and direct-share regressions.
-- [ ] 2.3 Extract one Version-change sanitizer and apply it to document activity plus generic list/detail results; run the focused restricted-field regressions and `apps/server/test/permlevel.test.ts`.
-- [ ] 2.4 Rebase onto current main, preserve #349's exported `scopedWhere`, and prove Comment/Version inherit the new scope. Verify searches for the exact IDs of readable and forbidden activity return only the readable hit without changing #349's general scope.
+- [ ] 2.1 Make direct read/write shares grant baseline/basic fields plus only role-granted deeper tiers, without reapplying row-level role/owner/Data Scope checks; run the share field regressions and existing `apps/server/test/docshare.test.ts` and source-security tests.
+- [ ] 2.2 Implement the shared polymorphic activity-target scope for local, Settings and source-bound parents, including owner, Data Scope and activity-only direct-share widening; run the regressions from 1.3-1.5 until list/count/group/aggregate pagination and totals pass.
+- [ ] 2.3 Apply the same target authorization to generic Comment/Version detail reads without weakening their Table grant; run the focused direct-detail and direct-share regressions.
+- [ ] 2.4 Extract one Version-change sanitizer and apply it to document activity plus generic list/detail results, deriving visible fields from the tier-filtered parent even when shared; run the focused restricted-field regressions and `apps/server/test/permlevel.test.ts`.
+- [ ] 2.5 Preserve #349's exported `scopedWhere` and prove Comment/Version inherit the new scope. Verify searches for the exact IDs of readable and forbidden activity return only the readable hit without changing #349's general scope.
 
 ## 3. Cover indirect reads and realtime
 
