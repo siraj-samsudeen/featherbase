@@ -320,7 +320,7 @@ export function ListView({
 
   return (
     <div data-testid="list-view">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-xs text-[var(--color-ink-faint)]">
             <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">
@@ -343,7 +343,7 @@ export function ListView({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end">
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
@@ -628,7 +628,7 @@ export function ListView({
           )}
         </div>
       )}
-      <div className="fc-card overflow-x-auto">
+      <div className="fc-card overflow-x-auto" data-testid="list-table-scroll">
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
             <tr>

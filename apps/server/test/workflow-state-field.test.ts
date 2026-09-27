@@ -92,6 +92,10 @@ describe('Workflow state_field binding', () => {
 
   test('rejects a workflow that binds a nonexistent column', async ({ admin }) => {
     await setup(admin)
+    // Explicitly switch away from the valid workflow so this tests the bad
+    // binding, not the one-active-workflow constraint (#266).
+    const current = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(WF)}`)
+    await admin.post('/api/save_row', { table: 'Workflow', row: { ...current, is_active: false } })
     await expect(
       admin.post('/api/save_row', {
         table: 'Workflow',

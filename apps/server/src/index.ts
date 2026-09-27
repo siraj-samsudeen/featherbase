@@ -151,12 +151,12 @@ app.get('/api/brand', async (c) => {
 // Frappe) in addition to the Bearer token the SPA stores. Either credential
 // authenticates a request; the cookie lets Frappe-style clients work
 // unchanged and keeps the token out of reach of page scripts.
-function setSidCookie(c: Context, token: string) {
+function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: maxAgeSeconds,
   })
 }
 
@@ -173,9 +173,10 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const session = await login(usr, pwd)
+  const issued = await login(usr, pwd)
+  const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
-  setSidCookie(c, session.token)
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   // #3755: report viewers land on their report, not the Admin.
   const landing = await landingFor(session.user.row_id)
   return c.json(landing ? { ...session, landing } : session)
@@ -410,12 +411,13 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   clearLoginChallengeCookies(c)
   const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
   const userName = await findOrCreateGoogleUser(email, name)
-  const session = await issueSession(userName)
+  const issued = await issueSession(userName)
+  const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
   // cookie would silently drop them (PR #104 review).
-  setSidCookie(c, session.token)
-  // #150: the session token itself never travels in this URL — a 7-day
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  // #150: the session token itself never travels in this URL — a long-lived
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
@@ -435,7 +437,7 @@ app.post('/api/oauth/session', async (c) => {
 // the key is wrong, so the route neither advertises itself nor tells a
 // guesser they were close.
 //
-// The session token does not travel in this redirect. #150 removed 7-day
+// The session token does not travel in this redirect. #150 removed long-lived
 // JWTs from URLs (they land in history, in the Referer of the next request,
 // and in every proxy log); this reuses the same one-time handoff code and the
 // SPA's existing /oauth-callback page, so there is no second way in and no
@@ -443,8 +445,9 @@ app.post('/api/oauth/session', async (c) => {
 app.get('/preview', async (c) => {
   const config = previewLogin()
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
-  const session = await issueSession(config.user)
-  setSidCookie(c, session.token)
+  const issued = await issueSession(config.user)
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 

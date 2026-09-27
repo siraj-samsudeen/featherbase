@@ -300,14 +300,14 @@ export function ReportView({
 
   return (
     <div data-testid="report-view">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Summary</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="report-total">
             {rows.data?.total ?? 0} rows
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={exportCsv} className="fc-btn" data-testid="export-csv">
             CSV
           </button>
@@ -326,7 +326,7 @@ export function ReportView({
         </div>
       </div>
 
-      <div className="mb-3 flex items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <div className="relative">
           <button
             onClick={() => setPickerOpen((o) => !o)}
@@ -483,7 +483,7 @@ export function ReportView({
       <div className="fc-card mt-4 p-4" data-testid="report-chart">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-medium text-[var(--color-ink)]">Chart</div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!groupBy && numericCols.length > 0 && (
               <label className="flex items-center gap-1 text-xs text-[var(--color-ink-muted)]">
                 Value

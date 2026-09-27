@@ -24,49 +24,37 @@ test.afterEach(async ({ request }) => resetPalette(request))
 // light/dark), persists per-user on the server, and survives a reload.
 //
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
-// Every check here is a `data-*` attribute assertion or a computed-style/
-// localStorage evaluate — none has a Session verb — so the body stays a
-// sequence of named steps around `loginAs`/`serverPalette` exactly as before.
 test('UI-025: palette switches, persists across reload, and is stored per-user', async ({ session, request }) => {
   await session.step('sign in as Administrator', async ({ page }) => {
     await loginAs(page)
   })
 
-  await session.step('starts classic: no data-palette attribute, Frappe-blue brand', async ({ page }) => {
-    const html = page.locator('html')
-    await expect(html).not.toHaveAttribute('data-palette', /./)
-    const classicBrand = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--color-brand').trim(),
-    )
-    expect(classicBrand).toBe('#2490ef')
-  })
+  await session.within('html', (root) =>
+    root.refuteAttribute('data-palette').assertComputedStyle('--color-brand', '#2490ef'),
+  )
 
-  await session.step('pick ivory: the root is stamped and the brand token changes to clay', async ({ page }) => {
-    const html = page.locator('html')
+  await session.step('pick the ivory palette from the desktop picker', async ({ page }) => {
     await page.getByTestId('palette-select').selectOption('ivory')
-    await expect(html).toHaveAttribute('data-palette', 'ivory')
-    const ivoryBrand = await page.evaluate(() =>
-      getComputedStyle(document.documentElement).getPropertyValue('--color-brand').trim(),
-    )
-    expect(ivoryBrand).toBe('#c15f3c')
   })
+  await session.within('html', (root) =>
+    root
+      .assertAttribute('data-palette', 'ivory')
+      .assertComputedStyle('--color-brand', '#c15f3c'),
+  )
 
   // The preference is stored server-side, per user.
   await expect.poll(() => serverPalette(request)).toBe('ivory')
 
-  await session.step('survives a reload (localStorage mirror applies before whoami)', async ({ page }) => {
-    await page.reload()
-    await page.waitForURL(/\/admin/)
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'ivory')
-  })
+  await session
+    .reload()
+    .within('html', (root) => root.assertAttribute('data-palette', 'ivory'))
 
-  await session.step('palette composes with dark mode: both attributes coexist', async ({ page }) => {
-    const html = page.locator('html')
-    await page.getByTestId('theme-toggle').click()
-    await expect(html).toHaveAttribute('data-theme', 'dark')
-    await expect(html).toHaveAttribute('data-palette', 'ivory')
-    await page.getByTestId('theme-toggle').click()
-  })
+  await session
+    .click('🌙')
+    .within('html', (root) =>
+      root.assertAttribute('data-theme', 'dark').assertAttribute('data-palette', 'ivory'),
+    )
+    .click('☀️')
 
   // The server rejects unknown palettes.
   const token = await adminToken(request)
@@ -102,19 +90,15 @@ test('UI-025: on mobile the palette moves into the account menu and the navbar d
     await loginAs(page)
   })
 
-  await session.step('the palette select is hidden and the navbar does not overflow', async ({ page }) => {
+  await session.step('the desktop palette select is hidden on mobile', async ({ page }) => {
     await expect(page.getByTestId('palette-select')).toBeHidden()
-    const noOverflow = await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-    )
-    expect(noOverflow).toBe(true)
   })
+  await session.assertNoHorizontalOverflow()
 
-  await session.step('switch to graphite from the account menu', async ({ page }) => {
-    await page.getByTestId('session-user').click()
-    await page.getByTestId('palette-select-mobile').selectOption('graphite')
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'graphite')
-  })
+  await session
+    .clickButton('Administrator')
+    .selectOption('Palette', 'graphite')
+    .within('html', (root) => root.assertAttribute('data-palette', 'graphite'))
   // Wait for the write to land before afterEach resets it, so the reset
   // cannot race the in-flight set_palette request.
   await expect.poll(() => serverPalette(request)).toBe('graphite')
@@ -138,8 +122,8 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   await session.step('A (Administrator) picks Ivory', async ({ page }) => {
     await loginAs(page)
     await page.getByTestId('palette-select').selectOption('ivory')
-    await expect(page.locator('html')).toHaveAttribute('data-palette', 'ivory')
   })
+  await session.within('html', (root) => root.assertAttribute('data-palette', 'ivory'))
   await expect.poll(() => serverPalette(request)).toBe('ivory')
 
   // A logs out; B logs in in the same tab.

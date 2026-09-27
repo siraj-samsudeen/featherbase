@@ -1,28 +1,23 @@
 # E2E → feather-testing-core DSL migration
 
-Working doc for the migration of `apps/web/e2e/*.spec.ts` onto the owner's
-`feather-testing-core` DSL. This is the pilot (10 files); it sets the pattern
-the remaining ~62 files should follow. Not a spec — a mechanics doc, kept
-current by whoever does the next batch.
+Working doc for the partial migration of `apps/web/e2e/*.spec.ts` onto the
+owner's `feather-testing-core` DSL. It records migration mechanics and examples,
+not behavior requirements or a manually maintained inventory of current
+coverage. Derive current coverage from the test files and the DSL guard.
 
 ## Version decision
 
-Upgraded `feather-testing-core` from the pinned `^0.2.0` to `^0.4.0`
-(latest on npm). 0.4.0 is purely additive over 0.2.0's Session API:
-`attachFile` (renamed from `upload`, which still works as a deprecated
-alias), `pressKey`, `hover`, `assertDownload`, `until`, and the `raw()`
-escape hatch. The `Session`/`TestDriver`/exports shape used by
-`e2e/fixtures.ts` (`test as base.extend({ session })`) is unchanged. No
-CHANGELOG is published with the package; this was verified by downloading
-and diffing the `dist/session.d.ts` type signatures between 0.2.0 and 0.4.0
-rather than reading prose.
+`apps/web` pins `feather-testing-core` exactly at `0.5.0`. This release adds
+scoped exact-text, attribute, computed-style, horizontal-layout, scrolling,
+and reload operations. The installed `dist/session.d.ts` is the source used
+for migrations: `assertExactText` compares normalized whole text;
+`assertHorizontallyContained` requires exactly one descendant; and all of
+these element-level operations are scoped with `within(selector, callback)`.
 
-`@playwright/test` in this repo is `^1.50.0`, comfortably inside 0.4.0's
-peer range (`>=1.40.0`). `pnpm install` picked up 0.4.0 cleanly; `pnpm
---filter web typecheck` and the four pre-existing DSL suites
-(`import-journey`, `import-upsert-journey`, `table-deletion`,
-`table-lifecycle`) all pass unchanged after the bump. **Decision: take
-0.4.0.** No breakage found, so there was nothing to stay on 0.2.0 for.
+`feather-testing-postgres@0.2.0` intentionally retains its own `^0.4.0`
+dependency, so the lockfile contains both Core versions. Do not widen that
+harness dependency or publish another harness merely to deduplicate the
+lockfile.
 
 ## Fixture design (`apps/web/e2e/fixtures.ts`)
 
@@ -51,8 +46,8 @@ spec gets `{ session }` now, whether it uses it yet or not; `{ page,
 request, context, ... }` all still work because the DSL's `test` is a
 normal Playwright `TestType`, not a replacement for one.
 
-Net effect: **no import needs to change** in the ~62 files not yet
-migrated. `import { test, ... } from './fixtures'` and `import {
+Net effect: **no import needs to change** in files whose bodies have not yet
+been migrated. `import { test, ... } from './fixtures'` and `import {
 anonymousTest as test, ... } from './fixtures'` both still work exactly as
 before; they simply start receiving an unused `session` fixture until
 someone migrates that file's body.
@@ -162,7 +157,13 @@ Concretely, per verb:
 | "this text is/isn't on the page" | `assertText` / `refuteText` |
 | "this element exists / has N of them / contains text" (CSS selector, e.g. `[data-testid=...]`) | `assertHas` / `refuteHas` (`{ text, count }`) |
 | Exact pathname | `assertPath` / `refutePath` — **exact match only**; a "somewhere under /admin" check (landing path varies) still needs a step with `expect(page).toHaveURL(/regex/)` |
-| Anything else: file inputs by testid, native `<select>` by testid, drag/reorder, `page.evaluate`, `context.clearCookies()`, attribute assertions (`toHaveAttribute`, `toHaveValue` on a non-label field), keyboard shortcuts, multi-field forms addressed by `data-field` | `session.step('<name>', async ({ page }) => { ... })` |
+| Whole normalized text of one element | `within(selector, s => s.assertExactText(text))` |
+| Attribute or computed CSS on one element | `within(selector, s => s.assertAttribute(...) / refuteAttribute(...) / assertComputedStyle(...))` |
+| Reload the current document | `reload()` |
+| Page/element horizontal overflow | `assertNoHorizontalOverflow()` / `assertHorizontalOverflow()` inside `within` when scoped |
+| One descendant contained horizontally by a scope | `within(scope, s => s.assertHorizontallyContained(descendant))` — the descendant selector must resolve to exactly one element |
+| Prove and perform horizontal scrolling | `within(selector, s => s.assertHorizontalOverflow().scrollToHorizontalEnd())` |
+| Anything else: synthetic in-memory file inputs, drag/reorder/resize, focus proofs, screenshots, API/localStorage inspection, `page.evaluate`, `context.clearCookies()`, positional/dynamic locator logic | `session.step('<name>', async ({ page }) => { ... })` |
 
 `assertHas`/`refuteHas` cover more than they look like they do — they take
 `{ text, count }`, so "list-total shows '30 total'" or "exactly 3 filter
@@ -271,7 +272,7 @@ migrating anything click-heavy like the Table Builder or Import Wizard —
    `page` inside step callbacks (which get their own `page` param); drop
    the fixture you don't use at the outer scope.
 
-## Files migrated in this pilot (10 + 4 renamed)
+## Original pilot notes
 
 Renamed only (`journeyTest as test` → `test`, no body changes beyond that
 and the 0.4.0 bump): `import-journey.spec.ts`,
@@ -300,12 +301,11 @@ then the full suite twice (once immediately after, once against a freshly
 reset database) — both full runs came back **156 passed / 28 skipped / 0
 failed**, identical to baseline. `pnpm --filter web typecheck` is clean.
 
-## Remaining files, batched for follow-up agents
+## Historical follow-up batch notes
 
-62 files left. Grouped by shape so one agent's context stays coherent
-across a batch — not by directory, since these repos don't have
-subdirectories. Each batch is independent; hand batches to different agents
-in parallel if desired.
+The notes below preserve the mechanics and verification used by earlier
+migration batches. They are not a current inventory or status tracker; use the
+test files and DSL guard to determine present coverage.
 
 **Batch 1 — Import wizard family (12). DONE.** Same shape as
 `import-revert-journey.spec.ts`: testid-heavy wizard mechanics, mostly
@@ -439,11 +439,10 @@ resetting the db reproduces exactly that (a `toHaveText` miss on stale
 localStorage/task state), confirming it's the known pre-existing property,
 not a migration regression. `pnpm --filter web typecheck` is clean.
 
-Whoever picks up a batch: re-read "The pattern" above, re-derive the
-environment gotcha section (boot with the raised `PREAUTH_*` envs, reset
-the database before the final full-suite verification), and update the
-table above with the files you finish — don't leave this doc describing a
-state the repo has moved past.
+Whoever picks up another batch should re-read "The pattern" above and the
+environment gotcha section (boot with the raised `PREAUTH_*` envs and reset
+the database before final full-suite verification). Current migration status
+belongs in the code and DSL guard, not in these historical tables.
 
 ## Batch 2 status — anonymous / session identity (13 files, done)
 

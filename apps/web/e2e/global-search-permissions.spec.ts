@@ -125,12 +125,13 @@ test('search shows only an allowed row ID and never its sensitive title', async 
   })
   await session.visit('/admin')
 
-  await session.fillIn('Search or type a command…', ALICE_ID)
-  await session.step('inspect the exact row result', async ({ page }) => {
-    const rows = page.getByTestId('awesomebar-doc').filter({ hasText: `row in ${TABLE}` })
-    await expect(rows).toHaveCount(1)
-    await expect(rows).toHaveText(`${ALICE_ID}row in ${TABLE}`)
-    await expect(rows).not.toContainText(ALICE_SECRET)
-    await expect(rows).not.toContainText(BOB_ID)
-  })
+  await session
+    .fillIn('Search or type a command…', ALICE_ID)
+    .assertHas('[data-testid="awesomebar-doc"]', { count: 1 })
+    .within('[data-testid="awesomebar-doc"]', (row) =>
+      row
+        .assertExactText(`${ALICE_ID}row in ${TABLE}`)
+        .refuteText(ALICE_SECRET)
+        .refuteText(BOB_ID),
+    )
 })

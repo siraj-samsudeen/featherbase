@@ -78,9 +78,9 @@ test('WEB-002: anonymous web form submit creates a document', async ({ session, 
     .assertOptions('Contact method', ['—', 'Email', 'Phone'])
     .assertOptions('Quantity code *', ['—', '0', '1', '2'])
 
-  await session.step('the form title renders exactly', async ({ page }) => {
-    await expect(page.getByTestId('web-form-title')).toHaveText('Contact E2E')
-  })
+  await session.within('[data-testid="web-form-title"]', (title) =>
+    title.assertExactText('Contact E2E'),
+  )
 
   await session
     .fillIn('Full name *', unique)

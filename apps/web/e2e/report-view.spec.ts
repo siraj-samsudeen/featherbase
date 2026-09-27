@@ -99,3 +99,78 @@ test('RPT-001: group by Select shows correct counts and sums; column picker work
     await expect(page.getByTestId('report-head-qty')).toBeVisible()
   })
 })
+
+async function assertReportToolbarFits(page: import('./fixtures').Page): Promise<void> {
+  const main = page.locator('main')
+  expect(await main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+
+  const mainBox = await main.boundingBox()
+  expect(mainBox).not.toBeNull()
+
+  for (const control of [
+    page.getByRole('heading', { name: `${DT} — Summary` }),
+    page.getByTestId('export-csv'),
+    page.getByTestId('export-xlsx'),
+    page.getByTestId('report-to-list'),
+    page.getByTestId('report-columns'),
+    page.getByTestId('report-groupby'),
+    page.getByTestId('saved-report-picker'),
+    page.getByTestId('report-save'),
+    page.getByTestId('chart-value'),
+    page.getByTestId('pin-dashboard'),
+    page.getByTestId('pin-chart'),
+  ]) {
+    await expect(control).toBeVisible()
+    const box = await control.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(mainBox!.x)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width)
+  }
+}
+
+test.describe('Report toolbar responsiveness', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('keeps every Report control reachable on a phone without Admin overflow', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`).assertHas('[data-testid="report-view"]')
+    await session.step('the Report toolbar fits the phone width and every control is reachable', async ({ page }) => {
+      await assertReportToolbarFits(page)
+    })
+  })
+})
+
+test.describe('Report toolbar desktop layout', () => {
+  test.use({ viewport: { width: 1280, height: 800 } })
+
+  test('keeps every Report control reachable on desktop without Admin overflow', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`).assertHas('[data-testid="report-view"]')
+    await session.step('the Report toolbar fits the desktop width and every control is reachable', async ({ page }) => {
+      await assertReportToolbarFits(page)
+
+      const title = await page.getByRole('heading', { name: `${DT} — Summary` }).boundingBox()
+      const csv = await page.getByTestId('export-csv').boundingBox()
+      expect(title).not.toBeNull()
+      expect(csv).not.toBeNull()
+      expect(title!.y).toBeLessThanOrEqual(csv!.y + csv!.height)
+      expect(title!.y + title!.height).toBeGreaterThanOrEqual(csv!.y)
+
+      const columns = await page.getByTestId('report-columns').boundingBox()
+      const groupBy = await page.getByTestId('report-groupby').boundingBox()
+      const savedReports = await page.getByTestId('saved-report-picker').boundingBox()
+      const save = await page.getByTestId('report-save').boundingBox()
+      expect(columns).not.toBeNull()
+      expect(groupBy).not.toBeNull()
+      expect(savedReports).not.toBeNull()
+      expect(save).not.toBeNull()
+      expect(Math.max(columns!.y, groupBy!.y, savedReports!.y, save!.y) - Math.min(columns!.y, groupBy!.y, savedReports!.y, save!.y)).toBeLessThanOrEqual(1)
+
+      const chartValue = await page.getByTestId('chart-value').boundingBox()
+      const dashboard = await page.getByTestId('pin-dashboard').boundingBox()
+      const pin = await page.getByTestId('pin-chart').boundingBox()
+      expect(chartValue).not.toBeNull()
+      expect(dashboard).not.toBeNull()
+      expect(pin).not.toBeNull()
+      expect(Math.max(chartValue!.y, dashboard!.y, pin!.y) - Math.min(chartValue!.y, dashboard!.y, pin!.y)).toBeLessThanOrEqual(1)
+    })
+  })
+})

@@ -254,6 +254,18 @@ itself. It connects to
 override with `RLS_TEST_URL` (the role is created by
 `apps/server/migrations/0010_rls.sql`).
 
+### Committed workflow activation proof
+
+`apps/server/test/workflow-active-commit.test.ts` needs independent committing
+connections: sandbox savepoints cannot prove that two activations contend.
+Create a separate disposable database named
+`featherbase_<worker>_workflow_commit_e2e` on `127.0.0.1:5432`, then run the
+opt-in command in the test's header. Global setup migrates it and the proof
+checks its test-environment stamp before writing. The proof waits for the
+loser's database lock wait, then checks the HTTP conflict and durable winner.
+It retains uniquely named records for inspection; do not use this database
+for the ordinary suite, whose seed tests expect a clean starting dataset.
+
 ## House conventions (ratified 2026-08-28, #226)
 
 **Naming.** Spec-sentence style is the standard: a name may encode the

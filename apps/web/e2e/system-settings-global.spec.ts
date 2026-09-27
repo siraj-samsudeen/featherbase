@@ -1,4 +1,4 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { test, adminAuth, type APIRequestContext } from './fixtures'
 
 const DT = 'Set4 Item'
 
@@ -42,34 +42,24 @@ test.afterAll(async ({ request }) => {
 // SET-004: System Settings are applied globally to rendering — the date
 // format and currency precision flow into list cells and form previews, and
 // changing the setting re-renders without any per-Table code.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// every check is an exact-text assertion against a testid cell/preview, and
-// the flow interleaves API calls (via `page.request`) between navigations,
-// so the whole walk stays in one named step; session.visit carries the
-// first plain navigation.
-test('SET-004: date format and currency precision render globally', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
-  await session.step('list + form preview honor the global date/currency format, live', async ({ page }) => {
-    // List: the Date cell honors dd-mm-yyyy and the Currency cell honors
-    // precision 2 with the USD symbol.
-    await expect(page.getByTestId('cell-due')).toHaveText('09-03-2026')
-    await expect(page.getByTestId('cell-amount')).toHaveText('$1,234.50')
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+test('SET-004: date format and currency precision render globally', async ({ session, request }) => {
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .within('[data-testid="cell-due"]', (cell) => cell.assertExactText('09-03-2026'))
+    .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('$1,234.50'))
+    .visit(`/admin/${encodeURIComponent(DT)}/set4-doc`)
+    .assertHas('[data-testid="form-view"]')
+    .within('[data-testid="preview-due"]', (preview) => preview.assertExactText('09-03-2026'))
+    .within('[data-testid="preview-amount"]', (preview) => preview.assertExactText('$1,234.50'))
 
-    // Form: the preview under the native inputs reflects the same global format.
-    await page.goto(`/admin/${encodeURIComponent(DT)}/set4-doc`)
-    await expect(page.getByTestId('form-view')).toBeVisible()
-    await expect(page.getByTestId('preview-due')).toHaveText('09-03-2026')
-    await expect(page.getByTestId('preview-amount')).toHaveText('$1,234.50')
+  await setSettings(request, { date_format: 'mm-dd-yyyy' })
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .within('[data-testid="cell-due"]', (cell) => cell.assertExactText('03-09-2026'))
 
-    // Change the global date format; the same list re-renders in the new format
-    // with no code change to the Table.
-    await setSettings(page.request, { date_format: 'mm-dd-yyyy' })
-    await page.goto(`/admin/${encodeURIComponent(DT)}`)
-    await expect(page.getByTestId('cell-due')).toHaveText('03-09-2026')
-
-    // And bumping currency precision to 3 flows through too.
-    await setSettings(page.request, { currency_precision: 3 })
-    await page.reload()
-    await expect(page.getByTestId('cell-amount')).toHaveText('$1,234.500')
-  })
+  await setSettings(request, { currency_precision: 3 })
+  await session
+    .reload()
+    .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('$1,234.500'))
 })

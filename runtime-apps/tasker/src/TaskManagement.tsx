@@ -666,6 +666,7 @@ export function TaskManagementPage() {
             {selectedProject && projectById.has(selectedProject) ? (
               <>
                 <ProjectHeading
+                  key={`heading:${selectedProject}`}
                   project={projectById.get(selectedProject)!}
                   starred={starredProjectSet.has(selectedProject)}
                   onRename={renameProject}
@@ -1092,19 +1093,17 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   onToggleStar: () => Promise<void>
   onMoveStar: (offset: -1 | 1) => Promise<void>
 }) {
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(project.project_name)
-  useEffect(() => setName(project.project_name), [project.project_name])
-  if (editing) return <form className="mb-3 flex gap-2" onSubmit={async (event) => {
+  const [draft, setDraft] = useState<Project | null>(null)
+  if (draft) return <form className="mb-3 flex gap-2" onSubmit={async (event) => {
     event.preventDefault()
-    const next = name.trim()
+    const next = draft.project_name.trim()
     if (!next) return
-    try { await onRename(project, next); setEditing(false) } catch { /* parent shows error */ }
+    try { await onRename(draft, next); setDraft(null) } catch { /* parent shows error */ }
   }}>
     <label className="sr-only" htmlFor="rename-project">Project name</label>
-    <input id="rename-project" aria-label="Rename project" autoFocus value={name} onChange={(event) => setName(event.target.value)} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-base font-semibold" />
-    <button className="fc-btn-primary" disabled={!name.trim()}>Save</button>
-    <button type="button" className="fc-btn" onClick={() => { setName(project.project_name); setEditing(false) }}>Cancel</button>
+    <input id="rename-project" aria-label="Rename project" autoFocus value={draft.project_name} onChange={(event) => setDraft({ ...draft, project_name: event.target.value })} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-base font-semibold" />
+    <button className="fc-btn-primary" disabled={!draft.project_name.trim()}>Save</button>
+    <button type="button" className="fc-btn" onClick={() => setDraft(null)}>Cancel</button>
   </form>
   return <div className="mb-3 flex items-start justify-between gap-3">
     <SectionTitle title={project.project_name} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
@@ -1114,7 +1113,7 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
         <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</button>
         <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</button>
       </>}
-      <button type="button" className="fc-btn" onClick={() => setEditing(true)}>Rename</button>
+      <button type="button" className="fc-btn" onClick={() => setDraft({ ...project })}>Rename</button>
     </div>
   </div>
 }

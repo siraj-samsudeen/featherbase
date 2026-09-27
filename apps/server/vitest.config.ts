@@ -1,5 +1,13 @@
 import { defineConfig } from 'vitest/config'
 
+if (process.env.WORKFLOW_COMMIT_PROOF === '1') {
+  const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null
+  if (!url || url.hostname !== '127.0.0.1' || url.port !== '5432'
+    || !/^\/featherbase_[a-z0-9_]+_workflow_commit_e2e$/.test(url.pathname)
+    || (process.env.FEATHERBASE_ENV && process.env.FEATHERBASE_ENV !== 'test'))
+    throw new Error('Workflow committed proof requires a local test DATABASE_URL naming featherbase_<worker>_workflow_commit_e2e on 127.0.0.1:5432')
+}
+
 if (process.env.APP_ACCESS_COMMIT_PROOF === '1') {
   const url = process.env.DATABASE_URL
   if (!url || new URL(url).pathname !== '/featherbase_issue279_access_commit_e2e')
