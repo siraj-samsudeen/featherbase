@@ -1,5 +1,66 @@
 # Progress Log
 
+## 2026-09-26 — Tasker project rename protects newer changes (#315)
+
+Project rename now snapshots the project at edit start, following task detail
+drafts. A refetch no longer replaces typed text or supplies a newer revision
+to an older edit. Conflicts retain the draft and display the server message;
+Cancel/reopen uses the refreshed project, and project navigation discards the
+previous draft. No server, dependency, Admin, toolbar, or authentication changes.
+
+The real-Postgres regression saves a competing name as another team member,
+adds a task to refresh projects, and waits for the newer sidebar name before
+saving the older draft. It failed twice before the fix (no conflict alert).
+Removing the heading identity key also made the navigation test fail; the key
+was restored. The Session DSL browser regression proves the built package
+retains the draft and the newer persisted name after a witnessed refetch.
+
+**Verified:** `./init.sh` under an orb supervised service (server smoke and
+3 browser smoke tests); `NODE_OPTIONS=--no-experimental-webstorage pnpm
+--filter web test test/task-management.test.tsx` (21 passed);
+`pnpm --filter web e2e e2e/task-management.spec.ts e2e/admin.spec.ts
+e2e/formview.spec.ts` (7 passed, including login, list, and form);
+`npm test --prefix runtime-apps/tasker` (5 passed);
+`npm run build --prefix runtime-apps/tasker`;
+`npm run typecheck --prefix runtime-apps/tasker`;
+`pnpm --filter web typecheck`; `pnpm check:specs` (45 specs, 13 changes);
+`pnpm check:e2e-dsl` (8 guard tests, 78 files); `git diff --check`.
+Feather self-review found no remaining standards or spec concerns; performed
+directly per the assignment, with independent parent review still required.
+No appearance changed; browser DOM checks cover the conflict and retained input.
+Next: parent independently verifies the scoped PR before merging.
+
+After independent parent acceptance, merged current main (through PR #355)
+without changing the rename implementation or tests. Resolved only the additive
+progress-log conflict. Repeated the component command above (21 passed),
+`pnpm --filter web e2e e2e/task-management.spec.ts` (4 passed), runtime tests
+(5 passed), runtime build, web/server/runtime typechecks, strict specs
+(45 specs, 18 changes), DSL guard (8 tests, 78 files), and whitespace checks.
+Final integration and CI remain with the parent; PR #357 is not merged here.
+
+## 2026-09-26 — ListView toolbar fits phone and desktop widths (#316)
+
+The generic ListView header now stacks its title and wraps every existing
+metadata-gated action on narrow screens while retaining desktop alignment. No
+action moved into a menu, and no visibility gate or behavior changed. A
+metadata-rich browser fixture activates all 15 header controls, including the
+split Explore action, every optional view, system-manager actions, and a real
+checklist shape.
+
+The responsive regression first failed because Admin `<main>` overflowed at
+both 375px and 1280px. After the two responsive class changes, all controls are
+inside the main bounds at both widths. At 375px the deliberately wide rows
+table still overflows only inside its existing `overflow-x-auto` card; at
+desktop width the same container remains ready to scroll but its contents fit.
+
+**Verified:** `./init.sh` smoke (3 browser tests), focused
+`e2e/listview.spec.ts` (3 passed), web typecheck, `pnpm check:specs` (45 specs,
+12 changes), `pnpm check:e2e-dsl` (8 policy tests, 78 files), and
+`git diff --check`. Inspected fresh 375px and 1280px screenshots: every action
+is readable and reachable, with the desktop title/action alignment preserved.
+
+**Next:** independent parent review and merge of the ListView toolbar PR.
+
 ## 2026-09-26 — Session cookies follow configured session lifetime (#337)
 
 Password, Google and preview sign-in now issue the browser's `sid` cookie for
@@ -9650,3 +9711,41 @@ invariant violation. Independent live exploration confirmed store, object,
 replay and revocation scenarios and then the corrected identity matrix. Final
 independent acceptance of the verification delta remains the coordinator's gate;
 no merge, deployment or completed Budgets/DASH implementation is claimed.
+
+## 2026-09-26 — One active workflow per Table (#266)
+
+Approved OpenSpec change `enforce-single-active-workflow` adds a partial unique
+index, refuses conflicting saves with a 409 naming the active workflow, and
+removes newest-edited selection. Error translation matches the exact index,
+schema, and relation after rollback; unrelated uniqueness errors keep their
+field validation response. Existing duplicates fail index installation without
+data changes. Inactive alternatives, explicit switching, and independent Tables
+remain supported. The invalid-state-field test now deactivates its valid
+workflow first, preserving the original binding-error assertion.
+
+Red→green evidence: direct duplicate activation initially succeeded; the HTTP
+conflict initially returned generic 417; duplicate lookup initially chose the
+newer rules. Focused tests now cover those cases plus rollback, retargeting,
+same-workflow edits, switching, and unrelated constraint errors. Two independent
+committed HTTP races (insert and activation) observe the exact losing backend
+blocked on the winner before release. Removing the index on a separate disposable
+database made both proofs fail and permitted two active rows; that mutation
+database was then discarded. No shared database was changed.
+
+Verification on local PostgreSQL:
+- `DATABASE_URL=.../featherbase_266_test pnpm --filter server test` — 891 passed,
+  21 opt-in/MySQL skips on a fresh test database.
+- `FEATHERBASE_ENV=test WORKFLOW_COMMIT_PROOF=1 DATABASE_URL=.../featherbase_266_workflow_commit_e2e pnpm --filter server exec vitest run test/workflow-active.test.ts test/workflow-active-commit.test.ts test/workflow.test.ts test/workflow-state-field.test.ts test/workflow-condition.test.ts test/workflow-notify.test.ts` — 26 passed.
+- `pnpm --filter server typecheck`, `pnpm check:specs`, `git diff --check`.
+- Baseline `./init.sh` and final `pnpm smoke` — server and 3 browser checks.
+  Live HTTP saves confirmed first/inactive 201, named 409, then explicit-switch
+  success. Browser login → Workflow list → alternative form → conflicting save
+  displayed the conflict. No visual appearance changed.
+
+The first full suite run used the committed-proof database and failed one
+home-page seed test because proof Tables persisted without navigation seeds;
+the fresh-database full rerun passed unchanged. Keep the committed proof database
+separate from ordinary suite data, as documented in `docs/TESTING.md`.
+Feather standards/spec/module-shape review found no remaining scoped concerns;
+it added the unrelated-constraint regression. Next: parent independent review
+and verification before merge. No merge or deployment is claimed.
