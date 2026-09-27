@@ -118,6 +118,45 @@ test('tasker_focus_label: Focus identifies the star in both states without chang
     .assertHas('button.tasker-focus-star[aria-label="Add to My Focus: Plan the weekly review"]', { text: '☆ Focus' })
 })
 
+test('project_rename_conflict: a refetch cannot authorize an older rename', async ({ session, request }) => {
+  const headers = await ensureRuntimeApp(request, 'tasker')
+  const created = await request.post('/api/save_row', {
+    headers,
+    data: { table: 'tasker.project', row: { project_name: 'Rename conflict project' } },
+  })
+  expect(created.status()).toBe(201)
+  const project = await created.json() as { row_id: string; updated_at: string }
+
+  await session
+    .visit('/tasker/')
+    .clickButton('Rename conflict project')
+    .clickButton('Rename')
+    .fillIn('Rename project', 'My older rename')
+
+  const competing = await request.post('/api/save_row', {
+    headers,
+    data: { table: 'tasker.project', row: {
+      row_id: project.row_id, updated_at: project.updated_at, project_name: 'Newer shared name',
+    } },
+  })
+  expect(competing.status()).toBe(201)
+  expect(await competing.json()).toMatchObject({ project_name: 'Newer shared name' })
+
+  await session
+    .fillIn('Add task to project', 'Witness project refresh')
+    .pressKey('Enter')
+    // The sidebar's new name witnesses the refreshed query reaching React.
+    .assertHas('button[aria-label="Newer shared name"]', { text: 'Newer shared name' })
+    .assertValue('Rename project', 'My older rename')
+    .clickButton('Save')
+    .assertHas('[role="alert"]', { text: 'has been modified after you loaded it' })
+    .assertValue('Rename project', 'My older rename')
+
+  const persisted = await request.get(`/api/table/tasker.project/${project.row_id}`, { headers })
+  expect(persisted.status()).toBe(200)
+  expect(await persisted.json()).toMatchObject({ project_name: 'Newer shared name' })
+})
+
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 

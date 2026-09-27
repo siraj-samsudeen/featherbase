@@ -444,6 +444,82 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
   }
 })
 
+test('project_rename_conflict: a refreshed project cannot rebase an unsaved rename', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const project = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'Original project' },
+    })
+    const teammate = await createUser({ roles: [] })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Original project' }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Rename project' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), 'My unsaved name')
+
+    await teammate.post('/api/save_row', { table: 'tasker.project', row: {
+      row_id: project.row_id, project_name: 'Teammate saved name', updated_at: project.updated_at,
+    } })
+    // A real list mutation refetches projects. The sidebar proves it has rendered.
+    await user.type(screen.getByRole('textbox', { name: 'Add task to project' }), 'Refresh project{Enter}')
+    expect(await screen.findByRole('button', { name: 'Teammate saved name' })).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), ' revised')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/modified|changed|conflict/i)
+    expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('My unsaved name revised')
+    expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({
+      project_name: 'Teammate saved name',
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByRole('heading', { name: 'Teammate saved name' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('Teammate saved name')
+    await user.clear(screen.getByRole('textbox', { name: 'Rename project' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), 'Agreed name{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Agreed name' })).toBeInTheDocument()
+    expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({
+      project_name: 'Agreed name',
+    })
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('project_rename_navigation: switching projects discards the previous rename draft', async ({ admin }) => {
+  await install()
+  try {
+    const first = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'First project' },
+    })
+    const second = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'Second project' },
+    })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'First project' }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), ' abandoned')
+    await user.click(screen.getByRole('button', { name: 'Second project' }))
+    expect(await screen.findByRole('heading', { name: 'Second project' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Rename project' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('Second project')
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), ' renamed{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Second project renamed' })).toBeInTheDocument()
+    expect(await admin.get(`/api/table/tasker.project/${second.row_id}`)).toMatchObject({ project_name: 'Second project renamed' })
+    await user.click(screen.getByRole('button', { name: 'First project' }))
+    expect(await screen.findByRole('heading', { name: 'First project' })).toBeInTheDocument()
+    expect(await admin.get(`/api/table/tasker.project/${first.row_id}`)).toMatchObject({ project_name: 'First project' })
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
 test('markdown_safety: links lists and code render but HTML and unsafe URLs remain inert', () => {
   const { container } = render(<Markdown>{'- First\n- Second\n\n[Safe](https://example.test) [Unsafe](javascript:alert(1))\n\n`inline`\n\n```js\nconst n = 3\n```\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<iframe src="https://example.test"></iframe>'}</Markdown>)
   expect(screen.getAllByRole('listitem')).toHaveLength(2)
