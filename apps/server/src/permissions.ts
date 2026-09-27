@@ -195,6 +195,20 @@ export async function permittedTiers(
   return tiers
 }
 
+// A valid direct share supplies the basic tier for its chosen row action,
+// while deeper field access still comes only from the recipient's roles.
+// Calling permittedTiers alone would leave a share-only recipient with no
+// fields; granting both tiers here would make the share an elevation path.
+export async function sharedFieldTiers(
+  user: string,
+  table: string,
+  action: 'read' | 'write',
+): Promise<Set<'basic' | 'restricted'>> {
+  const tiers = await permittedTiers(user, table, action)
+  tiers.add('basic')
+  return tiers
+}
+
 function allowsTier(tiers: Set<'basic' | 'restricted'>, tier: 'basic' | 'restricted'): boolean {
   return tiers.has(tier)
 }

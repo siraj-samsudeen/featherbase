@@ -1,7 +1,8 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, resolveToken, type SessionUser } from './auth'
-import { getRoles, hasPermission } from './permissions'
+import { getRoles, hasPermission, isBypassUser } from './permissions'
+import { assertActivityRowReadable, isActivityTable } from './query'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -50,13 +51,27 @@ export async function canSubscribe(user: SessionUser, channel: string): Promise<
   // like the feed endpoint itself (System Manager), and published with NO
   // payload — the data always flows through /api/activity_feed.
   if (channel === 'feed') return (await getRoles(user.row_id)).includes('System Manager')
-  if (channel.startsWith('list:')) return hasPermission(user.row_id, channel.slice(5), 'read')
+  if (channel.startsWith('list:')) {
+    const table = channel.slice(5)
+    if (isActivityTable(table)) return isBypassUser(user.row_id)
+    return hasPermission(user.row_id, table, 'read')
+  }
   if (channel.startsWith('row:')) {
     // row:<Table>:<name> — Table may itself contain ':' only in theory;
     // split on the first ':' after the prefix.
     const rest = channel.slice(4)
     const table = rest.slice(0, rest.lastIndexOf(':'))
     if (!table) return false
+    if (isActivityTable(table)) {
+      const name = rest.slice(rest.lastIndexOf(':') + 1)
+      if (!name) return false
+      try {
+        await assertActivityRowReadable(table, name, user.row_id)
+        return true
+      } catch {
+        return false
+      }
+    }
     return hasPermission(user.row_id, table, 'read')
   }
   return false

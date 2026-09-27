@@ -207,6 +207,113 @@ describe('finding 2: credential-named source columns never surface', () => {
   })
 })
 
+describe('direct shares on bound Tables preserve field tiers', () => {
+  test('a share grants a source row and basic fields without exposing a restricted field', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    await sql`
+      update column_def set tier = 'restricted'
+      where parent = ${BOUND} and column_name = 'region'`
+    invalidateMeta()
+    const user = await createUser({ roles: [] })
+    await admin.post('/api/save_row', {
+      table: 'Share',
+      row: {
+        share_table: BOUND,
+        share_name: 'ACC-A',
+        user: user.user,
+        read: true,
+      },
+    })
+
+    const doc = (await user.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`)) as Record<
+      string,
+      unknown
+    >
+    expect(doc.label).toBe('Alpha')
+    expect('region' in doc).toBe(false)
+  })
+
+  test('generic activity applies bound-row Data Scope before pagination and totals', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    const user = await userWith(admin, createUser, { can_read: true })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: 'Comment', role: 'Sec Role', can_read: true },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: BOUND, for_value: 'ACC-A' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: BOUND, ref_name: 'ACC-A', content: 'bound-visible-comment' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: BOUND, ref_name: 'ACC-B', content: 'bound-hidden-comment' },
+    })
+
+    const comments = (await user.get(
+      `/api/table/Comment?fields=${encodeURIComponent('["content","ref_name"]')}`,
+    )) as { data: { content: string; ref_name: string }[]; total: number }
+    expect(comments).toEqual(
+      expect.objectContaining({
+        total: 1,
+        data: [{ content: 'bound-visible-comment', ref_name: 'ACC-A' }],
+      }),
+    )
+  })
+
+  test('a direct source-row share widens only that row’s generic activity', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    await admin.post('/api/save_row', {
+      table: 'Role',
+      row: { row_id: 'Sec Activity Only Role' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: 'Comment', role: 'Sec Activity Only Role', can_read: true },
+    })
+    const user = await createUser({ roles: ['Sec Activity Only Role'] })
+    await admin.post('/api/save_row', {
+      table: 'Share',
+      row: {
+        share_table: BOUND,
+        share_name: 'ACC-A',
+        user: user.user,
+        read: true,
+      },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: BOUND, ref_name: 'ACC-A', content: 'bound-shared-comment' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: BOUND, ref_name: 'ACC-B', content: 'bound-unshared-comment' },
+    })
+
+    const comments = (await user.get(
+      `/api/table/Comment?fields=${encodeURIComponent('["content","ref_name"]')}`,
+    )) as { data: { content: string; ref_name: string }[]; total: number }
+    expect(comments).toEqual(
+      expect.objectContaining({
+        total: 1,
+        data: [{ content: 'bound-shared-comment', ref_name: 'ACC-A' }],
+      }),
+    )
+  })
+})
+
 describe('finding 3: optimistic locking advances the revision', () => {
   test('two Desk clients: the second stale save conflicts', async ({ admin }) => {
     await bindAccount(admin)

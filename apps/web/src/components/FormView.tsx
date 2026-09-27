@@ -17,6 +17,7 @@ import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
+import { documentActivityKey } from '../lib/document-activity'
 
 type Row = Record<string, unknown>
 
@@ -255,7 +256,7 @@ export function FormView({
       const saved = await api.post<Row>('/api/save_row', { table, row: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      await queryClient.invalidateQueries({ queryKey: documentActivityKey(table, name) })
       if (isNew) {
         navigate({
           to: '/featherbase/admin/$table/$name',

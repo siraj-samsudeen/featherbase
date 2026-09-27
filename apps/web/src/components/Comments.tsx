@@ -1,13 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
-
-interface CommentRow {
-  row_id: string
-  content: string
-  created_by: string
-  created_at: string
-}
+import { documentActivityKey, useDocumentActivity } from '../lib/document-activity'
 
 // UI-018: a comment box on every row. Comments are Comment rows linked
 // by ref_table/ref_name; @mentions autocomplete from the user list and
@@ -21,19 +15,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
   const [mention, setMention] = useState<{ q: string; at: number } | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const comments = useQuery({
-    queryKey: ['comments', table, name],
-    queryFn: () =>
-      listResource<CommentRow>('Comment', {
-        filters: [
-          ['ref_table', '=', table],
-          ['ref_name', '=', name],
-        ],
-        fields: ['row_id', 'content', 'created_by', 'created_at'],
-        order_by: 'created_at asc',
-        limit_page_length: 200,
-      }),
-  })
+  const activity = useDocumentActivity(table, name)
 
   // @mention candidates from the user list, filtered by the token being typed.
   const users = useQuery({
@@ -86,7 +68,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
         row: { ref_table: table, ref_name: name, content },
       })
       setDraft('')
-      await queryClient.invalidateQueries({ queryKey: ['comments', table, name] })
+      await queryClient.invalidateQueries({ queryKey: documentActivityKey(table, name) })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Comment failed')
     } finally {
@@ -118,11 +100,11 @@ export function Comments({ table, name }: { table: string; name: string }) {
       </div>
 
       <div className="mb-3 space-y-3" data-testid="comment-list">
-        {comments.data?.data.length === 0 && (
+        {activity.data?.comments.length === 0 && (
           <p className="text-xs text-[var(--color-ink-faint)]">No comments yet</p>
         )}
-        {comments.data?.data.map((c) => (
-          <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
+        {activity.data?.comments.map((c, index) => (
+          <div key={`${c.created_at}-${c.created_by}-${index}`} className="flex gap-2" data-testid="comment-item">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white">
               {initials(c.created_by)}
             </span>

@@ -5,6 +5,7 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
+import { assertActivityTargetReadable, isActivityTable } from './query'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -24,6 +25,7 @@ import {
   isBypassUser,
   isSharedWith,
   permittedTiers,
+  sharedFieldTiers,
   stripUnwritableFields,
 } from './permissions'
 import {
@@ -34,6 +36,7 @@ import {
   mapValuesIn,
   writableContext,
 } from './sources/dispatch'
+import { sanitizeVersionDataForUser } from './version-visibility'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -789,10 +792,11 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the updated_at timestamp of the loaded row',
     )
-  // A write-share grants full field access; otherwise honor tiers.
+  // A write-share grants the row action and basic fields, not a restricted
+  // field-tier elevation.
   const sharedWrite = await isSharedWith(user, meta.name, name, 'write')
   const writeTiers = sharedWrite
-    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+    ? await sharedFieldTiers(user, meta.name, 'write')
     : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
@@ -902,7 +906,9 @@ async function updateDoc(
       row: updateResult, old: previous, meta, user, isNew: false, tx: sql,
     })
   })
-  return updateResult
+  if (!sharedWrite) return updateResult
+  const responseTiers = await sharedFieldTiers(user, meta.name, 'read')
+  return filterReadFields(meta.columns, responseTiers, updateResult)
 }
 
 // DOC-009: record a field-level diff in the Version Table on every
@@ -1301,13 +1307,19 @@ async function getDocImpl(
       await assertUserPermissions(user, meta, doc)
     }
     const tiers = boundShared
-      ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+      ? await sharedFieldTiers(user, table, 'read')
       : await permittedTiers(user, table, 'read')
     return { table, ...filterReadFields(meta.columns, tiers, doc) }
   }
   const [row] = await sql`
     select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
+  if (isActivityTable(table)) {
+    // Generic activity detail keeps its own Table gate and additionally
+    // inherits access from the referenced parent row.
+    await assertPermission(user, table, 'read')
+    await assertActivityTargetReadable(String(row.ref_table), String(row.ref_name), user)
+  }
   // PERM-008: a direct share grants read even without role permission.
   const shared = await isSharedWith(user, table, name, 'read')
   if (!shared) {
@@ -1316,11 +1328,19 @@ async function getDocImpl(
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
   }
-  // A share grants full field visibility; otherwise honor tiers.
+  // A share grants the row and its basic fields; restricted visibility still
+  // comes from the recipient's roles.
   const readTiers = shared
-    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+    ? await sharedFieldTiers(user, table, 'read')
     : await permittedTiers(user, table, 'read')
   const visible = filterReadFields(meta.columns, readTiers, row as RowValues)
+  if (table === 'Version' && 'data' in visible)
+    visible.data = await sanitizeVersionDataForUser(
+      String(row.ref_table),
+      String(row.ref_name),
+      visible.data,
+      user,
+    )
   return loadChildren(meta, { table, ...visible })
 }
 

@@ -12,6 +12,7 @@ import {
   type RealtimeEvent,
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
+import { createUserWithRole, grantRole, makeTable } from './fixtures'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -82,6 +83,57 @@ describe('RT channel authorization (eval #9 fix)', () => {
     expect(await canSubscribe(admin, 'system')).toBe(false)
     expect(await canSubscribe(admin, 'evil:*')).toBe(false)
     expect(await canSubscribe(admin, 'row:')).toBe(false)
+  })
+
+  test('activity channels refuse broad lists and parent-authorize individual rows', async ({
+    admin: adminClient,
+    createUser,
+  }) => {
+    const parent = await makeTable(adminClient, {
+      name: 'Rt Activity Parent',
+      id_pattern: 'prompt',
+      columns: ['subject'],
+    })
+    const userClient = await createUserWithRole(adminClient, createUser, {
+      role: 'Rt Activity Role',
+      table: parent.name,
+      own_rows_only: true,
+      can_read: true,
+      can_create: true,
+    })
+    await grantRole(adminClient, {
+      role: 'Rt Activity Role',
+      table: ['Comment', 'Version'],
+      can_read: true,
+    })
+    const visible = await userClient.post<{ row_id: string }>(parent.url, {
+      row_id: 'rt-visible-parent',
+      subject: 'Visible',
+    })
+    const hidden = await adminClient.post<{ row_id: string }>(parent.url, {
+      row_id: 'rt-hidden-parent',
+      subject: 'Hidden',
+    })
+    const visibleComment = await adminClient.post<{ row_id: string }>('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: parent.name, ref_name: visible.row_id, content: 'visible' },
+    })
+    const hiddenComment = await adminClient.post<{ row_id: string }>('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: parent.name, ref_name: hidden.row_id, content: 'hidden' },
+    })
+    const user: SessionUser = {
+      row_id: String(userClient.user),
+      email: String(userClient.user),
+      full_name: String(userClient.user),
+    }
+
+    expect(await canSubscribe(user, 'list:Comment')).toBe(false)
+    expect(await canSubscribe(user, 'list:Version')).toBe(false)
+    expect(await canSubscribe(user, `row:Comment:${visibleComment.row_id}`)).toBe(true)
+    expect(await canSubscribe(user, `row:Comment:${hiddenComment.row_id}`)).toBe(false)
+    expect(await canSubscribe(admin, 'list:Comment')).toBe(true)
+    expect(await canSubscribe(admin, 'list:Version')).toBe(true)
   })
 })
 
