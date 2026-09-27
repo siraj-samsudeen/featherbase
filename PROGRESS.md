@@ -1,5 +1,44 @@
 # Progress Log
 
+## 2026-09-27 — Comments and history inherit row access (#342)
+
+Generic Comment and Version reads now require both their existing Table grant
+and access to the referenced row. The parent predicate sits in `scopedWhere`,
+so list pagination and totals, count/group/aggregate, Report Builder, auto-email
+Report Builder and search all share it; detail, print and realtime row channels
+use the concrete counterpart. Source-bound targets are authorized through their
+real dispatcher before SQL pagination. Broad non-manager activity-list realtime
+channels are refused. Tasker's filtered Comment list remains supported.
+
+Owner-approved direct-share policy C now applies to native and source-bound
+reads and native writes: a share grants its row action and basic fields, while
+restricted fields still require that tier from a role. Version payloads use one
+sanitizer across document activity and generic list/detail reads, so forbidden
+old and new values stay hidden. Admin Comments and ActivityTimeline now share
+one parent-gated request and cache key.
+
+**Verified:** strict validation of `scope-comments-history-to-row-access`;
+`pnpm check:specs` (45 specs, 19 changes); `pnpm check:e2e-dsl` (8 guard tests,
+78 files); full server Vitest suite (906 passed, 21 skipped); focused Admin and
+Tasker component suites (25 passed); server/web/shared typechecks; focused
+browser timeline and Tasker journeys (5 passed); `git diff --check`. The full
+web component run reached 175/176 before an existing Tasker My Focus ordering
+assertion flaked; its complete 21-test file passed immediately in the focused
+rerun. Existing jsdom `window.scrollTo` warnings are unchanged. Feather review
+also caught and removed a realtime→document import cycle before the green full
+server run.
+
+Independent review then found that grouping Version rows by their raw `data`
+JSON still returned restricted field changes. Grouping now sanitizes each raw
+parent/payload group before coalescing equal visible payloads, preserving the
+visible changes and total count without letting hidden values split groups.
+The real-Postgres regression first reproduced the secret value, then passed
+with two distinct restricted-only payloads collapsed into one count of two;
+the focused activity/dashboard/realtime batch passed 19 tests and server
+typecheck, strict change validation, and whitespace checks passed again.
+
+**Next:** independent review of PR #356; do not merge until accepted.
+
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
 Project rename now snapshots the project at edit start, following task detail

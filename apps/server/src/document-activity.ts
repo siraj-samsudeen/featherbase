@@ -3,6 +3,7 @@ import { getDoc } from './document'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { AppError } from './errors'
+import { sanitizeVersionData } from './version-visibility'
 
 // Internal callers must authorize and lock the source row first. Counts may
 // include hidden activity, but never expose its values or another row's ID.
@@ -34,13 +35,9 @@ export async function documentActivity(table: string, name: string, user: string
         where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
   ])
   const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][] } | null
     return {
       ...version,
-      data: {
-        ...data,
-        changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
-      },
+      data: sanitizeVersionData(version.data, visibleFields),
     }
   })
   return { comments, versions: visibleVersions }

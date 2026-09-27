@@ -3,9 +3,24 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
-import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
+import {
+  assertPermission,
+  getUserPermissionMap,
+  isBypassUser,
+  isSharedWith,
+  permissionScope,
+  permittedTiers,
+  sharedNames,
+} from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
+import {
+  boundCountDocs,
+  boundFetchDoc,
+  boundGetList,
+  boundGroupCount,
+  isBound,
+} from './sources/dispatch'
+import { sanitizeVersionDataForUser } from './version-visibility'
 
 export type Filter = [string, string, unknown]
 
@@ -92,6 +107,11 @@ function parseRelatedSpec(value: unknown): RelatedSpec {
 }
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
+const ACTIVITY_TABLES = new Set(['Comment', 'Version'])
+
+export function isActivityTable(table: string): boolean {
+  return ACTIVITY_TABLES.has(table)
+}
 
 // PERM-006: the columns a caller may name in select/filter/order/group.
 // Tier filtering used to apply on detail reads only (filterReadFields), so a
@@ -178,6 +198,8 @@ export async function scopedWhere(
   // caller cannot read at all contributes no branch, hiding its children.
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
+  if (isActivityTable(meta.name) && !bypass)
+    extraConds.push((await activityTargetScopeCond(tbl, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
@@ -334,6 +356,171 @@ export async function scopedWhere(
   return { meta, table: tbl, cols, where, phys }
 }
 
+// Comment and Version point polymorphically at any Table, so their generic
+// query scope is the union of each referenced Table's own row scope. Direct
+// shares widen only this activity predicate; ordinary parent lists/searches
+// remain unchanged. Source-bound candidates are authorized in chunks before
+// SQL pagination so hidden activity cannot affect totals or displace rows.
+async function activityTargetScopeCond(
+  activityRelation: string,
+  user: string,
+  callerFilters: Filter[],
+): Promise<{ frag: ReturnType<typeof sql> }> {
+  const exactRefTable = callerFilters.find(
+    (filter) =>
+      Array.isArray(filter) &&
+      filter[0] === 'ref_table' &&
+      filter[1] === '=' &&
+      typeof filter[2] === 'string',
+  )?.[2] as string | undefined
+  const refs = exactRefTable
+    ? [{ ref_table: exactRefTable }]
+    : await sql<{ ref_table: string }[]>`
+        select distinct ref_table from ${sql(activityRelation)}
+        where ref_table is not null and ref_table <> ''`
+  const branches: ReturnType<typeof sql>[] = []
+
+  for (const ref of refs) {
+    const targetTable = ref.ref_table
+    if (isActivityTable(targetTable)) continue
+    const targetMeta = await getMeta(targetTable).catch((err) => {
+      if (err instanceof AppError && err.type === 'NotFoundError') return null
+      throw err
+    })
+    if (!targetMeta) continue
+
+    const targetBranches: ReturnType<typeof sql>[] = []
+    if (targetMeta.kind === 'settings') {
+      if ((await permissionScope(user, targetTable, 'read')) !== 'none')
+        targetBranches.push(sql`ref_name = ${targetTable}`)
+    } else if (isBound(targetMeta)) {
+      const nameFilter = callerFilters.find(
+        (filter) =>
+          Array.isArray(filter) &&
+          filter[0] === 'ref_name' &&
+          ((filter[1] === '=' && typeof filter[2] === 'string') ||
+            (filter[1] === 'in' && Array.isArray(filter[2]))),
+      )
+      const names = nameFilter
+        ? nameFilter[1] === '='
+          ? [String(nameFilter[2])]
+          : (nameFilter[2] as unknown[]).map(String)
+        : (
+            await sql<{ ref_name: string }[]>`
+              select distinct ref_name from ${sql(activityRelation)}
+              where ref_table = ${targetTable} and ref_name is not null`
+          ).map((row) => row.ref_name)
+      const allowed = new Set<string>()
+      for (let i = 0; i < names.length; i += 500) {
+        try {
+          const result = await boundGetList(
+            targetMeta,
+            {
+              filters: [[ROW_KEY, 'in', names.slice(i, i + 500)]],
+              fields: [ROW_KEY],
+              limit_page_length: 500,
+            },
+            user,
+          )
+          for (const row of result.data) allowed.add(String(row[ROW_KEY]))
+        } catch (err) {
+          if (!(err instanceof AppError) || err.type !== 'PermissionError') throw err
+          break
+        }
+      }
+      for (const name of await sharedNames(user, targetTable)) {
+        if (!names.includes(name)) continue
+        if (await boundFetchDoc(targetMeta, name)) allowed.add(name)
+      }
+      if (allowed.size) targetBranches.push(sql`ref_name in ${sql([...allowed])}`)
+    } else {
+      try {
+        const target = await scopedWhere(targetTable, user, [])
+        targetBranches.push(
+          sql`ref_name in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`,
+        )
+      } catch (err) {
+        if (!(err instanceof AppError) || err.type !== 'PermissionError') throw err
+      }
+      const shares = await sharedNames(user, targetTable)
+      if (shares.length) targetBranches.push(sql`ref_name in ${sql(shares)}`)
+    }
+
+    if (!targetBranches.length) continue
+    const targetAllowed = targetBranches.reduce((acc, branch) => sql`${acc} or ${branch}`)
+    branches.push(sql`(ref_table = ${targetTable} and (${targetAllowed}))`)
+  }
+
+  if (!branches.length) return { frag: sql`false` }
+  const readable = branches.reduce((acc, branch) => sql`${acc} or ${branch}`)
+  return { frag: sql`(${readable})` }
+}
+
+// Concrete counterpart for generic activity detail, print, row actions and
+// realtime row channels. The caller's Comment/Version Table grant is checked
+// at those entry points; this function answers only whether the parent row is
+// readable.
+export async function assertActivityTargetReadable(
+  refTable: string,
+  refName: string,
+  user: string,
+): Promise<void> {
+  if (await isBypassUser(user)) return
+  const meta = await getMeta(refTable).catch((err) => {
+    if (err instanceof AppError && err.type === 'NotFoundError') return null
+    throw err
+  })
+  if (!meta || isActivityTable(refTable))
+    throw new AppError('PermissionError', `Cannot read activity target ${refTable} ${refName}`)
+
+  if (meta.kind === 'settings') {
+    if (refName === refTable && (await permissionScope(user, refTable, 'read')) !== 'none') return
+  } else if (await isSharedWith(user, refTable, refName, 'read')) {
+    if (!isBound(meta) || (await boundFetchDoc(meta, refName))) return
+  } else if (isBound(meta)) {
+    try {
+      const result = await boundGetList(
+        meta,
+        {
+          filters: [[ROW_KEY, '=', refName]],
+          fields: [ROW_KEY],
+          limit_page_length: 1,
+        },
+        user,
+      )
+      if (result.data.some((row) => String(row[ROW_KEY]) === refName)) return
+    } catch (err) {
+      if (!(err instanceof AppError) || err.type !== 'PermissionError') throw err
+    }
+  } else {
+    try {
+      const target = await scopedWhere(refTable, user, [[ROW_KEY, '=', refName]])
+      const [row] = await sql`
+        select 1 from ${sql(target.table)} where ${target.where} limit 1`
+      if (row) return
+    } catch (err) {
+      if (!(err instanceof AppError) || err.type !== 'PermissionError') throw err
+    }
+  }
+  throw new AppError('PermissionError', `Cannot read activity target ${refTable} ${refName}`)
+}
+
+export async function assertActivityRowReadable(
+  table: string,
+  name: string,
+  user: string,
+): Promise<void> {
+  if (!isActivityTable(table))
+    throw new AppError('PermissionError', `${table} is not an activity Table`)
+  await assertPermission(user, table, 'read')
+  const meta = await getMeta(table)
+  const [row] = await sql`
+    select ref_table, ref_name from ${sql(await tableRelation(table))}
+    where ${sql(meta.row_key)} = ${name}`
+  if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
+  await assertActivityTargetReadable(String(row.ref_table), String(row.ref_name), user)
+}
+
 // One OR-branch per Table that can own rows of this child Table: 'all' scope
 // admits every row parented there, 'own_rows' admits only those hanging off
 // rows the caller created, 'none' admits nothing. No branch at all means no
@@ -404,6 +591,31 @@ async function groupCountImpl(
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
   const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
+  if (table === 'Version' && field === 'data') {
+    // A raw JSON group can differ only in fields this reader cannot see.
+    // Group once by parent + raw payload, sanitize with that parent's field
+    // tiers, then coalesce equal visible payloads before returning counts.
+    const rawGroups = await sql<
+      { ref_table: string; ref_name: string; data: unknown; value: number }[]
+    >`
+      select ref_table, ref_name, data, count(*)::int as value
+      from ${sql(tbl)} where ${where}
+      group by ref_table, ref_name, data`
+    const visibleCounts = new Map<string, number>()
+    for (const group of rawGroups) {
+      const visible = await sanitizeVersionDataForUser(
+        String(group.ref_table),
+        String(group.ref_name),
+        group.data,
+        user,
+      )
+      const label = JSON.stringify(visible)
+      visibleCounts.set(label, (visibleCounts.get(label) ?? 0) + Number(group.value))
+    }
+    return [...visibleCounts.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+  }
   const rows = await sql`
     select ${sql(phys(field))}::text as label, count(*)::int as value
     from ${sql(tbl)} where ${where}
@@ -469,9 +681,13 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
 
   const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
+  const selectedFields =
+    table === 'Version' && fields.includes('data')
+      ? [...new Set([...fields, 'ref_table', 'ref_name'])]
+      : fields
   // The wire format always names the key `row_id`; where the physical column
   // differs (`Table`), alias it back so callers see one shape.
-  const selection = fields
+  const selection = selectedFields
     .map((f) =>
       phys(f) === f ? sql`${sql(f)}` : sql`${sql(phys(f))} as ${sql(f)}`,
     )
@@ -490,12 +706,26 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const limit = Math.min(Math.max(args.limit_page_length ?? 20, 1), 500)
   const offset = Math.max(args.limit_start ?? 0, 0)
 
-  const rows = await sql`
+  const rows = await sql<Record<string, unknown>[]>`
     select ${selection} from ${sql(tbl)}
     where ${where}
     order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`
-  return { data: rows, total: count as number, limit_start: offset, limit_page_length: limit }
+  const data =
+    table === 'Version' && fields.includes('data')
+      ? await Promise.all(
+          rows.map(async (row) => ({
+            ...Object.fromEntries(fields.map((field) => [field, row[field]])),
+            data: await sanitizeVersionDataForUser(
+              String(row.ref_table),
+              String(row.ref_name),
+              row.data,
+              user,
+            ),
+          })),
+        )
+      : rows
+  return { data, total: count as number, limit_start: offset, limit_page_length: limit }
 }

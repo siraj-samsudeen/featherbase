@@ -10,6 +10,7 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'Cmt Row'
@@ -49,9 +50,28 @@ async function submit(text: string) {
 
 test('a row with no comments says so rather than rendering an empty list', async ({ admin }) => {
   const rowId = await seedRow(admin)
-  const panel = await openRow(admin, rowId)
-  await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
-  expect(screen.queryAllByTestId('comment-item')).toHaveLength(0)
+  const realFetch = globalThis.fetch
+  const requests: string[] = []
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    requests.push(String(input))
+    return realFetch(input, init)
+  })
+  try {
+    const panel = await openRow(admin, rowId)
+    await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
+    expect(screen.queryAllByTestId('comment-item')).toHaveLength(0)
+    await waitFor(() =>
+      expect(
+        requests.filter((path) =>
+          path.includes(`/api/activity/${encodeURIComponent(DT)}/${encodeURIComponent(rowId)}`),
+        ),
+      ).toHaveLength(1),
+    )
+    expect(requests.some((path) => path.includes('/api/table/Comment'))).toBe(false)
+    expect(requests.some((path) => path.includes('/api/table/Version'))).toBe(false)
+  } finally {
+    spy.mockRestore()
+  }
 })
 
 test('a posted comment appears in the thread and is stored against the row', async ({ admin }) => {
