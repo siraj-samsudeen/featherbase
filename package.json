@@ -1,0 +1,10 @@
+{
+  "name": "todo-stack-benchmark",
+  "private": true,
+  "scripts": {
+    "spec:check": "openspec validate --changes --strict --no-interactive"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "1.13.2"
+  }
+}
