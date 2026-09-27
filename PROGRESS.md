@@ -18,19 +18,20 @@ maturity versus Featherbase's emerging agent-first direction. Each comparison
 states both sides' advantage and cost, and explicitly separates intended design
 from capability already delivered.
 
-`docs/APPLICATION_MODEL.md` now records the agreed five page intents, ten core
-blocks, shared runtime services and full-code escape hatches. It reports the
-generic platform and portable-app contract separately for every item, links an
-available claim to its accepted OpenSpec and executable evidence, and says
-"not yet specified" wherever only design intent exists. The README links this
-capability map from Orientation.
+`docs/APPLICATION_MODEL.md` now presents the agreed five page intents, ten core
+blocks, shared runtime services and full-code escape hatches as one concise
+capability-status page. Every grouped capability has a plain-language summary,
+an accessible labelled status, and links to its accepted specification or
+tracking issue—never directly to source or test files. The page also provides a
+prefilled route for requesting or prioritizing missing capabilities. The README
+links this status map from Orientation.
 
 **Verified:** `git diff --check`; a Node link check resolved every local link in
-`docs/APPLICATION_MODEL.md`; reviewed the rendered Markdown structure. `pnpm
-check:specs` could not start because this documentation checkout has no installed
-dependencies (`openspec` was absent); no spec changed. Documentation only; no
-runtime behaviour changed. **Next:** continue the Training proving application's
-declarative UI-block design.
+`docs/APPLICATION_MODEL.md`; inspected the rendered desktop and phone status
+page. `pnpm check:specs` could not start because this documentation checkout has
+no installed dependencies (`openspec` was absent); no spec changed.
+Documentation only; no runtime behaviour changed. **Next:** continue the
+Training proving application's declarative UI-block design.
 
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
