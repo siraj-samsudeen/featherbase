@@ -554,7 +554,12 @@ export function TableBuilder() {
                   /* data-columnrow marks the editable column rows: specs address
                      these, so a decorative row (Row ID, and anything added later)
                      can never shift the indices they read. */
-                  <tr key={i} className="border-t border-[var(--color-border)] align-top" data-columnrow="">
+                  <tr
+                    key={i}
+                    aria-label={`Column ${i + 1}`}
+                    className="border-t border-[var(--color-border)] align-top"
+                    data-columnrow=""
+                  >
                     <td className="px-3 py-2">
                       <input
                         aria-label={`Column ${i + 1} field label`}

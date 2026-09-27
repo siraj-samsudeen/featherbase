@@ -56,12 +56,15 @@ export function ColumnCards({
           <div
             key={i}
             role="group"
-            aria-label={`Column ${i + 1}`}
+            aria-labelledby={`dt-card-${i}-context`}
             className="fc-card p-5"
             data-testid={`dt-card-${i}`}
           >
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+              <span
+                id={`dt-card-${i}-context`}
+                className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]"
+              >
                 Column {i + 1}
               </span>
               {columns.length > 1 && (
@@ -114,12 +117,12 @@ export function ColumnCards({
 
             {c.column_type === 'Choice' && (
               <div className="mt-3">
-                <label htmlFor={`dt-card-${i}-choices`} className="fc-label">
+                <label id={`dt-card-${i}-choices-label`} htmlFor={`dt-card-${i}-choices`} className="fc-label">
                   The options, comma-separated
                 </label>
                 <input
                   id={`dt-card-${i}-choices`}
-                  aria-label={`Column ${i + 1} choices`}
+                  aria-labelledby={`dt-card-${i}-context dt-card-${i}-choices-label`}
                   value={c.target}
                   onChange={(e) => onPatch(i, { target: e.target.value })}
                   placeholder="Small, Medium, Large"
@@ -129,12 +132,16 @@ export function ColumnCards({
             )}
             {c.column_type === 'Reference' && (
               <div className="mt-3">
-                <label htmlFor={`dt-card-${i}-linked-table`} className="fc-label">
+                <label
+                  id={`dt-card-${i}-linked-table-label`}
+                  htmlFor={`dt-card-${i}-linked-table`}
+                  className="fc-label"
+                >
                   Which table does it link to?
                 </label>
                 <select
                   id={`dt-card-${i}-linked-table`}
-                  aria-label={`Column ${i + 1} linked table`}
+                  aria-labelledby={`dt-card-${i}-context dt-card-${i}-linked-table-label`}
                   value={c.target}
                   onChange={(e) => onPatch(i, { target: e.target.value })}
                   className="fc-input"
