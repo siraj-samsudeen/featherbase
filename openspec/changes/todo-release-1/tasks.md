@@ -3,7 +3,7 @@
 ## 1. Gate 1 product specification
 
 - [x] 1.1 Initialize an empty-history benchmark branch with pinned OpenSpec tooling; verify no candidate source is tracked.
-- [ ] 1.2 Obtain explicit owner approval of specs/todo/spec.md; verify approval is recorded in the manager conversation before advancing.
+- [x] 1.2 Obtain explicit owner approval of specs/todo/spec.md; owner approved with “Yes” in the manager conversation, as recorded in gate-2-acceptance-design.md.
 
 ## 2. Subsequent gated planning
 

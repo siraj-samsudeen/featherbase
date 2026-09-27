@@ -1,192 +1,147 @@
-# Release 1 — Persisted Todo application (Gate 1 draft)
+# Release 1 — A shared Todo list
 
 ## Purpose
 
-Let a person manage a small shared Todo list reliably through an accessible browser UI or discoverable JSON HTTP functionality, while comparing technology stacks without prescribing their internals.
+Build a small Todo app that keeps people's work safe and works through a browser or a documented HTTP API.
 
 ## ADDED Requirements
 
-### Requirement: Release boundary and OpenSpec authority
+### Requirement: Manage todos without signing in
 
-The application SHALL provide one shared Todo collection without authentication. Release 1 SHALL include only create, read, rename, complete, reopen, delete, and status filtering. It SHALL NOT introduce Projects or a reusable CRUD framework, resource DSL, generic repository, plugin system, or speculative abstraction. Each candidate SHALL install and use OpenSpec and retain the identical approved behavior specification; candidate-specific planning SHALL NOT weaken it. Changes to approved behavior require manager review and owner approval before implementation. No deployment is authorized.
+Anyone MUST be able to use the same shared list without an account:
+- Create a Todo, initially open. Show success and clear the create input only after saving.
+- Rename it without changing its identity or completion state.
+- Complete, reopen, or deliberately delete it without affecting other Todos.
+- Allow duplicate titles, but give each Todo its own stable identity.
+- Prevent repeated activation during one pending submission from creating duplicates.
 
-#### Scenario: Same product across all stacks
-- **WHEN** a new browser session opens the application
-- **THEN** it can manage the shared collection without an account or sign-in
-- **AND** the candidate's OpenSpec artifacts contain the approved release-1 requirements without stack-specific substitutions.
+Deletion removes the Todo from all views and later reads. Confirmation dialogs and undo are optional.
 
-### Requirement: Create and identify todos
+#### Scenario: Everyday use
+- **WHEN** I add `Buy milk`, rename it to `Buy oat milk`, complete it, reopen it, and delete it
+- **THEN** each action succeeds on that same Todo, and other Todos stay unchanged.
+- **WHEN** I deliberately add `Buy milk` twice and delete one
+- **THEN** the other remains.
 
-The application SHALL let users create a Todo with a title. A new Todo SHALL be open. Each Todo SHALL have a stable, distinct identity independent of its title; duplicate titles SHALL be allowed. Confirmed success SHALL represent durable storage, not merely a local optimistic display. A single submission SHALL NOT create multiple records through repeated activation while that submission is pending.
+### Requirement: Keep titles valid
 
-#### Scenario: Create an open Todo
-- **WHEN** a user submits `Buy milk` once
-- **THEN** one new open Todo named `Buy milk` is visible in the All and Open views, but not Completed
-- **AND** success is communicated and the create input is ready for another entry.
+Creation and renaming MUST use the same rules in the browser and API:
+- Trim whitespace at either end; keep case, internal spacing, and Unicode composition unchanged.
+- Accept 1–200 Unicode code points after trimming; do not truncate. A code point is the counting unit, not a byte or UTF-16 unit.
+- Reject non-text values, blank titles, and internal line breaks.
+- On rejection, change nothing saved; explain the problem and keep the input for correction.
+- Display titles as plain text, never executable markup.
 
-#### Scenario: Duplicate titles remain distinct
-- **WHEN** a user deliberately creates `Buy milk` twice in two completed submissions and deletes one
-- **THEN** the other remains unchanged.
+For consistent results across languages, “whitespace” means Unicode White_Space; line breaks are U+000A, U+000D, U+0085, U+2028, and U+2029 remaining after trimming.
 
-### Requirement: Title normalization and validation
+#### Scenario: Title examples
+- **WHEN** I create or rename a Todo with these inputs
+- **THEN** these results apply:
 
-Titles SHALL be strings containing 1–200 Unicode code points after trimming leading and trailing Unicode White_Space characters. Normalization SHALL preserve case, internal whitespace, and Unicode composition; it SHALL NOT silently truncate. Line breaks (U+000A, U+000D, U+0085, U+2028, U+2029) remaining after trimming SHALL be rejected. These same rules SHALL apply to creation and renaming through both UI and HTTP. Invalid writes SHALL change no persisted data, and the UI SHALL explain the problem while retaining the entered text for correction. Titles SHALL render as text, never executable markup.
+| Input | Result |
+| --- | --- |
+| `  Buy  milk  ` | Save `Buy  milk`, keeping the double internal space. |
+| Blank, whitespace-only, 201 code points, or an internal line break | Reject; keep my input and existing data. |
+| Exactly 1 or 200 code points, including emoji outside the basic Unicode range | Accept. |
+| `<script>alert(1)</script>` | Display literally; execute nothing. |
 
-#### Scenario: Normalize without rewriting content
-- **WHEN** a user creates or renames with `  Buy  milk  `
-- **THEN** the saved title is `Buy  milk`.
+### Requirement: Filter the list
 
-#### Scenario: Validate boundaries
-- **WHEN** a user submits an empty or whitespace-only title, a 201-code-point title, or a title with an internal line break
-- **THEN** the write is rejected with an actionable title error and no record is created or altered
-- **AND** the entered text remains available to correct
-- **BUT WHEN** the normalized title contains exactly 1 or 200 code points, including non-BMP characters
-- **THEN** it is accepted.
+The app MUST offer All, Open, and Completed, initially showing All. Filtering never changes data. Show the selected filter and completion state without relying on color. Saved changes immediately update membership in the current view. Distinguish an empty result from loading or failure. List order and remembering filters across reloads are optional.
 
-#### Scenario: Treat titles as text
-- **WHEN** a Todo title contains `<script>alert(1)</script>`
-- **THEN** the title is displayed literally and no script executes.
+#### Scenario: Mixed and empty results
+- **WHEN** `Buy milk` is open and `Send invoice` is completed
+- **THEN** All shows both; Open shows only `Buy milk`; Completed shows only `Send invoice`.
+- **WHEN** I complete `Buy milk` while viewing Open
+- **THEN** the view says there are no open Todos, and Completed contains both.
 
-### Requirement: Rename, complete, reopen, and delete
+### Requirement: Keep saved work in PostgreSQL
 
-Users SHALL be able to rename a Todo without changing its identity or completion state, complete an open Todo, reopen a completed Todo, and delete either kind. Each operation SHALL affect only the selected Todo and communicate its outcome. A confirmed deletion SHALL remove the Todo from every view and from subsequent reads. A deliberate delete action is required; confirmation dialogs and undo are not required.
+PostgreSQL MUST hold the saved data. Confirm success only after saving durably. Subsequent reads must show that change unless someone has changed it again. Reloads, independent browser sessions, and server restarts against the same database must preserve identities, titles, completion states, and deletions. Do not depend on browser storage or silently switch to temporary storage when PostgreSQL is unavailable.
 
-#### Scenario: Rename and change completion state
-- **GIVEN** open `Buy milk` and completed `Send invoice` todos
-- **WHEN** the user renames the former to `Buy oat milk`, completes it, and reopens it
-- **THEN** it retains its identity and ends open with the new title
-- **AND** `Send invoice` remains unchanged.
+#### Scenario: Return later
+- **WHEN** I rename one Todo, complete another, delete a third, then reload, open another browser session, and restart the server
+- **THEN** all saved changes remain, including the deletion.
 
-#### Scenario: Delete without disturbing another Todo
-- **WHEN** the user deletes `Send invoice`
-- **THEN** it no longer appears in any status view or subsequent read
-- **AND** `Buy oat milk` remains.
+### Requirement: Recover from failures without losing input
 
-### Requirement: Filter by completion state
+The app MUST show pending work and offer recovery without a full-page reload:
+- Failed creation or renaming keeps the entered text and usable controls.
+- Failed completion, reopening, or deletion keeps or restores the last confirmed state.
+- Failed loading shows an error and retry, not a false empty list.
+- If the server may have saved a request but its reply was lost, explain the uncertainty and check the saved outcome before risking a duplicate creation.
+- Database failures never appear as successful saves.
 
-Users SHALL be able to choose All, Open, and Completed views. All SHALL be the initial view of a newly opened application. Filtering SHALL not mutate records. The selected filter and each record's completion state SHALL be perceptible without relying on color. Successful mutations SHALL update membership in the active view. Empty collections and empty filtered results SHALL be distinguishable from loading and failure. Ordering and persistence of the selected filter across reloads are not prescribed.
+Offline use and keeping drafts after closing the page are not required.
 
-#### Scenario: Filter a mixed list
-- **GIVEN** open `Buy milk` and completed `Send invoice`
-- **WHEN** the user selects All, Open, then Completed
-- **THEN** the views show both, only `Buy milk`, then only `Send invoice`, respectively.
+#### Scenario: Retry safely
+- **WHEN** a create or rename request fails before reaching the server
+- **THEN** I can retry after connectivity returns without retyping or creating duplicates.
+- **WHEN** a read or other change fails
+- **THEN** I see an error, not false success, and can retry.
+- **WHEN** creation succeeds but its reply is lost
+- **THEN** recovery finds the saved outcome without creating that Todo again.
 
-#### Scenario: Complete the last open Todo
-- **WHEN** the user completes the last Todo while viewing Open
-- **THEN** the view indicates no open todos, not a load failure
-- **AND** that Todo is available in Completed.
+### Requirement: Never silently overwrite another session's changes
 
-### Requirement: Durable PostgreSQL persistence
+A rename, completion, reopening, or deletion MUST be rejected if the Todo changed since the user last saw it. This applies even to changes to different fields, or a value changed away and back. Two competing writes based on the same observation cannot both succeed. API requests must include the documented proof of which version they saw; missing proof is rejected. The implementation chooses how that proof works.
 
-PostgreSQL SHALL be the authoritative persistent database. All acknowledged successful writes, identities, titles, completion states, and deletions SHALL survive browser reload, an independent browser session, and an application-server stop and restart against the same database. Reads after a confirmed write SHALL reflect that write unless a subsequent write superseded it. The application SHALL NOT require browser storage for persisted records or silently fall back to volatile storage when the database is unavailable.
+Explain the conflict, preserve any typed title, and let the user review the latest version before deliberately retrying or discarding their draft. Live updates are optional and must not erase unsaved input.
 
-#### Scenario: Reload and restart preserve the collection
-- **GIVEN** one renamed open Todo, one completed Todo, and one deleted Todo
-- **WHEN** the user reloads, opens an independent session, and later restarts the application server against the same database
-- **THEN** the surviving identities, titles, and states are unchanged and the deleted Todo stays absent.
+#### Scenario: Two people edit
+- **WHEN** A and B both see `Buy milk`, A saves `Buy oat milk`, and B tries to save `Buy bread`
+- **THEN** reject B's stale save, keep A's saved title and B's draft, and let B review the latest version before saving again.
+- **WHEN** B instead tries to complete, reopen, or delete the stale Todo
+- **THEN** reject that change too, leaving the saved Todo untouched.
 
-#### Scenario: Database unavailable
-- **WHEN** the database cannot accept a write
-- **THEN** the application does not confirm success or pretend the write was persisted
-- **AND** it communicates failure or uncertainty while preserving editable input.
+### Requirement: Handle Todos deleted elsewhere
 
-### Requirement: Recoverable request failures
+Acting on a Todo deleted in another session MUST explain that it no longer exists, update the list, and preserve any typed rename for recovery. Never recreate it or affect another Todo. Repeated deletion reports “absent/already deleted,” not a new successful deletion. The API must distinguish missing records from invalid input and conflicts with existing records.
 
-The UI SHALL indicate pending work and recover from transient read and write failures without a full page reload. A definitively failed create or rename SHALL retain the user's entered text. A definitively failed complete, reopen, or delete SHALL not leave the view falsely showing confirmed success. A read failure SHALL be distinguishable from an empty list and offer retry. If delivery is ambiguous, the UI SHALL not falsely report either confirmed success or confirmed non-commit; it SHALL offer reconciliation with server state before a blind repeat can duplicate a creation. Offline operation and draft survival across page closure are not required.
+#### Scenario: Deleted while editing
+- **WHEN** A deletes a Todo while B is editing it, and B tries to save or otherwise change it
+- **THEN** B sees that it is gone, can still recover the typed title, and does not resurrect the Todo.
 
-#### Scenario: Failed create or rename retains input
-- **WHEN** a create or rename request is prevented from reaching the server
-- **THEN** an error is shown, the entered title remains, and controls become usable
-- **AND WHEN** connectivity returns and the user retries
-- **THEN** the intended write succeeds without retyping and without duplicate records.
+### Requirement: Work with keyboards, screen readers, and small screens
 
-#### Scenario: Failed state change and failed read
-- **WHEN** a complete, reopen, or delete request is definitively rejected
-- **THEN** the UI retains or restores the confirmed state and offers retry
-- **AND WHEN** a list read fails
-- **THEN** an error, not an empty-list claim, is shown and retry can restore the view.
+All flows MUST meet applicable WCAG 2.2 AA requirements: labelled controls with accessible roles/states, errors associated with inputs, and screen-reader announcements for pending work, success, conflicts, and failures. Every action must work by keyboard, with visible focus, logical order, no traps, and sensible focus after an item/editor disappears. Do not rely only on color or hover.
 
-#### Scenario: Response lost after commit
-- **WHEN** creation commits but its success response is lost
-- **THEN** the UI does not claim the record certainly does not exist
-- **AND** its offered recovery can establish the saved outcome without creating a second record for that same submission.
+Keep content and controls usable from 320–1440 CSS pixels wide and at 200% text zoom, including long titles: no overlap, clipped actions, or page-wide horizontal scrolling.
 
-### Requirement: No silent overwrite from stale sessions
+#### Scenario: Accessible use
+- **WHEN** I perform the Todo lifecycle and filtering using only a keyboard
+- **THEN** every action works and focus stays visible and useful, including after deletion.
+- **WHEN** I use a screen reader and encounter invalid input or a stale edit
+- **THEN** I can identify the Todo, controls, selected filter, completion state, errors, and outcomes without hunting for focus; my input remains available.
+- **WHEN** I use 1280×800, 390×844, or 320-pixel-wide layouts, or enlarge text to 200%
+- **THEN** I can still use every action, even with a 200-code-point title.
 
-Every rename, complete, reopen, and delete SHALL be conditional on the Todo state last observed by the actor. If another committed mutation has changed that Todo since that observation, the stale mutation SHALL be rejected without modifying the current record, even when different fields were changed or a value was later changed back. A missing required concurrency precondition through HTTP SHALL be rejected rather than treated as permission to overwrite. The UI SHALL explain the conflict, preserve any typed rename, and allow the user to inspect the latest state and deliberately retry or discard their draft. The concurrency mechanism and wire representation are not prescribed. Automatic background updates are not required, and SHALL NOT erase unsaved input if supplied.
+### Requirement: Provide a discoverable JSON HTTP API
 
-#### Scenario: Two sessions rename one Todo
-- **GIVEN** independent sessions A and B both observed `Buy milk`
-- **WHEN** A saves `Buy oat milk` and B then tries to save `Buy bread` using its stale observation
-- **THEN** B receives a conflict, `Buy oat milk` remains stored, and B's `Buy bread` draft remains available
-- **AND WHEN** B reviews the latest state and deliberately reapplies its rename
-- **THEN** it can save against that fresh observation.
+All Todo operations MUST be usable with an ordinary HTTP client, without application source or a generated client. Publish an OpenAPI 3.1 JSON document over HTTP and identify its location in the run instructions. It must describe operations, inputs, record identity/title/state, concurrency proof, responses, and distinguishable machine-readable errors. Routes, methods, response layouts, and libraries remain implementation choices.
 
-#### Scenario: State changes and deletion also reject stale observations
-- **GIVEN** A and B observed the same open Todo
-- **WHEN** A renames it and B attempts to complete or delete it using its earlier observation
-- **THEN** B receives a conflict and neither the title, state, nor existence is changed by B.
+The server must enforce the title, filtering, and concurrency rules itself. Responses must match the published schemas and appropriate HTTP success/error codes. Reject malformed JSON, invalid types/titles/filters, and missing concurrency proof as documented client errors, without changing data or crashing. An unknown filter must not silently mean All.
 
-#### Scenario: Simultaneous writes and changed-back values
-- **WHEN** two differing mutations race against the same observed state
-- **THEN** at most one commits and the other reports conflict
-- **AND WHEN** a title changes from `A` to `B` and back to `A`
-- **THEN** a write based on the original observation of `A` is still stale and rejected.
+#### Scenario: Use the API without the UI
+- **WHEN** I fetch the API document
+- **THEN** I can use it to list, read, create, rename, complete, reopen, delete, and filter Todos, including handling conflicts and missing records.
+- **WHEN** I send invalid requests directly, bypassing browser checks
+- **THEN** they fail as documented, leave data unchanged, and valid requests still work.
 
-### Requirement: Records deleted elsewhere
+### Requirement: Migrate without destroying data
 
-An operation against a Todo deleted in another session SHALL not recreate it or affect a different Todo. The UI SHALL explain that it is no longer available, retain any typed rename in a recoverable form, and reconcile the list. Repeating a delete against an already deleted record SHALL report absence or already-deleted status, not a fresh successful deletion. The HTTP contract SHALL distinguish absence from validation and stale-existing-record conflicts.
+Provide documented, non-interactive migrations that MUST:
+- Initialize an empty PostgreSQL database and durably track applied changes.
+- Be safe to run again without changing existing Todos or duplicating them.
+- Report failures honestly; never mark unfinished work applied. After the cause is fixed, retry must complete without deleting existing data.
+- Handle simultaneous runs safely, or explicitly refuse one without corruption.
 
-#### Scenario: Another session deletes an edited record
-- **GIVEN** B has a rename draft for a Todo that A deletes
-- **WHEN** B attempts to save, complete, reopen, or delete that Todo
-- **THEN** B is informed that it no longer exists and the list no longer presents it as a saved record
-- **AND** B's rename draft, if present, remains recoverable without resurrecting the Todo.
+Startup/restart must not reset, overwrite with seed data, or drop existing data. Do not report ready when the required schema is unavailable. Document migration and production-run commands separately from any disposable development reset; reset is never needed for normal operation. Release-2 rollout and rollback are addressed at Gate 5.
 
-### Requirement: Accessible and responsive operation
-
-All release-1 flows SHALL meet applicable WCAG 2.2 AA requirements. Controls SHALL have meaningful accessible names and exposed roles/states; title inputs SHALL have programmatic labels; errors SHALL be associated with the relevant input; pending, success, conflict, and failure outcomes SHALL be available to screen readers without requiring a focus hunt. Every action SHALL work by keyboard with visible focus and logical focus order, no trap, and a sensible focus destination after a record or editor disappears. Status SHALL not depend on color alone. At widths from 320 to 1440 CSS pixels, and at 200% text zoom, content and controls SHALL remain readable and usable without overlap or page-wide horizontal scrolling. Long titles SHALL not hide essential actions. Hover-only actions are insufficient.
-
-#### Scenario: Keyboard-only lifecycle
-- **WHEN** a keyboard user creates, renames, completes, reopens, filters, and deletes a Todo
-- **THEN** all actions are reachable and operable, focus remains visible, and deleting the focused item leaves focus at a meaningful surviving control.
-
-#### Scenario: Screen-reader errors and states
-- **WHEN** a screen-reader user navigates the controls, submits an invalid title, corrects it, and later encounters a stale edit
-- **THEN** the input purpose, Todo identity, completion state, selected filter, validation error, success, and conflict are programmatically available and the entered text is preserved.
-
-#### Scenario: Desktop and mobile layouts
-- **WHEN** the application is used at 1280×800 and 390×844 CSS pixels, then at 320 CSS pixels wide and with 200% text zoom
-- **THEN** every release-1 action remains usable, including with a 200-code-point title, with no clipped controls, overlap, or page-wide horizontal scrolling.
-
-### Requirement: Discoverable and enforced JSON HTTP contract
-
-All Todo functionality SHALL be externally available through JSON HTTP without importing application code or requiring its generated client. Each candidate SHALL expose an OpenAPI 3.1 JSON document over HTTP and declare its discovery location in its externally supplied run information. That document SHALL describe how to list and read todos, create, rename, complete, reopen, delete, and filter by state; record identity; normalized titles and completion state; concurrency preconditions; and success, validation, conflict, missing-record, and failure outcomes. Paths, methods, envelopes, client technology, and concurrency token shapes are candidate choices described by that document, not prescribed here. Documented operations SHALL be callable with an ordinary HTTP client. Responses SHALL conform to the published contract and correct HTTP success/error classes; domain errors SHALL be distinguishable by documented machine-readable information. Server-side enforcement SHALL apply independently of UI validation. Malformed JSON, invalid types, invalid titles, invalid filters, and missing required concurrency inputs SHALL be rejected without data changes or unhandled server errors. An unsupported filter SHALL not silently mean All.
-
-#### Scenario: Discover without source inspection
-- **WHEN** an external consumer fetches the declared discovery document
-- **THEN** it can determine and execute every release-1 operation using that contract alone, including conflict-safe changes and status filtering
-- **AND** real success and domain-error responses match their documented schemas and status codes.
-
-#### Scenario: Bypass the browser validation
-- **WHEN** a direct HTTP client sends malformed JSON, a numeric or null title, an overlong title, an unsupported filter, or a mutation missing its required concurrency input
-- **THEN** the server rejects it with a documented client error and changes no records
-- **AND** valid normalized titles and concurrency-safe operations work independently of the browser.
-
-### Requirement: Production-relevant migration behavior
-
-Each candidate SHALL supply a documented, non-interactive migration operation that initializes an empty PostgreSQL database and tracks applied changes durably. Repeating it on an initialized database SHALL be safe and preserve all Todos. Starting or restarting the application SHALL NOT reset, reseed over, or drop existing data. Readiness SHALL not report the application usable when its required schema is unavailable. A failed migration SHALL report failure rather than readiness or successful application; retry after the cause is removed SHALL converge without manual data deletion, lost existing records, or falsely marking unfinished work applied. Concurrent migration invocations SHALL either safely serialize/converge or explicitly refuse one without corruption. Migration and production-run instructions SHALL distinguish data-preserving operations from any disposable development reset. Destructive reset SHALL never be a prerequisite for normal migration or startup. Release-2 additive migration, intermediate rollout, and application rollback requirements are deferred to Gate 5, not presumed proven here.
-
-#### Scenario: Initialize and rerun safely
-- **WHEN** migrations initialize an empty database, users create and modify Todos, and migrations are run again
-- **THEN** the database remains usable with the same records, identities, titles, and states and no duplication.
-
-#### Scenario: Failure and retry
-- **WHEN** a migration encounters a denied database operation or interruption before completion
-- **THEN** the command reports failure and does not claim unfinished work is applied
-- **AND WHEN** the cause is removed and migration is retried
-- **THEN** it completes safely without deleting existing data.
-
-#### Scenario: Competing migration invocations
-- **WHEN** two migration invocations target the same database concurrently
-- **THEN** they complete safely or one explicitly refuses to proceed, with no corrupt schema history or lost Todo data.
+#### Scenario: Initialize, repeat, and recover
+- **WHEN** I initialize the database, add Todos, and rerun migrations
+- **THEN** their identities, titles, states, and count remain unchanged.
+- **WHEN** permissions or an interruption prevent migration completion
+- **THEN** it reports failure; fixing the cause and retrying completes safely without losing data.
+- **WHEN** two migrations run together
+- **THEN** they safely complete or one clearly refuses, without corrupting data or migration history.

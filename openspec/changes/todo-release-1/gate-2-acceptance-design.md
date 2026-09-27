@@ -2,7 +2,7 @@
 
 ## Approval and delivery state
 
-The owner approved the Gate-1 product specification with “Yes” in the manager conversation on 2026-09-27: https://ampcode.com/threads/T-01a0e343-28c4-7766-a26d-d0ecb1f5dfd0 . The original Gate-1 draft remains unchanged as the approved text. This document proposes Gate 2; it is not approved. No acceptance code, application code, worker, database, or deployment has been created for this benchmark.
+The owner approved the Gate-1 product specification with “Yes” in the manager conversation on 2026-09-27: https://ampcode.com/threads/T-01a0e343-28c4-7766-a26d-d0ecb1f5dfd0 . At the owner's subsequent request, its wording was simplified without changing the approved behavior; benchmark rules now live in proposal.md rather than a user scenario. This document proposes Gate 2; it is not approved. No acceptance code, application code, worker, database, or deployment has been created for this benchmark.
 
 Approval of this document authorizes only Gate 3: implement and validate the external acceptance suite, present the evidence, then stop. Worker launch still requires explicit Gate-3 approval. The behavioral authority is specs/todo/spec.md. This design operationalizes it, without changing it.
 
