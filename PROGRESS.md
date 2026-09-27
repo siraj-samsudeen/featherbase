@@ -53,8 +53,8 @@ derived parent statuses and generated-document drift, and now runs in CI.
 
 **Verified:** `pnpm check:capabilities` (4 tests plus the real catalog check),
 `git diff --check`, and a link check resolving 453/453 local links across 48
-catalog documents. `pnpm check:specs` could not start because this documentation
-checkout has no installed dependencies (`openspec` was absent); no spec changed.
+catalog documents. After installing the pinned dependencies, `pnpm check:specs`
+passed all 45 accepted specifications and 18 active changes; no spec changed.
 The generated portal opened all catalog and proving-application navigation
 locally; DOM checks found 14 Training capability links and no source/test links
 or horizontal overflow, and inspected desktop and 390px captures were readable.
