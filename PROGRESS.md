@@ -18,20 +18,27 @@ maturity versus Featherbase's emerging agent-first direction. Each comparison
 states both sides' advantage and cost, and explicitly separates intended design
 from capability already delivered.
 
-`docs/APPLICATION_MODEL.md` now presents the agreed five page intents, ten core
-blocks, shared runtime services and full-code escape hatches as one concise
-capability-status page. Every grouped capability has a plain-language summary,
-an accessible labelled status, and links to its accepted specification or
-tracking issue—never directly to source or test files. The page also provides a
-prefilled route for requesting or prioritizing missing capabilities. The README
-links this status map from Orientation.
+`docs/APPLICATION_MODEL.md` is now generated from a navigable capability
+catalog: four parent pages, one detailed page for each of the 29 current
+capabilities, and first-class pages for four deferred design options. Structured
+frontmatter records status, parent, relationships, specifications, tickets and
+proving applications; readable bodies retain purpose, current scope, trade-offs
+and revisit conditions. Generated parent blocks and the root index prevent the
+same facts from drifting, while OpenSpec remains the behavior authority and
+GitHub issues remain the work record. No page links directly to source or test
+files. The README links the catalog from Orientation.
 
-**Verified:** `git diff --check`; a Node link check resolved every local link in
-`docs/APPLICATION_MODEL.md`; inspected the rendered desktop and phone status
-page. `pnpm check:specs` could not start because this documentation checkout has
-no installed dependencies (`openspec` was absent); no spec changed.
-Documentation only; no runtime behaviour changed. **Next:** continue the
-Training proving application's declarative UI-block design.
+`pnpm generate:capabilities` rebuilds the root and generated connection blocks.
+`pnpm check:capabilities` validates metadata, specifications, relationships,
+derived parent statuses and generated-document drift, and now runs in CI.
+
+**Verified:** `pnpm check:capabilities` (3 tests plus the real catalog check),
+`git diff --check`, and a link check resolving all 305 local links across the 38
+catalog documents. `pnpm check:specs` could not start because this documentation
+checkout has no installed dependencies (`openspec` was absent); no spec changed.
+Documentation tooling only; no runtime behaviour changed. **Next:** audit the
+Training/Featherbase design discussion against the catalog, then continue the
+Training proving application.
 
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
