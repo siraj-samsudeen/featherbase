@@ -1,5 +1,37 @@
 # Progress Log
 
+## 2026-09-27 — Table builder controls have usable accessible names (#294)
+
+The bounded first accessibility batch gives the Table Builder's table details,
+column grid, column cards, and shared row-naming controls stable names that
+identify their purpose and, where repeated, their column number. Existing
+labels are now associated with their controls. Appearance and behavior remain
+unchanged; a Session DSL browser regression exercises two asymmetric columns
+in both layouts and the row-naming controls entirely through semantic names.
+
+The focused browser test failed first on the unnamed Table name and row-naming
+controls, then passed after implementation. Feather review found missed visible
+Choice/Reference label associations. Follow-up review found those composed
+names and the row/card context were not asserted strongly enough. The controls
+now combine their visible labels with column context, native grid rows and card
+groups expose exact numbered names, and the browser test checks those computed
+role/name pairs without importing production naming helpers. Fresh 2× grid and
+card screenshots showed no visual regressions.
+
+**Verified:** `pnpm --filter web e2e e2e/table-builder-accessibility.spec.ts`
+(1 passed); `NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test`
+(176 passed); `pnpm --filter web typecheck`; `pnpm check:e2e-dsl` (8 guard
+tests, 79 files); `pnpm check:specs` (45 specs, 19 changes); and `git diff
+--check`. The complete `pnpm --filter web e2e` run passed 169 tests with 28
+expected skips. Its one Tasker failure reproduced because the ignored runtime
+bundle predated the merged source fix: after `npm run build --prefix
+runtime-apps/tasker`, a clean isolated `project_rename_conflict` rerun passed
+1/1. The complete suite has not been repeated since that rebuild; all Table
+Builder, import, validation, and naming coverage passed in the complete run.
+
+**Next:** independent parent review and rerun of the scoped accessibility PR;
+the OpenSpec change remains unarchived for parent-owned sync/archive.
+
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
 Project rename now snapshots the project at edit start, following task detail

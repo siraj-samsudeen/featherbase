@@ -450,8 +450,11 @@ export function TableBuilder() {
 
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
-          <label className="fc-label">Table name</label>
+          <label htmlFor="dt-table-name" className="fc-label">
+            Table name
+          </label>
           <input
+            id="dt-table-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             data-testid="dt-name"
@@ -460,8 +463,11 @@ export function TableBuilder() {
           />
         </div>
         <div>
-          <label className="fc-label">Module</label>
+          <label htmlFor="dt-table-module" className="fc-label">
+            Module
+          </label>
           <input
+            id="dt-table-module"
             value={module}
             onChange={(e) => setModule(e.target.value)}
             data-testid="dt-module"
@@ -548,9 +554,15 @@ export function TableBuilder() {
                   /* data-columnrow marks the editable column rows: specs address
                      these, so a decorative row (Row ID, and anything added later)
                      can never shift the indices they read. */
-                  <tr key={i} className="border-t border-[var(--color-border)] align-top" data-columnrow="">
+                  <tr
+                    key={i}
+                    aria-label={`Column ${i + 1}`}
+                    className="border-t border-[var(--color-border)] align-top"
+                    data-columnrow=""
+                  >
                     <td className="px-3 py-2">
                       <input
+                        aria-label={`Column ${i + 1} field label`}
                         value={c.label}
                         onChange={(e) => setColumnLabel(i, e.target.value)}
                         onBlur={() => markTouched(i)}
@@ -561,6 +573,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <input
+                        aria-label={`Column ${i + 1} database name`}
                         value={c.column_name}
                         onChange={(e) => setColumn(i, { column_name: e.target.value, name_touched: true })}
                         onBlur={() => markTouched(i)}
@@ -586,6 +599,7 @@ export function TableBuilder() {
                             <>
                               {' '}
                               <button
+                                aria-label={`Column ${i + 1} use “${msg.fix}”`}
                                 onClick={() => setColumn(i, { column_name: msg.fix, name_touched: true })}
                                 className="font-semibold underline"
                               >
@@ -598,6 +612,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <select
+                        aria-label={`Column ${i + 1} type`}
                         value={c.column_type}
                         onChange={(e) => setColumn(i, { column_type: e.target.value })}
                         data-rowfield="column_type"
@@ -612,6 +627,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2">
                       <input
+                        aria-label={`Column ${i + 1} details`}
                         value={c.target}
                         onChange={(e) => setColumn(i, { target: e.target.value })}
                         onBlur={() => markTouched(i)}
@@ -631,6 +647,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
                       <input
+                        aria-label={`Column ${i + 1} required`}
                         type="checkbox"
                         checked={c.reqd}
                         onChange={(e) => setColumn(i, { reqd: e.target.checked })}
@@ -640,6 +657,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
                       <input
+                        aria-label={`Column ${i + 1} show in list`}
                         type="checkbox"
                         checked={c.in_list_view}
                         onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
@@ -649,7 +667,7 @@ export function TableBuilder() {
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
                       <button
-                        aria-label="Remove column"
+                        aria-label={`Remove column ${i + 1}`}
                         onClick={() => removeColumn(i)}
                         className="rounded px-1.5 text-sm text-[var(--color-ink-faint)] transition hover:bg-[var(--color-subtle)] hover:text-[var(--color-danger)]"
                       >

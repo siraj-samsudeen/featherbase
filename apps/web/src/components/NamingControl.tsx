@@ -81,6 +81,7 @@ export function NamingControl({
     <>
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <select
+          aria-label="Row naming method"
           value={selected}
           onChange={(e) => {
             const v = e.target.value
@@ -110,6 +111,7 @@ export function NamingControl({
         {p.kind === 'series' && (
           <>
             <input
+              aria-label="Series prefix"
               value={p.prefix}
               onChange={(e) => set({ prefix: e.target.value })}
               data-testid={`${idPrefix}-naming-prefix`}
@@ -117,6 +119,7 @@ export function NamingControl({
               className="fc-input w-40"
             />
             <select
+              aria-label="Series digits"
               value={p.digits}
               onChange={(e) => set({ digits: Number(e.target.value) })}
               data-testid={`${idPrefix}-naming-digits`}
