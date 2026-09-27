@@ -591,6 +591,31 @@ async function groupCountImpl(
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
   const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
+  if (table === 'Version' && field === 'data') {
+    // A raw JSON group can differ only in fields this reader cannot see.
+    // Group once by parent + raw payload, sanitize with that parent's field
+    // tiers, then coalesce equal visible payloads before returning counts.
+    const rawGroups = await sql<
+      { ref_table: string; ref_name: string; data: unknown; value: number }[]
+    >`
+      select ref_table, ref_name, data, count(*)::int as value
+      from ${sql(tbl)} where ${where}
+      group by ref_table, ref_name, data`
+    const visibleCounts = new Map<string, number>()
+    for (const group of rawGroups) {
+      const visible = await sanitizeVersionDataForUser(
+        String(group.ref_table),
+        String(group.ref_name),
+        group.data,
+        user,
+      )
+      const label = JSON.stringify(visible)
+      visibleCounts.set(label, (visibleCounts.get(label) ?? 0) + Number(group.value))
+    }
+    return [...visibleCounts.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+  }
   const rows = await sql`
     select ${sql(phys(field))}::text as label, count(*)::int as value
     from ${sql(tbl)} where ${where}

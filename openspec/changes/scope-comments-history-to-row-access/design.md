@@ -63,6 +63,11 @@ Alternative rejected: use `permittedTiers` unchanged for a share recipient with 
 
 Extract the Version-change sanitizer currently embedded in `documentActivity`. Its visible-field set comes from the parent after applying the field tiers above. Apply it to document activity, generic Version detail and every generic list/report result that selects Version data. Filtering, ordering or grouping by the JSON payload remains governed by Version's own column permission; the payload returned to the caller is still sanitized.
 
+For grouped Version data, sanitize each parent/payload group before returning
+labels, then coalesce raw groups that become identical after hidden changes are
+removed. This preserves counts without exposing restricted values through a
+group label or through the number of visible groups.
+
 Alternative rejected: hide the entire Version whenever one changed field is restricted. That also hides allowed changes from the same edit and disagrees with current document-activity behavior.
 
 ### 6. Use document activity in row UI; retain Tasker's scoped bulk query

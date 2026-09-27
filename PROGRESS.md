@@ -28,6 +28,15 @@ rerun. Existing jsdom `window.scrollTo` warnings are unchanged. Feather review
 also caught and removed a realtime→document import cycle before the green full
 server run.
 
+Independent review then found that grouping Version rows by their raw `data`
+JSON still returned restricted field changes. Grouping now sanitizes each raw
+parent/payload group before coalescing equal visible payloads, preserving the
+visible changes and total count without letting hidden values split groups.
+The real-Postgres regression first reproduced the secret value, then passed
+with two distinct restricted-only payloads collapsed into one count of two;
+the focused activity/dashboard/realtime batch passed 19 tests and server
+typecheck, strict change validation, and whitespace checks passed again.
+
 **Next:** independent review of PR #356; do not merge until accepted.
 
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)

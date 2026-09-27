@@ -14,7 +14,7 @@
 - [x] 2.1 Make direct read/write shares grant baseline/basic fields plus only role-granted deeper tiers, without reapplying row-level role/owner/Data Scope checks; run the share field regressions and existing `apps/server/test/docshare.test.ts` and source-security tests.
 - [x] 2.2 Implement the shared polymorphic activity-target scope for local, Settings and source-bound parents, including owner, Data Scope and activity-only direct-share widening; run the regressions from 1.3-1.5 until list/count/group/aggregate pagination and totals pass.
 - [x] 2.3 Apply the same target authorization to generic Comment/Version detail reads without weakening their Table grant; run the focused direct-detail and direct-share regressions.
-- [x] 2.4 Extract one Version-change sanitizer and apply it to document activity plus generic list/detail results, deriving visible fields from the tier-filtered parent even when shared; run the focused restricted-field regressions and `apps/server/test/permlevel.test.ts`.
+- [x] 2.4 Extract one Version-change sanitizer and apply it to document activity plus generic list/detail/group results, deriving visible fields from the tier-filtered parent even when shared and coalescing raw groups that sanitize identically; run the focused restricted-field regressions and `apps/server/test/permlevel.test.ts`.
 - [x] 2.5 Preserve #349's exported `scopedWhere` and prove Comment/Version inherit the new scope. Verify searches for the exact IDs of readable and forbidden activity return only the readable hit without changing #349's general scope.
 
 ## 3. Cover indirect reads and realtime

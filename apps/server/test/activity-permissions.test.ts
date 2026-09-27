@@ -370,6 +370,30 @@ describe('#342: shared and tier-filtered history', () => {
     expect(JSON.stringify(detail)).not.toContain('visible-new-secret')
   })
 
+  test('grouped Version data is sanitized before distinct groups are counted', async ({
+    admin,
+    createUser,
+  }) => {
+    const world = await setupOwnerScope(admin, createUser)
+    await editParent(admin, world.visible, { private_note: 'visible-third-secret' })
+    await editParent(admin, world.visible, { private_note: 'visible-fourth-secret' })
+
+    const chart = await world.user.post<{ data: { label: string; value: number }[] }>(
+      '/api/dashboard/chart',
+      { table: 'Version', group_by: 'data' },
+    )
+    expect(JSON.stringify(chart)).not.toContain('private_note')
+    expect(JSON.stringify(chart)).not.toContain('visible-new-secret')
+    expect(JSON.stringify(chart)).not.toContain('visible-third-secret')
+    expect(JSON.stringify(chart)).not.toContain('visible-fourth-secret')
+    expect(chart.data.map((group) => group.value).reduce((sum, value) => sum + value, 0)).toBe(3)
+    expect(chart.data).toContainEqual({ label: JSON.stringify({ changed: [] }), value: 2 })
+    expect(chart.data).toContainEqual({
+      label: JSON.stringify({ changed: [['subject', 'Visible', 'Visible edited']] }),
+      value: 1,
+    })
+  })
+
   test('Settings activity requires access to the single parent row', async ({
     admin,
     createUser,
