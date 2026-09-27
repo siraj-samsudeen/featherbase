@@ -1,10 +1,36 @@
 # Featherbase
 
-A free and open-source, metadata-driven app platform in TypeScript — built by replicating [Frappe Framework](https://frappe.io/framework)'s core ideas on React + Hono + Postgres, with an AI-agent-first authoring loop and tests that run against a real database. That replication phase is complete; the project is now deliberately diverging from Frappe's design — including its vocabulary and wire format — where it doesn't serve this platform's own users.
+A free and open-source, agent-first, self-hostable application framework and runtime in TypeScript — built by replicating [Frappe Framework](https://frappe.io/framework)'s core ideas on React + Hono + Postgres, with tests that run against a real database. That replication phase is complete; the project is now deliberately diverging from Frappe's design — including its vocabulary and wire format — where it doesn't serve this platform's own users.
 
 Define a Table once and get storage, a REST/RPC API, and a working UI from the same definition — the idea that makes Frappe productive, on a stack you can host anywhere.
 
 **Status:** active development. The Table engine, the API surface, auth, and the metadata-driven Admin UI are working, exercised by a large server suite run against a real Postgres, plus component and Playwright e2e suites. See [PROGRESS.md](PROGRESS.md) for the current state and [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going.
+
+## What Featherbase is
+
+Featherbase is designed around three principles: deployable application ownership, agent-first declarative development with code escape hatches, and framework capabilities extracted from proven repetition.
+
+### Deployable application ownership
+
+A customer can clone Featherbase, develop one or more applications inside that repository, and deploy the complete system on infrastructure they control. The same application package can instead live in a separate repository and be installed into Featherbase.
+
+Applications are portable units. An application may begin inside a shared Featherbase deployment and later move to its own deployment as usage, operational requirements, or ownership changes. Its package must declare the code, data structures, owned data, files, configuration, permissions, dependencies, and migrations needed to move it. An external application can likewise be brought into the main repository without changing its application model.
+
+Featherbase may be offered as a managed service, but the managed service runs the same self-hostable product. The initial deployment model is one customer per Featherbase installation, not unrelated customers sharing one application database.
+
+### Agent-first development
+
+Featherbase is designed primarily for applications built by coding agents. Repetitive application work—data models, permissions, workflows, forms, pages, audit, files, actions, installation, and upgrades—should be expressed through durable, validated declarations. Domain-specific behaviour remains ordinary TypeScript, React, SQL, or another documented extension.
+
+Declarations remain the source of truth; they are not one-time code generation. Custom code connects through explicit extension points rather than replacing the framework's common behaviour.
+
+### Extract capabilities from proven repetition
+
+When multiple applications repeat the same custom implementation, agents should be able to identify that repetition and propose a reusable Featherbase capability. Capabilities enter the framework after being proven by real applications, rather than through speculative generalisation.
+
+Featherbase guarantees upgrade compatibility at its documented declarative and code extension points. Direct core modifications remain possible in a self-hosted system, but they are owned by that deployment and do not carry the same compatibility guarantee.
+
+Featherbase is not a shared multi-tenant SaaS product, a human-oriented no-code builder, or a one-time application generator. It is a self-hostable framework that gives coding agents reusable application primitives without limiting their ability to write normal code.
 
 ## How it works
 

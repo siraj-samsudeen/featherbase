@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-09-27 — README defines Featherbase's application-platform model
+
+The README now defines Featherbase as an agent-first, self-hostable application
+framework and runtime. Its three governing principles are deployable application
+ownership, durable declarative development with ordinary-code extension points,
+and extracting reusable framework capabilities only after real applications
+prove the repetition. The definition also fixes the initial deployment boundary
+at one customer per installation, requires app packages to own what portability
+needs, and limits upgrade guarantees to documented extension points.
+
+**Verified:** `git diff --check`; reviewed the rendered Markdown structure and
+links. Documentation only; no runtime behaviour changed. **Next:** continue the
+Training proving application's declarative UI-block design.
+
 ## 2026-09-26 — Tasker project rename protects newer changes (#315)
 
 Project rename now snapshots the project at edit start, following task detail
