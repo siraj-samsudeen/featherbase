@@ -1,5 +1,5 @@
 {
-  "name": "todo-stack-benchmark",
+  "name": "project-management-requirements",
   "private": true,
   "scripts": {
     "spec:check": "openspec validate --changes --strict --no-interactive"
