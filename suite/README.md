@@ -2,6 +2,8 @@
 
 No candidate or reference Todo app is included. `selftest/` contains **harness-only counter, transport and semantic fault controls**; do not distribute it to candidate workers. Tests import no candidate code. Gate 1/2 approvals supersede older artifact labels; the manager owns integration and candidate launch.
 
+Shared corrections after the initial 85-case freeze (2026-09-28): outage requests now include the documented creation identity; reopening in Completed uses one click followed by an independent API assertion, rather than re-resolving a correctly removed checkbox. Two additional Chromium cases exercise the existing input-preservation promise: a newer draft must survive an uncertain creation, and the earlier save must remain recoverable without reloading. The total is now 87. Original results are retained separately; every candidate receives the same corrections. These are test corrections/coverage additions, not relaxed product requirements.
+
 ## Run
 
 Use Linux, Node 22+, PostgreSQL 15 binaries, and the lockfile-pinned browsers. Run as a non-root user (`initdb` refuses root):

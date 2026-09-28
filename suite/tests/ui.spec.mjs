@@ -24,7 +24,12 @@ test('Create/edit/filter lifecycle and independent-session persistence @core', a
   await filter(page, 'Completed');
   await expect(item(page, 'Buy oat milk')).toBeVisible();
   await expect(item(page, 'Untouched')).toHaveCount(0);
-  await item(page, 'Buy oat milk').getByRole('checkbox', { name: 'Completed', exact: true }).uncheck();
+  const completed = item(page, 'Buy oat milk').getByRole('checkbox', { name: 'Completed', exact: true });
+  await expect(completed).toBeChecked();
+  // The record correctly disappears from this filter after reopening. Do not ask
+  // uncheck() to re-resolve that now-absent control for its post-click assertion.
+  await completed.click();
+  await expect.poll(async () => (await app.api.read(original.id)).completed).toBe(false);
   await expect(list(page)).toContainText('No completed todos');
   await filter(page, 'All');
   await page.reload();
@@ -143,6 +148,52 @@ for (const mode of ['abort', 'lost-response']) {
     } finally { await fault.close(); }
   });
 }
+
+test('Uncertain creation cannot discard a newly entered title', async ({ app, page, context }, info) => {
+  await page.goto(app.baseURL);
+  const fault = await inject(context, r => app.api.matches('create', r), 'lost-response');
+  try {
+    await add(page, 'First intended todo');
+    await fault.observed;
+    const check = page.getByRole('button', { name: 'Check status', exact: true });
+    await expect(check).toBeVisible();
+    const input = page.getByRole('textbox', { name: 'New todo', exact: true });
+    const submit = page.getByRole('button', { name: 'Add todo', exact: true });
+    const acceptsNewDraft = await input.isEditable();
+    if (acceptsNewDraft) {
+      await input.fill('Second entered todo');
+      if (await submit.isEnabled()) await submit.click();
+      else await check.click();
+      // A new draft may stay editable or be deliberately saved as a distinct
+      // Todo, but must not be erased by recovery of the previous submission.
+      await expect.poll(async () => {
+        const records = await app.api.list();
+        return (await input.inputValue()) === 'Second entered todo'
+          || records.some(record => record.title === 'Second entered todo');
+      }).toBe(true);
+      await expect(page.getByRole('status')).not.toContainText(/saving|checking/i);
+      const records = await app.api.list();
+      expect((await input.inputValue()) === 'Second entered todo'
+        || records.some(record => record.title === 'Second entered todo')).toBe(true);
+    } else {
+      await expect(input).toHaveValue('First intended todo');
+      await check.click();
+      await expect(input).toBeEditable();
+      await expect(item(page, 'First intended todo')).toHaveCount(1);
+    }
+    // Accepting another draft must not lose the earlier request's recovery
+    // identity or leave Check status inert. Resolve it without a page reload.
+    if (await check.isVisible()) await check.click();
+    await expect(item(page, 'First intended todo')).toHaveCount(1);
+    if (acceptsNewDraft) {
+      const records = await app.api.list();
+      expect((await input.inputValue()) === 'Second entered todo'
+        || records.some(record => record.title === 'Second entered todo')).toBe(true);
+    }
+    expect((await app.api.list()).filter(record => record.title === 'First intended todo')).toHaveLength(1);
+    await info.attach('injection', { body: JSON.stringify(fault.verify()), contentType: 'application/json' });
+  } finally { await fault.close(); }
+});
 
 test('Failed read is not an empty state and retries without reload', async ({ app, page, context, database }, info) => {
   await app.api.create('Still saved');

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { test, expect } from '../fixtures.mjs';
 import { candidate } from '../lib/candidate.mjs';
 import { sql } from '../lib/postgres.mjs';
@@ -101,7 +102,9 @@ test('Database outage is not success; reconnect without reset', async ({ app, da
   try {
     await notReady(new URL(app.config.readiness, app.baseURL));
     for (const name of ['create', 'rename', 'complete', 'delete']) {
-      const request = app.api.request(name, { ...record, title: 'Must not save', completed: true });
+      const args = { ...record, key: randomUUID(), title: 'Must not save', completed: true };
+      app.api.validateRequest(name, args);
+      const request = app.api.request(name, args);
       const response = await fetch(request.url, { ...request, signal: AbortSignal.timeout(10_000) });
       expect(response.status).toBeGreaterThanOrEqual(500);
     }
