@@ -7,7 +7,7 @@ Compare six substrates for an agent-oriented declarative CRUD framework using th
 ## What Changes
 
 - Propose a persisted, unauthenticated Todo application with PostgreSQL, discoverable JSON HTTP functionality, accessible responsive interaction, and explicit failure and concurrency outcomes.
-- Gate 1 is approved. The owner subsequently requested simpler wording without changing behavior. Gate 2 remains proposed; no implementation or worker launch is authorized yet.
+- Gates 1 and 2 are approved. The owner requested simpler wording without changing behavior and authorized candidate launch after suite validation and opening the contract PR, without another review wait.
 - Evaluate React/Vite + Elysia/Bun, React/Vite + Fastify/Node, React/Vite + Hono, React/Vite + Axum, Leptos + Axum, and React/Vite + Encore.ts against identical approved behavior in later gates.
 
 Every candidate must install and use OpenSpec and follow the same approved requirements. Stack-specific plans cannot weaken them. Behavior changes need manager review and owner approval. These are benchmark rules, not user scenarios.
@@ -24,6 +24,6 @@ None. This branch starts without Featherbase code or inherited product requireme
 
 ## Impact
 
-Only OpenSpec tooling and planning documents exist here. Candidate routes, response envelopes, project structure, state and schema libraries, data access, client generation, components, rendering strategy, and internal layers remain unconstrained. No authentication, Projects, reusable CRUD framework, resource DSL, generic repository, plugin system, deployment, or speculative abstraction belongs in release 1.
+This branch holds OpenSpec planning and the external acceptance suite, not candidate application code. Candidate routes, response envelopes, project structure, state and schema libraries, data access, client generation, components, rendering strategy, and internal layers remain unconstrained. No authentication, Projects, reusable CRUD framework, resource DSL, generic repository, plugin system, deployment, or speculative abstraction belongs in release 1.
 
-Gate 2 will propose scoring, acceptance design, semantic UI selectors, isolated databases, lifecycle controls, and measurements. Gate 3 implements and validates the external suite. Only explicit Gate-3 approval permits six independent workers at Gate 4. Gates 5–7 cover incremental Projects, extraction proposals, and approved finalist extraction respectively, each with its own approval stop. OpenSpec artifact completion never substitutes for those approvals.
+Gate 3 validates the external suite and opens its PR, then six Medium-mode workers may start. Stop for owner review of the independently tested Gate-4 comparison. Gates 5–7 cover incremental Projects, extraction proposals, and approved finalist extraction respectively, each with its own approval stop. OpenSpec artifact completion never substitutes for those approvals.

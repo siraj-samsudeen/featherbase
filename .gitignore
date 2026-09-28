@@ -1,1 +1,5 @@
 node_modules/
+suite-results/
+.amp/
+benchmark-input.tar.gz
+gate3-delivery.tar.gz

@@ -1,5 +1,7 @@
 # Design boundary — Gate 1 only
 
+This records the original Gate-1 boundary. Gates 1 and 2 are now approved; the owner subsequently authorized worker launch after suite validation and opening the contract PR, without a Gate-3 review wait. See tasks.md for current state.
+
 ## Context
 
 This is an empty-history benchmark branch with only OpenSpec tooling and planning artifacts. See proposal.md for scope and specs/todo/spec.md for the proposed behavior. No candidate application exists.

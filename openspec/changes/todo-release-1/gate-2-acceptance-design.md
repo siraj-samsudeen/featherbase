@@ -1,6 +1,6 @@
 # Gate 2 — How we will compare the six apps
 
-**Status:** Gate 1 approved; Gate 2 awaiting approval. Approval here allows building the shared tests, not starting workers. No application, suite, or deployment exists yet.
+**Status:** Gates 1 and 2 approved. The shared suite is implemented and independently self-tested. The owner authorized six Medium-mode workers after the contract PR opens, without another review wait. Candidate results still require Gate-4 review; no deployment is authorized.
 
 ## Scoring
 
