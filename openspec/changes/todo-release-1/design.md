@@ -16,7 +16,7 @@ This is an empty-history benchmark branch with only OpenSpec tooling and plannin
 
 The product spec deliberately leaves routes, envelopes, libraries, rendering strategy, and internal organization open. OpenAPI is proposed only as the external machine-readable contract. Rejecting stale writes is proposed rather than automatic merging so concurrent changes cannot silently discard a user's intent. Unicode code points define title length consistently across language runtimes.
 
-The owner must approve Gate 1 before the manager proposes Gate 2's rubric and acceptance design. That design requires its own approval before Gate 3 suite implementation. Gate 3 approval is required before any candidate worker starts. An OpenSpec status of complete means artifact presence, not approval or permission to implement.
+The original plan required approval between Gates 1, 2, and 3. Gates 1/2 were approved, and the owner subsequently waived the Gate-3 review wait after suite validation and opening the contract PR. Gate-4 owner review remains required before R2. An OpenSpec status of complete means artifact presence, not approval or permission to implement.
 
 ## Risks / Trade-offs
 

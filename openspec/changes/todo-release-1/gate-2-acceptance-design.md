@@ -74,7 +74,7 @@ Use the same agent/model and equivalent environments. Pin supported toolchains b
 - The suite stays outside candidate implementations and imports none of their code. Manager-owned HTTP mappings use published OpenAPI, leaving routes and response layouts free; they cannot supply missing app behavior.
 - Inject failures through Playwright where possible, otherwise an external proxy. Verify injection actually happened. Use two independent browser contexts for conflicts.
 - Assert exact saved outcomes and unchanged unrelated data—not just visible success messages. Do not hide failures with automatic retries.
-- Validate the suite against deliberately broken test fixtures before workers start. Present coverage, structure, evidence, and limitations at Gate 3, then stop for approval.
+- Validate the suite against deliberately broken test fixtures before workers start. Present coverage, structure, evidence, and limitations at Gate 3; the owner subsequently waived that review wait after validation and opening the contract PR. Gate-4 owner review remains required.
 - Keep redacted failure traces/screenshots and only three successful representative captures: desktop list, mobile long title, and conflict with retained draft. Inspect them; no pixel-perfect comparisons.
 
 Detailed test mechanics belong in the Gate-3 suite, not another prose specification. Freeze the suite before workers start; disclose later corrections and rerun affected candidates consistently. No deployment is authorized.

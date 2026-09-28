@@ -6,9 +6,18 @@ Shared corrections after the initial 85-case freeze (2026-09-28): outage request
 
 Further disclosed coverage brings the final total to **93**: Chromium desktop/mobile exercise uncertain creation alongside an unrelated completion (successful response and committed-but-lost response), plus keyboard deletion while creation is uncertain. These check recovery ownership and connected, enabled focus after removal. Blocking unrelated actions until reconciliation is allowed; automatic reconciliation is allowed; an uncertain completion may retain confirmed state and Retry. Independent HTTP reads prove the committed outcomes without requiring one UI implementation. Original-source probes and failures are retained separately from repaired-source acceptance.
 
-## Run
+## Candidate onboarding
 
-Use Linux, Node 22+, PostgreSQL 15 binaries, and the lockfile-pinned browsers. Run as a non-root user (`initdb` refuses root):
+- Use only your assigned stack and contract revision. Read the approved [behavior](../openspec/changes/todo-release-1/specs/todo/spec.md) and [UI labels/rubric](../openspec/changes/todo-release-1/gate-2-acceptance-design.md); make a short stack-specific plan with the pinned OpenSpec tooling. Do not inspect another candidate or the manager-only `selftest/` fixtures. Do not edit the shared suite to fit your implementation.
+- Implement R1 only. Keep a retained R1 database and verified backup separate from disposable tests; never reset it. Deliver source, lockfiles, commands, public API documentation, original failures and corrected evidence, timings, and explicit gaps. No push, deployment, R2, or framework extraction without the relevant approval.
+- Routes, envelopes, error codes, version tokens, and data-access libraries remain choices. The manager maps the published HTTP contract, not application source. Do not bypass a framework's supported typed API/database facilities merely to reproduce the example mapping. Prefer its ordinary supported path; document any exception with the pinned version's documentation or a minimal reproduction. A mapping limitation is not evidence of a framework limitation.
+- Recovery belongs to the unresolved operation: an unrelated row action, whether successful or failed, must not erase a creation's identity, draft, or usable reconciliation action. Either block that action or preserve/reconcile both outcomes. A newer draft must not be discarded by recovery of an older submission. These are observable outcomes, not prescribed state variables or component architecture.
+- After removing an item/editor, restore focus to a connected, enabled control. If creation is locked during uncertainty, use an enabled recovery control or another sensible target rather than the disabled create input. Known create failure still offers Retry; checking an absent uncertain creation must not strand its retained draft.
+- Never weaken required request identities or delay correct filter membership to accommodate faulty test mechanics. Report suspected harness defects with a direct reproduction; the manager corrects and discloses them equally, preserving the original RED evidence.
+
+## Run (manager)
+
+Use Linux, Node 22+ for the harness, PostgreSQL 15 binaries, and the lockfile-pinned browsers. Run as a non-root user (`initdb` refuses root):
 
 ```sh
 npm ci
@@ -19,11 +28,15 @@ npm run suite:list
 CANDIDATE_CONFIG=/absolute/path/manager-candidate.json npm run suite:test
 ```
 
+Before comparing candidates, provision equivalent host prerequisites: PostgreSQL server/client, all three pinned browser engines **and their system libraries**, and each assigned stack's supported toolchain. The six-stack R1 run uses PostgreSQL 15.19, Node 24.21.0/npm 11.19.0, Bun 1.3.10, Rust 1.90.0 (rustfmt, Clippy, `wasm32-unknown-unknown` where needed), cargo-leptos 0.3.2, and Encore 1.58.6 plus a working Docker daemon for its production export. Record actual versions, build parallelism, cache state, and orb size. Missing browsers or host tools are environment failures, not app failures. Run builds/tests serially; do not compare cold toolchain installation with warm iteration or treat timeouts as speed-based elimination.
+
 `PG_BIN` can select another PostgreSQL binary directory; use the **same version for all six**. Every run initializes its own loopback SCRAM-authenticated cluster; every test gets a private database and non-superuser role. There is no external database URL/reset option: retained R1 databases cannot accidentally be reset by this suite. The manager separately retains and backs up R1 data for R2. Disposable backup/restore is tested here.
 
 Copy `manager.example.json` outside candidate code and fill it from published OpenAPI and run instructions. Its routes are examples, not requirements. Commands are argv arrays, executed serially for install/build/check/test, with `DATABASE_URL`, `PORT`, `BASE_URL`. `NODE_ENV` is production except install (development, so build tooling is installed) and tests (test). Use foreground production commands; the harness owns their process groups and teardown. These short-lived test processes are not development services. Commands must not access retained/shared databases or externally deploy. `migrationHistoryQuery` is a manager-reviewed, stably ordered SELECT of applied migration records.
 
 For daemon-owned applications such as Docker containers, supply `commands.forceStop` to terminate the application instance identified by the injected `PORT`; killing a launcher alone does not kill its container. The hook runs before forced process-group cleanup. Every shutdown now verifies TCP connection refusal before allowing restart—a 503 or a hung HTTP response is not shutdown. This additional shared correction was prompted by an observed surviving Docker container; earlier container restart results are not accepted as evidence. A manager-only negative control proves that an exited launcher with a surviving listener is rejected.
+
+The same production build must accept fresh `DATABASE_URL`/`PORT` configuration on each launch without rebuild or reseeding. Readiness must fail when the database/schema cannot serve requests. Graceful shutdown must stop the actual listener, not just its launcher. An external force-stop hook must target only its own instance and complete resource/name cleanup before returning so an immediate same-port restart succeeds; a closed port alone does not prove a daemon has released its container name. Never stop unrelated services or retained databases. Framework-native self-hosted configuration may be generated from the injected environment per launch; it need not use one particular connection API.
 
 ## Mapping, not missing behavior
 
