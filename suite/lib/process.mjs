@@ -54,6 +54,23 @@ export async function command(argv, options) {
   return result;
 }
 
+export async function waitStopped(url, timeout = 10_000) {
+  const target = new URL(url);
+  const started = performance.now();
+  while (performance.now() - started < timeout) {
+    const refused = await new Promise((resolve, reject) => {
+      const socket = net.connect({ host: target.hostname, port: Number(target.port) });
+      socket.setTimeout(1000);
+      socket.once('connect', () => { socket.destroy(); resolve(false); });
+      socket.once('error', error => error.code === 'ECONNREFUSED' ? resolve(true) : reject(error));
+      socket.once('timeout', () => { socket.destroy(); reject(new Error('Shutdown connection probe timed out')); });
+    });
+    if (refused) return;
+    await sleep(100);
+  }
+  throw new Error('Application is still listening after its launcher exited');
+}
+
 export async function waitReady(url, processHandle, timeout = 60_000) {
   const started = performance.now();
   while (performance.now() - started < timeout) {

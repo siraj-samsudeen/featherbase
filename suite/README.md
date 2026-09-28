@@ -21,6 +21,8 @@ CANDIDATE_CONFIG=/absolute/path/manager-candidate.json npm run suite:test
 
 Copy `manager.example.json` outside candidate code and fill it from published OpenAPI and run instructions. Its routes are examples, not requirements. Commands are argv arrays, executed serially for install/build/check/test, with `DATABASE_URL`, `PORT`, `BASE_URL`. `NODE_ENV` is production except install (development, so build tooling is installed) and tests (test). Use foreground production commands; the harness owns their process groups and teardown. These short-lived test processes are not development services. Commands must not access retained/shared databases or externally deploy. `migrationHistoryQuery` is a manager-reviewed, stably ordered SELECT of applied migration records.
 
+For daemon-owned applications such as Docker containers, supply `commands.forceStop` to terminate the application instance identified by the injected `PORT`; killing a launcher alone does not kill its container. The hook runs before forced process-group cleanup. Every shutdown now verifies TCP connection refusal before allowing restart—a 503 or a hung HTTP response is not shutdown. This additional shared correction was prompted by an observed surviving Docker container; earlier container restart results are not accepted as evidence. A manager-only negative control proves that an exited launcher with a surviving listener is rejected.
+
 ## Mapping, not missing behavior
 
 - Exact `$title`, `$id`, `$proof`, `$completed`, `$filter`, `$key` strings substitute typed arguments; missing arguments are omitted. `$key` is available only if the published API requires a creation request identity. No handler, generated client or application source is loaded.

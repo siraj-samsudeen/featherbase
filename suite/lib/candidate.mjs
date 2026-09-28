@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { run, freePort, waitReady, waitReachableOrExited } from './process.mjs';
+import { run, freePort, waitReady, waitReachableOrExited, waitStopped } from './process.mjs';
 import { API } from './http.mjs';
 
 export async function configuration() {
@@ -54,8 +54,14 @@ export async function candidate(config, database, evidence = []) {
     },
     async stop(signal = 'SIGTERM') {
       if (!processHandle) return;
+      if (signal === 'SIGKILL' && config.commands.forceStop) {
+        const forced = await this.execute('forceStop');
+        assert.equal(forced.code, 0, forced.output);
+        assert.ok(!forced.timedOut, 'External force-stop timed out');
+      }
       const result = await processHandle.stop(signal, config.shutdownTimeout ?? 10_000);
       evidence.push({ command: signal, ...result });
+      await waitStopped(baseURL, config.shutdownTimeout ?? 10_000);
       processHandle = undefined;
       return result;
     },

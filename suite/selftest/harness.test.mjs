@@ -10,6 +10,7 @@ import { inject } from '../lib/faults.mjs';
 import { exactlyOneWinner, unchanged, notReady } from '../lib/assertions.mjs';
 import { draftRetained, conflict, layout, associatedError, accessible } from '../lib/ui.mjs';
 import { API } from '../lib/http.mjs';
+import { candidate } from '../lib/candidate.mjs';
 
 const evidenceDir = path.resolve('suite-results/selftest');
 const evidence = [];
@@ -237,6 +238,31 @@ test('Command failure, timeout and secret redaction remain diagnostic', async ()
   const timed = await run([process.execPath, '-e', 'setInterval(()=>{},1000)'], { timeout: 100 }).wait();
   assert.equal(timed.timedOut, true);
   await assert.rejects(command(['this-command-does-not-exist-suite']), /Command failed/);
+});
+
+test('Exited launcher cannot masquerade as server shutdown; external force-stop is verified', async () => {
+  const database = await postgres.database();
+  const commands = { start: [process.execPath, '-e', 'setInterval(()=>{},1000)'] };
+  const events = [];
+  const app = await candidate({ commands, http: {}, readiness: '/ready', shutdownTimeout: 300 }, database, events);
+  const server = http.createServer((request, response) => {
+    if (request.url === '/stop') { response.end('stopped'); server.close(); }
+    else { response.writeHead(503); response.end('not ready is not stopped'); }
+  });
+  try {
+    await new Promise(resolve => server.listen(Number(new URL(app.baseURL).port), '127.0.0.1', resolve));
+    await app.start(false);
+    await killed('launcher exits but daemon still listens', () => app.stop('SIGKILL'), /still listening/);
+    commands.forceStop = [process.execPath, '-e', "fetch(process.env.BASE_URL + '/stop').then(r => { if (!r.ok) process.exitCode = 1; })"];
+    await app.stop('SIGKILL');
+    assert.equal(events.find(event => event.command === 'forceStop')?.code, 0);
+    assert.equal(server.listening, false);
+  } finally {
+    server.closeAllConnections();
+    if (server.listening) await new Promise(resolve => server.close(resolve));
+    await app.stop();
+    await database.drop();
+  }
 });
 
 test('Declarative mappings preserve invalid types, encode identities and omit missing proof', () => {
