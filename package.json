@@ -1,19 +1,10 @@
 {
-  "name": "todo-stack-benchmark",
+  "name": "project-management-requirements",
   "private": true,
   "scripts": {
-    "spec:check": "openspec validate --changes --strict --no-interactive",
-    "suite:selftest": "node --test suite/selftest/*.test.mjs",
-    "suite:test": "playwright test --config suite/playwright.config.mjs",
-    "suite:list": "playwright test --config suite/playwright.config.mjs --list"
+    "spec:check": "openspec validate --changes --strict --no-interactive"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^16.0.3",
-    "@axe-core/playwright": "^4.13.0",
-    "@fission-ai/openspec": "1.13.2",
-    "@playwright/test": "^1.63.0",
-    "ajv": "^8.20.0",
-    "ajv-formats": "^3.0.1",
-    "pg": "^8.23.0"
+    "@fission-ai/openspec": "1.13.2"
   }
 }
