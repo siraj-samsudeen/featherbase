@@ -4,6 +4,8 @@ No candidate or reference Todo app is included. `selftest/` contains **harness-o
 
 Shared corrections after the initial 85-case freeze (2026-09-28): outage requests now include the documented creation identity; reopening in Completed uses one click followed by an independent API assertion, rather than re-resolving a correctly removed checkbox. Two additional Chromium cases exercise the existing input-preservation promise: a newer draft must survive an uncertain creation, and the earlier save must remain recoverable without reloading. The total is now 87. Original results are retained separately; every candidate receives the same corrections. These are test corrections/coverage additions, not relaxed product requirements.
 
+Further disclosed coverage brings the final total to **93**: Chromium desktop/mobile exercise uncertain creation alongside an unrelated completion (successful response and committed-but-lost response), plus keyboard deletion while creation is uncertain. These check recovery ownership and connected, enabled focus after removal. Blocking unrelated actions until reconciliation is allowed; automatic reconciliation is allowed; an uncertain completion may retain confirmed state and Retry. Independent HTTP reads prove the committed outcomes without requiring one UI implementation. Original-source probes and failures are retained separately from repaired-source acceptance.
+
 ## Run
 
 Use Linux, Node 22+, PostgreSQL 15 binaries, and the lockfile-pinned browsers. Run as a non-root user (`initdb` refuses root):

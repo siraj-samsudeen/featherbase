@@ -195,6 +195,80 @@ test('Uncertain creation cannot discard a newly entered title', async ({ app, pa
   } finally { await fault.close(); }
 });
 
+for (const outcome of ['success', 'lost-response']) {
+  test(`Uncertain creation survives another Todo's ${outcome}`, async ({ app, page, context }, info) => {
+    const existing = await app.api.create('Existing independent todo');
+    await page.goto(app.baseURL);
+    await expect(item(page, existing.title)).toBeVisible();
+    const fault = await inject(context, r => app.api.matches('create', r), 'lost-response');
+    let mutationFault;
+    try {
+      await add(page, 'First uncertain todo');
+      await fault.observed;
+      await info.attach('injection', { body: JSON.stringify(fault.verify()), contentType: 'application/json' });
+      expect((await app.api.list()).filter(record => record.title === 'First uncertain todo')).toHaveLength(1);
+      const check = page.getByRole('button', { name: 'Check status', exact: true });
+      await expect(check).toBeVisible();
+      const checkbox = item(page, existing.title).getByRole('checkbox', { name: 'Completed', exact: true });
+      const permitsOtherAction = await checkbox.isEnabled();
+      if (permitsOtherAction) {
+        if (outcome === 'lost-response') mutationFault = await inject(context, r => app.api.matches('complete', r), 'lost-response');
+        await checkbox.click();
+        if (mutationFault) {
+          await mutationFault.observed;
+          await info.attach('mutation-injection', { body: JSON.stringify(mutationFault.verify()), contentType: 'application/json' });
+        }
+        await expect.poll(async () => (await app.api.read(existing.id)).completed).toBe(true);
+        await expect(checkbox).toBeEnabled();
+      }
+      // Blocking unrelated actions, preserving Check status, or automatically
+      // reconciling the save are valid. Losing both the save and its recovery is not.
+      if (await check.isVisible()) await check.click();
+      await expect(item(page, 'First uncertain todo')).toHaveCount(1);
+      await expect(page.getByRole('textbox', { name: 'New todo', exact: true })).toBeEditable();
+      await add(page, 'Second independent todo');
+      await expect(item(page, 'Second independent todo')).toHaveCount(1);
+      const records = await app.api.list();
+      expect(records.map(record => record.title).sort()).toEqual(['Existing independent todo', 'First uncertain todo', 'Second independent todo']);
+      expect((await app.api.read(existing.id)).completed).toBe(permitsOtherAction);
+    } finally { if (mutationFault) await mutationFault.close(); await fault.close(); }
+  });
+}
+
+test('Keyboard deletion preserves focus while creation is uncertain', async ({ app, page, context }, info) => {
+  const existing = await app.api.create('Existing deletion target');
+  await page.goto(app.baseURL);
+  await expect(item(page, existing.title)).toBeVisible();
+  const fault = await inject(context, r => app.api.matches('create', r), 'lost-response');
+  try {
+    await add(page, 'First uncertain todo');
+    await fault.observed;
+    await info.attach('injection', { body: JSON.stringify(fault.verify()), contentType: 'application/json' });
+    const check = page.getByRole('button', { name: 'Check status', exact: true });
+    await expect(check).toBeVisible();
+    const remove = item(page, existing.title).getByRole('button', { name: 'Delete', exact: true });
+    // Blocking deletion until reconciliation is a valid alternative.
+    if (await remove.isDisabled()) await check.click();
+    await tabTo(page, remove);
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Delete todo', exact: true });
+    await expect.poll(async () => await dialog.isVisible() || await item(page, existing.title).count() === 0).toBe(true);
+    if (await dialog.isVisible()) {
+      await tabTo(page, dialog.getByRole('button', { name: 'Confirm delete', exact: true }));
+      await page.keyboard.press('Enter');
+    }
+    await expect(item(page, existing.title)).toHaveCount(0);
+    // Allow the normal post-render focus step; persistent body/disabled focus fails.
+    await expect.poll(() => page.evaluate(() => document.activeElement !== document.body
+      && document.activeElement?.isConnected && !document.activeElement.matches(':disabled')), { timeout: 1000 }).toBe(true);
+    if (await check.isVisible()) await check.click();
+    await expect(item(page, 'First uncertain todo')).toHaveCount(1);
+    await expect(page.getByRole('textbox', { name: 'New todo', exact: true })).toBeEditable();
+    expect((await app.api.list()).map(record => record.title)).toEqual(['First uncertain todo']);
+    app.api.error(await app.api.call('read', existing), 'missing');
+  } finally { await fault.close(); }
+});
+
 test('Failed read is not an empty state and retries without reload', async ({ app, page, context, database }, info) => {
   await app.api.create('Still saved');
   const serverRead = app.config.http.serverRenderedRead === true;
