@@ -84,8 +84,8 @@ deliberate seed use the same null-only policy.
 
 ## Public-route abuse limits
 
-Password login, Google OAuth initiation/callback, and public web-form POSTs
-use atomic Postgres counters shared by every server instance. Deploy all
+Password login (including delegated sign-in), Google OAuth initiation/callback,
+and public web-form POSTs use atomic Postgres counters shared by every server instance. Deploy all
 instances with the same configuration and database; no process-local fallback
 admits requests during a database failure. The existing authenticated fairness
 limiter is separate. Successful forms still consume admission budget.
@@ -93,8 +93,8 @@ limiter is separate. Successful forms still consume admission budget.
 | Variable | Default | Budget per source and window |
 | --- | --- | --- |
 | `PREAUTH_WINDOW_MS` | 900000 | fixed window beginning at first admission, in milliseconds |
-| `PREAUTH_LOGIN_MAX` | 60 | all password submissions, across usernames |
-| `PREAUTH_PASSWORD_MAX` | 5 | tighter password-provider + trimmed/lowercase username + source budget |
+| `PREAUTH_LOGIN_MAX` | 60 | all password and delegated sign-in submissions, across usernames |
+| `PREAUTH_PASSWORD_MAX` | 5 | tighter password-provider + trimmed/lowercase username + source budget; delegated sign-in IDs have their own bucket of the same size |
 | `PREAUTH_OAUTH_LOGIN_MAX` | 30 | initiation, independent of callback |
 | `PREAUTH_OAUTH_CALLBACK_MAX` | 30 | callback, checked before challenge clearing or code exchange |
 | `PREAUTH_FORM_MAX` | 30 | all public web-form POSTs |
@@ -304,6 +304,44 @@ These steps are instructions, not authorization to deploy or mutate Dev:
    Read the returned row back with the same pinned header, inspect its Markdown
    in the separately delivered Tasker UI, and verify an old tab rejects writes.
    Do not run the local development scenario seeder against Railway.
+
+## Delegated password sign-in (StyleHR)
+
+People with no Google account and no Featherbase password can sign in with
+the ID and password of another system the organisation trusts. Featherbase
+POSTs `{"email": <ID>, "password": <password>}` as JSON to the configured URL
+(10 s timeout, redirects not followed): 2xx verifies, 4xx (or a 2xx whose
+JSON body carries `error`/`errors`/`status: "error"`) rejects, and 3xx/5xx,
+a timeout or a network error reports the service as unavailable — never as a
+wrong password. The password is not stored or logged. The person is then
+signed in as the one enabled User whose linked-ID column matches the typed
+ID (case and surrounding spaces ignored); the provider's response is never
+used to pick the account.
+
+To turn it on for StyleHR, as a System Manager:
+
+1. **Add the ID column to User.** In the Admin, add a row to the *Custom
+   Field* table: Table `User`, column name `stylehr_username`, type Data,
+   label "StyleHR Username". Equivalent API call:
+   `POST /api/save_row {"table":"Custom Field","row":{"row_id":"User-stylehr_username","dt":"User","column_name":"stylehr_username","label":"StyleHR Username","column_type":"Data"}}`.
+2. **Link each person.** On each Team Leader's User, set *StyleHR Username*
+   to their StyleHR login ID — the system-generated `name_9999999999` form,
+   not the employee code. The User must be enabled and must not be a service
+   account. Two Users with the same ID are refused, never resolved.
+3. **Connect the service** in *System Settings*:
+
+   | Setting | Value |
+   | --- | --- |
+   | Delegated Login Label (`delegated_login_label`) | `StyleHR` |
+   | Delegated Login URL (`delegated_login_url`) | `https://stylehr.in/api/login/` — keep the trailing slash; StyleHR redirects without it, and a redirected POST loses its body |
+   | Delegated Login User Column (`delegated_login_user_column`) | `stylehr_username` |
+
+The login page then shows **Sign in with StyleHR**. Blank the URL to turn it
+off: the button disappears and `POST /api/login/delegated` answers 404. The
+URL must be `https://` (plain `http://` is accepted only for `localhost` /
+`127.0.0.1` stubs); anything else, or a blank column, also leaves it off. A
+column that is not a real User column answers 503 "not set up correctly"
+without contacting the provider.
 
 ## Automation credentials (#131)
 
