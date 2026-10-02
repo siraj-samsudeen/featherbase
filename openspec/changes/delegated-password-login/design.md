@@ -82,14 +82,20 @@ JSON `{email, password}` with `AbortSignal.timeout(10_000)` and
 
 | Provider answer | Result |
 | --- | --- |
-| 2xx, body not an error object | verified |
-| 2xx whose JSON body has `error`/`errors` or `status: "error"` | rejected |
-| 4xx | rejected → 401 `Invalid login credentials` (password login's text) |
-| 3xx, 5xx, thrown fetch, timeout | unavailable → 503 naming the label |
+| 2xx JSON object with a positive signal (`token`, `access`, `access_token`, `key`, `employee_id`, `employee_key`, `id`, or `success`/`ok`/`authenticated: true`, top level or under `data`/`user`/`employee`/`result`) | verified |
+| 2xx JSON saying no (`error`/`errors`, `success`/`ok`/`status`/`authenticated: false`, `status` error/fail/invalid) | rejected → 401 |
+| 2xx JSON showing the person has left (exit date, `is_active`/`active: false`, a resigned/terminated status) | left → 403 "no longer active" |
+| 2xx anything else: empty, non-JSON, array, unreadable body, unrecognised object | unavailable → 503 |
+| 4xx except 408/429 | rejected → 401 `Invalid login credentials` (password login's text) |
+| 3xx, 408, 429, 5xx, thrown fetch, timeout | unavailable → 503 naming the label |
 
-The 2xx-with-error-body guard comes from the warehouse report server's
-StyleHR integration, which observed that some endpoints answer 200 with an
-error body. It fails closed and does not depend on the success shape.
+**Fail closed (review of PR #363).** The first version verified every 2xx unless
+its body looked like an error, so an empty body, an HTML maintenance page or a
+body cut off mid-stream signed anyone in. Only a positive signal verifies now;
+an unrecognised success shape logs its key names (never values) so the first
+real StyleHR sign-in is diagnosable. The left-the-organisation rules are ported
+from the warehouse report server's `looks_resigned`, because StyleHR keeps
+authenticating leavers.
 
 Only key names of the body may ever be logged; the route logs nothing on the
 happy path and a single line with the label and outcome otherwise. The
@@ -97,17 +103,22 @@ password lives in the request body variable and the outbound request only.
 
 ### Binding
 
-`select … from "user" where lower(trim(<column>)) = lower(trim($usr)) and
-user_type <> 'service'`. Zero rows ⇒ 403 `No account is linked to this
-<label> ID` (only reachable after the provider verified the password, so it
-is no account-existence oracle to an unauthenticated caller). Two or more ⇒
-409 refusal. One disabled row ⇒ 401 `Invalid login credentials`, the same
-refusal password login gives a disabled account. One enabled row ⇒
-`issueSession`, which re-checks enabled/service and records the login.
+Resolved BEFORE the provider is asked: `select … from "user" where
+lower(trim(<column>)) = lower(trim($usr)) and user_type <> 'service'`. Zero
+rows, one disabled row, or one row holding the Administrator account or the
+System Manager role ⇒ 401 `Invalid login credentials` with no provider call.
+Two or more ⇒ 409 refusal. One eligible row ⇒ ask the provider, then
+`issueSession`.
 
-Alternative: filter `enabled` in the lookup. Rejected: a disabled person
-would then be told their account is not linked, which sends them to the
-wrong fix.
+Why before (review of PR #363): the first version asked the provider first and
+answered 403 "not linked" afterwards, so for any StyleHR ID with no account
+here a 403 meant "right password" and a 401 "wrong" — a password checker for
+the whole of StyleHR, running from Featherbase's address. The cost of the fix:
+an unprovisioned Team Leader is told "invalid credentials" rather than "not
+linked", and must ask their administrator. Privileged accounts are excluded
+because whoever administers StyleHR can reset a password there. The column
+must be a text column; `lower(trim())` on anything else would fail after
+verification.
 
 ### Errors
 

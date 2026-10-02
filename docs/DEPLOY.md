@@ -310,13 +310,16 @@ These steps are instructions, not authorization to deploy or mutate Dev:
 People with no Google account and no Featherbase password can sign in with
 the ID and password of another system the organisation trusts. Featherbase
 POSTs `{"email": <ID>, "password": <password>}` as JSON to the configured URL
-(10 s timeout, redirects not followed): 2xx verifies, 4xx (or a 2xx whose
-JSON body carries `error`/`errors`/`status: "error"`) rejects, and 3xx/5xx,
-a timeout or a network error reports the service as unavailable — never as a
-wrong password. The password is not stored or logged. The person is then
-signed in as the one enabled User whose linked-ID column matches the typed
-ID (case and surrounding spaces ignored); the provider's response is never
-used to pick the account.
+(10 s timeout, redirects not followed) — but only for an ID that is linked to
+exactly one enabled, non-privileged User (case and surrounding spaces
+ignored); any other ID is refused as a wrong password without contacting the
+service. Only a JSON answer with a clear yes (a token, an employee id, or
+`success: true`) signs in. A JSON no, or a 4xx, is a wrong password. An answer
+showing the person has left is refused. Anything else — empty, a web page,
+3xx, 408/429, 5xx, a timeout — reports the service as unavailable, never as a
+wrong password. The password is not stored or logged, and the provider's
+answer never picks the account. The Administrator and System Managers can
+never sign in this way.
 
 To turn it on for StyleHR, as a System Manager:
 

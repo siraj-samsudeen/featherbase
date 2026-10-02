@@ -22,14 +22,23 @@ follows when on:
 - An unsafe or missing column answers 503 before any outbound call.
 - The provider gets JSON `{email, password}` with a 10 s timeout and redirects
   not followed.
-- A 4xx, or a 2xx with an error body, is 401 with password login's exact
-  message.
+- Only a 2xx JSON object with a positive signal verifies (a token, an
+  employee id, `success: true`). A JSON no, or a 4xx other than 408/429, is
+  401 with password login's exact message. A body showing the person has left
+  is 403. Anything unexplained is 503.
 - A 3xx, 5xx, timeout or network error is a 503 `ServiceUnavailableError` that
   names the label. A wrong password is never blamed.
 - Binding matches the configured User column on lower/trim, excluding service
-  accounts. No match is 403 "No account is linked to this <label> ID". More
-  than one match is a 409 refusal. A disabled account gets 401, the same as
-  password login.
+  accounts, and runs BEFORE the provider is asked. No match, a disabled
+  account, or the Administrator / a System Manager gets password login's 401
+  and the password never leaves. More than one match is a 409 refusal.
+- **Review of #363 (fixed before merge):** the first cut verified any 2xx it
+  could not read as an error — an empty body, an HTML page or a body cut off
+  mid-stream signed anyone in. It also answered "not linked" only after
+  asking StyleHR, making the route a password checker for every unlinked
+  StyleHR ID. `delegated-login.test.ts` has 21 tests (+4: fail-closed shapes,
+  leavers, privileged accounts, busy provider, look-alike hosts, a non-text
+  column). Removing the positive-signal check fails the fail-closed test.
 - The session, `sid` cookie and `landing` come from the same helpers as
   password login.
 
@@ -61,9 +70,10 @@ overflow, and landing on `/featherbase/admin`. Screenshots were inspected.
 The server log held only `[delegated-login] StyleHR: rejected (http_401)`
 style lines.
 
-**Next:** the first real StyleHR sign-in. Check whether StyleHR ever
-answers 2xx for a wrong password with a body shape the error-body guard does
-not recognise. Then archive the change. Save-time validation of the URL in
+**Next:** the first real StyleHR sign-in. Read the `[delegated-login]` log
+line's key names: if StyleHR's success body carries none of the recognised
+keys, the sign-in is refused as "not responding" and the recognised set needs
+StyleHR's real key. Then archive the change. Save-time validation of the URL in
 the System Settings form is not built, because singles run no controller
 hooks. A bad URL simply leaves the feature off.
 

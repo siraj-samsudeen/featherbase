@@ -71,7 +71,7 @@ export function LoginPage() {
       navigate({ to: landingPath(user) })
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable
-      // service and an unlinked ID apart.
+      // service and a person who has left apart.
       setError(err instanceof ApiError ? err.message : 'Login failed')
     } finally {
       setBusy(false)

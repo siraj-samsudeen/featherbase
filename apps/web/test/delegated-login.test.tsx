@@ -62,8 +62,11 @@ test('a linked Team Leader signs in with their StyleHR ID and lands in the Admin
   expect(localStorage.getItem('fc_token')).toBeTruthy()
 })
 
-test('wrong password, an outage and an unlinked ID each read differently', async () => {
+test('wrong password, an outage and a person who has left each read differently', async ({ createUser }) => {
   await connectStyleHR()
+  // Linked: an unlinked ID is refused as a wrong password before StyleHR is ever asked.
+  const tl = await createUser({ email: 'tl.web2@example.com' })
+  await sql`update "user" set stylehr_username = 'tl_web_2' where row_id = ${tl.user!}`
   await renderApp('/featherbase/login', anonymous)
 
   providerAnswers(() => Response.json({}, { status: 401 }))
@@ -76,10 +79,10 @@ test('wrong password, an outage and an unlinked ID each read differently', async
     expect(screen.getByTestId('login-error')).toHaveTextContent('StyleHR is not responding right now'),
   )
 
-  providerAnswers(() => Response.json({ ok: true }))
+  providerAnswers(() => Response.json({ token: 'x', is_active: false }))
   await userEvent.click(screen.getByTestId('delegated-login-submit'))
   await waitFor(() =>
-    expect(screen.getByTestId('login-error')).toHaveTextContent('No account is linked to this StyleHR ID'),
+    expect(screen.getByTestId('login-error')).toHaveTextContent('StyleHR shows this account as no longer active'),
   )
   expect(localStorage.getItem('fc_token')).toBeNull()
 

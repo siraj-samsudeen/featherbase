@@ -27,16 +27,15 @@ or shows the password.
 
 A sign-in through a connected service SHALL only ever sign in the single
 account whose stored service ID matches the one typed, ignoring case and
-surrounding spaces. If the password is right but no account is linked, the
-user is told so; if more than one account is linked, the sign-in is refused
-rather than picking one.
+surrounding spaces. An ID with no linked account is refused exactly like a
+wrong password, and its password is never sent to the service; if more than
+one account is linked, the sign-in is refused rather than picking one.
 
 #### Scenario: No account linked yet
 
-- **WHEN** the service accepts the user's ID and password but no account is
-  linked to that ID
-- **THEN** the user is told that no account is linked to that ID, and is not
-  signed in
+- **WHEN** a user types an ID that no account is linked to
+- **THEN** they get the same refusal as a wrong password, and the service is
+  never asked whether their password is right
 
 #### Scenario: The same ID on two accounts
 
@@ -80,3 +79,35 @@ refused every way.
 - **WHEN** a disabled account's owner tries to sign in, by password, by
   Google or through a connected service
 - **THEN** they are refused
+
+### Requirement: Only a clear yes signs anyone in
+
+A connected service SHALL sign a user in only when its answer clearly says the
+password is right; an empty, unreadable or unfamiliar answer SHALL be treated
+as the service not answering, never as a sign-in.
+
+#### Scenario: The service answers with a page it does not normally send
+
+- **WHEN** the service answers a sign-in with an empty reply or a web page
+- **THEN** the user is told the service is not responding and is not signed in
+
+### Requirement: People who have left are refused
+
+A sign-in SHALL be refused when the service's answer shows the person has left
+the organisation, even if their password is right.
+
+#### Scenario: Former employee
+
+- **WHEN** someone who has left types their still-working HR password
+- **THEN** they are told the account is no longer active and are not signed in
+
+### Requirement: Administrators use their own password
+
+The Administrator and System Managers SHALL never be signed in through a
+connected service, so whoever runs that service cannot reach them by resetting
+a password there.
+
+#### Scenario: A System Manager has a linked ID
+
+- **WHEN** an ID linked to a System Manager is typed with its HR password
+- **THEN** the sign-in is refused like a wrong password

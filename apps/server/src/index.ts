@@ -16,7 +16,7 @@ import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { assertUserColumn, checkWithProvider, delegatedLoginConfig, linkedUser, unavailable } from './delegated-login'
+import { assertUserColumn, checkWithProvider, delegatedLoginConfig, left, linkedUser, unavailable } from './delegated-login'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -199,10 +199,12 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   // Before the provider call: never forward a password that cannot be bound.
   await assertUserColumn(cfg)
   const id = usr.trim()
+  const account = await linkedUser(cfg, id)
   const outcome = await checkWithProvider(cfg, id, pwd)
   if (outcome === 'unavailable') throw unavailable(cfg)
   if (outcome === 'rejected') throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  const issued = await issueSession(await linkedUser(cfg, id))
+  if (outcome === 'left') throw left(cfg)
+  const issued = await issueSession(account)
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)

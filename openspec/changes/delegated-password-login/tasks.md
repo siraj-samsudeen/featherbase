@@ -18,3 +18,9 @@
 
 - [x] 4.1 Document turning it on for StyleHR in `docs/DEPLOY.md` (settings values and the `stylehr_username` Custom Field on User) and add a dated `PROGRESS.md` entry.
 - [x] 4.2 Run `pnpm --filter server typecheck`, `pnpm --filter web typecheck`, the full server suite against an isolated database, `pnpm check:specs` and `git diff --check`.
+
+## 5. Review fixes (before merge)
+
+- [x] 5.1 Fail closed: verify only a 2xx JSON object with a positive signal; treat empty, non-JSON, unreadable or unrecognised answers as unavailable; map 408/429 to unavailable; refuse an answer showing the person has left (403).
+- [x] 5.2 Resolve the linked account before the provider call: unlinked, disabled, Administrator and System Manager accounts get password login's 401 and the password is never forwarded.
+- [x] 5.3 Require a text User column; refuse look-alike local hosts; tests for every case, with a mutation check on the positive-signal rule.

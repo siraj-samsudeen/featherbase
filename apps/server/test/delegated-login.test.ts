@@ -102,7 +102,7 @@ describe('delegated password sign-in', () => {
     await grantRole(admin, { role: VIEWER_ROLE, table: [] })
     const tl = await createUser({ email: 'tl.viewer@example.com', roles: [VIEWER_ROLE] })
     await link(tl.user!, 'viewer_1')
-    provider(() => new Response(null, { status: 204 }))
+    provider(() => Response.json({ token: 'opaque' }))
     const res = await signIn(api, 'viewer_1')
     expect(res.status).toBe(200)
     expect(((await res.json()) as { landing?: string }).landing).toBe('/featherbase/sales-target')
@@ -162,16 +162,97 @@ describe('delegated password sign-in', () => {
     }
   })
 
-  test('a verified person with no linked account is told so', async ({ api, admin }) => {
+  // Review of #363: answering "not linked" AFTER asking the provider made this
+  // route a password checker for every StyleHR ID with no account here (403 =
+  // right password, 401 = wrong). An unlinked ID now gets password login's
+  // refusal and the password never leaves.
+  test('an unlinked ID is refused like a wrong password, and its password is never forwarded', async ({ api, admin }) => {
     await configure()
     await addIdColumn(admin)
-    provider(() => Response.json({ ok: true }))
+    const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'nobody_linked')
-    expect(res.status).toBe(403)
-    expect(await res.json()).toEqual({
-      error: { type: 'PermissionError', message: 'No account is linked to this StyleHR ID' },
-    })
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid login credentials' } })
     expect(sidCookie(res)).toBeUndefined()
+    expect(calls).toHaveLength(0)
+  })
+
+  // Review of #363: a 2xx used to verify unless its body LOOKED like an error,
+  // so an empty body, an HTML page or an unreadable stream signed anyone in.
+  test('only a positive success signal verifies; anything unexplained is no sign-in', async ({ api, admin, createUser }) => {
+    await configure()
+    await addIdColumn(admin)
+    const cases: [string, () => Response, number][] = [
+      ['204 no body', () => new Response(null, { status: 204 }), 503],
+      ['200 empty', () => new Response('', { status: 200 }), 503],
+      ['200 html', () => new Response('<!doctype html><title>Login</title>', { status: 200, headers: { 'content-type': 'text/html' } }), 503],
+      ['200 unrecognised json', () => Response.json({ detail: 'Logged' }), 503],
+      ['200 array', () => Response.json([{ token: 'x' }]), 503],
+      ['200 success false', () => Response.json({ success: false, message: 'Invalid' }), 401],
+      ['200 status false', () => Response.json({ status: false, token: 'x' }), 401],
+      ['200 status failed', () => Response.json({ status: 'Failed' }), 401],
+      ['200 nested error', () => Response.json({ data: { error: 'bad password' } }), 401],
+      ['200 body breaks mid-stream', () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"token":')); c.error(new Error('reset')) } }), { status: 200 }), 503],
+    ]
+    // One linked person per case, so the per-ID attempt limit never decides the outcome.
+    for (const [i, [name, answer, status]] of cases.entries()) {
+      const tl = await createUser({ email: `tl.closed${i}@example.com` })
+      await link(tl.user!, `tl_closed_${i}`)
+      provider(answer)
+      const res = await signIn(api, `tl_closed_${i}`)
+      expect(res.status, name).toBe(status)
+      expect(sidCookie(res), name).toBeUndefined()
+    }
+    const tl = await createUser({ email: 'tl.yes@example.com' })
+    await link(tl.user!, 'tl_yes')
+    for (const yes of [{ token: 'x' }, { access: 'jwt', refresh: 'r' }, { data: { employee_id: 8788 } }, { success: true }]) {
+      provider(() => Response.json(yes))
+      expect((await signIn(api, 'tl_yes')).status, JSON.stringify(yes)).toBe(200)
+    }
+  })
+
+  test('a person the provider shows as having left is refused, even with the right password', async ({ api, admin, createUser }) => {
+    await configure()
+    await addIdColumn(admin)
+    const tl = await createUser({ email: 'tl.left@example.com' })
+    await link(tl.user!, 'tl_left')
+    for (const body of [
+      { token: 'x', is_active: false },
+      { token: 'x', data: { exit_date: '2026-09-01' } },
+      { token: 'x', employment_status: 'Resigned' },
+    ]) {
+      provider(() => Response.json(body))
+      const res = await signIn(api, 'tl_left')
+      expect(res.status, JSON.stringify(body)).toBe(403)
+      expect(((await res.json()) as { error: { message: string } }).error.message).toContain('no longer active')
+      expect(sidCookie(res)).toBeUndefined()
+    }
+  })
+
+  test('the Administrator and System Managers are never signed in this way', async ({ api, admin, createUser }) => {
+    await configure()
+    await addIdColumn(admin)
+    const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
+    await link(sm.user!, 'sm_1')
+    await link('Administrator', 'admin_1')
+    const calls = provider(() => Response.json({ token: 'x' }))
+    for (const id of ['sm_1', 'admin_1']) {
+      const res = await signIn(api, id)
+      expect(res.status, id).toBe(401)
+      expect(sidCookie(res)).toBeUndefined()
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  test('a busy provider (408, 429) is unavailable, never a wrong password', async ({ api, admin, createUser }) => {
+    await configure()
+    await addIdColumn(admin)
+    const tl = await createUser({ email: 'tl.busy@example.com' })
+    await link(tl.user!, 'tl_busy')
+    for (const status of [408, 429]) {
+      provider(() => new Response('slow down', { status }))
+      expect((await signIn(api, 'tl_busy')).status, String(status)).toBe(503)
+    }
   })
 
   test('a disabled linked account is refused like a disabled password sign-in', async ({ api, admin, createUser }) => {
@@ -180,8 +261,9 @@ describe('delegated password sign-in', () => {
     const tl = await createUser({ email: 'tl.five@example.com' })
     await link(tl.user!, 'tl_5')
     await sql`update "user" set enabled = false where row_id = ${tl.user!}`
-    provider(() => Response.json({ ok: true }))
+    const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'tl_5')
+    expect(calls).toHaveLength(0)
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual({ error: { type: 'AuthenticationError', message: 'Invalid login credentials' } })
     expect(sidCookie(res)).toBeUndefined()
@@ -193,8 +275,9 @@ describe('delegated password sign-in', () => {
     const bot = await createUser({ email: 'bot@example.com' })
     await link(bot.user!, 'bot_1')
     await sql`update "user" set user_type = 'service' where row_id = ${bot.user!}`
-    provider(() => Response.json({ ok: true }))
-    expect((await signIn(api, 'bot_1')).status).toBe(403)
+    const calls = provider(() => Response.json({ ok: true }))
+    expect((await signIn(api, 'bot_1')).status).toBe(401)
+    expect(calls).toHaveLength(0)
   })
 
   test('two accounts linked to one ID are refused, never one picked', async ({ api, admin, createUser }) => {
@@ -217,6 +300,9 @@ describe('delegated password sign-in', () => {
       {}, // nothing configured
       { url: '' },
       { url: 'http://hr.example.test/api/login/' }, // plain http to a real host
+      { url: 'http://localhost.evil.test/api/login/' }, // look-alike hosts
+      { url: 'http://127.0.0.1@evil.test/api/login/' },
+      { url: 'http://evil.test\\@127.0.0.1/api/login/' },
       { url: 'not a url' },
       { column: '' },
     ]) {
@@ -241,7 +327,9 @@ describe('delegated password sign-in', () => {
 
   test('a column that is unsafe or missing is a setup error, and no password leaves', async ({ api }) => {
     const calls = provider(() => Response.json({ ok: true }))
-    for (const column of ['no_such_column', 'email; drop table "user"', 'Email']) {
+    // `position` is a real User column but not text: lower(trim()) on it would fail after
+    // the provider had already verified.
+    for (const column of ['no_such_column', 'email; drop table "user"', 'Email', 'position']) {
       await configure({ column })
       const res = await signIn(api, 'anyone')
       expect(res.status).toBe(503)
