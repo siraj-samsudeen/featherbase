@@ -429,7 +429,11 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
 // this returns is the thing being established. Redeeming burns the code.
 app.post('/api/oauth/session', async (c) => {
   const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
-  return c.json(redeemHandoffCode(code, getCookie(c, 'sid')))
+  const session = redeemHandoffCode(code, getCookie(c, 'sid'))
+  // #3783: the same landing password login gives — a report viewer signing in
+  // with Google lands on the report, not in the Admin.
+  const landing = await landingFor(session.user.row_id)
+  return c.json(landing ? { ...session, landing } : session)
 })
 
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public

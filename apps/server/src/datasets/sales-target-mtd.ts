@@ -1,6 +1,6 @@
 import { sql } from '../db'
 import { registerDataset, type SnapshotRecord } from '../dataset-snapshot'
-import { PERIOD } from '../sales-target'
+import { currentPeriod } from '../sales-target'
 
 // The sales-target dataset: `experiments/issue_3755/shared/dive.tsx`'s rows query
 // with its personalisation predicate removed.
@@ -100,11 +100,20 @@ export function _liveReader(): SourceReader {
 
 const CHUNK = 5000
 
+// Bump when definitionSql changes. Part of snapshot identity, so a
+// redefinition can never silently serve rows cut to the old shape.
+const DEFINITION_REVISION = '1'
+
 registerDataset({
   name: SALES_TARGET_DATASET,
-  // Bump when definitionSql changes. Part of snapshot identity, so a
-  // redefinition can never silently serve rows cut to the old shape.
-  version: '1',
+  // The month is part of the identity too: the rows are cut to one period, so
+  // on the 1st a snapshot of last month must stop being a hit. A getter, read
+  // on every lookup, turns the rollover into the ordinary "never built under
+  // this definition" path — live read, recorded miss, next refresh builds the
+  // new month — with no date logic in the read path.
+  get version() {
+    return `${DEFINITION_REVISION}:${currentPeriod().period_start}`
+  },
 
   async fetch() {
     const read = _liveReader()
@@ -114,7 +123,13 @@ registerDataset({
     // snapshot stores the ISO day, which is what the surface formats per ADR 844.
     const sourceAsOf =
       raw == null ? null : raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10)
-    const rows = await read(definitionSql(PERIOD.period_start, PERIOD.period_end))
+    const period = currentPeriod()
+    // Between IST midnight on the 1st and the morning build, the warehouse still ends on the
+    // last day of the previous month, so this month has nothing to cache yet. Say that, rather
+    // than build an empty candidate and have it refused as a suspected upstream failure.
+    if (sourceAsOf && sourceAsOf < period.period_start)
+      throw new Error(`no actuals yet for the period starting ${period.period_start}: the warehouse has data through ${sourceAsOf}`)
+    const rows = await read(definitionSql(period.period_start, period.period_end))
     return { rows, sourceAsOf }
   },
 
