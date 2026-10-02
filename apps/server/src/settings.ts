@@ -13,6 +13,9 @@ export interface SystemSettings {
   float_precision: number
   google_client_id: string
   allowed_login_domains: string
+  delegated_login_label: string
+  delegated_login_url: string
+  delegated_login_user_column: string
 }
 
 const DEFAULTS: SystemSettings = {
@@ -25,6 +28,9 @@ const DEFAULTS: SystemSettings = {
   float_precision: 2,
   google_client_id: '',
   allowed_login_domains: '',
+  delegated_login_label: '',
+  delegated_login_url: '',
+  delegated_login_user_column: '',
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {
@@ -49,5 +55,8 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     float_precision: num('float_precision'),
     google_client_id: str('google_client_id'),
     allowed_login_domains: str('allowed_login_domains'),
+    delegated_login_label: str('delegated_login_label'),
+    delegated_login_url: str('delegated_login_url'),
+    delegated_login_user_column: str('delegated_login_user_column'),
   }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
-import { ApiError, api, landingPath, login } from '../lib/api'
+import { ApiError, api, landingPath, login, loginDelegated, type SessionUser } from '../lib/api'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(
@@ -29,14 +29,19 @@ export function LoginPage() {
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
   const [appName, setAppName] = useState('Featherbase')
+  // Delegated sign-in: the outside service's name (e.g. StyleHR) when an
+  // administrator connected one, else null and the option is not offered.
+  const [delegatedLabel, setDelegatedLabel] = useState<string | null>(null)
+  const [mode, setMode] = useState<'password' | 'delegated'>('password')
   useEffect(() => {
     fetch('/api/brand')
       .then((r) => (r.ok ? r.json() : null))
-      .then((b: { app_name?: string } | null) => {
+      .then((b: { app_name?: string; delegated_login_label?: string | null } | null) => {
         if (b?.app_name) {
           setAppName(b.app_name)
           document.title = b.app_name
         }
+        setDelegatedLabel(b?.delegated_login_label || null)
       })
       .catch(() => {})
   }, [])
@@ -52,13 +57,12 @@ export function LoginPage() {
     setResetSent(true)
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
+  // Both sign-in forms end here: back to a safe deep link, else the landing.
+  async function signIn(attempt: () => Promise<SessionUser>) {
     setError(null)
     setBusy(true)
-    const form = new FormData(e.currentTarget)
     try {
-      const user = await login(String(form.get('email')), String(form.get('password')))
+      const user = await attempt()
       const returnTo = safeLoginNext(new URLSearchParams(window.location.search).get('next') ?? undefined)
       if (returnTo) {
         window.location.assign(returnTo)
@@ -66,11 +70,36 @@ export function LoginPage() {
       }
       navigate({ to: landingPath(user) })
     } catch (err) {
+      // The server's message already tells a wrong password, an unavailable
+      // service and a person who has left apart.
       setError(err instanceof ApiError ? err.message : 'Login failed')
     } finally {
       setBusy(false)
     }
   }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    await signIn(() => login(String(form.get('email')), String(form.get('password'))))
+  }
+
+  async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    await signIn(() => loginDelegated(String(form.get('delegated_id')), String(form.get('delegated_password'))))
+  }
+
+  function switchMode(next: 'password' | 'delegated') {
+    setError(null)
+    setMode(next)
+  }
+
+  const errorLine = error && (
+    <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
+      {error}
+    </p>
+  )
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
@@ -78,9 +107,61 @@ export function LoginPage() {
         <div className="mb-6 flex flex-col items-center gap-2">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
           <h1 className="text-lg font-semibold text-[var(--color-ink)]">{appName}</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">Sign in to your account</p>
+          <p className="text-sm text-[var(--color-ink-muted)]">
+            {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : 'Sign in to your account'}
+          </p>
         </div>
         <div className="fc-card p-6">
+          {mode === 'delegated' && delegatedLabel ? (
+            <>
+              <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
+                <p className="text-sm text-[var(--color-ink-muted)]">
+                  Use the same ID and password you use for {delegatedLabel}.
+                </p>
+                <div>
+                  <label className="fc-label" htmlFor="delegated-id">{delegatedLabel} ID</label>
+                  <input
+                    id="delegated-id"
+                    type="text"
+                    name="delegated_id"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="fc-input"
+                  />
+                </div>
+                <div>
+                  <label className="fc-label" htmlFor="delegated-password">Password</label>
+                  <input
+                    id="delegated-password"
+                    type="password"
+                    name="delegated_password"
+                    autoComplete="current-password"
+                    className="fc-input"
+                  />
+                </div>
+                {errorLine}
+                <button
+                  type="submit"
+                  disabled={busy}
+                  data-testid="delegated-login-submit"
+                  className="fc-btn-primary w-full justify-center py-2"
+                >
+                  {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
+                </button>
+              </form>
+              <button
+                type="button"
+                data-testid="password-login-toggle"
+                className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
+                onClick={() => switchMode('password')}
+              >
+                Use email and password instead
+              </button>
+            </>
+          ) : (
+          <>
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
             <div>
               <label className="fc-label" htmlFor="login-email">Email or username</label>
@@ -104,11 +185,7 @@ export function LoginPage() {
                 className="fc-input"
               />
             </div>
-            {error && (
-              <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
-                {error}
-              </p>
-            )}
+            {errorLine}
             <button type="submit" disabled={busy} className="fc-btn-primary w-full justify-center py-2">
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
@@ -122,6 +199,18 @@ export function LoginPage() {
           >
             Sign in with Google
           </a>
+          {/* Delegated sign-in: offered only when an administrator connected
+              an outside service (System Settings delegated_login_*). */}
+          {delegatedLabel && (
+            <button
+              type="button"
+              data-testid="delegated-login-toggle"
+              className="fc-btn mt-3 flex w-full justify-center py-2"
+              onClick={() => switchMode('delegated')}
+            >
+              Sign in with {delegatedLabel}
+            </button>
+          )}
           <div className="mt-4 border-t border-[var(--color-border)] pt-4">
             {!forgot ? (
               <button
@@ -146,6 +235,8 @@ export function LoginPage() {
               </form>
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 // These requests establish/end credentials or serve public content. A saved
 // expired bearer must not insert a protected request in front of them.
 const PUBLIC_API_PATHS = new Set([
-  '/api/login', '/api/logout', '/api/oauth/session',
+  '/api/login', '/api/login/delegated', '/api/logout', '/api/oauth/session',
   '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
 ])
 
@@ -85,7 +85,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // Already on the login screen there is nothing to redirect to — a hard
     // reload here just destroys in-flight state (a stale query 401ing during
     // the logout transition, #101 review).
-    if (!path.endsWith('/api/login') && window.location.pathname !== '/featherbase/login') {
+    if (!path.endsWith('/api/login') && !path.endsWith('/api/login/delegated') && window.location.pathname !== '/featherbase/login') {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
       window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}`
     }
@@ -120,11 +120,22 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
-export async function login(usr: string, pwd: string): Promise<SessionUser> {
-  const res = await api.post<{ token: string; user: SessionUser; landing?: string }>('/api/login', { usr, pwd })
+type LoginResponse = { token: string; user: SessionUser; landing?: string }
+
+function rememberLogin(res: LoginResponse): SessionUser {
   const user = res.landing ? { ...res.user, landing: res.landing } : res.user
   setSession(res.token, user)
   return user
+}
+
+export async function login(usr: string, pwd: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/login', { usr, pwd }))
+}
+
+/** Sign in with an ID and password checked by the outside service named in
+ *  `/api/brand`'s `delegated_login_label` (e.g. StyleHR). Same session shape. */
+export async function loginDelegated(usr: string, pwd: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', { usr, pwd }))
 }
 
 /** The signed-in account's landing path: the Admin unless the server said otherwise (#3755). */

@@ -1,5 +1,81 @@
 # Progress Log
 
+## 2026-10-02 — Delegated password sign-in (StyleHR first)
+
+People with no Google identity can now sign in with the ID and password of
+another system the organisation trusts. The first configured provider is
+StyleHR, for store Team Leaders. OpenSpec change `delegated-password-login`
+adds four `sign-in-and-accounts` requirements and widens "Who may sign in".
+
+System Settings gains `delegated_login_label`, `delegated_login_url` and
+`delegated_login_user_column` (migration 0099, the 0070 pattern). A blank URL
+or column, or a URL that is not https (http only for localhost stubs), leaves
+it off. Public `GET /api/brand` now carries `delegated_login_label` (null when
+off), and the Login page shows "Sign in with <label>". That switches the card
+to "<label> ID" + "Password" and shares the password form's post-sign-in path.
+
+`POST /api/login/delegated {usr, pwd}` (src/delegated-login.ts) behaves as
+follows when on:
+
+- Rate limits match `/api/login`. The per-ID bucket uses its own `delegated`
+  scope.
+- An unsafe or missing column answers 503 before any outbound call.
+- The provider gets JSON `{email, password}` with a 10 s timeout and redirects
+  not followed.
+- Only a 2xx JSON object with a positive signal verifies (a token, an
+  employee id, `success: true`). A JSON no, or a 4xx other than 408/429, is
+  401 with password login's exact message. A body showing the person has left
+  is 403. Anything unexplained is 503.
+- A 3xx, 5xx, timeout or network error is a 503 `ServiceUnavailableError` that
+  names the label. A wrong password is never blamed.
+- Binding matches the configured User column on lower/trim, excluding service
+  accounts, and runs BEFORE the provider is asked. No match, a disabled
+  account, or the Administrator / a System Manager gets password login's 401
+  and the password never leaves. More than one match is a 409 refusal.
+- **Review of #363 (fixed before merge):** the first cut verified any 2xx it
+  could not read as an error — an empty body, an HTML page or a body cut off
+  mid-stream signed anyone in. It also answered "not linked" only after
+  asking StyleHR, making the route a password checker for every unlinked
+  StyleHR ID. `delegated-login.test.ts` has 21 tests (+4: fail-closed shapes,
+  leavers, privileged accounts, busy provider, look-alike hosts, a non-text
+  column). Removing the positive-signal check fails the fail-closed test.
+- The session, `sid` cookie and `landing` come from the same helpers as
+  password login.
+
+When off, the route is a plain 404 and nothing is called. The password is
+never stored, logged or echoed. Failure logs carry the label and outcome only.
+`_setDelegatedFetch` keeps every test off the network. `docs/DEPLOY.md`
+explains how to turn it on for StyleHR, including the `stylehr_username`
+Custom Field.
+
+**Verified** (own database `featherbase_delegated`, never the shared one):
+`pnpm --filter server exec vitest run test/delegated-login.test.ts` (17
+passed: success+landing, 4xx/error-body rejection, five outage shapes,
+unlinked, disabled, service account, duplicate, off ×5, local http, unsafe
+column, no password in logs/responses, both rate limits, body validation).
+Related files `auth`, `oauth`, `preview-login`, `pre-auth-rate-limit`,
+`pre-auth-concurrency`, `settings`, `sales-target` and `error-envelope`
+passed. The full server suite gave 911 passed, 21 skipped and 1 failed; the
+failure is the known `sources-csv` root-chmod case, identical on main. The
+runtime-app tests need `pnpm apps:prepare` first in a fresh worktree. Web:
+`test/delegated-login.test.tsx` (3 passed: hidden when off, a linked TL
+lands in the Admin, three distinct error messages) plus the full web suite, which gave 178 passed and 1 failed.
+The failure is a `table-merge` 15 s timeout ("a source larger than one
+page"), and it fails identically with this change's web code stashed. The server and web typechecks, `pnpm check:specs` (45 specs, 19
+changes) and `git diff --check` all passed. I also ran it manually against a
+scratch database: API on :8100, web on :5199 and a local stub provider on
+:8199. curl gave 200/401/503/403 for good/wrong/down/unlinked. A headless
+Chromium run at 1280px and 375px showed each error message, no horizontal
+overflow, and landing on `/featherbase/admin`. Screenshots were inspected.
+The server log held only `[delegated-login] StyleHR: rejected (http_401)`
+style lines.
+
+**Next:** the first real StyleHR sign-in. Read the `[delegated-login]` log
+line's key names: if StyleHR's success body carries none of the recognised
+keys, the sign-in is refused as "not responding" and the recognised set needs
+StyleHR's real key. Then archive the change. Save-time validation of the URL in
+the System Settings form is not built, because singles run no controller
+hooks. A bad URL simply leaves the feature off.
 ## 2026-10-02 — The sales-target report scopes by the store roster, month to date, grouped by Section
 
 The report left its experiment window. A Team Leader now sees the whole Section they
