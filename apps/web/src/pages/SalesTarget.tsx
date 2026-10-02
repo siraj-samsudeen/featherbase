@@ -103,6 +103,23 @@ function sectionGroups(report: Report): { section: string | null; titled: boolea
   }))
 }
 
+function QuickTable({ collapsed, refreshedAt, children }: {
+  collapsed: boolean
+  refreshedAt: string | null
+  children: React.ReactNode
+}) {
+  if (!collapsed) return <>{children}</>
+  return (
+    <details className="mb-3" data-testid="snapshot-quick">
+      <summary className="cursor-pointer text-xs text-[var(--color-ink-muted)]">
+        Quick table from the cache{refreshedAt ? ` · refreshed ${fmtInstantIST(refreshedAt)}` : ''} — the live
+        report below is current
+      </summary>
+      <div className="mt-2">{children}</div>
+    </details>
+  )
+}
+
 // Every opening bumps this; a response whose number is no longer current
 // belongs to an earlier opening (or an earlier account) and is dropped.
 let openingSeq = 0
@@ -220,6 +237,12 @@ export function SalesTargetPage() {
       <main className="flex flex-1 flex-col p-3">
       {/* Pre-generated read, above the live Dive. Same numbers, served from the
           dataset snapshot; it paints while the embed session is still being minted. */}
+      {/* One report, not two: when the live Dive is on the page it IS the report, and the cached
+          table folds away behind a line that says how old it is. The cache is refreshed a few
+          times a day while the warehouse loads sales intraday, so shown side by side the two
+          disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
+          live report is not there — not configured, failed, or still opening. */}
+      <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
           <p className="p-4 text-sm text-[var(--color-ink-muted)]">Reading your numbers…</p>
@@ -335,6 +358,7 @@ export function SalesTargetPage() {
           </>
         )}
       </section>
+      </QuickTable>
 
         {embed.kind === 'frame' ? (
           <iframe

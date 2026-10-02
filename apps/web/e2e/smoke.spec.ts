@@ -10,7 +10,7 @@ import { anonymousTest as test, expect } from './fixtures'
 test('app boots: root redirects to login and the form renders', async ({ session }) => {
   await session.visit('/').assertPath('/featherbase/login').assertHas('[data-testid="login-form"]')
   await session.step('the Sign in button is visible', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible()
   })
 })
 
