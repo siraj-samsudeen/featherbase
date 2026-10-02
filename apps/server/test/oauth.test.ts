@@ -392,3 +392,26 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(ok.headers.get('location')).toMatch(/^\/api\/oauth\/google\/callback\?/)
   })
 })
+
+describe('#3783: Google sign-in lands a report viewer on their report', () => {
+  test('a provisioned Sales Target Viewer redeems a session that names the report as landing; others get none', async ({ api }) => {
+    await setAllowedDomains('')
+    await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
+    // Provisioned ahead of time (the data-warehouse viewer sync): matched by email, not created.
+    await saveDoc('User', {
+      row_id: 'RR-90001', email: 'dm.test@jeyarama.com', full_name: 'DM Test', enabled: true,
+      roles: [{ role: 'Sales Target Viewer' }],
+    }, 'Administrator')
+    await saveDoc('User', { row_id: 'plain.user@jeyarama.com', email: 'plain.user@jeyarama.com', full_name: 'Plain', enabled: true, roles: [] }, 'Administrator')
+
+    const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
+    expect(viewer.status).toBe(302)
+    const v = await (await redeem(api, handoffCode(viewer), sidCookie(viewer))).json() as { user: { row_id: string }; landing?: string }
+    expect(v.user.row_id).toBe('RR-90001')
+    expect(v.landing).toBe('/featherbase/sales-target')
+
+    const plain = await mockSignIn(api, 'plain.user@jeyarama.com', 'Plain')
+    const p = await (await redeem(api, handoffCode(plain), sidCookie(plain))).json() as { landing?: string }
+    expect(p.landing).toBeUndefined()
+  })
+})

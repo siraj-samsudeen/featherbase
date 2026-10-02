@@ -1,5 +1,65 @@
 # Progress Log
 
+## 2026-10-02 — The sales-target report scopes by the store roster, month to date, grouped by Section
+
+The report left its experiment window. A Team Leader now sees the whole Section they
+lead and a Department Manager every Section they manage, read from the store's own
+roster in Featherbase (`Section Ownership`, joined through `Section Name Alias` to
+`Section Merchandise Map`). Their own `Employee Section Map` subcategories and any
+explicit assignment still add to that. `Assignment` gains `section_by_material_group` and
+`scope_basis` (assignment · section_staff · team_leader · department_manager), and the page
+says which applies. The period is month to date in IST, resolved per request
+(`currentPeriod()`). `SALES_TARGET_TODAY=YYYY-MM-DD` pins it for tests and demos. The
+dataset version is now `1:<period start>`, so a September snapshot stops being a hit on
+1-Oct and the existing live-and-miss path rebuilds. The report and the Dive
+(MotherDuck `0dad5ca6…`, **version 3**) group rows by Section, each subtotal with its own
+count of subcategories without actuals.
+
+Two things the real ATK data taught, both now tested:
+
+- **The roster is dated per Section, not per store.** 52 rows are from 1-Jul and two
+  Sections changed hands on 6-Aug. A per-store "latest roster" kept only those two, so
+  2 of 64 readers.
+- **A roster Section can be several merchandise Sections.** "Home Décor & Stationery"
+  is Home Décor + Stationery. Taking one alias row gave the TL 38 of 90 groups.
+
+An independent review (feather-code-review) found three real defects, all fixed and tested:
+
+- **Store-edited codes reached DuckDB query text.** Codes are now held to the assignment
+  Table's own shapes (four-digit store, nine-digit group). A malformed map cell is dropped
+  and logged, and the live read refuses anything else.
+- **One unparseable roster date failed every reader's report.** Roster dates are now parsed
+  only when they are ISO days, and Section names compare trimmed and case-folded.
+- **The 1st, before the morning load, built an empty snapshot that was refused as a
+  suspected upstream failure.** The refresh now fails with the real reason, and the report
+  says "no sales recorded for this month yet" instead of a column of dashes.
+
+The same browser proof also caught that **Google sign-in ignored the viewer landing**: a DM
+signing in with Google went to the Admin home. `/api/oauth/session` now returns `landing` as
+`/api/login` does, and the callback page honours it.
+
+**Verified:** `test/sales-target.test.ts` 35 passed (+11). `test/dataset-snapshot.test.ts`
+29 passed (+3: Section subtotals with a missing actual, month rollover, the 1st before the
+load). `test/oauth.test.ts` gained 1, a Google-signed-in viewer lands on the report. Each
+new test was run against the pre-fix code and failed there: roster derivation removed gave
+5 failing, a static dataset version 1, no landing 1. Server and web typecheck,
+`pnpm check:specs` all passed.
+
+Browser proof (local, Playwright, MotherDuck embed stubbed):
+
+- TL RR-3769 by password lands on the report: 2 Section subtotals, 90 rows, served from a
+  snapshot in 88 ms. The embed starting state carries 90 groups, each with its Section,
+  for 01–02-Oct, Dive version 3.
+- An unprovisioned Google address is refused.
+
+Locally, against the real ATK roster (64 TLs/DMs provisioned by the data-warehouse
+`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-3769 got 90 groups in
+Home Décor and Stationery. The report showed ₹2,16,284.95 target and ₹91,802.52 actual for
+01–02-Oct, which matched a direct warehouse query to the paisa.
+
+**Next:** the delegated (StyleHR) sign-in PR. Then featherbase-dev: set `DIVE_VERSION=2`, a
+read-write `MOTHERDUCK_TOKEN`, and Google sign-in settings.
+
 ## 2026-09-27 — README defines Featherbase's application-platform model
 
 The README now defines Featherbase as an agent-first, self-hostable application

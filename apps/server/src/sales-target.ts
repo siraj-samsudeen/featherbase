@@ -23,8 +23,33 @@ import { tableRelation } from './table-engine'
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
 export const VIEWER_ROLE = 'Sales Target Viewer'
 export const REPORT_PATH = '/featherbase/sales-target'
-// Fixed experiment period (issue #3755): not a production calendar.
-export const PERIOD = { period_start: '2026-09-01', period_end: '2026-09-17' } as const
+
+export interface Period {
+  period_start: string
+  period_end: string
+}
+
+/**
+ * Month to date in India Standard Time: the first of the month through today.
+ * Resolved on every request, never cached — the report rolls over at IST
+ * midnight on its own. SALES_TARGET_TODAY (an ISO day) pins "today" for tests,
+ * demos and reproducing a reader's complaint about a past day.
+ */
+const isoDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v)
+
+/** The codes the Dive and the assignment Table accept: a four-digit store, a nine-digit material group. */
+export const PLANT_CODE = /^\d{4}$/
+export const MATERIAL_GROUP = /^\d{9}$/
+
+export function currentPeriod(now: Date = new Date()): Period {
+  const pinned = process.env.SALES_TARGET_TODAY?.trim()
+  // A real calendar day or nothing: 2026-02-30 passes a shape check and then fails deep in
+  // Postgres or DuckDB. A bad pin is the server's misconfiguration, so it is a 500, not a 4xx.
+  if (pinned && !(isoDay(pinned) && new Date(`${pinned}T00:00:00Z`).toISOString().slice(0, 10) === pinned))
+    throw new Error(`SALES_TARGET_TODAY must be a real ISO day (YYYY-MM-DD), got ${JSON.stringify(pinned)}`)
+  const today = pinned || new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10)
+  return { period_start: `${today.slice(0, 8)}01`, period_end: today }
+}
 // The sandbox origin the page frames and the CSP allows. Overridable only so
 // a browser-level test can point both at a local stub; the page never
 // chooses it — the server hands it out with the identity chrome.
@@ -212,12 +237,19 @@ export async function seedSalesTarget(
 
 // --------------------------------------------------------------- assignment
 
+/** Why a reader sees a material group. Several can hold at once; the report shows them all. */
+export type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager'
+
 export interface Assignment {
   plant_code: string
   store_label: string | null
   material_groups: string[]
-  /** The store Sections the employee's material groups were derived from (#3783); empty when every group is an explicit assignment. */
+  /** The store Sections the reader's material groups sit in, per Section Merchandise Map (#3783); empty when no group is mapped. */
   sections: string[]
+  /** Each mapped material group's Section — what the Dive groups its rows by. Unmapped groups are absent. */
+  section_by_material_group: Record<string, string>
+  /** Every reason this reader has a scope, sorted: an explicit row, their own subcategories, a Section they lead or manage. */
+  scope_basis: ScopeBasis[]
 }
 
 /** The StyleHR employee code lives on User as a Custom Field the sales-target seed declares. */
@@ -229,36 +261,114 @@ async function relationExists(name: string): Promise<boolean> {
   return Boolean(row?.relation)
 }
 
-/**
- * #3783: what the Store Sections maps say this employee owns — Employee Section Map (employee →
- * subcategory, under a Section) joined to Section Merchandise Map (store × subcategory → material
- * group) on the store's own subcategory spelling. Both Tables are maintained in Featherbase by
- * the store; an instance without them, or a user without an employee code, derives nothing.
- */
-async function derivedFromSections(user: string): Promise<{ plant_code: string; material_group: string; section_name: string }[]> {
-  const [col] = await sql`
+async function columnExists(table: string, column: string): Promise<boolean> {
+  const [row] = await sql`
     select 1 from information_schema.columns
-    where table_schema = 'featherbase' and table_name = 'user' and column_name = ${EMPLOYEE_CODE_FIELD}`
-  if (!col) return []
-  if (!(await relationExists('employee_section_map')) || !(await relationExists('section_merchandise_map'))) return []
+    where table_schema = 'featherbase' and table_name = ${table} and column_name = ${column}`
+  return Boolean(row)
+}
+
+interface Derived {
+  plant_code: string
+  material_group: string
+  basis: Exclude<ScopeBasis, 'assignment'>
+}
+
+/**
+ * #3783: what the Store Sections maps say this employee is responsible for, three ways —
+ *  - section_staff: their own subcategories (Employee Section Map) resolved to material groups;
+ *  - team_leader / department_manager: every material group of every Section that the CURRENT
+ *    roster names them the TL or DM of. Section Ownership is versioned per Section: a Section's
+ *    current rows are its latest effective_from on or before today (two TLs share a date), so a
+ *    handover dated 06-Aug replaces that Section's July row and leaves every other Section alone.
+ *    A TL's own Employee Section Map rows are a sliver of the Section they lead
+ *    (2 of 90 groups for one ATK TL on 02-Oct-2026), so leadership reads the whole Section.
+ * Section Ownership speaks the roster's Section names; Section Name Alias maps them onto the
+ * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
+ */
+async function derivedFromSections(user: string, today: string): Promise<Derived[]> {
+  if (!(await columnExists('user', EMPLOYEE_CODE_FIELD))) return []
+  if (!(await relationExists('section_merchandise_map'))) return []
   const [u] = await sql`
     select employee_code from ${sql(platformRelation('user'))} where row_id = ${user}`
   const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
   if (!code) return []
+  const merch = sql(platformRelation('section_merchandise_map'))
+  const out: Derived[] = []
+
+  if (await relationExists('employee_section_map')) {
+    const rows = await sql`
+      select distinct e.store_code as plant_code, m.material_group
+      from ${sql(platformRelation('employee_section_map'))} e
+      join ${merch} m
+        on  m.store_code = e.store_code
+        and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
+      where e.employee_code = ${code}
+        and m.material_group is not null and m.material_group <> ''`
+    for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'section_staff' })
+  }
+
+  if (await relationExists('section_ownership')) {
+    const leads: [Derived['basis'], string][] = [['team_leader', 'tl_employee_code']]
+    if (await columnExists('section_ownership', 'dm_employee_code')) leads.push(['department_manager', 'dm_employee_code'])
+    const hasAlias = await relationExists('section_name_alias')
+    const owners = sql(platformRelation('section_ownership'))
+    for (const [basis, column] of leads) {
+      const rows = await sql`
+        with roster as (
+          -- effective_from is a Date in the store-sections manifest. Read through text and
+          -- parsed only when it is an ISO day: a Table that declared it Data and holds one bad
+          -- cell must lose THAT row, not fail every reader's report (a cast error would), and a
+          -- slash date must never be read as month-first. Blank = in force from the start.
+          select o.*,
+                 case when o.effective_from::text ~ '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])' then left(o.effective_from::text, 10)::date end as roster_from,
+                 coalesce(trim(o.effective_from::text), '') = '' as roster_undated,
+                 lower(trim(o.section_name)) as section_key
+          from ${owners} o
+        ), roster_valid as (
+          select * from roster where roster_undated or (roster_from is not null and roster_from <= ${today}::date)
+        ), current_roster as (
+          select r.* from roster_valid r
+          where coalesce(r.roster_from, date '1900-01-01') = (
+            select max(coalesce(x.roster_from, date '1900-01-01')) from roster_valid x
+            where x.store_code = r.store_code and x.section_key = r.section_key)
+        ), roster_led as (
+          select c.store_code, c.section_key from current_roster c
+          where trim(c.${sql(column)}) = ${code}
+        ), led as (
+          -- A roster Section can span several merchandise Sections (Home Décor & Stationery is
+          -- Home Décor + Stationery at ATK): every alias row counts, plus the roster name itself.
+          -- Names compare trimmed and case-folded throughout, as the subcategory join does: a
+          -- trailing space in one Table must not silently leave a leader with nothing.
+          select store_code, section_key from roster_led
+          ${hasAlias
+            ? sql`union
+                  select a.store_code, lower(trim(a.merch_section_name))
+                  from roster_led r
+                  join ${sql(platformRelation('section_name_alias'))} a
+                    on a.store_code = r.store_code and lower(trim(a.roster_section_name)) = r.section_key`
+            : sql``}
+        )
+        select distinct m.store_code as plant_code, m.material_group
+        from led
+        join ${merch} m on m.store_code = led.store_code and lower(trim(m.section_name)) = led.section_key
+        where m.material_group is not null and m.material_group <> ''`
+      for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis })
+    }
+  }
+  return out
+}
+
+/** The merchandise map's Section for each group at this store — one Section per group per store. */
+async function sectionsOf(plant: string, groups: string[]): Promise<Record<string, string>> {
+  if (!groups.length || !(await relationExists('section_merchandise_map'))) return {}
   const rows = await sql`
-    select distinct e.store_code as plant_code, m.material_group, e.section_name
-    from ${sql(platformRelation('employee_section_map'))} e
-    join ${sql(platformRelation('section_merchandise_map'))} m
-      on  m.store_code = e.store_code
-      and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
-    where e.employee_code = ${code}
-      and m.material_group is not null and m.material_group <> ''
-    order by 1, 2, 3`
-  return rows.map((r) => ({
-    plant_code: String(r.plant_code),
-    material_group: String(r.material_group),
-    section_name: String(r.section_name),
-  }))
+    select material_group, min(section_name) as section_name
+    from ${sql(platformRelation('section_merchandise_map'))}
+    where store_code = ${plant} and material_group = any(${groups}::text[])
+      and section_name is not null and section_name <> ''
+    group by material_group`
+  return Object.fromEntries(rows.map((r) => [String(r.material_group), String(r.section_name)]))
 }
 
 /**
@@ -268,33 +378,47 @@ async function derivedFromSections(user: string): Promise<{ plant_code: string; 
  * and adds to the derived set where both exist. One store per employee is still the rule — a
  * conflict between the two sources is refused loudly rather than mixing stores.
  */
-export async function currentAssignment(user: string): Promise<Assignment | null> {
+export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
   const explicit = await sql`
     select plant_code, store_label, material_group
     from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
     where employee = ${user}
     order by material_group`
-  const derived = await derivedFromSections(user)
+  const derived = await derivedFromSections(user, period.period_end)
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
     throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].sort().join(', ')}`)
-  const groups = new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])
+  const plant = [...plants][0]
+  // The maps are edited by the store, and the live read and the Dive both put these codes into
+  // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
+  // cell is dropped and logged rather than allowed to break, or rewrite, anyone's report.
+  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `${user} maps to a store code that is not four digits: ${JSON.stringify(plant)}`)
+  const all = [...new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])]
+  const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
+  if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)
+  const groups = all.filter((g) => MATERIAL_GROUP.test(g)).sort()
+  const sectionByGroup = await sectionsOf(plant, groups)
+  const basis = new Set<ScopeBasis>(derived.map((r) => r.basis))
+  if (explicit.length) basis.add('assignment')
   return {
-    plant_code: [...plants][0],
+    plant_code: plant,
     store_label: (explicit[0]?.store_label as string | null) ?? null,
-    material_groups: [...groups].sort(),
-    sections: [...new Set(derived.map((r) => r.section_name))].sort(),
+    material_groups: groups,
+    sections: [...new Set(Object.values(sectionByGroup))].sort(),
+    section_by_material_group: sectionByGroup,
+    scope_basis: [...basis].sort(),
   }
 }
 
 /** Exactly the Dive's useDiveState keys — nothing else rides along. */
-export function initialStateFor(a: Assignment) {
+export function initialStateFor(a: Assignment, period: Period = currentPeriod()) {
   return {
     plant_code: a.plant_code,
     material_groups: [...a.material_groups],
-    period_start: PERIOD.period_start,
-    period_end: PERIOD.period_end,
+    section_by_material_group: { ...a.section_by_material_group },
+    period_start: period.period_start,
+    period_end: period.period_end,
   }
 }
 
@@ -385,12 +509,13 @@ export const salesTargetRoutes = new Hono<{ Variables: { user: SessionUser } }>(
 salesTargetRoutes.get('/me', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
-  const a = await currentAssignment(user.row_id)
+  const period = currentPeriod()
+  const a = await currentAssignment(user.row_id, period)
   return c.json({
     username: user.row_id,
     display_name: user.full_name ?? user.row_id,
     assignment: a,
-    ...PERIOD,
+    ...period,
     embed_origin: EMBED_ORIGIN,
   })
 })
@@ -399,9 +524,10 @@ salesTargetRoutes.get('/me', async (c) => {
 salesTargetRoutes.post('/embed_session', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
-  const a = await currentAssignment(user.row_id)
+  const period = currentPeriod()
+  const a = await currentAssignment(user.row_id, period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
-  const r = await createEmbedSession(initialStateFor(a))
+  const r = await createEmbedSession(initialStateFor(a, period))
   // A deployment with no Dive configured is not a failure — it is a deployment
   // that serves the pre-generated report and nothing else. `kind` is the
   // server's own discriminator (#284: status 0 alone conflated this with a
@@ -428,12 +554,13 @@ salesTargetRoutes.post('/embed_session', async (c) => {
 salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
-  const a = await currentAssignment(user.row_id)
+  const period = currentPeriod()
+  const a = await currentAssignment(user.row_id, period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
-  // Lazy, like reportFor: the dataset module imports PERIOD from this file.
+  // Lazy, like reportFor: the dataset module imports currentPeriod from this file.
   const { reportFor } = await import('./sales-target-report')
   const { SALES_TARGET_DATASET } = await import('./datasets/sales-target-mtd')
-  const report = await reportFor(a)
+  const report = await reportFor(a, period)
   // Who opened which report, served from what: the same Access Log that
   // records exports and prints (PLAT-007), so "who is looking at the sales
   // target report" is answered from the Admin like any other access question

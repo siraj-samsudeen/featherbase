@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { activeSnapshot, recordMiss } from './dataset-snapshot'
 import { SALES_TARGET_DATASET, definitionSql } from './datasets/sales-target-mtd'
-import { PERIOD, type Assignment } from './sales-target'
+import { MATERIAL_GROUP, PLANT_CODE, currentPeriod, type Assignment, type Period } from './sales-target'
 
 // The read path. Personalisation is applied HERE, as a predicate over the
 // snapshot, with the caller's assignment in hand — not baked into an artifact
@@ -19,6 +19,8 @@ import { PERIOD, type Assignment } from './sales-target'
 export interface ReportRow {
   code: string
   subcategory: string
+  /** The store Section the group sits in (Section Merchandise Map); null when unmapped. */
+  section: string | null
   target: number | null
   actual: number | null
   gap: number | null
@@ -46,15 +48,25 @@ export interface Report {
   /** least(period_end, source_as_of) — the cutoff actually applied to both sides. */
   data_through: string | null
   cutoff_early: boolean
+  /**
+   * The warehouse has no day of this period yet (the hours after IST midnight on the 1st,
+   * before the morning build): every row is empty because nothing has been recorded, not
+   * because nothing sold. The page must say so instead of showing a column of dashes.
+   */
+  no_data_yet: boolean
   rows: ReportRow[]
-  total: {
-    target: number | null
-    actual: number | null
-    gap: number | null
-    achievement: number | null
-    missing: number
-    n: number
-  }
+  /** One subtotal per Section, in Section order, then unmapped groups last (section null). */
+  sections: (Totals & { section: string | null })[]
+  total: Totals
+}
+
+export interface Totals {
+  target: number | null
+  actual: number | null
+  gap: number | null
+  achievement: number | null
+  missing: number
+  n: number
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100
@@ -72,7 +84,7 @@ interface Grouped {
  * shared by both delivery paths so a snapshot read and a live read cannot drift
  * into two different answers — the property `live_check.mjs` proves across hosts.
  */
-function shape(grouped: Grouped[]): Pick<Report, 'rows' | 'total'> {
+function shape(grouped: Grouped[], sectionOf: Record<string, string>): Pick<Report, 'rows' | 'sections' | 'total'> {
   const rows: ReportRow[] = grouped.map((g) => {
     const target = g.mtd_target
     // No observed day means MISSING, never ₹0 — a store that has not traded a
@@ -84,6 +96,7 @@ function shape(grouped: Grouped[]): Pick<Report, 'rows' | 'total'> {
     return {
       code: g.code,
       subcategory: g.subcategory ?? '(name not in hierarchy)',
+      section: sectionOf[g.code] ?? null,
       target,
       actual,
       gap,
@@ -93,17 +106,26 @@ function shape(grouped: Grouped[]): Pick<Report, 'rows' | 'total'> {
     }
   })
 
+  // Rows read Section by Section (named Sections A–Z, unmapped last), code order within one.
+  const key = (r: ReportRow) => (r.section == null ? '\uffff' : r.section)
+  rows.sort((a, b) => key(a).localeCompare(key(b)) || a.code.localeCompare(b.code))
+  const names = [...new Set(rows.map((r) => r.section))]
+  return {
+    rows,
+    sections: names.map((section) => ({ section, ...totalOf(rows.filter((r) => r.section === section)) })),
+    total: totalOf(rows),
+  }
+}
+
+/** The Dive's total arithmetic, for any subset of rows — the grand total and each Section's. */
+function totalOf(rows: ReportRow[]): Totals {
   const present = rows.filter((r) => r.target != null)
   const target = present.length ? round2(present.reduce((a, r) => a + (r.target as number), 0)) : null
   const withActual = rows.filter((r) => r.actual != null)
   const actual = withActual.length ? round2(withActual.reduce((a, r) => a + (r.actual as number), 0)) : null
   const gap = target != null && actual != null ? round2(actual - target) : null
   const achievement = target != null && target !== 0 && actual != null ? (100 * actual) / target : null
-
-  return {
-    rows,
-    total: { target, actual, gap, achievement, missing: rows.filter((r) => r.missingActual).length, n: rows.length },
-  }
+  return { target, actual, gap, achievement, missing: rows.filter((r) => r.missingActual).length, n: rows.length }
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))
@@ -148,12 +170,15 @@ async function storeOf(snapshotId: string, plant: string) {
 }
 
 /** Live fall-through: the dataset's own SQL, scoped to this reader, run at the source. */
-async function fromLive(a: Assignment): Promise<{ grouped: Grouped[]; asOf: string | null; store: { store_name: string | null; short_code: string | null } }> {
+async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Grouped[]; asOf: string | null; store: { store_name: string | null; short_code: string | null } }> {
   const { _liveReader } = await import('./datasets/sales-target-mtd')
   const read = _liveReader()
+  // DuckDB text, built here: refuse anything but the exact code shapes, whatever the caller checked.
+  if (!PLANT_CODE.test(a.plant_code) || !a.material_groups.every((c) => MATERIAL_GROUP.test(c)))
+    throw new Error('sales-target live read: refusing a store or material group code that is not all digits')
   const codes = a.material_groups.map((c) => `'${c}'`).join(', ')
   const scoped = `
-    with base as (${definitionSql(PERIOD.period_start, PERIOD.period_end)})
+    with base as (${definitionSql(period.period_start, period.period_end)})
     select b.hierarchy_code,
            any_value(b.subcategory)        as subcategory,
            any_value(b.store_name)         as store_name,
@@ -200,41 +225,43 @@ async function fromLive(a: Assignment): Promise<{ grouped: Grouped[]; asOf: stri
  * A newly published report therefore serves correct data on its first opening
  * and gets fast on its own — nothing waits for a registry edit.
  */
-export async function reportFor(a: Assignment): Promise<Report> {
+export async function reportFor(a: Assignment, period: Period = currentPeriod()): Promise<Report> {
   const snap = await activeSnapshot(SALES_TARGET_DATASET)
 
   if (!snap) {
     await recordMiss(SALES_TARGET_DATASET)
-    const live = await fromLive(a)
-    const dataThrough = live.asOf && live.asOf < PERIOD.period_end ? live.asOf : PERIOD.period_end
+    const live = await fromLive(a, period)
+    const dataThrough = live.asOf && live.asOf < period.period_end ? live.asOf : period.period_end
     return {
       source: 'live',
       source_as_of: live.asOf,
       generated_at: null, // read straight from the source: there is nothing to be stale
       snapshot_id: null,
       ...live.store,
-      period_start: PERIOD.period_start,
-      period_end: PERIOD.period_end,
+      period_start: period.period_start,
+      period_end: period.period_end,
       data_through: dataThrough,
-      cutoff_early: dataThrough < PERIOD.period_end,
-      ...shape(live.grouped),
+      cutoff_early: dataThrough < period.period_end,
+      no_data_yet: dataThrough < period.period_start,
+      ...shape(live.grouped, a.section_by_material_group ?? {}),
     }
   }
 
   const grouped = await fromSnapshot(a, snap.row_id)
   const store = await storeOf(snap.row_id, a.plant_code)
   const asOf = snap.source_as_of // already an ISO day: activeSnapshot normalises it
-  const dataThrough = asOf && asOf < PERIOD.period_end ? asOf : PERIOD.period_end
+  const dataThrough = asOf && asOf < period.period_end ? asOf : period.period_end
   return {
     source: 'snapshot',
     source_as_of: asOf,
     generated_at: iso(snap.activated_at ?? snap.built_at),
     snapshot_id: snap.row_id,
     ...store,
-    period_start: PERIOD.period_start,
-    period_end: PERIOD.period_end,
+    period_start: period.period_start,
+    period_end: period.period_end,
     data_through: dataThrough,
-    cutoff_early: dataThrough < PERIOD.period_end,
-    ...shape(grouped),
+    cutoff_early: dataThrough < period.period_end,
+    no_data_yet: dataThrough < period.period_start,
+    ...shape(grouped, a.section_by_material_group ?? {}),
   }
 }

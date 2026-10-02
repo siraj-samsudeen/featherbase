@@ -4,7 +4,7 @@
 // the script runs over HTTP — so nothing here depends on the shared
 // .env.local. The upstream MotherDuck call is injected: no network, and the
 // stub records exactly what the server would have sent.
-import { afterEach, describe, expect } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
@@ -15,6 +15,15 @@ import {
   seedSalesTarget,
   type AssignmentRecord,
 } from '../src/sales-target'
+
+// The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
+// so "today" is pinned there and every expected period below still means what it meant.
+const savedToday = process.env.SALES_TARGET_TODAY
+beforeAll(() => { process.env.SALES_TARGET_TODAY = '2026-09-17' })
+afterAll(() => {
+  if (savedToday === undefined) delete process.env.SALES_TARGET_TODAY
+  else process.env.SALES_TARGET_TODAY = savedToday
+})
 
 const PASSWORDS: Record<string, string> = {
   test_employee_1: 'sandbox-pw-1',
@@ -161,8 +170,8 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     await seed(admin)
     const calls = stubUpstream()
     const expected: Record<string, unknown> = {
-      test_employee_1: { plant_code: '1501', material_groups: ['010101001', '010101003'], period_start: '2026-09-01', period_end: '2026-09-17' },
-      test_employee_3: { plant_code: '1515', material_groups: ['010101001', '010101003'], period_start: '2026-09-01', period_end: '2026-09-17' },
+      test_employee_1: { plant_code: '1501', material_groups: ['010101001', '010101003'], section_by_material_group: {}, period_start: '2026-09-01', period_end: '2026-09-17' },
+      test_employee_3: { plant_code: '1515', material_groups: ['010101001', '010101003'], section_by_material_group: {}, period_start: '2026-09-01', period_end: '2026-09-17' },
     }
     for (const usr of ['test_employee_1', 'test_employee_3']) {
       const r = await loginAs(api, usr, PASSWORDS[usr])
@@ -209,7 +218,10 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(me).toEqual({
       username: 'test_employee_2',
       display_name: 'Employee 2',
-      assignment: { plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'], sections: [] },
+      assignment: {
+        plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'],
+        sections: [], section_by_material_group: {}, scope_basis: ['assignment'],
+      },
       period_start: '2026-09-01',
       period_end: '2026-09-17',
       embed_origin: 'https://embed-motherduck.com',
@@ -382,6 +394,8 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
       // the two explicit rows plus the two Kurti material groups, once each, sorted
       material_groups: ['010102001', '010102002', '010505001', '010505002'],
       sections: ['Kurti'],
+      section_by_material_group: { '010505001': 'Kurti', '010505002': 'Kurti' },
+      scope_basis: ['assignment', 'section_staff'],
     })
   })
 
@@ -398,6 +412,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
     expect(me.assignment).toEqual({
       plant_code: '1501', store_label: null, material_groups: ['010505001', '010505002'], sections: ['Kurti'],
+      section_by_material_group: { '010505001': 'Kurti', '010505002': 'Kurti' }, scope_basis: ['section_staff'],
     })
   })
 
@@ -410,6 +425,229 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
     expect(res.status).toBe(417)
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain('more than one store')
+  })
+
+  // The roster: who leads and who manages each Section. The merchandise map speaks merch Section
+  // names, the roster its own; Section Name Alias joins the two.
+  async function seedRoster(admin: TestClient, opts: { dmColumn: boolean; effectiveType?: 'Date' | 'Data' }) {
+    const tables: [string, [string, string][]][] = [
+      ['Section Ownership', [
+        ['store_code', 'Data'], ['section_name', 'Data'], ['tl_employee_code', 'Data'],
+        ['dm_name', 'Data'], ...(opts.dmColumn ? [['dm_employee_code', 'Data'] as [string, string]] : []), ['effective_from', opts.effectiveType ?? 'Date'],
+      ]],
+      ['Section Name Alias', [['store_code', 'Data'], ['merch_section_name', 'Data'], ['roster_section_name', 'Data']]],
+    ]
+    for (const [name, columns] of tables) {
+      const meta = await admin.fetch(`/api/table/${encodeURIComponent(name)}:meta`)
+      if (meta.status === 404)
+        await admin.post('/api/table_def', {
+          name, module: 'Store Sections',
+          columns: columns.map(([c, t]) => ({ column_name: c, column_type: t })),
+        })
+    }
+    // Boys Tops (merch) is "Boys Top" on the roster; Kurti is spelled the same in both.
+    for (const row of [
+      { store_code: '1501', material_group: '010101001', mch_subcategory: 'Boys Casual Shirt', section_name: 'Boys Tops' },
+      { store_code: '1501', material_group: '010101002', mch_subcategory: 'Boys Formal Shirt', section_name: 'Boys Tops' },
+      { store_code: '1501', material_group: '010102003', mch_subcategory: 'Boys Jeans', section_name: 'Boys Bottoms' },
+    ])
+      await admin.post('/api/save_row', { table: 'Section Merchandise Map', row })
+    // Boys Top on the roster is TWO merchandise Sections: Boys Tops and Boys Bottoms.
+    for (const merch of ['Boys Tops', 'Boys Bottoms'])
+      await admin.post('/api/save_row', {
+        table: 'Section Name Alias', row: { store_code: '1501', merch_section_name: merch, roster_section_name: 'Boys Top' },
+      })
+    const dm = (code: string) => (opts.dmColumn ? { dm_employee_code: code } : {})
+    for (const row of [
+      // The current roster (Sep 2026): TL-1 leads Kurti, TL-2 leads Boys Top; DM-1 manages both.
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70001', dm_name: 'Dee', ...dm('RR-80001'), effective_from: '2026-09-01' },
+      { store_code: '1501', section_name: 'Boys Top', tl_employee_code: 'RR-70002', dm_name: 'Dee', ...dm('RR-80001'), effective_from: '2026-09-01' },
+      // A superseded roster names TL-9 on Kurti; a future one names TL-8. Neither is today's.
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70009', dm_name: 'Old', ...dm('RR-80009'), effective_from: '2026-07-01' },
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70008', dm_name: 'Next', ...dm('RR-80008'), effective_from: '2026-10-01' },
+    ])
+      await admin.post('/api/save_row', { table: 'Section Ownership', row })
+  }
+
+  async function viewer(admin: TestClient, user: string, code: string) {
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: user, email: `${user}@example.invalid`, full_name: user, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+    })
+    await setEmployeeCode(admin, user, code)
+    await admin.post('/api/set_password', { user, password: `pw-${user}` })
+  }
+
+  async function assignmentOf(api: TestClient, user: string) {
+    const r = await loginAs(api, user, `pw-${user}`)
+    const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
+    expect(res.status).toBe(200)
+    return ((await res.json()) as { assignment: Record<string, unknown> | null }).assignment
+  }
+
+  test('a Team Leader sees every material group of the Section they lead, not only their own subcategories', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await viewer(admin, 'tl_kurti', 'RR-70001')
+    expect(await assignmentOf(api, 'tl_kurti')).toEqual({
+      plant_code: '1501', store_label: null,
+      material_groups: ['010505001', '010505002'],
+      sections: ['Kurti'],
+      section_by_material_group: { '010505001': 'Kurti', '010505002': 'Kurti' },
+      scope_basis: ['team_leader'],
+    })
+  })
+
+  test('a roster Section reaches every merchandise Section Section Name Alias maps it to', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await viewer(admin, 'tl_boys', 'RR-70002')
+    const a = await assignmentOf(api, 'tl_boys')
+    expect(a?.material_groups).toEqual(['010101001', '010101002', '010102003'])
+    expect(a?.sections).toEqual(['Boys Bottoms', 'Boys Tops'])
+  })
+
+  test("only each Section's current roster row counts: a superseded TL and a future-dated TL derive nothing", async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await viewer(admin, 'tl_old', 'RR-70009')
+    await viewer(admin, 'tl_next', 'RR-70008')
+    await viewer(admin, 'tl_kurti', 'RR-70001')
+    await viewer(admin, 'tl_boys', 'RR-70002')
+    expect(await assignmentOf(api, 'tl_old')).toBeNull()
+    expect(await assignmentOf(api, 'tl_next')).toBeNull()
+    // Read on 01-Oct-2026 the October row is Kurti's current one, so September's Kurti TL drops
+    // out and October's comes in — while Boys Top, which nobody re-rostered, keeps its TL.
+    process.env.SALES_TARGET_TODAY = '2026-10-01'
+    try {
+      expect((await assignmentOf(api, 'tl_next'))?.sections).toEqual(['Kurti'])
+      expect(await assignmentOf(api, 'tl_kurti')).toBeNull()
+      expect((await assignmentOf(api, 'tl_boys'))?.sections).toEqual(['Boys Bottoms', 'Boys Tops'])
+    } finally {
+      process.env.SALES_TARGET_TODAY = '2026-09-17'
+    }
+  })
+
+  test('a Department Manager sees every Section they manage, grouped by Section', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await viewer(admin, 'dm_dee', 'RR-80001')
+    expect(await assignmentOf(api, 'dm_dee')).toEqual({
+      plant_code: '1501', store_label: null,
+      material_groups: ['010101001', '010101002', '010102003', '010505001', '010505002'],
+      sections: ['Boys Bottoms', 'Boys Tops', 'Kurti'],
+      section_by_material_group: {
+        '010101001': 'Boys Tops', '010101002': 'Boys Tops', '010102003': 'Boys Bottoms', '010505001': 'Kurti', '010505002': 'Kurti',
+      },
+      scope_basis: ['department_manager'],
+    })
+  })
+
+  test('the embed session carries the Section of every group, so the Dive can group by it', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await viewer(admin, 'dm_dee', 'RR-80001')
+    const calls = stubUpstream()
+    const r = await loginAs(api, 'dm_dee', 'pw-dm_dee')
+    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(200)
+    expect(calls[0].body.initial_state).toEqual({
+      plant_code: '1501',
+      material_groups: ['010101001', '010101002', '010102003', '010505001', '010505002'],
+      section_by_material_group: {
+        '010101001': 'Boys Tops', '010101002': 'Boys Tops', '010102003': 'Boys Bottoms', '010505001': 'Kurti', '010505002': 'Kurti',
+      },
+      period_start: '2026-09-01',
+      period_end: '2026-09-17',
+    })
+  })
+
+  test('a Team Leader who is also rostered on subcategories gets both, once each, and is told both', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    // RR-70001 leads Kurti AND is personally rostered on Kurti Set (inside the Section) and on a
+    // subcategory of another Section.
+    for (const row of [
+      { store_code: '1501', employee_code: 'RR-70001', subcategory: 'Kurti Set', section_name: 'Kurti' },
+      { store_code: '1501', employee_code: 'RR-70001', subcategory: 'Boys Jeans', section_name: 'Boys Bottoms' },
+    ])
+      await admin.post('/api/save_row', { table: 'Employee Section Map', row })
+    await viewer(admin, 'tl_kurti', 'RR-70001')
+    const a = await assignmentOf(api, 'tl_kurti')
+    expect(a?.material_groups).toEqual(['010102003', '010505001', '010505002'])
+    expect(a?.scope_basis).toEqual(['section_staff', 'team_leader'])
+  })
+
+  test('two Team Leaders on one Section from the same day both see it; an undated row is in force', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    for (const row of [
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70003', dm_name: 'Dee', effective_from: '2026-09-01' },
+      { store_code: '1501', section_name: 'Silk Saree', tl_employee_code: 'RR-70004', dm_name: 'Dee', effective_from: null },
+    ])
+      await admin.post('/api/save_row', { table: 'Section Ownership', row })
+    await admin.post('/api/save_row', {
+      table: 'Section Merchandise Map', row: { store_code: '1501', material_group: '010303001', mch_subcategory: 'Silk Saree', section_name: 'Silk Saree' },
+    })
+    await viewer(admin, 'tl_kurti', 'RR-70001')
+    await viewer(admin, 'tl_kurti_2', 'RR-70003')
+    await viewer(admin, 'tl_silk', 'RR-70004')
+    expect((await assignmentOf(api, 'tl_kurti'))?.sections).toEqual(['Kurti'])
+    expect((await assignmentOf(api, 'tl_kurti_2'))?.sections).toEqual(['Kurti'])
+    expect((await assignmentOf(api, 'tl_silk'))?.material_groups).toEqual(['010303001'])
+  })
+
+  test('a malformed roster date loses only its own row; a slash date is never read month-first', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    // A roster Table that declared effective_from as text, holding one bad and one slash cell.
+    await seedRoster(admin, { dmColumn: true, effectiveType: 'Data' })
+    for (const row of [
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70005', dm_name: 'Dee', effective_from: 'next month' },
+      { store_code: '1501', section_name: 'Kurti', tl_employee_code: 'RR-70006', dm_name: 'Dee', effective_from: '06/08/2026' },
+    ])
+      await admin.post('/api/save_row', { table: 'Section Ownership', row })
+    await viewer(admin, 'tl_kurti', 'RR-70001')
+    await viewer(admin, 'tl_bad', 'RR-70005')
+    await viewer(admin, 'tl_slash', 'RR-70006')
+    expect((await assignmentOf(api, 'tl_kurti'))?.sections).toEqual(['Kurti'])
+    expect(await assignmentOf(api, 'tl_bad')).toBeNull()
+    expect(await assignmentOf(api, 'tl_slash')).toBeNull()
+  })
+
+  test('Section names match whatever their spacing and case; a code that is not nine digits never reaches a query', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await admin.post('/api/save_row', {
+      table: 'Section Ownership',
+      row: { store_code: '1501', section_name: '  kurti ', tl_employee_code: 'RR-70007', dm_name: 'Dee', effective_from: '2026-09-02' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Section Merchandise Map',
+      row: { store_code: '1501', material_group: "0105'; drop", mch_subcategory: 'Kurti Misc', section_name: 'Kurti' },
+    })
+    await viewer(admin, 'tl_spaced', 'RR-70007')
+    const calls = stubUpstream()
+    const a = await assignmentOf(api, 'tl_spaced')
+    expect(a?.material_groups).toEqual(['010505001', '010505002'])
+    const r = await loginAs(api, 'tl_spaced', 'pw-tl_spaced')
+    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(200)
+    expect(JSON.stringify(calls[0].body.initial_state)).not.toContain('drop')
+  })
+
+  test('without a dm_employee_code column on Section Ownership, a manager derives nothing from the roster', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: false })
+    await viewer(admin, 'dm_dee', 'RR-80001')
+    expect(await assignmentOf(api, 'dm_dee')).toBeNull()
   })
 
   test('without the Store Sections Tables, or without an employee code, nothing changes', async ({ admin, api }) => {
@@ -471,8 +709,8 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
     }
 
     await move('test_employee_2')
-    expect(await open(1)).toEqual({ plant_code: '1501', material_groups: ['010101001'] , period_start: '2026-09-01', period_end: '2026-09-17' })
-    expect(await open(2)).toEqual({ plant_code: '1501', material_groups: ['010101003', '010102001', '010102002'], period_start: '2026-09-01', period_end: '2026-09-17' })
+    expect(await open(1)).toEqual({ plant_code: '1501', material_groups: ['010101001'], section_by_material_group: {}, period_start: '2026-09-01', period_end: '2026-09-17' })
+    expect(await open(2)).toEqual({ plant_code: '1501', material_groups: ['010101003', '010102001', '010102002'], section_by_material_group: {}, period_start: '2026-09-01', period_end: '2026-09-17' })
     expect((await open(3)).material_groups).toEqual(['010101001', '010101003'])
     expect((await open(4)).material_groups).toEqual(['010102001', '010102002'])
 
@@ -481,5 +719,27 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
     expect((await open(2)).material_groups).toEqual(['010102001', '010102002'])
     // Every opening minted a fresh session: one upstream call per opening, none cached.
     expect(calls).toHaveLength(6)
+  })
+})
+
+describe('the report period is month to date in India Standard Time', () => {
+  test('the first of the IST month through today; IST midnight, not UTC, rolls the month', async () => {
+    const { currentPeriod } = await import('../src/sales-target')
+    const saved = process.env.SALES_TARGET_TODAY
+    delete process.env.SALES_TARGET_TODAY
+    try {
+      // 30-Sep-2026 19:00 UTC is 01-Oct-2026 00:30 IST.
+      expect(currentPeriod(new Date('2026-09-30T19:00:00Z'))).toEqual({ period_start: '2026-10-01', period_end: '2026-10-01' })
+      expect(currentPeriod(new Date('2026-09-30T18:00:00Z'))).toEqual({ period_start: '2026-09-01', period_end: '2026-09-30' })
+      process.env.SALES_TARGET_TODAY = '2026-02-14'
+      expect(currentPeriod(new Date('2026-09-30T19:00:00Z'))).toEqual({ period_start: '2026-02-01', period_end: '2026-02-14' })
+      process.env.SALES_TARGET_TODAY = '14-Feb-2026'
+      expect(() => currentPeriod()).toThrow(/ISO day/)
+      process.env.SALES_TARGET_TODAY = '2026-02-30' // the right shape, not a day
+      expect(() => currentPeriod()).toThrow(/ISO day/)
+    } finally {
+      if (saved === undefined) delete process.env.SALES_TARGET_TODAY
+      else process.env.SALES_TARGET_TODAY = saved
+    }
   })
 })
