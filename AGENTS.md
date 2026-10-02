@@ -19,11 +19,14 @@ it by hand, assisted by AI — not for AI to write code that I review.
    - Show exactly what will be done (the command or code).
    - Explain what it means and why — especially the Elysia/Bun concepts involved,
      and what files or state it changes.
+   - Explain every command, flag and shell operator the first time it's used,
+     including commands you run only to test.
    - Then ask: *do I run it, or do you?*
 3. **Read-only is fine without asking:** reading files, `ls`, `git status`,
    `git log`, version checks, searching docs/the web.
-4. **Small steps.** One concept at a time. Prefer that I type the code myself;
-   give me code to type rather than writing files.
+4. **One tiny change per step** (e.g. one route, not three). I don't type the
+   code: once I approve a step, you make the edit and run it, and I inspect the
+   result.
 5. **Teach the ecosystem.** I prefer building on established, reliable, non-bloated
    libraries over rewriting from scratch. When a choice comes up, show me what the
    community uses, compare briefly, and recommend one — then I decide.
