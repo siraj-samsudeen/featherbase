@@ -1,5 +1,33 @@
 # Progress Log
 
+## 2026-10-02 — The sales-target page shows one report; the smoke test survives StyleHR sign-in
+
+Screenshots of the report on live data showed the cached table and the live Dive disagreeing. For
+the Girls Bottoms TL the cache read ₹44,561.86 actual and the Dive ₹65,774.24, both under "data as
+of 02-Oct-2026". The cache was built at 12:55 IST and the warehouse loads sales several times a day.
+When the Dive frame is on the page it is now the report. The cached table folds into a collapsed
+"Quick table from the cache · refreshed …" line, and opens only when the Dive is not there.
+
+The live Dive this pairs with is now the owner's "Sales · Target vs Actual" (MotherDuck
+`9022f10f…`) at version 10. Version 10 adds a scoped mode to version 9: given `plant_code` and
+`material_groups` it locks the store, limits every query to those leaves and groups rows by
+`section_by_material_group`. Without those keys it behaves exactly like version 9. The Featherbase host already sends those keys,
+so a deployment sets `DIVE_ID=9022f10f-be83-4fba-a729-5399c18d150e` and `DIVE_VERSION=10`.
+
+The smoke test's `getByRole('button', { name: 'Sign in' })` matched "Sign in with StyleHR" too on
+any instance with delegated sign-in configured. It now matches exactly. CI never saw it, because its
+database has StyleHR off.
+
+**Verified:** `test/sales-target-page.test.tsx` 2 passed. With the fold disabled, the first test fails.
+Web suite 181 passed, web typecheck passed. `pnpm check:e2e-dsl` OK (78 files), `pnpm check:specs` 45 + 20.
+`e2e/smoke.spec.ts` 3 passed against a local database with StyleHR configured; it failed there
+before. Local screenshots of the TLs for Girls Bottoms (password) and Kurti (StyleHR) were
+inspected, with Dive version 10 rendering live data through a local stand-in for MotherDuck's
+embed service.
+
+**Next:** featherbase-dev from scratch, once a Railway token and a read-write MotherDuck token are in
+the environment.
+
 ## 2026-10-02 — Delegated password sign-in (StyleHR first)
 
 People with no Google identity can now sign in with the ID and password of

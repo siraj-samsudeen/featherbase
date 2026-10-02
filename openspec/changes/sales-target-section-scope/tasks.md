@@ -24,6 +24,11 @@
 - [x] 4.4 Show missing-actual counts on each Section subtotal (report page and Dive version 3).
 - [x] 4.5 Land a report viewer on the report after Google sign-in, as password sign-in already did.
 
-## 5. Verification
+## 5. One report on the page
 
-- [x] 5.1 Run server and web typecheck, the sales-target and dataset-snapshot suites, the full server suite, `pnpm check:specs` and `git diff --check`; exercise the real ATK roster against live MotherDuck on a local instance.
+- [x] 5.1 Add failing page tests: with the live Dive embedded the cached table is inside a collapsed line that names it the cache; with no Dive configured it stays open; fold it away when the Dive frame is shown.
+- [x] 5.2 The smoke test names the "Sign in" button exactly, so an instance with StyleHR sign-in on no longer matches two buttons.
+
+## 6. Verification
+
+- [x] 6.1 Run server and web typecheck, the sales-target and dataset-snapshot suites, the full server suite, `pnpm check:specs` and `git diff --check`; exercise the real ATK roster against live MotherDuck on a local instance.

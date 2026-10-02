@@ -73,3 +73,12 @@ The report SHALL tell the reader every reason they see it, such as leading a Sec
 
 - **WHEN** a Team Leader who is also rostered on some subcategories opens the report
 - **THEN** the report gives both reasons
+
+### Requirement: One report on the page
+
+When the live report is available, it SHALL be the report the reader sees. The cached table SHALL be folded away behind a line that says it is the cache and when it was refreshed, and SHALL be shown open only when the live report is not there.
+
+#### Scenario: Live report available
+
+- **WHEN** a reader opens the report and the live report loads
+- **THEN** they see one set of figures, and the cached table is folded away under a line giving its refresh time
