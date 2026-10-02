@@ -112,8 +112,10 @@ export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>) {
   }
 }
 
-export async function passwordAttempt(c: Context, username: string) {
+// `scope` keeps credential namespaces apart: a local username and an ID at a
+// delegated sign-in provider (delegated-login.ts) never share one budget.
+export async function passwordAttempt(c: Context, username: string, scope: 'password' | 'delegated' = 'password') {
   const policy = preAuthPolicy()
-  const ticket = await admit(bucketKey(['PASSWORD', 'password', source(c, policy.trusted), username.trim().toLowerCase()]), policy.limits.PASSWORD, policy.windowMs)
+  const ticket = await admit(bucketKey(['PASSWORD', scope, source(c, policy.trusted), username.trim().toLowerCase()]), policy.limits.PASSWORD, policy.windowMs)
   return { ticket, refusal: ticket.revision ? null : rejection(c, ticket.retryAfter) }
 }

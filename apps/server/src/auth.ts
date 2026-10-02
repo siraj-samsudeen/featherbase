@@ -69,6 +69,10 @@ async function issueSessionToken(userName: string): Promise<{ token: string; max
   return { token, maxAgeSeconds }
 }
 
+// The one refusal every interactive sign-in gives for bad or unusable
+// credentials, so a failure never reveals which it was.
+export const INVALID_CREDENTIALS = 'Invalid login credentials'
+
 export async function login(usr: string, pwd: string): Promise<IssuedSession> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, password_hash, user_type from "user"
@@ -76,7 +80,7 @@ export async function login(usr: string, pwd: string): Promise<IssuedSession> {
   // #131: service accounts never sign in interactively — tokens only. The
   // refusal is deliberately the same generic message as a bad password.
   if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
-    throw new AppError('AuthenticationError', 'Invalid login credentials')
+    throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const session = await issueSessionToken(user.row_id as string)
   // PLAT-007: record the successful authentication.
   await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })

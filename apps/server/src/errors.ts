@@ -9,6 +9,7 @@ export type ErrorType =
   | 'ConflictError'
   | 'MethodNotAllowedError'
   | 'DataSourceError'
+  | 'ServiceUnavailableError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -22,6 +23,10 @@ const STATUS: Record<ErrorType, number> = {
   // EDS-11: an external data source is unreachable/failed — an upstream
   // failure (502), never disguised as an empty result.
   DataSourceError: 502,
+  // A service Featherbase depends on to answer this request (the delegated
+  // sign-in provider) did not answer usably — "try again later", not a
+  // verdict on what the caller sent.
+  ServiceUnavailableError: 503,
   InternalError: 500,
 }
 

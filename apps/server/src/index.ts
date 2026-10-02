@@ -12,10 +12,11 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, INVALID_CREDENTIALS, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
+import { assertUserColumn, checkWithProvider, delegatedLoginConfig, linkedUser, unavailable } from './delegated-login'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -144,7 +145,9 @@ app.get('/api/ping', async (c) => {
 // stays behind the session like /api/settings.
 app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
-  return c.json({ app_name: s.app_name })
+  // The login page offers delegated sign-in only when this names a service.
+  const delegated = await delegatedLoginConfig()
+  return c.json({ app_name: s.app_name, delegated_login_label: delegated?.label ?? null })
 })
 
 // Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
@@ -178,6 +181,31 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   // #3755: report viewers land on their report, not the Admin.
+  const landing = await landingFor(session.user.row_id)
+  return c.json(landing ? { ...session, landing } : session)
+})
+
+// Delegated password sign-in (OpenSpec change `delegated-password-login`):
+// the configured provider (System Settings delegated_login_*) checks the
+// ID and password; the session is then issued exactly like /api/login's.
+// Off answers like any unknown route, so the route does not advertise itself.
+app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
+  const cfg = await delegatedLoginConfig()
+  if (!cfg) return c.notFound()
+  const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
+  if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  const attempt = await passwordAttempt(c, usr, 'delegated')
+  if (attempt.refusal) return attempt.refusal
+  // Before the provider call: never forward a password that cannot be bound.
+  await assertUserColumn(cfg)
+  const id = usr.trim()
+  const outcome = await checkWithProvider(cfg, id, pwd)
+  if (outcome === 'unavailable') throw unavailable(cfg)
+  if (outcome === 'rejected') throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  const issued = await issueSession(await linkedUser(cfg, id))
+  const session = { token: issued.token, user: issued.user }
+  await forgive(attempt.ticket)
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   const landing = await landingFor(session.user.row_id)
   return c.json(landing ? { ...session, landing } : session)
 })
