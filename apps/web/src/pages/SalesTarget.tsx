@@ -14,11 +14,26 @@ import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '.
 interface Me {
   username: string
   display_name: string
-  assignment: { plant_code: string; store_label: string | null; material_groups: string[]; sections?: string[] } | null
+  assignment: {
+    plant_code: string
+    store_label: string | null
+    material_groups: string[]
+    sections?: string[]
+    scope_basis?: ScopeBasis[]
+  } | null
   period_start: string
   period_end: string
   embed_origin: string
 }
+
+type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager'
+// Why the reader sees these rows, in the store's own words — leadership first.
+const BASIS_LABEL: [ScopeBasis, string][] = [
+  ['department_manager', 'Department Manager'],
+  ['team_leader', 'Team Leader'],
+  ['section_staff', 'Section staff'],
+  ['assignment', 'Assigned subcategories'],
+]
 
 type Embed =
   | { kind: 'loading' }
@@ -33,6 +48,7 @@ type Embed =
 interface ReportRow {
   code: string
   subcategory: string
+  section: string | null
   target: number | null
   actual: number | null
   gap: number | null
@@ -47,15 +63,18 @@ interface Report {
   store_name: string | null
   data_through: string | null
   cutoff_early: boolean
+  no_data_yet?: boolean
   rows: ReportRow[]
-  total: {
-    target: number | null
-    actual: number | null
-    gap: number | null
-    achievement: number | null
-    missing: number
-    n: number
-  }
+  sections?: (Totals & { section: string | null })[]
+  total: Totals
+}
+interface Totals {
+  target: number | null
+  actual: number | null
+  gap: number | null
+  achievement: number | null
+  missing: number
+  n: number
 }
 type Pre =
   | { kind: 'loading' }
@@ -68,6 +87,20 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 function fmtDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}-${MONTHS[Number(m) - 1]}-${y}`
+}
+
+// The server orders rows Section by Section and computes each Section's subtotal;
+// the page only slices. Titles appear once any row carries a Section.
+function sectionGroups(report: Report): { section: string | null; titled: boolean; total: Totals; rows: ReportRow[] }[] {
+  const subtotals = report.sections ?? []
+  const titled = report.rows.some((r) => r.section != null)
+  if (!titled || !subtotals.length) return [{ section: null, titled: false, total: report.total, rows: report.rows }]
+  return subtotals.map(({ section, ...total }) => ({
+    section,
+    titled: true,
+    total,
+    rows: report.rows.filter((r) => (r.section ?? null) === section),
+  }))
 }
 
 // Every opening bumps this; a response whose number is no longer current
@@ -158,10 +191,12 @@ export function SalesTargetPage() {
   // that is the fact the store maintains, and what a reader recognises.
   const sections = me?.assignment?.sections ?? []
   const store = me?.assignment
-    ? `${me.assignment.plant_code} — ${me.assignment.store_label ?? ''}`.trim() +
+    ? (me.assignment.store_label ? `${me.assignment.plant_code} — ${me.assignment.store_label}` : me.assignment.plant_code) +
       (sections.length ? ` · ${sections.join(' · ')}` : '')
     : 'no store assigned'
   const period = me ? `${fmtDate(me.period_start)} to ${fmtDate(me.period_end)}` : ''
+  const basis = me?.assignment?.scope_basis ?? []
+  const basisLine = BASIS_LABEL.filter(([b]) => basis.includes(b)).map(([, label]) => label).join(' · ')
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--color-canvas)]">
@@ -173,7 +208,7 @@ export function SalesTargetPage() {
               {me ? `${me.display_name} · ${store} · ${period}` : 'Opening your report…'}
             </p>
             <p className="text-xs text-[var(--color-ink-muted)]" data-testid="identity-sub">
-              {me ? `Signed in as ${me.username} · Sales before tax, net of returns` : ''}
+              {me ? `Signed in as ${me.username}${basisLine ? ` · ${basisLine}` : ''} · Sales before tax, net of returns` : ''}
             </p>
           </div>
         </div>
@@ -223,6 +258,12 @@ export function SalesTargetPage() {
                 </span>
               </p>
             </div>
+            {pre.report.no_data_yet && (
+              <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-no-data-yet">
+                No sales recorded for this month yet — the warehouse has data through {fmtDay(pre.report.source_as_of)}.
+                The figures below fill in after the morning load. This is not a sales figure of zero.
+              </p>
+            )}
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
@@ -234,20 +275,42 @@ export function SalesTargetPage() {
                   <th className="px-4 py-2 text-right font-medium">Achievement</th>
                 </tr>
               </thead>
-              <tbody>
-                {pre.report.rows.map((r) => (
-                  <tr key={r.code} className="border-t border-[var(--color-border)]" data-testid="snapshot-row" data-code={r.code}>
-                    <td className="px-4 py-2 text-[var(--color-ink)]">{r.subcategory}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">{r.code}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.target)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.actual)}</td>
-                    <td className={`px-4 py-2 text-right tabular-nums ${r.gap != null && r.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
-                      {fmtSigned(r.gap)}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">{fmtPct(r.achievement)}</td>
-                  </tr>
-                ))}
-              </tbody>
+              {/* One tbody per Section: a heading row carrying the Section's subtotal, then its
+                  subcategories. A report with no Section map is one untitled group. */}
+              {sectionGroups(pre.report).map((g) => (
+                <tbody key={g.section ?? '(unmapped)'} data-testid="snapshot-section" data-section={g.section ?? ''}>
+                  {g.titled && (
+                    <tr className="border-t-2 border-[var(--color-border)] bg-[var(--color-canvas)] font-semibold" data-testid="snapshot-section-total">
+                      <td className="px-4 py-2 text-[var(--color-ink)]" colSpan={2}>
+                        {g.section ?? 'Not mapped to a Section'} · {g.total.n} subcategor{g.total.n === 1 ? 'y' : 'ies'}
+                        {g.total.missing > 0 && (
+                          <span className="font-normal text-[var(--color-ink-muted)]" data-testid="snapshot-section-missing">
+                            {' '}· {g.total.missing} without actuals
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtExact(g.total.target)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtExact(g.total.actual)}</td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${g.total.gap != null && g.total.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                        {fmtSigned(g.total.gap)}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtPct(g.total.achievement)}</td>
+                    </tr>
+                  )}
+                  {g.rows.map((r) => (
+                    <tr key={r.code} className="border-t border-[var(--color-border)]" data-testid="snapshot-row" data-code={r.code}>
+                      <td className="px-4 py-2 text-[var(--color-ink)]">{r.subcategory}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">{r.code}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.target)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.actual)}</td>
+                      <td className={`px-4 py-2 text-right tabular-nums ${r.gap != null && r.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                        {fmtSigned(r.gap)}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums">{fmtPct(r.achievement)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
               <tfoot>
                 <tr className="border-t-2 border-[var(--color-border)] font-semibold" data-testid="snapshot-total">
                   <td className="px-4 py-2" colSpan={2}>

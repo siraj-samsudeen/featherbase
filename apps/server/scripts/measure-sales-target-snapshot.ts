@@ -13,7 +13,7 @@ import { sql, _getRootSql } from '../src/db'
 import { buildSnapshot, activeSnapshot, pruneSnapshots } from '../src/dataset-snapshot'
 import { SALES_TARGET_DATASET, _liveReader, definitionSql } from '../src/datasets/sales-target-mtd'
 import { reportFor } from '../src/sales-target-report'
-import { PERIOD, type Assignment } from '../src/sales-target'
+import { currentPeriod, type Assignment } from '../src/sales-target'
 import '../src/datasets/sales-target-mtd'
 
 const SHARED = process.env.SALES_TARGET_SHARED ?? '/home/user/data-warehouse/experiments/issue_3755/shared'
@@ -24,6 +24,9 @@ const ASSIGNMENTS: Assignment[] = JSON.parse(readFileSync(`${SHARED}/assignments
     plant_code: a.plant_code,
     store_label: a.store_label,
     material_groups: a.material_groups,
+    sections: [],
+    section_by_material_group: {},
+    scope_basis: ['assignment'],
   }),
 )
 
@@ -95,7 +98,7 @@ async function main() {
     // The same slice, at the source: the dataset SQL with this reader's
     // personalisation predicate put back.
     const codes = a.material_groups.map((c) => `'${c}'`).join(', ')
-    const scoped = `with base as (${definitionSql(PERIOD.period_start, PERIOD.period_end)})
+    const scoped = `with base as (${definitionSql(currentPeriod().period_start, currentPeriod().period_end)})
       select b.hierarchy_code, sum(b.target_daily_before_tax), sum(b.actual_before_tax), count(b.actual_before_tax)
       from base b where b.plant_code = '${a.plant_code}' and b.hierarchy_code in (${codes})
       group by b.hierarchy_code order by 1`

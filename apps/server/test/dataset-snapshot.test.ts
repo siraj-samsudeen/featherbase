@@ -7,7 +7,7 @@
 // warehouse's arithmetic (baseline agreement is measured separately by
 // scripts/measure-sales-target-snapshot.ts against real data).
 import { randomUUID } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs } from '../src/jobs'
@@ -23,8 +23,17 @@ import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/da
 import { reportFor } from '../src/sales-target-report'
 import type { Assignment } from '../src/sales-target'
 
-const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'], sections: [] }
-const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'], sections: [] }
+// The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
+// so "today" is pinned there and every expected period below still means what it meant.
+const savedToday = process.env.SALES_TARGET_TODAY
+beforeAll(() => { process.env.SALES_TARGET_TODAY = '2026-09-17' })
+afterAll(() => {
+  if (savedToday === undefined) delete process.env.SALES_TARGET_TODAY
+  else process.env.SALES_TARGET_TODAY = savedToday
+})
+
+const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
+const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
 
 /** One snapshot row in the dataset's 8-column shape. */
 const row = (plant: string, code: string, date: string, target: number | null, actual: number | null) =>
@@ -274,6 +283,90 @@ describe('freshness', () => {
     // The cutoff actually applied to both sides, and the report says it is early.
     expect(r.data_through).toBe('2026-09-15')
     expect(r.cutoff_early).toBe(true)
+  })
+})
+
+describe('Section subtotals', () => {
+  test('rows read Section by Section with unmapped groups last, and the Section subtotals add up to the total', async () => {
+    const rows = sampleRows()
+    for (const date of ['2026-09-01', '2026-09-02']) rows.push(row('1501', '010102001', date, 50, 20))
+    rows.push(row('1501', '010102002', '2026-09-01', 30, null)) // a target with no actual yet
+    stub(rows)
+    await buildSnapshot(SALES_TARGET_DATASET)
+    const a: Assignment = {
+      ...EMP1,
+      material_groups: ['010101001', '010101003', '010102001', '010102002'],
+      // 010101003 is in no Section: it must still be shown, after the named ones.
+      section_by_material_group: { '010101001': 'Boys Tops', '010102001': 'Boys Bottoms', '010102002': 'Boys Bottoms' },
+    }
+    const r = await reportFor(a)
+    expect(r.rows.map((x) => [x.section, x.code])).toEqual([
+      ['Boys Bottoms', '010102001'],
+      ['Boys Bottoms', '010102002'],
+      ['Boys Tops', '010101001'],
+      [null, '010101003'],
+    ])
+    // The missing actual is counted, never summed as ₹0 — the subtotal carries its own count.
+    expect(r.sections).toEqual([
+      { section: 'Boys Bottoms', target: 130, actual: 40, gap: -90, achievement: (100 * 40) / 130, missing: 1, n: 2 },
+      { section: 'Boys Tops', target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, n: 1 },
+      { section: null, target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, n: 1 },
+    ])
+    expect(r.total).toMatchObject({ target: 530, actual: 280, n: 4, missing: 1 })
+  })
+})
+
+describe('the month is part of the snapshot identity', () => {
+  test('a snapshot built in September is not a hit on 01-Oct (IST): the reader goes live and the miss is recorded', async () => {
+    stub(sampleRows())
+    const out = await buildSnapshot(SALES_TARGET_DATASET)
+    expect(out.status).toBe('activated')
+    expect((await reportFor(EMP1)).source).toBe('snapshot')
+
+    process.env.SALES_TARGET_TODAY = '2026-10-01'
+    try {
+      // Nothing about the row changed; the period did. Serving it would show September's
+      // figures under an October heading.
+      expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeNull()
+      await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
+      const r = await reportFor(EMP1)
+      expect(r.source).toBe('live')
+      expect(r.period_start).toBe('2026-10-01')
+      const [miss] = await sql`select hits from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
+      expect(Number(miss.hits)).toBe(1)
+      // The first October build is judged on its own: September's larger row count is not
+      // "the previous snapshot", so the >50% drop guard does not refuse it.
+      stub([row('1501', '010101001', '2026-10-01', 100, 60)], '2026-10-01')
+      expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+      expect((await reportFor(EMP1)).source).toBe('snapshot')
+    } finally {
+      process.env.SALES_TARGET_TODAY = '2026-09-17'
+    }
+  })
+})
+
+describe('the hours after IST midnight on the 1st', () => {
+  test('with the warehouse still on last month, the build says why it did not run and the report says no data yet', async () => {
+    // This stub HONOURS the cutoff, as MotherDuck does: actuals end 30-Sep, so nothing of October.
+    _setSourceReader(async (text: string) => {
+      if (/max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text)) return [['2026-09-30']]
+      return /between date '2026-10-01'/.test(text) ? [] : sampleRows()
+    })
+    process.env.SALES_TARGET_TODAY = '2026-10-01'
+    try {
+      const out = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(out.status).toBe('failed')
+      expect(out.reason).toMatch(/no actuals yet for the period starting 2026-10-01: the warehouse has data through 2026-09-30/)
+      const r = await reportFor(EMP1)
+      expect(r.source).toBe('live')
+      expect(r.no_data_yet).toBe(true)
+      expect(r.rows.every((x) => x.missingActual)).toBe(true)
+    } finally {
+      process.env.SALES_TARGET_TODAY = '2026-09-17'
+    }
+    // An ordinary day is not "no data yet".
+    stub(sampleRows())
+    expect((await reportFor(EMP1)).no_data_yet).toBe(false)
   })
 })
 
