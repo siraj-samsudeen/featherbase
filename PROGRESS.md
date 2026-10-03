@@ -9974,3 +9974,28 @@ separate from ordinary suite data, as documented in `docs/TESTING.md`.
 Feather standards/spec/module-shape review found no remaining scoped concerns;
 it added the unrelated-constraint regression. Next: parent independent review
 and verification before merge. No merge or deployment is claimed.
+
+## 2026-10-03 — Sales-target trial: StyleHR test mode and the Store Manager scope (#366, #367, #368)
+
+For the data-warehouse #3783 user trial on featherbase-dev:
+
+- **#366 / #367 — delegated sign-in test mode** (OpenSpec `delegated-login-test-mode`).
+  `DELEGATED_LOGIN_TEST_MODE=trust-any-password` (exact phrase, environment only) skips the
+  StyleHR check: a tester types a linked person's **employee code** (`RR-6761`), no password. The
+  account must still be linked, enabled and not privileged. The login page shows a notice and asks
+  for an employee code. Leavers are kept out by a disabled account (the data-warehouse roster sync
+  runs with `--disable-leavers`). Set on featherbase-dev only; prod has the code, not the switch.
+- **#368 — a Store Manager sees the whole store** (OpenSpec `sales-target-store-manager-scope`).
+  A Store Sections `Store Manager` Table (one row per store) gives that employee every material
+  group of the store's merchandise map, grouped by Section, labelled "Store Manager". `ScopeBasis`
+  is now one contract in `packages/shared` (`SCOPE_BASES`), and the page's label map is exhaustive.
+
+Verification: `apps/server/test/delegated-login.test.ts` 26/26, `apps/server/test/sales-target.test.ts`
+37/37, `apps/web/test/delegated-login.test.tsx` 4/4, and the new Store Manager case in
+`apps/web/test/sales-target-page.test.tsx` (red without the label). `tsc --noEmit` is clean for
+server, web and shared. Live on featherbase-dev: three readers signed in by StyleHR ID, and their
+Dive figures matched a warehouse query to the rupee (see data-warehouse #3783).
+
+Gotcha: locally, the two older cases in `sales-target-page.test.tsx` fail on this Mac even on a
+fresh database and on main, while CI passes them. Not caused by these changes; not investigated.
+Next: sign in as a Store Manager on featherbase-dev; then the prod rebuild with the CDC repoint.

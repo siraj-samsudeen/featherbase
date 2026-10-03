@@ -54,3 +54,31 @@ test('with no Dive configured, the cached table is the report and stays open', a
   expect(screen.queryByTestId('snapshot-quick')).not.toBeInTheDocument()
   expect(screen.getByTestId('snapshot-report')).toBeVisible()
 })
+
+// #3783: the page says WHY the reader sees these figures; a Store Manager is told so.
+test('a Store Manager is told they see the whole store as Store Manager', async ({ admin, api }) => {
+  await viewer(admin)
+  for (const [name, columns] of [
+    ['Section Merchandise Map', ['store_code', 'material_group', 'mch_subcategory', 'section_name']],
+    ['Store Manager', ['store_code', 'employee_code', 'full_name', 'email']],
+  ] as const)
+    await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name, module: 'Store Sections', columns: columns.map((c) => ({ column_name: c, column_type: 'Data' })) }),
+    })
+  for (const [table, row] of [
+    ['Section Merchandise Map', { store_code: '1501', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' }],
+    ['Store Manager', { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' }],
+  ] as const)
+    await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table, row }) })
+  const doc = (await (await admin.fetch('/api/table/User/test_employee_2')).json()) as { updated_at: string }
+  await admin.fetch('/api/table/User/test_employee_2', {
+    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
+  })
+
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_2' } as never)
+  await waitFor(() => expect(screen.getByTestId('identity-sub')).toHaveTextContent('Store Manager'))
+  expect(screen.getByTestId('identity')).toHaveTextContent('1501 · Kurti')
+})

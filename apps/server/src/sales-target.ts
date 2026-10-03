@@ -238,7 +238,8 @@ export async function seedSalesTarget(
 // --------------------------------------------------------------- assignment
 
 /** Why a reader sees a material group. Several can hold at once; the report shows them all. */
-export type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager'
+export type { ScopeBasis } from 'shared'
+import type { ScopeBasis } from 'shared'
 
 export interface Assignment {
   plant_code: string
@@ -283,6 +284,8 @@ interface Derived {
  *    handover dated 06-Aug replaces that Section's July row and leaves every other Section alone.
  *    A TL's own Employee Section Map rows are a sliver of the Section they lead
  *    (2 of 90 groups for one ATK TL on 02-Oct-2026), so leadership reads the whole Section.
+ *  - store_manager: every material group of the store a Store Manager row names them for — the
+ *    whole store, grouped by Section like everyone else's.
  * Section Ownership speaks the roster's Section names; Section Name Alias maps them onto the
  * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
  */
@@ -355,6 +358,16 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
         where m.material_group is not null and m.material_group <> ''`
       for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis })
     }
+  }
+
+  if (await relationExists('store_manager')) {
+    const rows = await sql`
+      select distinct m.store_code as plant_code, m.material_group
+      from ${sql(platformRelation('store_manager'))} s
+      join ${merch} m on m.store_code = s.store_code
+      where trim(s.employee_code) = ${code}
+        and m.material_group is not null and m.material_group <> ''`
+    for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'store_manager' })
   }
   return out
 }
