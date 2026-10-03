@@ -6,7 +6,7 @@ Rolling out the sales-target report (JeyaramaGroup/data-warehouse#3783) means op
 
 ## What Changes
 
-- A deployment switch, set only in the server's environment, that makes the connected service's sign-in skip the service: a linked person signs in by their ID alone.
+- A deployment switch, set only in the server's environment, that makes the connected service's sign-in skip the service: a tester signs in as a linked person by typing their employee code, with no password.
 - Everything that decides *whose* account opens is unchanged: the ID must be linked to exactly one enabled, non-privileged account.
 - Because the service is not asked, it cannot say the person has left. While the switch is on, a leaver is refused only when their account is disabled — which the roster sync does for anyone StyleHR shows as having left.
 - The sign-in page says plainly that test mode is on and does not ask for a password.

@@ -93,7 +93,7 @@ test('wrong password, an outage and a person who has left each read differently'
 
 // Test mode (OpenSpec change `delegated-login-test-mode`): the server skips the
 // provider, so the page drops the password box and says why.
-test('test mode: a notice, no password field, and an ID alone signs in', async ({ createUser }) => {
+test('test mode: a notice, no password field, and an employee code alone signs in', async ({ createUser }) => {
   vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
   try {
     await connectStyleHR()
@@ -105,7 +105,8 @@ test('test mode: a notice, no password field, and an ID alone signs in', async (
     await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
     expect(await screen.findByTestId('delegated-test-mode')).toHaveTextContent('Test mode')
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('StyleHR ID'), 'tl_web_test')
+    expect(screen.queryByLabelText('StyleHR ID')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Employee code'), tl.user!)
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
 
     await screen.findByTestId('session-user')

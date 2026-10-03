@@ -62,7 +62,7 @@ export function delegatedTestMode(): boolean {
 
 /** Say once, at boot, that the provider is being skipped — same reasoning as announcePreviewLogin. */
 export function announceDelegatedTestMode(log: (message: string) => void = console.warn): void {
-  if (delegatedTestMode()) log('delegated sign-in TEST MODE: the provider is not asked; any linked ID signs in without a password')
+  if (delegatedTestMode()) log('delegated sign-in TEST MODE: the provider is not asked; a linked account signs in by its employee code, without a password')
 }
 
 // Injectable for the sandboxed suite — the real provider is never contacted
@@ -213,11 +213,16 @@ export function unavailable(cfg: DelegatedLoginConfig): AppError {
  *  checker for every unlinked ID. Ambiguity refuses rather than picking.
  *  Call `assertUserColumn` first. */
 export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<string> {
+  // Test mode: a tester knows the employee code (the account's ID), not the
+  // person's login name at the service — but the account must still be linked.
+  const match = delegatedTestMode()
+    ? sql`lower(u.row_id) = lower(trim(${id})) and coalesce(trim(${sql(cfg.userColumn)}), '') <> ''`
+    : sql`lower(trim(${sql(cfg.userColumn)})) = lower(trim(${id}))`
   const rows = await sql`
     select u.row_id, u.enabled,
            exists (select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')) as privileged
     from "user" u
-    where lower(trim(${sql(cfg.userColumn)})) = lower(trim(${id}))
+    where ${match}
       and coalesce(u.user_type, '') <> 'service'
     limit 2`
   if (rows.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
