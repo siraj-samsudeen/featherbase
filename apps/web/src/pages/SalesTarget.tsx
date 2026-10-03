@@ -209,10 +209,14 @@ export function SalesTargetPage() {
   // #3783: when the assignment was derived from the Store Sections maps, name the Sections —
   // that is the fact the store maintains, and what a reader recognises.
   const sections = me?.assignment?.sections ?? []
-  const store = me?.assignment
-    ? (me.assignment.store_label ? `${me.assignment.plant_code} — ${me.assignment.store_label}` : me.assignment.plant_code) +
-      (sections.length ? ` · ${sections.join(' · ')}` : '')
+  const storeName = me?.assignment
+    ? me.assignment.store_label ? `${me.assignment.plant_code} — ${me.assignment.store_label}` : me.assignment.plant_code
     : 'no store assigned'
+  // Up to three Sections are named; more are counted, with the list one tap or key press away (a
+  // native disclosure, so phones and keyboards reach it) — a Store Manager runs every Section,
+  // and 57 names bury the figures (#3783).
+  const wholeStore = me?.assignment?.scope_basis?.includes('store_manager') ?? false
+  const sectionLabel = sections.length <= 3 ? sections.join(' · ') : `${wholeStore ? 'Whole store · ' : ''}${sections.length} Sections`
   const period = me ? `${fmtDate(me.period_start)} to ${fmtDate(me.period_end)}` : ''
   const basis = me?.assignment?.scope_basis ?? []
   const basisLine = SCOPE_BASES.filter((b) => basis.includes(b)).map((b) => BASIS_LABEL[b]).join(' · ')
@@ -223,9 +227,29 @@ export function SalesTargetPage() {
         <div className="flex items-center gap-3">
           <Logo className="h-7 w-7 rounded-md" />
           <div>
-            <p className="text-sm font-semibold text-[var(--color-ink)]" data-testid="identity">
-              {me ? `${me.display_name} · ${store} · ${period}` : 'Opening your report…'}
-            </p>
+            <div className="text-sm font-semibold text-[var(--color-ink)]" data-testid="identity">
+              {me ? (
+                <>
+                  {me.display_name} · {storeName}
+                  {sections.length > 0 && sections.length <= 3 && <>{' · '}{sectionLabel}</>}
+                  {sections.length > 3 && (
+                    <>
+                      {' · '}
+                      <details data-testid="identity-sections" className="inline-block align-top">
+                        <summary className="cursor-pointer underline decoration-dotted">{sectionLabel}</summary>
+                        <span data-testid="identity-section-list" className="block font-normal text-[var(--color-ink-muted)]">
+                          {sections.join(' · ')}
+                        </span>
+                      </details>
+                    </>
+                  )}
+                  {' · '}
+                  {period}
+                </>
+              ) : (
+                'Opening your report…'
+              )}
+            </div>
             <p className="text-xs text-[var(--color-ink-muted)]" data-testid="identity-sub">
               {me ? `Signed in as ${me.username}${basisLine ? ` · ${basisLine}` : ''} · Sales before tax, net of returns` : ''}
             </p>
