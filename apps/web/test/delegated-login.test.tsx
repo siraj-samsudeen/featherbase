@@ -2,7 +2,7 @@
 // `delegated-password-login`). The page is the real route tree; its fetches
 // reach the in-process server inside the test's rolled-back transaction, and
 // the provider itself is a stub swapped in through `_setDelegatedFetch`.
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
@@ -89,4 +89,28 @@ test('wrong password, an outage and a person who has left each read differently'
   // And back to the ordinary form.
   await userEvent.click(screen.getByTestId('password-login-toggle'))
   expect(screen.getByLabelText('Email or username')).toBeInTheDocument()
+})
+
+// Test mode (OpenSpec change `delegated-login-test-mode`): the server skips the
+// provider, so the page drops the password box and says why.
+test('test mode: a notice, no password field, and an ID alone signs in', async ({ createUser }) => {
+  vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+  try {
+    await connectStyleHR()
+    const tl = await createUser({ email: 'tl.web.test@example.com' })
+    await sql`update "user" set stylehr_username = 'tl_web_test' where row_id = ${tl.user!}`
+    providerAnswers(() => Response.json({ error: 'the provider must not be asked' }))
+
+    await renderApp('/featherbase/login', anonymous)
+    await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+    expect(await screen.findByTestId('delegated-test-mode')).toHaveTextContent('Test mode')
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('StyleHR ID'), 'tl_web_test')
+    await userEvent.click(screen.getByTestId('delegated-login-submit'))
+
+    await screen.findByTestId('session-user')
+    expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
