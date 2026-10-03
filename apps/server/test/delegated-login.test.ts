@@ -401,40 +401,53 @@ describe('delegated password sign-in', () => {
 })
 
 // Test mode (#3783): while a sales-target rollout is being tried out, the
-// provider is not asked at all. Binding is unchanged — only a linked, enabled,
-// non-privileged account signs in — so the switch decides whose report opens,
-// never who becomes an administrator.
+// provider is not asked, and the tester types the person's EMPLOYEE CODE (the
+// account's ID) — the StyleHR login name is what the person themself would
+// type, and a tester does not know it. Only accounts linked to the service
+// qualify, and the usual refusals stand, so the switch decides whose report
+// opens, never who becomes an administrator.
 describe('delegated sign-in test mode', () => {
   const TRUST = 'trust-any-password'
 
-  test('on: a linked person signs in by ID alone, and the provider is never asked', async ({ api, admin, createUser }) => {
+  test('on: a linked person signs in by employee code alone, and the provider is never asked', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.test@example.com' })
-    await link(tl.user!, 'tl_test_1')
+    await link(tl.user!, 'ANISHA_1716708795')
     const calls = provider(() => Response.json({ error: 'would have refused' }))
 
-    for (const pwd of ['', 'anything at all']) {
-      const res = await signIn(api, 'TL_TEST_1', pwd)
+    for (const [usr, pwd] of [[tl.user!, ''], [` ${tl.user!.toUpperCase()} `, 'anything at all']]) {
+      const res = await signIn(api, usr, pwd)
       expect(res.status).toBe(200)
       expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(tl.user)
     }
     expect(calls).toHaveLength(0)
   })
 
-  test('on: an unlinked ID, a disabled account and a System Manager are still refused', async ({ api, admin, createUser }) => {
+  test('on: the StyleHR login name is not how a tester signs in', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     await addIdColumn(admin)
-    expect((await signIn(api, 'nobody_linked', '')).status).toBe(401)
+    const tl = await createUser({ email: 'tl.login@example.com' })
+    await link(tl.user!, 'ANISHA_1716708795')
+    expect((await signIn(api, 'ANISHA_1716708795', '')).status).toBe(401)
+  })
+
+  test('on: an account with no link, a disabled one and a System Manager are still refused', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    await addIdColumn(admin)
+    expect((await signIn(api, 'nobody', '')).status).toBe(401)
+    const office = await createUser({ email: 'office@example.com' })
+    expect((await signIn(api, office.user!, '')).status).toBe(401)
     const off = await createUser({ email: 'tl.disabled@example.com' })
     await link(off.user!, 'tl_disabled')
     await sql`update "user" set enabled = false where row_id = ${off.user!}`
-    expect((await signIn(api, 'tl_disabled', '')).status).toBe(401)
+    expect((await signIn(api, off.user!, '')).status).toBe(401)
     const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
     await link(sm.user!, 'sm_1')
-    expect((await signIn(api, 'sm_1', '')).status).toBe(401)
+    expect((await signIn(api, sm.user!, '')).status).toBe(401)
   })
 
   test('only the exact phrase turns it on; "1" or "true" leave the provider in charge', async ({ api, admin, createUser }) => {

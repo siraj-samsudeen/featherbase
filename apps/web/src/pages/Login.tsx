@@ -121,7 +121,7 @@ export function LoginPage() {
                 {delegatedTestMode ? (
                   <p role="status" data-testid="delegated-test-mode"
                     className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Test mode: {delegatedLabel} is not asked. Enter a {delegatedLabel} ID to open that person's view — no password needed.
+                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-6761) to open that person's view — no password needed.
                   </p>
                 ) : (
                   <p className="text-sm text-[var(--color-ink-muted)]">
@@ -129,7 +129,7 @@ export function LoginPage() {
                   </p>
                 )}
                 <div>
-                  <label className="fc-label" htmlFor="delegated-id">{delegatedLabel} ID</label>
+                  <label className="fc-label" htmlFor="delegated-id">{delegatedTestMode ? 'Employee code' : `${delegatedLabel} ID`}</label>
                   <input
                     id="delegated-id"
                     type="text"
