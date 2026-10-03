@@ -3,6 +3,7 @@
 // there, the cached table is the report and stays open. Server in-process; MotherDuck stubbed.
 import { afterEach, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { test, expect, renderApp } from './pg-test'
@@ -112,6 +113,21 @@ test('more than three Sections are counted, not listed; a Store Manager reads "W
   const { token } = (await login.json()) as { token: string }
   await renderApp('/featherbase/sales-target', { token, user: 'test_employee_2' } as never)
   await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 · Whole store · 4 Sections'))
-  expect(screen.getByTestId('identity')).not.toHaveTextContent('Silk Saree')
-  expect(screen.getByTestId('identity-sections')).toHaveAttribute('title', 'Boys Bottoms · Boys Tops · Kurti · Silk Saree')
+  expect(screen.getByTestId('identity-section-list')).not.toBeVisible()
+  // The full list is a tap or a key press away — no hover, so phones and keyboards get it too.
+  const toggle = screen.getByText('Whole store · 4 Sections', { selector: 'summary' })
+  expect(screen.getByTestId('identity-sections')).not.toHaveAttribute('open')
+  await userEvent.click(toggle)
+  expect(screen.getByTestId('identity-sections')).toHaveAttribute('open')
+  expect(screen.getByTestId('identity-section-list')).toBeVisible()
+  expect(screen.getByTestId('identity-section-list')).toHaveTextContent('Boys Bottoms · Boys Tops · Kurti · Silk Saree')
+})
+
+test('three Sections or fewer are named outright, with nothing to expand', async ({ admin, api }) => {
+  await viewer(admin)
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+  await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
+  expect(screen.queryByTestId('identity-sections')).not.toBeInTheDocument()
 })

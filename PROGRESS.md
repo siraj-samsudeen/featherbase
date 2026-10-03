@@ -10004,6 +10004,6 @@ Next: sign in as a Store Manager on featherbase-dev; then the prod rebuild with 
 
 The report banner named every Section in scope; a Store Manager's 57 buried the figures. Up to
 three are still named; more read "N Sections" ("Whole store · N Sections" for a Store Manager),
-with the full list as the hover title (`identity-sections`). The embedded Dive does the same from
+with the full list in a native disclosure (`identity-sections`), reachable by tap or keyboard. The embedded Dive does the same from
 version 11 (data-warehouse experiments/issue_3755/shared/target_vs_actual_v11.tsx).
 Verification: new case in `apps/web/test/sales-target-page.test.tsx` (red first), `tsc` clean.
