@@ -26,9 +26,10 @@ interface Me {
   embed_origin: string
 }
 
-type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager'
+type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager' | 'store_manager'
 // Why the reader sees these rows, in the store's own words — leadership first.
 const BASIS_LABEL: [ScopeBasis, string][] = [
+  ['store_manager', 'Store Manager'],
   ['department_manager', 'Department Manager'],
   ['team_leader', 'Team Leader'],
   ['section_staff', 'Section staff'],

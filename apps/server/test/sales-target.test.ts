@@ -547,6 +547,51 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     })
   })
 
+  // A Store Manager runs the whole store: one Store Manager row per store names them, and their
+  // scope is every material group the store's merchandise map holds, grouped by Section.
+  async function seedStoreManagers(admin: TestClient) {
+    const meta = await admin.fetch(`/api/table/${encodeURIComponent('Store Manager')}:meta`)
+    if (meta.status === 404)
+      await admin.post('/api/table_def', {
+        name: 'Store Manager', module: 'Store Sections',
+        columns: ['store_code', 'employee_code', 'full_name', 'email'].map((c) => ({ column_name: c, column_type: 'Data' })),
+      })
+    for (const row of [
+      { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' },
+      { store_code: '1515', employee_code: 'RR-2193', full_name: 'Madasamy', email: 'sm.kat@jeyarama.com' },
+    ])
+      await admin.post('/api/save_row', { table: 'Store Manager', row })
+  }
+
+  test('a Store Manager sees every material group of their store, grouped by Section', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await seedRoster(admin, { dmColumn: true })
+    await seedStoreManagers(admin)
+    await viewer(admin, 'sm_atk', 'RR-10104')
+    expect(await assignmentOf(api, 'sm_atk')).toEqual({
+      plant_code: '1501', store_label: null,
+      material_groups: ['010101001', '010101002', '010102003', '010505001', '010505002'],
+      sections: ['Boys Bottoms', 'Boys Tops', 'Kurti'],
+      section_by_material_group: {
+        '010101001': 'Boys Tops', '010101002': 'Boys Tops', '010102003': 'Boys Bottoms', '010505001': 'Kurti', '010505002': 'Kurti',
+      },
+      scope_basis: ['store_manager'],
+    })
+  })
+
+  test("a Store Manager's scope stops at their own store; without the Table nobody is a Store Manager", async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await viewer(admin, 'sm_kat', 'RR-2193')
+    expect(await assignmentOf(api, 'sm_kat')).toBeNull()
+    await seedStoreManagers(admin)
+    const a = await assignmentOf(api, 'sm_kat')
+    expect(a?.plant_code).toBe('1515')
+    expect(a?.material_groups).toEqual(['010505001'])
+    expect(a?.scope_basis).toEqual(['store_manager'])
+  })
+
   test('the embed session carries the Section of every group, so the Dive can group by it', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
