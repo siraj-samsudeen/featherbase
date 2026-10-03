@@ -32,3 +32,4 @@ export {
   type MappingTarget,
   type TableMatchQuality,
 } from './import'
+export { SCOPE_BASES, type ScopeBasis } from './sales-target'

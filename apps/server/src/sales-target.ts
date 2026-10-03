@@ -238,7 +238,8 @@ export async function seedSalesTarget(
 // --------------------------------------------------------------- assignment
 
 /** Why a reader sees a material group. Several can hold at once; the report shows them all. */
-export type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager' | 'store_manager'
+export type { ScopeBasis } from 'shared'
+import type { ScopeBasis } from 'shared'
 
 export interface Assignment {
   plant_code: string

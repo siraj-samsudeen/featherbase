@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { Logo } from '../components/Logo'
+import { SCOPE_BASES, type ScopeBasis } from 'shared'
 import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
 
 // #3755: the personalised sales-target report. The page holds no report
@@ -26,15 +27,15 @@ interface Me {
   embed_origin: string
 }
 
-type ScopeBasis = 'assignment' | 'section_staff' | 'team_leader' | 'department_manager' | 'store_manager'
 // Why the reader sees these rows, in the store's own words — leadership first.
-const BASIS_LABEL: [ScopeBasis, string][] = [
-  ['store_manager', 'Store Manager'],
-  ['department_manager', 'Department Manager'],
-  ['team_leader', 'Team Leader'],
-  ['section_staff', 'Section staff'],
-  ['assignment', 'Assigned subcategories'],
-]
+// Exhaustive: a basis the server adds without a label here is a type error, not a silent omission.
+const BASIS_LABEL: Record<ScopeBasis, string> = {
+  store_manager: 'Store Manager',
+  department_manager: 'Department Manager',
+  team_leader: 'Team Leader',
+  section_staff: 'Section staff',
+  assignment: 'Assigned subcategories',
+}
 
 type Embed =
   | { kind: 'loading' }
@@ -214,7 +215,7 @@ export function SalesTargetPage() {
     : 'no store assigned'
   const period = me ? `${fmtDate(me.period_start)} to ${fmtDate(me.period_end)}` : ''
   const basis = me?.assignment?.scope_basis ?? []
-  const basisLine = BASIS_LABEL.filter(([b]) => basis.includes(b)).map(([, label]) => label).join(' · ')
+  const basisLine = SCOPE_BASES.filter((b) => basis.includes(b)).map((b) => BASIS_LABEL[b]).join(' · ')
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--color-canvas)]">
