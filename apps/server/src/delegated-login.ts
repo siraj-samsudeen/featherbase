@@ -50,6 +50,21 @@ export async function delegatedLoginConfig(): Promise<DelegatedLoginConfig | nul
   return { label: s.delegated_login_label.trim() || url.hostname, url: url.toString(), userColumn }
 }
 
+// Test mode (#3783): DELEGATED_LOGIN_TEST_MODE=trust-any-password skips the
+// provider, so a rollout can be tried as any linked Team Leader. An exact
+// phrase, not a boolean, so a stray "1" never opens it; environment-only, so
+// no Admin edit can. linkedUser still runs first: it decides WHOSE account,
+// and never yields a disabled or privileged one.
+export const TEST_MODE_PHRASE = 'trust-any-password'
+export function delegatedTestMode(): boolean {
+  return (process.env.DELEGATED_LOGIN_TEST_MODE ?? '').trim() === TEST_MODE_PHRASE
+}
+
+/** Say once, at boot, that the provider is being skipped — same reasoning as announcePreviewLogin. */
+export function announceDelegatedTestMode(log: (message: string) => void = console.warn): void {
+  if (delegatedTestMode()) log('delegated sign-in TEST MODE: the provider is not asked; any linked ID signs in without a password')
+}
+
 // Injectable for the sandboxed suite — the real provider is never contacted
 // from a test (same seam as `_setEmbedFetch` in sales-target.ts).
 let delegatedFetch: typeof fetch = (...args) => fetch(...args)
@@ -98,6 +113,7 @@ function saysLeft(o: Obj): boolean {
 
 /** Ask the provider whether `id`/`password` are good. Never throws. */
 export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, password: string): Promise<ProviderOutcome> {
+  if (delegatedTestMode()) return 'verified'
   let res: Response
   try {
     res = await delegatedFetch(cfg.url, {

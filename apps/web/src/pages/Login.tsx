@@ -33,15 +33,18 @@ export function LoginPage() {
   // administrator connected one, else null and the option is not offered.
   const [delegatedLabel, setDelegatedLabel] = useState<string | null>(null)
   const [mode, setMode] = useState<'password' | 'delegated'>('password')
+  // Test mode (#3783): the server skips the provider, so there is no password to ask for.
+  const [delegatedTestMode, setDelegatedTestMode] = useState(false)
   useEffect(() => {
     fetch('/api/brand')
       .then((r) => (r.ok ? r.json() : null))
-      .then((b: { app_name?: string; delegated_login_label?: string | null } | null) => {
+      .then((b: { app_name?: string; delegated_login_label?: string | null; delegated_login_test_mode?: boolean } | null) => {
         if (b?.app_name) {
           setAppName(b.app_name)
           document.title = b.app_name
         }
         setDelegatedLabel(b?.delegated_login_label || null)
+        setDelegatedTestMode(b?.delegated_login_test_mode === true)
       })
       .catch(() => {})
   }, [])
@@ -87,7 +90,7 @@ export function LoginPage() {
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() => loginDelegated(String(form.get('delegated_id')), String(form.get('delegated_password'))))
+    await signIn(() => loginDelegated(String(form.get('delegated_id')), String(form.get('delegated_password') ?? '')))
   }
 
   function switchMode(next: 'password' | 'delegated') {
@@ -115,9 +118,16 @@ export function LoginPage() {
           {mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
-                <p className="text-sm text-[var(--color-ink-muted)]">
-                  Use the same ID and password you use for {delegatedLabel}.
-                </p>
+                {delegatedTestMode ? (
+                  <p role="status" data-testid="delegated-test-mode"
+                    className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    Test mode: {delegatedLabel} is not asked. Enter a {delegatedLabel} ID to open that person's view — no password needed.
+                  </p>
+                ) : (
+                  <p className="text-sm text-[var(--color-ink-muted)]">
+                    Use the same ID and password you use for {delegatedLabel}.
+                  </p>
+                )}
                 <div>
                   <label className="fc-label" htmlFor="delegated-id">{delegatedLabel} ID</label>
                   <input
@@ -131,7 +141,7 @@ export function LoginPage() {
                     className="fc-input"
                   />
                 </div>
-                <div>
+                {!delegatedTestMode && <div>
                   <label className="fc-label" htmlFor="delegated-password">Password</label>
                   <input
                     id="delegated-password"
@@ -140,7 +150,7 @@ export function LoginPage() {
                     autoComplete="current-password"
                     className="fc-input"
                   />
-                </div>
+                </div>}
                 {errorLine}
                 <button
                   type="submit"
