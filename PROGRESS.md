@@ -9999,3 +9999,11 @@ Dive figures matched a warehouse query to the rupee (see data-warehouse #3783).
 Gotcha: locally, the two older cases in `sales-target-page.test.tsx` fail on this Mac even on a
 fresh database and on main, while CI passes them. Not caused by these changes; not investigated.
 Next: sign in as a Store Manager on featherbase-dev; then the prod rebuild with the CDC repoint.
+
+## 2026-10-03 — Sales-target header counts Sections past three (#3783)
+
+The report banner named every Section in scope; a Store Manager's 57 buried the figures. Up to
+three are still named; more read "N Sections" ("Whole store · N Sections" for a Store Manager),
+with the full list as the hover title (`identity-sections`). The embedded Dive does the same from
+version 11 (data-warehouse experiments/issue_3755/shared/target_vs_actual_v11.tsx).
+Verification: new case in `apps/web/test/sales-target-page.test.tsx` (red first), `tsc` clean.

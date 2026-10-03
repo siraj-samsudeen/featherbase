@@ -82,3 +82,36 @@ test('a Store Manager is told they see the whole store as Store Manager', async 
   await waitFor(() => expect(screen.getByTestId('identity-sub')).toHaveTextContent('Store Manager'))
   expect(screen.getByTestId('identity')).toHaveTextContent('1501 · Kurti')
 })
+
+// A Store Manager runs every Section; naming 57 of them buries the figures. Up to three are named,
+// more are counted, and the full list stays one hover away.
+test('more than three Sections are counted, not listed; a Store Manager reads "Whole store"', async ({ admin, api }) => {
+  await viewer(admin)
+  for (const [name, columns] of [
+    ['Section Merchandise Map', ['store_code', 'material_group', 'mch_subcategory', 'section_name']],
+    ['Store Manager', ['store_code', 'employee_code', 'full_name', 'email']],
+  ] as const)
+    await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name, module: 'Store Sections', columns: columns.map((c) => ({ column_name: c, column_type: 'Data' })) }),
+    })
+  for (const [mg, section] of [['010505001', 'Kurti'], ['010101001', 'Boys Tops'], ['010102003', 'Boys Bottoms'], ['010501001', 'Silk Saree']])
+    await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Section Merchandise Map', row: { store_code: '1501', material_group: mg, mch_subcategory: section, section_name: section } }),
+    })
+  await admin.fetch('/api/save_row', {
+    method: 'POST',
+    body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-10104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
+  })
+  const doc = (await (await admin.fetch('/api/table/User/test_employee_2')).json()) as { updated_at: string }
+  await admin.fetch('/api/table/User/test_employee_2', {
+    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
+  })
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_2' } as never)
+  await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 · Whole store · 4 Sections'))
+  expect(screen.getByTestId('identity')).not.toHaveTextContent('Silk Saree')
+  expect(screen.getByTestId('identity-sections')).toHaveAttribute('title', 'Boys Bottoms · Boys Tops · Kurti · Silk Saree')
+})
