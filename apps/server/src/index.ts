@@ -16,7 +16,7 @@ import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { assertUserColumn, checkWithProvider, delegatedLoginConfig, left, linkedUser, unavailable } from './delegated-login'
+import { announceDelegatedTestMode, assertUserColumn, checkWithProvider, delegatedLoginConfig, delegatedTestMode, left, linkedUser, unavailable } from './delegated-login'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -147,7 +147,11 @@ app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
   // The login page offers delegated sign-in only when this names a service.
   const delegated = await delegatedLoginConfig()
-  return c.json({ app_name: s.app_name, delegated_login_label: delegated?.label ?? null })
+  return c.json({
+    app_name: s.app_name,
+    delegated_login_label: delegated?.label ?? null,
+    delegated_login_test_mode: Boolean(delegated) && delegatedTestMode(),
+  })
 })
 
 // Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
@@ -193,7 +197,8 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   const cfg = await delegatedLoginConfig()
   if (!cfg) return c.notFound()
   const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
-  if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || (!pwd && !delegatedTestMode()))
+    throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr, 'delegated')
   if (attempt.refusal) return attempt.refusal
   // Before the provider call: never forward a password that cannot be bound.
@@ -1667,6 +1672,7 @@ if (process.env.NODE_ENV !== 'test') {
   // An auth bypass nobody noticed being enabled is the failure mode worth a
   // log line: say once whether preview sign-in is live, or why it was refused.
   announcePreviewLogin()
+  announceDelegatedTestMode()
   // RT-001/002/003: attach the realtime WebSocket server to the HTTP server.
   attachRealtime(server as unknown as import('node:http').Server)
   // JOB-001: run the background worker in-process (tests drive the queue

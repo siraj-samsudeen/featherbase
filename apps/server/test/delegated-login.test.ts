@@ -400,6 +400,69 @@ describe('delegated password sign-in', () => {
   })
 })
 
+// Test mode (#3783): while a sales-target rollout is being tried out, the
+// provider is not asked at all. Binding is unchanged — only a linked, enabled,
+// non-privileged account signs in — so the switch decides whose report opens,
+// never who becomes an administrator.
+describe('delegated sign-in test mode', () => {
+  const TRUST = 'trust-any-password'
+
+  test('on: a linked person signs in by ID alone, and the provider is never asked', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    await addIdColumn(admin)
+    const tl = await createUser({ email: 'tl.test@example.com' })
+    await link(tl.user!, 'tl_test_1')
+    const calls = provider(() => Response.json({ error: 'would have refused' }))
+
+    for (const pwd of ['', 'anything at all']) {
+      const res = await signIn(api, 'TL_TEST_1', pwd)
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(tl.user)
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  test('on: an unlinked ID, a disabled account and a System Manager are still refused', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    await addIdColumn(admin)
+    expect((await signIn(api, 'nobody_linked', '')).status).toBe(401)
+    const off = await createUser({ email: 'tl.disabled@example.com' })
+    await link(off.user!, 'tl_disabled')
+    await sql`update "user" set enabled = false where row_id = ${off.user!}`
+    expect((await signIn(api, 'tl_disabled', '')).status).toBe(401)
+    const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
+    await link(sm.user!, 'sm_1')
+    expect((await signIn(api, 'sm_1', '')).status).toBe(401)
+  })
+
+  test('only the exact phrase turns it on; "1" or "true" leave the provider in charge', async ({ api, admin, createUser }) => {
+    await configure()
+    await addIdColumn(admin)
+    const tl = await createUser({ email: 'tl.strict@example.com' })
+    await link(tl.user!, 'tl_strict')
+    for (const value of ['1', 'true', 'yes', '']) {
+      vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', value)
+      const calls = provider(() => Response.json({ error: 'bad password' }))
+      expect((await signIn(api, 'tl_strict', 'wrong')).status).toBe(401)
+      expect(calls).toHaveLength(1)
+      expect((await signIn(api, 'tl_strict', '')).status).toBe(417)
+    }
+  })
+
+  test('the login page is told, so it can say so', async ({ api }) => {
+    await configure()
+    const brand = async () => (await (await api.fetch('/api/brand')).json()) as Record<string, unknown>
+    expect((await brand()).delegated_login_test_mode).toBe(false)
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    expect((await brand()).delegated_login_test_mode).toBe(true)
+    // Off when no provider is connected, whatever the variable says.
+    await sql`delete from single_value where table_name = 'System Settings' and field like 'delegated_login_%'`
+    expect((await brand()).delegated_login_test_mode).toBe(false)
+  })
+})
+
 describe('public brand names the connected service', () => {
   test('null when off, the label when on, the host when the label is blank', async ({ api }) => {
     await sql`delete from single_value where table_name = 'System Settings' and field like 'delegated_login_%'`
