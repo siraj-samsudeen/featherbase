@@ -19,7 +19,7 @@ Neither touches whatever is deployed from `main`.
 
 ## PR environments (the usual route)
 
-Railway project **Feather-Base Dev**
+Railway project **`jeyarama-featherbase-dev`** (service `jeyarama-featherbase-dev`, database `jeyarama-featherbase-dev-db`)
 (`7997b9e9-518d-4aa5-8a72-ae3df4041328`) has PR environments enabled,
 including for PRs opened by bots — which is what an agent-authored PR is. So
 pushing a branch and opening a PR is all it takes; there is no per-PR setup.
@@ -127,7 +127,7 @@ the `dev-preview` service if you run one.
 
 | Variable | Value | Why |
 | --- | --- | --- |
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Railway's reference syntax. **Check it points at this environment's Postgres.** |
+| `DATABASE_URL` | `${{jeyarama-featherbase-dev-db.DATABASE_URL}}` | Railway's reference syntax (`${{<service name>.VAR}}`). **Check it points at this environment's Postgres.** |
 | `JWT_SECRET` | a long random string | Session signing. Must differ from any other environment. |
 | `SITE_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Absolute external URL, resolved per environment. See above. |
 | `FILE_STORAGE_DIR` | `/data/files` | Uploaded files. Attach a Railway **Volume** mounted at `/data` or uploads vanish on each deploy. |
