@@ -127,7 +127,7 @@ the `dev-preview` service if you run one.
 
 | Variable | Value | Why |
 | --- | --- | --- |
-| `DATABASE_URL` | `${{jeyarama-featherbase-dev-db.DATABASE_URL}}` | Railway's reference syntax (`${{<service name>.VAR}}`). **Check it points at this environment's Postgres.** |
+| `DATABASE_URL` | Base environment: `${{jeyarama-featherbase-dev-db.DATABASE_URL}}`. `dev-preview`: `${{<the database service you created>.DATABASE_URL}}` | Railway's reference syntax is `${{<service name>.VAR}}`, so name the database that belongs to *this* service. **Check it points at this environment's Postgres.** |
 | `JWT_SECRET` | a long random string | Session signing. Must differ from any other environment. |
 | `SITE_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Absolute external URL, resolved per environment. See above. |
 | `FILE_STORAGE_DIR` | `/data/files` | Uploaded files. Attach a Railway **Volume** mounted at `/data` or uploads vanish on each deploy. |
