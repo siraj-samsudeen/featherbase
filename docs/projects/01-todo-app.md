@@ -16,8 +16,7 @@ Each step adds one real-world feature on top of the last one.
 - Work directly on the `elysia-learning` branch — no feature branches or PRs
   (this repo's `main` belongs to a different project).
 - Each test-first cycle is committed on green and pushed.
-- CI (tests + typecheck) runs on every push and must be green before moving
-  on to the next step.
+- Before every commit, `bun test` and `bun check` must pass locally. No CI.
 - Layout: a single package to start with; it becomes the `apps/api` +
   `apps/web` monorepo at step 1b, when the frontend arrives.
 
@@ -25,7 +24,7 @@ Each step adds one real-world feature on top of the last one.
 
 ### 0. Hello Elysia
 
-Set up the project, add a `/health` route, write the first test, and set up CI.
+Set up the project, add a `/health` route, and write the first test.
 
 ### 1a. To-do API
 

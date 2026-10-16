@@ -52,8 +52,8 @@ it by hand, assisted by AI — not for AI to write code that I review.
 ## Workflow
 
 - Work directly on **`elysia-learning`** — no feature branches, no PRs.
-- Commit on green (after the test passes), then push. CI (tests + typecheck)
-  runs on every push and must stay green before starting the next step.
+- Commit on green, then push. Before every commit run `bun test` and
+  `bun check` locally — both must pass. No CI.
 
 ## Project facts
 
