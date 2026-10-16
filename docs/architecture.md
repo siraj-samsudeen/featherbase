@@ -161,22 +161,22 @@ Likely first plugins: `excel-import`, `excel-export`, `openapi`, `auth`, `ui`.
 | Excel read | SheetJS | proposed |
 | Excel write | ExcelJS | proposed |
 | API docs | `@elysiajs/openapi` | proposed |
-| Frontend | framework + grid library | open |
+| Frontend | React + grid library (grid open) | decided (React) |
 | Typed client | Eden Treaty (static parts) | proposed |
-| Tests | `bun:test` | proposed |
+| Tests | `bun:test`, test-first (TDD) from day one | decided |
 
 ## 8. Learning roadmap
 
 | # | Phase | Elysia/Bun concepts | Outcome |
 |---|---|---|---|
-| 0 | Tooling | Bun, `bun create elysia` | ✅ project skeleton |
-| 1 | Hello server | `new Elysia()`, routes, handlers, context | server responds |
+| 0 | Tooling | Bun, `bun init`, `bun test` | ✅ project skeleton |
+| 1 | Hello server (TDD) | `new Elysia()`, routes, handlers, context, `app.handle()` in tests | server responds, tested |
 | 2 | Hand-written CRUD (one fixed table) | params, body, `t` validation, status, errors, `bun:sqlite` | what generated code must eventually look like |
 | 3 | Structure | plugins, `group`, `decorate`, `state`, `derive`, lifecycle hooks | core + plugin skeleton |
 | 4 | Metadata + generic engine | TypeBox built at runtime, Kysely | runtime mode for hand-written definitions |
 | 5 | Excel import | `t.File`, SheetJS, type inference | upload → definition → table |
-| 6 | API docs + tests | `@elysiajs/openapi`, `bun:test` | documented, tested |
-| 7 | Frontend | static/html, Eden | grid UI |
+| 6 | API docs | `@elysiajs/openapi` | documented |
+| 7 | Frontend | React, Bun HTML imports, Eden | grid UI |
 | 8 | Excel workflows | streaming responses | sort/filter/bulk edit/re-import/export |
 | 9 | Scaffold mode | code generation, `bun --watch` | `featherbase generate` |
 | 10 | Auth + permissions | JWT, guards, `derive` | multi-user |
@@ -197,3 +197,7 @@ Likely first plugins: `excel-import`, `excel-export`, `openapi`, `auth`, `ui`.
 | 2026-10-01 | Metadata as single source of truth, two modes | Runtime convenience + developer ownership, à la Frappe |
 | 2026-10-01 | Generic routes, no runtime route registration | Avoids reloading routes; proven by Twenty/NocoBase |
 | 2026-10-01 | Don't build on ZenStack yet | No runtime models; would hide the Elysia layer we want to learn |
+| 2026-10-16 | Restart from `bun init` (not `bun create elysia`), add Elysia by hand | The Elysia template was dated (old tsconfig, Next.js .gitignore); `bun init` gives current Bun defaults and shows what Elysia adds |
+| 2026-10-16 | Tests from day one, test-first (TDD) | Every step is proven by `bun test`, not by hand with `curl` |
+| 2026-10-16 | Frontend is React | Bun's HTML imports support React natively |
+| 2026-10-16 | Single agent-instructions file: `CLAUDE.md` | `bun init` generates it; learning rules merged in from the old `AGENTS.md` |

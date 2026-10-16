@@ -1,15 +1,21 @@
-# Elysia with Bun runtime
+# featherbase
 
-## Getting Started
-To get started with this template, simply paste this command into your terminal:
+To install dependencies:
+
 ```bash
-bun create elysia ./elysia-example
+bun install
 ```
 
-## Development
-To start the development server run:
+To run:
+
 ```bash
-bun run dev
+bun run index.ts
 ```
 
-Open http://localhost:3000/ with your browser to see the result.
+To type check:
+
+```bash
+bun check
+```
+
+This project was created using `bun init` in bun v1.4.3. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.

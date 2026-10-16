@@ -1,15 +1,15 @@
 {
   "name": "featherbase",
-  "version": "1.0.50",
-  "module": "src/index.js",
-  "dependencies": {
-    "elysia": "latest"
-  },
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun run --watch src/index.ts"
+    "typecheck": "bun check"
   },
   "devDependencies": {
-    "@types/bun": "1.4.2"
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
   }
 }
