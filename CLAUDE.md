@@ -37,19 +37,35 @@ it by hand, assisted by AI — not for AI to write code that I review.
    with your recommendation, so I can just pick one.
 9. **I don't work in an editor** — the agent writes the code. Explain tooling
    (types, linting, …) in terms of what the agent or the command line checks
-   (e.g. `tsc --noEmit`, `bun test`), not editor features.
+   (e.g. `bun check`, `bun test`), not editor features.
 10. **Test first (TDD).** For each behaviour: write the test, run `bun test` and
     show it failing (red), then write the minimum code to make it pass (green).
     Tests live next to the code as `*.test.ts`.
 
+## Projects, in order
+
+1. **Project 1 — to-do app** (current): `docs/projects/01-todo-app.md`.
+   Monorepo `apps/api` (Elysia + Drizzle + SQLite) and `apps/web`
+   (React + Vite + Eden Treaty).
+2. **Featherbase** (later): `docs/architecture.md`.
+
+## Workflow
+
+- Each step is its own branch (e.g. `todo/step-0-health`) with one PR into
+  **`elysia-learning`** — this branch is our "main".
+- CI (tests + typecheck) must be green; then merge and start the next step.
+  Reviews happen afterwards; fix comments in a small follow-up PR.
+
 ## Project facts
 
-- Runtime: Bun. Server: Elysia. Frontend: React. Tests: `bun test`.
+- Runtime: Bun. Server: Elysia. Frontend: React + Vite. Tests: `bun test`.
+- **Vite is a deliberate override** of the "Don't use `vite`" advice in the Bun
+  conventions below — it's the community standard for React apps.
 - Started from `bun init`; the generated files are kept as generated. The
   "Bun conventions" section below is Bun's own generated guidance, kept verbatim.
 - **Server code uses Elysia**, which runs on `Bun.serve()` internally — define
-  routes with Elysia, don't call `Bun.serve()` directly. How the React frontend
-  is served (Bun HTML imports + Elysia) is decided in Phase 7.
+  routes with Elysia, don't call `Bun.serve()` directly. The React frontend is
+  a separate Vite app (`apps/web`), not served through Bun HTML imports.
 - Cloud sessions set `BUN_OPTIONS=--smol`, which breaks `bun init` and
   `bun upgrade`; run those as `env -u BUN_OPTIONS bun …`.
 - This branch has its own history, unrelated to `main` (a different Featherbase

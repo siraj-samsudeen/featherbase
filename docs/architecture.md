@@ -201,3 +201,4 @@ Likely first plugins: `excel-import`, `excel-export`, `openapi`, `auth`, `ui`.
 | 2026-10-16 | Tests from day one, test-first (TDD) | Every step is proven by `bun test`, not by hand with `curl` |
 | 2026-10-16 | Frontend is React | Bun's HTML imports support React natively |
 | 2026-10-16 | Single agent-instructions file: `CLAUDE.md` | `bun init` generates it; learning rules merged in from the old `AGENTS.md` |
+| 2026-10-16 | Build Project 1 (to-do app, `docs/projects/01-todo-app.md`) before Featherbase | Learn Elysia, Drizzle, Eden and auth on a fixed schema first; it uses Drizzle, while Featherbase keeps Kysely for runtime-defined tables |
