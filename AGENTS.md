@@ -33,6 +33,11 @@ it by hand, assisted by AI — not for AI to write code that I review.
 6. **When I paste output or say "done", verify** (read-only) and move to
    explaining the next step.
 7. If you notice an issue outside the current step, mention it — don't fix it.
+8. **Every time you stop, end with a few numbered options** for how to continue,
+   with your recommendation, so I can just pick one.
+9. **I don't work in an editor** — the agent writes the code. Explain tooling
+   (types, linting, …) in terms of what the agent or the command line checks
+   (e.g. `tsc --noEmit`, `bun test`), not editor features.
 
 ## Project facts
 
