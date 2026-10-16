@@ -45,16 +45,15 @@ it by hand, assisted by AI — not for AI to write code that I review.
 ## Projects, in order
 
 1. **Project 1 — to-do app** (current): `docs/projects/01-todo-app.md`.
-   Monorepo `apps/api` (Elysia + Drizzle + SQLite) and `apps/web`
-   (React + Vite + Eden Treaty).
+   API: Elysia + Drizzle + SQLite. Web: React + Vite + Eden Treaty. Single
+   package for now; becomes an `apps/api` + `apps/web` monorepo at step 1b.
 2. **Featherbase** (later): `docs/architecture.md`.
 
 ## Workflow
 
-- Each step is its own branch (e.g. `todo/step-0-health`) with one PR into
-  **`elysia-learning`** — this branch is our "main".
-- CI (tests + typecheck) must be green; then merge and start the next step.
-  Reviews happen afterwards; fix comments in a small follow-up PR.
+- Work directly on **`elysia-learning`** — no feature branches, no PRs.
+- Commit on green (after the test passes), then push. CI (tests + typecheck)
+  runs on every push and must stay green before starting the next step.
 
 ## Project facts
 

@@ -9,17 +9,17 @@ Each step adds one real-world feature on top of the last one.
 - **Frontend:** React + Vite, calling the API through Eden Treaty so the API
   calls are fully typed
 - **Tests:** `bun test`. Every step comes with tests.
-- **Layout:** one monorepo — `apps/api` and `apps/web`
+- **Layout:** one monorepo — `apps/api` and `apps/web` (from step 1b)
 
 ## Workflow
 
-- Each step is one PR into `elysia-learning` (this repo's `main` belongs to a
-  different project, so `elysia-learning` plays the role of main).
-- CI (tests + typecheck) must be green.
-- Once it's green, merge it and move on to the next step. Reviews happen
-  afterwards, without blocking.
-- Fix review comments in a small follow-up PR before the current step is
-  finished.
+- Work directly on the `elysia-learning` branch — no feature branches or PRs
+  (this repo's `main` belongs to a different project).
+- Each test-first cycle is committed on green and pushed.
+- CI (tests + typecheck) runs on every push and must be green before moving
+  on to the next step.
+- Layout: a single package to start with; it becomes the `apps/api` +
+  `apps/web` monorepo at step 1b, when the frontend arrives.
 
 ## The steps
 
