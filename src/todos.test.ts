@@ -12,3 +12,12 @@ describe("POST /todos", () => {
     expect(data?.id).toBeNumber();
   });
 });
+
+describe("GET /todos", () => {
+  it("lists created to-dos", async () => {
+    const { data: created } = await api.todos.post({ title: "Walk the dog" });
+    const { status, data } = await api.todos.get();
+    expect(status).toBe(200);
+    expect(data).toContainEqual(created);
+  });
+});
