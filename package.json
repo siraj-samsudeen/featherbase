@@ -7,6 +7,7 @@
     "typecheck": "bun check"
   },
   "devDependencies": {
+    "@elysiajs/eden": "^1.4.9",
     "@types/bun": "latest"
   },
   "peerDependencies": {
