@@ -2,7 +2,7 @@ import { Elysia, t } from "elysia";
 
 type Todo = { id: number; title: string; completed: boolean };
 
-const store: Todo[] = [];
+let store: Todo[] = [];
 let nextId = 1;
 
 export const todos = new Elysia({ prefix: "/todos" })
@@ -33,4 +33,13 @@ export const todos = new Elysia({ prefix: "/todos" })
         { minProperties: 1 },
       ),
     },
+  )
+  .delete(
+    "/:id",
+    ({ params, status }) => {
+      if (!store.some((todo) => todo.id === params.id)) return status(404, "Not found");
+      store = store.filter((todo) => todo.id !== params.id);
+      return status(204);
+    },
+    { params: t.Object({ id: t.Number() }) },
   );

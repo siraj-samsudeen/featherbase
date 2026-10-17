@@ -59,3 +59,18 @@ describe("PATCH /todos/:id", () => {
     expect(status).toBe(404);
   });
 });
+
+describe("DELETE /todos/:id", () => {
+  it("deletes a to-do", async () => {
+    const { data: created } = await api.todos.post({ title: "Temporary" });
+    const { status } = await api.todos({ id: created!.id }).delete();
+    expect(status).toBe(204);
+    const { data: list } = await api.todos.get();
+    expect(list).not.toContainEqual(created);
+  });
+
+  it("returns 404 for an unknown id", async () => {
+    const { status } = await api.todos({ id: 999_999 }).delete();
+    expect(status).toBe(404);
+  });
+});
