@@ -40,4 +40,9 @@ describe("PATCH /todos/:id", () => {
     expect(status).toBe(200);
     expect(data).toEqual({ ...created!, title: "Final" });
   });
+
+  it("returns 404 for an unknown id", async () => {
+    const { status } = await api.todos({ id: 999_999 }).patch({ title: "Nope" });
+    expect(status).toBe(404);
+  });
 });

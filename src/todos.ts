@@ -18,8 +18,9 @@ export const todos = new Elysia({ prefix: "/todos" })
   )
   .patch(
     "/:id",
-    ({ params, body }) => {
-      const todo = store.find((todo) => todo.id === params.id)!;
+    ({ params, body, status }) => {
+      const todo = store.find((todo) => todo.id === params.id);
+      if (!todo) return status(404, "Not found");
       todo.title = body.title;
       return todo;
     },
