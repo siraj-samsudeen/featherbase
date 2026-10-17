@@ -11,7 +11,17 @@ const filters = {
   completed: (todo: Todo) => todo.completed,
 };
 
+const title = t.String({ minLength: 1 });
+
 export const todos = new Elysia({ prefix: "/todos" })
+  .model({
+    "todo.id": t.Object({ id: t.Number() }),
+    "todo.create": t.Object({ title }),
+    "todo.update": t.Object(
+      { title: t.Optional(title), completed: t.Optional(t.Boolean()) },
+      { minProperties: 1 },
+    ),
+  })
   .get("/", ({ query }) => store.filter(filters[query.filter ?? "all"]), {
     query: t.Object({ filter: t.Optional(t.UnionEnum(["all", "active", "completed"])) }),
   })
@@ -22,7 +32,7 @@ export const todos = new Elysia({ prefix: "/todos" })
       store.push(todo);
       return status(201, todo);
     },
-    { body: t.Object({ title: t.String({ minLength: 1 }) }) },
+    { body: "todo.create" },
   )
   .patch(
     "/:id",
@@ -31,16 +41,7 @@ export const todos = new Elysia({ prefix: "/todos" })
       if (!todo) return status(404, "Not found");
       return Object.assign(todo, body);
     },
-    {
-      params: t.Object({ id: t.Number() }),
-      body: t.Object(
-        {
-          title: t.Optional(t.String({ minLength: 1 })),
-          completed: t.Optional(t.Boolean()),
-        },
-        { minProperties: 1 },
-      ),
-    },
+    { params: "todo.id", body: "todo.update" },
   )
   .delete("/completed", ({ status }) => {
     store = store.filter((todo) => !todo.completed);
@@ -53,5 +54,5 @@ export const todos = new Elysia({ prefix: "/todos" })
       store = store.filter((todo) => todo.id !== params.id);
       return status(204);
     },
-    { params: t.Object({ id: t.Number() }) },
+    { params: "todo.id" },
   );
