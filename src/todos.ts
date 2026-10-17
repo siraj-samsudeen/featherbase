@@ -21,9 +21,7 @@ export const todos = new Elysia({ prefix: "/todos" })
     ({ params, body, status }) => {
       const todo = store.find((todo) => todo.id === params.id);
       if (!todo) return status(404, "Not found");
-      if (body.title !== undefined) todo.title = body.title;
-      if (body.completed !== undefined) todo.completed = body.completed;
-      return todo;
+      return Object.assign(todo, body);
     },
     {
       params: t.Object({ id: t.Number() }),
