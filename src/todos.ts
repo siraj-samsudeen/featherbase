@@ -25,9 +25,12 @@ export const todos = new Elysia({ prefix: "/todos" })
     },
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({
-        title: t.Optional(t.String({ minLength: 1 })),
-        completed: t.Optional(t.Boolean()),
-      }),
+      body: t.Object(
+        {
+          title: t.Optional(t.String({ minLength: 1 })),
+          completed: t.Optional(t.Boolean()),
+        },
+        { minProperties: 1 },
+      ),
     },
   );
