@@ -30,7 +30,8 @@ Set up the project, add a `/health` route, and write the first test.
 
 Like TodoMVC (todomvc.com): add, edit, complete and delete to-dos, filter by
 all / active / completed, and clear completed ones. Validate input, and return
-proper 400/404 errors.
+proper errors: 422 for invalid input (Elysia's default for validation errors)
+and 404 for unknown to-dos.
 
 ### 1b. To-do UI
 

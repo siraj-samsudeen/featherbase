@@ -17,6 +17,11 @@ describe("POST /todos", () => {
     const { data: second } = await api.todos.post({ title: "Second" });
     expect(first?.id).not.toBe(second?.id);
   });
+
+  it("rejects an empty title", async () => {
+    const { status } = await api.todos.post({ title: "" });
+    expect(status).toBe(422);
+  });
 });
 
 describe("GET /todos", () => {

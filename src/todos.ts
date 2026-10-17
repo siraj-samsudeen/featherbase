@@ -14,5 +14,5 @@ export const todos = new Elysia({ prefix: "/todos" })
       store.push(todo);
       return status(201, todo);
     },
-    { body: t.Object({ title: t.String() }) },
+    { body: t.Object({ title: t.String({ minLength: 1 }) }) },
   );
