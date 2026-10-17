@@ -21,11 +21,15 @@ export const todos = new Elysia({ prefix: "/todos" })
     ({ params, body, status }) => {
       const todo = store.find((todo) => todo.id === params.id);
       if (!todo) return status(404, "Not found");
-      todo.title = body.title;
+      if (body.title !== undefined) todo.title = body.title;
+      if (body.completed !== undefined) todo.completed = body.completed;
       return todo;
     },
     {
       params: t.Object({ id: t.Number() }),
-      body: t.Object({ title: t.String({ minLength: 1 }) }),
+      body: t.Object({
+        title: t.Optional(t.String({ minLength: 1 })),
+        completed: t.Optional(t.Boolean()),
+      }),
     },
   );
