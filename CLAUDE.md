@@ -40,7 +40,14 @@ it by hand, assisted by AI — not for AI to write code that I review.
    (e.g. `bun check`, `bun test`), not editor features.
 10. **Test first (TDD).** For each behaviour: write the test, run `bun test` and
     show it failing (red), then write the minimum code to make it pass (green).
-    Tests live next to the code as `*.test.ts`.
+    Tests live next to the code as `*.test.ts`. When a cycle is small, plan red
+    and green together and run them as one approved step (still showing both
+    outputs).
+11. **The spec is suggestive, not binding.** When something is more correct or
+    more beneficial than what `docs/projects/*` says, propose rewriting the spec.
+12. **Learning counts, not just correctness.** When an optional behaviour would
+    teach a useful technique (e.g. `minProperties`), point it out and offer it as
+    its own cycle, even if it isn't strictly needed.
 
 ## Projects, in order
 
