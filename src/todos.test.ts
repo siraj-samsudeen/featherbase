@@ -33,6 +33,33 @@ describe("GET /todos", () => {
   });
 });
 
+describe("GET /todos?filter=", () => {
+  it("lists only active to-dos", async () => {
+    const { data: open } = await api.todos.post({ title: "Open" });
+    const { data: done } = await api.todos.post({ title: "Done" });
+    await api.todos({ id: done!.id }).patch({ completed: true });
+
+    const { data } = await api.todos.get({ query: { filter: "active" } });
+    expect(data).toContainEqual(open);
+    expect(data!.every((todo) => !todo.completed)).toBe(true);
+  });
+
+  it("lists only completed to-dos", async () => {
+    const { data: done } = await api.todos.post({ title: "Finished" });
+    const { data: completed } = await api.todos({ id: done!.id }).patch({ completed: true });
+
+    const { data } = await api.todos.get({ query: { filter: "completed" } });
+    expect(data).toContainEqual(completed);
+    expect(data!.every((todo) => todo.completed)).toBe(true);
+  });
+
+  it("rejects an unknown filter", async () => {
+    // @ts-expect-error: deliberately invalid, to prove the server rejects it
+    const { status } = await api.todos.get({ query: { filter: "nope" } });
+    expect(status).toBe(422);
+  });
+});
+
 describe("PATCH /todos/:id", () => {
   it("edits the title", async () => {
     const { data: created } = await api.todos.post({ title: "Draft" });

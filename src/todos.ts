@@ -5,8 +5,16 @@ type Todo = { id: number; title: string; completed: boolean };
 let store: Todo[] = [];
 let nextId = 1;
 
+const filters = {
+  all: () => true,
+  active: (todo: Todo) => !todo.completed,
+  completed: (todo: Todo) => todo.completed,
+};
+
 export const todos = new Elysia({ prefix: "/todos" })
-  .get("/", () => store)
+  .get("/", ({ query }) => store.filter(filters[query.filter ?? "all"]), {
+    query: t.Object({ filter: t.Optional(t.UnionEnum(["all", "active", "completed"])) }),
+  })
   .post(
     "/",
     ({ body, status }) => {
