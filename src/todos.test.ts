@@ -11,6 +11,12 @@ describe("POST /todos", () => {
     expect(data).toMatchObject({ title: "Buy milk", completed: false });
     expect(data?.id).toBeNumber();
   });
+
+  it("gives each to-do a different id", async () => {
+    const { data: first } = await api.todos.post({ title: "First" });
+    const { data: second } = await api.todos.post({ title: "Second" });
+    expect(first?.id).not.toBe(second?.id);
+  });
 });
 
 describe("GET /todos", () => {
