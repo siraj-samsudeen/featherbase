@@ -15,4 +15,16 @@ export const todos = new Elysia({ prefix: "/todos" })
       return status(201, todo);
     },
     { body: t.Object({ title: t.String({ minLength: 1 }) }) },
+  )
+  .patch(
+    "/:id",
+    ({ params, body }) => {
+      const todo = store.find((todo) => todo.id === params.id)!;
+      todo.title = body.title;
+      return todo;
+    },
+    {
+      params: t.Object({ id: t.Number() }),
+      body: t.Object({ title: t.String({ minLength: 1 }) }),
+    },
   );

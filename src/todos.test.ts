@@ -32,3 +32,12 @@ describe("GET /todos", () => {
     expect(data).toContainEqual(created);
   });
 });
+
+describe("PATCH /todos/:id", () => {
+  it("edits the title", async () => {
+    const { data: created } = await api.todos.post({ title: "Draft" });
+    const { status, data } = await api.todos({ id: created!.id }).patch({ title: "Final" });
+    expect(status).toBe(200);
+    expect(data).toEqual({ ...created!, title: "Final" });
+  });
+});
