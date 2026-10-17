@@ -42,6 +42,10 @@ export const todos = new Elysia({ prefix: "/todos" })
       ),
     },
   )
+  .delete("/completed", ({ status }) => {
+    store = store.filter((todo) => !todo.completed);
+    return status(204);
+  })
   .delete(
     "/:id",
     ({ params, status }) => {

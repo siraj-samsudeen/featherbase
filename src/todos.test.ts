@@ -101,3 +101,18 @@ describe("DELETE /todos/:id", () => {
     expect(status).toBe(404);
   });
 });
+
+describe("DELETE /todos/completed", () => {
+  it("clears completed to-dos and keeps active ones", async () => {
+    const { data: open } = await api.todos.post({ title: "Still open" });
+    const { data: done } = await api.todos.post({ title: "All done" });
+    await api.todos({ id: done!.id }).patch({ completed: true });
+
+    const { status } = await api.todos.completed.delete();
+    expect(status).toBe(204);
+
+    const { data: remaining } = await api.todos.get();
+    expect(remaining).toContainEqual(open);
+    expect(remaining!.some((todo) => todo.completed)).toBe(false);
+  });
+});
