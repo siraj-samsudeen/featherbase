@@ -35,7 +35,7 @@ describe("GET /todos", () => {
     const { data: created } = await api.todos.post({ title: "Walk the dog" });
     const { status, data } = await api.todos.get();
     expect(status).toBe(200);
-    expect(data).toContainEqual(created);
+    expect(data).toEqual([created!]);
   });
 });
 
@@ -46,17 +46,16 @@ describe("GET /todos?filter=", () => {
     await api.todos({ id: done!.id }).patch({ completed: true });
 
     const { data } = await api.todos.get({ query: { filter: "active" } });
-    expect(data).toContainEqual(open);
-    expect(data!.every((todo) => !todo.completed)).toBe(true);
+    expect(data).toEqual([open!]);
   });
 
   it("lists only completed to-dos", async () => {
+    await api.todos.post({ title: "Still open" });
     const { data: done } = await api.todos.post({ title: "Finished" });
     const { data: completed } = await api.todos({ id: done!.id }).patch({ completed: true });
 
     const { data } = await api.todos.get({ query: { filter: "completed" } });
-    expect(data).toContainEqual(completed);
-    expect(data!.every((todo) => todo.completed)).toBe(true);
+    expect(data).toEqual([completed!]);
   });
 
   it("rejects an unknown filter", async () => {
@@ -99,7 +98,7 @@ describe("DELETE /todos/:id", () => {
     const { status } = await api.todos({ id: created!.id }).delete();
     expect(status).toBe(204);
     const { data: list } = await api.todos.get();
-    expect(list).not.toContainEqual(created);
+    expect(list).toEqual([]);
   });
 
   it("returns 404 for an unknown id", async () => {
@@ -118,7 +117,6 @@ describe("DELETE /todos/completed", () => {
     expect(status).toBe(204);
 
     const { data: remaining } = await api.todos.get();
-    expect(remaining).toContainEqual(open);
-    expect(remaining!.some((todo) => todo.completed)).toBe(false);
+    expect(remaining).toEqual([open!]);
   });
 });
