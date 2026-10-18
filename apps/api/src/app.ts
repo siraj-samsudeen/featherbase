@@ -9,3 +9,5 @@ export const createApp = (db: Database) =>
     .use(createTodos(db));
 
 export const app = createApp(new Database(":memory:"));
+
+export type App = ReturnType<typeof createApp>;

@@ -13,6 +13,7 @@ From the repo root:
 bun install   # install all workspaces
 bun test      # run every test
 bun check     # type check
+bun --filter @todo/api dev   # run the API on http://localhost:3000 (data in apps/api/todos.sqlite)
 ```
 
 Database migrations (from `apps/api`):
