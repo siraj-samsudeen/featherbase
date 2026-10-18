@@ -1,25 +1,21 @@
 import type { Database } from "bun:sqlite";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Elysia, t } from "elysia";
-
-type Todo = { id: number; title: string; completed: boolean };
-type Row = { id: number; title: string; completed: number };
-
-const toTodo = (row: Row): Todo => ({ ...row, completed: row.completed === 1 });
+import { todos } from "./schema";
 
 const where = {
-  all: "",
-  active: "WHERE completed = 0",
-  completed: "WHERE completed = 1",
+  all: undefined,
+  active: eq(todos.completed, false),
+  completed: eq(todos.completed, true),
 };
 
 const title = t.String({ minLength: 1 });
 
-export const createTodos = (db: Database) => {
-  db.run(`CREATE TABLE IF NOT EXISTS todos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    completed INTEGER NOT NULL DEFAULT 0
-  )`);
+export const createTodos = (sqlite: Database) => {
+  const db = drizzle(sqlite);
+  migrate(db, { migrationsFolder: `${import.meta.dir}/../drizzle` });
 
   return new Elysia({ prefix: "/todos" })
     .model({
@@ -33,51 +29,32 @@ export const createTodos = (db: Database) => {
     .get(
       "/",
       ({ query }) =>
-        db
-          .query<Row, []>(`SELECT * FROM todos ${where[query.filter ?? "all"]} ORDER BY id`)
-          .all()
-          .map(toTodo),
+        db.select().from(todos).where(where[query.filter ?? "all"]).orderBy(todos.id).all(),
       { query: t.Object({ filter: t.Optional(t.UnionEnum(["all", "active", "completed"])) }) },
     )
     .post(
       "/",
-      ({ body, status }) => {
-        const row = db
-          .query<Row, { $title: string }>("INSERT INTO todos (title) VALUES ($title) RETURNING *")
-          .get({ $title: body.title })!;
-        return status(201, toTodo(row));
-      },
+      ({ body, status }) =>
+        status(201, db.insert(todos).values({ title: body.title }).returning().get()),
       { body: "todo.create" },
     )
     .patch(
       "/:id",
       ({ params, body, status }) => {
-        const row = db
-          .query<Row, { $id: number; $title: string | null; $completed: number | null }>(
-            `UPDATE todos
-             SET title = COALESCE($title, title), completed = COALESCE($completed, completed)
-             WHERE id = $id RETURNING *`,
-          )
-          .get({
-            $id: params.id,
-            $title: body.title ?? null,
-            $completed: body.completed === undefined ? null : Number(body.completed),
-          });
-        if (!row) return status(404, "Not found");
-        return toTodo(row);
+        const todo = db.update(todos).set(body).where(eq(todos.id, params.id)).returning().get();
+        if (!todo) return status(404, "Not found");
+        return todo;
       },
       { params: "todo.id", body: "todo.update" },
     )
     .delete("/completed", ({ status }) => {
-      db.run("DELETE FROM todos WHERE completed = 1");
+      db.delete(todos).where(eq(todos.completed, true)).run();
       return status(204);
     })
     .delete(
       "/:id",
       ({ params, status }) => {
-        const deleted = db
-          .query<{ id: number }, { $id: number }>("DELETE FROM todos WHERE id = $id RETURNING id")
-          .get({ $id: params.id });
+        const deleted = db.delete(todos).where(eq(todos.id, params.id)).returning().get();
         if (!deleted) return status(404, "Not found");
         return status(204);
       },
