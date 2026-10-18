@@ -1,7 +1,10 @@
 import { Elysia } from "elysia";
-import { todos } from "./todos";
+import { createTodos } from "./todos";
 
-export const app = new Elysia()
-  .get("/", () => "Hello Elysia, Siraj")
-  .get("/health", () => ({ status: "ok" }))
-  .use(todos);
+export const createApp = () =>
+  new Elysia()
+    .get("/", () => "Hello Elysia, Siraj")
+    .get("/health", () => ({ status: "ok" }))
+    .use(createTodos());
+
+export const app = createApp();
