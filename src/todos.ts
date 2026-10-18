@@ -2,8 +2,11 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { createSchemaFactory } from "drizzle-typebox";
 import { Elysia, t } from "elysia";
 import { todos } from "./schema";
+
+const { createInsertSchema, createUpdateSchema } = createSchemaFactory({ typeboxInstance: t });
 
 const where = {
   all: undefined,
@@ -11,7 +14,9 @@ const where = {
   completed: eq(todos.completed, true),
 };
 
-const title = t.String({ minLength: 1 });
+const refine = {
+  title: (schema: ReturnType<typeof t.String>) => t.String({ ...schema, minLength: 1 }),
+};
 
 export const createTodos = (sqlite: Database) => {
   const db = drizzle(sqlite);
@@ -20,11 +25,8 @@ export const createTodos = (sqlite: Database) => {
   return new Elysia({ prefix: "/todos" })
     .model({
       "todo.id": t.Object({ id: t.Number() }),
-      "todo.create": t.Object({ title }),
-      "todo.update": t.Object(
-        { title: t.Optional(title), completed: t.Optional(t.Boolean()) },
-        { minProperties: 1 },
-      ),
+      "todo.create": t.Pick(createInsertSchema(todos, refine), ["title"]),
+      "todo.update": t.Omit(createUpdateSchema(todos, refine), ["id"], { minProperties: 1 }),
     })
     .get(
       "/",
