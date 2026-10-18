@@ -1,18 +1,25 @@
+import type { Database } from "bun:sqlite";
 import { Elysia, t } from "elysia";
 
 type Todo = { id: number; title: string; completed: boolean };
+type Row = { id: number; title: string; completed: number };
 
-const filters = {
-  all: () => true,
-  active: (todo: Todo) => !todo.completed,
-  completed: (todo: Todo) => todo.completed,
+const toTodo = (row: Row): Todo => ({ ...row, completed: row.completed === 1 });
+
+const where = {
+  all: "",
+  active: "WHERE completed = 0",
+  completed: "WHERE completed = 1",
 };
 
 const title = t.String({ minLength: 1 });
 
-export const createTodos = () => {
-  let store: Todo[] = [];
-  let nextId = 1;
+export const createTodos = (db: Database) => {
+  db.run(`CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0
+  )`);
 
   return new Elysia({ prefix: "/todos" })
     .model({
@@ -23,36 +30,55 @@ export const createTodos = () => {
         { minProperties: 1 },
       ),
     })
-    .get("/", ({ query }) => store.filter(filters[query.filter ?? "all"]), {
-      query: t.Object({ filter: t.Optional(t.UnionEnum(["all", "active", "completed"])) }),
-    })
+    .get(
+      "/",
+      ({ query }) =>
+        db
+          .query<Row, []>(`SELECT * FROM todos ${where[query.filter ?? "all"]} ORDER BY id`)
+          .all()
+          .map(toTodo),
+      { query: t.Object({ filter: t.Optional(t.UnionEnum(["all", "active", "completed"])) }) },
+    )
     .post(
       "/",
       ({ body, status }) => {
-        const todo = { id: nextId++, title: body.title, completed: false };
-        store.push(todo);
-        return status(201, todo);
+        const row = db
+          .query<Row, { $title: string }>("INSERT INTO todos (title) VALUES ($title) RETURNING *")
+          .get({ $title: body.title })!;
+        return status(201, toTodo(row));
       },
       { body: "todo.create" },
     )
     .patch(
       "/:id",
       ({ params, body, status }) => {
-        const todo = store.find((todo) => todo.id === params.id);
-        if (!todo) return status(404, "Not found");
-        return Object.assign(todo, body);
+        const row = db
+          .query<Row, { $id: number; $title: string | null; $completed: number | null }>(
+            `UPDATE todos
+             SET title = COALESCE($title, title), completed = COALESCE($completed, completed)
+             WHERE id = $id RETURNING *`,
+          )
+          .get({
+            $id: params.id,
+            $title: body.title ?? null,
+            $completed: body.completed === undefined ? null : Number(body.completed),
+          });
+        if (!row) return status(404, "Not found");
+        return toTodo(row);
       },
       { params: "todo.id", body: "todo.update" },
     )
     .delete("/completed", ({ status }) => {
-      store = store.filter((todo) => !todo.completed);
+      db.run("DELETE FROM todos WHERE completed = 1");
       return status(204);
     })
     .delete(
       "/:id",
       ({ params, status }) => {
-        if (!store.some((todo) => todo.id === params.id)) return status(404, "Not found");
-        store = store.filter((todo) => todo.id !== params.id);
+        const deleted = db
+          .query<{ id: number }, { $id: number }>("DELETE FROM todos WHERE id = $id RETURNING id")
+          .get({ $id: params.id });
+        if (!deleted) return status(404, "Not found");
         return status(204);
       },
       { params: "todo.id" },
