@@ -4,6 +4,15 @@
   "workspaces": {
     "": {
       "name": "featherbase",
+      "devDependencies": {
+        "@types/bun": "latest",
+      },
+      "peerDependencies": {
+        "typescript": "^7",
+      },
+    },
+    "apps/api": {
+      "name": "@todo/api",
       "dependencies": {
         "drizzle-orm": "0.45.4",
         "drizzle-typebox": "0.3.3",
@@ -11,11 +20,7 @@
       },
       "devDependencies": {
         "@elysiajs/eden": "^1.4.9",
-        "@types/bun": "latest",
         "drizzle-kit": "0.31.11",
-      },
-      "peerDependencies": {
-        "typescript": "^7",
       },
     },
   },
@@ -83,6 +88,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.52", "", {}, "sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw=="],
+
+    "@todo/api": ["@todo/api@workspace:apps/api"],
 
     "@tokenizer/inflate": ["@tokenizer/inflate@0.5.1", "", { "dependencies": { "debug": "^4.4.3", "token-types": "^6.1.2" } }, "sha512-56U2O6fDLFtqokwWh597IdeUgtM7j+TT9tb1soybhgA6cy163gAcVmoQr8H4Ud/CkgCkViwcuLyqtn6wYqw59Q=="],
 

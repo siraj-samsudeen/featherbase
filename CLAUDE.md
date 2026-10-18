@@ -52,9 +52,10 @@ it by hand, assisted by AI — not for AI to write code that I review.
 ## Projects, in order
 
 1. **Project 1 — to-do app** (current): `docs/projects/01-todo-app.md`.
-   API: Elysia + SQLite (raw `bun:sqlite`; ORM only if needed). Web: React +
-   Vite + Eden Treaty. Single
-   package for now; becomes an `apps/api` + `apps/web` monorepo at step 1b.
+   API: Elysia + SQLite via Drizzle (+ drizzle-typebox for models). Web: React +
+   Vite + Eden Treaty. Monorepo with Bun workspaces: `apps/api` (`@todo/api`)
+   now, `apps/web` (`@todo/web`) next. Run `bun install`, `bun test` and
+   `bun check` from the repo root.
 2. **Featherbase** (later): `docs/architecture.md`.
 
 ## Workflow
@@ -68,7 +69,8 @@ it by hand, assisted by AI — not for AI to write code that I review.
 - Runtime: Bun. Server: Elysia. Frontend: React + Vite. Tests: `bun test`.
 - **Vite is a deliberate override** of the "Don't use `vite`" advice in the Bun
   conventions below — it's the community standard for React apps.
-- Started from `bun init`; the generated files are kept as generated. The
+- Started from `bun init`; the generated files are kept as generated, except
+  the root `index.ts`, removed when the repo became a monorepo. The
   "Bun conventions" section below is Bun's own generated guidance, kept verbatim.
 - **Server code uses Elysia**, which runs on `Bun.serve()` internally — define
   routes with Elysia, don't call `Bun.serve()` directly. The React frontend is
