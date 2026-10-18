@@ -5,7 +5,9 @@ Each step adds one real-world feature on top of the last one.
 ## Stack
 
 - **Backend:** Bun + Elysia + TypeScript
-- **Database:** SQLite + Drizzle ORM, with migrations
+- **Database:** SQLite via Bun's built-in `bun:sqlite`, with raw SQL first.
+  Add an ORM (e.g. Drizzle) only if raw SQL becomes painful; add migrations
+  when the schema first changes.
 - **Frontend:** React + Vite, calling the API through Eden Treaty so the API
   calls are fully typed
 - **Tests:** `bun test`. Every step comes with tests.
@@ -68,7 +70,8 @@ completed, ask whether to complete its subtasks too.
 
 ### 7. Bonus: migrate to Postgres
 
-Move the database from SQLite to Postgres. Switch the Drizzle driver and the
-schema types, and create the migrations again. Then get every test passing
+Move the database from SQLite to Postgres: switch from `bun:sqlite` to
+`Bun.sql` (or switch the ORM's driver, if one was added), adapt the schema
+types and migrations. Then get every test passing
 against Postgres. Pay attention to how dates, booleans and auto-increment IDs
 differ between the two databases.

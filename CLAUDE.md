@@ -52,7 +52,8 @@ it by hand, assisted by AI — not for AI to write code that I review.
 ## Projects, in order
 
 1. **Project 1 — to-do app** (current): `docs/projects/01-todo-app.md`.
-   API: Elysia + Drizzle + SQLite. Web: React + Vite + Eden Treaty. Single
+   API: Elysia + SQLite (raw `bun:sqlite`; ORM only if needed). Web: React +
+   Vite + Eden Treaty. Single
    package for now; becomes an `apps/api` + `apps/web` monorepo at step 1b.
 2. **Featherbase** (later): `docs/architecture.md`.
 
