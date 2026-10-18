@@ -1,8 +1,14 @@
+import { Database } from "bun:sqlite";
 import { treaty } from "@elysiajs/eden";
-import { describe, expect, it } from "bun:test";
-import { app } from "./app";
+import { beforeEach, describe, expect, it } from "bun:test";
+import { createApp } from "./app";
 
-const api = treaty(app);
+const freshApi = () => treaty(createApp(new Database(":memory:")));
+
+let api: ReturnType<typeof freshApi>;
+beforeEach(() => {
+  api = freshApi(); // every test starts with its own empty database
+});
 
 describe("POST /todos", () => {
   it("creates a to-do", async () => {
