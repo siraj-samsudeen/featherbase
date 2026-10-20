@@ -1,0 +1,9 @@
+{
+  "name": "@todo/web",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@elysiajs/eden": "^1.4.9",
+    "@todo/api": "workspace:*"
+  }
+}

@@ -2,6 +2,7 @@
   "name": "@todo/api",
   "type": "module",
   "private": true,
+  "exports": { ".": "./src/app.ts" },
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "typecheck": "bun check",
