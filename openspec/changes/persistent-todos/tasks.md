@@ -14,7 +14,7 @@
 
 ## 4. Reconcile
 
-- [ ] 4.1 Coverage 100% of lines and functions; every uncovered line ratified, deleted or asked
-- [ ] 4.2 No unused files, exports or dependencies (knip)
-- [ ] 4.3 Types check clean
-- [ ] 4.4 Mutation testing: every surviving mutant ratified, deleted or asked
+- [x] 4.1 Coverage 100% of lines and functions; every uncovered line ratified, deleted or asked
+- [x] 4.2 No unused files, exports or dependencies (knip)
+- [x] 4.3 Types check clean
+- [x] 4.4 Mutation testing: every surviving mutant ratified, deleted or asked
