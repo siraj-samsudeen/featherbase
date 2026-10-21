@@ -13,3 +13,12 @@ it("POST /todos returns 201 with the new to-do, not done", async () => {
   expect(res.status).toBe(201);
   expect(await res.json()).toEqual({ id: 1, title: "Buy milk", done: false });
 });
+
+it("GET /todos lists the to-dos created", async () => {
+  const app = createApp(":memory:");
+  await app.handle(create("Buy milk"));
+
+  const res = await app.handle(new Request("http://localhost/todos"));
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual([{ id: 1, title: "Buy milk", done: false }]);
+});
