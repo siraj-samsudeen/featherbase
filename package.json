@@ -3,6 +3,8 @@
   "type": "module",
   "private": true,
   "devDependencies": {
+    "@hughescr/stryker-bun-runner": "^1.6.0",
+    "@stryker-mutator/core": "10",
     "@types/bun": "latest"
   },
   "peerDependencies": {
