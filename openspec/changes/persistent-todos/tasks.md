@@ -10,7 +10,7 @@
 
 ## 3. A to-do without a title is rejected (@spec a-to-do-needs-a-title)
 
-- [ ] 3.1 outer: creating a to-do without a title is rejected and nothing is stored (added)
+- [x] 3.1 outer: creating a to-do without a title is rejected and nothing is stored (added)
 
 ## 4. Reconcile
 

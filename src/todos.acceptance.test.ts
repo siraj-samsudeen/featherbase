@@ -34,3 +34,19 @@ test("to-dos are listed in the order they were created", async () => {
   const titles = ((await listed.json()) as { title: string }[]).map((todo) => todo.title);
   expect(titles).toEqual(["Buy milk", "Pay rent"]);
 });
+
+// @spec a-to-do-needs-a-title
+test("a to-do without a title is rejected, and nothing is stored", async () => {
+  const app = createApp(freshDbFile());
+  const created = await app.handle(
+    new Request("http://localhost/todos", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }),
+  );
+  expect(created.status).toBe(422);
+
+  const listed = await app.handle(new Request("http://localhost/todos"));
+  expect(await listed.json()).toEqual([]);
+});
