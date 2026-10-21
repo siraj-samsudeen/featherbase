@@ -8,9 +8,13 @@
 
 - [x] 2.1 outer: "Buy milk" then "Pay rent" are listed in that order
 
-## 3. Reconcile
+## 3. A to-do without a title is rejected (@spec a-to-do-needs-a-title)
 
-- [ ] 3.1 Coverage 100% of lines and functions; every uncovered line ratified, deleted or asked
-- [ ] 3.2 No unused files, exports or dependencies (knip)
-- [ ] 3.3 Types check clean
-- [ ] 3.4 Mutation testing: every surviving mutant ratified, deleted or asked
+- [ ] 3.1 outer: creating a to-do without a title is rejected and nothing is stored (added)
+
+## 4. Reconcile
+
+- [ ] 4.1 Coverage 100% of lines and functions; every uncovered line ratified, deleted or asked
+- [ ] 4.2 No unused files, exports or dependencies (knip)
+- [ ] 4.3 Types check clean
+- [ ] 4.4 Mutation testing: every surviving mutant ratified, deleted or asked

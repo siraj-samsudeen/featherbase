@@ -14,3 +14,12 @@ still be there after the app restarts.
 - **GIVEN** a person has created "Buy milk" and then "Pay rent"
 - **WHEN** the person lists their to-dos
 - **THEN** the list shows "Buy milk" first and "Pay rent" second
+
+### Requirement: A to-do needs a title
+Feature: To-do list
+Rule: The system SHALL reject a to-do created without a title, and SHALL NOT store it.
+
+#### Scenario: A to-do without a title is rejected
+- **GIVEN** a person has no to-dos
+- **WHEN** the person creates a to-do without a title
+- **THEN** the request is rejected and the list stays empty
