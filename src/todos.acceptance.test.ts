@@ -14,7 +14,7 @@ const create = (title: string) =>
   });
 
 // @spec created-to-dos-are-listed
-test.todo("a to-do created before a restart is listed after it, not done", async () => {
+test("a to-do created before a restart is listed after it, not done", async () => {
   const dbFile = freshDbFile();
   const created = await createApp(dbFile).handle(create("Buy milk"));
   expect(created.status).toBe(201);
