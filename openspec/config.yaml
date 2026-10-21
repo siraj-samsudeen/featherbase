@@ -1,0 +1,33 @@
+schema: intent-driven-with-human-control
+
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+#
+#     Use senior-dev sub-agent for all src related work and senior-qa for acceptance tests.
+#     Do not optimize the batch the tasks for senior-dev and senior-qa, call them as many times as necessary in smaller batches as dev and qa work may be interleaved.
+
+rules:
+  proposal:
+    - Must use grill-me skill
+    # - Must use adversarial-authoring skill
+    # - Must use glossary skill
+  design:
+    - Must use c4-diagrams skill
+    # - Must use glossary skill
+  adr:
+    - Must use architectural-decision-records skill
+  specs:
+    # - Must use spec-as-source skill
+  tasks:
+    # - Must use spec-as-source skill
+
+operations:
+  apply:
+    guidance:
+      - Must use test-driven-development skill
+      - Must use outside-in-tdd skill - one task per "go", the human approves every step
+  archive:
+    guidance:
+      - Must run OpenSpec Sync before archiving
