@@ -23,3 +23,14 @@ test("a to-do created before a restart is listed after it, not done", async () =
   const listed = await createApp(dbFile).handle(new Request("http://localhost/todos"));
   expect(await listed.json()).toEqual([{ id: 1, title: "Buy milk", done: false }]);
 });
+
+// @spec created-to-dos-are-listed
+test("to-dos are listed in the order they were created", async () => {
+  const app = createApp(freshDbFile());
+  await app.handle(create("Buy milk"));
+  await app.handle(create("Pay rent"));
+
+  const listed = await app.handle(new Request("http://localhost/todos"));
+  const titles = ((await listed.json()) as { title: string }[]).map((todo) => todo.title);
+  expect(titles).toEqual(["Buy milk", "Pay rent"]);
+});

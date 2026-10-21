@@ -6,7 +6,7 @@
 
 ## 2. To-dos are listed in the order they were created (@spec created-to-dos-are-listed)
 
-- [ ] 2.1 outer: "Buy milk" then "Pay rent" are listed in that order
+- [x] 2.1 outer: "Buy milk" then "Pay rent" are listed in that order
 
 ## 3. Reconcile
 
