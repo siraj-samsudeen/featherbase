@@ -1,4 +1,5 @@
 {
   "entry": ["src/**/*.test.ts"],
-  "project": ["src/**/*.ts"]
+  "project": ["src/**/*.ts"],
+  "ignoreDependencies": ["@hughescr/stryker-bun-runner", "@stryker-mutator/core", "@stryker-mutator/bun-runner", "@stryker-mutator/api"]
 }
