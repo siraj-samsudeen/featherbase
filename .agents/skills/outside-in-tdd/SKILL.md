@@ -1,6 +1,6 @@
 ---
 name: outside-in-tdd
-description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one test per "go" with red, green and refactor as separate commits that record the human's prediction and the real output. Use for every change: planning artifacts, code, tests, dependencies and config.
+description: The human-controlled build loop for an OpenSpec change — one planning artifact per commit, then one stop per test (the human's prediction) with red, green and refactor as separate commits that record the human's prediction and the real output. Use for every change: planning artifacts, code, tests, dependencies and config.
 ---
 
 # Outside-in TDD with the human in control
@@ -16,14 +16,29 @@ from it — can follow the same process step by step. Three rules follow from th
 - **What the code cannot show goes in the commit message** — the command run, the prediction,
   the actual output, what was deliberately not built.
 
-The human approves every step. The agent drafts, runs and commits; it never moves to the next
-step on its own.
+The human controls every step that has something to decide. The agent drafts, runs and
+commits, and keeps going between those steps; the human can interrupt at any time.
+
+## When to stop
+
+Stop only when the stop has content the human can change:
+
+- **A draft to review** — a planning artifact. The review is the approval; approval commits it.
+- **A real decision** — a domain or design fork only the human can settle. Always bring a
+  recommendation.
+- **A prediction** — before every red run.
+- **A refactor with a named smell.**
+
+Never stop just to ask permission to continue ("say go when you want me to draft X", "shall I
+commit?", "shall I write the code?", "refactor? none"). Formatting and tooling choices are never
+asked: use the defaults in `CLAUDE.md`.
 
 ## Planning — one artifact per commit
 
 Follow the schema's artifact order: proposal → specs → design → adr → tasks. For each one the
-agent drafts it (using the skills `openspec/config.yaml` names for it), the human reviews and
-edits, and only then is it committed:
+agent drafts it (using the skills `openspec/config.yaml` names for it) — taking its own position on
+every open question, with a recommendation — the human reviews and edits, and it is committed.
+Then the agent drafts the next one without asking.
 
 ```
 <artifact>: <change-name> — <one line on what it settles>
@@ -32,25 +47,29 @@ edits, and only then is it committed:
 `tasks.md` is the test list (see the schema). `design.md` is a hypothesis: when the build leads
 somewhere else, a later `design:` commit records what changed and why.
 
-## Building — one test per "go"
+## Building — one stop per test
 
-Take the next unticked task only when the human says "go" (or names a task). Follow the
-`test-driven-development` skill for the shape of each test; this skill adds the gates and the
-record.
+Take the next unticked task in order. Follow the `test-driven-development` skill for the shape
+of each test; this skill adds the stops and the record.
 
-1. **Show the test** and why it is next. The human approves or edits it.
-2. **Predict.** Ask the human what will happen when it runs. "Don't know" is a valid answer;
+1. **Show the test** and why it is next, **and ask for the prediction in the same message** —
+   answering it also approves the test (or the human edits the test instead).
+2. **Predict.** The human says what will happen when it runs. "Don't know" is a valid answer;
    silence is not. The agent predicts only when the human says "don't know" or asks — then with
    a one-line reason.
 3. **Run it.** Paste the real failure lines, never a summary. If it fails for the wrong reason
    (a missing module, a typo), fix the test or add the smallest stub and run again.
 4. **Commit `red:`** — the test plus the smallest stub only.
-5. **Show the minimal code.** The human approves. Run the suite.
+5. **Write the minimal code** and run the suite — no stop; show the diff with the result.
 6. **Commit `green:`** — code only, no test changes. For the outer test or a change to shared
    code, ask the human to predict the suite result first.
-7. **Refactor?** Name the smell or say "none". The human decides. A refactor is its own
+7. **Refactor** only when there is a smell: name it and let the human decide. No smell, no stop. A refactor is its own
    `refactor:` commit: structure only, no assertion changes, same pass count.
-8. Tick the task. Add any newly discovered inner test to `tasks.md` as `(added)`. Wait for "go".
+8. Tick the task. Add any newly discovered inner test to `tasks.md` as `(added)`. Move to the
+   next task.
+
+Tests the task list already expects to pass on their first run are run together, one `test:`
+commit each, and reported in one message.
 
 The outer test of a scenario stays `test.todo` while its inner tests run; it is promoted in its
 own green step. `bun test --todo` fails with "Remove `.todo`" once it passes — that is the cue.

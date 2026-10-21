@@ -4,8 +4,8 @@ A fork of the `intent-driven` schema below. Two differences, both in the build p
 
 - `tasks.md` is the **test list**: one group per scenario, the outer acceptance test first, then
   the inner tests the design needs. No setup tasks — setup arrives with the test that needs it.
-- `apply` is **one task per "go"**: the human approves every step and every red, green and
-  refactor is its own commit (the `outside-in-tdd` skill).
+- `apply` stops **once per test**, for the human's prediction; every red, green and refactor is
+  its own commit (the `outside-in-tdd` skill).
 
 Everything else — proposal, specs, design, adr — is the upstream schema unchanged.
 

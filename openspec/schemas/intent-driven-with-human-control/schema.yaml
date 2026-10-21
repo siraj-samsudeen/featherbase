@@ -1,6 +1,6 @@
 name: intent-driven-with-human-control
 version: 1
-description: Intent-driven workflow with a human approving every step - proposal -> Gherkin-style specs -> design -> adr -> tasks (the test list) -> one red/green/refactor step per "go"
+description: Intent-driven workflow with the human in control - proposal -> Gherkin-style specs -> design -> adr -> tasks (the test list) -> one stop per test for the human's prediction
 artifacts:
   - id: proposal
     generates: proposal.md
@@ -317,10 +317,8 @@ apply:
     - tasks
   tracks: tasks.md
   instruction: |
-    Work through tasks.md ONE TASK AT A TIME, with the human approving every step.
-    Wait for the human to say "go" (or to name a task) before starting a task.
-    For each task follow the outside-in-tdd skill: show the test and why, collect the
-    human's prediction, run it, commit red; show the minimal code, run it, commit green;
-    name a refactor or say "none" and let the human decide. Mark the task done only after
-    its green commit. Add newly discovered inner tests to tasks.md as `(added)`.
-    Never batch tasks, never continue to the next task without a new "go".
+    Work through tasks.md in order, following the outside-in-tdd skill. For each task: show the
+    test and ask the human's prediction in the same message (the one stop per test), run it,
+    commit red; write the minimal code, run the suite, commit green; stop for a refactor only
+    when there is a named smell. Mark the task done after its green commit, add newly
+    discovered inner tests as `(added)`, and continue to the next task without asking.
