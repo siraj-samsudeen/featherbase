@@ -1,8 +1,8 @@
 ## 1. A created to-do is listed after a restart (@spec created-to-dos-are-listed)
 
-- [ ] 1.1 outer: a to-do created before a restart is listed after it, not done
-- [ ] 1.2 inner: POST /todos returns 201 with the new to-do, not done
-- [ ] 1.3 inner: GET /todos lists the to-dos created
+- [x] 1.1 outer: a to-do created before a restart is listed after it, not done
+- [x] 1.2 inner: POST /todos returns 201 with the new to-do, not done
+- [x] 1.3 inner: GET /todos lists the to-dos created
 
 ## 2. To-dos are listed in the order they were created (@spec created-to-dos-are-listed)
 
