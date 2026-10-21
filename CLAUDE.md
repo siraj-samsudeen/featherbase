@@ -14,3 +14,14 @@ of the template's files:
 Every change — planning artifacts, code, tests, dependencies, config — follows the
 `outside-in-tdd` skill: one step at a time, the human approves each one, and each step is its
 own commit.
+
+## This branch
+
+`featherbase-rewrite` is a fresh start of Featherbase on Bun + Elysia, built with the process
+above. Its history is unrelated to `main` (the earlier Hono implementation): **never merge it
+with, or open a PR against, `main`.**
+
+- Tooling notes for this environment: `bun init` must run as `env -u BUN_OPTIONS bun init` in
+  cloud sessions (their `BUN_OPTIONS=--smol` makes it write into `./init/`).
+- A worked example of the whole process — planning, red/green, reconcile, archive — is the
+  `featherbase-rewrite-trial` branch (the agent stood in for the human there).
