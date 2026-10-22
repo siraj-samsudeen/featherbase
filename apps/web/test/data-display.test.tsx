@@ -1,9 +1,9 @@
 // DataList, Headline and the readable amount helpers (#380 stage 1c).
 // Pure tests: no server, no database.
 
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
 import { fmtCount, fmtINR } from '../src/lib/inr'
 
@@ -161,6 +161,53 @@ describe('DataList', () => {
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Cannot load rows for Checklist')
     expect(screen.queryByText('No rows yet')).toBeNull()
+  })
+})
+
+describe('DataList picks its shape from the screen width by default', () => {
+  const real = window.matchMedia
+  afterEach(() => {
+    window.matchMedia = real
+  })
+
+  /** A controllable matchMedia: `narrow` decides whether the 40rem query matches. */
+  function fakeScreen(narrow: boolean) {
+    const listeners = new Set<() => void>()
+    const mql = {
+      get matches() {
+        return narrow
+      },
+      media: '',
+      addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => listeners.delete(fn),
+    }
+    window.matchMedia = vi.fn(() => mql) as unknown as typeof window.matchMedia
+    return {
+      resize(toNarrow: boolean) {
+        narrow = toNarrow
+        listeners.forEach((fn) => fn())
+      },
+    }
+  }
+
+  test('a narrow screen gets cards and a wide one a table', () => {
+    fakeScreen(true)
+    const { unmount } = render(<DataList caption="Runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
+    expect(screen.getByRole('list', { name: 'Runs' })).toBeInTheDocument()
+    expect(window.matchMedia).toHaveBeenCalledWith('(width < 40rem)')
+    unmount()
+    fakeScreen(false)
+    render(<DataList caption="Runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
+    expect(screen.getByRole('table', { name: 'Runs' })).toBeInTheDocument()
+  })
+
+  test('turning a phone or narrowing a window switches the shape live', () => {
+    const screenSize = fakeScreen(false)
+    render(<DataList caption="Runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
+    expect(screen.getByRole('table', { name: 'Runs' })).toBeInTheDocument()
+    act(() => screenSize.resize(true))
+    expect(screen.getByRole('list', { name: 'Runs' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 })
 
