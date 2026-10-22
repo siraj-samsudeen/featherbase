@@ -13,8 +13,8 @@ Stack: `person-identities` (#371, migration 0100) → `person-rename` (0101) →
 sign-ins keyed by the provider's permanent id; Sign In Method rows; one
 pipeline; admin and self linking; lockout guard; leaver rule; audit. From
 `person-rename`: the `person` table with opaque `psn_` ids; `service_account`
-and the principal model (`principal_kind` + `principal_id` on tokens, Data
-Scope, Share, roles); `sign_in_identity`; the handler registry used for the
+and the principal model (a `person` or a `service_account` Reference, exactly
+one set, on tokens, Data Scope, Share, roles); `sign_in_identity`; the handler registry used for the
 re-id; `isPrivileged`.
 
 What is still missing: identifiers that do not sign in; a record of two
@@ -175,6 +175,7 @@ Raw table `person_identifier` (controller-written):
 | `valid` | `daterange` half-open; lower `-infinity` = "before Featherbase knew the person"; upper NULL = current |
 | `verified` | source feed / sign-in write-through / System Manager / reviewer ⇒ true; self ⇒ false (never a match reason) |
 | `record_identifier_id` | on `employee-record` rows: the `external-record` row (the StyleHR record number) this code belongs to — the leaver rule compares records, not assigners (A-N5) |
+| `worker_type` | on `employee-record` rows: the worker type of that employment as the roster states it (`Regular` / `Agency` / `Trainee`); **stored, not a note** (DECISION) — what the review screen's `worker_type_from_roster` reads; the firm is the row's `assigner` |
 | `one_holder`, `one_per_person` | denormalised copies of the system's flags |
 | `source`, `recorded_at`, `recorded_by`, `note` | audit |
 
@@ -308,10 +309,12 @@ any Person form — `match_id` nullable, so RB's accounts merge by hand):
    address:** the survivor's linked identity wins; the loser's invite is
    cancelled and logged as a deletion.
 6. Handler registry walk (from `person-rename`, merge mode): metadata
-   References, Dynamic References, raw tables (`has_role` dedupe,
-   `data_scope` per 4, `share`, `sign_in_identity` incl. invites,
-   `person_identifier`, `access_token` by `principal_id` **under the
-   privileged-way-in rule**, `user_settings` dedupe, `saved_view`,
+   `Reference → Person` columns; **conditional-id columns** (`data_scope.
+   for_value` when `allow_table = 'Person'`, `share.share_name` when
+   `share_table = 'Person'`); raw tables (`has_role` dedupe, `data_scope` per
+   4, `share`, `sign_in_identity` incl. invites, `person_identifier`,
+   `access_token` by its `person` column **under the privileged-way-in
+   rule**, `api_rate_limit`, `user_settings` dedupe, `saved_view`,
    `password_reset` revoked, `person_match_member`), JSON ids; history columns
    registered "not rewritten"; completeness test; bound-source columns
    reported.
@@ -407,15 +410,19 @@ access removed; only leavers (below) and explicit role changes do that.
 
 - **`stylehr_record_ids.csv`** for the one-time subject rewrite (D5) — UTF-8,
   comma-separated, header row, columns `employee_code,assigner,stylehr_record_id`:
-  `employee_code` is the code **exactly as StyleHR's employee master stores
-  it** (`silver_stylehr.employee.employee_code`, from `employee_employee.
-  employee_id`); `assigner` is the **StyleHR company**, `firm_firm.id` of the
-  current store × firm posting (`employee_employeestoresandfirms`), carried as
-  text; `stylehr_record_id` is `silver_stylehr.employee.employee_key`
-  (`employee_employee.id`). Delivered as a file path given to the migration
-  command (`cli people:plan --resolve <path>`, DEPLOY.md). A dev person whose
-  code matches **2+ rows** (the 28 colliding codes) is **listed for manual
-  resolution and keeps working by code**.
+  `employee_code` is **the same form the old roster sync wrote as Featherbase
+  `row_id` and as the `employee_code` Custom Field** — `RR-7963`, `21654`,
+  `J11350` — i.e. `silver_stylehr.employee.employee_code` including any
+  prefix silver adds (from `employee_employee.employee_id`); `assigner` is the
+  **StyleHR company**, `firm_firm.id` of the employee's store × firm posting
+  (`employee_employeestoresandfirms`), carried as text — **an employee with
+  two current postings takes the firm of the most recent one; a tie is listed
+  for manual resolution** (not a collision); `stylehr_record_id` is
+  `silver_stylehr.employee.employee_key` (`employee_employee.id`). Delivered
+  as a file path given to the migration command (`cli people:plan --resolve
+  <path>`, DEPLOY.md). A dev person whose code matches **2+ rows** (the 28
+  colliding codes) is **listed for manual resolution and keeps working by
+  code**.
 - The bulk bodies below, from `silver_stylehr`. **Aadhaar travels as the
   `value` of a row whose `system` is `aadhaar`** — no other field — and only
   once direct StyleHR read access is granted (owner decision).
@@ -431,18 +438,17 @@ as stored: a spell that ended on 02-Mar-2026 has `valid_to: "2026-03-03"`.
 { "mode": "upsert", "create_missing": true,
   "rows": [
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
-      "person_fields": { "full_name": "A. Kumar", "email": null,
-                         "worker_type": "Regular", "firm": "JRPL" },
+      "person_fields": { "full_name": "A. Kumar", "email": null },
       "system": "stylehr-employee-id", "value": "48213" },
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
       "system": "stylehr-employee-code", "assigner": "12", "value": "RR-10353",
-      "valid_from": "2026-03-03" },
+      "worker_type": "Regular", "valid_from": "2026-03-03" },
     { "person": { "system": "stylehr-employee-id", "value": "31177" },
-      "person_fields": { "full_name": "A. Kumar", "worker_type": "Agency", "firm": "AgencyX" },
+      "person_fields": { "full_name": "A. Kumar" },
       "system": "stylehr-employee-id", "value": "31177" },
     { "person": { "system": "stylehr-employee-id", "value": "31177" },
       "system": "stylehr-employee-code", "assigner": "7", "value": "21654",
-      "valid_from": "2024-06-01", "valid_to": "2026-03-03" },
+      "worker_type": "Agency", "valid_from": "2024-06-01", "valid_to": "2026-03-03" },
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
       "system": "aadhaar", "value": "<12 digits>" } ] }
 ```
@@ -457,11 +463,12 @@ as stored: a spell that ended on 02-Mar-2026 has `valid_to: "2026-03-03"`.
   "summary": { "created": 4, "updated": 0, "unchanged": 0, "redirected": 0, "error": 1 } }
 ```
 
-- `person` is a **resolve key**. **`person_fields`** (`full_name`, `email`,
-  `worker_type`, `firm`) is used **only when the key creates a person** (it
-  sets `full_name`/`email`; `worker_type` and `firm` are recorded in the
-  creation note for the review screen); on an existing person it is ignored
-  with no error — the roster never overwrites a person's profile. Results:
+- `person` is a **resolve key**. **`person_fields`** (`full_name`, `email`)
+  is used **only when the key creates a person**; on an existing person it is
+  ignored with no error — the roster never overwrites a person's profile.
+  **`worker_type`** is a field of an `employee-record` row (the employment it
+  describes) and is stored on that identifier row (D3); the firm is the row's
+  `assigner`. Results:
   `created` (a new row; also `created_person: true` when the key made a
   person) · `updated` · **`unchanged`** (same value, same bounds, same
   assigner, same flags — nothing written, no log) · `redirected` (the key
@@ -471,10 +478,15 @@ as stored: a spell that ended on 02-Mar-2026 has `valid_to: "2026-03-03"`.
   — never guessed) · `fingerprint_unavailable` · `invalid_format` · `overlap`
   (exclusion constraint) · `system_disabled` · `not_allowed`.
 - **Roles and section assignment** are not identifiers: the sync grants the
-  `Sales Target Viewer` role and Data Scope through the renamed principal
-  endpoints — `POST /api/people/:id/roles` and `POST /api/people/:id/scope`
-  (`{principal_kind: "person", …}`; the service-account twins are
-  `/api/service-accounts/:id/roles|scope`).
+  `Sales Target Viewer` role and Data Scope through two endpoints **built in
+  Phase 1b** (they do not exist today; thin wrappers over the existing role
+  and Data Scope saves, with `Identity Sync` limits and a refusal of
+  privileged roles): `POST /api/people/:id/roles` with `{"roles": ["Sales
+  Target Viewer"]}` (idempotent; a role already held answers `unchanged`;
+  `Administrator`/`System Manager` ⇒ `not_allowed`) and `POST
+  /api/people/:id/scope` with `{"rows": [{"allow_table": "Store",
+  "for_value": "ATK"}]}` (idempotent per row). The service-account twins are
+  `POST /api/service-accounts/:id/roles|scope`, System Manager only.
 - **Rehire vs correction:** a row for a code whose latest spell is **closed**
   and whose `valid_from` is after that spell's end **opens a new spell**; a
   row whose `valid_from` falls inside an existing spell **corrects that spell**
