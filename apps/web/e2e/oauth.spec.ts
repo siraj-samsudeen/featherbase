@@ -11,11 +11,24 @@ async function setAllowedDomains(request: APIRequestContext, value: string) {
   if (res.status() !== 200) throw new Error(`save allowed_email_domains: ${res.status()}`)
 }
 
+// People Google creates get an opaque id (person-identities), so the test
+// user is found by its email.
+async function usersWithEmail(request: APIRequestContext): Promise<{ row_id: string; enabled: boolean }[]> {
+  const headers = await adminAuth(request)
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))
+  const fields = encodeURIComponent(JSON.stringify(['row_id', 'enabled']))
+  return ((await (await request.get(`/api/table/User?filters=${filters}&fields=${fields}`, { headers })).json()) as {
+    data: { row_id: string; enabled: boolean }[]
+  }).data
+}
+
 test.beforeEach(async ({ request }) => {
   // Blank is the secure default and makes each test independent even if a
   // preceding process was interrupted before its teardown ran.
   await setAllowedDomains(request, '')
   const headers = await adminAuth(request)
+  for (const u of await usersWithEmail(request))
+    await request.delete(`/api/table/User/${encodeURIComponent(u.row_id)}`, { headers })
   await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
 })
 
@@ -63,14 +76,13 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   expect(visited.join(' ')).not.toContain(stored as string)
 
   // The User was created and linked to that Google account by its account ID.
+  // Its id is opaque and permanent, never the address.
   const headers = await adminAuth(page.request)
-  const doc = (await (
-    await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
-  ).json()) as { row_id: string; enabled: boolean }
-  expect(doc.row_id).toBe(EMAIL)
+  const [doc] = await usersWithEmail(page.request)
+  expect(doc.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
   expect(doc.enabled).toBe(true)
   const links = (await (
-    await page.request.get(`/api/users/${encodeURIComponent(EMAIL)}/identities`, { headers })
+    await page.request.get(`/api/users/${encodeURIComponent(doc.row_id)}/identities`, { headers })
   ).json()) as { identities: { method: string; subject: string | null }[] }
   expect(links.identities).toEqual([expect.objectContaining({ method: 'google', subject: EMAIL })])
 })
