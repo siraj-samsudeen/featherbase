@@ -125,6 +125,16 @@ describe('DataList', () => {
     expect(screen.queryByRole('table')).toBeNull()
   })
 
+  test('a long unbroken value wraps inside its card instead of widening the page', () => {
+    const long = [{ ...runs[0], name: 'SKU-0123456789012345678901234567890123456789', done: 1 }]
+    render(<DataList layout="cards" caption="Runs" rows={long} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
+    const card = screen.getByRole('listitem')
+    // jsdom does no layout, so pin the two CSS facts that keep the grid inside the card.
+    expect(card.querySelector('dl')?.className).toMatch(/grid-cols-\[auto_minmax\(0,1fr\)\]/)
+    expect(within(card).getByText('Done').nextElementSibling?.className).toMatch(/\bwrap-anywhere\b/)
+    expect(within(card).getByText(long[0].name).className).toMatch(/\bwrap-anywhere\b/)
+  })
+
   test('with no rows it says so and offers the way forward, instead of an empty table', () => {
     render(
       <DataList

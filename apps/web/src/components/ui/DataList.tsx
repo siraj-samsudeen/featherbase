@@ -97,7 +97,9 @@ export function DataList<Row>({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 font-semibold text-ink">
                 {titles.map((c) => (
-                  <div key={c.key}>{c.cell(row)}</div>
+                  <div key={c.key} className="wrap-anywhere">
+                    {c.cell(row)}
+                  </div>
                 ))}
               </div>
               {statuses.map((c) => (
@@ -117,11 +119,12 @@ export function DataList<Row>({
               </p>
             )}
             {values.length > 0 && (
-              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+              // A zero-minimum value track, so a long unbroken value wraps instead of widening the card.
+              <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
                 {values.map((c) => (
                   <div key={c.key} className="contents">
                     <dt className="text-ink-muted">{c.header}</dt>
-                    <dd className={cx('text-ink', c.align === 'end' && 'text-right tabular-nums')}>{c.cell(row)}</dd>
+                    <dd className={cx('min-w-0 wrap-anywhere text-ink', c.align === 'end' && 'text-right tabular-nums')}>{c.cell(row)}</dd>
                   </div>
                 ))}
               </dl>
