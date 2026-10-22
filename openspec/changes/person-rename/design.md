@@ -63,24 +63,35 @@ is removed).
 ### R2. One principal model; service accounts in their own table
 
 - **Service Account is a Table** (`featherbase.service_account`, Core,
-  `system = true`, **read-only through the generic API** — every write goes
-  through `service-accounts.ts`), so Reference pickers and forms work
-  generically. Columns: `row_id 'svc_…'`, `label`, `enabled`, `created_at`,
-  `created_by`. Rows with `user_type = 'service'` move here and **get fresh
-  `svc_` ids through the registry** (DECISION); `user_type` is dropped.
+  `system = true`), so Reference pickers and forms work generically. It is
+  **read-only through the generic API by a controller refusal** — a
+  `before_save` / `before_delete` controller like Sign In Method's answers
+  417 "managed by the service-account API" for every generic write, because
+  `isBypassUser` gives System Managers every permission and a permission
+  gate alone would not hold; every write goes through `service-accounts.ts`.
+  Columns: `row_id 'svc_…'`, `label`, `enabled`, `created_at`, `created_by`.
+  Rows with `user_type = 'service'` move here and **get fresh `svc_` ids
+  through the registry** (DECISION); `user_type` is dropped.
 - **A principal is a person or a service account — two nullable Reference
   columns, exactly one set** (DECISION; the engine has no Dynamic Reference
   type — `meta.ts` `COLUMN_TYPE_VALUES` lists none, Share's target is a
   Reference to Table plus plain-text `share_name`). On `access_token`
-  (replaces `owner`), `data_scope` (replaces `"user"`), `share` (replaces
-  `user`) and `has_role`: `person` → `Reference → Person`, `service_account`
-  → `Reference → Service Account`, `check ((person is null) <> (service_account
-  is null))`. For `has_role` the engine's `parent` + `parenttype` stay as
-  the storage (`Person` \| `Service Account`); the two columns are the
-  metadata view of the same fact. Both References are **real foreign keys
-  with `on delete restrict`**, so deleting a principal that still holds
-  scope, share, token or role rows is refused by the database — no existence
-  trigger needed. Pinned by tests.
+  (replaces `owner`), `data_scope` (replaces `"user"`) and `share` (replaces
+  `user`): regular Reference columns `person` → Person and `service_account`
+  → Service Account, `check ((person is null) <> (service_account is null))`.
+  **On `has_role` only**, the two are **stored generated columns** —
+  `person generated always as (case when parenttype = 'Person' then parent
+  end) stored`, `service_account` likewise for `'Service Account'` — with the
+  foreign keys on them and **kept out of `column_def`**, so the roles grid
+  renders no pickers and the generic child-row insert (which writes only
+  `parent`, `parenttype` and the field values) keeps working; the exactly-one
+  check holds by construction. All principal foreign keys are **`on delete
+  restrict`, `deferrable initially immediate`**: deleting a principal that
+  still holds scope, share, token or role rows is refused by the database (no
+  existence trigger), and the re-id can defer them (R3). `on update cascade`
+  is not allowed on generated columns, so the registry rewrites `parent` and
+  the generated column follows. Pinned by tests, including **a Person save
+  with roles through the generic path**.
 - **Admin forms.** Data Scope and Share render from metadata: two pickers,
   "Person" and "Service account", one of which must be filled; the controller
   returns the check's refusal as a field error when both or neither are set.
@@ -150,10 +161,16 @@ is removed).
   `conditional-id` / `code` / `free-text`, and **`cli people:plan` lists
   every text column with its classification**; an unclassified column fails
   the plan.
-- **One transaction**: set `allow_person_id_change`, mint the map (built-ins
-  excluded), rewrite through the registry, run the scan; one exact hit in a
-  registered column aborts and the migration prints the column. Write
-  `person_id_map (old_id, new_id, kind)` (not mirrored).
+- **One transaction**: set `allow_person_id_change`, **`set constraints all
+  deferred`** (the principal FKs are `deferrable initially immediate`, so the
+  id change and every referencing rewrite are checked together at commit,
+  whichever order the handlers run), mint the map (built-ins excluded),
+  rewrite through the registry — for `has_role` the handler rewrites `parent`
+  and the generated `person` / `service_account` columns follow — run the
+  scan; one exact hit in a registered column aborts and the migration prints
+  the column. Write `person_id_map (old_id, new_id, kind)` (not mirrored).
+  **Test: the re-id runs with the FKs live** (no constraint dropped) and
+  commits.
 - **Test:** a fixture with populated `employee_code`, `stylehr_username`,
   `subject`, Comment bodies and notification subjects that *contain* old ids
   passes the scan; a planted old id in a registered column fails it; a
@@ -209,14 +226,18 @@ rewrite to StyleHR record numbers is `person-resolution`'s (C4).
    `table_def`/`column_def`, every `Reference → User`); `user_identity` →
    `sign_in_identity` (`person_id`); add `person.built_in` and the namespace
    check (deferred until after step 4).
-2. Create the Service Account Table; add the `person` and `service_account`
-   Reference columns with the exactly-one check (FKs `on delete restrict`) to
-   `access_token`, `data_scope`, `share`, `has_role`; move `user_type =
-   'service'` rows; drop `user_type`, `access_token.owner`,
-   `data_scope."user"`, `share.user`.
+2. Create the Service Account Table with its read-only controller; add the
+   `person` and `service_account` Reference columns with the exactly-one
+   check to `access_token`, `data_scope`, `share`, and the stored generated
+   pair (outside `column_def`) to `has_role`; all principal FKs `on delete
+   restrict deferrable initially immediate`; move `user_type = 'service'`
+   rows; drop `user_type`, `access_token.owner`, `data_scope."user"`,
+   `share.user`.
 3. Classify every text column (R3); abort on an unclassified one.
-4. Re-id through the registry (persons `psn_`, service accounts `svc_`,
-   built-ins excluded, `usr_` converted), scan, `person_id_map`.
+4. `set constraints all deferred`; re-id through the registry (persons
+   `psn_`, service accounts `svc_`, built-ins excluded, `usr_` converted;
+   `has_role.parent` rewritten, generated columns follow), scan,
+   `person_id_map`; constraints checked at commit.
 5. Enable the namespace checks.
 
 **DEPLOY.md order:** 0100 live → fresh dev snapshot → `people:plan
@@ -241,17 +262,20 @@ leaver procedure in force until #4336.
 
 `person-rename.test.ts`: tables renamed; `/api/users` gone; namespace
 checks; built-ins untouched; `usr_` converted; `username` carried; the
-exactly-one principal check and `on delete restrict` refusal; Service Account
-read-only through the generic API; Data Scope / Share forms with the two
-pickers and the Person picker filter; service-account roles only via
+exactly-one principal check and `on delete restrict` refusal; **a Person
+save with roles through the generic path succeeds and the generated
+`has_role.person` follows `parent`**; Service Account refused on generic save
+and delete by its controller; Data Scope / Share forms with the two pickers
+and the Person picker filter; service-account roles only via
 `service-accounts.ts`;
 `isPrivileged` both kinds; pickers exclude service accounts; `who(c)` writes
 principal ids; mentions by name; rate limits move. `scope-map.test.ts`: a
 scoped service-account token narrowed on list, get, query/report, search,
 export, realtime, sales-target and bound sources. `token-hardening.test.ts`:
 personal and service tokens resolve; disabled owners refused.
-`migration-0101.test.ts`: dev-shaped fixture; code and free-text columns
-containing old ids pass; a planted id in a registered column fails;
+`migration-0101.test.ts`: dev-shaped fixture; **the re-id commits with the
+principal FKs live and deferred**; code and free-text columns containing old
+ids pass; a planted id in a registered column fails;
 classification lists every text column; idempotent; `people:plan` parity;
 `--rehearse` rolls back. Web: "Person" labels; Data Scope / Share forms;
 service-account list. Gates: typecheck, suites, `pnpm check:specs`,
