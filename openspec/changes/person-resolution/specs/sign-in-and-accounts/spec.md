@@ -4,9 +4,10 @@
 
 ### Requirement: An account's permanent reference is never an address or a code
 
-An account SHALL be identified for good by a reference that never changes
-and is not the person's email address, username or employee code. Those can
-change or be reused; the reference cannot.
+Every account SHALL be identified for good by a reference Featherbase assigns,
+which never changes and is not the person's email address, username or
+employee code, however the account came to exist. Those can change or be
+reused; the reference cannot.
 
 #### Scenario: A person created by a Google sign-in changes their address
 
@@ -30,17 +31,32 @@ later without reading the activity log.
   outgoing manager's record shows the mailbox as an address they held until
   today, and the handover is kept as history
 
+### Requirement: An ended sign-in method never opens an account
+
+A sign-in method that has ended — because the person left, it was moved to
+someone else, or it was removed — SHALL never open the account again, and a
+session opened through it ends on its next request. The ended method stays on
+record, and the same provider ID can later be linked afresh.
+
+#### Scenario: Signing in with a removed method
+
+- **WHEN** someone signs in with an HR system ID whose link to an account was
+  ended yesterday
+- **THEN** they are refused like a wrong password, and the account's history
+  still shows the link and when it ended
+
 ## MODIFIED Requirements
 
 ### Requirement: Someone who has left is refused everywhere
 
 When a connected service reports that a person has left, Featherbase SHALL
-close that way in, keeping its history. When the person has no other live
-employment linked to their account, Featherbase SHALL also disable the
-account, end all their sessions and refuse every other way in. When another
-employment of theirs is still live — a worker who moved from an agency to the
-company and now has two HR records — only the ended one closes and the person
-keeps signing in through the live one.
+close that way in, keeping its history. Whether the person is still employed
+is judged from the HR roster's current employment records on their account,
+never from their other sign-in methods: when the roster shows another current
+employment, only the ended way in closes and the person keeps signing in
+through the live one; when it shows none, or Featherbase has no roster
+information for the person, the account is disabled, all their sessions end
+and every other way in refuses them.
 
 #### Scenario: Leaver who also has a password
 
@@ -51,7 +67,13 @@ keeps signing in through the live one.
 
 #### Scenario: An agency record ends after the person joined the company
 
-- **WHEN** the HR system reports that the old agency record of a person who
-  now has a current company record has left
+- **WHEN** the HR system reports that the old agency record of a person has
+  left, and the roster shows a current company employment on the same account
 - **THEN** the old way in is closed, and the person still signs in with their
   company record the next day
+
+#### Scenario: Nothing known from the roster
+
+- **WHEN** the HR system reports that a person has left, and the roster has
+  never recorded an employment on their account
+- **THEN** the account is disabled, exactly as if they had only one employment

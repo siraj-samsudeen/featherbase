@@ -41,55 +41,63 @@ easy to configure, "exactly like Tableau".
 - **A person keeps every identifier they ever had**, each with when it was
   valid and where it came from, so an old agency code still finds the person
   and still works in last year's reports.
-- **Possible duplicates become suggestions**, not silent merges. The same
-  Aadhaar on two records, the same phone, the same email: each creates a
-  suggestion in a review list. A reviewer confirms or marks "not the same
-  person", and that decision sticks.
+- **Possible duplicates become groups to review**, not silent merges. The
+  same Aadhaar, phone or email on several records raises one group in a
+  review list. A reviewer confirms, marks "not the same person" (which
+  sticks until a stronger reason arrives), or sets it aside.
 - **Merging two records keeps both and can be undone.** The merged-away record
-  stays, inactive, pointing at the survivor; everything moved is logged so one
-  action puts it back.
-- **A merge never quietly widens access.** The reviewer sees what access the
-  surviving person would gain before confirming, and privileged access cannot
-  be gained by a merge.
-- **Automatic linking is an opt-in per identifier system, off by default**,
-  refused outright for anything that can sign in, and downgraded to a
-  suggestion whenever either record holds privileged or scoped access.
+  stays, inactive, pointing at the survivor; everything moved or removed is
+  logged so one action puts back what has not changed since. A merge can also
+  be done by hand when two records share no identifier.
+- **A merge never quietly widens or narrows access.** The reviewer sees, table
+  by table, what the surviving person would gain and lose before confirming;
+  privileged access cannot arrive by merge, and two records with different
+  national IDs are not merged without an Administrator's recorded override.
+- **Automatic linking is deferred** to a later phase; this change ships
+  suggest-and-confirm only.
 - **Aadhaar is never stored.** Featherbase keeps a keyed fingerprint for
-  duplicate detection and the last four digits for display, and shows no more.
-- **Builds on #371.** Sign-in identities stay as they are. Two small changes to
-  its behaviour: a leaver notice from the HR system closes *that* way in and
-  disables the person only when no other employment is live; and a person
-  created from a Google sign-in gets a permanent id that is not their address.
-- **The warehouse gets one stable person id** that survives merges and code
-  changes, plus the list of every code that has ever mapped to it.
+  duplicate detection and the last four digits for display, with the key
+  outside the database and operational controls around it.
+- **Clean start, no backward compatibility** (owner, 22-Oct-2026): the human's
+  record is called **Person** (not User), service accounts get their own
+  table, every person gets an opaque permanent id, and #371's sign-in table is
+  renamed so "identity" (signs in) and "identifier" (does not) are never
+  confused. Dev's trial data is migrated once; prod starts clean.
+- **Builds on #371.** A leaver notice from the HR system closes *that* way in
+  and disables the person unless the roster shows another current employment;
+  an ended way in never opens an account again.
+- **The warehouse gets one stable person id**, resolved to its final survivor,
+  plus every code that has ever mapped to it and when.
 
 ## Capabilities
 
 ### New Capabilities
 
 - `people-and-identifiers`: one record per person; identifier systems and
-  their defaults; identifiers with history; suggested matches and the review
-  list; merge, survivorship and undo; auto-link policy; what reports see.
+  their defaults; identifiers with history; duplicate groups and the review
+  list; merge, survivorship and undo; who may edit; what reports see.
 
 ### Modified Capabilities
 
-- `sign-in-and-accounts`: the leaver rule becomes per employment; a moved
-  sign-in method keeps its history; an account's permanent id is never an
-  address or a code.
+- `sign-in-and-accounts`: the leaver rule judges employment from the roster;
+  an ended sign-in method never opens an account; a moved sign-in method keeps
+  its history; an account's permanent id is never an address or a code.
 
 ## Impact
 
-- `apps/server`: two new system Tables (Identifier System, Person Match), two
-  new raw platform tables (`person_identifier`, `person_merge`), one new column
-  on `user` (`replaced_by`) and one on `user_identity` (`ended_at`), a
-  controller for identifier writes and merges, a background matcher, the
-  review-list and merge endpoints; migration `0101`.
-- `apps/web`: an Identifiers panel on the User form, a Duplicates review page,
-  a merge preview, and an Identifier System form (rendered generically).
-- Outside the repo: the data-warehouse roster sync sends identifiers (prior
-  codes, phone, Aadhaar for fingerprinting) and judges leavers per person; the
-  CDC registration declares the new tables; `gold.hr` gains a person
-  dimension. **The warehouse's bronze copy of StyleHR already holds 28,770 full
-  Aadhaar numbers in clear**; that exposure predates this change and is flagged
-  to the owner (design §Aadhaar).
+- `apps/server`: the `person` rename and `service_account` split (folded into
+  #371 or a prerequisite change — design §Clean-start); one new system Table
+  (Identifier System); raw tables `person_identifier`,
+  `person_identifier_fingerprint`, `person_match`, `person_match_member`,
+  `person_merge`; `person.replaced_by`/`built_in`; `sign_in_identity.ended_at`;
+  controllers for identifier writes, matching, merge and undo; the sync API;
+  migration `0101` with a one-time data migration of dev.
+- `apps/web`: an Identifiers panel on the Person form, a Duplicates review
+  page, a merge preview, an Identifier System form (generic, basic/Advanced).
+- Outside the repo: the data-warehouse roster sync is rewritten against the
+  sync API (prior codes, phone, Aadhaar for fingerprinting, leavers per
+  person; data-warehouse#4336); the CDC registration declares and denies the
+  new tables; `gold.hr` gains a person dimension in Phase 2. **The warehouse's
+  bronze copy of StyleHR already holds 28,770 full Aadhaar numbers in clear**;
+  that exposure predates this change and is flagged to the owner (design D8).
 - `research.md` in this change records the sources behind each decision.
