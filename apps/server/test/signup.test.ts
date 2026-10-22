@@ -23,9 +23,13 @@ describe('sign up with a username and password', () => {
     const res = await signUp(api, { username: 'meena', password: 'meena-pw-1', full_name: 'Meena K' })
     expect(res.status).toBe(201)
     const body = (await res.json()) as { token: string; user: { row_id: string; email: string | null } }
-    expect(body.user).toMatchObject({ row_id: 'meena', email: null })
+    // The id is opaque and permanent; the username is how the person signs in.
+    expect(body.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+    expect(body.user).toMatchObject({ email: null, full_name: 'Meena K' })
+    const [row] = await sql`select username from "user" where row_id = ${body.user.row_id}`
+    expect(row.username).toBe('meena')
     expect(res.headers.getSetCookie().some((c) => c.startsWith('sid='))).toBe(true)
-    const roles = await sql`select role from has_role where parent = 'meena'`
+    const roles = await sql`select role from has_role where parent = ${body.user.row_id}`
     expect(roles).toHaveLength(0)
     expect((await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'meena', pwd: 'meena-pw-1' }) })).status).toBe(200)
   })

@@ -172,13 +172,14 @@ describe('sign-in details', () => {
     expect(await sql`select 1 from user_identity where subject in ('g-taken-1', 'g-taken-2')`).toHaveLength(0)
   })
 
-  test('a Google account with no verified address becomes google-<account id>, with no email', async () => {
+  test('a Google account with no verified address becomes a person with an opaque id and no email', async () => {
     const { completeSignIn } = await import('../src/sign-in')
     const { methodOfKind } = await import('../src/identities')
     await configureGoogle({ new_person: 'create' })
     const google = (await methodOfKind('google'))!
     const issued = await completeSignIn(google, { status: 'verified', subject: '1234567890', email: 'unverified@gmail.com', email_verified: false }, null)
-    expect(issued.user).toMatchObject({ row_id: 'google-1234567890', email: null })
+    expect(issued.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+    expect(issued.user.email).toBeNull()
   })
 
   test('a second Google row is refused', async ({ admin }) => {
@@ -261,5 +262,15 @@ describe('third review round', () => {
     const lost = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
     expect(lost.status).toBe(302)
     expect(lost.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=expired')
+  })
+})
+
+describe('a person id is permanent', () => {
+  test('a User row cannot be renamed, through the API or directly', async ({ admin }) => {
+    await person('RR-90')
+    const res = await admin.fetch('/api/table/User/RR-90:rename', { method: 'POST', body: JSON.stringify({ new_name: 'RR-91' }) })
+    expect(res.ok).toBe(false)
+    await expect(sql.begin((tx) => tx`update "user" set row_id = 'RR-92' where row_id = 'RR-90'`)).rejects.toThrow(/permanent/)
+    expect(await sql`select 1 from "user" where row_id = 'RR-90'`).toHaveLength(1)
   })
 })

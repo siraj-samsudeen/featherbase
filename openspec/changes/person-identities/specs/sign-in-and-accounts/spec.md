@@ -18,6 +18,27 @@ the same roles, data access and history.
 - **THEN** both times they open the same account and see the same report and
   history
 
+### Requirement: A person's ID never changes
+
+Every account SHALL keep one permanent ID for as long as it exists; it is
+never renamed. A person Featherbase creates on its own — through Google
+sign-in or through sign-up — gets an ID that is neither their email nor their
+name, so changing either changes nothing. They still see their name, and sign
+in with their username or email; accounts made before this change keep the IDs
+they have.
+
+#### Scenario: Created through Google
+
+- **WHEN** someone new signs in with Google and an account is made for them
+- **THEN** its ID is not their address, and their name and address are shown
+  as usual
+
+#### Scenario: Renaming is refused
+
+- **WHEN** an administrator tries to rename a person's account ID
+- **THEN** the change is refused and they are told to change the name or
+  username instead
+
 ### Requirement: Email is optional
 
 A person SHALL be able to have an account, and sign in, without an email

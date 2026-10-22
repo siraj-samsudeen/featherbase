@@ -19,7 +19,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
-import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { getIdentity, newPersonId, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -247,14 +247,16 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     throw new AppError('ValidationError', 'Choose a username of 3–64 lowercase letters, digits, dots, dashes or underscores', { username: 'invalid' })
   if (password.length < MIN_PASSWORD_LENGTH)
     throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, { password: 'too short' })
-  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username}`
+  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username} or lower(username) = ${username}`
   if (taken) throw new AppError('ConflictError', 'That username is taken')
+  // The person's id is opaque and permanent; the username is how they sign in.
+  const personId = newPersonId()
   await withTransaction(async () => {
-    await saveDoc('User', { row_id: username, full_name: fullName, enabled: true, roles: [] }, 'Administrator')
-    await setUserPassword(username, password)
+    await saveDoc('User', { row_id: personId, username, full_name: fullName, enabled: true, roles: [] }, 'Administrator')
+    await setUserPassword(personId, password)
   })
   // The same tail as every other sign-in (sign-in.ts).
-  const issued = await completeSignIn(method, { status: 'verified' }, { user: username, identity: null })
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   const landing = await landingFor(session.user.row_id)

@@ -307,8 +307,12 @@ These steps are instructions, not authorization to deploy or mutate Dev:
 
 ## Sign-in methods and linked identities (#275)
 
-A User is a person. Email is optional contact data, unique ignoring case
-where present; an address ending in `.invalid` is not kept. The ways in are
+A User is a person. Its `row_id` is the permanent person id (the warehouse
+`person_id`) and cannot be renamed. People created by Google sign-in or
+sign-up get an opaque `usr_…` id; their name, address and `username` (for
+password sign-in) are separate fields. Existing ids are unchanged. Email is
+optional contact data, unique ignoring case where present; an address ending
+in `.invalid` is not kept. The ways in are
 rows of the system Table **Sign In Method** (Admin → Sign In Method, System
 Managers only); one row is one provider issuer:
 

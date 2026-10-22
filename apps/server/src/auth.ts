@@ -106,13 +106,16 @@ function claimsOf(opts: SessionOptions, iat: number): SignInClaims {
  *  email — a username always beats an email. Two different people matching
  *  at the same level is ambiguous and answers nobody. */
 export async function findPasswordAccount(typed: string) {
+  // A username is the id for older accounts and `username` for people who
+  // signed up (their id is opaque); either beats an email.
   const rows = await sql`
     select row_id, email, full_name, enabled, password_hash, user_type,
       case when row_id = ${typed} then 0
-           when lower(row_id) = lower(trim(${typed})) then 1
+           when lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed})) then 1
            else 2 end as rank
     from "user"
-    where row_id = ${typed} or lower(row_id) = lower(trim(${typed})) or lower(email) = lower(trim(${typed}))
+    where row_id = ${typed} or lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed}))
+      or lower(email) = lower(trim(${typed}))
     order by rank
     limit 3`
   if (!rows.length) return null

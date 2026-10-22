@@ -158,6 +158,12 @@ export interface Identity {
 const identityFields = () =>
   sql`id, user_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at`
 
+/** A new person's permanent id: opaque, never an email or a name. `row_id`
+ *  is the warehouse person_id and must never change (design D1). */
+export function newPersonId(): string {
+  return 'usr_' + randomBytes(10).toString('hex')
+}
+
 /** The one id generator for linked identities. */
 export function newIdentityId(): string {
   return 'uid_' + randomBytes(9).toString('base64url')

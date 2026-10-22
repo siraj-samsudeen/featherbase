@@ -24,7 +24,8 @@ test('open: a visitor picks a username and a password and is signed in', async (
   await userEvent.type(screen.getByLabelText('Password'), 'meena-pw-1')
   await userEvent.click(screen.getByTestId('sign-up-submit'))
   await screen.findByTestId('session-user')
-  expect(JSON.parse(localStorage.getItem('fc_user')!)).toMatchObject({ row_id: 'meena.k', email: null })
+  expect(JSON.parse(localStorage.getItem('fc_user')!)).toMatchObject({ email: null, full_name: 'Meena K' })
+  expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toMatch(/^usr_/)
 })
 
 test('a taken username is said plainly', async () => {

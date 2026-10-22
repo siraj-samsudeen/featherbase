@@ -106,13 +106,16 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
     expect(redeemed.status).toBe(200)
     const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
-    expect(session.user.row_id).toBe('new.person@gmail.com')
+    // person-identities: a person Google creates gets an opaque, permanent id
+    // (the warehouse person_id), never the address.
+    expect(session.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+    expect(session.user).toMatchObject({ email: 'new.person@gmail.com', full_name: 'Test User' })
     // The token is a real session: it authenticates as that user.
     const whoami = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${session.token}` },
     })
     expect(whoami.status).toBe(200)
-    expect(((await whoami.json()) as { row_id: string }).row_id).toBe('new.person@gmail.com')
+    expect(((await whoami.json()) as { row_id: string }).row_id).toBe(session.user.row_id)
 
     // person-identities: the new person is linked by Google's account ID.
     const [user] = await sql`

@@ -63,6 +63,14 @@ shapes outright, with one exception kept for one release (D2, `/api/brand`).
 ### D1. The person, their password, and their linked outside identities
 
 **User (the person)** keeps `row_id`, roles, Data Scope, assignments, audit.
+**`row_id` is the permanent person id** — the warehouse `person_id` — and
+must never change: renaming a User is refused by `renameDoc` and by a trigger
+(`fc_person_id_is_permanent`, bypassable only by a migration that sets
+`featherbase.allow_person_id_change = 'on'`). People Featherbase creates — a
+Google `new_person` sign-in, a sign-up — get an opaque id (`usr_` + 20 hex);
+the address stays in `email`, a chosen sign-in name in the new `username`
+column (unique ignoring case), and the display name in `full_name`. Existing
+ids (including the ~13 email-shaped ones) stay as they are: forward-only.
 `email` becomes optional (D9). `social_login` stops being written; it is read
 once, by the migration (D5), and dropped in a follow-up.
 
@@ -197,7 +205,8 @@ call. Self-linking is `linkVerifiedToSelf`, also kind-neutral.
 Verify steps today:
 
 - **password** (`passwordSignIn`): finds the candidate by typed name — an exact
-  User id, then a case-insensitive id, then a case-insensitive contact email;
+  User id, then a case-insensitive id or `username`, then a case-insensitive
+  contact email;
   **a username always beats an email**; two people at the same level answer
   nobody — then checks the hash. With no candidate it still runs a throwaway
   scrypt, so timing does not tell names apart.
@@ -237,10 +246,11 @@ account.
   `googlemail.com` have no `hd` and are admitted only when listed.
 - `create`: open.
 
-A created person: Google ⇒ `row_id` = folded email, `email` = the verified
-email; sign-up ⇒ `row_id` = the username, no email. `roles = []`. If the
-`row_id` or the email is already taken, creation is refused ("contact your
-administrator") — never turned into a link.
+A created person: `row_id` = an opaque `usr_` id; Google ⇒ `email` = the
+verified email, `full_name` = Google's display name; sign-up ⇒ `username` =
+the chosen name, no email. `roles = []`. If the address is already some
+account's email or id, creation is refused ("contact your administrator") —
+never turned into a link.
 
 ### D5. Google `sub` bridge for existing Google users — narrow, one-time
 
@@ -401,7 +411,7 @@ nobody can squat an address. Public, behind a new `publicLimit('SIGNUP')`
 bucket; 404 unless the `password` method's `new_person = create`. Username:
 `^[a-z0-9][a-z0-9._-]{2,63}$` after folding to lower case (a capital typed by
 habit is folded, not refused), not `administrator`/`guest`, not an existing
-User id (case-insensitive) ⇒ 409 "username taken" (inherent to username
+User id or `username` (case-insensitive) ⇒ 409 "username taken" (inherent to username
 sign-up; the limiter bounds probing). Password: the same minimum as reset.
 Creates the person with `roles = []` and finishes through the same pipeline
 as every sign-in. The Login page shows "Create an account" only when

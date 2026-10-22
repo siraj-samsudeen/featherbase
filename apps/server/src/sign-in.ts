@@ -18,6 +18,7 @@ import {
   foldName,
   methodOfKind,
   newIdentityId,
+  newPersonId,
   normaliseEmail,
   touchIdentity,
   type SignInMethod,
@@ -129,12 +130,13 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
     throw new AppError('AuthenticationError', NOT_PROVISIONED)
   }
   const email = v.email_verified ? normaliseEmail(v.email) : null
-  const rowId = email ? foldName(email) : `${method.key}-${v.subject}`
+  // An opaque, permanent id — the address is contact data, not the anchor.
+  const rowId = newPersonId()
   try {
     return await withTransaction(async () => {
       const [taken] = await sql`
         select 1 from "user"
-        where lower(row_id) = ${foldName(rowId)} or (${email}::text is not null and lower(email) = ${email ? foldName(email) : ''})`
+        where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
       // Never turned into a link: an address already in use belongs to someone
       // an administrator must decide about.
       if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')

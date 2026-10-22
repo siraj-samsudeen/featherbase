@@ -9,6 +9,7 @@ const controller: TableController = {
   hooks: {
     before_validate: ({ row }) => {
       if ('email' in row) row.email = normaliseEmail(row.email)
+      if ('username' in row) row.username = row.username == null ? null : String(row.username).trim().toLowerCase() || null
     },
   },
 }

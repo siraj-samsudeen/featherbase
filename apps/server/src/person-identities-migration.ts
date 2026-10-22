@@ -235,6 +235,36 @@ async function addActivityColumns() {
   }
 }
 
+// People who sign up get an opaque id, so their chosen name lives in
+// `username` (unique ignoring case). And `row_id` is the permanent person id
+// (the warehouse person_id): a trigger refuses changing it unless a migration
+// deliberately sets featherbase.allow_person_id_change = 'on'.
+async function addUsernameAndPermanence() {
+  const [have] = await sql`select 1 from column_def where parent = 'User' and column_name = 'username'`
+  if (!have) {
+    await sql.unsafe(`alter table ${PLATFORM_SCHEMA}."user" add column if not exists "username" ${pgType('Data')}`)
+    const [{ maxidx }] = await sql`select coalesce(max(position), 0)::int as maxidx from column_def where parent = 'User'`
+    await sql`insert into column_def ${sql({
+      parent: 'User', position: (maxidx as number) + 1, column_name: 'username', label: 'Username', column_type: 'Data',
+      reqd: false, unique: false, default_value: null, read_only: false, hidden: false, in_list_view: false, tier: 'basic',
+    })}`
+  }
+  await sql.unsafe(`create unique index if not exists user_username_lower_uq on ${PLATFORM_SCHEMA}."user" (lower(username)) where username is not null`)
+  await sql.unsafe(`
+    create or replace function ${PLATFORM_SCHEMA}.fc_person_id_is_permanent() returns trigger
+    language plpgsql set search_path = pg_catalog as $$
+    begin
+      if new.row_id is distinct from old.row_id
+         and coalesce(current_setting('featherbase.allow_person_id_change', true), '') <> 'on' then
+        raise exception 'A person''s id is permanent: user % cannot be renamed', old.row_id;
+      end if;
+      return new;
+    end $$`)
+  await sql.unsafe(`drop trigger if exists user_person_id_is_permanent on ${PLATFORM_SCHEMA}."user"`)
+  await sql.unsafe(`create trigger user_person_id_is_permanent before update of row_id on ${PLATFORM_SCHEMA}."user"
+    for each row execute function ${PLATFORM_SCHEMA}.fc_person_id_is_permanent()`)
+}
+
 export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
   const plan = await planPersonIdentities()
   if (plan.duplicateEmails.length)
@@ -338,6 +368,7 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
   await sql.unsafe(`create trigger user_cancel_email_invites after update of email on ${PLATFORM_SCHEMA}."user"
     for each row execute function ${PLATFORM_SCHEMA}.fc_cancel_email_invites()`)
   await addActivityColumns()
+  await addUsernameAndPermanence()
 
   // 3. Email becomes optional contact data; nothing invented is kept.
   await sql`update column_def set reqd = false, "unique" = false where parent = 'User' and column_name = 'email'`
