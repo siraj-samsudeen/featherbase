@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
 import { fmtCount, fmtDay, fmtINR, fmtNumber } from '../src/lib/inr'
 import { formatNumber } from '../src/lib/settings'
+import { pageRange } from '../src/components/ListView'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
   test.each([
@@ -58,6 +59,14 @@ describe('fmtDay — dates read from a spreadsheet', () => {
     [new Date(2025, 11, 31, 23, 59), '31-Dec-2025'], // the local day, even late in the evening
   ])('%s reads %s', (d, text) => {
     expect(fmtDay(d)).toBe(text)
+  })
+})
+
+describe('list counts', () => {
+  test('the pager groups a lakh-scale table the Indian way', () => {
+    expect(pageRange(0, 20, 123456)).toBe('1–20 of 1,23,456')
+    expect(pageRange(123440, 20, 123456)).toBe('1,23,441–1,23,456 of 1,23,456')
+    expect(pageRange(0, 20, 0)).toBe('0–0 of 0')
   })
 })
 

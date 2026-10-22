@@ -23,7 +23,7 @@ import {
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchTargetClasses } from '../components/ui'
-import { fmtDay } from '../lib/inr'
+import { fmtCount, fmtDay } from '../lib/inr'
 
 // A column as SENT: its grid row travels with it. The payload drops
 // blank-named rows, so the server's `columns.<n>` counts a different list
@@ -325,7 +325,7 @@ export function TableBuilder() {
         setProgress(null)
         if (failed.length) {
           setError(
-            `Table created; ${inserted} of ${rows.length} rows imported. ` +
+            `Table created; ${fmtCount(inserted)} of ${fmtCount(rows.length)} rows imported. ` +
               `Failed rows: ${failed
                 .slice(0, 3)
                 .map((f) => `#${excelRow(f.sourceIndex, imported.headerExcelRow)} (${f.message})`)
@@ -411,7 +411,7 @@ export function TableBuilder() {
       >
         {imported ? (
           <span data-testid="dt-file-name">
-            <strong>{imported.fileName}</strong> — {dataRows} rows,{' '}
+            <strong>{imported.fileName}</strong> — {fmtCount(dataRows)} rows,{' '}
             {imported.headers.length} columns detected{' '}
             <button
               data-testid="dt-clear-file"
@@ -706,7 +706,7 @@ export function TableBuilder() {
           <div className={`border-b border-border px-3 py-2 ${KICKER}`}>
             Data preview{' '}
             {dataRows > previewRows.length &&
-              `(first ${previewRows.length} of ${dataRows} rows)`}
+              `(first ${fmtCount(previewRows.length)} of ${fmtCount(dataRows)} rows)`}
           </div>
           <table className="w-full text-sm" data-testid="dt-preview">
             <thead className="bg-subtle text-left text-xs text-ink-muted">
@@ -760,7 +760,7 @@ export function TableBuilder() {
         {saving
           ? 'Creating…'
           : imported
-            ? `Create Table & Import ${dataRows} rows`
+            ? `Create Table & Import ${fmtCount(dataRows)} rows`
             : 'Create Table'}
       </button>
     </div>

@@ -7,6 +7,7 @@ import { connectionLabel, useConnections, type Connection, type Filter } from '.
 import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
 import { cardClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 // Relational navigation (#100, patterns 1 + 2):
 //
@@ -197,7 +198,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
       <div className="flex items-center gap-4 border-t border-border bg-subtle px-3 py-1.5 text-xs">
         {list.data!.total > rows.length && (
           <span className="text-ink-muted">
-            Showing {rows.length} of {list.data!.total}
+            Showing {fmtCount(rows.length)} of {fmtCount(list.data!.total)}
           </span>
         )}
         <Link

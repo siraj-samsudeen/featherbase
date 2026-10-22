@@ -37,8 +37,12 @@ Codex review fixes, each test-first:
   colour alone;
 - icon-only buttons take the new `iconButtonClasses()` (a square at the control size): Attachments' delete,
   ColumnCards' remove, Peek's back/open/close and the photo viewer's close. Glyphs inside chips (a tag's ×, Explore's
-  release, the builder's clear-file) take `touchTargetClasses()`, an invisible larger hit area that does not grow the
-  chip.
+  release, the builder's clear-file) take `touchTargetClasses()`, an invisible hit area of the control size centred on
+  the glyph, which does not grow the chip;
+- row-scale counts go through `fmtCount`: list totals and the pager (`pageRange`, pinned at `1–20 of 1,23,456`),
+  peek and connection previews, the relation map, import history, the import wizard, the table builder and table
+  merge. The import's type-to-confirm prompt shows the count grouped, and `confirmsCount` accepts it with or without
+  the commas.
 
 ListView as phone cards (Codex) is deliberately left to page adoption, tracked as OpenSpec task 4.1. Its selection,
 bulk actions, expandable rows and sorting need their own change.
@@ -48,12 +52,13 @@ CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Si
 top-aligned on desktop.
 
 **Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 775 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web test`: 780 passed. `pnpm --filter web typecheck` passed.
 - The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
   web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
   dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback
   (22 passed), plus attachments, checklist, explore, responsive and table-builder after the icon-button change (14
-  passed).
+  passed). Full suite rerun after the count change: 169 passed, 28 skipped. `import-upsert-journey` is flaky locally
+  under `--repeat-each=3` on #383's head too, so that predates this stage; CI passes it.
 - `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
 - Before/after screenshots against a private local database, with "before" at #383's head: home, User list, report,
   kanban, all tables, import, import history, jobs, explore, new table and column editor, at 375 and 1280 px, light

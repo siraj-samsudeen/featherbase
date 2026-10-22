@@ -23,6 +23,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { type TableMeta } from '../lib/meta'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { fmtCount } from '../lib/inr'
 
 // Columns a merge can carry: real storage, and not the platform's own.
 const SKIP_TYPES = ['Section Break', 'Column Break', 'Sub-table']
@@ -155,7 +156,7 @@ export function TableMerge() {
         // Said, never silently truncated: a merge that quietly leaves rows
         // behind is worse than one that refuses.
         setError(
-          `${source} has ${first.total} rows; this screen merges at most ${MAX_ROWS} at a time.`,
+          `${source} has ${fmtCount(first.total)} rows; this screen merges at most ${MAX_ROWS} at a time.`,
         )
         setBusy(null)
         return
@@ -165,7 +166,7 @@ export function TableMerge() {
       // and is a paging question, not a refusal.
       const collected = [...first.data]
       while (collected.length < first.total) {
-        setBusy(`Reading rows ${collected.length + 1}–${first.total}…`)
+        setBusy(`Reading rows ${collected.length + 1}–${fmtCount(first.total)}…`)
         const next = await read(collected.length)
         if (!next.data.length) break
         collected.push(...next.data)
@@ -231,7 +232,7 @@ export function TableMerge() {
         into another Table
       </h1>
       <p className="mb-4 text-xs text-ink-muted">
-        Copies {source}&apos;s {rowCount.data?.count ?? '…'} rows into the Table you choose, column
+        Copies {source}&apos;s {(rowCount.data ? fmtCount(rowCount.data.count) : '…')} rows into the Table you choose, column
         by column. {source} itself is left alone — delete it afterwards if you no longer want it.
       </p>
 
@@ -351,7 +352,7 @@ export function TableMerge() {
       {outcome && (
         <div className={cardClasses('mb-3 p-3 text-sm')} data-testid="tm-outcome">
           <span className={outcome.failed.length ? 'text-negative' : 'text-positive'}>
-            Merged {outcome.inserted} rows into{' '}
+            Merged {fmtCount(outcome.inserted)} rows into{' '}
             <Link
               to="/featherbase/admin/$table"
               params={{ table: target }}
@@ -396,7 +397,7 @@ export function TableMerge() {
         onClick={() => void merge()}
       >
         {mapped.length
-          ? `Merge ${rowCount.data?.count ?? ''} rows into ${target}`.replace('  ', ' ')
+          ? `Merge ${(rowCount.data ? fmtCount(rowCount.data.count) : '')} rows into ${target}`.replace('  ', ' ')
           : 'Map at least one column'}
       </button>
     </div>

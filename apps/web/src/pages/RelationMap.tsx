@@ -7,6 +7,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
 import { buttonClasses, cardClasses } from '../components/ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -422,7 +423,7 @@ function GroupRows({
       <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} />
       {list.data.total > list.data.data.length && (
         <p className="px-4 py-2 text-xs text-ink-subtle">
-          Showing {list.data.data.length} of {list.data.total}
+          Showing {fmtCount(list.data.data.length)} of {fmtCount(list.data.total)}
         </p>
       )}
     </>

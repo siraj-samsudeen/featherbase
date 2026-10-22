@@ -13,7 +13,7 @@ import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { buttonClasses, cardClasses, pillClasses } from '../components/ui'
-import { fmtInstantIST } from '../lib/inr'
+import { fmtCount, fmtInstantIST } from '../lib/inr'
 
 interface BatchTarget {
   table: string
@@ -46,10 +46,10 @@ function when(iso: string): string {
 function Counts({ batch }: { batch: ImportBatch }) {
   return (
     <span className="text-ink-muted">
-      {batch.updated > 0 && `${batch.updated} updated · `}
-      {batch.inserted} rows added
+      {batch.updated > 0 && `${fmtCount(batch.updated)} updated · `}
+      {fmtCount(batch.inserted)} rows added
       {batch.failed > 0 && (
-        <span className="text-negative"> · {batch.failed} failed</span>
+        <span className="text-negative"> · {fmtCount(batch.failed)} failed</span>
       )}
     </span>
   )
@@ -139,10 +139,10 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
               </span>
             )}
             <span className="ml-auto text-xs text-ink-muted">
-              {target.updated > 0 && `${target.updated} updated · `}
-              {target.inserted} added
+              {target.updated > 0 && `${fmtCount(target.updated)} updated · `}
+              {fmtCount(target.inserted)} added
               {target.failed > 0 && (
-                <span className="text-negative"> · {target.failed} failed</span>
+                <span className="text-negative"> · {fmtCount(target.failed)} failed</span>
               )}
               {target.reverted_at && ' · reverted'}
             </span>

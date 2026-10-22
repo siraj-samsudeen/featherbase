@@ -14,6 +14,7 @@ import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
 import { iconButtonClasses, labelClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -293,7 +294,7 @@ function PeekChildGrid({
   return (
     <div className="border-t border-border px-4 py-3">
       <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-        {field.label ?? field.column_name} ({rows.length})
+        {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
         <thead>
@@ -390,7 +391,7 @@ function PeekList({
       </table>
       {list.data!.total > rows.length && (
         <p className="px-3 py-2 text-xs text-ink-subtle">
-          Showing {rows.length} of {list.data!.total} — open full ↗ for everything
+          Showing {fmtCount(rows.length)} of {fmtCount(list.data!.total)} — open full ↗ for everything
         </p>
       )}
     </div>

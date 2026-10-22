@@ -46,6 +46,15 @@ import {
   type ImportDecisions,
 } from '../lib/import-session'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { fmtCount } from '../lib/inr'
+
+/**
+ * Type-to-confirm for an update run: the prompt shows the count with Indian
+ * grouping (1,23,456), so the typed value matches with or without the commas.
+ */
+export function confirmsCount(typed: string, total: number): boolean {
+  return typed.trim().replace(/,/g, '') === String(total)
+}
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -306,7 +315,7 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   if (count.data == null) return null
   return (
     <span className="text-xs text-ink-muted" data-testid={`iw-target-count-${i}`}>
-      holds {count.data.count} rows now
+      holds {fmtCount(count.data.count)} rows now
     </span>
   )
 }
@@ -660,7 +669,7 @@ function RunHistory({ table }: { table: string }) {
           data-testid={`iw-run-${idx}`}
         >
           <span>
-            {r.file_name ?? 'API import'} — {r.updated} updated · {r.inserted} added · {r.failed}{' '}
+            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} updated · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
           {r.reverted_at ? (
@@ -1793,7 +1802,7 @@ export function ImportWizard() {
                       {plan.members.length} sheets → one Table
                     </span>{' '}
                     <span className="font-normal text-ink-muted">
-                      — {plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0)} rows,{' '}
+                      — {fmtCount(plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0))} rows,{' '}
                       {sheet.headers.length} columns combined
                     </span>
                   </>
@@ -1801,7 +1810,7 @@ export function ImportWizard() {
                   <>
                     Sheet "{sheet.sheetName}"{' '}
                     <span className="font-normal text-ink-muted">
-                      — {countDataRows(sheet.rows)} rows, {sheet.headers.length} columns in the file
+                      — {fmtCount(countDataRows(sheet.rows))} rows, {sheet.headers.length} columns in the file
                     </span>
                   </>
                 )}
@@ -2439,13 +2448,13 @@ export function ImportWizard() {
                     action-aware — updates and inserts counted apart. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-positive">
-                    ✓ All {plan.check.valid} rows are ready to import
+                    ✓ All {fmtCount(plan.check.valid)} rows are ready to import
                     {plan.key != null &&
                       `: ${plan.check.updated} will update, ${plan.check.inserted} will insert`}
                   </span>
                 ) : (
                   <span className="text-negative">
-                    {plan.check.valid} rows ready
+                    {fmtCount(plan.check.valid)} rows ready
                     {plan.key != null &&
                       ` (${plan.check.updated} update · ${plan.check.inserted} insert)`}
                     , {plan.check.failed.length} with problems:{' '}
@@ -2458,7 +2467,7 @@ export function ImportWizard() {
                 )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
-                    ({plan.check.skipped} rows have no data in the imported columns and will be
+                    ({fmtCount(plan.check.skipped)} rows have no data in the imported columns and will be
                     skipped)
                   </span>
                 )}
@@ -2504,8 +2513,8 @@ export function ImportWizard() {
                         number. */}
                     <span className={plan.result.failed.length ? 'text-negative' : 'text-positive'}>
                       {plan.result.updated > 0
-                        ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
-                        : `Imported ${plan.result.inserted} rows into `}
+                        ? `Updated ${fmtCount(plan.result.updated)} and added ${fmtCount(plan.result.inserted)} rows in `
+                        : `Imported ${fmtCount(plan.result.inserted)} rows into `}
                       <Link
                         to="/featherbase/admin/$table"
                         params={{ table: plan.table }}
@@ -2520,7 +2529,7 @@ export function ImportWizard() {
                           plan.result.failed[0],
                         )})`}
                       {plan.result.skipped > 0 &&
-                        ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
+                        ` (${fmtCount(plan.result.skipped)} rows had no data in the imported columns and were skipped)`}
                     </span>
                     <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
                   </div>
@@ -2573,22 +2582,22 @@ export function ImportWizard() {
               className="mr-2 rounded bg-caution-tint px-2 py-1 text-sm text-caution"
               data-testid="iw-confirm-updates"
             >
-              This import will <strong>update {confirmUpdates.total} existing rows</strong>. Type{' '}
-              <strong>{confirmUpdates.total}</strong> to confirm:{' '}
+              This import will <strong>update {fmtCount(confirmUpdates.total)} existing rows</strong>. Type{' '}
+              <strong>{fmtCount(confirmUpdates.total)}</strong> to confirm:{' '}
               <input
                 className={inputClasses('mx-1 w-24 py-0.5')}
                 data-testid="iw-confirm-input"
-                aria-label={`Type ${confirmUpdates.total} to confirm updating ${confirmUpdates.total} rows`}
+                aria-label={`Type ${fmtCount(confirmUpdates.total)} to confirm updating ${fmtCount(confirmUpdates.total)} rows`}
                 value={confirmUpdates.typed}
                 onChange={(e) => setConfirmUpdates({ ...confirmUpdates, typed: e.target.value })}
               />
               <button
                 className={buttonClasses({ variant: 'primary', className: 'py-0.5 disabled:opacity-40' })}
                 data-testid="iw-confirm-go"
-                disabled={!!busy || confirmUpdates.typed.trim() !== String(confirmUpdates.total)}
+                disabled={!!busy || !confirmsCount(confirmUpdates.typed, confirmUpdates.total)}
                 onClick={() => void runImport(true, confirmUpdates.only)}
               >
-                Update {confirmUpdates.total} rows
+                Update {fmtCount(confirmUpdates.total)} rows
               </button>
             </span>
           )}

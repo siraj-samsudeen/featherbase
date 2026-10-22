@@ -10,6 +10,7 @@ import { useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 export type Filter = [string, string, unknown]
 
@@ -39,6 +40,11 @@ const INDICATOR_GRAY = /\b(draft|low|inactive|none|not set)\b/
 // Lifecycle words take the meaning colours; any other value gets a stable
 // series colour, which carries identity (same value, same dot) but no verdict.
 const INDICATOR_PALETTE = [1, 2, 3, 4, 5].map((n) => `var(--color-series-${n})`)
+
+/** The pager's "1–20 of 1,23,456", counts Indian-grouped. */
+export function pageRange(start: number, pageSize: number, total: number): string {
+  return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
+}
 
 export function indicatorColor(value: string): string {
   const v = value.toLowerCase()
@@ -336,7 +342,7 @@ export function ListView({
           </div>
           <h1 className="text-xl font-semibold text-ink">{table}</h1>
           <span className="text-xs text-ink-muted" data-testid="list-total">
-            {total} total
+            {fmtCount(total)} total
           </span>
           {meta.data?.data_source && (
             <span
@@ -537,7 +543,7 @@ export function ListView({
             </h2>
             <p className="mb-3 text-sm text-ink-muted" data-testid="delete-table-count">
               {deleteCount.data
-                ? `${deleteCount.data.count} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
+                ? `${fmtCount(deleteCount.data.count)} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
                 : 'Counting rows…'}{' '}
               This cannot be undone.
             </p>
@@ -751,7 +757,7 @@ export function ListView({
           Prev
         </button>
         <span className="text-xs text-ink-muted" data-testid="page-info">
-          {total === 0 ? 0 : start + 1}–{Math.min(start + PAGE, total)} of {total}
+          {pageRange(start, PAGE, total)}
         </span>
         <button
           disabled={start + PAGE >= total}

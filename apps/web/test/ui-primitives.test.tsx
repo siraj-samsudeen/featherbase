@@ -274,8 +274,9 @@ describe('icon-only controls are thumb-sized', () => {
   test('a glyph inside a chip gets an invisible larger hit area without growing the chip', () => {
     const c = touchTargetClasses().split(' ')
     expect(c).toContain('relative')
-    expect(c).toContain("before:absolute")
-    expect(c.some((x) => /^before:-inset-/.test(x))).toBe(true)
+    expect(c).toContain('before:absolute')
+    // Sized from the control token and centred on the glyph, not grown from its ~16px line box.
+    expect(c).toEqual(expect.arrayContaining(['before:size-control', 'before:left-1/2', 'before:top-1/2', 'before:-translate-x-1/2', 'before:-translate-y-1/2']))
   })
 })
 
