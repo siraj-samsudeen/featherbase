@@ -2,13 +2,13 @@ import { anonymousTest as test, expect, adminAuth, type APIRequestContext } from
 
 const EMAIL = 'oauth.e2e.user@gmail.com'
 
+// person-identities: Google is the Sign In Method row `google`.
 async function setAllowedDomains(request: APIRequestContext, value: string) {
   const headers = await adminAuth(request)
-  const res = await request.post('/api/save_row', {
-    headers,
-    data: { table: 'System Settings', row: { allowed_login_domains: value } },
-  })
-  if (res.status() !== 201) throw new Error(`save allowed_login_domains: ${res.status()}`)
+  const path = `/api/table/${encodeURIComponent('Sign In Method')}/google`
+  const row = (await (await request.get(path, { headers })).json()) as { updated_at: string }
+  const res = await request.patch(path, { headers, data: { allowed_email_domains: value, updated_at: row.updated_at } })
+  if (res.status() !== 200) throw new Error(`save allowed_email_domains: ${res.status()}`)
 }
 
 test.beforeEach(async ({ request }) => {
@@ -62,25 +62,29 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   expect(stored).toBeTruthy()
   expect(visited.join(' ')).not.toContain(stored as string)
 
-  // The User was created and marked as a Google login.
+  // The User was created and linked to that Google account by its account ID.
   const headers = await adminAuth(page.request)
   const doc = (await (
     await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
-  ).json()) as { row_id: string; social_login: string; enabled: boolean }
+  ).json()) as { row_id: string; enabled: boolean }
   expect(doc.row_id).toBe(EMAIL)
-  expect(doc.social_login).toBe('google')
   expect(doc.enabled).toBe(true)
+  const links = (await (
+    await page.request.get(`/api/users/${encodeURIComponent(EMAIL)}/identities`, { headers })
+  ).json()) as { identities: { method: string; subject: string | null }[] }
+  expect(links.identities).toEqual([expect.objectContaining({ method: 'google', subject: EMAIL })])
 })
 
-test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', async ({ session, request }) => {
-  // Pre-create the user (as if from a first sign-in) to prove the flow LINKS
-  // rather than duplicating. It is created enabled on purpose: since #137 a
-  // disabled account is refused, never re-enabled by signing in.
+test('PLAT-006: an invited Google address links the existing User (no duplicate)', async ({ session, request }) => {
+  // Pre-create the user and invite its Google address (person-identities: a
+  // matching email alone never links). It is created enabled on purpose:
+  // since #137 a disabled account is refused, never re-enabled by signing in.
   const headers = await adminAuth(request)
   await request.post('/api/save_row', {
     headers,
     data: { table: 'User', row: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },
   })
+  await request.post(`/api/users/${encodeURIComponent(EMAIL)}/identities`, { headers, data: { method: 'google', email: EMAIL } })
 
   await session.visit('/login')
   await session.step('sign in through the mock OAuth flow', async ({ page }) => {

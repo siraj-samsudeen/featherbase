@@ -1,22 +1,44 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import { sql } from './db'
-import type { SessionUser } from './auth'
+import { INVALID_CREDENTIALS, type SessionUser } from './auth'
 import { AppError } from './errors'
 import { saveDoc } from './document'
-import { getSystemSettings } from './settings'
+import { sql as db, withTransaction, type Sql } from './db'
+import { logActivity } from './audit'
+import {
+  candidate,
+  domainAllowed,
+  foldName,
+  methodOfKind,
+  normaliseEmail,
+  touchIdentity,
+  type SignInMethod,
+} from './identities'
 
 // PLAT-006: social login (Google OAuth) mapped to the User Table. The client
-// id and the login-domain allowlist are instance configuration (System
-// Settings — checked in via manifest fixtures, editable in the Admin UI);
+// id and the login-domain allowlist are instance configuration (the Google
+// Sign In Method row, editable in the Admin UI — person-identities);
 // only GOOGLE_CLIENT_SECRET comes from the environment. A mock provider can
 // stand in for Google in development: a local consent page returns a signed
 // authorization `code` that the callback exchanges for the user's identity.
 
 const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
 
-// Real Google is used only when a client id is configured; otherwise mock.
+// Google is the Sign In Method row of kind `google` (person-identities). Real
+// Google is used only when that row carries a client id; otherwise the mock.
+export async function googleMethod(): Promise<SignInMethod | null> {
+  return methodOfKind('google')
+}
+
 export async function oauthClientId(): Promise<string> {
-  return (await getSystemSettings()).google_client_id
+  return (await googleMethod())?.client_id ?? ''
+}
+
+/** Is Google sign-in offered at all: the row is on, and either a client id is
+ *  set or the dev mock was explicitly opted into. */
+export async function googleAvailable(): Promise<SignInMethod | null> {
+  const method = await googleMethod()
+  if (!method?.enabled) return null
+  return method.client_id || mockOAuthEnabled() ? method : null
 }
 
 // The mock provider mints a session for ANY typed email — `Administrator`
@@ -78,11 +100,12 @@ function unpack(token: string): Record<string, unknown> {
 // The PKCE verifier rides the same trip. It proves the browser that finishes
 // the exchange is the one that started it, so a stolen authorization code
 // cannot be redeemed by anyone else.
-export function newLoginChallenge(): { state: string; verifier: string } {
+export function newLoginChallenge(extra: { purpose?: 'link'; uid?: string } = {}): { state: string; verifier: string } {
   return {
     // Math.random() is not a CSPRNG — its output is predictable enough to
-    // forge. The nonce is security-bearing, so it comes from crypto.
-    state: pack({ nonce: randomBytes(32).toString('base64url') }),
+    // forge. The nonce is security-bearing, so it comes from crypto. A link
+    // flow also signs who started it (person-identities D6).
+    state: pack({ nonce: randomBytes(32).toString('base64url'), ...extra }),
     verifier: randomBytes(32).toString('base64url'),
   }
 }
@@ -94,7 +117,7 @@ export function codeChallengeFor(verifier: string): string {
 
 // `cookieState` is the value of the state cookie set at login. Both must be
 // present and identical, and the state must still carry a valid signature.
-export function verifyState(state: string | undefined, cookieState: string | undefined): void {
+export function verifyState(state: string | undefined, cookieState: string | undefined): { purpose?: string; uid?: string } {
   if (!state) throw new AppError('AuthenticationError', 'Missing OAuth state')
   if (!cookieState)
     throw new AppError('AuthenticationError', 'Missing OAuth state cookie — start sign-in again')
@@ -102,7 +125,8 @@ export function verifyState(state: string | undefined, cookieState: string | und
   const b = Buffer.from(cookieState)
   if (a.length !== b.length || !timingSafeEqual(a, b))
     throw new AppError('AuthenticationError', 'OAuth state does not match this browser')
-  unpack(state) // throws if invalid/expired
+  const obj = unpack(state) // throws if invalid/expired
+  return { purpose: typeof obj.purpose === 'string' ? obj.purpose : undefined, uid: typeof obj.uid === 'string' ? obj.uid : undefined }
 }
 
 // The authorization URL the browser is sent to. Real Google in prod; the local
@@ -112,7 +136,7 @@ export function googleAuthorizeUrl(
   state: string,
   redirectUri: string,
   codeChallenge: string,
-  hint?: { email?: string; name?: string },
+  hint?: { email?: string; name?: string; subject?: string; hd?: string },
 ): string {
   if (clientId) {
     const p = new URLSearchParams({
@@ -130,11 +154,13 @@ export function googleAuthorizeUrl(
   const p = new URLSearchParams({ state, redirect_uri: redirectUri })
   if (hint?.email) p.set('email', hint.email)
   if (hint?.name) p.set('name', hint.name)
+  if (hint?.subject) p.set('subject', hint.subject)
+  if (hint?.hd !== undefined) p.set('hd', hint.hd)
   return `/api/oauth/mock/consent?${p.toString()}`
 }
 
 // Mock "consent screen": a tiny page that, on approval, hands back a signed code.
-export function mockConsentHtml(state: string, redirectUri: string, email: string, name: string): string {
+export function mockConsentHtml(state: string, redirectUri: string, email: string, name: string, subject = '', hd?: string): string {
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
   // state + redirect_uri travel as hidden inputs — a GET form discards the
   // action URL's query string, so they must be part of the form body.
@@ -151,6 +177,8 @@ export function mockConsentHtml(state: string, redirectUri: string, email: strin
       <input type="hidden" name="redirect_uri" value="${esc(redirectUri)}" />
       <label>Email</label><input name="email" data-testid="mock-email" value="${esc(email)}" />
       <label>Name</label><input name="name" data-testid="mock-name" value="${esc(name)}" />
+      <label>Google account ID (blank = the email)</label><input name="subject" data-testid="mock-subject" value="${esc(subject)}" />
+      ${hd === undefined ? '' : `<input type="hidden" name="hd" value="${esc(hd)}" />`}
       <button type="submit" data-testid="mock-approve">Continue</button>
     </form></body></html>`
 }
@@ -169,16 +197,29 @@ export const OAUTH_CALLBACK_PATH = '/api/oauth/google/callback'
 // for it (`?redirect_uri=https://evil.example.com/x` → 302 there with the
 // code attached). Exact match, so neither a protocol-relative `//host` nor a
 // `…/callback/../../elsewhere` traversal slips past.
-export function mockApproveRedirect(state: string, redirectUri: string, email: string, name: string): string {
+export function mockApproveRedirect(state: string, redirectUri: string, email: string, name: string, subject = '', hd?: string): string {
   if (redirectUri !== OAUTH_CALLBACK_PATH)
     throw new AppError(
       'BadRequestError',
       `Mock provider only redirects to ${OAUTH_CALLBACK_PATH}`,
     )
-  const code = pack({ email, name })
+  const code = pack({ email, name, subject, ...(hd === undefined ? {} : { hd }) })
   const p = new URLSearchParams({ code, state })
   return `${redirectUri}?${p.toString()}`
 }
+
+/** What Google vouches for (person-identities D3). The subject is Google's
+ *  permanent account ID (`sub`); the email is display data and an admission
+ *  signal, never the key. `hostedDomain` is the Workspace domain (`hd`). */
+export interface VerifiedGoogle {
+  subject: string
+  email: string
+  emailVerified: boolean
+  name: string
+  hostedDomain: string | null
+}
+
+const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
 
 // Exchange an authorization code for the user's identity. Real Google POSTs
 // the token endpoint then fetches userinfo; the mock decodes its signed code.
@@ -188,7 +229,7 @@ export async function exchangeCode(
   redirectUri: string,
   clientId: string,
   codeVerifier: string | undefined,
-): Promise<{ email: string; name: string }> {
+): Promise<VerifiedGoogle> {
   if (!code) throw new AppError('AuthenticationError', 'Missing authorization code')
   if (!clientId) {
     // This is the mock branch — the one that mints a session from a typed
@@ -199,7 +240,16 @@ export async function exchangeCode(
     const obj = unpack(code)
     const email = String(obj.email ?? '').trim().toLowerCase()
     if (!email) throw new AppError('AuthenticationError', 'No email in code')
-    return { email, name: String(obj.name ?? email) }
+    const domain = email.split('@')[1] ?? ''
+    // The mock plays a Workspace account unless told otherwise (hd '' = none).
+    const hd = obj.hd === undefined ? (CONSUMER_DOMAINS.has(domain) ? null : domain) : String(obj.hd) || null
+    return {
+      subject: String(obj.subject ?? '').trim() || email,
+      email,
+      emailVerified: true,
+      name: String(obj.name ?? '') || email,
+      hostedDomain: hd,
+    }
   }
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -223,11 +273,17 @@ export async function exchangeCode(
     signal: AbortSignal.timeout(15_000),
   })
   if (!infoRes.ok) throw new AppError('AuthenticationError', 'Google userinfo fetch failed')
-  const info = (await infoRes.json()) as { email?: string; email_verified?: boolean; name?: string }
+  const info = (await infoRes.json()) as { sub?: string; email?: string; email_verified?: boolean; name?: string; hd?: string }
+  const subject = String(info.sub ?? '').trim()
+  if (!subject) throw new AppError('AuthenticationError', 'Google did not return an account ID')
   const email = String(info.email ?? '').trim().toLowerCase()
-  if (!email || info.email_verified !== true)
-    throw new AppError('AuthenticationError', 'Google account has no verified email')
-  return { email, name: String(info.name ?? email) }
+  return {
+    subject,
+    email,
+    emailVerified: Boolean(email) && info.email_verified === true,
+    name: String(info.name ?? '') || email,
+    hostedDomain: info.hd ? String(info.hd).toLowerCase() : null,
+  }
 }
 
 // --- #150: the sign-in handoff code -----------------------------------------
@@ -279,57 +335,125 @@ export function redeemHandoffCode(code: string | undefined, sid: string | undefi
   return entry.session
 }
 
-// System Settings `allowed_login_domains` (comma-separated) limits which
-// email domains may auto-provision an account on first sign-in. Empty admits
-// nobody; `*` is the explicit opt-in to admit every domain. Users that already
-// exist were provisioned deliberately and always may sign in, mirroring the
-// report server's grants arm.
-async function domainAdmitted(email: string): Promise<boolean> {
-  const match = /^[^\s@]+@([^\s@]+)$/.exec(email.trim().toLowerCase())
-  if (!match) return false
-  const domains = (await getSystemSettings()).allowed_login_domains
-    .split(',')
-    .map((d) => d.trim().toLowerCase())
-    .filter(Boolean)
-  if (!domains.length) return false
-  if (domains.includes('*')) return true
-  return domains.includes(match[1])
+// --- person-identities: who a Google sign-in opens --------------------------
+
+const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
+
+// ONE refusal, ONE message, for a person who may not sign in (#137): separate
+// "disabled" and "cannot sign in" replies would let a caller probe accounts.
+async function assertEligible(user: string, tx: Sql = db): Promise<void> {
+  const c = await candidate(user, tx)
+  if (!c || !c.enabled || c.user_type === 'service') throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
 }
 
-// Map an OAuth identity to a User: link an existing account by email/name or
-// create one, mark it as a Google login, and return its name.
-export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
-  const [existing] = await sql`
-    select row_id, enabled, user_type from "user"
-    where lower(email) = ${email} or lower(row_id) = ${email} limit 1`
-  let userName: string
-  if (existing) {
-    userName = existing.row_id as string
-    // #137: a disabled principal stays disabled. This used to flip `enabled`
-    // back on ("ensure it can sign in") BEFORE issueSession got a say — so an
-    // OAuth round trip undid an administrator's disable, and every access
-    // token that principal owned started working again, even though the
-    // interactive login itself was still refused. Refusing here matches
-    // login() and issueSession(), which both reject a disabled user.
-    //
-    // ONE refusal, ONE message, deliberately. Separate "this account is
-    // disabled" and "this account cannot sign in" replies let an unauthenticated
-    // caller probe an address and learn which accounts exist and in what
-    // state — the exact enumeration oracle requestPasswordReset() avoids by
-    // returning a silent null. The generic wording matches login()'s.
-    if (existing.user_type === 'service' || !existing.enabled)
-      throw new AppError('AuthenticationError', 'Invalid login credentials')
-  } else {
-    if (!(await domainAdmitted(email)))
-      throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')
+/** Domain admission (design D4): a verified email on an allowed domain, and
+ *  for a company domain the Workspace claim must agree — a personal Google
+ *  account registered on a company address is not that company's account. */
+export function googleDomainAdmitted(method: SignInMethod, v: VerifiedGoogle): boolean {
+  if (!v.emailVerified || !domainAllowed(method, v.email)) return false
+  const domain = v.email.split('@')[1] ?? ''
+  if (CONSUMER_DOMAINS.has(domain)) return true
+  // `*` admits any domain, so a personal account on a company address is in;
+  // a listed company domain requires the Workspace claim to match.
+  if (method.allowed_email_domains.split(',').map(foldName).includes('*')) return true
+  return v.hostedDomain === domain
+}
+
+/** Resolve a verified Google sign-in to a person (design D3–D5): the linked
+ *  subject; else a one-time invite for the verified address (eligibility
+ *  first, so an invite is never claimed onto a disabled or service account);
+ *  else the method's rule for people it does not know. Never by email match. */
+export async function resolveGoogleSignIn(method: SignInMethod, v: VerifiedGoogle): Promise<{ user: string; identity: string }> {
+  const [linked] = await db`
+    select id, user_id from user_identity where method = ${method.key} and subject = ${v.subject}`
+  if (linked) {
+    await assertEligible(String(linked.user_id))
+    await touchIdentity(String(linked.id), { email: v.email || null, display_name: v.name || null })
+    return { user: String(linked.user_id), identity: String(linked.id) }
+  }
+
+  if (v.emailVerified) {
+    const claimed = await withTransaction(async () => {
+      const [invite] = await db`
+        select id, user_id from user_identity
+        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)}
+        for update`
+      if (!invite) return null
+      await assertEligible(String(invite.user_id))
+      await db`
+        update user_identity set subject = ${v.subject}, pending_email = null, linked_at = now(),
+          linked_by = 'first-sign-in', email = ${v.email}, display_name = ${v.name || null}, last_used_at = now()
+        where id = ${String(invite.id)}`
+      return { user: String(invite.user_id), identity: String(invite.id) }
+    })
+    if (claimed) {
+      await logActivity(claimed.user, `identity_claimed:${method.key}:${claimed.identity}`)
+      return claimed
+    }
+  }
+
+  const admitted =
+    method.new_person === 'create' ||
+    (method.new_person === 'create_if_email_domain_allowed' && googleDomainAdmitted(method, v))
+  if (!admitted) throw new AppError('AuthenticationError', NOT_PROVISIONED)
+  return createGooglePerson(method, v)
+}
+
+async function createGooglePerson(method: SignInMethod, v: VerifiedGoogle): Promise<{ user: string; identity: string }> {
+  const email = v.emailVerified ? normaliseEmail(v.email) : null
+  const rowId = email ? foldName(email) : `google-${v.subject}`
+  return withTransaction(async () => {
+    const [taken] = await db`
+      select 1 from "user" where lower(row_id) = ${foldName(rowId)} or (${email}::text is not null and lower(email) = ${email ? foldName(email) : ''})`
+    // Never turned into a link: an address already in use belongs to someone
+    // an administrator must decide about.
+    if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
     const created = await saveDoc(
       'User',
-      { row_id: email, email, full_name: name || email, enabled: true, roles: [] },
+      { row_id: rowId, email, full_name: v.name || email || rowId, enabled: true, roles: [] },
       'Administrator',
     )
-    userName = String(created.row_id)
-  }
-  // social_login is read_only (system-managed) → set it with a direct write.
-  await sql`update "user" set social_login = 'google' where row_id = ${userName}`
-  return userName
+    const id = 'uid_' + randomBytes(9).toString('base64url')
+    await db`insert into user_identity ${db({
+      id,
+      user_id: String(created.row_id),
+      method: method.key,
+      subject: v.subject,
+      email: v.email || null,
+      display_name: v.name || null,
+      linked_by: 'new-person',
+      last_used_at: new Date(),
+    })}`
+    await logActivity(String(created.row_id), `identity_linked:${method.key}:${id}`)
+    return { user: String(created.row_id), identity: id }
+  })
+}
+
+/** Link a Google account to the signed-in person who started a link flow
+ *  (design D6). The caller has already checked the session. */
+export async function linkGoogleToSelf(method: SignInMethod, user: string, v: VerifiedGoogle): Promise<string> {
+  return withTransaction(async () => {
+    const [linked] = await db`select user_id from user_identity where method = ${method.key} and subject = ${v.subject}`
+    if (linked) throw new AppError('ConflictError', 'This Google account is already linked to an account')
+    if (v.emailVerified) {
+      const [invite] = await db`
+        select id, user_id from user_identity
+        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} for update`
+      if (invite && invite.user_id !== user)
+        throw new AppError('ConflictError', 'This Google address is reserved for another account. Contact your administrator.')
+      if (invite) await db`delete from user_identity where id = ${String(invite.id)}`
+    }
+    const id = 'uid_' + randomBytes(9).toString('base64url')
+    await db`insert into user_identity ${db({
+      id,
+      user_id: user,
+      method: method.key,
+      subject: v.subject,
+      email: v.email || null,
+      display_name: v.name || null,
+      linked_by: 'self',
+    })}`
+    await logActivity(user, `identity_linked:${method.key}:${id}`)
+    return id
+  })
 }

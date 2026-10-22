@@ -3,13 +3,15 @@
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
-//   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli create-user <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
+//   cli identities:plan               rehearse migration 0100 (person-identities) and roll it back
 //   cli console                       REPL with the row API in scope
-import { sql } from './db'
+import { sql, withTransaction } from './db'
+import { formatReport, migratePersonIdentities } from './person-identities-migration'
 import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
@@ -86,7 +88,9 @@ async function cmdCreateUser(
     'User',
     {
       row_id: email,
-      email,
+      // person-identities: the name is a username or an address; only an
+      // address is kept as the person's email.
+      ...(email.includes('@') ? { email } : {}),
       full_name: fullName,
       enabled: true,
       ...(roles.length ? { roles: roles.map((role) => ({ role })) } : {}),
@@ -235,6 +239,21 @@ async function main() {
     case 'revoke-token':
       await cmdRevokeToken(positional)
       break
+    case 'identities:plan': {
+      // Same code as migration 0100, inside a transaction that is always
+      // rolled back: prints what the deploy would do, changes nothing.
+      const ROLLBACK = new Error('identities:plan rollback')
+      try {
+        await withTransaction(async () => {
+          console.log(formatReport(await migratePersonIdentities()))
+          throw ROLLBACK
+        })
+      } catch (err) {
+        if (err !== ROLLBACK) throw err
+      }
+      console.log('identities:plan: rolled back; nothing was changed')
+      break
+    }
     case 'console':
       await cmdConsole()
       break

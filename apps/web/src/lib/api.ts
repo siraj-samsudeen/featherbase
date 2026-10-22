@@ -6,13 +6,14 @@ let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 // These requests establish/end credentials or serve public content. A saved
 // expired bearer must not insert a protected request in front of them.
 const PUBLIC_API_PATHS = new Set([
-  '/api/login', '/api/login/delegated', '/api/logout', '/api/oauth/session',
+  '/api/login', '/api/login/delegated', '/api/signup', '/api/logout', '/api/oauth/session',
   '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
 ])
 
 export interface SessionUser {
   row_id: string
-  email: string
+  /** Optional contact data (person-identities): null when the person has none. */
+  email: string | null
   full_name: string | null
   // #3755: where this account lands after sign-in when it is not the Admin
   // (a sales-target report viewer lands on /sales-target). Absent = /admin.
@@ -134,8 +135,22 @@ export async function login(usr: string, pwd: string): Promise<SessionUser> {
 
 /** Sign in with an ID and password checked by the outside service named in
  *  `/api/brand`'s `delegated_login_label` (e.g. StyleHR). Same session shape. */
-export async function loginDelegated(usr: string, pwd: string): Promise<SessionUser> {
-  return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', { usr, pwd }))
+export async function loginDelegated(usr: string, pwd: string, method?: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', method ? { usr, pwd, method } : { usr, pwd }))
+}
+
+/** Direct sign-up (person-identities): a username and a password, when the
+ *  instance has opened it. Signs the new person in like `login`. */
+export async function signUp(username: string, password: string, fullName?: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/signup', fullName ? { username, password, full_name: fullName } : { username, password }))
+}
+
+/** One way in, as `/api/brand` lists it for the sign-in page. */
+export interface BrandSignInMethod {
+  key: string
+  kind: 'password' | 'google' | 'delegated_password'
+  label: string
+  test_mode: boolean
 }
 
 /** The signed-in account's landing path: the Admin unless the server said otherwise (#3755). */

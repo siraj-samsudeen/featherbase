@@ -11,7 +11,18 @@ import {
   revokeAccessToken,
   setUserPassword,
 } from '../src/auth'
-import { findOrCreateGoogleUser } from '../src/oauth'
+import { resolveGoogleSignIn } from '../src/oauth'
+import { methodOfKind } from '../src/identities'
+
+// person-identities: Google reaches a principal through a linked account ID.
+// Link one directly, then sign in through it the way the callback does.
+async function findOrCreateGoogleUser(user: string, name: string) {
+  const subject = `g-${user}`
+  await sql`insert into user_identity (id, user_id, method, subject, linked_by)
+    values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test') on conflict do nothing`
+  const method = (await methodOfKind('google'))!
+  return resolveGoogleSignIn(method, { subject, email: '', emailVerified: false, name, hostedDomain: null })
+}
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { createTable } from '../src/table-engine'
 import { getServiceAccount } from '../src/service-accounts'
@@ -80,7 +91,7 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
       body: JSON.stringify({ enabled: false }),
     })
     await expect(
-      findOrCreateGoogleUser('svc-oauth-test@service.invalid', 'svc'),
+      findOrCreateGoogleUser('svc-oauth-test', 'svc'),
     ).rejects.toMatchObject({ type: 'AuthenticationError' })
     const [svc] = await sql`select enabled from "user" where row_id = 'svc-oauth-test'`
     expect(svc.enabled).toBe(false)
@@ -250,7 +261,7 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
     await serviceAccount(admin, 'svc-enum')
 
     const a = await findOrCreateGoogleUser(disabled, 'x').catch((e: Error) => e)
-    const b = await findOrCreateGoogleUser('svc-enum@service.invalid', 'x').catch((e: Error) => e)
+    const b = await findOrCreateGoogleUser('svc-enum', 'x').catch((e: Error) => e)
 
     // Distinguishable refusals let an unauthenticated caller probe an address
     // and learn whether it exists and in what state — the enumeration oracle
@@ -272,6 +283,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       table: 'User',
       row: { row_id: email, email, enabled: true },
     })
+    // person-identities: a reset link goes only to an account with a password.
+    await setUserPassword(email, 'initial-pw-1')
+    const [{ password_hash: initial }] = await sql`select password_hash from "user" where row_id = ${email}`
     const token = await requestPasswordReset(email)
     expect(token).toMatch(/^[0-9a-f]{48}$/)
 
@@ -286,8 +300,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
         type: 'ValidationError',
       })
     }
+    // The link never stamps a new password: the hash is the one set before.
     const [row] = await sql`select password_hash from "user" where row_id = ${email}`
-    expect(row.password_hash).toBeNull()
+    expect(row.password_hash).toBe(initial)
   })
 
   test('a write that fails does not give the link back', async ({ admin }) => {
@@ -296,6 +311,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       table: 'User',
       row: { row_id: email, email, enabled: true },
     })
+    // person-identities: a reset link goes only to an account with a password.
+    await setUserPassword(email, 'initial-pw-1')
+    const [{ password_hash: initial }] = await sql`select password_hash from "user" where row_id = ${email}`
     const token = await requestPasswordReset(email)
 
     // Same failure mode as above — the principal turns into a service account
@@ -317,8 +335,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       type: 'ValidationError',
       message: 'This reset link is invalid or has expired',
     })
+    // The link never stamps a new password: the hash is the one set before.
     const [row] = await sql`select password_hash from "user" where row_id = ${email}`
-    expect(row.password_hash).toBeNull()
+    expect(row.password_hash).toBe(initial)
   })
 
   test('a successful reset consumes the link, so it cannot be replayed', async ({ admin }) => {
@@ -327,6 +346,8 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       table: 'User',
       row: { row_id: email, email, enabled: true },
     })
+    // person-identities: a reset link goes only to an account with a password.
+    await setUserPassword(email, 'initial-pw-1')
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')
     const [afterFirst] = await sql`select password_hash from "user" where row_id = ${email}`

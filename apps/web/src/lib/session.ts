@@ -5,7 +5,7 @@ import { api, getSessionUser } from './api'
 // cached. Used to gate role-only UI like the SET-003 permission manager.
 interface WhoAmI {
   name: string
-  email: string
+  email: string | null
   full_name: string | null
   roles: string[]
   theme?: 'light' | 'dark'

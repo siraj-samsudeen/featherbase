@@ -78,7 +78,8 @@ describe('API-006: consistent error envelope', () => {
     expect(res.status).toBe(417)
     const err = await envelope(res)
     expect(err.type).toBe('ValidationError')
-    expect(err.fields).toMatchObject({ email: expect.any(String) })
+    // person-identities: email is optional now; the User's id is still required.
+    expect(err.fields).toMatchObject({ row_id: expect.any(String) })
   })
 
   test('409 ConflictError on duplicate insert', async ({ admin }) => {

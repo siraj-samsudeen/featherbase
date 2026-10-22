@@ -22,8 +22,8 @@ the same roles, data access and history.
 
 A person SHALL be able to have an account, and sign in, without an email
 address. When an account has an email address, no other account may have the
-same one, ignoring capital letters. An address on a domain reserved for never
-receiving mail, such as one ending in ".invalid", is not kept.
+same one, ignoring capital letters. A placeholder address that can never
+receive mail, one ending in ".invalid", is not kept.
 
 #### Scenario: Store staff without email
 

@@ -825,6 +825,17 @@ export function AdminLayout() {
             >
               Access tokens
             </Link>
+            <Link
+              to="/featherbase/admin/sign-in-methods"
+              data-testid="sign-in-methods-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              activeProps={{
+                className:
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+              }}
+            >
+              Sign-in methods
+            </Link>
           </div>
         </aside>
 

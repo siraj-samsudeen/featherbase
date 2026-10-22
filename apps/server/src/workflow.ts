@@ -274,9 +274,11 @@ async function notifyPendingApprovers(
     join "user" u on u.row_id = hr.parent
     where hr.parenttype = 'User' and hr.role in ${sql(roles)}
       and u.enabled = true`
+  // A person without an email gets no mail — a user id is not an address
+  // (person-identities: email is optional contact data).
   const approvers = holders
-    .filter((h) => h.parent !== actingUser)
-    .map((h) => ({ user: h.parent, email: h.email ?? h.parent }))
+    .filter((h) => h.parent !== actingUser && h.email)
+    .map((h) => ({ user: h.parent, email: h.email as string }))
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')

@@ -27,6 +27,7 @@ import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
+import { SignInMethods } from './pages/SignInMethods'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -508,6 +509,13 @@ const accessTokensRoute = createRoute({
   component: AccessTokens,
 })
 
+// person-identities (#275): the signed-in person's sign-in methods.
+const signInMethodsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'sign-in-methods',
+  component: SignInMethods,
+})
+
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
 // shortcuts (static segment).
 const homePageRoute = createRoute({
@@ -730,5 +738,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, tableRoute, docRoute]),
 ])

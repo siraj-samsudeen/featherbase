@@ -43,8 +43,26 @@ export async function setUserPassword(name: string, password: string) {
 
 export interface SessionUser {
   row_id: string
-  email: string
+  /** Optional contact data (person-identities): null for people without one. */
+  email: string | null
   full_name: string | null
+  /** How this session was opened (person-identities D8). Absent for access
+   *  tokens; `method` null for sessions issued before the upgrade. */
+  sign_in?: SignInClaims
+}
+
+export interface SignInClaims {
+  method: string | null
+  identity: string | null
+  test_mode: boolean
+  /** Seconds since the epoch; null for a token minted before `iat` was set. */
+  issued_at: number | null
+}
+
+export interface SessionOptions {
+  method?: string
+  identity?: string
+  testMode?: boolean
 }
 
 export interface IssuedSession {
@@ -53,20 +71,49 @@ export interface IssuedSession {
   maxAgeSeconds: number
 }
 
-async function issueSessionToken(userName: string): Promise<{ token: string; maxAgeSeconds: number }> {
+async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number }> {
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const maxAgeSeconds = hours * 3600
+  const iat = Math.floor(Date.now() / 1000)
+  // m = sign-in method, idn = linked identity, tm = test mode (design D8).
   const token = await sign(
     {
       sub: userName,
-      exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+      iat,
+      exp: iat + maxAgeSeconds,
+      ...(opts.method ? { m: opts.method } : {}),
+      ...(opts.identity ? { idn: opts.identity } : {}),
+      ...(opts.testMode ? { tm: true } : {}),
     },
     JWT_SECRET,
   )
-  return { token, maxAgeSeconds }
+  return { token, maxAgeSeconds, iat }
+}
+
+function claimsOf(opts: SessionOptions, iat: number): SignInClaims {
+  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), issued_at: iat }
+}
+
+/** The one account a typed username-or-email names for password sign-in and
+ *  reset: an exact id, else a case-insensitive id, else a case-insensitive
+ *  email — a username always beats an email. Two different people matching
+ *  at the same level is ambiguous and answers nobody. */
+export async function findPasswordAccount(typed: string) {
+  const rows = await sql`
+    select row_id, email, full_name, enabled, password_hash, user_type,
+      case when row_id = ${typed} then 0
+           when lower(row_id) = lower(trim(${typed})) then 1
+           else 2 end as rank
+    from "user"
+    where row_id = ${typed} or lower(row_id) = lower(trim(${typed})) or lower(email) = lower(trim(${typed}))
+    order by rank
+    limit 3`
+  if (!rows.length) return null
+  const best = rows.filter((r) => r.rank === rows[0].rank)
+  return best.length === 1 ? best[0] : null
 }
 
 // The one refusal every interactive sign-in gives for bad or unusable
@@ -74,35 +121,36 @@ async function issueSessionToken(userName: string): Promise<{ token: string; max
 export const INVALID_CREDENTIALS = 'Invalid login credentials'
 
 export async function login(usr: string, pwd: string): Promise<IssuedSession> {
-  const [user] = await sql`
-    select row_id, email, full_name, enabled, password_hash, user_type from "user"
-    where (row_id = ${usr} or email = ${usr})`
+  const user = await findPasswordAccount(usr)
+  // person-identities: the password method can be turned off like any other.
+  const [method] = await sql`select row_id, enabled from sign_in_method where kind = 'password' limit 1`
   // #131: service accounts never sign in interactively — tokens only. The
   // refusal is deliberately the same generic message as a bad password.
-  if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
+  if (!user || !method?.enabled || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  const session = await issueSessionToken(user.row_id as string)
+  const opts = { method: String(method.row_id) }
+  const session = await issueSessionToken(user.row_id as string, opts)
   // PLAT-007: record the successful authentication.
   await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
+    user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
 
 // PLAT-006: issue a session for an already-authenticated user (e.g. after a
 // successful OAuth exchange) — the password-less counterpart to login().
-export async function issueSession(userName: string): Promise<IssuedSession> {
+export async function issueSession(userName: string, opts: SessionOptions = {}): Promise<IssuedSession> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
   if (!user || !user.enabled || user.user_type === 'service')
     throw new AppError('AuthenticationError', 'User cannot sign in')
-  const session = await issueSessionToken(user.row_id as string)
+  const session = await issueSessionToken(user.row_id as string, opts)
   await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
+    user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -207,7 +255,7 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
     row_id: user.row_id as string,
-    email: user.email as string,
+    email: (user.email as string | null) ?? null,
     full_name: user.full_name as string | null,
   }
 }
@@ -252,15 +300,59 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; m?: unknown; idn?: unknown; tm?: unknown }
   try {
-    payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub?: unknown }
+    payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
   } catch {
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
+  const method = typeof payload.m === 'string' ? payload.m : null
+  const identity = typeof payload.idn === 'string' ? payload.idn : null
+  // One query (design D8): the person, the method the session came through,
+  // and the identity it used. A session ends when the person is disabled, its
+  // method is turned off, its password is removed, or its identity is
+  // unlinked or moved. Tokens from before the upgrade carry no m/idn.
   const [user] = await sql`
-    select row_id, email, full_name, enabled from "user" where row_id = ${String(payload.sub)}`
-  if (!user || !user.enabled)
-    throw new AppError('AuthenticationError', 'Invalid or expired session')
-  return { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null }
+    select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
+      m.enabled as method_enabled, m.kind as method_kind,
+      i.user_id as identity_owner, i.subject as identity_subject
+    from "user" u
+    left join sign_in_method m on m.row_id = ${method}
+    left join user_identity i on i.id = ${identity}
+    where u.row_id = ${String(payload.sub)}`
+  const ended =
+    !user ||
+    !user.enabled ||
+    (method !== null && user.method_enabled !== true) ||
+    (user?.method_kind === 'password' && !user.has_password) ||
+    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null))
+  if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  return {
+    row_id: user.row_id as string,
+    email: (user.email as string | null) ?? null,
+    full_name: user.full_name as string | null,
+    sign_in: {
+      method,
+      identity,
+      test_mode: payload.tm === true,
+      issued_at: typeof payload.iat === 'number' ? payload.iat : null,
+    },
+  }
+}
+
+/** Linking another sign-in method needs a recent sign-in (design D6): a
+ *  token without `iat` (minted before the upgrade) counts as stale. */
+export const LINK_FRESHNESS_SECONDS = 15 * 60
+export function assertFreshForLinking(user: SessionUser): void {
+  assertNotTestMode(user)
+  const iat = user.sign_in?.issued_at
+  if (!iat || Date.now() / 1000 - iat > LINK_FRESHNESS_SECONDS)
+    throw new AppError('AuthenticationError', 'Sign in again first, then link the new method within a few minutes.')
+}
+
+/** Refuse anything that would add lasting access from a test-mode session
+ *  (design D7, review B1): no linking, no password, no access token. */
+export function assertNotTestMode(user: SessionUser): void {
+  if (user.sign_in?.test_mode)
+    throw new AppError('PermissionError', 'Not allowed in a test-mode sign-in. Sign in normally to change how this account signs in.')
 }

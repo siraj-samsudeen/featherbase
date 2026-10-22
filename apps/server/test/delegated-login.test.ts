@@ -10,39 +10,15 @@ import { sql } from '../src/db'
 import { _setDelegatedFetch } from '../src/delegated-login'
 import { grantRole } from './fixtures'
 import { VIEWER_ROLE } from '../src/sales-target'
+import { DELEGATED_URL, configureDelegated, linkDelegated, removeDelegated } from './identity-fixtures'
 
-const URL_ = 'https://hr.example.test/api/login/'
-const COLUMN = 'stylehr_username'
+const URL_ = DELEGATED_URL
 const PASSWORD = 'Sup3r-Secret-Delegated-Pw!'
 
-async function setSetting(field: string, value: string) {
-  await sql`
-    insert into single_value (table_name, field, value)
-    values ('System Settings', ${field}, ${value})
-    on conflict (table_name, field) do update set value = excluded.value`
-}
-
-async function configure(overrides: Partial<Record<'label' | 'url' | 'column', string>> = {}) {
-  await setSetting('delegated_login_label', overrides.label ?? 'StyleHR')
-  await setSetting('delegated_login_url', overrides.url ?? URL_)
-  await setSetting('delegated_login_user_column', overrides.column ?? COLUMN)
-}
-
-// The realistic path: the provider ID is a Custom Field on User.
-async function addIdColumn(admin: TestClient) {
-  const res = await admin.fetch('/api/save_row', {
-    method: 'POST',
-    body: JSON.stringify({
-      table: 'Custom Field',
-      row: { row_id: `User-${COLUMN}`, dt: 'User', column_name: COLUMN, label: 'StyleHR Username', column_type: 'Data' },
-    }),
-  })
-  expect(res.status).toBe(201)
-}
-
-async function link(user: string, id: string) {
-  await sql`update "user" set ${sql(COLUMN)} = ${id} where row_id = ${user}`
-}
+// person-identities: the connected service is a Sign In Method row, and a
+// person is linked by an identity carrying their login ID at the service.
+const configure = (o: { label?: string; url?: string } = {}) => configureDelegated(o)
+const link = (user: string, id: string) => linkDelegated(user, id)
 
 type Call = { url: string; init: RequestInit }
 function provider(answer: () => Response | Promise<Response>) {
@@ -68,7 +44,6 @@ afterEach(() => {
 describe('delegated password sign-in', () => {
   test('a verified, linked person gets a session like password sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.one@example.com' })
     await link(tl.user!, 'tl_9876543210')
     const calls = provider(() => Response.json({ token: 'opaque' }))
@@ -98,7 +73,6 @@ describe('delegated password sign-in', () => {
 
   test('the landing page follows the account, as for password sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     await grantRole(admin, { role: VIEWER_ROLE, table: [] })
     const tl = await createUser({ email: 'tl.viewer@example.com', roles: [VIEWER_ROLE] })
     await link(tl.user!, 'viewer_1')
@@ -110,7 +84,6 @@ describe('delegated password sign-in', () => {
 
   test('a provider rejection is the password-login refusal, with no session', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.two@example.com' })
     await link(tl.user!, 'tl_2')
     const password = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd: 'wrong' }) })
@@ -127,7 +100,6 @@ describe('delegated password sign-in', () => {
 
   test('a 2xx carrying an error body is a rejection, not a sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.three@example.com' })
     await link(tl.user!, 'tl_3')
     for (const body of [{ error: 'Invalid credentials' }, { errors: ['bad'] }, { status: 'error' }]) {
@@ -140,7 +112,6 @@ describe('delegated password sign-in', () => {
 
   test('an unavailable provider is 503 naming the service, never a wrong password', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.four@example.com' })
     await link(tl.user!, 'tl_4')
     const outages: Array<() => Response | Promise<Response>> = [
@@ -168,7 +139,6 @@ describe('delegated password sign-in', () => {
   // refusal and the password never leaves.
   test('an unlinked ID is refused like a wrong password, and its password is never forwarded', async ({ api, admin }) => {
     await configure()
-    await addIdColumn(admin)
     const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'nobody_linked')
     expect(res.status).toBe(401)
@@ -181,7 +151,6 @@ describe('delegated password sign-in', () => {
   // so an empty body, an HTML page or an unreadable stream signed anyone in.
   test('only a positive success signal verifies; anything unexplained is no sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const cases: [string, () => Response, number][] = [
       ['204 no body', () => new Response(null, { status: 204 }), 503],
       ['200 empty', () => new Response('', { status: 200 }), 503],
@@ -213,7 +182,6 @@ describe('delegated password sign-in', () => {
 
   test('a person the provider shows as having left is refused, even with the right password', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.left@example.com' })
     await link(tl.user!, 'tl_left')
     for (const body of [
@@ -226,12 +194,16 @@ describe('delegated password sign-in', () => {
       expect(res.status, JSON.stringify(body)).toBe(403)
       expect(((await res.json()) as { error: { message: string } }).error.message).toContain('no longer active')
       expect(sidCookie(res)).toBeUndefined()
+      // person-identities (review M4): the account is disabled too. Re-enable
+      // it so the next shape is judged on its own.
+      const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+      expect(row.enabled, JSON.stringify(body)).toBe(false)
+      await sql`update "user" set enabled = true where row_id = ${tl.user!}`
     }
   })
 
   test('the Administrator and System Managers are never signed in this way', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
     await link(sm.user!, 'sm_1')
     await link('Administrator', 'admin_1')
@@ -246,7 +218,6 @@ describe('delegated password sign-in', () => {
 
   test('a busy provider (408, 429) is unavailable, never a wrong password', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.busy@example.com' })
     await link(tl.user!, 'tl_busy')
     for (const status of [408, 429]) {
@@ -257,7 +228,6 @@ describe('delegated password sign-in', () => {
 
   test('a disabled linked account is refused like a disabled password sign-in', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.five@example.com' })
     await link(tl.user!, 'tl_5')
     await sql`update "user" set enabled = false where row_id = ${tl.user!}`
@@ -271,7 +241,6 @@ describe('delegated password sign-in', () => {
 
   test('an automation account is never bound', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const bot = await createUser({ email: 'bot@example.com' })
     await link(bot.user!, 'bot_1')
     await sql`update "user" set user_type = 'service' where row_id = ${bot.user!}`
@@ -280,18 +249,18 @@ describe('delegated password sign-in', () => {
     expect(calls).toHaveLength(0)
   })
 
-  test('two accounts linked to one ID are refused, never one picked', async ({ api, admin, createUser }) => {
+  test('one service ID can be linked to only one account, whatever its case', async ({ admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const a = await createUser({ email: 'dup.a@example.com' })
     const b = await createUser({ email: 'dup.b@example.com' })
     await link(a.user!, 'dup_1')
-    await link(b.user!, 'DUP_1 ')
-    provider(() => Response.json({ ok: true }))
-    const res = await signIn(api, 'dup_1')
+    const res = await admin.fetch(`/api/users/${encodeURIComponent(b.user!)}/identities`, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'stylehr', subject: 'B-1', sign_in_name: 'DUP_1 ' }),
+    })
     expect(res.status).toBe(409)
-    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
-    expect(sidCookie(res)).toBeUndefined()
+    const rows = await sql`select user_id from user_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
+    expect(rows.map((r) => r.user_id)).toEqual([a.user])
   })
 
   test('off is 404 like any unknown route, and the provider is never called', async ({ api }) => {
@@ -304,9 +273,8 @@ describe('delegated password sign-in', () => {
       { url: 'http://127.0.0.1@evil.test/api/login/' },
       { url: 'http://evil.test\\@127.0.0.1/api/login/' },
       { url: 'not a url' },
-      { column: '' },
     ]) {
-      await sql`delete from single_value where table_name = 'System Settings' and field like 'delegated_login_%'`
+      await removeDelegated()
       if (Object.keys(settings).length) await configure(settings)
       const res = await signIn(api, 'anyone')
       expect(res.status).toBe(404)
@@ -317,7 +285,6 @@ describe('delegated password sign-in', () => {
 
   test('a local http provider is allowed, for test stubs', async ({ api, admin, createUser }) => {
     await configure({ url: 'http://127.0.0.1:9/api/login/' })
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.local@example.com' })
     await link(tl.user!, 'local_1')
     const calls = provider(() => Response.json({ ok: true }))
@@ -325,22 +292,23 @@ describe('delegated password sign-in', () => {
     expect(calls[0].url).toBe('http://127.0.0.1:9/api/login/')
   })
 
-  test('a column that is unsafe or missing is a setup error, and no password leaves', async ({ api }) => {
-    const calls = provider(() => Response.json({ ok: true }))
-    // `position` is a real User column but not text: lower(trim()) on it would fail after
-    // the provider had already verified.
-    for (const column of ['no_such_column', 'email; drop table "user"', 'Email', 'position']) {
-      await configure({ column })
-      const res = await signIn(api, 'anyone')
-      expect(res.status).toBe(503)
-      expect(((await res.json()) as { error: { message: string } }).error.message).toContain('StyleHR')
-    }
+  test('with two services connected, the sign-in must say which', async ({ api, createUser }) => {
+    await configure()
+    await configureDelegated({ key: 'stylehr_tn', label: 'StyleHR TN', url: 'https://tn.example.test/api/login/' })
+    const tl = await createUser({ email: 'tl.two.services@example.com' })
+    await linkDelegated(tl.user!, 'tn_1', { key: 'stylehr_tn' })
+    const calls = provider(() => Response.json({ token: 'x' }))
+    expect((await signIn(api, 'tn_1')).status).toBe(417)
     expect(calls).toHaveLength(0)
+    const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr_tn' }) })
+    expect(res.status).toBe(200)
+    expect(calls[0].url).toBe('https://tn.example.test/api/login/')
+    // A login ID is looked up only at the service it belongs to.
+    expect((await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr' }) })).status).toBe(401)
   })
 
   test('the password appears in no log line and no response', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.six@example.com' })
     await link(tl.user!, 'tl_6')
     const logged: string[] = []
@@ -369,7 +337,6 @@ describe('delegated password sign-in', () => {
   test('repeated attempts for one ID are rate limited, and the provider is not asked', async ({ api, admin, createUser }) => {
     vi.stubEnv('PREAUTH_PASSWORD_MAX', '2')
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.seven@example.com' })
     await link(tl.user!, 'tl_7')
     const calls = provider(() => Response.json({}, { status: 401 }))
@@ -412,7 +379,6 @@ describe('delegated sign-in test mode', () => {
   test('on: a linked person signs in by employee code alone, and the provider is never asked', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.test@example.com' })
     await link(tl.user!, 'ANISHA_1716708795')
     const calls = provider(() => Response.json({ error: 'would have refused' }))
@@ -428,7 +394,6 @@ describe('delegated sign-in test mode', () => {
   test('on: the StyleHR login name is not how a tester signs in', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.login@example.com' })
     await link(tl.user!, 'ANISHA_1716708795')
     expect((await signIn(api, 'ANISHA_1716708795', '')).status).toBe(401)
@@ -437,7 +402,6 @@ describe('delegated sign-in test mode', () => {
   test('on: an account with no link, a disabled one and a System Manager are still refused', async ({ api, admin, createUser }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
-    await addIdColumn(admin)
     expect((await signIn(api, 'nobody', '')).status).toBe(401)
     const office = await createUser({ email: 'office@example.com' })
     expect((await signIn(api, office.user!, '')).status).toBe(401)
@@ -452,7 +416,6 @@ describe('delegated sign-in test mode', () => {
 
   test('only the exact phrase turns it on; "1" or "true" leave the provider in charge', async ({ api, admin, createUser }) => {
     await configure()
-    await addIdColumn(admin)
     const tl = await createUser({ email: 'tl.strict@example.com' })
     await link(tl.user!, 'tl_strict')
     for (const value of ['1', 'true', 'yes', '']) {
@@ -471,21 +434,98 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     expect((await brand()).delegated_login_test_mode).toBe(true)
     // Off when no provider is connected, whatever the variable says.
-    await sql`delete from single_value where table_name = 'System Settings' and field like 'delegated_login_%'`
+    await removeDelegated()
     expect((await brand()).delegated_login_test_mode).toBe(false)
   })
 })
 
 describe('public brand names the connected service', () => {
   test('null when off, the label when on, the host when the label is blank', async ({ api }) => {
-    await sql`delete from single_value where table_name = 'System Settings' and field like 'delegated_login_%'`
+    await removeDelegated()
     const brand = async () => (await (await api.fetch('/api/brand')).json()) as Record<string, unknown>
     expect((await brand()).delegated_login_label).toBeNull()
     await configure()
     expect(await brand()).toMatchObject({ delegated_login_label: 'StyleHR' })
-    await setSetting('delegated_login_label', '   ')
+    await configure({ label: '   ' })
     expect((await brand()).delegated_login_label).toBe('hr.example.test')
     await configure({ url: 'ftp://hr.example.test/' })
     expect((await brand()).delegated_login_label).toBeNull()
+  })
+})
+
+// person-identities (review M4, D7, B1).
+describe('delegated sign-in through linked identities', () => {
+  const TRUST = 'trust-any-password'
+
+  test('a leaver is disabled: every session they hold ends and every other way in refuses them', async ({ api, admin, createUser }) => {
+    await configure()
+    const tl = await createUser({ email: 'tl.leaver@example.com' })
+    await link(tl.user!, 'tl_leaver')
+    await admin.post('/api/set_password', { user: tl.user, password: 'local-pw-123' })
+    const local = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
+    const { token } = (await local.json()) as { token: string }
+    const whoami = () => api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })
+    expect((await whoami()).status).toBe(200)
+
+    provider(() => Response.json({ token: 'x', employment_status: 'Resigned' }))
+    expect((await signIn(api, 'tl_leaver')).status).toBe(403)
+    const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+    expect(row.enabled).toBe(false)
+    expect((await whoami()).status).toBe(401)
+    const again = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
+    expect(again.status).toBe(401)
+    // History is kept: the disable is a recorded change, and the link stays.
+    const [link_] = await sql`select 1 from user_identity where user_id = ${tl.user!}`
+    expect(link_).toBeTruthy()
+  })
+
+  test('an outage never falls back to the person\'s Featherbase password', async ({ api, admin, createUser }) => {
+    await configure()
+    const tl = await createUser({ email: 'tl.fallback@example.com' })
+    await link(tl.user!, 'tl_fallback')
+    await admin.post('/api/set_password', { user: tl.user, password: PASSWORD })
+    provider(() => new Response('down', { status: 503 }))
+    const res = await signIn(api, 'tl_fallback')
+    expect(res.status).toBe(503)
+    expect(sidCookie(res)).toBeUndefined()
+  })
+
+  test('a duplicated login ID migrated with no sign-in name still opens in test mode by employee code', async ({ api, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.dup.migrated@example.com' })
+    await linkDelegated(tl.user!, null)
+    expect((await signIn(api, ` ${tl.user!.toUpperCase()} `, '')).status).toBe(200)
+  })
+
+  test('a test-mode session cannot set a password, mint a token or change sign-in methods', async ({ api, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.tm.session@example.com' })
+    const identity = await link(tl.user!, 'tl_tm')
+    const res = await signIn(api, tl.user!, '')
+    expect(res.status).toBe(200)
+    const { token, user } = (await res.json()) as { token: string; user: { sign_in: { test_mode: boolean } } }
+    expect(user.sign_in.test_mode).toBe(true)
+    const as = (path: string, init: RequestInit = {}) =>
+      api.fetch(path, { ...init, headers: { authorization: `Bearer ${token}` } })
+    expect((await as('/api/set_password', { method: 'POST', body: JSON.stringify({ password: 'kept-forever' }) })).status).toBe(403)
+    expect((await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) })).status).toBe(403)
+    expect((await as(`/api/me/identities/${identity}`, { method: 'DELETE' })).status).toBe(403)
+    expect((await as('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
+    const [row] = await sql`select password_hash from "user" where row_id = ${tl.user!}`
+    expect(row.password_hash).toBeNull()
+  })
+
+  test('a linked sign-in stamps when it was last used and carries its identity in the session', async ({ api, createUser }) => {
+    await configure()
+    const tl = await createUser({ email: 'tl.stamp@example.com' })
+    const identity = await link(tl.user!, 'tl_stamp')
+    provider(() => Response.json({ token: 'x' }))
+    const res = await signIn(api, 'tl_stamp')
+    const body = (await res.json()) as { user: { sign_in: { method: string; identity: string } } }
+    expect(body.user.sign_in).toMatchObject({ method: 'stylehr', identity })
+    const [row] = await sql`select last_used_at from user_identity where id = ${identity}`
+    expect(row.last_used_at).not.toBeNull()
   })
 })

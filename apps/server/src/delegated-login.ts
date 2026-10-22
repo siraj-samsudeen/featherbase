@@ -1,10 +1,10 @@
 // Delegated password sign-in (OpenSpec change `delegated-password-login`).
 //
-// An outside service the administrator connected in System Settings checks a
+// An outside service the administrator set up as a Sign In Method checks a
 // person's ID and password — StyleHR is the first, for store Team Leaders who
 // have no Google identity. Featherbase forwards the pair once and binds the
-// result to the ONE User whose configured column holds that ID — looked up
-// BEFORE the provider is asked, so Featherbase never checks a password for an
+// result to the ONE User whose linked identity carries that sign-in name
+// (person-identities) — looked up BEFORE the provider is asked, so Featherbase never checks a password for an
 // ID it would not sign in (no password oracle for unlinked IDs).
 //
 // Fail closed (review of #363): only a 200-family JSON object carrying a
@@ -18,36 +18,52 @@
 // thrown or echoed. Failures are logged as label + outcome only.
 import { sql } from './db'
 import { AppError } from './errors'
-import { getSystemSettings } from './settings'
-import { PLATFORM_SCHEMA } from './platform-schema'
 import { INVALID_CREDENTIALS } from './auth'
+import { listSignInMethods } from './identities'
 
+// person-identities: the connected service is a Sign In Method row of kind
+// `delegated_password`, and the person is found through a linked identity,
+// not a User column.
 export interface DelegatedLoginConfig {
+  key: string
   label: string
   url: string
-  userColumn: string
 }
 
 // http is accepted only for a stub on this machine (tests, local dev); a
 // password never crosses a network in the clear.
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
-/** The connected provider, or null when the feature is off. Off whenever the
- *  URL is blank or not https (bar a local stub), or no User column is named. */
-export async function delegatedLoginConfig(): Promise<DelegatedLoginConfig | null> {
-  const s = await getSystemSettings()
-  const raw = s.delegated_login_url.trim()
-  const userColumn = s.delegated_login_user_column.trim()
-  if (!raw || !userColumn) return null
+function usable(raw: string): URL | null {
   let url: URL
   try {
-    url = new URL(raw)
+    url = new URL(raw.trim())
   } catch {
     return null
   }
   const allowed = url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname))
-  if (!allowed) return null
-  return { label: s.delegated_login_label.trim() || url.hostname, url: url.toString(), userColumn }
+  return allowed ? url : null
+}
+
+/** Every enabled delegated method whose URL is usable (https, or a local stub). */
+export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
+  const out: DelegatedLoginConfig[] = []
+  for (const m of await listSignInMethods()) {
+    if (m.kind !== 'delegated_password' || !m.enabled) continue
+    const url = usable(m.service_url)
+    if (url) out.push({ key: m.key, label: m.label || url.hostname, url: url.toString() })
+  }
+  return out
+}
+
+/** The method a sign-in names, or the only one there is; null when none is on.
+ *  With two or more enabled, the caller must say which (design D3). */
+export async function delegatedLoginConfig(key?: string): Promise<DelegatedLoginConfig | null> {
+  const methods = await delegatedMethods()
+  if (key) return methods.find((m) => m.key === key) ?? null
+  if (methods.length > 1)
+    throw new AppError('ValidationError', 'Say which service to sign in with', { method: methods.map((m) => m.key).join(', ') })
+  return methods[0] ?? null
 }
 
 // Test mode (#3783): DELEGATED_LOGIN_TEST_MODE=trust-any-password skips the
@@ -179,26 +195,6 @@ function logOutcome(cfg: DelegatedLoginConfig, outcome: ProviderOutcome, detail:
   console.warn(`[delegated-login] ${cfg.label}: ${outcome} (${detail})`)
 }
 
-const SAFE_IDENTIFIER = /^[a-z_][a-z0-9_]*$/
-
-/** Refuse a configured User column that is not a plain, existing column. It
- *  is interpolated into SQL as an identifier, so it is never trusted as is. */
-export async function assertUserColumn(cfg: DelegatedLoginConfig): Promise<void> {
-  // A text column only: lower(trim()) on anything else fails AFTER the provider verified.
-  const ok =
-    SAFE_IDENTIFIER.test(cfg.userColumn) &&
-    (
-      await sql`
-        select 1 from information_schema.columns
-        where table_schema = ${PLATFORM_SCHEMA} and table_name = 'user' and column_name = ${cfg.userColumn}
-          and data_type in ('character varying', 'text')`
-    ).length === 1
-  if (!ok) {
-    logOutcome(cfg, 'unavailable', 'user column is not a column of User')
-    throw new AppError('ServiceUnavailableError', `Sign-in with ${cfg.label} is not set up correctly. Contact your administrator.`)
-  }
-}
-
 export function unavailable(cfg: DelegatedLoginConfig): AppError {
   return new AppError(
     'ServiceUnavailableError',
@@ -206,23 +202,25 @@ export function unavailable(cfg: DelegatedLoginConfig): AppError {
   )
 }
 
-/** The one human account linked to `id` — resolved BEFORE the provider is
- *  asked. No link, a disabled account or a privileged one all get password
- *  login's refusal, and the password is never forwarded for them: answering
- *  "not linked" after a provider check would turn this route into a password
- *  checker for every unlinked ID. Ambiguity refuses rather than picking.
- *  Call `assertUserColumn` first. */
-export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<string> {
-  // Test mode: a tester knows the employee code (the account's ID), not the
-  // person's login name at the service — but the account must still be linked.
+/** The one human account linked to `id` at this service — resolved BEFORE
+ *  the provider is asked. No link, a disabled account or a privileged one all
+ *  get password login's refusal, and the password is never forwarded for
+ *  them: answering "not linked" after a provider check would turn this route
+ *  into a password checker for every unlinked ID. Matching ignores case and
+ *  surrounding spaces; the unique index makes a second match impossible, but
+ *  ambiguity still refuses rather than picking. */
+export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<{ user: string; identity: string }> {
+  // Test mode: a tester knows the employee code (the identity's subject), not
+  // the person's login name at the service.
   const match = delegatedTestMode()
-    ? sql`lower(u.row_id) = lower(trim(${id})) and coalesce(trim(${sql(cfg.userColumn)}), '') <> ''`
-    : sql`lower(trim(${sql(cfg.userColumn)})) = lower(trim(${id}))`
+    ? sql`lower(i.subject) = lower(trim(${id}))`
+    : sql`lower(i.sign_in_name) = lower(trim(${id}))`
   const rows = await sql`
-    select u.row_id, u.enabled,
-           exists (select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')) as privileged
-    from "user" u
-    where ${match}
+    select u.row_id, u.enabled, i.id as identity,
+           (u.row_id = 'Administrator' or exists (
+             select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
+    from user_identity i join "user" u on u.row_id = i.user_id
+    where i.method = ${cfg.key} and i.subject is not null and ${match}
       and coalesce(u.user_type, '') <> 'service'
     limit 2`
   if (rows.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
@@ -230,9 +228,9 @@ export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise
     throw new AppError('ConflictError', `More than one account is linked to this ${cfg.label} ID. Contact your administrator.`)
   // Whoever administers the outside service can reset passwords there; that must
   // never reach the Administrator or a System Manager here. They use their own password.
-  if (!rows[0].enabled || rows[0].privileged || rows[0].row_id === 'Administrator')
+  if (!rows[0].enabled || rows[0].privileged)
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  return String(rows[0].row_id)
+  return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
 }
 
 export function left(cfg: DelegatedLoginConfig): AppError {

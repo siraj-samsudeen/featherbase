@@ -6,6 +6,7 @@ import { saveDoc } from '../src/document'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
+import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
 // provider (no google_client_id in System Settings, ALLOW_MOCK_OAUTH=1 from
@@ -16,19 +17,9 @@ import { expectSessionCookie, setSessionHours } from './session-cookie-test-util
 // The domain allowlist is instance config in System Settings, so tests set it
 // inside their sandbox transaction — no env vars, no cleanup.
 
-async function setAllowedDomains(value: string) {
-  await sql`
-    insert into single_value (table_name, field, value)
-    values ('System Settings', 'allowed_login_domains', ${value})
-    on conflict (table_name, field) do update set value = excluded.value`
-}
-
-async function setClientId(value: string) {
-  await sql`
-    insert into single_value (table_name, field, value)
-    values ('System Settings', 'google_client_id', ${value})
-    on conflict (table_name, field) do update set value = excluded.value`
-}
+// person-identities: Google is the Sign In Method row `google`.
+const setAllowedDomains = (value: string) => configureGoogle({ allowed_email_domains: value })
+const setClientId = (value: string) => configureGoogle({ client_id: value })
 
 // One browser starting a sign-in: the login route mints the state and sets the
 // cookies that bind it to this browser. Every later hop must present them back.
@@ -43,16 +34,16 @@ async function beginLogin(api: TestClient): Promise<{ state: string; cookie: str
   return { state, cookie }
 }
 
-function approveUrl(state: string, email: string, name: string): string {
+function approveUrl(state: string, email: string, name: string, extra: { subject?: string; hd?: string } = {}): string {
   return (
     '/api/oauth/mock/approve?' +
-    new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name }).toString()
+    new URLSearchParams({ state, redirect_uri: '/api/oauth/google/callback', email, name, ...extra }).toString()
   )
 }
 
-async function mockSignIn(api: TestClient, email: string, name = 'Test User') {
+async function mockSignIn(api: TestClient, email: string, name = 'Test User', extra: { subject?: string; hd?: string } = {}) {
   const { state, cookie } = await beginLogin(api)
-  const approve = await api.fetch(approveUrl(state, email, name), { headers: { cookie } })
+  const approve = await api.fetch(approveUrl(state, email, name, extra), { headers: { cookie } })
   if (approve.status !== 302) return approve
   return api.fetch(approve.headers.get('location') as string, { headers: { cookie } })
 }
@@ -123,9 +114,11 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(whoami.status).toBe(200)
     expect(((await whoami.json()) as { row_id: string }).row_id).toBe('new.person@gmail.com')
 
+    // person-identities: the new person is linked by Google's account ID.
     const [user] = await sql`
-      select social_login, enabled from "user" where email = 'new.person@gmail.com'`
-    expect(user).toMatchObject({ social_login: 'google', enabled: true })
+      select u.enabled, i.subject, i.method from "user" u join user_identity i on i.user_id = u.row_id
+      where u.email = 'new.person@gmail.com'`
+    expect(user).toMatchObject({ enabled: true, method: 'google', subject: 'new.person@gmail.com' })
   })
 
   // #150: the code is a one-shot. The copy left behind in browser history, in
@@ -172,8 +165,9 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const admitted = await mockSignIn(api, 'explicit-anywhere@outside.io')
     expect(admitted.status).toBe(302)
     const [user] = await sql`
-      select social_login, enabled from "user" where email = 'explicit-anywhere@outside.io'`
-    expect(user).toMatchObject({ social_login: 'google', enabled: true })
+      select u.enabled, i.method from "user" u join user_identity i on i.user_id = u.row_id
+      where u.email = 'explicit-anywhere@outside.io'`
+    expect(user).toMatchObject({ method: 'google', enabled: true })
   })
 
   test('* still rejects malformed provider identities', async ({ api }) => {
@@ -201,13 +195,17 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
-  test('an existing user signs in when auto-provisioning is disabled', async ({ api }) => {
+  // person-identities: an existing account is reached through a linked
+  // Google account or an invite, never because its email matches.
+  test('an invited existing user signs in when auto-provisioning is disabled', async ({ api, admin }) => {
     await saveDoc(
       'User',
       { row_id: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
       'Administrator',
     )
     await setAllowedDomains('')
+    expect((await mockSignIn(api, 'contractor@outside.io')).status).toBe(401)
+    await admin.post('/api/users/contractor%40outside.io/identities', { method: 'google', email: 'contractor@outside.io' })
     const res = await mockSignIn(api, 'contractor@outside.io')
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('/oauth-callback?code=')
@@ -397,12 +395,16 @@ describe('#3783: Google sign-in lands a report viewer on their report', () => {
   test('a provisioned Sales Target Viewer redeems a session that names the report as landing; others get none', async ({ api }) => {
     await setAllowedDomains('')
     await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
-    // Provisioned ahead of time (the data-warehouse viewer sync): matched by email, not created.
+    // Provisioned ahead of time (the data-warehouse viewer sync), not created.
     await saveDoc('User', {
       row_id: 'RR-90001', email: 'dm.test@jeyarama.com', full_name: 'DM Test', enabled: true,
       roles: [{ role: 'Sales Target Viewer' }],
     }, 'Administrator')
     await saveDoc('User', { row_id: 'plain.user@jeyarama.com', email: 'plain.user@jeyarama.com', full_name: 'Plain', enabled: true, roles: [] }, 'Administrator')
+    // person-identities: the viewer sync invites each Google address; the
+    // first sign-in claims the invite. A matching email alone opens nothing.
+    await inviteGoogleRaw('RR-90001', 'dm.test@jeyarama.com')
+    await inviteGoogleRaw('plain.user@jeyarama.com', 'plain.user@jeyarama.com')
 
     const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
     expect(viewer.status).toBe(302)

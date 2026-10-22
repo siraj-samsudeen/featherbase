@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { config } from './config'
 import { sql } from './db'
 import { AppError } from './errors'
-import { setUserPassword } from './auth'
+import { findPasswordAccount, setUserPassword } from './auth'
 import { deliverToSink } from './email'
 
 // SET-002: password reset via an emailed link. A request mints a single-use,
@@ -10,19 +10,21 @@ import { deliverToSink } from './email'
 // reset endpoint consumes the token and sets the new password.
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
+/** The one minimum password length: reset and sign-up share it. */
+export const MIN_PASSWORD_LENGTH = 6
 // One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
 // never be told two different things about where this instance lives.
 const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
-// Never reveal whether an account exists; only a real, enabled user gets a
-// mail. Returns the token in dev/test so callers can assert without scraping.
+// Never reveal whether an account exists; only a real, enabled user with both
+// an email and a password gets a mail (person-identities): resetting never
+// gives a password to an account that signs in only through another method.
+// Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
-  const [user] = await sql`
-    select row_id, email, enabled, user_type from "user"
-    where (row_id = ${usr} or email = ${usr})`
+  const user = await findPasswordAccount(usr)
   // #137: a service account has no password to reset. Fall through the same
   // silent `null` as an unknown user so this cannot be used to enumerate them.
-  if (!user || !user.enabled || user.user_type === 'service') return null
+  if (!user || !user.enabled || user.user_type === 'service' || !user.email || !user.password_hash) return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
@@ -34,7 +36,7 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
 
   const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
   await deliverToSink({
-    to: (user.email as string) ?? (user.row_id as string),
+    to: user.email as string,
     subject: 'Reset your password',
     body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
   })
@@ -43,8 +45,8 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
   if (!token || !newPassword) throw new AppError('ValidationError', 'Expected { key, new_password }')
-  if (newPassword.length < 6)
-    throw new AppError('ValidationError', 'Password must be at least 6 characters')
+  if (newPassword.length < MIN_PASSWORD_LENGTH)
+    throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
 
   // #137, burn-on-use: the link is consumed the moment it is used, in its own
   // committed transaction, BEFORE the password write is attempted. A write

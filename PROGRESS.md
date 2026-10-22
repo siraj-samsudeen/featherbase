@@ -1,5 +1,42 @@
 # Progress Log
 
+## 2026-10-22 — A User is a person: email optional, sign-ins linked by permanent ID (#275)
+
+OpenSpec change `person-identities`. Store staff no longer need an invented
+`@staff.jeyarama.invalid` address: email is optional, unique ignoring case
+where present, and `.invalid` addresses are not kept. Outside sign-ins live in
+a new `user_identity` table keyed by the provider's permanent subject — Google's
+`sub` (the code used to drop it), the StyleHR employee code — and the password
+is still `user.password_hash`, which is the password method. Sign-in methods
+moved from System Settings to the system Table **Sign In Method**, each with a
+rule for unknown people (`create`, `create_if_email_domain_allowed`, `refuse`);
+a controller checks the rule against what the kind can vouch for and refuses a
+change that would lock out an administrator. Username sign-up exists behind the
+password row's rule (closed by default; no email). Administrators link, invite,
+rename, move and unlink; a person links Google themselves within 15 minutes of
+signing in. Sessions carry `iat`, `m` (method), `idn` (identity) and `tm` (test
+mode): turning a method off, unlinking or moving an identity, or removing a
+password ends the sessions opened through it, and a test-mode session can set
+no password, mint no token and change no sign-in method. A StyleHR "left"
+answer now disables the person. Migration 0100 carries everything over and
+gives a one-time Google invite only to people who had signed in with Google.
+
+**Verified:** server and web typecheck; `pnpm check:specs`, `check:capabilities`,
+`check:e2e-dsl`, `lint:sql`. Server and web suites on an isolated database
+(`featherbase_issue275_test`): the only failures locally are the PDF/thumbnail
+tests (no Chromium on this machine) and two `sales-target-page` tests that fail
+identically on untouched `origin/main` here. Migration rehearsal on a database
+built with `origin/main` and seeded to the trial instance's shape (277 users):
+`cli identities:plan` printed the report and changed nothing; `migrate` then
+cleared 267 placeholder emails, linked 264 StyleHR identities (two staff
+sharing a login ID linked with no sign-in name), created 5 Google invites and
+listed 3 store mailboxes for an explicit invite; StyleHR, test-mode, password
+and Google sign-ins were then exercised against it.
+
+**Next:** the data-warehouse roster sync must write identities (list in the
+change's design.md) and run right after the dev deploy; CI e2e for the Google
+flow; the follow-ups in tasks.md 6.3.
+
 ## 2026-10-02 — The sales-target page shows one report; the smoke test survives StyleHR sign-in
 
 Screenshots of the report on live data showed the cached table and the live Dive disagreeing. For

@@ -192,7 +192,11 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     // real debugging time on `translation_lang_src` (issue #42).
     const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
     const prefix = `${tableName(meta.name)}_`
-    const fields = detailCols
+    // An expression index names an expression, not a column, in its detail
+    // (`lower(email::text)`): map the case-insensitive email rule by name.
+    const fields = e.constraint_name === 'user_email_lower_uq'
+      ? ['email']
+      : detailCols
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
       : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
         ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]

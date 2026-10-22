@@ -305,46 +305,72 @@ These steps are instructions, not authorization to deploy or mutate Dev:
    in the separately delivered Tasker UI, and verify an old tab rejects writes.
    Do not run the local development scenario seeder against Railway.
 
-## Delegated password sign-in (StyleHR)
+## Sign-in methods and linked identities (#275)
+
+A User is a person. Email is optional contact data, unique ignoring case
+where present; an address ending in `.invalid` is not kept. The ways in are
+rows of the system Table **Sign In Method** (Admin → Sign In Method, System
+Managers only); one row is one provider issuer:
+
+| Row | Kind | Rule for people it does not know (`new_person`) |
+| --- | --- | --- |
+| `password` | password | `refuse` (default) — `create` opens username sign-up |
+| `google` | google | `create_if_email_domain_allowed` (default, with `allowed_email_domains`; a company domain must match Google's Workspace claim), `create` or `refuse` |
+| e.g. `stylehr` | delegated_password | `refuse` only — the service cannot vouch for a permanent ID |
+
+Google uses the row's `client_id` (the secret stays `GOOGLE_CLIENT_SECRET`).
+Turning a row off ends the sessions opened through it; Featherbase refuses a
+change that would leave an enabled Administrator or System Manager with no way
+in. **Keep sign-up closed** until what the `All` role can read has been
+audited.
+
+Outside accounts are linked to a person by the provider's permanent ID —
+Google's account ID, the StyleHR employee code — never by email:
+
+- `GET|POST /api/users/<user>/identities` (System Manager): link StyleHR
+  `{"method":"stylehr","subject":"RR-7963","sign_in_name":"name_9999999999"}`;
+  invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
+  — the first Google sign-in with that verified address links it for good,
+  and an invite is cancelled when the person's email changes.
+- `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
+  ID (sessions survive) or `{"user_id": …}` moves a link to another person in
+  one step (a store mailbox at a Store Manager handover).
+- `DELETE /api/identities/<id>` unlinks.
+- People see and manage their own under Admin → Sign-in methods, and can link
+  Google there within 15 minutes of signing in. A test-mode sign-in can change
+  nothing about how the account signs in, set no password and mint no token.
+
+`GET /api/brand` lists the enabled methods and returns `identity_links: true`,
+which the roster sync checks before writing links.
+
+### Delegated password sign-in (StyleHR)
 
 People with no Google account and no Featherbase password can sign in with
 the ID and password of another system the organisation trusts. Featherbase
-POSTs `{"email": <ID>, "password": <password>}` as JSON to the configured URL
-(10 s timeout, redirects not followed) — but only for an ID that is linked to
-exactly one enabled, non-privileged User (case and surrounding spaces
+POSTs `{"email": <ID>, "password": <password>}` as JSON to the row's
+`service_url` (10 s timeout, redirects not followed) — but only for a login ID
+linked to exactly one enabled, non-privileged User (case and surrounding spaces
 ignored); any other ID is refused as a wrong password without contacting the
 service. Only a JSON answer with a clear yes (a token, an employee id, or
 `success: true`) signs in. A JSON no, or a 4xx, is a wrong password. An answer
-showing the person has left is refused. Anything else — empty, a web page,
-3xx, 408/429, 5xx, a timeout — reports the service as unavailable, never as a
-wrong password. The password is not stored or logged, and the provider's
-answer never picks the account. The Administrator and System Managers can
-never sign in this way.
+showing the person has left **disables the account**, which ends all their
+sessions and every other way in. Anything else — empty, a web page, 3xx,
+408/429, 5xx, a timeout — reports the service as unavailable, never as a
+wrong password, and never falls back to another method. The password is not
+stored or logged. The Administrator and System Managers can never sign in this
+way. With two delegated rows enabled, the sign-in names its `method`.
 
-To turn it on for StyleHR, as a System Manager:
+To turn it on for StyleHR, as a System Manager, add a Sign In Method row:
+`row_id` `stylehr`, kind `delegated_password`, label `StyleHR`, service URL
+`https://stylehr.in/api/login/` (keep the trailing slash; StyleHR redirects
+without it, and a redirected POST loses its body). Then link each person as
+above. The `stylehr_username` Custom Field, if present, is roster data only; the
+upgrade relabels it and sign-in no longer reads it.
 
-1. **Add the ID column to User.** In the Admin, add a row to the *Custom
-   Field* table: Table `User`, column name `stylehr_username`, type Data,
-   label "StyleHR Username". Equivalent API call:
-   `POST /api/save_row {"table":"Custom Field","row":{"row_id":"User-stylehr_username","dt":"User","column_name":"stylehr_username","label":"StyleHR Username","column_type":"Data"}}`.
-2. **Link each person.** On each Team Leader's User, set *StyleHR Username*
-   to their StyleHR login ID — the system-generated `name_9999999999` form,
-   not the employee code. The User must be enabled and must not be a service
-   account. Two Users with the same ID are refused, never resolved.
-3. **Connect the service** in *System Settings*:
-
-   | Setting | Value |
-   | --- | --- |
-   | Delegated Login Label (`delegated_login_label`) | `StyleHR` |
-   | Delegated Login URL (`delegated_login_url`) | `https://stylehr.in/api/login/` — keep the trailing slash; StyleHR redirects without it, and a redirected POST loses its body |
-   | Delegated Login User Column (`delegated_login_user_column`) | `stylehr_username` |
-
-The login page then shows **Sign in with StyleHR**. Blank the URL to turn it
-off: the button disappears and `POST /api/login/delegated` answers 404. The
-URL must be `https://` (plain `http://` is accepted only for `localhost` /
-`127.0.0.1` stubs); anything else, or a blank column, also leaves it off. A
-column that is not a real User column answers 503 "not set up correctly"
-without contacting the provider.
+**Deploying the upgrade to an instance with a roster sync:** freeze the old
+sync, snapshot the database, rehearse with `pnpm --filter server cli
+identities:plan` (it prints what migration 0100 will do and rolls back), deploy,
+then run the updated sync — people the old sync creates have no StyleHR link.
 
 ## Automation credentials (#131)
 

@@ -344,13 +344,15 @@ code already has (no `idn`), and access tokens are unchanged.
   constraint name** to the `email` field (an expression index's detail reads
   `lower(email::text)`), so callers still get "email must be unique" (417).
 - Blank (`''`/whitespace) is stored as NULL.
-- **Time-boxed shim:** an address on a reserved, never-deliverable domain
-  (`.invalid`, `.test`, `.example`, `.localhost`, `example.com/.net/.org` —
-  RFC 2606/6761) is stored as NULL, so the old roster sync cannot break during
-  the deploy window. Follow-up: once the sync is updated, refuse such addresses
-  with 417 instead.
-- Seeds stop inventing: Administrator, Guest, service accounts and the
-  sales-target test accounts get no email.
+- **Time-boxed shim:** an address on the `.invalid` top-level domain (RFC
+  2606's never-resolving name, used by every placeholder in this codebase and
+  the roster sync) is stored as NULL, so the old roster sync cannot break
+  during the deploy window. Other reserved names (`example.com`, `.test`) are
+  left alone because tests and dev seeds use them as stand-ins for real
+  addresses. Follow-up: once the sync is updated, refuse `.invalid` with 417.
+- Code stops inventing: service accounts and the sales-target test accounts
+  get no email. The 0005 seed addresses of Administrator and Guest
+  (`@example.com`) are left as they are (a shipped migration is never edited).
 
 ### D10. Direct sign-up
 

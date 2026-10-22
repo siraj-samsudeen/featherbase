@@ -5,19 +5,20 @@ import { cors } from 'hono/cors'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, INVALID_CREDENTIALS, type SessionUser } from './auth'
+import { assertFreshForLinking, assertNotTestMode, getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, INVALID_CREDENTIALS, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { announceDelegatedTestMode, assertUserColumn, checkWithProvider, delegatedLoginConfig, delegatedTestMode, left, linkedUser, unavailable } from './delegated-login'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, left, linkedUser, unavailable } from './delegated-login'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, resolveGoogleSignIn, linkGoogleToSelf, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { disableLeaver, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, touchIdentity, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -47,7 +48,7 @@ import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
-import { requestPasswordReset, resetPassword } from './password-reset'
+import { MIN_PASSWORD_LENGTH, requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
@@ -145,12 +146,25 @@ app.get('/api/ping', async (c) => {
 // stays behind the session like /api/settings.
 app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
-  // The login page offers delegated sign-in only when this names a service.
-  const delegated = await delegatedLoginConfig()
+  // person-identities: the login page renders the enabled sign-in methods.
+  const delegated = await delegatedMethods()
+  const google = await googleAvailable()
+  const password = await methodOfKind('password')
+  const testMode = delegatedTestMode()
+  const methods = [
+    ...(password?.enabled ? [{ key: password.key, kind: password.kind, label: password.label || 'Password', test_mode: false }] : []),
+    ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
+    ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
+  ]
   return c.json({
     app_name: s.app_name,
-    delegated_login_label: delegated?.label ?? null,
-    delegated_login_test_mode: Boolean(delegated) && delegatedTestMode(),
+    sign_in_methods: methods,
+    sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
+    // The roster sync checks this before writing linked identities (design D11).
+    identity_links: true,
+    // Kept one release for an already-loaded web bundle (design D2).
+    delegated_login_label: delegated[0]?.label ?? null,
+    delegated_login_test_mode: delegated.length > 0 && testMode,
   })
 })
 
@@ -194,27 +208,61 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
 // ID and password; the session is then issued exactly like /api/login's.
 // Off answers like any unknown route, so the route does not advertise itself.
 app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
-  const cfg = await delegatedLoginConfig()
+  const { usr, pwd, method } = (await c.req.json().catch(() => ({}))) as { usr?: string; pwd?: string; method?: string }
+  const cfg = await delegatedLoginConfig(typeof method === 'string' && method ? method : undefined)
   if (!cfg) return c.notFound()
-  const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || (!pwd && !delegatedTestMode()))
     throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr, 'delegated')
   if (attempt.refusal) return attempt.refusal
   // Before the provider call: never forward a password that cannot be bound.
-  await assertUserColumn(cfg)
   const id = usr.trim()
   const account = await linkedUser(cfg, id)
   const outcome = await checkWithProvider(cfg, id, pwd)
+  // An outage never falls back to any other way in (person-identities D7).
   if (outcome === 'unavailable') throw unavailable(cfg)
   if (outcome === 'rejected') throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  if (outcome === 'left') throw left(cfg)
-  const issued = await issueSession(account)
+  if (outcome === 'left') {
+    // Refused everywhere: disabling the person ends every session they hold.
+    await disableLeaver(account.user, cfg.key)
+    throw left(cfg)
+  }
+  await touchIdentity(account.identity)
+  const issued = await issueSession(account.user, { method: cfg.key, identity: account.identity, testMode: delegatedTestMode() })
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   const landing = await landingFor(session.user.row_id)
   return c.json(landing ? { ...session, landing } : session)
+})
+
+// person-identities D10: direct sign-up with a username and password, open
+// only when the password method's rule for unknown people is `create`. No
+// email in v1, so nobody can squat an address. Public, behind its own bucket.
+const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/
+app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
+  const method = await methodOfKind('password')
+  if (!method?.enabled || method.new_person !== 'create') return c.notFound()
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  if ('email' in body) throw new AppError('ValidationError', 'Sign-up takes only a username and a password', { email: 'not accepted' })
+  const username = typeof body.username === 'string' ? body.username.trim() : ''
+  const password = typeof body.password === 'string' ? body.password : ''
+  const fullName = typeof body.full_name === 'string' && body.full_name.trim() ? body.full_name.trim() : username
+  if (!USERNAME_RE.test(username) || ['administrator', 'guest'].includes(username))
+    throw new AppError('ValidationError', 'Choose a username of 3–64 lowercase letters, digits, dots, dashes or underscores', { username: 'invalid' })
+  if (password.length < MIN_PASSWORD_LENGTH)
+    throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, { password: 'too short' })
+  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username}`
+  if (taken) throw new AppError('ConflictError', 'That username is taken')
+  await withTransaction(async () => {
+    await saveDoc('User', { row_id: username, full_name: fullName, enabled: true, roles: [] }, 'Administrator')
+    await setUserPassword(username, password)
+  })
+  const issued = await issueSession(username, { method: method.key })
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  const landing = await landingFor(session.user.row_id)
+  return c.json(landing ? { ...session, landing } : session, 201)
 })
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
@@ -406,6 +454,7 @@ function clearLoginChallengeCookies(c: Context) {
 }
 
 app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
+  if (!(await googleAvailable())) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
@@ -421,7 +470,7 @@ app.get('/api/oauth/mock/consent', async (c) => {
   const redirectUri = c.req.query('redirect_uri') ?? ''
   const email = c.req.query('email') ?? 'demo.user@gmail.com'
   const name = c.req.query('name') ?? 'Demo User'
-  return c.html(mockConsentHtml(state, redirectUri, email, name))
+  return c.html(mockConsentHtml(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
 })
 
 app.get('/api/oauth/mock/approve', async (c) => {
@@ -431,22 +480,40 @@ app.get('/api/oauth/mock/approve', async (c) => {
   verifyState(state, getCookie(c, OAUTH_STATE_COOKIE))
   const email = c.req.query('email') ?? ''
   const name = c.req.query('name') ?? ''
-  return c.redirect(mockApproveRedirect(state, redirectUri, email, name))
+  return c.redirect(mockApproveRedirect(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
 })
 
 app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
-  const clientId = await oauthClientId()
+  const google = await googleAvailable()
+  if (!google) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  const clientId = google.client_id
   assertSignInAvailable(clientId)
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
-  verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
+  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
-  const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const userName = await findOrCreateGoogleUser(email, name)
-  const issued = await issueSession(userName)
+  const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
+  if (state.purpose === 'link') {
+    // person-identities D6: the signed-in person who started this flow links
+    // the Google account they just proved. Outcome travels back as a code.
+    const back = (result: string) => c.redirect(`/featherbase/admin/sign-in-methods?link=${encodeURIComponent(result)}`)
+    try {
+      const me = await resolveToken(authCredential(c))
+      if (me.row_id !== state.uid) return back('wrong_session')
+      assertFreshForLinking(me)
+      if (!google.self_link) return back('not_allowed')
+      await linkGoogleToSelf(google, me.row_id, verified)
+      return back('linked')
+    } catch (err) {
+      const e = err as { type?: string; name?: string }
+      return back(e instanceof AppError ? (e.type === 'ConflictError' ? 'taken' : e.type === 'PermissionError' ? 'not_allowed' : 'sign_in_again') : 'failed')
+    }
+  }
+  const account = await resolveGoogleSignIn(google, verified)
+  const issued = await issueSession(account.user, { method: google.key, identity: account.identity })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -763,6 +830,8 @@ app.get('/api/settings', async (c) => {
 // Set a user's password. A user may set their own; a System Manager may set
 // anyone's. Passwords never travel through the generic document API.
 app.post('/api/set_password', async (c) => {
+  // A test-mode session must not leave a lasting way in behind (review B1).
+  assertNotTestMode(c.get('user'))
   const { user, password } = (await c.req.json()) as { user?: string; password?: string }
   const target = user ?? who(c)
   if (!password) throw new AppError('ValidationError', 'Expected { password }')
@@ -775,10 +844,89 @@ app.post('/api/set_password', async (c) => {
   return c.json({ ok: true })
 })
 
+// person-identities D6: linked sign-ins. System Managers manage anyone's;
+// a person sees and removes their own and links Google by proving it.
+app.get('/api/users/:id/identities', async (c) => {
+  await assertSystemManager(who(c))
+  const user = c.req.param('id')
+  const [row] = await sql`select (password_hash is not null) as has_password from "user" where row_id = ${user}`
+  if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
+  return c.json({ identities: await listIdentities(user), has_password: row.has_password === true })
+})
+
+app.post('/api/users/:id/identities', async (c) => {
+  await assertSystemManager(who(c))
+  assertNotTestMode(c.get('user'))
+  const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
+  if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
+  const google = await methodOfKind('google')
+  const identity =
+    google && body.method === google.key && !body.subject && body.email
+      ? await inviteGoogle(c.req.param('id'), body.email, who(c))
+      : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
+  return c.json(identity, 201)
+})
+
+app.patch('/api/identities/:identityId', async (c) => {
+  await assertSystemManager(who(c))
+  assertNotTestMode(c.get('user'))
+  const body = (await c.req.json().catch(() => ({}))) as { sign_in_name?: string | null; user_id?: string }
+  return c.json(await updateIdentity(c.req.param('identityId'), { sign_in_name: body.sign_in_name, user_id: body.user_id }, who(c)))
+})
+
+app.delete('/api/identities/:identityId', async (c) => {
+  await assertSystemManager(who(c))
+  assertNotTestMode(c.get('user'))
+  await getIdentity(c.req.param('identityId'))
+  await unlinkIdentity(c.req.param('identityId'), who(c))
+  return c.json({ ok: true })
+})
+
+app.get('/api/me/sign_in_methods', async (c) => {
+  const me = c.get('user')
+  const [row] = await sql`select (password_hash is not null) as has_password from "user" where row_id = ${me.row_id}`
+  const methods = (await listSignInMethods()).filter((m) => m.enabled)
+  return c.json({
+    identities: (await listIdentities(me.row_id)).map(({ id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, last_used_at }) => ({
+      id, method, linked: subject != null, sign_in_name, email: email ?? pending_email, display_name, linked_at, last_used_at,
+    })),
+    has_password: row?.has_password === true,
+    methods: methods.map((m) => ({ key: m.key, kind: m.kind, label: m.label, self_link: m.self_link })),
+    test_mode: me.sign_in?.test_mode === true,
+  })
+})
+
+app.delete('/api/me/identities/:identityId', async (c) => {
+  assertNotTestMode(c.get('user'))
+  await unlinkIdentity(c.req.param('identityId'), who(c), { self: who(c) })
+  return c.json({ ok: true })
+})
+
+app.delete('/api/me/password', async (c) => {
+  assertNotTestMode(c.get('user'))
+  await removeOwnPassword(who(c))
+  return c.json({ ok: true })
+})
+
+// Start linking Google to the signed-in person: the same state + PKCE flow as
+// sign-in, with the purpose and the person signed into the state.
+app.get('/api/oauth/google/link', async (c) => {
+  const me = c.get('user')
+  assertFreshForLinking(me)
+  const google = await googleAvailable()
+  if (!google || !google.self_link) throw new AppError('PermissionError', 'Linking Google is not available')
+  const clientId = google.client_id
+  const { state, verifier } = newLoginChallenge({ purpose: 'link', uid: me.row_id })
+  setLoginChallengeCookies(c, state, verifier)
+  const hint = { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }
+  return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))
+})
+
 // #131: access tokens (replaces the API-005 key pair). Users manage their
 // own; System Managers can target any principal — and only they see or act
 // on tokens beyond their own.
 app.post('/api/access_tokens', async (c) => {
+  assertNotTestMode(c.get('user'))
   const body = (await c.req.json().catch(() => ({}))) as {
     label?: string
     owner?: string
