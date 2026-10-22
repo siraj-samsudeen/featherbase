@@ -117,6 +117,22 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     expect(ROLES.filter((r) => !t[r])).toEqual([])
   })
 
+  test('the series colours are distinct from each other', () => {
+    const series = [1, 2, 3, 4, 5].map((n) => t[`series-${n}`])
+    const rgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16))
+    for (let a = 0; a < series.length; a++)
+      for (let b = a + 1; b < series.length; b++) {
+        const [x, y] = [rgb(series[a]), rgb(series[b])]
+        const distance = Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2])
+        expect(distance, `series-${a + 1} vs series-${b + 1}`).toBeGreaterThan(90)
+      }
+  })
+
+  test('the scrim behind a dialog is darker than the page, so it visibly dims it', () => {
+    expect(luminance(t.scrim)).toBeLessThan(luminance(t.canvas))
+    expect(ratio(t.canvas, t.scrim)).toBeGreaterThanOrEqual(1.1)
+  })
+
   const textPairs: [string, string][] = [
     ...TEXT.flatMap((fg) => SURFACES.map((bg) => [fg, bg] as [string, string])),
     ...MEANING.map((m) => [m, `${m}-tint`] as [string, string]),
@@ -168,6 +184,31 @@ const smallText: Rule = (text) => {
   return sizes.filter((m) => px(Number(m[1]), m[2]) < 12).length
 }
 
+/** The opening tags of every <button …>, read with JSX braces balanced (so `=>` does not end a tag). */
+function buttonTags(text: string): string[] {
+  const tags: string[] = []
+  for (const m of text.matchAll(/<button\b/g)) {
+    let depth = 0
+    let i = m.index!
+    for (; i < text.length; i++) {
+      const ch = text[i]
+      if (ch === '{') depth++
+      else if (ch === '}') depth--
+      else if (ch === '>' && depth === 0) break
+    }
+    tags.push(text.slice(m.index!, i + 1))
+  }
+  return tags
+}
+
+/** A button whose class flips to the selected look in a ternary, with no ARIA state to say so. */
+const stateByColourAlone: Rule = (text) =>
+  buttonTags(text).filter(
+    (tag) =>
+      /\?\s*(?:['"`][^'"`]*|\w+\([^)]*['"`][^'"`]*)\b(?:bg-action|border-action)\b/.test(tag) &&
+      !/aria-(?:pressed|selected|expanded|current)/.test(tag),
+  ).length
+
 const RULES: Record<string, Rule> = {
   'raw palette class': count(new RegExp(String.raw`\b${UTILITY}-(?:${HUE}|white|black)(?:-\d{2,3})?(?:\/\d+)?\b`, 'g')),
   // A colour in a string or an arbitrary Tailwind value (issue refs like (#380) are not), a colour
@@ -175,6 +216,9 @@ const RULES: Record<string, Rule> = {
   'literal colour': (text, css) =>
     // In a stylesheet a hex follows a property's colon; in code, a colon before #123 is usually an issue ref.
     (text.match(css ? /(?:[\['"`,]|:\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g : /[\['"`,]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
+    // After a comma or a space (`, #fff`, `1px solid #ccc`) prose also has issue refs (`#12, #13`), so
+    // there a colour must contain a letter a-f or be 6/8 digits long.
+    (text.match(/(?<=,\s*|[^:\s]\s+)#(?:(?=[0-9]{0,7}[a-fA-F])(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})|[0-9]{8}|[0-9]{6})\b/g) ?? []).length +
     (text.match(/(?<![A-Za-z0-9-])(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb)\(/g) ?? []).length +
     (text.match(new RegExp(String.raw`\b(?:color|background|backgroundColor|borderColor|fill|stroke)\s*[:=]\s*\{?\s*['"](?:${NAMED})['"]`, 'g')) ?? []).length,
   'text under 12px': smallText,
@@ -183,7 +227,17 @@ const RULES: Record<string, Rule> = {
     (text.match(new RegExp(String.raw`--color-${RETIRED}\b`, 'g')) ?? []).length +
     (text.match(new RegExp(String.raw`(?<![\w-])${UTILITY}-${RETIRED}(?![\w-])`, 'g')) ?? []).length,
   // A row count printed as a bare number ({total} rows) instead of through fmtCount.
-  'raw row count': count(/\$?\{(?![^{}]*fmt)[^{}]+\}\s*(?:rows|row(?=\{)|total|records?)\b(?!\s*[=:])/g),
+  // On one line: {expr} then the word, where the word is display text (not a prop
+  // `total=`, nor code like rows.push or total++), and the expression is not a
+  // name or label. Also {n} {n === 1 ? 'row' : 'rows'}.
+  'raw row count': count(
+    /\$?\{(?![^{}\n]*fmt)(?![^{}\n]*\b(?:name|label|title)\b)[^{}\n]+\}[ \t]*(?:(?:rows|row(?=\{)|total|records?)\b(?![ \t]*[=:.(+-])|\{[^{}\n]*'rows?')/g,
+  ),
+  // A text box given small text directly (not through inputClasses, which keeps
+  // 16px on touch): an iPhone zooms the page when it is tapped.
+  'small input text': count(/<(?:input|select|textarea)\b[^>]*?className="[^"]*(?<![\w:-])text-(?:xs|sm)\b[^"]*"/g),
+  // A toggle whose chosen state is shown only by its colour (usable-on-any-device).
+  'state by colour alone': stateByColourAlone,
   'retired class': count(/(?<![\w-])fc-(?:card|input|btn-primary|btn|label|pill)(?![\w-])/g),
 }
 // The one home of Indian number and date formatting may call Intl itself.
@@ -200,8 +254,8 @@ describe('each rule catches what it is for and nothing else', () => {
     ],
     [
       'literal colour',
-      ['bg-[#fff]', 'border-[var(--x,#d1d8dd)]', 'fill="#2490ef"', "color: '#abc'", '`#1c2126`', "'#ffffff80'", "'#fff8'", 'shadow-[0_1px_2px_rgba(0,0,0,.1)]', "color: 'hsl(0 0% 0%)'", 'oklch(0.6 0.2 250)', 'fill="white"', "color: 'red'", "backgroundColor: 'black'"],
-      ['(#380)', 'see #150 for why', 'PR #92 review', 'issues #12, #13', 'href="/x#anchor"', "fill: 'var(--color-action)'", 'the red band'],
+      ['bg-[#fff]', 'border-[var(--x,#d1d8dd)]', "background: 'linear-gradient(#fff, #f3f4f6)'", "border: '1px solid #ccc'", 'fill="#2490ef"', "color: '#abc'", '`#1c2126`', "'#ffffff80'", "'#fff8'", 'shadow-[0_1px_2px_rgba(0,0,0,.1)]', "color: 'hsl(0 0% 0%)'", 'oklch(0.6 0.2 250)', 'fill="white"', "color: 'red'", "backgroundColor: 'black'"],
+      ['(#380)', 'see #150 for why', 'PR #92 review', 'issues #12, #13', 'epic #4332', 'fixes, #123', 'href="/x#anchor"', "fill: 'var(--color-action)'", 'the red band'],
     ],
     [
       'text under 12px',
@@ -220,9 +274,30 @@ describe('each rule catches what it is for and nothing else', () => {
     ],
     ['retired class', ['fc-btn', 'fc-btn-primary', 'fc-card'], ['buttonClasses()', 'fc-btnx', 'my-fc-card']],
     [
+      'state by colour alone',
+      [
+        "<button onClick={() => set('a')} className={`px-3 ${v === 'a' ? 'bg-action text-action-ink' : 'bg-surface'}`}>",
+        "<button className={pillClasses(`border ${on ? 'border-action bg-action/10' : 'border-border'}`)}>",
+      ],
+      [
+        "<button aria-pressed={v === 'a'} onClick={() => set('a')} className={`${v === 'a' ? 'bg-action' : ''}`}>",
+        "<button aria-expanded={open} className={`${open ? 'border-action' : ''}`}>",
+        '<button className={buttonClasses({ variant: "primary" })}>',
+      ],
+    ],
+    [
+      'small input text',
+      ['<input className="w-full text-sm" />', '<select value={v} className="text-xs border" >', '<textarea className="text-sm">'],
+      ['<input className={inputClasses(\'text-sm\')} />', '<span className="text-xs">', '<input className="pointer-fine:text-sm" />'],
+    ],
+    [
       'raw row count',
-      ['{total} total', '{rows.data?.total ?? 0} rows', '`${n} rows imported`', '{count} records', "{total} row{total === 1 ? '' : 's'}"],
-      ['{fmtCount(total)} total', '`${fmtCount(n)} rows`', '{label} columns', '{row.name}', 'done={parts.done} total={parts.total}', 'cols={columns} rows={data}', '`${sheet} row`'],
+      ['{total} total', '{rows.data?.total ?? 0} rows', '`${n} rows imported`', '{count} records', "{total} row{total === 1 ? '' : 's'}", "{n} {n === 1 ? 'row' : 'rows'}"],
+      [
+        '{fmtCount(total)} total', '`${fmtCount(n)} rows`', '{label} columns', '{row.name}',
+        'done={parts.done} total={parts.total}', 'cols={columns} rows={data}', '`${sheet} row`',
+        '}\n      rows.push(x)', 'if (a) { b } total++', '{ x } records.forEach(f)', '{name} total', '{t.label} rows',
+      ],
     ],
   ]
   describe.each(probes)('%s', (rule, caught, ignored) => {

@@ -82,6 +82,18 @@ export function fmtShowing(shown: number, total: number): string {
   return shown === total ? fmtCount(total) : `${fmtCount(shown)} of ${fmtCount(total)}`
 }
 
+// The grouping each currency's readers expect. Rupees always group the Indian
+// way; any other currency keeps its own locale's grouping.
+const CURRENCY_LOCALE: Record<string, string> = { INR: 'en-IN', USD: 'en-US', GBP: 'en-GB', EUR: 'de-DE', JPY: 'ja-JP' }
+
+/** An amount at a fixed precision, grouped the way that currency's readers expect (no symbol). */
+export function fmtMoney(x: number, precision: number, currency: string): string {
+  return x.toLocaleString(CURRENCY_LOCALE[currency] ?? 'en-IN', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+  })
+}
+
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /** A calendar heading: "October 2026". */

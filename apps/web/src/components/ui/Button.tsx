@@ -68,13 +68,14 @@ export function iconButtonClasses(className?: string): string {
 }
 
 /**
- * For a small glyph that must stay inside a chip (a tag's ×): an invisible hit
- * area of the control size, centred on it, so a thumb can hit it without the
- * chip growing.
+ * For a small glyph that must stay inside a chip (a tag's ×): an invisible 32px
+ * hit area centred on it, so a thumb can hit it without the chip growing. Kept
+ * below the control size so it cannot reach a neighbouring chip; chips that
+ * carry one sit at least 8px apart (gap-2).
  */
 export function touchTargetClasses(className?: string): string {
   return recipe(
-    "relative before:absolute before:left-1/2 before:top-1/2 before:size-control before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']",
+    "relative before:absolute before:left-1/2 before:top-1/2 before:size-8 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']",
     className,
   )
 }

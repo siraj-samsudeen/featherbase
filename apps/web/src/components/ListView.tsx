@@ -30,15 +30,14 @@ function cell(value: unknown, columnType: string, settings: Settings): string {
   return formatValue(columnType, value, settings) || '—'
 }
 
-// Frappe's "indicator" idiom (adopted from the PR-2 Desk): status-like Select
-// values render as a colored dot + label. Known lifecycle words get their
-// conventional color; anything else picks a stable palette color by hash.
-const INDICATOR_GREEN = /\b(closed|resolved|done|complete|completed|active|approved|paid|sent|success|finished|enabled|on track)\b/
-const INDICATOR_ORANGE = /\b(in progress|pending|working|review|reviewing|on hold|partially|queued|medium)\b/
-const INDICATOR_RED = /\b(open|urgent|high|critical|overdue|error|failed|rejected|blocked|disabled|cancelled)\b/
-const INDICATOR_GRAY = /\b(draft|low|inactive|none|not set)\b/
-// Lifecycle words take the meaning colours; any other value gets a stable
-// series colour, which carries identity (same value, same dot) but no verdict.
+// Status dots: a value that is a VERDICT takes its meaning colour (done is
+// positive, overdue or failed is negative, "not set" is missing data). Every
+// other status (open, urgent, pending, in progress, draft …) is a state, not a
+// verdict, so it gets a stable identity colour from the series: the same
+// value always has the same dot, and no dot reads as good or bad.
+const VERDICT_POSITIVE = /\b(closed|resolved|done|complete|completed|approved|paid|success|succeeded|finished)\b/
+const VERDICT_NEGATIVE = /\b(overdue|error|failed|rejected|blocked)\b/
+const NO_VALUE = /\b(none|not set)\b/
 const INDICATOR_PALETTE = [1, 2, 3, 4, 5].map((n) => `var(--color-series-${n})`)
 
 /** The pager's "1–20 of 1,23,456", counts Indian-grouped. */
@@ -48,10 +47,9 @@ export function pageRange(start: number, pageSize: number, total: number): strin
 
 export function indicatorColor(value: string): string {
   const v = value.toLowerCase()
-  if (INDICATOR_GREEN.test(v)) return 'var(--color-positive)'
-  if (INDICATOR_ORANGE.test(v)) return 'var(--color-caution)'
-  if (INDICATOR_RED.test(v)) return 'var(--color-negative)'
-  if (INDICATOR_GRAY.test(v)) return 'var(--color-missing)'
+  if (VERDICT_POSITIVE.test(v)) return 'var(--color-positive)'
+  if (VERDICT_NEGATIVE.test(v)) return 'var(--color-negative)'
+  if (NO_VALUE.test(v)) return 'var(--color-missing)'
   let h = 0
   for (const ch of value) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
@@ -588,7 +586,7 @@ export function ListView({
           data-testid="bulk-bar"
         >
           <span className="font-medium text-ink" data-testid="bulk-count">
-            {selected.size} selected
+            {fmtCount(selected.size)} selected
           </span>
           <button
             onClick={bulkDelete}
@@ -922,7 +920,7 @@ function InlineChildGrid({
   return (
     <div className="overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface" data-testid={`inline-children-${field.column_name}`}>
       <div className="border-b border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-        {field.label ?? field.column_name} ({rows.length})
+        {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
         <thead>
@@ -1380,6 +1378,7 @@ function SavedViewsBar({
               >
                 <button
                   type="button"
+                  aria-pressed={active}
                   onClick={() => onApply(v.filters)}
                   data-testid="saved-view-chip"
                   title={v.mine ? undefined : `shared by its owner`}

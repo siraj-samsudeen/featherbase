@@ -325,7 +325,7 @@ export function RelationMap({
                 fontWeight={700}
                 fill="var(--color-action)"
               >
-                {g.count}
+                {fmtCount(g.count)}
               </text>
             </g>
           ))}

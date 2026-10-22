@@ -482,9 +482,11 @@ export function TableBuilder() {
           aria-label="Column editor view"
         >
           <button
+            type="button"
+            aria-pressed={view === 'grid'}
             data-testid="dt-view-grid"
             onClick={() => setBuilderView('grid')}
-            className={`px-3 py-1 font-medium transition ${
+            className={`min-h-control px-3 py-1 font-medium transition ${
               view === 'grid'
                 ? 'bg-action text-action-ink'
                 : 'bg-surface text-ink-muted hover:bg-subtle'
@@ -493,9 +495,11 @@ export function TableBuilder() {
             Grid
           </button>
           <button
+            type="button"
+            aria-pressed={view === 'cards'}
             data-testid="dt-view-cards"
             onClick={() => setBuilderView('cards')}
-            className={`px-3 py-1 font-medium transition ${
+            className={`min-h-control px-3 py-1 font-medium transition ${
               view === 'cards'
                 ? 'bg-action text-action-ink'
                 : 'bg-surface text-ink-muted hover:bg-subtle'

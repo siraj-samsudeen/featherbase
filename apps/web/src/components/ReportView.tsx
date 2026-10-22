@@ -223,7 +223,7 @@ export function ReportView({
     if (groupBy) {
       for (const [key, list] of groups.entries()) {
         out.push([
-          `${key} (${list.length})`,
+          `${key} (${fmtCount(list.length)})`,
           ...columns.map((c) => (numericCols.includes(c) ? sum(list, c) : '')),
         ])
         for (const row of list) out.push(member(row))
@@ -233,7 +233,7 @@ export function ReportView({
     }
     if (data.length && numericCols.length)
       out.push([
-        `Total (${data.length})`,
+        `Total (${fmtCount(data.length)})`,
         ...columns.map((c) => (numericCols.includes(c) ? sum(data, c) : '')),
       ])
     return out
@@ -466,7 +466,7 @@ export function ReportView({
                 className="border-t-2 border-border-control bg-subtle font-medium"
                 data-testid="report-grand-total"
               >
-                <td className="px-3 py-1.5">Total ({data.length})</td>
+                <td className="px-3 py-1.5">Total ({fmtCount(data.length)})</td>
                 {columns.map((c) => (
                   <td key={c} className="px-3 py-1.5" data-testid={`grand-sum-${c}`}>
                     {numericCols.includes(c) ? fmt(sum(data, c)) : ''}
@@ -586,7 +586,7 @@ function ReportGroup({
           <span className="mr-1 inline-block w-3 text-ink-subtle">
             {open ? '▾' : '▸'}
           </span>
-          {groupKey} <span data-testid="group-count">({list.length})</span>
+          {groupKey} <span data-testid="group-count">({fmtCount(list.length)})</span>
         </td>
         {columns.map((c) => (
           <td key={c} className="px-3 py-1.5 font-medium" data-testid={`group-sum-${c}`}>

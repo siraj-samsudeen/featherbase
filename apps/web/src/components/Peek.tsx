@@ -239,7 +239,7 @@ function PeekRecord({
               <span
                 className={pillClasses(`${c.count ? 'bg-action-tint text-action' : 'bg-subtle text-ink-subtle'}`)}
               >
-                {c.count}
+                {fmtCount(c.count)}
               </span>
             </button>
           ))}

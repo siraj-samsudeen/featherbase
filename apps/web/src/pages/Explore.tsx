@@ -418,7 +418,7 @@ function Pane({
       <div className="flex justify-between border-t border-border bg-subtle px-3 py-1.5 text-xs text-ink-muted">
         <span>
           {fmtCount(total)} row{total === 1 ? '' : 's'}
-          {rows.length < total ? ` · showing ${rows.length}` : ''}
+          {rows.length < total ? ` · showing ${fmtCount(rows.length)}` : ''}
         </span>
         {numericCol && agg.data?.sum != null && (
           <span data-testid={`${testid}-sum`}>

@@ -16,9 +16,9 @@ export interface SystemSettings {
 const DEFAULTS: SystemSettings = {
   app_name: 'Featherbase',
   time_zone: 'UTC',
-  date_format: 'yyyy-mm-dd',
+  date_format: 'dd-mon-yyyy',
   session_hours: 8,
-  currency: 'USD',
+  currency: 'INR',
   currency_precision: 2,
   float_precision: 2,
 }

@@ -97,6 +97,8 @@ export function RelatedTabs({ table, name }: { table: string; name: string }) {
         {connections.map((c) => (
           <button
             key={key(c)}
+            type="button"
+            aria-expanded={open === key(c)}
             onClick={() => setOpen(open === key(c) ? null : key(c))}
             data-testid={`related-tab-${c.table}`}
             className={`flex flex-col items-start rounded-[var(--radius-control)] border px-3.5 py-1.5 text-left ${

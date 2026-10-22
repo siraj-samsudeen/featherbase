@@ -28,6 +28,8 @@ export function Tags({ table, name }: { table: string; name: string }) {
   }
 
   async function remove(tag: string) {
+    // The × is a small glyph inside the chip; a slip must not silently delete a tag.
+    if (!window.confirm(`Remove the tag “${tag}”?`)) return
     try {
       await api.delete(
         `/api/tags/${encodeURIComponent(table)}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
@@ -43,7 +45,7 @@ export function Tags({ table, name }: { table: string; name: string }) {
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Tags
       </div>
-      <div className="mb-2 flex flex-wrap gap-1" data-testid="tag-list">
+      <div className="mb-2 flex flex-wrap gap-2" data-testid="tag-list">
         {tags.data?.tags.length === 0 && (
           <span className="text-xs text-ink-subtle">No tags</span>
         )}

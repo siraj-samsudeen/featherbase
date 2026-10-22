@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
 import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '../src/lib/inr'
 import { formatNumber } from '../src/lib/settings'
-import { pageRange } from '../src/components/ListView'
+import { indicatorColor, pageRange } from '../src/components/ListView'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
   test.each([
@@ -73,6 +73,26 @@ describe('list counts', () => {
     expect(fmtShowing(50, 123456)).toBe('50 of 1,23,456')
     expect(fmtShowing(123456, 123456)).toBe('1,23,456')
   })
+})
+
+describe('status dots: meaning colours for verdicts only', () => {
+  test.each([
+    ['Done', 'var(--color-positive)'],
+    ['Approved', 'var(--color-positive)'],
+    ['Overdue', 'var(--color-negative)'],
+    ['Failed', 'var(--color-negative)'],
+    ['Not set', 'var(--color-missing)'],
+  ])('%s is a verdict: %s', (word, colour) => {
+    expect(indicatorColor(word)).toBe(colour)
+  })
+
+  test.each(['Open', 'Urgent', 'High', 'Pending', 'In progress', 'Draft'])(
+    '%s is a state, not a verdict: an identity colour, never a meaning colour',
+    (word) => {
+      expect(indicatorColor(word)).toMatch(/^var\(--color-series-[1-5]\)$/)
+      expect(indicatorColor(word)).toBe(indicatorColor(word))
+    },
+  )
 })
 
 describe('fmtCount', () => {

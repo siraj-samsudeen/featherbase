@@ -363,11 +363,11 @@ function UpsertPreview({
     )
   return (
     <p className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
-      <strong>{preview.data.updated}</strong> rows match existing rows and will be{' '}
-      <strong>updated</strong>; <strong>{preview.data.inserted}</strong> will be added
+      <strong>{fmtCount(preview.data.updated)}</strong> rows match existing rows and will be{' '}
+      <strong>updated</strong>; <strong>{fmtCount(preview.data.inserted)}</strong> will be added
       {preview.data.failed > 0 && (
         <>
-          ; <strong>{preview.data.failed}</strong> will fail
+          ; <strong>{fmtCount(preview.data.failed)}</strong> will fail
         </>
       )}
     </p>
@@ -2450,14 +2450,14 @@ export function ImportWizard() {
                   <span className="text-positive">
                     ✓ All {fmtCount(plan.check.valid)} rows are ready to import
                     {plan.key != null &&
-                      `: ${plan.check.updated} will update, ${plan.check.inserted} will insert`}
+                      `: ${fmtCount(plan.check.updated)} will update, ${fmtCount(plan.check.inserted)} will insert`}
                   </span>
                 ) : (
                   <span className="text-negative">
                     {fmtCount(plan.check.valid)} rows ready
                     {plan.key != null &&
-                      ` (${plan.check.updated} update · ${plan.check.inserted} insert)`}
-                    , {plan.check.failed.length} with problems:{' '}
+                      ` (${fmtCount(plan.check.updated)} update · ${fmtCount(plan.check.inserted)} insert)`}
+                    , {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => failLabel(plan, f))
@@ -2556,9 +2556,9 @@ export function ImportWizard() {
           data-testid="iw-done"
         >
           {runOutcome.failed.length > 0
-            ? `Imported ${runOutcome.imported}; ${runOutcome.failed.length} failed: ${runOutcome.failed.join(', ')}.`
+            ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.failed.length)} failed: ${runOutcome.failed.join(', ')}.`
             : runOutcome.remaining > 0
-              ? `Imported ${runOutcome.imported}; ${runOutcome.remaining} still to import.`
+              ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.remaining)} still to import.`
               : 'Import complete.'}
         </p>
       )}

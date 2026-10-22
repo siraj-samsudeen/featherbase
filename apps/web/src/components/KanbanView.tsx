@@ -4,6 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
 import { buttonClasses, inputClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -96,7 +97,7 @@ export function KanbanView({
         <div>
           <h1 className="text-xl font-semibold text-ink">{table} — Kanban</h1>
           <span className="text-xs text-ink-muted" data-testid="kanban-total">
-            {data.length} cards
+            {fmtCount(data.length)} cards
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -144,7 +145,7 @@ export function KanbanView({
             <div className="mb-2 flex items-center justify-between px-1 text-sm font-medium text-ink">
               <span>{col || '(none)'}</span>
               <span className={pillClasses('bg-canvas text-ink-muted')} data-testid={`kanban-count-${col || 'empty'}`}>
-                {byColumn.get(col)!.length}
+                {fmtCount(byColumn.get(col)!.length)}
               </span>
             </div>
             <div className="flex flex-col gap-2">

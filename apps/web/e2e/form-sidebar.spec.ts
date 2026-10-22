@@ -54,6 +54,8 @@ test('UI-017: assignments, tags, and attachments persist across reload', async (
   })
 
   await session.step('removing a tag persists too', async ({ page }) => {
+    // Removing a tag asks first (#380); answer yes.
+    page.once('dialog', (dialog) => void dialog.accept())
     await page.getByTestId('tag-chip').getByRole('button', { name: 'Remove urgent' }).click()
     await expect(page.getByTestId('tag-chip')).toHaveCount(0)
     await page.reload()

@@ -275,8 +275,10 @@ describe('icon-only controls are thumb-sized', () => {
     const c = touchTargetClasses().split(' ')
     expect(c).toContain('relative')
     expect(c).toContain('before:absolute')
-    // Sized from the control token and centred on the glyph, not grown from its ~16px line box.
-    expect(c).toEqual(expect.arrayContaining(['before:size-control', 'before:left-1/2', 'before:top-1/2', 'before:-translate-x-1/2', 'before:-translate-y-1/2']))
+    // A fixed 32px area centred on the glyph: big enough for a thumb, small enough not to reach a
+    // neighbouring chip (chips sit at least 8px apart), never grown from the glyph's line box.
+    expect(c).toEqual(expect.arrayContaining(['before:size-8', 'before:left-1/2', 'before:top-1/2', 'before:-translate-x-1/2', 'before:-translate-y-1/2']))
+    expect(c).not.toContain('before:size-control')
   })
 })
 
@@ -289,22 +291,39 @@ describe('density', () => {
 })
 
 describe('class recipes give way to the call site', () => {
-  test("a call site's padding, size, radius and weight replace the recipe's own, never both", () => {
-    const c = buttonClasses({ className: 'px-2 text-xs rounded-r-none font-medium' }).split(' ')
+  test("a call site's padding, radius and weight replace the recipe's own, never both", () => {
+    const c = buttonClasses({ className: 'px-2 rounded-r-none font-medium' }).split(' ')
     expect(c).toContain('px-2')
     expect(c).not.toContain('px-control-x')
-    expect(c).toContain('text-xs')
-    expect(c).not.toContain('text-control')
     expect(c).toContain('rounded-r-none')
     expect(c).toContain('font-medium')
     expect(c).not.toContain('font-semibold')
   })
 
-  test('colours and layout from the call site sit beside the recipe; the touch height always stays', () => {
-    const c = inputClasses('w-auto py-1 text-sm').split(' ')
-    expect(c).toEqual(expect.arrayContaining(['w-auto', 'py-1', 'text-sm', 'min-h-control', 'border-border-control']))
-    expect(c).not.toContain('text-control')
-    expect(c).not.toContain('w-full')
+  test('a smaller text size or height from the call site applies under a mouse only, so touch keeps 16px and 48px', () => {
+    // Below 16px an iPhone zooms the page when a box is tapped (usable-on-any-device).
+    const input = inputClasses('w-auto py-1 text-sm min-h-0').split(' ')
+    expect(input).toEqual(expect.arrayContaining(['text-control', 'min-h-control', 'pointer-fine:text-sm', 'pointer-fine:min-h-0', 'w-auto', 'py-1']))
+    expect(input).not.toContain('text-sm')
+    expect(input).not.toContain('min-h-0')
+    expect(input).not.toContain('w-full')
+    const button = buttonClasses({ className: 'text-xs' }).split(' ')
+    expect(button).toEqual(expect.arrayContaining(['text-control', 'pointer-fine:text-xs']))
+    expect(button).not.toContain('text-xs')
+  })
+
+  test("a call site's colour replaces the recipe's, so two colours never compete in CSS order", () => {
+    const c = iconButtonClasses('text-ink-subtle hover:text-negative').split(' ')
+    expect(c).toContain('text-ink-subtle')
+    expect(c).not.toContain('text-ink-muted')
+    expect(c).toContain('hover:text-negative') // variants never merge; the call site's comes later in the list
+    expect(inputClasses('border-negative bg-subtle').split(' ')).toEqual(expect.arrayContaining(['border-negative', 'bg-subtle']))
+    expect(inputClasses('border-negative bg-subtle').split(' ')).not.toEqual(expect.arrayContaining(['border-border-control']))
+  })
+
+  test('gap-x and gap-y sit beside a recipe gap: Tailwind emits gap before its axis forms, so the axis wins', () => {
+    const c = buttonClasses({ className: 'gap-x-4' }).split(' ')
+    expect(c).toEqual(expect.arrayContaining(['gap-2', 'gap-x-4']))
   })
 
   test('a card keeps its surface and takes the caller padding', () => {

@@ -39,7 +39,7 @@
   --color-missing-tint: #f1f5f9;
 
   /* Behind a dialog: dims the page in either theme */
-  --color-scrim: #0b1220;
+  --color-scrim: #000000; /* darker than the canvas in every theme, so a dialog always dims the page */
   --color-on-scrim: #ffffff; /* text and icons over the scrim, both themes */
 
   /* Categorical series (charts, value dots): distinct hues that avoid the
@@ -47,8 +47,8 @@
   --color-series-1: #2563eb;
   --color-series-2: #0f766e;
   --color-series-3: #be185d;
-  --color-series-4: #4338ca;
-  --color-series-5: #92400e;
+  --color-series-4: #000000;
+  --color-series-5: #78350f;
 
   /* Shape */
   --radius-card: 14px;
@@ -102,7 +102,7 @@
     --color-series-1: #60a5fa;
     --color-series-2: #2dd4bf;
     --color-series-3: #f472b6;
-    --color-series-4: #a5b4fc;
+    --color-series-4: #cbd5e1;
     --color-series-5: #e0a96d;
   }
 }

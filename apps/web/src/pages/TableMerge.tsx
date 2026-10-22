@@ -166,7 +166,7 @@ export function TableMerge() {
       // and is a paging question, not a refusal.
       const collected = [...first.data]
       while (collected.length < first.total) {
-        setBusy(`Reading rows ${collected.length + 1}–${fmtCount(first.total)}…`)
+        setBusy(`Reading rows ${fmtCount(collected.length + 1)}–${fmtCount(first.total)}…`)
         const next = await read(collected.length)
         if (!next.data.length) break
         collected.push(...next.data)

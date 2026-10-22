@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import { fmtNumber } from './inr'
+import { fmtDate, fmtMoney, fmtNumber } from './inr'
 
 // SET-004: global display settings drive how Date and Currency/Float values
 // render across every list and form. Fetched once and cached; the Admin reads
@@ -8,7 +8,8 @@ import { fmtNumber } from './inr'
 
 export interface Settings {
   app_name: string
-  date_format: string // 'yyyy-mm-dd' | 'dd-mm-yyyy' | 'mm-dd-yyyy'
+  // 'dd-mon-yyyy' is the one display form (ADR 844); ISO stays machine-facing only.
+  date_format: string
   currency: string
   currency_precision: number
   float_precision: number
@@ -16,8 +17,8 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   app_name: 'Featherbase',
-  date_format: 'yyyy-mm-dd',
-  currency: 'USD',
+  date_format: 'dd-mon-yyyy',
+  currency: 'INR',
   currency_precision: 2,
   float_precision: 2,
 }
@@ -35,19 +36,14 @@ export function useSettings() {
   return q.data ?? DEFAULT_SETTINGS
 }
 
-// Reformat an ISO date (YYYY-MM-DD or a full ISO timestamp) into the
-// configured display format. Parses the leading date parts directly so the
-// rendered day never drifts across timezones.
-export function formatDate(value: unknown, fmt: string): string {
+// Reformat an ISO date (YYYY-MM-DD or a full ISO timestamp) for display as
+// DD-Mon-YYYY. Reads the leading date parts directly, so the rendered day
+// never drifts across timezones. `fmt` is the System Settings value; there
+// is one display form today.
+export function formatDate(value: unknown, _fmt: string): string {
   if (value == null || value === '') return ''
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!m) return String(value)
-  const [, yyyy, mm, dd] = m
-  switch (fmt) {
-    case 'dd-mm-yyyy': return `${dd}-${mm}-${yyyy}`
-    case 'mm-dd-yyyy': return `${mm}-${dd}-${yyyy}`
-    default: return `${yyyy}-${mm}-${dd}`
-  }
+  const m = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? fmtDate(m[1]) : String(value)
 }
 
 export function formatNumber(value: unknown, precision: number): string {
@@ -58,8 +54,10 @@ export function formatNumber(value: unknown, precision: number): string {
 }
 
 export function formatCurrency(value: unknown, s: Settings): string {
-  const num = formatNumber(value, s.currency_precision)
-  if (num === '') return ''
+  if (value == null || value === '') return ''
+  const n = Number(value)
+  if (!Number.isFinite(n)) return String(value)
+  const num = fmtMoney(n, s.currency_precision, s.currency)
   const symbol = CURRENCY_SYMBOLS[s.currency] ?? ''
   return `${symbol}${num}`
 }

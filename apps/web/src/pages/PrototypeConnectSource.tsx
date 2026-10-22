@@ -220,8 +220,10 @@ function ConnectConsole({ goTables }: { goTables: () => void }) {
           {ENGINES.map((e) => (
             <button
               key={e}
+              type="button"
+              aria-pressed={e === f.engine}
               onClick={() => setEngine(e)}
-              className={`rounded px-3 py-1 text-sm ${e === f.engine ? 'bg-action text-action-ink font-medium' : 'text-ink-muted hover:bg-subtle'}`}
+              className={`min-h-control rounded px-3 py-1 text-sm ${e === f.engine ? 'bg-action text-action-ink font-medium' : 'text-ink-muted hover:bg-subtle'}`}
             >
               {e}
             </button>
