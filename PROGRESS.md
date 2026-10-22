@@ -19,7 +19,7 @@ names sit in a block marked RETIRED until stage 3 deletes them, with nothing ali
 
 `test/design-guards.test.ts` checks every text pair at 4.5:1 and every control edge at 3:1, in light and dark. It
 fails on raw palette classes, literal colours, text under 12 px, `toLocale*String` outside `lib/inr.ts`, retired token
-names and `.fc-*` classes. 61 files still break a rule; they are listed in `design-guards.pending.ts`, and a listed
+names and `.fc-*` classes. 50 files still break a rule; they are listed in `design-guards.pending.ts`, and a listed
 file that is clean fails the test, so the list only shrinks.
 
 **Verified:**
