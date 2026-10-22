@@ -10,20 +10,22 @@ import { saveDoc } from '../src/document'
 
 const DT = 'Asg Rule Ticket'
 const RULE = 'Asg Rule RR'
-const A1 = 'asg-agent1@x.com'
-const A2 = 'asg-agent2@x.com'
+// Person ids live in the `psn_` namespace (person-rename); raw fixture rows
+// pick fixed ones, the address stays separate contact data.
+const A1 = 'psn_asgagent1'
+const A2 = 'psn_asgagent2'
 
 async function setup(admin: TestClient) {
   for (const u of [A1, A2])
-    await sql`insert into "user" ${sql({
-      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+    await sql`insert into person ${sql({
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: `${u.slice(4)}@x.com`, enabled: true,
     })}`
   await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'priority', column_type: 'Choice', choices: 'Low\nHigh', default_value: 'High' },
-      { column_name: 'agent', column_type: 'Reference', reference_table: 'User' },
+      { column_name: 'agent', column_type: 'Reference', reference_table: 'Person' },
     ],
   })
   await saveDoc('Assignment Rule', {

@@ -25,9 +25,9 @@ async function setup(admin: TestClient) {
     table: 'Report',
     row: {
       row_id: REPORT,
-      ref_table: 'User',
+      ref_table: 'Person',
       report_type: 'Query Report',
-      query: 'select row_id, created_at from featherbase."user" where created_at >= {from_date} order by row_id',
+      query: 'select row_id, created_at from featherbase.person where created_at >= {from_date} order by row_id',
     },
   })
 }
@@ -38,10 +38,10 @@ describe('RPT-004: query reports', () => {
   })
 
   test('requires physical relation names while allowing local CTE names', () => {
-    expect(() => assertExplicitReportRelations('select * from "user"')).toThrow(/schema-qualified/)
+    expect(() => assertExplicitReportRelations('select * from person')).toThrow(/schema-qualified/)
     expect(() => assertExplicitReportRelations('select * from public."user"')).toThrow(/is stale/)
     expect(() => assertExplicitReportRelations('select * from public.site')).not.toThrow()
-    expect(() => assertExplicitReportRelations('with active as (select * from featherbase."user") select * from active')).not.toThrow()
+    expect(() => assertExplicitReportRelations('with active as (select * from featherbase.person) select * from active')).not.toThrow()
     expect(() =>
       assertExplicitReportRelations('select u.row_id from featherbase.role r, "user" u'),
     ).toThrow(/comma joins are unsupported/)
@@ -50,7 +50,7 @@ describe('RPT-004: query reports', () => {
     ).toThrow(/comma joins are unsupported/)
     expect(() =>
       assertExplicitReportRelations(
-        'select u.row_id from featherbase.role r join featherbase."user" u on true',
+        'select u.row_id from featherbase.role r join featherbase.person u on true',
       ),
     ).not.toThrow()
   })
@@ -77,7 +77,7 @@ describe('RPT-004: query reports', () => {
     const before = res.rows.length
     // …and an injection attempt via the value is just a (bad) string param.
     await expect(
-      runQueryReport(REPORT, { from_date: 'x\'; drop table "user"; --' }, 'Administrator'),
+      runQueryReport(REPORT, { from_date: 'x\'; drop table person; --' }, 'Administrator'),
     ).rejects.toMatchObject({ type: 'ValidationError' }) // bad date → clean error, no 500
     // The table still exists and still has users.
     const still = await runQueryReport(REPORT, { from_date: '2000-01-01' }, 'Administrator')
@@ -90,9 +90,9 @@ describe('RPT-004: query reports', () => {
       table: 'Report',
       row: {
         row_id: 'Rpt Srv Evil',
-        ref_table: 'User',
+        ref_table: 'Person',
         report_type: 'Query Report',
-        query: 'update "user" set full_name = full_name',
+        query: 'update person set full_name = full_name',
       },
     })
     await expect(runQueryReport('Rpt Srv Evil', {}, 'Administrator')).rejects.toMatchObject({
@@ -111,14 +111,14 @@ describe('RPT-004: query reports', () => {
 
     // The author role CAN create an ordinary (non-SQL) report…
     await expect(
-      saveDoc('Report', { row_id: 'Rpt Srv Builder', ref_table: 'User', report_type: 'Report Builder' }, AUTHOR),
+      saveDoc('Report', { row_id: 'Rpt Srv Builder', ref_table: 'Person', report_type: 'Report Builder' }, AUTHOR),
     ).resolves.toMatchObject({ row_id: 'Rpt Srv Builder', report_type: 'Report Builder' })
 
     // …but CANNOT create a Query Report with SQL…
     await expect(
       saveDoc(
         'Report',
-        { row_id: 'Rpt Srv Evil2', ref_table: 'User', report_type: 'Query Report', query: 'select name from featherbase."user"' },
+        { row_id: 'Rpt Srv Evil2', ref_table: 'Person', report_type: 'Query Report', query: 'select name from featherbase.person' },
         AUTHOR,
       ),
     ).rejects.toMatchObject({ type: 'PermissionError' })
@@ -132,7 +132,7 @@ describe('RPT-004: query reports', () => {
         {
           row_id: REPORT,
           updated_at: (updated_at as Date).toISOString(),
-          query: 'select name, password_hash from featherbase."user"',
+          query: 'select name, password_hash from featherbase.person',
         },
         AUTHOR,
       ),

@@ -6,24 +6,28 @@ import type { TestClient } from 'feather-testing-postgres'
 
 // #131: named access tokens (the API-005 replacement) + service accounts.
 // A token is a show-once fbt_ Bearer secret that authenticates as its owner;
-// service accounts are User rows that can only ever authenticate by token.
+// service accounts are their own principals (person-rename R2) that can only
+// ever authenticate by token.
 
-const USER = 'token-user@x.com'
+const EMAIL = 'token-user@x.com'
+// The person's minted id, set by makeUser for the running test.
+let USER = ''
 
 // The login flow itself is under test here, so the user is created in-test
 // (with a real password) rather than through the createUser fixture.
 async function makeUser(admin: TestClient) {
-  await admin.post('/api/save_row', {
-    table: 'User',
-    row: { row_id: USER, email: USER },
+  const created = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Person',
+    row: { email: EMAIL },
   })
+  USER = created.row_id
   await setUserPassword(USER, 'tokenpw123')
 }
 
 async function userJwt(api: TestClient): Promise<string> {
   const login = await api.fetch('/api/login', {
     method: 'POST',
-    body: JSON.stringify({ usr: USER, pwd: 'tokenpw123' }),
+    body: JSON.stringify({ usr: EMAIL, pwd: 'tokenpw123' }),
   })
   expect(login.status).toBe(200)
   return ((await login.json()) as { token: string }).token
@@ -170,35 +174,46 @@ describe('#131: service accounts', () => {
     admin,
     api,
   }) => {
-    const created = await admin.post<{ row_id: string; roles: string[]; enabled: boolean }>(
+    const created = await admin.post<{ row_id: string; label: string; roles: string[]; enabled: boolean }>(
       '/api/service_accounts',
-      { row_id: 'svc-test-bot', roles: ['System Manager'] },
+      { label: 'svc-test-bot', roles: ['System Manager'] },
     )
-    expect(created.row_id).toBe('svc-test-bot')
+    // person-rename R1/R2: its own kind of principal with a minted svc_ id.
+    expect(created.row_id).toMatch(/^svc_[a-z2-7]{20}$/)
+    expect(created.label).toBe('svc-test-bot')
     expect(created.roles).toContain('System Manager')
+    const id = created.row_id
 
     // No password login, ever — even after someone tries to set one.
-    const login = await api.fetch('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ usr: 'svc-test-bot', pwd: 'anything' }),
-    })
-    expect(login.status).toBe(401)
+    for (const usr of ['svc-test-bot', id]) {
+      const login = await api.fetch('/api/login', {
+        method: 'POST',
+        body: JSON.stringify({ usr, pwd: 'anything' }),
+      })
+      expect(login.status).toBe(401)
+    }
     await expect(
-      admin.post('/api/set_password', { user: 'svc-test-bot', password: 'sneaky123' }),
+      admin.post('/api/set_password', { user: id, password: 'sneaky123' }),
     ).rejects.toMatchObject({ status: 417 })
 
     // Its token carries its roles: an SM-gated endpoint answers.
-    const issued = await admin.post<{ token: string }>('/api/access_tokens', {
+    const issued = await admin.post<{ token: string; owner: string; owner_kind: string }>('/api/access_tokens', {
       label: 'bot token',
-      owner: 'svc-test-bot',
+      owner: id,
     })
+    expect(issued).toMatchObject({ owner: id, owner_kind: 'service_account' })
     const gated = await api.fetch('/api/service_accounts', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
     expect(gated.status).toBe(200)
+    const who = (await (await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${issued.token}` } })).json()) as {
+      row_id: string
+      kind: string
+    }
+    expect(who).toMatchObject({ row_id: id, kind: 'service_account' })
 
     // Disabling the account dead-ends the token without revoking it.
-    await admin.fetch('/api/service_accounts/svc-test-bot', {
+    await admin.fetch(`/api/service_accounts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled: false }),
     })
@@ -208,7 +223,7 @@ describe('#131: service accounts', () => {
     expect(dead.status).toBe(401)
 
     // Re-enabling brings it back — the token was disabled, not destroyed.
-    await admin.fetch('/api/service_accounts/svc-test-bot', {
+    await admin.fetch(`/api/service_accounts/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled: true }),
     })
@@ -225,33 +240,40 @@ describe('#131: service accounts', () => {
   }) => {
     const plain = await createUser({ email: 'plain-user@x.com' })
     await expect(
-      plain.post('/api/service_accounts', { row_id: 'svc-nope' }),
+      plain.post('/api/service_accounts', { label: 'svc-nope' }),
     ).rejects.toMatchObject({ status: 403 })
     await expect(plain.get('/api/service_accounts')).rejects.toMatchObject({ status: 403 })
 
     await expect(
-      admin.post('/api/service_accounts', { row_id: 'Not A Slug!' }),
+      admin.post('/api/service_accounts', { label: 'Not A Slug!' }),
     ).rejects.toMatchObject({ status: 417 })
 
-    // Existing names (human users included) cannot be claimed, even by case.
+    // A name already used by another service account cannot be claimed,
+    // even by case. (Its id is minted, so it can no longer shadow a person's
+    // id — person-rename R1.)
+    await admin.post('/api/service_accounts', { label: 'svc-taken' })
     await expect(
-      admin.post('/api/service_accounts', { row_id: 'administrator' }),
+      admin.post('/api/service_accounts', { label: 'SVC-TAKEN' }),
+    ).rejects.toMatchObject({ status: 417 })
+    await expect(
+      admin.post('/api/service_accounts', { label: 'svc-taken' }),
     ).rejects.toMatchObject({ status: 409 })
     void api
   })
 
-  test('deleting a service account cascades its tokens away', async ({ admin, api }) => {
-    await admin.post('/api/service_accounts', { row_id: 'svc-doomed' })
+  test('a service account holding tokens cannot be deleted; the generic row API refuses it', async ({ admin, api }) => {
+    // person-rename R2: principal foreign keys are `on delete restrict`, and
+    // writes go through the service-account API only.
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-doomed' })
     const issued = await admin.post<{ token: string; id: string }>('/api/access_tokens', {
       label: 'doomed token',
-      owner: 'svc-doomed',
+      owner: account.row_id,
     })
-    await sql`delete from "user" where row_id = ${'svc-doomed'}`
-    const [gone] = await sql`select 1 from access_token where id = ${issued.id}`
-    expect(gone).toBeUndefined()
+    await expect(admin.delete(`/api/table/Service%20Account/${account.row_id}`)).rejects.toMatchObject({ status: 417 })
+    await expect(sql.begin((tx) => tx`delete from service_account where row_id = ${account.row_id}`)).rejects.toThrow(/foreign key constraint/)
     const res = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${issued.token}` },
     })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(200)
   })
 })

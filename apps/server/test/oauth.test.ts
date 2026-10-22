@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { config } from '../src/config'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { makePerson } from './fixtures'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
@@ -108,7 +109,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
     // person-identities: a person Google creates gets an opaque, permanent id
     // (the warehouse person_id), never the address.
-    expect(session.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+    expect(session.user.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(session.user).toMatchObject({ email: 'new.person@gmail.com', full_name: 'Test User' })
     // The token is a real session: it authenticates as that user.
     const whoami = await api.fetch('/api/whoami', {
@@ -119,7 +120,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
 
     // person-identities: the new person is linked by Google's account ID.
     const [user] = await sql`
-      select u.enabled, i.subject, i.method from "user" u join user_identity i on i.user_id = u.row_id
+      select u.enabled, i.subject, i.method from person u join sign_in_identity i on i.person_id = u.row_id
       where u.email = 'new.person@gmail.com'`
     expect(user).toMatchObject({ enabled: true, method: 'google', subject: 'new.person@gmail.com' })
   })
@@ -159,7 +160,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setAllowedDomains('')
     const denied = await mockSignIn(api, 'unconfigured@gmail.com')
     expect(denied.status).toBe(401)
-    const [row] = await sql`select 1 from "user" where email = 'unconfigured@gmail.com'`
+    const [row] = await sql`select 1 from person where email = 'unconfigured@gmail.com'`
     expect(row).toBeUndefined()
   })
 
@@ -168,7 +169,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const admitted = await mockSignIn(api, 'explicit-anywhere@outside.io')
     expect(admitted.status).toBe(302)
     const [user] = await sql`
-      select u.enabled, i.method from "user" u join user_identity i on i.user_id = u.row_id
+      select u.enabled, i.method from person u join sign_in_identity i on i.person_id = u.row_id
       where u.email = 'explicit-anywhere@outside.io'`
     expect(user).toMatchObject({ method: 'google', enabled: true })
   })
@@ -181,7 +182,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       const denied = await mockSignIn(api, email)
       expect(denied.status).toBe(401)
       const [row] = await sql`
-        select 1 from "user" where email = ${email} or row_id = ${email}`
+        select 1 from person where email = ${email} or row_id = ${email}`
       expect(row).toBeUndefined()
     }
   })
@@ -190,7 +191,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setAllowedDomains('jeyarama.com')
     const denied = await mockSignIn(api, 'stranger@gmail.com')
     expect(denied.status).toBe(401)
-    const [row] = await sql`select 1 from "user" where email = 'stranger@gmail.com'`
+    const [row] = await sql`select 1 from person where email = 'stranger@gmail.com'`
     expect(row).toBeUndefined()
 
     const admitted = await mockSignIn(api, 'kannan@jeyarama.com')
@@ -201,14 +202,10 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // person-identities: an existing account is reached through a linked
   // Google account or an invite, never because its email matches.
   test('an invited existing user signs in when auto-provisioning is disabled', async ({ api, admin }) => {
-    await saveDoc(
-      'User',
-      { row_id: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
-      'Administrator',
-    )
+    const contractor = await makePerson({ email: 'contractor@outside.io', roles: [] })
     await setAllowedDomains('')
     expect((await mockSignIn(api, 'contractor@outside.io')).status).toBe(401)
-    await admin.post('/api/users/contractor%40outside.io/identities', { method: 'google', email: 'contractor@outside.io' })
+    await admin.post(`/api/people/${contractor}/identities`, { method: 'google', email: 'contractor@outside.io' })
     const res = await mockSignIn(api, 'contractor@outside.io')
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('/oauth-callback?code=')
@@ -257,7 +254,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       else process.env.ALLOW_MOCK_OAUTH = prev
     }
     // Nothing was provisioned by any of it.
-    const [row] = await sql`select 1 from user_identity where user_id = 'Administrator' and method = 'google'`
+    const [row] = await sql`select 1 from sign_in_identity where person_id = 'Administrator' and method = 'google'`
     expect(row).toBeUndefined()
   })
 
@@ -272,7 +269,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // with, and this email is reachable by hand against a dev server. Clearing
     // it inside the sandbox transaction (rolled back like everything else)
     // makes the assertion below depend on this test alone, not on ambient state.
-    await sql`delete from "user" where email = 'attacker@gmail.com'`
+    await sql`delete from person where email = 'attacker@gmail.com'`
     const { state, cookie } = await beginLogin(api)
     const approve = await api.fetch(approveUrl(state, 'attacker@gmail.com', 'Attacker'), {
       headers: { cookie },
@@ -288,7 +285,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect((await api.fetch(callbackUrl, { headers: { cookie: other.cookie } })).status).toBe(401)
 
     // Neither attempt minted a session or a user.
-    const [row] = await sql`select 1 from "user" where email = 'attacker@gmail.com'`
+    const [row] = await sql`select 1 from person where email = 'attacker@gmail.com'`
     expect(row).toBeUndefined()
 
     // The browser that actually started the sign-in still completes normally.
@@ -399,20 +396,20 @@ describe('#3783: Google sign-in lands a report viewer on their report', () => {
     await setAllowedDomains('')
     await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
     // Provisioned ahead of time (the data-warehouse viewer sync), not created.
-    await saveDoc('User', {
-      row_id: 'RR-90001', email: 'dm.test@jeyarama.com', full_name: 'DM Test', enabled: true,
+    const dm = await makePerson({
+      email: 'dm.test@jeyarama.com', full_name: 'DM Test',
       roles: [{ role: 'Sales Target Viewer' }],
-    }, 'Administrator')
-    await saveDoc('User', { row_id: 'plain.user@jeyarama.com', email: 'plain.user@jeyarama.com', full_name: 'Plain', enabled: true, roles: [] }, 'Administrator')
+    })
+    const plainUser = await makePerson({ email: 'plain.user@jeyarama.com', full_name: 'Plain', roles: [] })
     // person-identities: the viewer sync invites each Google address; the
     // first sign-in claims the invite. A matching email alone opens nothing.
-    await inviteGoogleRaw('RR-90001', 'dm.test@jeyarama.com')
-    await inviteGoogleRaw('plain.user@jeyarama.com', 'plain.user@jeyarama.com')
+    await inviteGoogleRaw(dm, 'dm.test@jeyarama.com')
+    await inviteGoogleRaw(plainUser, 'plain.user@jeyarama.com')
 
     const viewer = await mockSignIn(api, 'dm.test@jeyarama.com', 'DM Test')
     expect(viewer.status).toBe(302)
     const v = await (await redeem(api, handoffCode(viewer), sidCookie(viewer))).json() as { user: { row_id: string }; landing?: string }
-    expect(v.user.row_id).toBe('RR-90001')
+    expect(v.user.row_id).toBe(dm)
     expect(v.landing).toBe('/featherbase/sales-target')
 
     const plain = await mockSignIn(api, 'plain.user@jeyarama.com', 'Plain')

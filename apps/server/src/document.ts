@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -20,8 +21,8 @@ import {
   assertPermission,
   checkUserPermissions,
   filterReadFields,
-  getUserPermissionMap,
-  isBypassUser,
+  getScopeMap,
+  isPrivileged,
   isSharedWith,
   permittedTiers,
   stripUnwritableFields,
@@ -101,6 +102,9 @@ async function resolveRowId(
     if (supplied) return supplied
   }
   if (rule === 'hash') return hashRowId()
+  // person-rename R1: `opaque:<prefix>` mints a permanent opaque id such as
+  // `psn_…` — never derived from what the caller typed.
+  if (rule.startsWith('opaque:')) return opaqueId(rule.slice('opaque:'.length))
   if (rule === 'prompt') {
     const rowId = String(values[ROW_KEY] ?? '').trim()
     if (!rowId)
@@ -194,9 +198,9 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     const prefix = `${tableName(meta.name)}_`
     // An expression index names an expression, not a column, in its detail
     // (`lower(email::text)`): map the case-insensitive email rule by name.
-    const fields = e.constraint_name === 'user_email_lower_uq'
+    const fields = e.constraint_name === 'person_email_lower_uq'
       ? ['email']
-      : e.constraint_name === 'user_username_lower_uq'
+      : e.constraint_name === 'person_username_lower_uq'
       ? ['username']
       : detailCols
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
@@ -268,8 +272,8 @@ export async function assertUserPermissions(
   meta: TableMeta,
   row: RowValues,
 ) {
-  if (await isBypassUser(user)) return
-  const map = await getUserPermissionMap(user)
+  if (await isPrivileged(user)) return
+  const map = await getScopeMap(user)
   if (!map.size) return
   const linkFields = meta.columns
     .filter((f) => f.column_type === 'Reference')
@@ -1235,7 +1239,7 @@ async function renameDocImpl(
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   // person-identities: a User's id is the permanent person id (the warehouse
   // person_id); change the name or username instead. A trigger backs this up.
-  if (meta.name === 'User')
+  if (meta.name === 'Person')
     throw new AppError('ValidationError', 'A person\'s id is permanent and cannot be renamed; change their name or username instead')
   if (isBound(meta))
     throw new AppError(

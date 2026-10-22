@@ -214,7 +214,7 @@ describe('NAV-001: via-link permission scoping', () => {
     })
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: ORDER, for_value: 'ORD-VISIBLE' },
+      row: { person: user.user, allow_table: ORDER, for_value: 'ORD-VISIBLE' },
     })
 
     const cnx = await getConnections(user, 'E-001')

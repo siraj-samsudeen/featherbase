@@ -9,7 +9,9 @@ import { createAssignment } from '../src/assign'
 // notification.
 
 const DT = 'Asg Srv DT'
-const ASSIGNEE = 'asg-srv@x.com'
+const ASSIGNEE_EMAIL = 'asg-srv@x.com'
+// The assignee's minted id (`psn_…`), set by setup().
+let ASSIGNEE = ''
 
 // Each test builds its Table, assignee user, and document inside its own
 // sandbox transaction.
@@ -19,10 +21,10 @@ async function setup(admin: TestClient) {
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_row', {
-    table: 'User',
-    row: { row_id: ASSIGNEE, email: ASSIGNEE },
-  })
+  ASSIGNEE = (await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Person',
+    row: { email: ASSIGNEE_EMAIL },
+  })).row_id
   await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'asg-1', title: 'x' })
 }
 

@@ -25,7 +25,7 @@ export async function configureDelegated(o: { key?: string; label?: string; url?
 }
 
 export async function removeDelegated() {
-  await sql`delete from user_identity where method in (select row_id from sign_in_method where kind = 'delegated_password')`
+  await sql`delete from sign_in_identity where method in (select row_id from sign_in_method where kind = 'delegated_password')`
   await sql`delete from sign_in_method where kind = 'delegated_password'`
 }
 
@@ -33,9 +33,9 @@ export async function removeDelegated() {
  *  roster convention, employee code = account id). */
 export async function linkDelegated(user: string, signInName: string | null, o: { key?: string; subject?: string } = {}) {
   const id = 'uid_' + randomBytes(6).toString('hex')
-  await sql`insert into user_identity ${sql({
+  await sql`insert into sign_in_identity ${sql({
     id,
-    user_id: user,
+    person_id: user,
     method: o.key ?? 'stylehr',
     subject: o.subject ?? user,
     sign_in_name: signInName,
@@ -58,7 +58,7 @@ export async function configureGoogle(o: { client_id?: string; allowed_email_dom
 
 export async function inviteGoogleRaw(user: string, email: string) {
   const id = 'uid_' + randomBytes(6).toString('hex')
-  await sql`insert into user_identity ${sql({ id, user_id: user, method: 'google', subject: null, pending_email: email.toLowerCase(), linked_by: 'test' })}`
+  await sql`insert into sign_in_identity ${sql({ id, person_id: user, method: 'google', subject: null, pending_email: email.toLowerCase(), linked_by: 'test' })}`
   return id
 }
 

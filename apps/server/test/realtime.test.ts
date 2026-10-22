@@ -59,8 +59,8 @@ describe('realtime event bus', () => {
 })
 
 describe('RT channel authorization (eval #9 fix)', () => {
-  const admin: SessionUser = { row_id: 'Administrator', email: 'a@x.com', full_name: 'Admin' }
-  const guest: SessionUser = { row_id: 'Guest', email: 'g@x.com', full_name: 'Guest' }
+  const admin: SessionUser = { row_id: 'Administrator', kind: 'person', email: 'a@x.com', full_name: 'Admin' }
+  const guest: SessionUser = { row_id: 'Guest', kind: 'person', email: 'g@x.com', full_name: 'Guest' }
 
   test('a user may only subscribe to their own personal channel', async () => {
     expect(await canSubscribe(guest, 'user:Guest')).toBe(true)

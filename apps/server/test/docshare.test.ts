@@ -26,7 +26,7 @@ async function share(
 ) {
   const doc = await admin.post<{ row_id: string }>('/api/save_row', {
     table: SHARE.name,
-    row: { share_table: DT, share_name: docName, user: user.user, ...perms },
+    row: { share_table: DT, share_name: docName, person: user.user, ...perms },
   })
   return String(doc.row_id)
 }

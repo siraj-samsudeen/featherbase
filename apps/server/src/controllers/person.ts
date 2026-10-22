@@ -1,6 +1,7 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { USERNAME_RE, normaliseEmail } from '../identities'
+import { PERSON_ID_PREFIX } from '../opaque-id'
 
 // person-identities (D9): email is optional contact data — blank means none,
 // a `.invalid` placeholder is refused (normaliseEmail). A username is a
@@ -8,9 +9,15 @@ import { USERNAME_RE, normaliseEmail } from '../identities'
 // id, username or email, ignoring case: password sign-in looks all three up,
 // and a name shared across them would shadow someone else's sign-in.
 const controller: TableController = {
-  table: 'User',
+  table: 'Person',
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
+      // person-rename R1: a person's id is minted by Featherbase (`psn_…`),
+      // never typed — not an address, a username or an employee code.
+      if (isNew && !String(row.row_id ?? '').startsWith(PERSON_ID_PREFIX))
+        throw new AppError('ValidationError', "A person's id is assigned by Featherbase; leave it blank", { row_id: 'assigned automatically' })
+      if (!isNew && 'built_in' in row && old && Boolean(row.built_in) !== Boolean(old.built_in))
+        throw new AppError('ValidationError', 'Built-in is fixed', { built_in: 'fixed' })
       if ('email' in row) row.email = normaliseEmail(row.email)
       if ('username' in row) {
         const username = row.username == null ? null : String(row.username).trim().toLowerCase() || null
@@ -21,7 +28,7 @@ const controller: TableController = {
       const self = String(row.row_id ?? old?.row_id ?? '')
       const clash = async (value: string, field: string) => {
         const [hit] = await tx`
-          select row_id from "user"
+          select row_id from person
           where row_id <> ${self}
             and (lower(row_id) = lower(${value}) or lower(username) = lower(${value}) or lower(email) = lower(${value}))
           limit 1`

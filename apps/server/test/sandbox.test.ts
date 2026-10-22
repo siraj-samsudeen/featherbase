@@ -61,12 +61,13 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   })
 
   test('users created in a test are sandboxed too', async ({ client, admin }) => {
-    expect(client.user).toMatch(/@feather\.test/)
+    // person-rename: the harness's person gets a minted id; its address is contact data.
+    expect(client.user).toMatch(/^psn_[a-z2-7]{20}$/)
     const who = await client.get<{ row_id: string }>('/api/whoami')
     expect(who.row_id).toBe(client.user)
     // Visible inside the sandbox:
     const listed = await admin.get<{ data: { row_id: string }[] }>(
-      `/api/table/User?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', client.user]]))}`,
+      `/api/table/Person?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', client.user]]))}`,
     )
     expect(listed.data).toHaveLength(1)
   })
@@ -80,7 +81,7 @@ afterAll(async () => {
   `
   expect(exists).toBe(false)
   const leftoverUsers = await root<{ row_id: string }[]>`
-    select row_id from featherbase."user" where row_id like '%@feather.test'
+    select row_id from featherbase.person where row_id like '%@feather.test'
   `
   expect(leftoverUsers).toHaveLength(0)
 })

@@ -3,15 +3,16 @@ import { test } from './pg-test'
 import { getRoles } from '../src/permissions'
 import type { TestClient } from 'feather-testing-postgres'
 
-const USER = 'roletest@x.com'
+// The person's minted id (`psn_…`), set by makeUser().
+let USER = ''
 
 // Each test creates the user inside its own rolled-back transaction — no
 // shared beforeAll state and no cleanup.
 async function makeUser(admin: TestClient) {
-  await admin.post('/api/save_row', {
-    table: 'User',
-    row: { row_id: USER, email: USER, enabled: true },
-  })
+  USER = (await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Person',
+    row: { email: 'roletest@x.com', enabled: true },
+  })).row_id
 }
 
 describe('PERM-001: role model', () => {
@@ -24,11 +25,11 @@ describe('PERM-001: role model', () => {
     admin,
   }) => {
     await makeUser(admin)
-    const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
+    const doc = await admin.get<Record<string, unknown>>(`/api/table/Person/${encodeURIComponent(USER)}`)
     const assign = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        table: 'User',
+        table: 'Person',
         row: {
           row_id: USER,
           updated_at: doc.updated_at,
@@ -40,12 +41,12 @@ describe('PERM-001: role model', () => {
     expect(await getRoles(USER)).toEqual(['All', 'Guest', 'System Manager'])
 
     const doc2 = await admin.get<Record<string, unknown>>(
-      `/api/table/User/${encodeURIComponent(USER)}`,
+      `/api/table/Person/${encodeURIComponent(USER)}`,
     )
     const remove = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        table: 'User',
+        table: 'Person',
         row: { row_id: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
       }),
     })
@@ -55,10 +56,10 @@ describe('PERM-001: role model', () => {
 
   test('assigning a nonexistent role fails link validation', async ({ admin }) => {
     await makeUser(admin)
-    const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
+    const doc = await admin.get<Record<string, unknown>>(`/api/table/Person/${encodeURIComponent(USER)}`)
     await expect(
       admin.post('/api/save_row', {
-        table: 'User',
+        table: 'Person',
         row: { row_id: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
       }),
     ).rejects.toMatchObject({ status: 417 })

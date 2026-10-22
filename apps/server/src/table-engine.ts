@@ -123,6 +123,11 @@ export function validateIdPattern(pattern: string, columnNames: string[]): void 
   const bad = (message: string) =>
     new AppError('ValidationError', message, { id_pattern: message })
   if (pattern === 'hash' || pattern === 'prompt') return
+  if (pattern.startsWith('opaque:')) {
+    if (!/^[a-z]{2,8}_$/.test(pattern.slice('opaque:'.length)))
+      throw bad('An opaque id pattern names a short lowercase prefix ending in _, e.g. opaque:psn_')
+    return
+  }
   if (pattern.startsWith('field:')) {
     const column = pattern.slice('field:'.length)
     if (!columnNames.includes(column))
@@ -294,10 +299,10 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
-  // person-identities (D9): a User email is unique ignoring case through the
+  // person-identities (D9): a Person email is unique ignoring case through the
   // index user_email_lower_uq. A column-level `unique` would re-add the
   // case-sensitive user_email_uq beside it, so it is refused here.
-  if (name === 'User' && def.columns.some((f) => f.column_name === 'email' && f.unique))
+  if (name === 'Person' && def.columns.some((f) => f.column_name === 'email' && f.unique))
     throw new AppError('ValidationError', 'User email is already unique ignoring case; it cannot be made unique again', {
       'columns.email.unique': 'managed by the platform',
     })

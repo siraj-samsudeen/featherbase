@@ -35,14 +35,14 @@ describe('platform SQL relation mapping', () => {
 
   it('qualifies core relation operands without changing values, comments, or app relations', () => {
     const input = `
-      select u.row_id from "user" u
+      select u.row_id from person u
       join role r on r.row_id = 'role'
       join tasker.task t on true
       where u.full_name = 'from user'
       -- from permission
       /* join table_def */`
     expect(qualifyPlatformSql(input)).toBe(`
-      select u.row_id from "featherbase"."user" u
+      select u.row_id from "featherbase".person u
       join "featherbase".role r on r.row_id = 'role'
       join tasker.task t on true
       where u.full_name = 'from user'

@@ -89,7 +89,7 @@ const controller: TableController = {
       if (row.kind === 'password')
         throw new AppError('ValidationError', 'The password sign-in method cannot be deleted; turn it off instead')
       await assertNoAdminLockout(String(row.row_id), null, tx)
-      const [{ n }] = await tx`select count(*)::int as n from user_identity where method = ${String(row.row_id)}`
+      const [{ n }] = await tx`select count(*)::int as n from sign_in_identity where method = ${String(row.row_id)}`
       if (n > 0)
         throw new AppError('ConflictError', `${n} linked sign-in(s) use this method; remove them first or turn the method off`)
     },

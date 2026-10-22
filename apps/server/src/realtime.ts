@@ -1,7 +1,7 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, resolveToken, type SessionUser } from './auth'
-import { getRoles, hasPermission } from './permissions'
+import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -35,6 +35,23 @@ interface Client {
   socket: WebSocket
   user: SessionUser
   channels: Set<string>
+  /** person-rename R2: the subscriber's Data Scope, read when a list channel
+   *  is subscribed; list events for rows outside it are not sent. */
+  scope?: Map<string, Set<string>>
+}
+
+/** Is this row within the principal's Data Scope for its own Table? */
+export async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
+  if (await isPrivileged(principal)) return true
+  const allowed = (await getScopeMap(principal)).get(table)
+  return !allowed || allowed.has(rowId)
+}
+
+function listEventVisible(client: Client, channel: string, payload: unknown): boolean {
+  if (!channel.startsWith('list:') || !client.scope) return true
+  const allowed = client.scope.get(channel.slice(5))
+  const rowId = (payload as { row_id?: unknown } | undefined)?.row_id
+  return !allowed || rowId == null || allowed.has(String(rowId))
 }
 
 const clients = new Set<Client>()
@@ -57,7 +74,9 @@ export async function canSubscribe(user: SessionUser, channel: string): Promise<
     const rest = channel.slice(4)
     const table = rest.slice(0, rest.lastIndexOf(':'))
     if (!table) return false
-    return hasPermission(user.row_id, table, 'read')
+    // person-rename R2: a row outside the subscriber's Data Scope is not
+    // theirs to watch, whichever kind of principal they are.
+    return (await hasPermission(user.row_id, table, 'read')) && rowInScope(user.row_id, table, rest.slice(table.length + 1))
   }
   return false
 }
@@ -73,7 +92,8 @@ export function publish(channel: string, event: string, payload?: unknown): void
   }
   const data = JSON.stringify(msg)
   for (const c of clients) {
-    if (c.channels.has(channel) && c.socket.readyState === c.socket.OPEN) c.socket.send(data)
+    if (c.channels.has(channel) && c.socket.readyState === c.socket.OPEN && listEventVisible(c, channel, payload))
+      c.socket.send(data)
   }
 }
 
@@ -127,6 +147,8 @@ export function attachRealtime(server: Server): void {
             for (const ch of msg.subscribe ?? []) {
               // Authorize each subscription; silently drop unpermitted ones.
               if (await canSubscribe(client.user, ch)) {
+                if (ch.startsWith('list:') && !client.scope && !(await isPrivileged(client.user.row_id)))
+                  client.scope = await getScopeMap(client.user.row_id)
                 client.channels.add(ch)
                 registered.push(ch)
               }

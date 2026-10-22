@@ -24,7 +24,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_row', {
     table: 'Report',
-    row: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
+    row: { row_id: REPORT, ref_table: 'Person', report_type: 'Script Report', report_script: 'Srv Echo' },
   })
 }
 
@@ -43,13 +43,13 @@ describe('RPT-005: script reports', () => {
     expect(res.rows).toEqual([{ n: 21, doubled: 42 }])
   })
 
-  test('loads file-based reports (the User Report sample) and scopes them', async ({ admin }) => {
+  test('loads file-based reports (the Person Report sample) and scopes them', async ({ admin }) => {
     await setup(admin)
     const built = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
         table: 'Report',
-        row: { row_id: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
+        row: { row_id: 'SR Srv Bad', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
       }),
     })
     expect(built.status).toBe(201)
@@ -64,7 +64,7 @@ describe('RPT-005: script reports', () => {
       method: 'POST',
       body: JSON.stringify({
         table: 'Report',
-        row: { row_id: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
+        row: { row_id: 'SR Srv Missing', ref_table: 'Person', report_type: 'Script Report', report_script: 'No Such Report' },
       }),
     })
     expect(res.status).toBe(201)

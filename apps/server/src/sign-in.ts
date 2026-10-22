@@ -18,7 +18,6 @@ import {
   foldName,
   methodOfKind,
   newIdentityId,
-  newPersonId,
   normaliseEmail,
   touchIdentity,
   type SignInMethod,
@@ -58,11 +57,12 @@ export function leftError(method: SignInMethod): AppError {
   return new AppError('PermissionError', `${method.label || method.key} shows this account as no longer active. Contact your administrator.`)
 }
 
-/** ONE refusal for a person who may not sign in this way (#137): disabled,
- *  service account, or privileged through a method that may not admit them. */
+/** ONE refusal for a person who may not sign in this way (#137): unknown
+ *  (a service account is not a person), disabled, or privileged through a
+ *  method that may not admit them. */
 export async function assertEligible(method: SignInMethod, user: string): Promise<void> {
   const c = await candidate(user)
-  if (!c || !c.enabled || c.user_type === 'service' || (c.privileged && !KINDS[method.kind].admitsPrivileged))
+  if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged))
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
 }
 
@@ -82,8 +82,8 @@ export function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok:
 }
 
 async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
-  const [row] = await sql`select id, user_id from user_identity where method = ${method.key} and subject = ${subject}`
-  return row ? { user: String(row.user_id), identity: String(row.id) } : null
+  const [row] = await sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${subject}`
+  return row ? { user: String(row.person_id), identity: String(row.id) } : null
 }
 
 /** Claim a one-time invite for a verified address, onto an eligible owner only
@@ -93,16 +93,16 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
   try {
     const claimed = await withTransaction(async () => {
       const [invite] = await sql`
-        select id, user_id from user_identity
+        select id, person_id from sign_in_identity
         where method = ${method.key} and subject is null and pending_email = ${foldName(v.email!)}
         for update`
       if (!invite) return null
-      await assertEligible(method, String(invite.user_id))
+      await assertEligible(method, String(invite.person_id))
       await sql`
-        update user_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
+        update sign_in_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
         where id = ${String(invite.id)}`
-      return { user: String(invite.user_id), identity: String(invite.id) }
+      return { user: String(invite.person_id), identity: String(invite.id) }
     })
     if (claimed) await auditIdentity(claimed.user, 'claimed', claimed.user, method.key, claimed.identity!)
     return claimed
@@ -130,25 +130,26 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
     throw new AppError('AuthenticationError', NOT_PROVISIONED)
   }
   const email = v.email_verified ? normaliseEmail(v.email) : null
-  // An opaque, permanent id — the address is contact data, not the anchor.
-  const rowId = newPersonId()
   try {
     return await withTransaction(async () => {
       const [taken] = await sql`
-        select 1 from "user"
+        select 1 from person
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
       // Never turned into a link: an address already in use belongs to someone
       // an administrator must decide about.
       if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      // An opaque, permanent id (minted by the Person Table's id pattern) —
+      // the address is contact data, not the anchor.
       const created = await saveDoc(
-        'User',
-        { row_id: rowId, email, full_name: v.display_name || email || rowId, enabled: true, roles: [] },
+        'Person',
+        { email, full_name: v.display_name || email || null, enabled: true, roles: [] },
         'Administrator',
+        'insert',
       )
       const id = newIdentityId()
-      await sql`insert into user_identity ${sql({
+      await sql`insert into sign_in_identity ${sql({
         id,
-        user_id: String(created.row_id),
+        person_id: String(created.row_id),
         method: method.key,
         subject: v.subject!,
         email,
@@ -225,16 +226,16 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
       if (linked) throw new AppError('ConflictError', 'This account is already linked to another person')
       if (v.email_verified && v.email) {
         const [invite] = await sql`
-          select id, user_id from user_identity
+          select id, person_id from sign_in_identity
           where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} for update`
-        if (invite && invite.user_id !== user)
+        if (invite && invite.person_id !== user)
           throw new AppError('ConflictError', 'This address is reserved for another account. Contact your administrator.')
-        if (invite) await sql`delete from user_identity where id = ${String(invite.id)}`
+        if (invite) await sql`delete from sign_in_identity where id = ${String(invite.id)}`
       }
       const id = newIdentityId()
-      await sql`insert into user_identity ${sql({
+      await sql`insert into sign_in_identity ${sql({
         id,
-        user_id: user,
+        person_id: user,
         method: method.key,
         subject: v.subject!,
         email: v.email_verified ? v.email ?? null : null,

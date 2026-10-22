@@ -210,3 +210,12 @@ export async function createUserWithRole(
   await grantRole(admin, spec)
   return createUser({ ...user, roles: [spec.role] })
 }
+
+// person-rename: a person's id is minted (`psn_…`), never chosen. Create one
+// through the real save path and get its id back. `email` / `username` are
+// how tests find the person again.
+export async function makePerson(values: Record<string, unknown> = {}, actor = 'Administrator'): Promise<string> {
+  const { saveDoc } = await import('../src/document')
+  const doc = await saveDoc('Person', { enabled: true, ...values }, actor, 'insert')
+  return String(doc.row_id)
+}

@@ -9,15 +9,18 @@ import { logActivity, logAccess } from '../src/audit'
 // Both carry the user and a timestamp, and are written even during login.
 
 const USER = 'audit-srv@x.com'
+// The person's minted id (`psn_…`): logs carry the id, sign-in uses the address.
+let ID = ''
 
 // Real password + real /api/login — this suite is about the audit trail of
 // authentication itself, so no token-minting shortcut.
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_row', {
-    table: 'User',
-    row: { row_id: USER, email: USER, enabled: true, roles: [{ role: 'System Manager' }] },
+  const saved = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Person',
+    row: { email: USER, enabled: true, roles: [{ role: 'System Manager' }] },
   })
-  await setUserPassword(USER, 'auditpw12345')
+  ID = saved.row_id
+  await setUserPassword(ID, 'auditpw12345')
 }
 
 describe('PLAT-007: audit logs', () => {
@@ -32,9 +35,9 @@ describe('PLAT-007: audit logs', () => {
 
     const [row] = await sql`
       select "user", operation, created_at from activity_log
-      where "user" = ${USER} and operation = 'login' order by created_at desc limit 1`
+      where "user" = ${ID} and operation = 'login' order by created_at desc limit 1`
     expect(row).toMatchObject({ operation: 'login' })
-    expect(row.user).toBe(USER)
+    expect(row.user).toBe(ID)
     expect(new Date(row.created_at as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })
 
@@ -42,12 +45,12 @@ describe('PLAT-007: audit logs', () => {
     await setup(admin)
     const res = await admin.fetch('/api/access_log', {
       method: 'POST',
-      body: JSON.stringify({ table: 'User', method: 'csv' }),
+      body: JSON.stringify({ table: 'Person', method: 'csv' }),
     })
     expect(res.status).toBe(200)
     const [row] = await sql`
       select operation, ref_table, method from access_log
-      where operation = 'export' and ref_table = 'User' order by created_at desc limit 1`
+      where operation = 'export' and ref_table = 'Person' order by created_at desc limit 1`
     expect(row.operation).toBe('export')
     expect(row.method).toBe('csv')
   })
@@ -62,11 +65,11 @@ describe('PLAT-007: audit logs', () => {
     })
     // Downgrade check: a user with no System Manager role.
     const plain = 'audit-plain@x.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: plain, email: plain, enabled: true },
+    const plainRow = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: plain, enabled: true },
     })
-    await setUserPassword(plain, 'plainpw12345')
+    await setUserPassword(plainRow.row_id, 'plainpw12345')
     const login = await api.fetch('/api/login', {
       method: 'POST',
       body: JSON.stringify({ usr: plain, pwd: 'plainpw12345' }),
@@ -82,12 +85,12 @@ describe('PLAT-007: audit logs', () => {
 
   test('logAccess/logActivity write directly with the user as owner', async ({ admin }) => {
     await setup(admin)
-    await logActivity(USER, 'logout')
-    await logAccess(USER, 'print', { table: 'User', row_id: USER, method: 'pdf' })
-    const [a] = await sql`select created_by from activity_log where "user" = ${USER} and operation = 'logout' limit 1`
-    const [b] = await sql`select created_by, reference_name from access_log where "user" = ${USER} and operation = 'print' limit 1`
-    expect(a.created_by).toBe(USER)
-    expect(b.created_by).toBe(USER)
-    expect(b.reference_name).toBe(USER)
+    await logActivity(ID, 'logout')
+    await logAccess(ID, 'print', { table: 'Person', row_id: ID, method: 'pdf' })
+    const [a] = await sql`select created_by from activity_log where "user" = ${ID} and operation = 'logout' limit 1`
+    const [b] = await sql`select created_by, reference_name from access_log where "user" = ${ID} and operation = 'print' limit 1`
+    expect(a.created_by).toBe(ID)
+    expect(b.created_by).toBe(ID)
+    expect(b.reference_name).toBe(ID)
   })
 })

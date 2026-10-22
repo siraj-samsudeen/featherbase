@@ -132,7 +132,7 @@ describe('NAV-002: related filters', () => {
     // Data Scope: user may only read supplier S-A
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: SUP, for_value: 'S-A' },
+      row: { person: user.user, allow_table: SUP, for_value: 'S-A' },
     })
     // "orders of ALL suppliers" through the relationship — S-B is invisible
     // to this user, so its order never surfaces through the hop

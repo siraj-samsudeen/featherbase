@@ -136,7 +136,7 @@ test('an attachment or shared access independently retains task identity across 
     const table = family === 'files' ? 'File' : 'Share'
     const link = await admin.post<Record<string, unknown>>('/api/save_row', { table, row: family === 'files'
       ? { file_name: '37-unit-evidence.txt', ref_table: 'tasker.task', ref_name: task.row_id }
-      : { share_table: 'tasker.task', share_name: task.row_id, user: member.user, read: true } })
+      : { share_table: 'tasker.task', share_name: task.row_id, person: member.user, read: true } })
     expect(await admin.post(discard, envelope(task, true))).toMatchObject({ result: { deleted: false, counts: { [family]: 1, comments: 0, versions: 0 } } })
     expect(await admin.post(promote, envelope(task))).toEqual({ result: { confirmationRequired: true } })
     const result = await admin.post<{ result: { projectId: string; retainedTask: boolean } }>(promote, envelope(task, true))

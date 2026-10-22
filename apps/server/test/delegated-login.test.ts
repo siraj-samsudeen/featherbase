@@ -197,9 +197,9 @@ describe('delegated password sign-in', () => {
       expect(sidCookie(res)).toBeUndefined()
       // person-identities (review M4): the account is disabled too. Re-enable
       // it so the next shape is judged on its own.
-      const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+      const [row] = await sql`select enabled from person where row_id = ${tl.user!}`
       expect(row.enabled, JSON.stringify(body)).toBe(false)
-      await sql`update "user" set enabled = true where row_id = ${tl.user!}`
+      await sql`update person set enabled = true where row_id = ${tl.user!}`
     }
   })
 
@@ -231,7 +231,7 @@ describe('delegated password sign-in', () => {
     await configure()
     const tl = await createUser({ email: 'tl.five@example.com' })
     await link(tl.user!, 'tl_5')
-    await sql`update "user" set enabled = false where row_id = ${tl.user!}`
+    await sql`update person set enabled = false where row_id = ${tl.user!}`
     const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'tl_5')
     expect(calls).toHaveLength(0)
@@ -240,11 +240,18 @@ describe('delegated password sign-in', () => {
     expect(sidCookie(res)).toBeUndefined()
   })
 
-  test('an automation account is never bound', async ({ api, admin, createUser }) => {
+  test('an automation account is never bound', async ({ api, admin }) => {
     await configure()
-    const bot = await createUser({ email: 'bot@example.com' })
-    await link(bot.user!, 'bot_1')
-    await sql`update "user" set user_type = 'service' where row_id = ${bot.user!}`
+    // person-rename: a service account is not a person, so it cannot hold a
+    // sign-in identity at all — neither through the API nor in the table.
+    const bot = (await admin.post('/api/service_accounts', { label: 'bot' })) as { row_id: string }
+    const res = await admin.fetch(`/api/people/${bot.row_id}/identities`, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'stylehr', subject: 'BOT-1', sign_in_name: 'bot_1' }),
+    })
+    expect(res.status).toBe(417)
+    await expect(sql.begin((tx) => tx`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
+      values ('uid_bot', ${bot.row_id}, 'stylehr', 'BOT-1', 'bot_1', 'test')`)).rejects.toThrow(/foreign key/)
     const calls = provider(() => Response.json({ ok: true }))
     expect((await signIn(api, 'bot_1')).status).toBe(401)
     expect(calls).toHaveLength(0)
@@ -255,13 +262,13 @@ describe('delegated password sign-in', () => {
     const a = await createUser({ email: 'dup.a@example.com' })
     const b = await createUser({ email: 'dup.b@example.com' })
     await link(a.user!, 'dup_1')
-    const res = await admin.fetch(`/api/users/${encodeURIComponent(b.user!)}/identities`, {
+    const res = await admin.fetch(`/api/people/${encodeURIComponent(b.user!)}/identities`, {
       method: 'POST',
       body: JSON.stringify({ method: 'stylehr', subject: 'B-1', sign_in_name: 'DUP_1 ' }),
     })
     expect(res.status).toBe(409)
-    const rows = await sql`select user_id from user_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
-    expect(rows.map((r) => r.user_id)).toEqual([a.user])
+    const rows = await sql`select person_id from sign_in_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
+    expect(rows.map((r) => r.person_id)).toEqual([a.user])
   })
 
   test('off is 404 like any unknown route, and the provider is never called', async ({ api }) => {
@@ -409,7 +416,7 @@ describe('delegated sign-in test mode', () => {
     expect((await signIn(api, office.user!, '')).status).toBe(401)
     const off = await createUser({ email: 'tl.disabled@example.com' })
     await link(off.user!, 'tl_disabled')
-    await sql`update "user" set enabled = false where row_id = ${off.user!}`
+    await sql`update person set enabled = false where row_id = ${off.user!}`
     expect((await signIn(api, off.user!, '')).status).toBe(401)
     const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
     await link(sm.user!, 'sm_1')
@@ -482,13 +489,13 @@ describe('delegated sign-in through linked identities', () => {
 
     provider(() => Response.json({ token: 'x', employment_status: 'Resigned' }))
     expect((await signIn(api, 'tl_leaver')).status).toBe(403)
-    const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+    const [row] = await sql`select enabled from person where row_id = ${tl.user!}`
     expect(row.enabled).toBe(false)
     expect((await whoami()).status).toBe(401)
     const again = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
     expect(again.status).toBe(401)
     // History is kept: the disable is a recorded change, and the link stays.
-    const [link_] = await sql`select 1 from user_identity where user_id = ${tl.user!}`
+    const [link_] = await sql`select 1 from sign_in_identity where person_id = ${tl.user!}`
     expect(link_).toBeTruthy()
   })
 
@@ -526,7 +533,7 @@ describe('delegated sign-in through linked identities', () => {
     expect((await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) })).status).toBe(403)
     expect((await as(`/api/me/identities/${identity}`, { method: 'DELETE' })).status).toBe(403)
     expect((await as('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
-    const [row] = await sql`select password_hash from "user" where row_id = ${tl.user!}`
+    const [row] = await sql`select password_hash from person where row_id = ${tl.user!}`
     expect(row.password_hash).toBeNull()
   })
 
@@ -538,7 +545,7 @@ describe('delegated sign-in through linked identities', () => {
     const res = await signIn(api, 'tl_stamp')
     const body = (await res.json()) as { user: { sign_in: { method: string; identity: string } } }
     expect(body.user.sign_in).toMatchObject({ method: 'stylehr', identity })
-    const [row] = await sql`select last_used_at from user_identity where id = ${identity}`
+    const [row] = await sql`select last_used_at from sign_in_identity where id = ${identity}`
     expect(row.last_used_at).not.toBeNull()
   })
 })

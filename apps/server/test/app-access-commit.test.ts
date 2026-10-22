@@ -14,7 +14,9 @@ void app
 // Independent commits are essential: sandbox savepoints cannot prove a grant
 // committed by another session becomes visible after an authorization lock wait.
 const prove = process.env.APP_ACCESS_COMMIT_PROOF === '1' ? test : test.skip
-const user = 'scope-race@example.test'
+// person-rename: a person id is psn_-prefixed; the proof inserts a fixed one.
+const user = 'psn_scoperaceproof222222'
+const email = 'scope-race@example.test'
 const outcome = (promise: Promise<unknown>) => promise.then(value => ({ value }), error => ({ error }))
 
 prove('scope locks, product locks and duplicate waits never retain pre-wait grants', async () => {
@@ -24,9 +26,9 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
   expect(await sql`select name from installed_app where name = 'scopeproof'`).toHaveLength(0)
   expect(await discoverPackages([resolve('../..', 'runtime-apps/scope-proof')])).toEqual([])
   await installApp('scopeproof')
-  await saveDoc('User', { row_id: user, email: user, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
-  const grant = () => saveDoc('Data Scope', { user, allow_table: 'scopeproof.store', for_value: 'A' }, 'Administrator', 'insert')
-  const revoke = () => sql`delete from data_scope where "user" = ${user}`
+  await saveDoc('Person', { row_id: user, email, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
+  const grant = () => saveDoc('Data Scope', { person: user, allow_table: 'scopeproof.store', for_value: 'A' }, 'Administrator', 'insert')
+  const revoke = () => sql`delete from data_scope where person = ${user}`
   try {
     await saveDoc('scopeproof.store', { row_id: 'A', label: 'A' }, 'Administrator', 'insert')
     await saveDoc('scopeproof.object', { row_id: 'draft', stores: ['A'] }, 'Administrator', 'insert')
@@ -66,7 +68,7 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
   } finally {
     await revoke()
     await sql`delete from runtime_action_result where app = 'scopeproof'`
-    await deleteDoc('User', user, 'Administrator')
+    await deleteDoc('Person', user, 'Administrator')
     await uninstallApp('scopeproof')
   }
 }, 30_000)
@@ -78,7 +80,7 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
   const directory = resolve('../..', 'runtime-apps/scope-proof')
   expect(await discoverPackages([directory])).toEqual([])
   await installApp('scopeproof')
-  await saveDoc('User', { row_id: user, email: user, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
+  await saveDoc('Person', { row_id: user, email, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
   const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
   const module = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 })
@@ -87,7 +89,7 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
   if (!address || typeof address === 'string') throw new Error('Expected local TCP listener')
   try {
     await saveDoc('scopeproof.store', { row_id: 'A', label: 'A' }, 'Administrator', 'insert')
-    await saveDoc('Data Scope', { user, allow_table: 'scopeproof.store', for_value: 'A' }, 'Administrator', 'insert')
+    await saveDoc('Data Scope', { person: user, allow_table: 'scopeproof.store', for_value: 'A' }, 'Administrator', 'insert')
     await saveDoc('scopeproof.access', { row_id: user, pairs: [['A', 'X']] }, 'Administrator', 'insert')
     const { token } = await issueSession(user)
     const send = (path: string, body: unknown) => fetch(`http://127.0.0.1:${address.port}/api/${path}`, {
@@ -121,9 +123,9 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
   } finally {
     for (const key of Object.keys(module.faults)) delete module.faults[key]
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
-    await sql`delete from data_scope where "user" = ${user}`
+    await sql`delete from data_scope where person = ${user}`
     await sql`delete from runtime_action_result where app = 'scopeproof'`
-    await deleteDoc('User', user, 'Administrator')
+    await deleteDoc('Person', user, 'Administrator')
     await uninstallApp('scopeproof')
   }
 }, 30_000)

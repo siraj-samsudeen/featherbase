@@ -135,7 +135,7 @@ const ASSIGNMENT_TABLE_DEF = {
   name: ASSIGNMENT_TABLE,
   module: 'Sales Target',
   columns: [
-    { column_name: 'employee', column_type: 'Reference', reference_table: 'User', reqd: true, in_list_view: true },
+    { column_name: 'employee', column_type: 'Reference', reference_table: 'Person', reqd: true, in_list_view: true },
     { column_name: 'plant_code', column_type: 'Data', reqd: true, in_list_view: true },
     { column_name: 'store_label', column_type: 'Data', in_list_view: true },
     { column_name: 'material_group', column_type: 'Data', reqd: true, in_list_view: true },
@@ -173,7 +173,7 @@ export async function seedSalesTarget(
 
   // #3783: the host derives an employee's sections from the Store Sections maps, which key on
   // the StyleHR employee code. A Custom Field is the framework's way to give a platform Table
-  // one more attribute an app needs — no migration, no fork of User.
+  // one more attribute an app needs — no migration, no fork of Person.
   const field = await f(`/api/table/${enc('Custom Field')}/${enc(EMPLOYEE_CODE_FIELD_ID)}`)
   if (field.status === 404)
     await ok(
@@ -181,7 +181,7 @@ export async function seedSalesTarget(
         table: 'Custom Field',
         row: {
           row_id: EMPLOYEE_CODE_FIELD_ID,
-          dt: 'User',
+          dt: 'Person',
           column_name: EMPLOYEE_CODE_FIELD,
           label: 'Employee code (StyleHR)',
           column_type: 'Data',
@@ -191,22 +191,35 @@ export async function seedSalesTarget(
       'create employee_code custom field',
     )
 
+  // person-rename: a person's id is minted (`psn_…`); the seed finds and
+  // creates the test accounts by username.
   const users: string[] = []
+  const idByUsername = new Map<string, string>()
+  const findByUsername = async (username: string): Promise<string | null> => {
+    const filters = enc(JSON.stringify([['username', '=', username]]))
+    const found = (await (await ok(
+      await f(`/api/table/Person?filters=${filters}&fields=${enc('["row_id"]')}`),
+      `find ${username}`,
+    )).json()) as { data: { row_id: string }[] }
+    return found.data[0]?.row_id ?? null
+  }
   for (const a of TEST_ACCOUNTS) {
     const password = passwords[a.username]
     if (!password) throw new Error(`no password configured for ${a.username}`)
-    const existing = await f(`/api/table/User/${enc(a.username)}`)
-    if (existing.status === 404) {
-      await ok(
+    let id = await findByUsername(a.username)
+    if (!id) {
+      const created = (await (await ok(
         await f('/api/save_row', json({
-          table: 'User',
-          row: { row_id: a.username, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+          table: 'Person',
+          row: { username: a.username, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
         })),
         `create ${a.username}`,
-      )
+      )).json()) as { row_id: string }
+      id = created.row_id
       users.push(a.username)
     }
-    await ok(await f('/api/set_password', json({ user: a.username, password })), `set password ${a.username}`)
+    idByUsername.set(a.username, id)
+    await ok(await f('/api/set_password', json({ user: id, password })), `set password ${a.username}`)
   }
 
   const created: string[] = []
@@ -222,7 +235,7 @@ export async function seedSalesTarget(
       await ok(
         await f('/api/save_row', json({
           table: ASSIGNMENT_TABLE,
-          row: { employee: r.username, plant_code: r.plant_code, store_label: r.store_label, material_group: code },
+          row: { employee: idByUsername.get(r.username) ?? (await findByUsername(r.username)), plant_code: r.plant_code, store_label: r.store_label, material_group: code },
         })),
         `assign ${key} to ${r.username}`,
       )
@@ -250,9 +263,9 @@ export interface Assignment {
   scope_basis: ScopeBasis[]
 }
 
-/** The StyleHR employee code lives on User as a Custom Field the sales-target seed declares. */
+/** The StyleHR employee code lives on Person as a Custom Field the sales-target seed declares. */
 export const EMPLOYEE_CODE_FIELD = 'employee_code'
-export const EMPLOYEE_CODE_FIELD_ID = `User-${EMPLOYEE_CODE_FIELD}`
+export const EMPLOYEE_CODE_FIELD_ID = `Person-${EMPLOYEE_CODE_FIELD}`
 
 async function relationExists(name: string): Promise<boolean> {
   const [row] = await sql`select to_regclass(${platformRelation(name)}) as relation`
@@ -287,10 +300,10 @@ interface Derived {
  * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
  */
 async function derivedFromSections(user: string, today: string): Promise<Derived[]> {
-  if (!(await columnExists('user', EMPLOYEE_CODE_FIELD))) return []
+  if (!(await columnExists('person', EMPLOYEE_CODE_FIELD))) return []
   if (!(await relationExists('section_merchandise_map'))) return []
   const [u] = await sql`
-    select employee_code from ${sql(platformRelation('user'))} where row_id = ${user}`
+    select employee_code from ${sql(platformRelation('person'))} where row_id = ${user}`
   const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
   if (!code) return []
   const merch = sql(platformRelation('section_merchandise_map'))
@@ -521,9 +534,12 @@ salesTargetRoutes.get('/me', async (c) => {
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
   const a = await currentAssignment(user.row_id, period)
+  const [person] = await sql`select username from person where row_id = ${user.row_id}`
+  const username = (person?.username as string | null | undefined) ?? null
   return c.json({
-    username: user.row_id,
-    display_name: user.full_name ?? user.row_id,
+    // person-rename: the id is opaque (`psn_…`); the reader is shown by username.
+    username: username ?? user.row_id,
+    display_name: user.full_name ?? username ?? user.row_id,
     assignment: a,
     ...period,
     embed_origin: EMBED_ORIGIN,

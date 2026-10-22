@@ -1,7 +1,7 @@
 // Person + linked identities (OpenSpec change `person-identities`, #275).
 //
-// A User is a person. Outside providers (Google, a connected HR system, …) are
-// linked to that person in `user_identity`, keyed by the provider's permanent
+// A Person is a human. Outside providers (Google, a connected HR system, …) are
+// linked to that person in `sign_in_identity`, keyed by the provider's permanent
 // subject — never by email. Featherbase's own password is the person's
 // `password_hash` (one home, no identity row). Sign-in methods are rows of the
 // system Table "Sign In Method", each with its own policy for people it does
@@ -152,7 +152,7 @@ export function domainAllowed(method: SignInMethod, email: string): boolean {
 
 export interface Identity {
   id: string
-  user_id: string
+  person_id: string
   method: string
   subject: string | null
   sign_in_name: string | null
@@ -165,13 +165,9 @@ export interface Identity {
 }
 
 const identityFields = () =>
-  sql`id, user_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at`
+  sql`id, person_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at`
 
-/** A new person's permanent id: opaque, never an email or a name. `row_id`
- *  is the warehouse person_id and must never change (design D1). */
-export function newPersonId(): string {
-  return 'usr_' + randomBytes(10).toString('hex')
-}
+export { newPersonId } from './opaque-id'
 
 /** The one id generator for linked identities. */
 export function newIdentityId(): string {
@@ -185,20 +181,24 @@ export async function auditIdentity(actor: string, verb: string, target: string,
 
 export async function listIdentities(user: string): Promise<Identity[]> {
   return (await sql`
-    select ${identityFields()} from user_identity where user_id = ${user} order by linked_at`) as unknown as Identity[]
+    select ${identityFields()} from sign_in_identity where person_id = ${user} order by linked_at`) as unknown as Identity[]
 }
 
 export async function getIdentity(id: string, db: Sql | TxSql = sql): Promise<Identity> {
-  const [row] = await db`select ${identityFields()} from user_identity where id = ${id}`
+  const [row] = await db`select ${identityFields()} from sign_in_identity where id = ${id}`
   if (!row) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
   return row as unknown as Identity
 }
 
+// Only a person has sign-in methods; a service account is not a person
+// (person-rename R2) and authenticates only by token.
 async function assertHumanUser(user: string, db: Sql | TxSql = sql) {
-  const [row] = await db`select user_type from "user" where row_id = ${user}`
-  if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
-  if (row.user_type === 'service')
+  const [row] = await db`select 1 from person where row_id = ${user}`
+  if (row) return
+  const [service] = await db`select 1 from service_account where row_id = ${user}`
+  if (service)
     throw new AppError('ValidationError', 'Service accounts have no sign-in methods — issue an access token instead')
+  throw new AppError('NotFoundError', `Person ${user} not found`)
 }
 
 /** A 409 the roster sync can act on: which rule clashed, and the identity
@@ -206,19 +206,19 @@ async function assertHumanUser(user: string, db: Sql | TxSql = sql) {
 async function clash(method: SignInMethod, what: { subject?: string | null; sign_in_name?: string | null; pending_email?: string | null }): Promise<never> {
   const checks: [string, Promise<Record<string, unknown>[]>][] = []
   if (what.subject)
-    checks.push(['subject', sql`select id, user_id from user_identity where method = ${method.key} and subject = ${what.subject}`])
+    checks.push(['subject', sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${what.subject}`])
   if (what.sign_in_name)
-    checks.push(['sign_in_name', sql`select id, user_id from user_identity where method = ${method.key} and lower(sign_in_name) = ${foldName(what.sign_in_name)}`])
+    checks.push(['sign_in_name', sql`select id, person_id from sign_in_identity where method = ${method.key} and lower(sign_in_name) = ${foldName(what.sign_in_name)}`])
   if (what.pending_email)
-    checks.push(['invite', sql`select id, user_id from user_identity where method = ${method.key} and subject is null and pending_email = ${what.pending_email}`])
+    checks.push(['invite', sql`select id, person_id from sign_in_identity where method = ${method.key} and subject is null and pending_email = ${what.pending_email}`])
   for (const [kind, query] of checks) {
     const [hit] = await query
     if (hit) {
       const label = kind === 'subject' ? `This ${method.label || method.key} ID` : kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
-      throw new AppError('ConflictError', `${label} is already linked to ${hit.user_id as string}`, {
+      throw new AppError('ConflictError', `${label} is already linked to ${hit.person_id as string}`, {
         clash: kind,
         identity: String(hit.id),
-        user: String(hit.user_id),
+        person: String(hit.person_id),
       })
     }
   }
@@ -231,7 +231,7 @@ async function guarded<T>(write: (t: Sql) => Promise<T>, onClash: () => Promise<
     return await sql.begin((tx) => write(tx as unknown as Sql)) as T
   } catch (err) {
     if ((err as { code?: string })?.code === '23505') return onClash()
-    if ((err as { code?: string })?.code === '23503') throw new AppError('ValidationError', 'Unknown sign-in method or user')
+    if ((err as { code?: string })?.code === '23503') throw new AppError('ValidationError', 'Unknown sign-in method or person')
     throw err
   }
 }
@@ -251,13 +251,13 @@ export async function linkIdentity(
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
   const [same] = await sql`
-    select ${identityFields()} from user_identity where method = ${method.key} and subject = ${subject} and user_id = ${user}`
+    select ${identityFields()} from sign_in_identity where method = ${method.key} and subject = ${subject} and person_id = ${user}`
   if (same && (same.sign_in_name ?? null) === signInName) return { ...(same as unknown as Identity), created: false }
   if (same) return { ...(await updateIdentity(String(same.id), { sign_in_name: signInName }, actor)), created: false }
   const [row] = await guarded(
-    (t) => t`insert into user_identity ${t({
+    (t) => t`insert into sign_in_identity ${t({
       id: newIdentityId(),
-      user_id: user,
+      person_id: user,
       method: method.key,
       subject,
       sign_in_name: signInName,
@@ -281,13 +281,13 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
   await assertHumanUser(user)
   const pending = foldName(address)
   const [same] = await sql`
-    select ${identityFields()} from user_identity
-    where method = ${method.key} and subject is null and pending_email = ${pending} and user_id = ${user}`
+    select ${identityFields()} from sign_in_identity
+    where method = ${method.key} and subject is null and pending_email = ${pending} and person_id = ${user}`
   if (same) return { ...(same as unknown as Identity), created: false }
   const [row] = await guarded(
-    (t) => t`insert into user_identity ${t({
+    (t) => t`insert into sign_in_identity ${t({
       id: newIdentityId(),
-      user_id: user,
+      person_id: user,
       method: method.key,
       subject: null,
       pending_email: pending,
@@ -304,30 +304,30 @@ export async function inviteGoogle(user: string, email: string, actor: string): 
  *  and a move may not leave an administrator with no way in. */
 export async function updateIdentity(
   id: string,
-  change: { sign_in_name?: string | null; user_id?: string },
+  change: { sign_in_name?: string | null; person_id?: string },
   actor: string,
 ): Promise<Identity> {
   const current = await getIdentity(id)
   const method = (await getSignInMethod(current.method))!
   return guarded(
     async (t) => {
-      const [locked] = await t`select ${identityFields()} from user_identity where id = ${id} for update`
+      const [locked] = await t`select ${identityFields()} from sign_in_identity where id = ${id} for update`
       if (!locked) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
       const patch: Record<string, unknown> = {}
       if (change.sign_in_name !== undefined)
         patch.sign_in_name = change.sign_in_name == null ? null : String(change.sign_in_name).trim() || null
-      const moving = change.user_id !== undefined && change.user_id !== locked.user_id
+      const moving = change.person_id !== undefined && change.person_id !== locked.person_id
       if (moving) {
-        await assertHumanUser(change.user_id!, t)
-        await assertUserKeepsWayIn(String(locked.user_id), t, id)
-        patch.user_id = change.user_id
+        await assertHumanUser(change.person_id!, t)
+        await assertUserKeepsWayIn(String(locked.person_id), t, id)
+        patch.person_id = change.person_id
         patch.linked_at = new Date()
         patch.linked_by = actor
       }
       if (!Object.keys(patch).length) return locked as unknown as Identity
-      const [row] = await t`update user_identity set ${t(patch)} where id = ${id} returning ${identityFields()}`
-      if (moving) await auditIdentity(actor, 'moved', `${locked.user_id} to ${change.user_id}`, String(locked.method), id)
-      else await auditIdentity(actor, 'renamed', String(locked.user_id), String(locked.method), id)
+      const [row] = await t`update sign_in_identity set ${t(patch)} where id = ${id} returning ${identityFields()}`
+      if (moving) await auditIdentity(actor, 'moved', `${locked.person_id} to ${change.person_id}`, String(locked.method), id)
+      else await auditIdentity(actor, 'renamed', String(locked.person_id), String(locked.method), id)
       return row as unknown as Identity
     },
     () => clash(method, { sign_in_name: change.sign_in_name ?? null }),
@@ -349,13 +349,13 @@ export async function waysIn(user: string, db: Sql | TxSql, excluding?: string):
     with p as (
       select (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
-      from "user" u where u.row_id = ${user}
+      from person u where u.row_id = ${user}
     )
     select
-      (select count(*) from "user" u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
+      (select count(*) from person u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
         where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
-      + (select count(*) from user_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
-        where i.user_id = ${user} and i.subject is not null and i.id <> ${excluding ?? ''}::text
+      + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
+        where i.person_id = ${user} and i.subject is not null and i.id <> ${excluding ?? ''}::text
           and not (m.kind = 'delegated_password' and (select privileged from p)))::int as n`
   return Number(row.n)
 }
@@ -375,15 +375,15 @@ export async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, exclud
 export async function unlinkIdentity(id: string, actor: string, opts: { self?: string } = {}): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
-    const [current] = await t`select user_id, method, subject from user_identity where id = ${id}`
-    if (!current || (opts.self && current.user_id !== opts.self))
+    const [current] = await t`select person_id, method, subject from sign_in_identity where id = ${id}`
+    if (!current || (opts.self && current.person_id !== opts.self))
       throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
-    await t`select 1 from "user" where row_id = ${current.user_id as string} for update`
-    if (opts.self && current.subject != null && (await waysIn(String(current.user_id), t, id)) === 0)
+    await t`select 1 from person where row_id = ${current.person_id as string} for update`
+    if (opts.self && current.subject != null && (await waysIn(String(current.person_id), t, id)) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
-    if (!opts.self && current.subject != null) await assertUserKeepsWayIn(String(current.user_id), t, id)
-    await t`delete from user_identity where id = ${id}`
-    await auditIdentity(actor, 'unlinked', String(current.user_id), String(current.method), id)
+    if (!opts.self && current.subject != null) await assertUserKeepsWayIn(String(current.person_id), t, id)
+    await t`delete from sign_in_identity where id = ${id}`
+    await auditIdentity(actor, 'unlinked', String(current.person_id), String(current.method), id)
   })
 }
 
@@ -391,10 +391,10 @@ export async function unlinkIdentity(id: string, actor: string, opts: { self?: s
 export async function removeOwnPassword(user: string): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
-    await t`select 1 from "user" where row_id = ${user} for update`
+    await t`select 1 from person where row_id = ${user} for update`
     if ((await waysIn(user, t, 'password')) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
-    await t`update "user" set password_hash = null where row_id = ${user}`
+    await t`update person set password_hash = null where row_id = ${user}`
     await logActivity(user, 'password_removed')
   })
 }
@@ -402,7 +402,7 @@ export async function removeOwnPassword(user: string): Promise<void> {
 /** Stamp a successful sign-in through an identity. */
 export async function touchIdentity(id: string, attrs: { email?: string | null; display_name?: string | null } = {}) {
   await sql`
-    update user_identity set last_used_at = now(),
+    update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
       display_name = coalesce(${attrs.display_name ?? null}, display_name)
     where id = ${id}`
@@ -413,25 +413,24 @@ export async function touchIdentity(id: string, attrs: { email?: string | null; 
 export interface Candidate {
   row_id: string
   enabled: boolean
-  user_type: string | null
   privileged: boolean
 }
 
 export async function candidate(user: string, db: Sql | TxSql = sql): Promise<Candidate | null> {
   const [row] = await db`
-    select u.row_id, u.enabled, u.user_type,
+    select u.row_id, u.enabled,
       (u.row_id = 'Administrator' or exists (
         select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
-    from "user" u where u.row_id = ${user}`
+    from person u where u.row_id = ${user}`
   return row ? (row as unknown as Candidate) : null
 }
 
 /** Disable a person a connected service reports as gone (design D7): a normal
  *  row save, so history is versioned; every session ends with the flag. */
 export async function disableLeaver(user: string, methodKey: string): Promise<void> {
-  const [row] = await sql`select updated_at, enabled from "user" where row_id = ${user}`
+  const [row] = await sql`select updated_at, enabled from person where row_id = ${user}`
   if (!row || !row.enabled) return
-  await saveDoc('User', { row_id: user, updated_at: row.updated_at, enabled: false }, 'Administrator')
+  await saveDoc('Person', { row_id: user, updated_at: row.updated_at, enabled: false }, 'Administrator')
   await logActivity(user, `disabled_as_leaver ${methodKey}`)
 }
 
@@ -450,8 +449,8 @@ export async function assertNoAdminLockout(
   const nextClient = next?.client_id ?? ''
   const rows = await db`
     with privileged as (
-      select u.row_id from "user" u
-      where u.enabled and coalesce(u.user_type, 'human') <> 'service'
+      select u.row_id from person u
+      where u.enabled
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
     ), m0 as (
@@ -463,14 +462,14 @@ export async function assertNoAdminLockout(
       from sign_in_method
     ), ways as (
       select p.row_id,
-        (select count(*) from "user" u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
+        (select count(*) from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from user_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.user_id = p.row_id and i.subject is not null) as before_n,
-        (select count(*) from "user" u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
+        (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          where i.person_id = p.row_id and i.subject is not null) as before_n,
+        (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from user_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.user_id = p.row_id and i.subject is not null) as after_n
+        (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          where i.person_id = p.row_id and i.subject is not null) as after_n
       from privileged p
     )
     select row_id from ways where before_n > 0 and after_n = 0 order by row_id`

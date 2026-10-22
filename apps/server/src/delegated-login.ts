@@ -278,9 +278,8 @@ export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise
     select u.row_id, u.enabled, i.id as identity,
            (u.row_id = 'Administrator' or exists (
              select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
-    from user_identity i join "user" u on u.row_id = i.user_id
+    from sign_in_identity i join person u on u.row_id = i.person_id
     where i.method = ${cfg.key} and i.subject is not null and ${match}
-      and coalesce(u.user_type, '') <> 'service'
     limit 2`
   if (rows.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   if (rows.length > 1)

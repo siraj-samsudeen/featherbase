@@ -1,0 +1,135 @@
+// OpenSpec change `person-rename` (#275): User → Person, service accounts as
+// their own principal, one principal model (person / service_account, exactly
+// one set), opaque ids with built-ins kept, the sign-in table renamed.
+import { describe, expect } from 'vitest'
+import { makeClient } from 'feather-testing-postgres'
+import { test } from './pg-test'
+import { app } from '../src/index'
+import { sql } from '../src/db'
+import { getMeta } from '../src/meta'
+import { issueAccessToken } from '../src/auth'
+import { getRoles, isPrivileged } from '../src/permissions'
+import { makePerson } from './fixtures'
+
+const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
+
+describe('person-rename: the human record is a Person', () => {
+  test('tables are renamed and /api/users is gone, with no alias', async ({ admin }) => {
+    expect(await rel('person')).toBeTruthy()
+    expect(await rel('user')).toBeNull()
+    expect(await rel('sign_in_identity')).toBeTruthy()
+    expect(await rel('user_identity')).toBeNull()
+    expect(await sql`select name from table_def where name in ('User', 'Person')`).toEqual([{ name: 'Person' }])
+    expect((await admin.fetch('/api/users/Administrator/identities')).status).toBe(404)
+    expect((await admin.fetch('/api/people/Administrator/identities')).status).toBe(200)
+    // username carries over with its index.
+    expect(await sql`select 1 from pg_indexes where schemaname = 'featherbase' and indexname = 'person_username_lower_uq'`).toHaveLength(1)
+  })
+
+  test('ids live in namespaces; the built-ins keep theirs', async () => {
+    expect(await sql`select row_id, built_in from person where row_id in ('Administrator', 'Guest') order by row_id`).toEqual([
+      { row_id: 'Administrator', built_in: true },
+      { row_id: 'Guest', built_in: true },
+    ])
+    const id = await makePerson({ email: 'ns@x.test' })
+    expect(id).toMatch(/^psn_[a-z2-7]{20}$/)
+    await expect(sql.begin((tx) => tx`insert into person (row_id, full_name) values ('RR-7963', 'x')`)).rejects.toThrow(/person_id_namespace/)
+    await expect(sql.begin((tx) => tx`insert into service_account (row_id, label) values ('svc-bot', 'x')`)).rejects.toThrow(/service_account_id_namespace/)
+  })
+
+  test('a person id is assigned, never typed', async ({ admin }) => {
+    await expect(admin.post('/api/save_row', { table: 'Person', row: { row_id: 'chosen@x.test', email: 'chosen@x.test' } })).rejects.toMatchObject({ status: 404 })
+    await expect(
+      sql.begin(async () => {
+        const { saveDoc } = await import('../src/document')
+        await saveDoc('Person', { row_id: 'chosen@x.test', email: 'chosen@x.test' }, 'Administrator', 'insert')
+      }),
+    ).rejects.toMatchObject({ type: 'ValidationError', fields: { row_id: 'assigned automatically' } })
+  })
+
+  test('a Person saved with roles through the generic path; the generated pair follows parent', async ({ admin }) => {
+    const created = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'roles@x.test', full_name: 'Roles', roles: [{ role: 'System Manager' }] },
+    })
+    expect(await sql`select role, person, service_account, parenttype from has_role where parent = ${created.row_id}`).toEqual([
+      { role: 'System Manager', person: created.row_id, service_account: null, parenttype: 'Person' },
+    ])
+    expect(await getRoles(created.row_id)).toContain('System Manager')
+    expect(await isPrivileged(created.row_id)).toBe(true)
+    // The pair is storage, not metadata: the roles grid renders no pickers.
+    expect((await getMeta('Has Role')).columns.map((c) => c.column_name)).toEqual(['role'])
+  })
+})
+
+describe('person-rename: one principal model', () => {
+  test('Data Scope and Share carry a Person and a Service account picker; exactly one must be set', async ({ admin }) => {
+    for (const table of ['Data Scope', 'Share']) {
+      const cols = (await getMeta(table)).columns
+      expect(cols.find((c) => c.column_name === 'person')).toMatchObject({ column_type: 'Reference', reference_table: 'Person' })
+      expect(cols.find((c) => c.column_name === 'service_account')).toMatchObject({ column_type: 'Reference', reference_table: 'Service Account' })
+      expect(cols.find((c) => c.column_name === 'user')).toBeUndefined()
+    }
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-pair' })
+    const person = await makePerson({ email: 'pair@x.test' })
+    for (const row of [{}, { person, service_account: account.row_id }])
+      await expect(
+        admin.post('/api/save_row', { table: 'Data Scope', row: { ...row, allow_table: 'Role', for_value: 'All' } }),
+      ).rejects.toMatchObject({ status: 417, fields: { person: expect.any(String), service_account: expect.any(String) } })
+    await expect(sql.begin((tx) => tx`insert into data_scope (row_id, allow_table, for_value) values ('ds-none', 'Role', 'All')`)).rejects.toThrow(
+      /data_scope_one_principal/,
+    )
+  })
+
+  test('the Person picker cannot take a service account', async ({ admin }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-picker' })
+    await expect(
+      admin.post('/api/save_row', { table: 'Data Scope', row: { person: account.row_id, allow_table: 'Role', for_value: 'All' } }),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('deleting a principal that still holds scope, share or token rows is refused by the database', async ({ admin }) => {
+    const person = await makePerson({ email: 'held@x.test' })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person, allow_table: 'Role', for_value: 'All' } })
+    await expect(sql.begin((tx) => tx`delete from person where row_id = ${person}`)).rejects.toThrow(/foreign key constraint/)
+  })
+
+  test('Service Account is read-only through the generic API; its roles change only through its own endpoint', async ({ admin }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-ro' })
+    const url = `/api/table/Service%20Account/${account.row_id}`
+    const row = await admin.get<{ updated_at: string }>(url)
+    const patched = await admin.fetch(url, { method: 'PATCH', body: JSON.stringify({ label: 'renamed', updated_at: row.updated_at }) })
+    expect(patched.status).toBe(417)
+    await expect(admin.post('/api/save_row', { table: 'Service Account', row: { label: 'svc-generic' } })).rejects.toMatchObject({ status: 417 })
+    await expect(admin.delete(url)).rejects.toMatchObject({ status: 417 })
+
+    const updated = await admin.post<{ roles: string[] }>(`/api/service_accounts/${account.row_id}/roles`, { roles: ['System Manager'] })
+    expect(updated.roles).toEqual(['System Manager'])
+    expect(await isPrivileged(account.row_id)).toBe(true)
+    expect(await sql`select parenttype, service_account, person from has_role where parent = ${account.row_id}`).toEqual([
+      { parenttype: 'Service Account', service_account: account.row_id, person: null },
+    ])
+    await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: [] })
+    expect(await isPrivileged(account.row_id)).toBe(false)
+    await expect(admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['No Such Role'] })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a service account writes as itself: created_by is its id, and it is rate-limited by its own budget', async ({ admin }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-writer', roles: ['System Manager'] })
+    const { token } = await issueAccessToken(account.row_id, 'writer')
+    const svc = makeClient(app, token, account.row_id)
+    const role = await svc.post<{ row_id: string; created_by: string }>('/api/save_row', { table: 'Role', row: { row_id: 'Written By Bot' } })
+    expect(role.created_by).toBe(account.row_id)
+    await sql`update service_account set api_rate_limit = 1 where row_id = ${account.row_id}`
+    const { resetRateLimit } = await import('../src/rate-limit')
+    resetRateLimit(account.row_id)
+    expect((await svc.fetch('/api/whoami')).status).toBe(200)
+    expect((await svc.fetch('/api/whoami')).status).toBe(429)
+  })
+
+  test('assignment goes to people; a service account is not offered', async ({ admin }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-assign' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Assign Probe' } })
+    await expect(admin.post('/api/assign', { table: 'Role', row_id: 'Assign Probe', assign_to: account.row_id })).rejects.toMatchObject({ status: 404 })
+  })
+})

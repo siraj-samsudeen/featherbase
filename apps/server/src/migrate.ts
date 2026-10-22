@@ -80,6 +80,42 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
   return errors
 }
 
+/** Apply one migration file and record it, inside the caller's transaction
+ *  (the migrator's per-file transaction, or the rolled-back rehearsal of
+ *  `cli people:plan`). */
+export async function applyMigrationFile(file: string): Promise<void> {
+  await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
+  if (file.endsWith('.sql')) {
+    let body = readFileSync(join(dir, file), 'utf8')
+    if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
+      body = body
+        .replaceAll('set search_path = public', 'set search_path = pg_catalog')
+        .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
+        .replaceAll('from permission p', 'from featherbase.permission p')
+        .replaceAll('join has_role hr', 'join featherbase.has_role hr')
+    }
+    await sql.unsafe(body)
+  } else {
+    // .ts migrations export up(); they use the engine itself (createTable,
+    // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
+    // #130 security supersession: retain the shipped migration as history,
+    // but never execute its known-password production fallback on a fresh DB.
+    if (file === '0006_admin_password.ts') await bootstrapAdministrator()
+    else {
+      const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+      await mod.up()
+    }
+  }
+  const [after] = await sql`
+    select to_regclass('public.migration') as legacy,
+      to_regclass('featherbase.migration') as current`
+  if (Boolean(after.legacy) === Boolean(after.current))
+    throw new Error('Migration must leave exactly one platform migration ledger')
+  const target = after.current ? 'featherbase.migration' : 'public.migration'
+  await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
+  invalidateMeta()
+}
+
 // Runs pending migrations. Does NOT close the DB connection — the caller owns
 // its lifecycle (the CLI keeps it open for the rest of the command).
 export async function runMigrations() {
@@ -128,37 +164,7 @@ export async function runMigrations() {
         await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
         await tx`insert into public.migration (name) values (${file})`
       })
-    } else await withTransaction(async () => {
-      await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
-      if (file.endsWith('.sql')) {
-        let body = readFileSync(join(dir, file), 'utf8')
-        if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
-          body = body
-            .replaceAll('set search_path = public', 'set search_path = pg_catalog')
-            .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
-            .replaceAll('from permission p', 'from featherbase.permission p')
-            .replaceAll('join has_role hr', 'join featherbase.has_role hr')
-        }
-        await sql.unsafe(body)
-      } else {
-      // .ts migrations export up(); they use the engine itself (createTable,
-      // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
-      // #130 security supersession: retain the shipped migration as history,
-      // but never execute its known-password production fallback on a fresh DB.
-        if (file === '0006_admin_password.ts') await bootstrapAdministrator()
-        else {
-          const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-          await mod.up()
-        }
-      }
-      const [after] = await sql`
-        select to_regclass('public.migration') as legacy,
-          to_regclass('featherbase.migration') as current`
-      if (Boolean(after.legacy) === Boolean(after.current))
-        throw new Error('Migration must leave exactly one platform migration ledger')
-      const target = after.current ? 'featherbase.migration' : 'public.migration'
-      await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
-    })
+    } else await withTransaction(() => applyMigrationFile(file))
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A

@@ -13,7 +13,9 @@ import { getMeta } from '../src/meta'
 const DT = 'Sla Ticket'
 const SLA = 'Sla Ticket Policy'
 const ROLE = 'Sla Escalation Mgr'
-const MGR = 'sla-mgr@x.com'
+// A person id in the `psn_` namespace (person-rename); the address is separate.
+const MGR = 'psn_slamgr'
+const MGR_EMAIL = 'sla-mgr@x.com'
 const FLOW = 'Sla Ticket Flow'
 
 // Sandbox gotcha: inside the test transaction `now()` is frozen at BEGIN,
@@ -27,12 +29,12 @@ async function nudgeDueJobs() {
 async function setup(admin: TestClient) {
   await loadJobs()
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  await sql`insert into "user" ${sql({
-    row_id: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR, enabled: true,
+  await sql`insert into person ${sql({
+    row_id: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR_EMAIL, enabled: true,
   })}`
   await sql`insert into has_role ${sql({
     row_id: 'sla-hr-1', created_by: 'Administrator', updated_by: 'Administrator',
-    parent: MGR, parenttype: 'User', parentfield: 'roles', position: 1, role: ROLE,
+    parent: MGR, parenttype: 'Person', parentfield: 'roles', position: 1, role: ROLE,
   })}`
   await admin.post('/api/table_def', {
     name: DT,
@@ -97,10 +99,10 @@ describe('SLA: deadline stamping + escalation', () => {
     admin,
   }) => {
     await setup(admin)
-    await sql`insert into "user" ${sql({ row_id: 'sla-mgr-noemail', created_by: 'Administrator', updated_by: 'Administrator', enabled: true })}`
+    await sql`insert into person ${sql({ row_id: 'psn_slamgrnoemail', created_by: 'Administrator', updated_by: 'Administrator', enabled: true })}`
     await sql`insert into has_role ${sql({
       row_id: 'sla-hr-2', created_by: 'Administrator', updated_by: 'Administrator',
-      parent: 'sla-mgr-noemail', parenttype: 'User', parentfield: 'roles', position: 1, role: ROLE,
+      parent: 'psn_slamgrnoemail', parenttype: 'Person', parentfield: 'roles', position: 1, role: ROLE,
     })}`
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
     const done = await saveDoc(DT, { title: 'done in time', priority: 'High' }, 'Administrator')
@@ -123,10 +125,10 @@ describe('SLA: deadline stamping + escalation', () => {
     const mails = await sql`
       select recipient from email_queue
       where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
-    expect(mails.map((m) => m.recipient)).toContain(MGR)
+    expect(mails.map((m) => m.recipient)).toContain(MGR_EMAIL)
     // person-identities: a holder without an email is skipped, not mailed at
     // their user id.
-    expect(mails.map((m) => m.recipient)).not.toContain('sla-mgr-noemail')
+    expect(mails.map((m) => m.recipient)).not.toContain('psn_slamgrnoemail')
     expect(mails).toHaveLength(1)
 
     // A second sweep must not escalate (or email) the same document again.
