@@ -60,24 +60,59 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
   return 'visible'
 }
 
-/** Does an Excel number format show a time? (hours, seconds, AM/PM; quoted text and [colour] tags ignored) */
-function formatShowsTime(format: string): boolean {
-  const bare = format.replace(/"[^"]*"/g, '').replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
+/**
+ * The section of an Excel number format that applies to a value, as Excel
+ * picks it: `positive;negative;zero;text` (quoted text may contain `;`).
+ */
+function formatSectionFor(format: string, value: number): string {
+  const sections: string[] = []
+  let current = ''
+  let quoted = false
+  for (const ch of format) {
+    if (ch === '"') quoted = !quoted
+    if (ch === ';' && !quoted) {
+      sections.push(current)
+      current = ''
+    } else current += ch
+  }
+  sections.push(current)
+  if (value < 0) return sections[1] ?? sections[0]
+  if (value === 0) return sections[2] ?? sections[0]
+  return sections[0]
+}
+
+/**
+ * An Excel serial day as YYYY-MM-DD by pure UTC arithmetic, so no timezone can
+ * move it (SSF.parse_date_code builds a local Date and is wrong in zones that
+ * skipped a day, such as Samoa on 30-Dec-2011). 1900 system: serial 0 shows as
+ * 31-Dec-1899, serial 60 is Excel's fictitious 29-Feb-1900, and serials before
+ * it count from 31-Dec-1899; the 1904 system counts from 01-Jan-1904.
+ */
+function serialDay(day: number, date1904: boolean): string {
+  const DAY_MS = 86_400_000
+  if (!date1904 && day === 60) return '1900-02-29'
+  const epoch = date1904 ? Date.UTC(1904, 0, 1) : day < 60 ? Date.UTC(1899, 11, 31) : Date.UTC(1899, 11, 30)
+  return new Date(epoch + day * DAY_MS).toISOString().slice(0, 10)
+}
+
+/** Does a format section show a time? (hours, seconds, AM/PM; quoted text and [colour] tags ignored) */
+function formatShowsTime(section: string): boolean {
+  const bare = section.replace(/"[^"]*"/g, '').replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
   return /[hs]|AM\/PM|A\/P/i.test(bare)
 }
 
 /**
- * #387: every numeric cell with a date number format is read from the serial
- * itself, never through a timezone:
- * - a cell whose format shows only a date becomes local midnight of the day
- *   the sheet shows (SSF.parse_date_code), which the shared inference reads as
- *   a Date;
- * - a cell whose format shows a time becomes its local date-time as text,
- *   `YYYY-MM-DDTHH:MM:SS[.mmm]`, read as a Datetime, even at 00:00. A Date
- *   object would be ambiguous: 05:30 in India is exactly UTC midnight, which
- *   the date-only heuristic would take for a bare day. The time is the serial's
- *   day fraction in whole milliseconds, so a rounded-up 23:59:59.9996 carries
- *   into the next day instead of being clipped.
+ * #387: every numeric cell whose (applicable) number format is a date is read
+ * from the serial itself, never through a timezone, and handed on as text:
+ * - a format that shows only a date gives `YYYY-MM-DD`, which the shared
+ *   inference reads as a Date. Not a local-midnight Date object: in some
+ *   timezones a day has no local midnight (São Paulo's DST start) or does not
+ *   exist at all (Samoa, 30-Dec-2011); the day comes from serialDay();
+ * - a format that shows a time gives the local date-time,
+ *   `YYYY-MM-DDTHH:MM:SS[.mmm]`, read as a Datetime, even at 00:00. The time is
+ *   the serial's day fraction in whole milliseconds, so a rounded-up
+ *   23:59:59.9996 carries into the next day. A time-only cell (serial below 1)
+ *   sits on Excel's day zero, 31-Dec-1899.
  */
 function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSheet, date1904: boolean) {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
@@ -85,26 +120,26 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
   for (const address of Object.keys(sheet)) {
     if (address.startsWith('!')) continue
     const cell = sheet[address] as import('xlsx').CellObject
-    if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue
+    if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z) continue
+    const section = formatSectionFor(String(cell.z), cell.v)
+    if (!XLSX.SSF.is_date(section)) continue
     let day = Math.floor(cell.v)
     let ms = Math.round((cell.v - day) * DAY_MS)
     if (ms >= DAY_MS) {
       day += 1
       ms -= DAY_MS
     }
-    const p = XLSX.SSF.parse_date_code(day, { date1904 })
-    if (!p) continue
-    if (!formatShowsTime(String(cell.z))) {
-      cell.t = 'd'
-      cell.v = new Date(p.y, p.m - 1, p.d)
+    const date = serialDay(day, date1904)
+    cell.t = 's'
+    if (!formatShowsTime(section)) {
+      cell.v = date
       continue
     }
     const H = Math.floor(ms / 3_600_000)
     const M = Math.floor((ms % 3_600_000) / 60_000)
     const S = Math.floor((ms % 60_000) / 1000)
     const frac = ms % 1000
-    cell.t = 's'
-    cell.v = `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(H)}:${pad(M)}:${pad(S)}${frac ? `.${pad(frac, 3)}` : ''}`
+    cell.v = `${date}T${pad(H)}:${pad(M)}:${pad(S)}${frac ? `.${pad(frac, 3)}` : ''}`
   }
 }
 

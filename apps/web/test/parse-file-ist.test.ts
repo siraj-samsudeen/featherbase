@@ -10,16 +10,12 @@ import { parseWorkbook } from '../src/lib/parse-file'
 import { previewCell } from '../src/pages/ImportWizard'
 
 /** A workbook whose cells are real Excel dates: serial numbers with a date number format. */
-function workbookFile(cells: [number, string][]): File {
+function workbookFile(cells: [number, string][], date1904 = false): File {
   const ws: XLSX.WorkSheet = { '!ref': `A1:A${cells.length + 1}`, A1: { t: 's', v: 'when' } }
   cells.forEach(([serial, format], i) => (ws[`A${i + 2}`] = { t: 'n', v: serial, z: format }))
-  const buf = XLSX.write({ SheetNames: ['S'], Sheets: { S: ws } }, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+  const wb: XLSX.WorkBook = { SheetNames: ['S'], Sheets: { S: ws }, Workbook: { WBProps: { date1904 } } }
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
   return { name: 'dates.xlsx', arrayBuffer: async () => buf } as unknown as File
-}
-
-const local = (d: unknown) => {
-  const x = d as Date
-  return [x.getFullYear(), x.getMonth() + 1, x.getDate(), x.getHours(), x.getMinutes(), x.getSeconds()]
 }
 
 describe('Excel dates in IST (+05:30)', () => {
@@ -28,14 +24,56 @@ describe('Excel dates in IST (+05:30)', () => {
   })
 
   test.each([
-    [45586, '21-Oct-2024', [2024, 10, 21]],
-    [45351, '29-Feb-2024 (leap day)', [2024, 2, 29]],
-    [45322, '31-Jan-2024 (month end)', [2024, 1, 31]],
-    [45657, '31-Dec-2024 (year end)', [2024, 12, 31]],
-    [45658, '01-Jan-2025', [2025, 1, 1]],
-  ])('serial %i (%s) reads as that local day at midnight', async (serial, _label, ymd) => {
+    [45586, '21-Oct-2024', '2024-10-21'],
+    [45351, '29-Feb-2024 (leap day)', '2024-02-29'],
+    [45322, '31-Jan-2024 (month end)', '2024-01-31'],
+    [45657, '31-Dec-2024 (year end)', '2024-12-31'],
+    [45658, '01-Jan-2025', '2025-01-01'],
+  ])('serial %i (%s) reads as that day, with no time and no timezone', async (serial, _label, day) => {
     const [sheet] = await parseWorkbook(workbookFile([[serial, 'dd-mmm-yyyy']]))
-    expect(local(sheet.rows[0][0])).toEqual([...ymd, 0, 0, 0])
+    expect(sheet.rows[0][0]).toBe(day)
+  })
+
+  test.each([
+    ['America/Sao_Paulo', 43408, '2018-11-04'], // that day's local midnight did not exist (DST began)
+    ['Pacific/Apia', 40907, '2011-12-30'], // Samoa skipped this day entirely
+  ])('in %s, serial %i still reads as %s, and as a date', async (tz, serial, day) => {
+    const before = process.env.TZ
+    process.env.TZ = tz
+    try {
+      const [sheet] = await parseWorkbook(workbookFile([[serial, 'dd-mmm-yyyy']]))
+      expect(sheet.rows[0][0]).toBe(day)
+      expect(inferColumnType([sheet.rows[0][0]])).toBe('Date')
+    } finally {
+      process.env.TZ = before
+    }
+  })
+
+  test.each([
+    [1, '1900-01-01'],
+    [59, '1900-02-28'],
+    [60, '1900-02-29'], // Excel's fictitious leap day, shown as the sheet shows it
+    [61, '1900-03-01'],
+  ])('1900 date system: serial %i reads as %s', async (serial, day) => {
+    const [sheet] = await parseWorkbook(workbookFile([[serial, 'yyyy-mm-dd']]))
+    expect(sheet.rows[0][0]).toBe(day)
+  })
+
+  test('a 1904-based workbook counts from 01-Jan-1904', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[44124, 'yyyy-mm-dd']], true)) // 21-Oct-2024 in the 1904 system
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
+  test('a time-only cell (serial below 1) is a valid date-time on Excel’s day zero', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[0.5, 'h:mm']]))
+    expect(sheet.rows[0][0]).toBe('1899-12-31T12:00:00')
+    expect(inferColumnType([sheet.rows[0][0]])).toBe('Datetime')
+  })
+
+  test('only the format section that applies to the value is read', async () => {
+    // Positive values use the first section (a date); the unused second section would show a time.
+    const [sheet] = await parseWorkbook(workbookFile([[45586.75, 'yyyy-mm-dd;hh:mm']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
   })
 
   test('a date with a time is its exact local date-time, seconds and fraction included', async () => {

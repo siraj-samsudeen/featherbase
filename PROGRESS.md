@@ -6,23 +6,32 @@ Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel
 the previous day: 21-Oct-2024 became `2024-10-20T18:29:50Z`. The import preview and the shared Date schema then
 stored that day via `toISOString().slice(0, 10)`. The Suppliers import on featherbase-dev on 12-Oct-2026 showed it.
 
-`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`) and reads each
-date-formatted cell with `SSF.parse_date_code` (no timezone), honouring 1904-based workbooks:
-- a date-only cell becomes a local-midnight Date;
-- a cell whose number format shows a time becomes local date-time text, even at 00:00. Its time is the serial's
-  day fraction in whole milliseconds, so a rounded-up 23:59:59.9996 carries into the next day, and 05:30 IST
-  (exactly UTC midnight) is never mistaken for a bare day. A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
+`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`) and converts each
+cell whose applicable format section is a date, with no timezone anywhere:
+- the day comes from pure UTC arithmetic on the serial (`serialDay`). This handles 1900 quirks (serial 0 is
+  31-Dec-1899, 60 is the fictitious 29-Feb-1900) and 1904-based workbooks. `SSF.parse_date_code` builds a local Date
+  and was wrong in Samoa;
+- a date-only format gives `YYYY-MM-DD` text, not a Date: some zones have no local midnight on a day;
+- a format that shows a time gives local date-time text, `YYYY-MM-DDTHH:MM:SS[.mmm]`, even at 00:00. Its time is the
+  serial's day fraction in whole milliseconds, carrying into the next day, so 05:30 IST (exactly UTC midnight) is
+  never mistaken for a bare day.
+
+A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
 coercion, the Date schema and the import preview use it. OpenSpec change `fix-excel-date-shift-ist`, with no
 capability delta.
 
 **Verified** under Node 22:
-- `apps/web/test/parse-file-ist.test.ts` (14, in IST): failed first with `[2024, 10, 20, 23, 59, 50]`. The cases are
-  month ends, a leap day, the year end, 01-Jan, a 23:59:58.272 time, an IST 05:30 time that stays a Datetime, and
-  `.123` seconds,
-  a midnight date-time cell, and a rounding carry past the second and past midnight.
+- `apps/web/test/parse-file-ist.test.ts` (23): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. It covers:
+  - month ends, the leap day, the year end and 01-Jan;
+  - São Paulo's missing midnight and Samoa's skipped day;
+  - 1900 serials 1/59/60/61 and a 1904 workbook;
+  - a time-only cell, a multi-section format, a midnight date-time;
+  - `.123` and `.272` seconds, and rounding carries past the second and past midnight;
+  - an IST 05:30 time that stays a Datetime.
 - The shared schema test in IST passes, and `packages/shared` has 131 tests passing.
-- Web suite 197 passed; server import tests 88 passed; web and server typecheck passed.
-- The import and table-builder e2e specs on this machine, which runs in IST: 41 of 42 passed. The one failure is
+- Web suite 208 passed; server import tests 88 passed; web and server typecheck passed.
+- The import and table-builder e2e specs on this machine (IST): 27 of 27 passed after the last change. Earlier, one
+  failure was
   `import-upsert-journey` UPS-J2, which also fails intermittently on untouched `main` locally (fail, then pass on
   two runs), so it predates this change; CI passes it.
 
