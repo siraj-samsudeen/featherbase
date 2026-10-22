@@ -366,7 +366,9 @@ export async function updateIdentifier(
         return { result: 'unchanged' as const, identifier: current }
       // Ending a value on the day it started leaves an empty period: it was
       // never in force, so it is removed (and logged) rather than kept.
-      if (to && from && to <= from && change.valid_to !== undefined && to !== current.valid_to) {
+      if (to && from && to < from)
+        throw new AppError('ValidationError', 'The period ends before it starts', { valid_to: 'on or after valid_from' })
+      if (to && from && to === from && change.valid_to !== undefined && to !== current.valid_to) {
         await t`delete from person_identifier where id = ${id}`
         await logActivity(actor, `identifier_removed ${system.row_id} for ${current.person_id} (${id})`.slice(0, 140))
         return { result: 'updated' as const, identifier: { ...current, valid_to: to } }
@@ -391,12 +393,27 @@ export async function deleteIdentifier(id: string, actor: string): Promise<void>
     const current = await lockedRow(id, t)
     const system = await getSystem(current.system, t)
     await assertMayEdit(actor, system, current.person_id)
+    // A replaced record is inert: its history is not edited (D1).
+    await assertWritablePerson(current.person_id, t)
     await t`delete from person_identifier where id = ${id}`
     await logActivity(actor, `identifier_removed ${system.row_id} for ${current.person_id} (${id})`.slice(0, 140))
   })
 }
 
 // ----------------------------------------------------- write-through (D5)
+
+/** Is this address still the person's own email, or the verified address of
+ *  one of their live Google links (other than `excludingIdentity`)? Then its
+ *  `email` row stays current: one row stands for every live source. */
+async function emailStillBacked(person: string, address: string, db: Db, excludingIdentity: string | null): Promise<boolean> {
+  const [own] = await db`select 1 from person where row_id = ${person} and lower(trim(email)) = ${address}`
+  if (own) return true
+  const [linked] = await db`
+    select 1 from sign_in_identity i join sign_in_method m on m.row_id = i.method and m.kind = 'google'
+    where i.person_id = ${person} and i.ended_at is null and i.subject is not null and lower(trim(i.email)) = ${address}
+      and i.id <> ${excludingIdentity ?? ''}`
+  return Boolean(linked)
+}
 
 /** Close a current row today; a row opened today is removed instead (an
  *  empty period is no history). */
@@ -463,9 +480,10 @@ export async function endIdentityIdentifiers(identityId: string, db: Db = sql): 
     } catch {
       continue
     }
+    if (system === 'email' && (await emailStillBacked(person, normalised, db, identityId))) continue
     for (const r of await db`
       select id from person_identifier
-      where person_id = ${person} and system = ${system} and value = ${normalised} and upper_inf(valid) and source = 'sign-in'`)
+      where person_id = ${person} and system = ${system} and value = ${normalised} and upper_inf(valid)`)
       await closeRow(String(r.id), db)
   }
 }
@@ -477,7 +495,9 @@ export async function writeThroughEmail(person: string, oldEmail: string | null,
   const before = oldEmail?.trim().toLowerCase() || null
   const after = newEmail?.trim().toLowerCase() || null
   if (before === after) return
-  if (before)
+  // The person's email has already changed in this transaction, so only a
+  // live Google link can still back the old address.
+  if (before && !(await emailStillBacked(person, before, db, null)))
     for (const r of await db`
       select id from person_identifier where person_id = ${person} and system = 'email' and value = ${before} and upper_inf(valid)`)
       await closeRow(String(r.id), db)

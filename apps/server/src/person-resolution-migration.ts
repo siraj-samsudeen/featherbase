@@ -335,13 +335,21 @@ async function migrateData(resolvePath: string | null | undefined): Promise<Pers
     }
   }
 
-  // Every address is also an email row (C7).
-  for (const p of await sql`select row_id, lower(trim(email)) as email from person where email is not null and trim(email) <> '' and not built_in`) {
+  // Every address is also an email row (C7): the person's own, and the
+  // verified address of every live Google link (what write-through gives a
+  // link made from now on).
+  for (const p of await sql`
+    select row_id, lower(trim(email)) as email, 'person-email' as source from person where email is not null and trim(email) <> '' and not built_in
+    union all
+    select i.person_id, lower(trim(i.email)), 'sign-in' from sign_in_identity i
+    join sign_in_method m on m.row_id = i.method and m.kind = 'google'
+    join person p on p.row_id = i.person_id and not p.built_in
+    where i.ended_at is null and i.subject is not null and i.email is not null and trim(i.email) <> ''`) {
     const [have] = await sql`select 1 from person_identifier where person_id = ${String(p.row_id)} and system = 'email' and value = ${String(p.email)}`
     if (have) continue
     await sql`insert into person_identifier ${sql({
       id: newIdentifierId(), person_id: String(p.row_id), system: 'email', assigner: '', value: String(p.email),
-      verified: true, one_holder: false, one_per_person: false, source: 'person-email', recorded_by: 'migration',
+      verified: true, one_holder: false, one_per_person: false, source: String(p.source), recorded_by: 'migration',
     } as unknown as Record<string, never>)}`
     plan.emailRows++
   }

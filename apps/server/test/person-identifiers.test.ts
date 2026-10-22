@@ -6,7 +6,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { normaliseValue, verhoeffValid } from '../src/identifiers'
-import { addIdentifier, listIdentifiers } from '../src/person-identifiers'
+import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
 import { makePerson } from './fixtures'
 
@@ -95,6 +95,26 @@ describe('identifiers with history', () => {
       identifier: { record_identifier_id: rec.identifier.id },
     })
     await expect(addIdentifier(p, { system: 'stylehr-employee-code', value: 'RR-2', record_identifier_id: theirs.identifier.id }, 'sync', ROSTER)).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+})
+
+describe('ending and removing (Codex review on #385)', () => {
+  test('an end date before the start is refused and the history kept; an end on the start day removes a value never in force', async () => {
+    const p = await makePerson({ full_name: 'Typo' })
+    const { identifier } = await addIdentifier(p, { system: 'phone', value: '9847012345', valid_from: '2025-01-01' }, 'Administrator')
+    await expect(updateIdentifier(identifier.id, { valid_to: '2024-12-31' }, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError', fields: { valid_to: expect.any(String) } })
+    expect(await sql`select lower(valid)::text as starts from person_identifier where id = ${identifier.id}`).toEqual([{ starts: '2025-01-01' }])
+    await updateIdentifier(identifier.id, { valid_to: '2025-01-01' }, 'Administrator')
+    expect(await sql`select 1 from person_identifier where id = ${identifier.id}`).toHaveLength(0)
+  })
+
+  test('a replaced record’s identifiers cannot be deleted', async () => {
+    const survivor = await makePerson({ full_name: 'Kept' })
+    const loser = await makePerson({ full_name: 'Merged away' })
+    const { identifier } = await addIdentifier(loser, { system: 'phone', value: '9847012345' }, 'Administrator')
+    await sql`update person set enabled = false, replaced_by = ${survivor} where row_id = ${loser}`
+    await expect(deleteIdentifier(identifier.id, 'Administrator')).rejects.toMatchObject({ type: 'ConflictError', fields: { code: 'replaced_by' } })
+    expect(await sql`select 1 from person_identifier where id = ${identifier.id}`).toHaveLength(1)
   })
 })
 

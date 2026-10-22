@@ -87,6 +87,17 @@ describe('migration 0102: identifiers from the dev roster and the resolve file',
     expect(await sql`select 1 from person_identifier where person_id in (${p.twinA}, ${p.twinB})`).toHaveLength(0)
   })
 
+  test('the verified address of every live Google link is backfilled too (Codex review on #385)', async () => {
+    const p = await devShape()
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_backfill_g', ${p.kumar}, 'google', 'g-kumar', 'Kumar.Second@gmail.com', 'test')`
+    await sql`delete from person_identifier where person_id = ${p.kumar} and system = 'email'`
+    await migratePersonResolution({ resolveFile: resolveFile(RESOLVE) })
+    expect(await sql`select value, source from person_identifier where person_id = ${p.kumar} and system = 'email'`).toEqual([
+      { value: 'kumar.second@gmail.com', source: 'sign-in' },
+    ])
+  })
+
   test('every trial sign-in keeps working in test mode: by code, resolved or not', async ({ api }) => {
     const p = await devShape()
     await migratePersonResolution({ resolveFile: resolveFile(RESOLVE) })

@@ -181,6 +181,21 @@ describe('write-through to identifiers', () => {
     expect(moved.id).not.toBe('uid_mailbox_atk')
   })
 
+  test('an address that is both the person’s email and a live Google link stays current while either remains (Codex review on #385)', async ({ admin }) => {
+    const p = await makePerson({ email: 'both@x.test' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_both_google', ${p}, 'google', 'g-both', 'both@x.test', 'test')`
+    const { writeThroughIdentity } = await import('../src/person-identifiers')
+    await writeThroughIdentity('uid_both_google')
+    // The primary email changes: the Google link still backs the old address.
+    const row = await admin.get<{ updated_at: string }>(`/api/table/Person/${p}`)
+    await admin.fetch(`/api/table/Person/${p}`, { method: 'PATCH', body: JSON.stringify({ email: 'new@x.test', updated_at: row.updated_at }) })
+    expect((await current(p, 'email')).map((r) => r.value)).toEqual(['both@x.test', 'new@x.test'])
+    // The Google link ends: nothing backs the old address any more.
+    await admin.delete('/api/identities/uid_both_google')
+    expect((await current(p, 'email')).map((r) => r.value)).toEqual(['new@x.test'])
+  })
+
   test('a session opened through a link ends when the link ends, and the ended link never opens the account again', async ({ api, admin }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     await configureDelegated()
