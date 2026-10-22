@@ -1,5 +1,35 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
+
+`DataList` renders one list in two shapes:
+- below 40rem, a card per row: the `title` and `status` columns lead, `meta` follows in one line, `value` columns
+  become labelled figures and `hidden` ones are left off;
+- above 40rem, a captioned table whose number columns are right-aligned with tabular figures.
+
+Loading is a Skeleton, a failure is an alert and no rows is an EmptyState with the way forward, so a failed load can
+never read as an empty list. `Headline` is the answer-first block: the period, the conclusion in words coloured by
+meaning, the supporting figures, and an optional progress `meter` with a marker (for example the 90% band edge).
+`achievementTone` holds the sales-target legend bands (<90 negative, 90–<100 caution, ≥100 positive, none missing).
+
+`lib/inr.ts` gains `fmtINR` and `fmtCount`:
+- `fmtINR` is the readable ADR 750 ladder (`₹850`, `₹45,600`, `₹1.21 L`, `₹1.74 Cr`; `signed` for gaps). It rounds
+  before choosing the rung, so ₹99,999.60 reads ₹1.00 L and 99.99… lakh reads ₹1.00 Cr.
+- `fmtCount` gives Indian grouping with no unit.
+
+Siraj ruled on 22-Oct that the sales-target summary and rows are the readable regime. `fmtExact` stays for amounts
+that foot or are paid. The file's header now says which helper is for what.
+
+**Verified:**
+- `test/data-display.test.tsx` has 27 tests; they failed first on the missing exports. One expectation was itself
+  wrong (9,99,99,999 is ₹10.00 Cr, not ₹1.00 Cr) and was corrected before the code was written.
+- Web suite 311 passed under Node 22, web typecheck and `vite build` passed.
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- Gallery screenshots of the Headline and DataList at 375 px (cards) and 1280 px (table), light and dark.
+
+**Next:** stage 2, moving every screen not owned by #371 onto the primitives and final tokens (opened for review,
+merged together with stage 3 once #371 lands).
+
 ## 2026-10-22 — Design system stage 1b: the shared components (#380)
 
 `apps/web/src/components/ui/` holds the primitives every screen will build from:

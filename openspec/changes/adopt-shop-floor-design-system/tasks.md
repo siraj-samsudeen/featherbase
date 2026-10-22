@@ -8,8 +8,8 @@
   remove the Inter dependency; verify the contrast test passes.
 - [x] 1.3 Add the primitives (Button, Field with Input/Password/Select/Search, Card, Notice, EmptyState, Skeleton,
   Toast, icon set) with component tests.
-- [ ] 1.4 Add DataList (table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`, with tests.
-- [ ] 1.5 Add the component gallery page; capture light, dark, 375 px and 1280 px screenshots; run web typecheck, the
+- [x] 1.4 Add DataList (table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`, with tests.
+- [x] 1.5 Add the component gallery page; capture light, dark, 375 px and 1280 px screenshots; run web typecheck, the
   web suite, `pnpm check:specs` and `git diff --check`.
 
 ## 2. Sweep of every screen not owned by #371 (PR 2)

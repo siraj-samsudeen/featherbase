@@ -1,10 +1,14 @@
-// Indian amount and date formatting for report surfaces.
+// Indian amount, count and date formatting — the one home for it in the web app
+// (design-guards.test.ts forbids toLocale*String everywhere else).
 //
 // ADR 750 (JeyaramaGroup/data-warehouse docs/adr/adr-750-indian-number-formatting.md)
 // splits amounts into two regimes, chosen from what the number is FOR, never from
-// how big it is. The sales-target report is the PRECISION regime on every count:
-// its rows foot against the total. So amounts are exact rupees, Indian-grouped,
-// two decimals padded — never scaled to lakh or crore at any magnitude.
+// how big it is:
+//   - fmtExact  — the PRECISION regime: exact ₹, Indian-grouped, 2 dp padded, never
+//     scaled. For amounts that must foot against another column or are paid.
+//   - fmtINR    — the READABLE regime: the lakh/crore ladder, for "how big is this?"
+//     summaries. Siraj ruled on 22-Oct-2026 (#380) that the sales-target summary
+//     and rows are this regime.
 //
 // ⛔ Never hand-roll `"₹" + (v / 1e5).toFixed(2) + "L"`. With no magnitude test
 // ₹850 renders as "₹0.01L". That shipped in twelve surfaces, eleven of which
@@ -34,6 +38,31 @@ export function fmtSigned(x: number | null | undefined): string {
 export function fmtPct(x: number | null | undefined): string {
   if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
   return x.toLocaleString('en-IN', { maximumFractionDigits: 1 }) + '%'
+}
+
+/**
+ * Readable ₹ (ADR 750 ladder): under ₹1,000 as is, under a lakh Indian-grouped
+ * rupees, then `₹2.48 L` and `₹1.74 Cr`. Rounding happens before the rung is
+ * chosen, so ₹99,999.60 reads ₹1.00 L, never ₹1,00,000. `signed` shows the
+ * direction both ways (`+₹4,000`, `-₹41,000`); zero carries no sign.
+ */
+export function fmtINR(x: number | null | undefined, { signed = false }: { signed?: boolean } = {}): string {
+  if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
+  const rupees = Math.round(Math.abs(x))
+  const sign = rupees === 0 ? '' : x < 0 ? '-' : signed ? '+' : ''
+  let body: string
+  if (rupees < 1_00_000) body = rupees.toLocaleString('en-IN')
+  else {
+    const lakh = Math.round(rupees / 1_000) / 100
+    body = lakh < 100 ? `${lakh.toFixed(2)} L` : `${(Math.round(rupees / 1_00_000) / 100).toFixed(2)} Cr`
+  }
+  return `${sign}₹${body}`
+}
+
+/** A count or quantity: Indian grouping, no unit, no ₹. Null-safe. */
+export function fmtCount(x: number | null | undefined, decimals = 0): string {
+  if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
+  return x.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
