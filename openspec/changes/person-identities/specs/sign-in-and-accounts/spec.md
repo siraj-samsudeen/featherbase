@@ -62,15 +62,15 @@ account.
 ### Requirement: Rule for people a method does not know
 
 Each sign-in method SHALL follow the rule an administrator chose for a person
-it does not recognise: make an account for them, make one only when their
-verified email is on an allowed domain, or refuse. A method that cannot vouch
-for a permanent ID, such as the HR system, can only refuse. A new account
-starts with no access beyond what every signed-in person has.
+it does not recognise: make an account for them, make one only when the
+method vouches for an email address on an allowed domain, or refuse. A method
+that cannot vouch for a permanent ID, such as the HR system, can only refuse.
+A new account starts with no access beyond what every signed-in person has.
 
 #### Scenario: Google with allowed domains
 
 - **WHEN** Google's rule is to admit only allowed domains and someone unknown
-  signs in with a verified address on an allowed domain
+  signs in with a Google account belonging to an allowed company domain
 - **THEN** an account is made for them, linked to their Google account, and
   they are signed in
 
@@ -84,13 +84,14 @@ starts with no access beyond what every signed-in person has.
 
 When an administrator has opened sign-up, a visitor SHALL be able to create an
 account by choosing a username and a password, and is signed in straight
-away. Sign-up is closed unless an administrator opens it.
+away. Sign-up asks for nothing else. It is closed unless an administrator
+opens it.
 
 #### Scenario: Sign up while it is open
 
 - **WHEN** sign-up is open and a visitor chooses an unused username and a
   password
-- **THEN** their account is created and they are signed in
+- **THEN** their account is created with no email and they are signed in
 
 #### Scenario: Sign-up closed
 
@@ -99,24 +100,39 @@ away. Sign-up is closed unless an administrator opens it.
 
 ### Requirement: An administrator links sign-in methods
 
-An administrator SHALL be able to link a sign-in method to any person and to
-remove one. A Google account can be linked by its address before the person
-first signs in: their first Google sign-in with that address links the
-account for good, and after that the address is never used to find them.
+An administrator SHALL be able to link a sign-in method to any person, change
+or move a link in one step, and remove one. A Google account can be invited
+by its address before the person first signs in: their first Google sign-in
+with that address links the account for good, and after that the address is
+never used to find them. An invite is cancelled when the person's email
+changes or is cleared, and is never claimed for a disabled account.
 
 #### Scenario: Invite a store manager's Google account
 
-- **WHEN** an administrator links a Google address to a store manager's
+- **WHEN** an administrator invites a Google address to a store manager's
   account and the manager then signs in with that Google account
 - **THEN** they open the store manager's account, and later sign-ins are
   recognised by the Google account's permanent ID, not its address
+
+#### Scenario: Invite on a disabled account
+
+- **WHEN** a Google address is invited to an account that has since been
+  disabled, and someone signs in with that Google account
+- **THEN** they are refused and the invite stays unclaimed
+
+#### Scenario: Email changed before the invite is used
+
+- **WHEN** an administrator changes a person's email after inviting their old
+  Google address
+- **THEN** the old invite is cancelled and signing in with that Google account
+  no longer opens the person's account
 
 ### Requirement: A person links another method themselves
 
 A signed-in person SHALL be able to link another sign-in method to their own
 account by proving it, for example by completing a Google sign-in. They must
-have signed in recently, and a method already linked to someone else is
-refused.
+have signed in within the last few minutes, and a method already linked to
+someone else is refused.
 
 #### Scenario: Add Google to an HR system account
 
@@ -130,27 +146,73 @@ refused.
   different account
 - **THEN** the link is refused and neither account changes
 
+### Requirement: Test-mode sign-ins cannot add access
+
+A session opened through test mode SHALL NOT be able to add lasting access to
+the account: it cannot link or remove a sign-in method, set a password, or
+create an access token.
+
+#### Scenario: Tester tries to keep a way in
+
+- **WHEN** a tester who signed in as a Team Leader through test mode tries to
+  set a password on that account or link their own Google account to it
+- **THEN** both are refused and the account is unchanged
+
 ### Requirement: Removing a sign-in method
 
 A person SHALL be able to remove a sign-in method from their account, except
-the last one. Removing a method ends any session that was opened with it.
+their last working one; a pending invite does not count as a way in.
+Removing a method, or an administrator turning a method off, ends the sessions
+opened with it. Sessions opened before this change carry no record of how
+they were opened and simply run until they expire.
 
 #### Scenario: Remove the last method
 
 - **WHEN** a person with only one sign-in method tries to remove it
 - **THEN** they are refused and told to add another way in first
 
+#### Scenario: Method turned off
+
+- **WHEN** an administrator turns Google sign-in off while people are signed
+  in with Google
+- **THEN** their next action asks them to sign in again
+
+### Requirement: Administrators are never locked out
+
+Featherbase SHALL refuse to turn off or remove a sign-in method while it is
+the only way in for an enabled Administrator or System Manager.
+
+#### Scenario: Turn off passwords
+
+- **WHEN** a System Manager tries to turn off password sign-in while the
+  Administrator signs in only with a password
+- **THEN** the change is refused and names who would be locked out
+
+### Requirement: Someone who has left is refused everywhere
+
+When a connected service reports that a person has left, Featherbase SHALL
+disable their account, end all their sessions and refuse the sign-in, keeping
+the account's history. Every other way in then refuses them too.
+
+#### Scenario: Leaver who also has a password
+
+- **WHEN** someone who has left signs in with their still-working HR system
+  password, and later tries their Featherbase password
+- **THEN** both are refused, and the account is disabled with its history kept
+
 ### Requirement: Existing sign-ins carry over
 
 Everyone who could sign in before this change SHALL keep signing in the same
-way without doing anything. A Google account that used to be found by its
-address is linked to its permanent ID on its next sign-in, once; from then on
-its address is never used to find the account.
+way without doing anything. A person who had already signed in with Google
+gets a one-time link: their next Google sign-in with the same address links
+their Google account's permanent ID, and from then on the address is never
+used to find them. Other people with an email address are listed for an
+administrator to invite.
 
 #### Scenario: Store staff the morning after
 
-- **WHEN** a Team Leader signs in with their HR system ID the day after the
-  upgrade
+- **WHEN** a Team Leader signs in with their HR system ID, typed in any mix
+  of capitals, the day after the upgrade
 - **THEN** they open the same account and report as the day before
 
 #### Scenario: First Google sign-in after the upgrade
@@ -174,6 +236,25 @@ holds itself.
 
 ## MODIFIED Requirements
 
+### Requirement: Sign in with a password
+
+Signing in SHALL check a username or email, ignoring capital letters, against
+a password. When what was typed is one person's username and another
+person's email, the username wins. A failed attempt SHALL be refused with the
+same generic message whether the account doesn't exist, the password is
+wrong, or the account can't sign in this way, so it never reveals which.
+
+#### Scenario: Wrong password
+
+- **WHEN** a user signs in with an account that exists but the wrong password
+- **THEN** they are refused with a generic invalid-credentials message
+
+#### Scenario: Username beats email
+
+- **WHEN** one account's username is "meena" and another account's email is
+  "meena", and someone signs in as "meena"
+- **THEN** only the first account's password is checked
+
 ### Requirement: Sign in with Google
 
 Featherbase SHALL let a user sign in with their Google account. A Google
@@ -183,8 +264,8 @@ Google does not recognise.
 
 #### Scenario: First-time sign-in from an allowed domain
 
-- **WHEN** someone with no Featherbase account signs in with Google using a
-  verified address from an allowed domain
+- **WHEN** someone with no Featherbase account signs in with a Google account
+  belonging to an allowed company domain
 - **THEN** an account is created for them and they are signed in
 
 #### Scenario: Domain not allowed
@@ -258,10 +339,11 @@ one account.
 A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value. While
 it is on, the service SHALL NOT be asked: a tester signs in as a person by
-typing the employee code their account is linked to at that service, with no
-password. Who may sign in is otherwise unchanged — one enabled account linked
-to the service, and not the Administrator or a System Manager. The sign-in
-page SHALL say that test mode is on and ask for an employee code.
+typing the employee code their account is linked to at that service, in any
+mix of capitals, with no password. Who may sign in is otherwise unchanged —
+one enabled account linked to the service, and not the Administrator or a
+System Manager. The sign-in page SHALL say that test mode is on and ask for an
+employee code.
 
 Because the service is not asked, it cannot report that someone has left.
 While test mode is on, a person who has left is refused only when their
