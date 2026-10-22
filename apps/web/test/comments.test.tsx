@@ -136,3 +136,15 @@ test('a stored mention renders as its own highlighted node, and notifies', async
   expect(notifs.data).toHaveLength(1)
   expect(notifs.data[0].subject).toContain('mentioned you')
 })
+
+test('a person with neither a username nor a name is never offered, so a mention never carries an id (Codex review on #384)', async ({ admin }) => {
+  await admin.post('/api/save_row', { table: 'Person', row: { email: 'nameless@example.com' } })
+  await admin.post('/api/save_row', { table: 'Person', row: { username: 'named.one', full_name: 'Named One' } })
+  const rowId = await seedRow(admin)
+  await openRow(admin, rowId)
+  type('cc @')
+  await screen.findAllByTestId('mention-option')
+  const shown = screen.getAllByTestId('mention-option').map((o) => o.textContent ?? '')
+  expect(shown).toContain('Named One · @named.one')
+  expect(shown.some((t) => /psn_|Unnamed/.test(t) || t.trim() === '')).toBe(false)
+})

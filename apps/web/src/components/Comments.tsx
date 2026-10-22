@@ -56,6 +56,9 @@ export function Comments({ table, name }: { table: string; name: string }) {
     // Staff ids are employee codes (person-identities), so the name is shown
     // and searched too; the mention itself stays the id.
     return (users.data?.data ?? [])
+      // A person with neither a username nor a name cannot be mentioned:
+      // a mention never carries a row id.
+      .filter((u) => Boolean(u.username || u.full_name?.trim()))
       .filter((u) => (u.username ?? '').toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
@@ -164,7 +167,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
                 data-testid="mention-option"
                 className="block w-full px-3 py-1 text-left text-sm hover:bg-[var(--color-brand-tint)]"
               >
-                {u.full_name && u.username ? `${u.full_name} · @${u.username}` : u.full_name || u.username || 'Unnamed person'}
+                {u.full_name && u.username ? `${u.full_name} · @${u.username}` : u.full_name || u.username}
               </button>
             ))}
           </div>
@@ -190,7 +193,6 @@ export function Comments({ table, name }: { table: string; name: string }) {
 }
 
 /** What a mention of this person looks like in the comment text. */
-export function mentionToken(u: { full_name: string | null; username: string | null; row_id: string }): string {
-  if (u.username) return u.username
-  return `[${(u.full_name ?? '').trim() || u.row_id}]`
+export function mentionToken(u: { full_name: string | null; username: string | null }): string {
+  return u.username ? u.username : `[${(u.full_name ?? '').trim()}]`
 }

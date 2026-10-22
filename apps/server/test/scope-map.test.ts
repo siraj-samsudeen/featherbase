@@ -126,6 +126,19 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     expect(await eventVisibleTo(id, own('KNP'))).toBe(false)
   })
 
+  test('realtime: losing read permission after subscribing stops the next event (Codex review on #384)', async ({ admin }) => {
+    const { id } = await world(admin)
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { service_account: id, allow_table: 'Role', for_value: 'All' } })
+    await admin.post(`/api/service_accounts/${id}/roles`, { roles: [ROLE] })
+    const ev = { channel: `list:${STORE}`, event: 'updated', payload: { table: STORE, row_id: 'ATK' } }
+    expect(await eventVisibleTo(id, ev)).toBe(true)
+    await admin.post(`/api/service_accounts/${id}/roles`, { roles: [] })
+    expect(await eventVisibleTo(id, ev)).toBe(false)
+    // With no Data Scope at all, permission still decides.
+    const bare = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-bare', roles: [] })
+    expect(await eventVisibleTo(bare.row_id, ev)).toBe(false)
+  })
+
   test('realtime: a scope granted after subscribing applies to the very next event (Codex review on #384)', async ({ admin }) => {
     await world(admin)
     const late = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-late-scope', roles: [ROLE] })
