@@ -162,27 +162,40 @@ describe('person-rename: one principal model', () => {
 })
 
 describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
-  test('names come back for people and service accounts; an unknown id or a nameless person is null', async ({ admin, createUser }) => {
-    const asha = await createUser({ email: 'asha.n@x.test', fullName: 'Asha Kumar' })
-    const handle = await makePerson({ username: 'ravi.m' })
-    const bare = await makePerson({})
+  test('names: full name, else @username, else "Unnamed person" — never an address; an unknown id is null', async ({ admin }) => {
+    const asha = await makePerson({ full_name: 'Asha Kumar', email: 'asha.n@x.test' })
+    const handle = await makePerson({ username: 'ravi.m', email: 'ravi.n@x.test' })
+    const mailOnly = await makePerson({ email: 'only.address@x.test' })
     const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-named' })
-    const { names } = await asha.post<{ names: Record<string, string | null> }>('/api/people/names', {
-      ids: [asha.user, handle, bare, svc.row_id, 'psn_nobodyaaaaaaaaaaaaa', 'Administrator'],
+    const { names } = await admin.post<{ names: Record<string, string | null> }>('/api/people/names', {
+      ids: [asha, handle, mailOnly, svc.row_id, 'psn_nobodyaaaaaaaaaaaaa'],
     })
     expect(names).toEqual({
-      [asha.user!]: 'Asha Kumar',
+      [asha]: 'Asha Kumar',
       [handle]: '@ravi.m',
-      [bare]: null,
+      [mailOnly]: 'Unnamed person',
       [svc.row_id]: 'svc-named',
       psn_nobodyaaaaaaaaaaaaa: null,
-      Administrator: 'Administrator',
     })
+  })
+
+  test('names follow Person read and Data Scope: no read, no names; a scope narrows them (review A-a)', async ({ admin, createUser }) => {
+    const inScope = await makePerson({ full_name: 'Named In Scope' })
+    const outOfScope = await makePerson({ full_name: 'Named Out Of Scope' })
+    const none = await createUser({ email: 'names.none@x.test' })
+    const ids = { ids: [inScope, outOfScope] }
+    expect((await none.post<{ names: Record<string, string | null> }>('/api/people/names', ids)).names).toEqual({ [inScope]: null, [outOfScope]: null })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Name Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Name Reader', can_read: true } })
+    const reader = await createUser({ email: 'names.reader@x.test', roles: ['Name Reader'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: 'Person', for_value: inScope } })
+    expect((await reader.post<{ names: Record<string, string | null> }>('/api/people/names', ids)).names).toEqual({ [inScope]: 'Named In Scope', [outOfScope]: null })
   })
 
   test('the Person picker searches name, username, address and employee code, labels "Name · handle", and skips built-ins', async ({ admin }) => {
     const { sql: db } = await import('../src/db')
-    await db.unsafe(`alter table featherbase.person add column if not exists employee_code varchar(140)`)
+    // The employee_code Custom Field, as the sales-target seed creates it.
+    await admin.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Person-employee_code', dt: 'Person', column_name: 'employee_code', label: 'Employee code', column_type: 'Data' } })
     const asha = await makePerson({ full_name: 'Asha Kumar', username: 'asha.k' })
     const mail = await makePerson({ email: 'only.mail@x.test' })
     const coded = await makePerson({ full_name: 'Coded Person' })
@@ -205,6 +218,17 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
     const reader = await createUser({ email: 'pick.reader@x.test', roles: ['Pick Reader'] })
     await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: 'Person', for_value: a } })
     expect((await reader.get<{ people: { row_id: string }[] }>('/api/people/pick?q=scope pick')).people.map((p) => p.row_id)).toEqual([a])
+  })
+
+  test('an own-rows Person grant offers only the people this viewer created (review A-b)', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Own People' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Own People', can_read: true, can_create: true, own_rows_only: true } })
+    const recruiter = await createUser({ email: 'own.people@x.test', roles: ['Own People'] })
+    const mine = await recruiter.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { email: 'own.pick.mine@x.test' } })
+    const { sql: db } = await import('../src/db')
+    await db`update person set full_name = 'Own Pick Mine' where row_id = ${mine.row_id}`
+    await makePerson({ full_name: 'Own Pick Theirs' })
+    expect((await recruiter.get<{ people: { row_id: string }[] }>('/api/people/pick?q=own pick')).people.map((p) => p.row_id)).toEqual([mine.row_id])
   })
 
   test('the token list names each owner', async ({ admin, createUser }) => {
@@ -230,8 +254,9 @@ describe('person-rename: review minors', () => {
   test('an address is not a mention: name@gmail.com notifies nobody', async ({ admin }) => {
     const { mentionedNames } = await import('../src/controllers/comment')
     expect(mentionedNames('write to asha@gmail.com and @ravi.m, cc @[Asha Kumar]')).toEqual({ usernames: ['ravi.m'], names: ['asha kumar'] })
-    // A bare domain is the tail of an address, not a username; a trailing full stop is punctuation.
-    expect(mentionedNames('our mail is on @gmail.com and @jeyarama.in. Ask @ravi.m.')).toEqual({ usernames: ['ravi.m'], names: [] })
+    // Shape, not a domain list: an @ after a non-space character is an address;
+    // an @ that starts a word is a mention; a trailing full stop is punctuation.
+    expect(mentionedNames('mail sm.atk@jeyarama.com or hr@x.co.in. Ask @ravi.m.')).toEqual({ usernames: ['ravi.m'], names: [] })
     void admin
   })
 

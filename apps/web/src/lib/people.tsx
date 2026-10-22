@@ -36,9 +36,9 @@ function loadName(id: string): Promise<string | null> {
   })
 }
 
-/** The display name for a principal id: null while loading or when it has
- *  none. Ids that are not opaque (Administrator, Guest) are their own name. */
-export function usePrincipalName(id: string | null | undefined): string | null {
+/** A principal id's display name and whether it is still being fetched.
+ *  Ids that are not opaque (Administrator, Guest) are their own name. */
+export function usePrincipalNameState(id: string | null | undefined): { name: string | null; loading: boolean } {
   const opaque = Boolean(id && isOpaqueId(id))
   const q = useQuery({
     queryKey: ['principal-name', id],
@@ -46,9 +46,14 @@ export function usePrincipalName(id: string | null | undefined): string | null {
     staleTime: 5 * 60_000,
     queryFn: () => loadName(id!),
   })
-  if (!id) return null
-  if (!opaque) return id
-  return q.data ?? null
+  if (!id) return { name: null, loading: false }
+  if (!opaque) return { name: id, loading: false }
+  return { name: q.data ?? null, loading: q.isLoading }
+}
+
+/** The display name for a principal id: null while loading or when it has none. */
+export function usePrincipalName(id: string | null | undefined): string | null {
+  return usePrincipalNameState(id).name
 }
 
 /** What to show for a principal: its name; while loading "…"; with no name
@@ -60,7 +65,8 @@ export function principalLabel(id: string, name: string | null, loading: boolean
 }
 
 export function PrincipalName({ id }: { id: string }) {
-  const name = usePrincipalName(id)
-  const loading = isOpaqueId(id) && name === null
+  // "…" only while the name is actually being fetched; a person with no
+  // name, or one this viewer may not read, is "Unnamed person".
+  const { name, loading } = usePrincipalNameState(id)
   return <span data-testid="principal-name" title={name ?? undefined}>{principalLabel(id, name, loading)}</span>
 }

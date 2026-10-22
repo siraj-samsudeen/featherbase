@@ -891,7 +891,7 @@ app.get('/api/people/:id/identities', async (c) => {
 // Person picker searches what people know someone by.
 app.post('/api/people/names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
-  return c.json({ names: await principalNames(body.ids) })
+  return c.json({ names: await principalNames(body.ids, who(c)) })
 })
 
 app.get('/api/people/pick', async (c) => {

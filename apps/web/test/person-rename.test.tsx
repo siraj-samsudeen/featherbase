@@ -64,13 +64,15 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Names Row', role: 'All', can_read: true } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
-  await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail me on @gmail.com' } })
+  await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail sm.atk@jeyarama.com' } })
   await renderApp(`/featherbase/admin/Names%20Row/${doc.row_id}`, admin)
   const author = await screen.findByTestId('comment-author')
   await waitFor(() => expect(author).toHaveTextContent('Asha Kumar'))
   expect(screen.getByTestId('comment-initials')).toHaveTextContent('AK')
-  // A bare address domain is not highlighted as a mention.
-  expect(screen.getByText('@gmail.com').className).not.toMatch(/color-brand/)
+  // An address is not highlighted as a mention.
+  const highlighted = [...screen.getByTestId('comment-list').querySelectorAll('span[class*="color-brand"]')]
+  expect(highlighted.some((e) => e.textContent?.includes('@'))).toBe(false)
+  expect(screen.getByTestId('comment-list')).toHaveTextContent('sm.atk@jeyarama.com')
   expect(screen.getByTestId('comment-list').textContent).not.toContain(asha.user!)
 })
 
@@ -80,4 +82,18 @@ test('the Person list shows each person’s name in its first column', async ({ 
   await waitFor(() => expect(screen.getAllByTestId('principal-name').some((n) => n.textContent === 'Ravi Menon')).toBe(true))
   const table = screen.getAllByTestId('principal-name')[0].closest('table') as HTMLElement
   expect(within(table).queryByText(ravi.user!)).toBeNull()
+})
+
+test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
+  const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author' })
+  const reader = await createUser({ email: 'no.person.read@example.com' })
+  await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'All', can_read: true } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
+  const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
+  await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })
+  await renderApp(`/featherbase/admin/Hidden%20Row/${doc.row_id}`, reader)
+  const name = await screen.findByTestId('comment-author')
+  await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
+  expect(name.textContent).not.toContain(author.user!)
 })
