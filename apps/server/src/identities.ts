@@ -12,7 +12,7 @@ import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
-import { endIdentityIdentifiers, writeThroughIdentity } from './person-identifiers'
+import { endIdentityIdentifiers, reconcileIdentityEmail, writeThroughIdentity } from './person-identifiers'
 import { SIGN_IN_METHOD_KINDS, type NewPersonRule as SharedNewPersonRule, type SignInMethodKind } from 'shared'
 
 // ---------------------------------------------------------------- folding
@@ -440,11 +440,15 @@ export async function removeOwnPassword(user: string): Promise<void> {
 
 /** Stamp a successful sign-in through an identity. */
 export async function touchIdentity(id: string, attrs: { email?: string | null; display_name?: string | null } = {}) {
+  const [before] = await sql`select email from sign_in_identity where id = ${id}`
   await sql`
     update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
       display_name = coalesce(${attrs.display_name ?? null}, display_name)
     where id = ${id}`
+  // person-resolution D5: the address mirror follows the provider's.
+  if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase())
+    await reconcileIdentityEmail(id, (before.email as string | null) ?? null)
 }
 
 // ------------------------------------------------------------ eligibility

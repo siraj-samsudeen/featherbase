@@ -68,9 +68,11 @@ describe('identifiers with history', () => {
   test('a person updates their own phone: today is its start, the old one stays as history, and it is not verified', async ({ createUser }) => {
     const me = await createUser({ email: 'own.phone@x.test' })
     const first = (await me.post<{ identifier: { id: string } }>(`/api/people/${me.user}/identifiers`, { system: 'phone', value: '9847012345' }))
-    await me.fetch(`/api/identifiers/${first.identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) }) })
+    const [{ tomorrow }] = await sql`select (current_date + 1)::text as tomorrow`
+    await me.fetch(`/api/identifiers/${first.identifier.id}`, { method: 'PATCH', body: JSON.stringify({ valid_to: tomorrow }) })
     const second = await me.post<{ identifier: { valid_from: string; verified: boolean } }>(`/api/people/${me.user}/identifiers`, { system: 'phone', value: '9847099999' })
-    expect(second.identifier).toMatchObject({ valid_from: new Date().toISOString().slice(0, 10), verified: false })
+    const [{ today }] = await sql`select current_date::text as today`
+    expect(second.identifier).toMatchObject({ valid_from: today, verified: false })
     const own = await me.get<{ identifiers: { value: string; current: boolean }[] }>(`/api/people/${me.user}/identifiers`)
     expect(own.identifiers.filter((i) => i.value?.startsWith('+91')).map((i) => i.value).sort()).toEqual(['+919847012345', '+919847099999'])
   })

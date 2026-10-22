@@ -173,8 +173,9 @@ describe('write-through to identifiers', () => {
     await sql`update person_identifier set valid = daterange('2026-01-01', null, '[)') where person_id = ${outgoing} and system = 'email'`
     const moved = (await (await admin.fetch('/api/identities/uid_mailbox_atk', { method: 'PATCH', body: JSON.stringify({ person_id: incoming }) })).json()) as { id: string }
     expect(await current(outgoing, 'email')).toEqual([])
+    const [{ today }] = await sql`select current_date::text as today`
     expect(await sql`select upper(valid)::text as until from person_identifier where person_id = ${outgoing} and system = 'email'`).toEqual([
-      { until: new Date().toISOString().slice(0, 10) },
+      { until: today },
     ])
     expect(await current(incoming, 'email')).toEqual([{ value: 'sm.atk@jeyarama.com', source: 'sign-in' }])
     expect(await sql`select ended_reason from sign_in_identity where id = 'uid_mailbox_atk'`).toEqual([{ ended_reason: 'moved' }])
@@ -206,6 +207,29 @@ describe('write-through to identifiers', () => {
     await writeThroughIdentity('uid_entered_google')
     await admin.delete('/api/identities/uid_entered_google')
     expect(await current(p, 'email')).toEqual([{ value: 'entered@x.test', source: 'manual' }])
+  })
+
+  test('a value recorded after its mirror takes the row over, so ending the link keeps it (Codex review on #385)', async ({ admin }) => {
+    const p = await makePerson({ full_name: 'Mirror first' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_mirror_first', ${p}, 'google', 'g-mirror-first', 'mirror.first@x.test', 'test')`
+    const { addIdentifier, writeThroughIdentity } = await import('../src/person-identifiers')
+    await writeThroughIdentity('uid_mirror_first')
+    const recorded = await addIdentifier(p, { system: 'email', value: 'Mirror.First@x.test' }, 'Administrator')
+    expect(recorded.result).toBe('updated')
+    await admin.delete('/api/identities/uid_mirror_first')
+    expect(await current(p, 'email')).toEqual([{ value: 'mirror.first@x.test', source: 'manual' }])
+  })
+
+  test('when the provider reports a new verified address for a link, the mirror moves with it (Codex review on #385)', async () => {
+    const p = await makePerson({ full_name: 'Renamed' })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_renamed', ${p}, 'google', 'g-renamed', 'linker@gmail.com', 'test')`
+    const { writeThroughIdentity } = await import('../src/person-identifiers')
+    const { touchIdentity } = await import('../src/identities')
+    await writeThroughIdentity('uid_renamed')
+    await touchIdentity('uid_renamed', { email: 'linker.renamed@gmail.com' })
+    expect(await current(p, 'email')).toEqual([{ value: 'linker.renamed@gmail.com', source: 'sign-in' }])
   })
 
   test('a session opened through a link ends when the link ends, and the ended link never opens the account again', async ({ api, admin }) => {

@@ -23,8 +23,6 @@ interface Identifier {
   editable: boolean
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
-
 function period(i: Identifier): string {
   const from = i.valid_from ?? 'before Featherbase'
   return i.current ? `since ${from}` : `${from} – ${i.valid_to}`
@@ -55,7 +53,8 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
     onError: fail,
   })
   const end = useMutation({
-    mutationFn: (id: string) => api.patch(`/api/identifiers/${encodeURIComponent(id)}`, { valid_to: today() }),
+    // The server ends it today by its own clock.
+    mutationFn: (id: string) => api.patch(`/api/identifiers/${encodeURIComponent(id)}`, { end: true }),
     onSuccess: done,
     onError: fail,
   })

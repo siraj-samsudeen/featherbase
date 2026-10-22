@@ -84,10 +84,6 @@ const rowFieldsOf = (db: Db) => db`
   case when upper_inf(i.valid) then null else upper(i.valid)::text end as valid_to,
   i.verified, i.record_identifier_id, i.worker_type, i.source, i.recorded_at, i.recorded_by, i.note`
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function isoDate(v: unknown, field: string): string | null {
   if (v == null || v === '') return null
   const s = String(v)
@@ -268,7 +264,7 @@ export interface AddInput {
   note?: string | null
 }
 
-export type WriteResult = { result: 'created' | 'unchanged'; identifier: IdentifierRow }
+export type WriteResult = { result: 'created' | 'updated' | 'unchanged'; identifier: IdentifierRow }
 
 function mapWriteError(err: unknown): never {
   const e = err as { code?: string; constraint_name?: string }
@@ -300,7 +296,10 @@ export async function addIdentifier(
   const source = opts.internal?.source ?? (actor === person ? 'self' : 'manual')
   const value = normaliseValue(input.value, system.normalise, system.kind)
   const assigner = system.assigner_scoped ? String(input.assigner ?? '').trim() : ''
-  const from = isoDate(input.valid_from, 'valid_from') ?? (opts.internal ? null : today())
+  const from = isoDate(input.valid_from, 'valid_from')
+  // A value recorded by hand starts today (the database's date, the same
+  // clock that closes rows); a migration or feed with no date has always held it.
+  const startsToday = !from && !opts.internal
   const to = isoDate(input.valid_to, 'valid_to')
   if (input.worker_type != null && system.kind !== 'employee-record')
     throw new AppError('ValidationError', 'Only an employee record carries a worker type', { worker_type: 'not for this system' })
@@ -316,13 +315,25 @@ export async function addIdentifier(
       select ${rowFields(t)} from person_identifier
       where person_id = ${person} and system = ${system.row_id} and assigner = ${assigner} and value = ${value}
         and upper_inf(valid) and ${to}::date is null`
-    if (same) return { result: 'unchanged' as const, identifier: same as unknown as IdentifierRow }
+    if (same) {
+      // A value someone records independently takes over a row that only
+      // mirrored a sign-in or the person's email, so ending that source no
+      // longer closes it (Codex review on #385).
+      if (MIRROR_SOURCES.includes(String(same.source)) && !MIRROR_SOURCES.includes(source)) {
+        const [row] = await t`
+          update person_identifier set source = ${source}, verified = verified or ${verified}, edited_at = now(), edited_by = ${actor}
+          where id = ${String(same.id)} returning ${rowFields(t)}`
+        await logActivity(actor, `identifier_recorded ${system.row_id} for ${person} (${String(same.id)})`.slice(0, 140))
+        return { result: 'updated' as const, identifier: row as unknown as IdentifierRow }
+      }
+      return { result: 'unchanged' as const, identifier: same as unknown as IdentifierRow }
+    }
     const id = newIdentifierId()
     const [row] = await t`
       insert into person_identifier (id, person_id, system, assigner, value, valid, verified, record_identifier_id,
         worker_type, one_holder, one_per_person, source, recorded_by, note)
       values (${id}, ${person}, ${system.row_id}, ${assigner}, ${value},
-        daterange(coalesce(${from}::date, '-infinity'::date), ${to}::date, '[)'), ${verified},
+        daterange(coalesce(${from}::date, case when ${startsToday}::boolean then current_date else '-infinity'::date end), ${to}::date, '[)'), ${verified},
         ${input.record_identifier_id ?? null}, ${input.worker_type ?? null}, ${system.one_holder_at_a_time}, ${system.one_per_person},
         ${source}, ${actor}, ${input.note ?? null})
       returning ${rowFields(t)}`
@@ -347,9 +358,15 @@ async function lockedRow(id: string, db: Db) {
  *  unchanged write changes and logs nothing. */
 export async function updateIdentifier(
   id: string,
-  change: { valid_from?: string | null; valid_to?: string | null; assigner?: string | null; note?: string | null; worker_type?: string | null },
+  change: { valid_from?: string | null; valid_to?: string | null; assigner?: string | null; note?: string | null; worker_type?: string | null; end?: boolean },
   actor: string,
 ): Promise<{ result: 'updated' | 'unchanged'; identifier: IdentifierRow }> {
+  // `end: true` ends the value today by the database's clock — the one
+  // every other period boundary uses — rather than a date a browser computed.
+  if (change.end) {
+    const [{ today }] = await sql`select current_date::text as today`
+    change = { ...change, valid_to: String(today) }
+  }
   try {
     return await sql.begin(async (tx) => {
       const t = tx as unknown as Sql
@@ -492,6 +509,26 @@ export async function endIdentityIdentifiers(identityId: string, db: Db = sql): 
         and source in ${db(MIRROR_SOURCES)}`)
       await closeRow(String(r.id), db)
   }
+}
+
+/** A provider reported a different verified address for a live identity
+ *  (a Google account renamed): its mirror moves with it (Codex review on
+ *  #385) — the old address closes unless something else still holds it. */
+export async function reconcileIdentityEmail(identityId: string, oldEmail: string | null, db: Db = sql): Promise<void> {
+  const [i] = await db`
+    select i.person_id, i.email, m.kind from sign_in_identity i join sign_in_method m on m.row_id = i.method
+    where i.id = ${identityId} and i.ended_at is null and i.subject is not null`
+  if (!i || i.kind !== 'google') return
+  const before = oldEmail?.trim().toLowerCase() || null
+  const after = (i.email as string | null)?.trim().toLowerCase() || null
+  if (before === after) return
+  const person = String(i.person_id)
+  if (before && !(await emailStillBacked(person, before, db, null)))
+    for (const r of await db`
+      select id from person_identifier where person_id = ${person} and system = 'email' and value = ${before} and upper_inf(valid)
+        and source in ${db(MIRROR_SOURCES)}`)
+      await closeRow(String(r.id), db)
+  await writeThroughIdentity(identityId, db)
 }
 
 /** `person.email` stays the primary contact; every address is also an
