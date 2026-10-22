@@ -35,14 +35,18 @@ export function Comments({ table, name }: { table: string; name: string }) {
       }),
   })
 
-  // @mention candidates from the user list, filtered by the token being typed.
+  // @mention candidates from the people list, filtered by the token being
+  // typed. person-rename: ids are opaque, so a mention names the person —
+  // `@username`, or `@[Full Name]` for someone without one (the server
+  // resolves both; never a row id). Built-in accounts are not offered.
   const users = useQuery({
     queryKey: ['mention-users'],
     enabled: mention !== null,
     queryFn: () =>
-      listResource<{ row_id: string; full_name: string | null }>('User', {
-        fields: ['row_id', 'full_name'],
-        order_by: 'row_id asc',
+      listResource<{ row_id: string; full_name: string | null; username: string | null }>('Person', {
+        fields: ['row_id', 'full_name', 'username'],
+        filters: [['built_in', '=', false]],
+        order_by: 'full_name asc',
         limit_page_length: 500,
       }),
   })
@@ -52,7 +56,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
     // Staff ids are employee codes (person-identities), so the name is shown
     // and searched too; the mention itself stays the id.
     return (users.data?.data ?? [])
-      .filter((u) => u.row_id.toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
+      .filter((u) => (u.username ?? '').toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
 
@@ -100,7 +104,8 @@ export function Comments({ table, name }: { table: string; name: string }) {
 
   // Render @mentions as highlighted spans.
   function renderContent(text: string) {
-    const parts = text.split(/(@[\w.@-]+)/g)
+    // `@username` or `@[Full Name]` (person-rename: never a row id).
+    const parts = text.split(/(@\[[^\]\n]{1,140}\]|@[\w.-]+)/g)
     return parts.map((p, i) =>
       p.startsWith('@') ? (
         <span key={i} className="font-medium text-[var(--color-brand)]">
@@ -155,11 +160,11 @@ export function Comments({ table, name }: { table: string; name: string }) {
             {candidates.map((u) => (
               <button
                 key={u.row_id}
-                onClick={() => applyMention(u.row_id)}
+                onClick={() => applyMention(mentionToken(u))}
                 data-testid="mention-option"
                 className="block w-full px-3 py-1 text-left text-sm hover:bg-[var(--color-brand-tint)]"
               >
-                {u.full_name && u.full_name !== u.row_id ? `${u.full_name} · ${u.row_id}` : u.row_id}
+                {u.full_name && u.username ? `${u.full_name} · @${u.username}` : u.full_name || u.username || 'Unnamed person'}
               </button>
             ))}
           </div>
@@ -182,4 +187,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
       </div>
     </div>
   )
+}
+
+/** What a mention of this person looks like in the comment text. */
+export function mentionToken(u: { full_name: string | null; username: string | null; row_id: string }): string {
+  if (u.username) return u.username
+  return `[${(u.full_name ?? '').trim() || u.row_id}]`
 }

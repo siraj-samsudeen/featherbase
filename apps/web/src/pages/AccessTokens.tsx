@@ -12,6 +12,7 @@ interface Token {
   id: string
   label: string
   owner: string
+  owner_kind?: 'person' | 'service_account'
   created_at: string
   expires_at: string | null
   last_used_at: string | null
@@ -19,9 +20,11 @@ interface Token {
   owner_enabled?: boolean
 }
 
+// person-rename: a service account is its own kind of account with a minted
+// `svc_…` id; its name is its label.
 interface ServiceAccount {
   row_id: string
-  full_name: string | null
+  label: string
   enabled: boolean
   created_at: string
   roles: string[]
@@ -127,6 +130,8 @@ export function AccessTokens() {
     ...(me ? [me] : []),
     ...(accounts.data?.service_accounts.map((a) => a.row_id) ?? []),
   ]
+  const accountLabel = new Map((accounts.data?.service_accounts ?? []).map((a) => [a.row_id, a.label]))
+  const ownerName = (id: string) => (id === me ? `${getSessionUser()?.full_name || id} (you)` : accountLabel.get(id) ?? id)
 
   const rows = tokens.data?.tokens ?? []
 
@@ -163,7 +168,7 @@ export function AccessTokens() {
               return (
                 <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`token-${t.id}`}>
                   <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{t.label}</td>
-                  {isSM && <td className="px-3 py-2 text-[var(--color-ink-muted)]">{t.owner}</td>}
+                  {isSM && <td className="px-3 py-2 text-[var(--color-ink-muted)]">{ownerName(t.owner)}</td>}
                   <td className="px-3 py-2 text-[var(--color-ink-muted)]">{when(t.created_at)}</td>
                   <td className="px-3 py-2 text-[var(--color-ink-muted)]">
                     {t.last_used_at ? when(t.last_used_at) : 'never'}
@@ -248,7 +253,7 @@ export function AccessTokens() {
                 >
                   {ownerChoices.map((o) => (
                     <option key={o} value={o}>
-                      {o === me ? `${o} (you)` : o}
+                      {ownerName(o)}
                     </option>
                   ))}
                 </select>
@@ -340,7 +345,7 @@ function ServiceAccounts({
   })
 
   const create = useMutation({
-    mutationFn: () => api.post('/api/service_accounts', { row_id: name.trim(), roles }),
+    mutationFn: () => api.post('/api/service_accounts', { label: name.trim(), roles }),
     onSuccess: () => {
       setName('')
       setRoles([])
@@ -424,7 +429,7 @@ function ServiceAccounts({
           <tbody data-testid="sa-rows">
             {accounts.map((a) => (
               <tr key={a.row_id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`sa-${a.row_id}`}>
-                <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{a.row_id}</td>
+                <td className="px-3 py-2 font-medium text-[var(--color-ink)]" title={a.row_id}>{a.label}</td>
                 <td className="px-3 py-2">
                   <span className="flex flex-wrap gap-1">
                     {a.roles.filter((r) => r !== 'All').map((r) => (

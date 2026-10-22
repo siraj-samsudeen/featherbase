@@ -77,38 +77,57 @@ test('a posted comment appears in the thread and is stored against the row', asy
   expect(stored.data).toEqual([{ content: 'First observation', created_by: 'Administrator' }])
 })
 
-test('an @ token offers matching users and completes the draft on pick', async ({ admin }) => {
+// person-rename: ids are opaque, so a mention names the person — `@username`,
+// or `@[Full Name]` for someone without one. Built-in accounts are not offered.
+async function people(admin: Admin) {
+  await admin.post('/api/save_row', { table: 'Person', row: { username: 'asha.k', full_name: 'Asha Kumar' } })
+  const ravi = (await admin.post('/api/save_row', { table: 'Person', row: { full_name: 'Ravi Menon' } })) as { row_id: string }
+  return { ravi: ravi.row_id }
+}
+
+test('an @ token offers matching people by name and completes the draft with their handle', async ({ admin }) => {
+  await people(admin)
   const rowId = await seedRow(admin)
   await openRow(admin, rowId)
 
-  type('cc @Admin')
+  type('cc @ash')
   const option = await screen.findByTestId('mention-option')
-  expect(option).toHaveTextContent('Administrator')
-
+  expect(option).toHaveTextContent('Asha Kumar · @asha.k')
   option.click()
-  // The token is replaced whole — '@Admin' becomes '@Administrator ', with the
-  // text before it untouched and a trailing space to carry on typing.
-  await waitFor(() => expect(input()).toHaveValue('cc @Administrator '))
+  // The token is replaced whole, with a trailing space to carry on typing.
+  await waitFor(() => expect(input()).toHaveValue('cc @asha.k '))
+
+  // Someone without a username is mentioned by name.
+  type('cc @rav')
+  const byName = await screen.findByTestId('mention-option')
+  expect(byName).toHaveTextContent('Ravi Menon')
+  byName.click()
+  await waitFor(() => expect(input()).toHaveValue('cc @[Ravi Menon] '))
+
+  // The built-in Administrator is never offered.
+  type('cc @Admin')
+  await waitFor(() => expect(screen.queryAllByTestId('mention-option')).toHaveLength(0))
 })
 
 test('a stored mention renders as its own highlighted node, and notifies', async ({ admin }) => {
+  const { ravi } = await people(admin)
   const rowId = await seedRow(admin)
   const panel = await openRow(admin, rowId)
   await waitFor(() => expect(panel).toHaveTextContent('No comments yet'))
 
-  await submit('cc @Administrator please review')
+  await submit('cc @[Ravi Menon] please review')
   await waitFor(() => expect(screen.getAllByTestId('comment-item')).toHaveLength(1))
 
   // The mention is a separate element, brand-coloured — not swallowed into
   // the surrounding sentence.
-  const mention = within(screen.getByTestId('comment-content')).getByText('@Administrator')
+  const mention = within(screen.getByTestId('comment-content')).getByText('@[Ravi Menon]')
   expect(mention.tagName).toBe('SPAN')
   expect(mention.className).toContain('--color-brand')
 
   const notifs = (await admin.get(
     `/api/table/Notification%20Log?filters=${encodeURIComponent(
       JSON.stringify([
-        ['for_user', '=', 'Administrator'],
+        ['for_user', '=', ravi],
         ['ref_table', '=', DT],
         ['ref_name', '=', rowId],
       ]),

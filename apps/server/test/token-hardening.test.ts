@@ -16,7 +16,7 @@ import { methodOfKind } from '../src/identities'
 
 // person-identities: Google reaches a principal through a linked account ID.
 // Link one directly, then sign in through it the way the callback does.
-async function findOrCreateGoogleUserIn(db: typeof sql, user: string) {
+async function findOrCreateGoogleUserIn(db: import("../src/db").TxSql | typeof sql, user: string) {
   const subject = `g-${user}`
   await db`insert into sign_in_identity (id, person_id, method, subject, linked_by)
     values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test')`

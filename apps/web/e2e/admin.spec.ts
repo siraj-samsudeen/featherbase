@@ -35,10 +35,10 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
     await page.getByTestId('all-tables-link').click()
     const nav = page.getByTestId('table-nav')
     await expect(page.getByTestId('system-group-toggle')).toBeVisible()
-    await expect(nav.getByText('User', { exact: true })).toBeHidden()
+    await expect(nav.getByText('Person', { exact: true })).toBeHidden()
     await expect(page.getByTestId('system-group-count')).not.toHaveText('0')
     await page.getByTestId('system-group-toggle').click()
-    await expect(nav.getByText('User', { exact: true })).toBeVisible()
+    await expect(nav.getByText('Person', { exact: true })).toBeVisible()
     await expect(nav.getByText('Role', { exact: true })).toBeVisible()
     await expect(nav.getByText('Table', { exact: true })).toBeVisible()
   })
@@ -47,15 +47,15 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
   await session.assertHas('[data-testid="session-user"]', { text: 'Administrator' })
 
   // Navigate to a Table page
-  await session.step('click through to the User table', async ({ page }) => {
-    await page.getByTestId('table-nav').getByText('User', { exact: true }).click()
+  await session.step('click through to the Person table', async ({ page }) => {
+    await page.getByTestId('table-nav').getByText('Person', { exact: true }).click()
   })
   await session
-    .assertPath('/featherbase/admin/User')
-    .assertHas('[data-testid="table-page"]', { text: 'User' })
+    .assertPath('/featherbase/admin/Person')
+    .assertHas('[data-testid="table-page"]', { text: 'Person' })
 
   // Deep link survives reload (token persisted)
-  await session.reload().assertHas('[data-testid="table-page"]', { text: 'User' })
+  await session.reload().assertHas('[data-testid="table-page"]', { text: 'Person' })
 
   // Logout (inside the avatar's account menu, #72) returns to login and
   // guards /admin

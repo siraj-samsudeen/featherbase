@@ -72,8 +72,8 @@ test('a Store Manager is told they see the whole store as Store Manager', async 
     ['Store Manager', { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' }],
   ] as const)
     await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table, row }) })
-  const doc = (await (await admin.fetch('/api/table/User/test_employee_2')).json()) as { updated_at: string }
-  await admin.fetch('/api/table/User/test_employee_2', {
+  const doc = (await (await admin.fetch('/api/table/Person/test_employee_2')).json()) as { updated_at: string }
+  await admin.fetch('/api/table/Person/test_employee_2', {
     method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
   })
 
@@ -105,8 +105,8 @@ test('more than three Sections are counted, not listed; a Store Manager reads "W
     method: 'POST',
     body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-10104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
   })
-  const doc = (await (await admin.fetch('/api/table/User/test_employee_2')).json()) as { updated_at: string }
-  await admin.fetch('/api/table/User/test_employee_2', {
+  const doc = (await (await admin.fetch('/api/table/Person/test_employee_2')).json()) as { updated_at: string }
+  await admin.fetch('/api/table/Person/test_employee_2', {
     method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
   })
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })

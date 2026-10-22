@@ -14,7 +14,7 @@ test('generated labels resolve real controls, stay stable on edits, and distingu
       { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
       { column_name: 'active', column_type: 'Check', label: 'Active' },
       { column_name: 'stage', column_type: 'Choice', label: 'Stage', choices: 'Draft\nReady' },
-      { column_name: 'owner_ref', column_type: 'Reference', label: 'Owner reference', reference_table: 'User' },
+      { column_name: 'owner_ref', column_type: 'Reference', label: 'Owner reference', reference_table: 'Person' },
       { column_name: 'evidence', column_type: 'Attach', label: 'Evidence' },
       { column_name: 'lines', column_type: 'Sub-table', label: 'Lines', row_table: 'Label Line' },
       { column_name: 'extras', column_type: 'Sub-table', label: 'Extras', row_table: 'Label Line' },

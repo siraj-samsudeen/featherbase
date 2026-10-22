@@ -351,7 +351,8 @@ export function AdminLayout() {
     navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
-  const initials = (user?.full_name || user?.row_id || '?')
+  // person-rename: a person's id is opaque (`psn_…`); never draw initials from it.
+  const initials = (user?.full_name || user?.email || user?.row_id || '?')
     .split(/[\s@.]+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -614,13 +615,13 @@ export function AdminLayout() {
             <button
               onClick={() => setAccountOpen((o) => !o)}
               data-testid="session-user"
-              title={user?.full_name || user?.row_id}
+              title={user?.full_name || user?.email || user?.row_id}
               aria-haspopup="menu"
               aria-expanded={accountOpen}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
             >
               <span aria-hidden="true">{initials}</span>
-              <span className="sr-only">{user?.full_name || user?.row_id}</span>
+              <span className="sr-only">{user?.full_name || user?.email || user?.row_id}</span>
             </button>
             {accountOpen && (
               <div

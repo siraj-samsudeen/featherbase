@@ -177,6 +177,8 @@ async function renameUserToPerson() {
     await sql`delete from table_def where name = 'User'`
   }
   await renameTableEverywhere('User', 'Person')
+  // The seeded System home page (0060) labels its link by the Table's name.
+  await sql`update home_page_link set label = 'Person' where label = 'User' and link_to = 'Person'`
 
   // Built-ins: Administrator and Guest keep their ids and are never re-keyed,
   // merged or given identifiers.

@@ -4,7 +4,7 @@ import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { Button, Card, Select, TextInput } from './ui'
 
-// person-identities (#275, review B-M4): on a User's form, a System Manager
+// person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
 // Google invites — and can link a connected service, invite a Google address
 // or unlink one. Moving a link stays an API call (PATCH /api/identities/:id).
@@ -25,7 +25,7 @@ interface MethodInfo {
   label: string
 }
 
-export function UserSignInMethods({ user }: { user: string }) {
+export function PersonSignInMethods({ user }: { user: string }) {
   const isManager = useIsSystemManager()
   const qc = useQueryClient()
   const key = ['user-identities', user]
@@ -34,7 +34,7 @@ export function UserSignInMethods({ user }: { user: string }) {
     enabled: isManager,
     queryFn: () =>
       api.get<{ identities: AdminIdentity[]; has_password: boolean; methods: (MethodInfo & { enabled: boolean })[] }>(
-        `/api/users/${encodeURIComponent(user)}/identities`,
+        `/api/people/${encodeURIComponent(user)}/identities`,
       ),
   })
   const methods = useQuery({
@@ -52,7 +52,7 @@ export function UserSignInMethods({ user }: { user: string }) {
   // (a clash, a typo) keeps what was typed for correcting.
   const add = useMutation({
     mutationFn: ({ body }: { body: Record<string, string>; form: HTMLFormElement }) =>
-      api.post(`/api/users/${encodeURIComponent(user)}/identities`, body),
+      api.post(`/api/people/${encodeURIComponent(user)}/identities`, body),
     onSuccess: (_res, { form }) => {
       form.reset()
       done()

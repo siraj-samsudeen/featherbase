@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { pickerFor } from '../lib/pickers'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -13,7 +14,7 @@ import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
-import { UserSignInMethods } from './UserSignInMethods'
+import { PersonSignInMethods } from './PersonSignInMethods'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
@@ -583,7 +584,7 @@ export function FormView({
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
             {/* person-identities: the one platform Table whose rows sign in. */}
-            {table === 'User' && <UserSignInMethods user={name} />}
+            {table === 'Person' && <PersonSignInMethods user={name} />}
             <ConnectionsPanel table={table} name={name} />
             <Assignments table={table} name={name} />
             <Tags table={table} name={name} />
@@ -927,9 +928,16 @@ function LinkControl({
   common: Record<string, unknown>
 }) {
   const target = field.reference_table ?? ''
+  const picker = pickerFor(target)
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
-  const [options, setOptions] = useState<string[]>([])
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  // An opaque id (a person's `psn_…`) is shown by its name.
+  const current = useQuery({
+    queryKey: ['link-label', target, String(value ?? '')],
+    enabled: Boolean(picker.labelField) && Boolean(value),
+    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
+  })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const peek = usePeek()
   const navigate = useNavigate()
@@ -941,12 +949,13 @@ function LinkControl({
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
-        const res = await listResource<{ row_id: string }>(target, {
-          filters: q ? [['row_id', 'like', `%${q}%`]] : [],
-          fields: ['row_id'],
+        const label = picker.labelField
+        const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
+          filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
+          fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
-        setOptions(res.data.map((r) => r.row_id))
+        setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         setOpen(true)
       } catch {
         setOptions([])
@@ -954,7 +963,8 @@ function LinkControl({
     }, 150)
   }
 
-  const shown = query ?? String(value ?? '')
+  const valueLabel = picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+  const shown = query ?? valueLabel ?? String(value ?? '')
 
   return (
     <div className="relative">
@@ -964,7 +974,7 @@ function LinkControl({
         aria-expanded={open}
         placeholder={`Reference: ${target}`}
         value={shown}
-        onFocus={() => search(shown)}
+        onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onChange={(e) => {
           setQuery(e.target.value)
@@ -1016,17 +1026,17 @@ function LinkControl({
         >
           {options.map((o) => (
             <button
-              key={o}
+              key={o.value}
               type="button"
               onMouseDown={() => {
-                onChange(o)
+                onChange(o.value)
                 setQuery(null)
                 setOpen(false)
               }}
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
               data-testid="link-option"
             >
-              {o}
+              {o.label}
             </button>
           ))}
           {!options.length && (

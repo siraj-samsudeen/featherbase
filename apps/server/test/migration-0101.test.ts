@@ -39,7 +39,7 @@ async function preSplitShape() {
     await sql`insert into column_def ${sql({
       parent: table, position: 99, column_name: 'user', label: 'User', column_type: 'Reference', reference_table: 'Person',
       reqd: false, unique: false, read_only: false, hidden: false, in_list_view: true, tier: 'basic',
-    } as Record<string, never>)}`
+    } as unknown as Record<string, never>)}`
   invalidateMeta()
 
   const people: [string, string | null, string][] = [

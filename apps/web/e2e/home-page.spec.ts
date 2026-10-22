@@ -87,8 +87,8 @@ test('#80: sidebar flip — landing, System page cards, All tables', async ({ se
   await session.assertHas('[data-testid="home-card-Users & Access"]')
 
   await session.step('a card link opens the Table list', async ({ page }) => {
-    await page.getByTestId('home-link-User').click()
-    await expect(page).toHaveURL(/\/admin\/User/)
+    await page.getByTestId('home-link-Person').click()
+    await expect(page).toHaveURL(/\/admin\/Person/)
   })
   await session.assertHas('[data-testid="list-view"]')
 

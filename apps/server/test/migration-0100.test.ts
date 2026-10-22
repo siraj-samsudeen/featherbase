@@ -34,7 +34,7 @@ async function pre0101Shape() {
       return new;
     end $$`)
   const [person] = await sql`select * from table_def where name = 'Person'`
-  await sql`insert into table_def ${sql({ ...(person as Record<string, unknown>), name: 'User' } as Record<string, never>)}`
+  await sql`insert into table_def ${sql({ ...(person as Record<string, unknown>), name: 'User' } as unknown as Record<string, never>)}`
   await sql`update column_def set parent = 'User' where parent = 'Person'`
   await sql`update custom_field set dt = 'User' where dt = 'Person'`
   await sql`delete from table_def where name = 'Person'`

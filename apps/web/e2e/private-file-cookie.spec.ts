@@ -14,7 +14,7 @@ async function cleanup(request: APIRequestContext) {
   const auth = await adminAuth(request)
   const filters = encodeURIComponent(
     JSON.stringify([
-      ['ref_table', '=', 'User'],
+      ['ref_table', '=', 'Person'],
       ['ref_name', '=', 'Guest'],
     ]),
   )
@@ -41,14 +41,14 @@ test('#173: a private attachment links without a token and serves on the cookie'
     multipart: {
       file: { name: 'secret.txt', mimeType: 'text/plain', buffer: Buffer.from(SECRET) },
       is_private: '1',
-      ref_table: 'User',
+      ref_table: 'Person',
       ref_name: 'Guest',
     },
   })
   const { file_url } = (await uploaded.json()) as { file_url: string }
   expect(file_url).toMatch(/^\/private\/files\//)
 
-  await session.visit('/admin/User/Guest')
+  await session.visit('/admin/Person/Guest')
   await session.step('the attachment link carries no token and still serves on the cookie', async ({ page }) => {
     const row = page.getByTestId('attachment-row').filter({ hasText: 'secret.txt' })
     const href = await row.locator('a').getAttribute('href')

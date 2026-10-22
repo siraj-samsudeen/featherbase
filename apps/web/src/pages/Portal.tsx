@@ -20,7 +20,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <span className="text-sm font-semibold text-[var(--color-ink)]">Portal</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-[var(--color-ink-muted)]">
-          <span data-testid="portal-user">{user?.full_name || user?.row_id}</span>
+          <span data-testid="portal-user">{user?.full_name || user?.email || user?.row_id}</span>
           <button
             data-testid="portal-logout"
             onClick={() => {

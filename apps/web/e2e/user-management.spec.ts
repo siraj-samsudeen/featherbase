@@ -1,6 +1,8 @@
 import { anonymousTest as test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const USER = 'set2-e2e-user@x.com'
+// person-rename: the person's id is minted (`psn_…`); they sign in by email.
+let USER_ID = ''
 
 async function resetKeyFromSink(request: APIRequestContext): Promise<string> {
   const headers = await adminAuth(request)
@@ -31,10 +33,11 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   const created = await request.post('/api/save_row', {
     headers,
-    data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
+    data: { table: 'Person', row: { email: USER, full_name: 'Set2 E2E', enabled: true } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
-  await request.post('/api/set_password', { headers, data: { user: USER, password: 'initialpw123' } })
+  USER_ID = ((await created.json()) as { row_id: string }).row_id
+  await request.post('/api/set_password', { headers, data: { user: USER_ID, password: 'initialpw123' } })
   // Clean any old reset mails so the key we read is from this run.
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
   const old = (await (
@@ -84,9 +87,9 @@ test('SET-002: password reset via emailed link works end to end', async ({ sessi
 test('SET-002: a disabled user cannot log in', async ({ session, request }) => {
   const headers = await adminAuth(request)
   const doc = (await (
-    await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
+    await request.get(`/api/table/Person/${encodeURIComponent(USER_ID)}`, { headers })
   ).json()) as { updated_at: string }
-  const put = await request.patch(`/api/table/User/${encodeURIComponent(USER)}`, {
+  const put = await request.patch(`/api/table/Person/${encodeURIComponent(USER_ID)}`, {
     headers,
     data: { enabled: false, updated_at: doc.updated_at },
   })

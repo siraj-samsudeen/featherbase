@@ -89,7 +89,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // the logout transition, #101 review).
     if (!path.endsWith('/api/login') && !path.endsWith('/api/login/delegated') && window.location.pathname !== '/featherbase/login') {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
-      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}`
+      // A session that existed and was refused has ended (a disabled account,
+      // an upgrade that re-keyed every account): the sign-in page says so.
+      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}${token ? '&ended=1' : ''}`
     }
   }
   const body = (await res.json().catch(() => ({}))) as {
