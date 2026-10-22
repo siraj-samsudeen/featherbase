@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Button } from './Button'
 import { cx } from './cx'
-import { EmptyState } from './EmptyState'
+import { EmptyState, type EmptyDescriptor } from './EmptyState'
 import { Notice } from './Notice'
 import { Skeleton } from './Skeleton'
 import { useMediaQuery } from './useMediaQuery'
@@ -21,16 +21,6 @@ export interface DataColumn<Row> {
   align?: 'start' | 'end'
   phone?: PhoneRole
 }
-
-/**
- * What an empty list says: a title plus an explanation, a way forward, or
- * both — never a bare "no rows" (usable-on-any-device: screens say when they
- * are empty, with the way forward).
- */
-export type EmptyDescriptor = { title: ReactNode } & (
-  | { body: ReactNode; action?: ReactNode }
-  | { action: ReactNode; body?: ReactNode }
-)
 
 /** Below this width a list reads as cards (the usable-on-any-device promise). */
 export const NARROW_QUERY = '(width < 40rem)'
@@ -82,9 +72,7 @@ export function DataList<Row>({
     )
   if (!rows.length)
     return (
-      <EmptyState title={empty.title} action={empty.action} className={className}>
-        {empty.body}
-      </EmptyState>
+      <EmptyState {...empty} className={className} />
     )
 
   if (cards) {
