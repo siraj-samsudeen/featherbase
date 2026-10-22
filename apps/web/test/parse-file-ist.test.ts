@@ -81,6 +81,11 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
   })
 
+  test('an escaped h or s is literal text, not a time', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd\\h']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
   test('a date-only cell never carries a hidden time into the next day', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.9999999943, 'yyyy-mm-dd']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21')

@@ -18,7 +18,7 @@ export function isUtcMidnight(d: Date): boolean {
 /** YYYY-MM-DDTHH:MM:SS from the Date's local components. */
 export function localIso(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${pad(d.getFullYear(), 4)}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 /** The calendar day a Date stands for, YYYY-MM-DD, on any machine's clock. */

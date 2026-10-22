@@ -242,6 +242,14 @@ describe('#387: a Date value keeps its calendar day east of UTC', () => {
   })
 })
 
+describe('#387: an early-year Date keeps a four-digit year', () => {
+  it('a local-midnight Date in year 99 validates as 0099-12-31', () => {
+    const d = new Date(2000, 11, 31)
+    d.setFullYear(99)
+    expect(tableSchemaToZod([col('due', 'Date')]).parse({ due: d }).due).toBe('0099-12-31')
+  })
+})
+
 describe('#387: a Date must be a real calendar day', () => {
   const schema = tableSchemaToZod([col('due', 'Date')])
   it.each(['1900-02-29', '2024-02-30', '2023-02-29', '2024-13-01'])('%s is refused before anything is written', (v) => {
