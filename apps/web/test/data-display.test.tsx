@@ -5,7 +5,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
-import { fmtCount, fmtDay, fmtINR, fmtNumber } from '../src/lib/inr'
+import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '../src/lib/inr'
 import { formatNumber } from '../src/lib/settings'
 import { pageRange } from '../src/components/ListView'
 
@@ -67,6 +67,11 @@ describe('list counts', () => {
     expect(pageRange(0, 20, 123456)).toBe('1–20 of 1,23,456')
     expect(pageRange(123440, 20, 123456)).toBe('1,23,441–1,23,456 of 1,23,456')
     expect(pageRange(0, 20, 0)).toBe('0–0 of 0')
+  })
+
+  test('a partial preview names both numbers the Indian way', () => {
+    expect(fmtShowing(50, 123456)).toBe('50 of 1,23,456')
+    expect(fmtShowing(123456, 123456)).toBe('1,23,456')
   })
 })
 

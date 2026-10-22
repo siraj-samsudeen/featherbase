@@ -41,8 +41,10 @@ Codex review fixes, each test-first:
   the glyph, which does not grow the chip;
 - row-scale counts go through `fmtCount`: list totals and the pager (`pageRange`, pinned at `1–20 of 1,23,456`),
   peek and connection previews, the relation map, import history, the import wizard, the table builder and table
-  merge. The import's type-to-confirm prompt shows the count grouped, and `confirmsCount` accepts it with or without
-  the commas.
+  merge, plus the report total, dashboard card and bar values, connection counts, Explore's "N of M" (`fmtShowing`)
+  and checklist runs. The import's type-to-confirm prompt shows the count grouped, and `confirmsCount` accepts it
+  with or without the commas. A new guard rule, "raw row count", fails on any expression printed straight before
+  rows/total/records (props such as `total={…}` excepted), so this is enforced rather than found screen by screen.
 
 ListView as phone cards (Codex) is deliberately left to page adoption, tracked as OpenSpec task 4.1. Its selection,
 bulk actions, expandable rows and sorting need their own change.
@@ -52,7 +54,7 @@ CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Si
 top-aligned on desktop.
 
 **Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 780 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web test`: 793 passed. `pnpm --filter web typecheck` passed.
 - The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
   web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
   dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback

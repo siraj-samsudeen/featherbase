@@ -4,6 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -212,7 +213,7 @@ function RunList({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-ink">{table}</h1>
-          <span className="text-xs text-ink-muted">{data.length} runs</span>
+          <span className="text-xs text-ink-muted">{fmtCount(data.length)} runs</span>
         </div>
         <div className="flex items-center gap-2">
           {!binding.readOnly && (

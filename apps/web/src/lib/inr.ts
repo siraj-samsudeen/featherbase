@@ -77,6 +77,11 @@ export function fmtNumber(x: number, precision: number): string {
   return x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })
 }
 
+/** "1,23,456", or "50 of 1,23,456" when only part of a set is shown. */
+export function fmtShowing(shown: number, total: number): string {
+  return shown === total ? fmtCount(total) : `${fmtCount(shown)} of ${fmtCount(total)}`
+}
+
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /** A calendar heading: "October 2026". */

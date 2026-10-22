@@ -5,6 +5,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { FilterBar, type Filter } from './ListView'
 import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -305,7 +306,7 @@ export function ReportView({
         <div>
           <h1 className="text-xl font-semibold text-ink">{table} — Summary</h1>
           <span className="text-xs text-ink-muted" data-testid="report-total">
-            {rows.data?.total ?? 0} rows
+            {fmtCount(rows.data?.total ?? 0)} rows
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">

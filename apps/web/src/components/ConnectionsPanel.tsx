@@ -51,7 +51,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
               className={pillClasses(`${c.count ? 'bg-action-tint text-action' : 'bg-subtle text-ink-subtle'}`)}
               data-testid={`connection-count-${c.table}`}
             >
-              {c.count}
+              {fmtCount(c.count)}
             </span>
           </Link>
           {peek.available && (
@@ -115,7 +115,7 @@ export function RelatedTabs({ table, name }: { table: string; name: string }) {
               }`}
               data-testid={`related-count-${c.table}`}
             >
-              {c.count}
+              {fmtCount(c.count)}
             </span>
             <span className="text-xs font-medium text-ink-muted">
               {connectionLabel(c)}

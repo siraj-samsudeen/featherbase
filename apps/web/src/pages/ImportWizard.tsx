@@ -1857,7 +1857,7 @@ export function ImportWizard() {
                   return (
                     <span key={m} className="mr-3 inline-block">
                       {sheets[m].sheetName}{' '}
-                      <span className="tabular-nums">({countDataRows(sheets[m].rows)} rows)</span>
+                      <span className="tabular-nums">({fmtCount(countDataRows(sheets[m].rows))} rows)</span>
                       {absent.length > 0 && (
                         <span className="text-caution">
                           {' '}
@@ -2618,7 +2618,7 @@ export function ImportWizard() {
                 data-testid="iw-import-one"
                 className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               >
-                {`Import ${targetRows(activeTarget)} rows into ${activePlan?.table || 'this Table'}`}
+                {`Import ${fmtCount(targetRows(activeTarget))} rows into ${activePlan?.table || 'this Table'}`}
               </button>
             ))}
           <button
@@ -2633,12 +2633,14 @@ export function ImportWizard() {
             className={buttonClasses({ variant: targetIndexes.length > 1 ? 'secondary' : 'primary', className: 'disabled:opacity-40' })}
           >
             {anyChecked && blockingProblems > 0
-              ? `Import anyway (skip ${blockingProblems} bad rows)`
+              ? `Import anyway (skip ${fmtCount(blockingProblems)} bad rows)`
               : targetIndexes.length > 1
                 ? `Import the remaining ${targetIndexes.filter((i) => !plans[i]?.result).length} Tables`
-                : `Import ${sheets.reduce(
-                    (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
-                    0,
+                : `Import ${fmtCount(
+                    sheets.reduce(
+                      (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
+                      0,
+                    ),
                   )} rows`}
           </button>
         </div>

@@ -180,6 +180,8 @@ const RULES: Record<string, Rule> = {
   'retired token': (text) =>
     (text.match(new RegExp(String.raw`--color-${RETIRED}\b`, 'g')) ?? []).length +
     (text.match(new RegExp(String.raw`(?<![\w-])${UTILITY}-${RETIRED}(?![\w-])`, 'g')) ?? []).length,
+  // A row count printed as a bare number ({total} rows) instead of through fmtCount.
+  'raw row count': count(/\$?\{(?![^{}]*fmt)[^{}]+\}\s*(?:rows|row(?=\{)|total|records?)\b(?!\s*[=:])/g),
   'retired class': count(/(?<![\w-])fc-(?:card|input|btn-primary|btn|label|pill)(?![\w-])/g),
 }
 // The one home of Indian number and date formatting may call Intl itself.
@@ -215,6 +217,11 @@ describe('each rule catches what it is for and nothing else', () => {
       ['text-action', 'bg-negative-tint', 'border-border-control', 'text-ink-subtle', 'border-border'],
     ],
     ['retired class', ['fc-btn', 'fc-btn-primary', 'fc-card'], ['buttonClasses()', 'fc-btnx', 'my-fc-card']],
+    [
+      'raw row count',
+      ['{total} total', '{rows.data?.total ?? 0} rows', '`${n} rows imported`', '{count} records', "{total} row{total === 1 ? '' : 's'}"],
+      ['{fmtCount(total)} total', '`${fmtCount(n)} rows`', '{label} columns', '{row.name}', 'done={parts.done} total={parts.total}', 'cols={columns} rows={data}', '`${sheet} row`'],
+    ],
   ]
   describe.each(probes)('%s', (rule, caught, ignored) => {
     test.each(caught)('catches %s', (s) => expect(RULES[rule](s, false)).toBeGreaterThan(0))

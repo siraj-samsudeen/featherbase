@@ -6,6 +6,7 @@ import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { usePeek } from '../components/Peek'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '../components/ui'
+import { fmtCount, fmtShowing } from '../lib/inr'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -391,7 +392,7 @@ function Pane({
       <div className="flex items-baseline gap-2 border-b border-border px-3 py-2">
         <span className="text-sm font-semibold text-ink">{table}</span>
         <span className="text-xs text-ink-subtle" data-testid={`${testid}-count`}>
-          {rows.length === total ? total : `${rows.length} of ${total}`}
+          {fmtShowing(rows.length, total)}
         </span>
       </div>
       <div className="max-h-[420px] overflow-y-auto">
@@ -416,7 +417,7 @@ function Pane({
       </div>
       <div className="flex justify-between border-t border-border bg-subtle px-3 py-1.5 text-xs text-ink-muted">
         <span>
-          {total} row{total === 1 ? '' : 's'}
+          {fmtCount(total)} row{total === 1 ? '' : 's'}
           {rows.length < total ? ` · showing ${rows.length}` : ''}
         </span>
         {numericCol && agg.data?.sum != null && (

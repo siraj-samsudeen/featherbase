@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
 import { cardClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 // UI-026: renders a saved Dashboard — number cards and bar charts computed on
 // demand from live data through the permission-scoped dashboard endpoints.
@@ -40,7 +41,7 @@ function NumberCard({ card }: { card: CardCfg }) {
     <div className={cardClasses('p-4')} data-testid={`card-${card.label}`}>
       <div className="text-sm text-ink-muted">{card.label}</div>
       <div className="mt-1 text-3xl font-semibold text-ink" data-testid={`card-value-${card.label}`}>
-        {q.data ? q.data.count : q.isError ? '—' : '…'}
+        {q.data ? fmtCount(q.data.count) : q.isError ? '—' : '…'}
       </div>
     </div>
   )
@@ -79,8 +80,8 @@ function BarChart({ chart }: { chart: ChartCfg }) {
                 style={{ width: `${Math.round((r.value / max) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
               />
             </div>
-            <div className="w-8 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`bar-value-${r.label}`}>
-              {r.value}
+            <div className="min-w-8 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`bar-value-${r.label}`}>
+              {fmtCount(r.value, 2)}
             </div>
           </div>
         ))}
