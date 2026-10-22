@@ -133,10 +133,10 @@ export async function login(usr: string, pwd: string): Promise<SessionUser> {
   return rememberLogin(await api.post<LoginResponse>('/api/login', { usr, pwd }))
 }
 
-/** Sign in with an ID and password checked by the outside service named in
- *  `/api/brand`'s `delegated_login_label` (e.g. StyleHR). Same session shape. */
-export async function loginDelegated(usr: string, pwd: string, method?: string): Promise<SessionUser> {
-  return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', method ? { usr, pwd, method } : { usr, pwd }))
+/** Sign in through a connected service (a Sign In Method row of kind
+ *  `delegated_password`, e.g. StyleHR) named by its key. Same session shape. */
+export async function loginDelegated(usr: string, pwd: string, method: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', { usr, pwd, method }))
 }
 
 /** Direct sign-up (person-identities): a username and a password, when the

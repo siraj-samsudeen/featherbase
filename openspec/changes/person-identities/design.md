@@ -28,7 +28,10 @@ signing in through StyleHR every day, several in test mode.
 compatibility. That is no longer true for the dev instance: it has daily users
 and a CDC mirror. This change therefore carries existing data over and keeps
 every existing sign-in working with no user action, while changing in-repo
-shapes outright, with one exception kept for one release (D2, `/api/brand`).
+shapes outright. **No compatibility shims** (Siraj, 22-Oct-2026: "the first real
+prod move — start everything cleanly"): old `/api/brand` fields, silently
+dropped placeholder emails, pre-upgrade sessions and `user.social_login` are
+all gone at the upgrade; existing data is migrated, nothing old is accepted.
 
 ## Goals / Non-Goals
 
@@ -71,8 +74,8 @@ Google `new_person` sign-in, a sign-up — get an opaque id (`usr_` + 20 hex);
 the address stays in `email`, a chosen sign-in name in the new `username`
 column (unique ignoring case), and the display name in `full_name`. Existing
 ids (including the ~13 email-shaped ones) stay as they are: forward-only.
-`email` becomes optional (D9). `social_login` stops being written; it is read
-once, by the migration (D5), and dropped in a follow-up.
+`email` becomes optional (D9). `social_login` is read once by migration 0100
+(D5) and dropped by it.
 
 **Password = `user.password_hash` (one home, derived method).** A non-null
 hash IS the password sign-in method; there is no password identity row. The
@@ -178,9 +181,8 @@ written into `settings`.
 
 `/api/brand` returns `sign_in_methods: [{key, kind, label, test_mode}]`,
 `sign_up_open`, and `identity_links: true` (the marker the roster sync probes,
-D11). It **keeps** `delegated_login_label` and `delegated_login_test_mode` for
-one release so an old web bundle in a browser tab keeps working; removal is a
-follow-up. The System Settings columns `google_client_id`,
+D11). The old `delegated_login_label` / `delegated_login_test_mode` fields are
+gone. The System Settings columns `google_client_id`,
 `allowed_login_domains`, `delegated_login_label|url|user_column` are removed
 after their values are copied.
 
@@ -219,7 +221,7 @@ Verify steps today:
   every success / error / left rule come from the row's `settings`
   (`DelegatedWire`), defaulting to StyleHR's values; a second HR provider with
   a different wire format is a new row, not code. With two or more delegated
-  rows on, the sign-in must name its `method`.
+  Every delegated sign-in names its `method` (no single-service default).
 
 **What a new OIDC provider (e.g. Microsoft) still needs** — stated plainly, not
 built: a `KINDS` entry declaring its capabilities, its verify step (authorize
@@ -368,19 +370,13 @@ gone, `m` is the password method and the hash is now NULL, or `idn` no longer
 exists or no longer belongs to `sub`. The session user carries `sign_in =
 {method, identity, test_mode, preview, issued_at}`.
 
-**Sessions that cannot change access** (`assertCanChangeAccess`, reviews B1,
-A-M1, B-M2): a test-mode session, a preview session, and a session minted
-before the upgrade may read but cannot set a password, mint an access token,
-link or unlink a sign-in method, or remove a password. A pre-upgrade token is
-recognised by its missing `iat` — every pre-upgrade token lacks both `iat` and
-`m`, and after the upgrade every sign-in route sets `m` (preview sets `pv`).
-The check keys on `iat` rather than `m` because the test fixtures mint
-method-less sessions for setup calls; in production the two are the same set.
-Access tokens (no `sign_in`) are integration credentials and are unaffected.
-
-Pre-upgrade tokens stay valid for reading until they expire (nobody is
-signed out by the deploy) and are **not** ended by unlinking or turning a
-method off — only by disabling the person.
+**Pre-upgrade sessions end at the deploy.** A token without `iat` (every
+token minted before this change) is rejected by `resolveToken`; everyone signs
+in once more. **Sessions that cannot change access** (`assertCanChangeAccess`,
+reviews B1, B-M2): a test-mode session and a preview session may read but
+cannot set a password, mint an access token, link or unlink a sign-in method,
+or remove a password. Access tokens (no `sign_in`) are integration
+credentials and are unaffected.
 
 ### D9. Email: optional, unique where present, never invented
 
@@ -393,12 +389,12 @@ method off — only by disabling the person.
   constraint name** to the `email` field (an expression index's detail reads
   `lower(email::text)`), so callers still get "email must be unique" (417).
 - Blank (`''`/whitespace) is stored as NULL.
-- **Time-boxed shim:** an address on the `.invalid` top-level domain (RFC
-  2606's never-resolving name, used by every placeholder in this codebase and
-  the roster sync) is stored as NULL, so the old roster sync cannot break
-  during the deploy window. Other reserved names (`example.com`, `.test`) are
-  left alone because tests and dev seeds use them as stand-ins for real
-  addresses. Follow-up: once the sync is updated, refuse `.invalid` with 417.
+- An address on the `.invalid` top-level domain (RFC 2606's never-resolving
+  name, used by every placeholder this codebase and the roster sync ever
+  invented) is **refused** with a field error (417) on any User save. The
+  migration clears the existing ones (data, not a shim). Other reserved names
+  (`example.com`, `.test`) are accepted: tests use them as stand-ins. The
+  updated roster sync must send no email rather than a placeholder.
 - Code stops inventing: service accounts, the sales-target test accounts and
   the in-code Guest session get no email. The 0005 seed addresses of
   Administrator and Guest (`admin@example.com`, `guest@example.com`) are
@@ -506,8 +502,8 @@ Rollback: forward-fix only; restore the pre-deploy snapshot if needed.
 |---|---|---|
 | REST `save_row`/PATCH on User with `email` | still accepted; blank/reserved → NULL; case-insensitive duplicate → 417 `email` | none |
 | `/api/whoami`, login responses, web `SessionUser` | `email` is `string \| null`; `whoami` gains `sign_in` `{method, test_mode}` | web types in this change |
-| `/api/brand` | new `sign_in_methods`, `sign_up_open`, `identity_links`; old delegated fields kept one release | follow-up: remove them |
-| `/api/login/delegated` | unchanged; optional `method`, required with ≥2 delegated methods | none |
+| `/api/brand` | `sign_in_methods`, `sign_up_open`, `identity_links`; the old delegated fields are removed | web client in this change |
+| `/api/login/delegated` | `method` is required (no single-service default) | web client in this change; any script posting here must send it |
 | `/api/set_password`, `/api/access_tokens` | refused for test-mode sessions | none (B1) |
 | Password reset | no email or no password ⇒ silent no-op | in this change |
 | Workflow / SLA mails | recipients without email are skipped, and the skip count is logged | in this change |
@@ -516,7 +512,7 @@ Rollback: forward-fix only; restore the pre-deploy snapshot if needed.
 | `tenancy.ts` site users | per-site schema, out of scope | none |
 | **Data-warehouse roster sync** | see the list below — **required**, runs right after the deploy | follow-up issue |
 | CDC mirror of `user` (`pg_md_cdc/registrations/featherbase.yml`) | schema unchanged; placeholder emails become NULL; `user_identity` (raw) and Sign In Method (`system`) do not flow | warehouse follow-up: add `featherbase.user_identity` to `deny`, or declare it; joins on `user.email` must expect NULL |
-| `user.social_login` | no longer written | follow-up: drop once CDC tolerates it |
+| `user.social_login` | read once and dropped by migration 0100 | the CDC mirror sees a dropped column on its next run |
 | `feat/244-provider-identities` (unmerged, no PR) | superseded for this slice | close; mine for Microsoft, `auth_time`, session store |
 
 **Roster sync changes (data-warehouse, follow-up, do not edit here):**

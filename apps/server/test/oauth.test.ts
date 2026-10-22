@@ -257,7 +257,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       else process.env.ALLOW_MOCK_OAUTH = prev
     }
     // Nothing was provisioned by any of it.
-    const [row] = await sql`select 1 from "user" where row_id = 'Administrator' and social_login = 'google'`
+    const [row] = await sql`select 1 from user_identity where user_id = 'Administrator' and method = 'google'`
     expect(row).toBeUndefined()
   })
 

@@ -163,9 +163,6 @@ app.get('/api/brand', async (c) => {
     sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
     // The roster sync checks this before writing linked identities (design D11).
     identity_links: true,
-    // Kept one release for an already-loaded web bundle (design D2).
-    delegated_login_label: delegated[0]?.label ?? null,
-    delegated_login_test_mode: delegated.length > 0 && testMode,
   })
 })
 
@@ -210,10 +207,11 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
 // Off answers like any unknown route, so the route does not advertise itself.
 app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   const { usr, pwd, method } = (await c.req.json().catch(() => ({}))) as { usr?: string; pwd?: string; method?: string }
-  const cfg = await delegatedLoginConfig(typeof method === 'string' && method ? method : undefined)
+  // Every sign-in names its method; there is no single-service default.
+  if (typeof method !== 'string' || !method || typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || (!pwd && !delegatedTestMode()))
+    throw new AppError('ValidationError', 'Expected { usr, pwd, method }')
+  const cfg = await delegatedLoginConfig(method)
   if (!cfg) return c.notFound()
-  if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || (!pwd && !delegatedTestMode()))
-    throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr, 'delegated')
   if (attempt.refusal) return attempt.refusal
   // Before the provider call: never forward a password that cannot be bound.

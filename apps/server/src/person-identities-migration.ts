@@ -108,8 +108,12 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
     return have ? { key: m.key, kind: String(have.kind), label: String(have.label), enabled: have.enabled === true } : m
   })
 
+  // social_login is read once, here, and dropped by the migration.
+  const hasSocialLogin = await columnExists('user', 'social_login')
   const users = await sql`
-    select u.row_id, u.full_name, u.email, u.enabled, u.social_login, coalesce(u.user_type, 'human') as user_type,
+    select u.row_id, u.full_name, u.email, u.enabled,
+      ${hasSocialLogin ? sql`u.social_login` : sql`null::text`} as social_login,
+      coalesce(u.user_type, 'human') as user_type,
       (u.password_hash is not null) as has_password,
       ${columnOk ? sql`trim(${sql(column)})` : sql`null::text`} as delegated_name,
       ${hasEmployeeCode ? sql`trim(employee_code)` : sql`null::text`} as employee_code,
@@ -389,6 +393,12 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
     for (const d of plan.delegatedLinks)
       await sql`insert into user_identity ${sql({ id: newIdentityId(), user_id: d.row_id, method: delegated.key, subject: d.row_id, sign_in_name: d.sign_in_name, linked_by: 'migration' })}
         on conflict do nothing`
+
+  // 5b. social_login was only ever "signed in with Google once"; the invites
+  // above are its last use. Linked identities replace it.
+  await sql`delete from column_def where parent = 'User' and column_name = 'social_login'`
+  await sql.unsafe(`alter table ${PLATFORM_SCHEMA}."user" drop column if exists social_login`)
+  invalidateMeta()
 
   // 6. The old column stays as roster data; say it no longer signs anyone in.
   const column = setting('delegated_login_user_column')

@@ -35,7 +35,7 @@ describe('an administrator links sign-in methods', () => {
     expect((await as(api, tl)('/api/users/RR-10/identities')).status).toBe(403)
 
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
-    const { token } = (await (await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-10', pwd: '' }) })).json()) as { token: string }
+    const { token } = (await (await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-10', pwd: '', method: 'stylehr' }) })).json()) as { token: string }
     vi.unstubAllEnvs()
     const who = () => as(api, token)('/api/whoami')
     expect((await who()).status).toBe(200)
@@ -100,9 +100,9 @@ describe('a person links Google themselves', () => {
     const noIat = await sign({ sub: 'stale', exp: now + 3600 }, secret)
     const old = await sign({ sub: 'stale', iat: now - 3600, exp: now + 3600, m: 'password' }, secret)
     await admin.post('/api/set_password', { user: 'stale', password: 'stale-pw-1' })
-    // Minted before the upgrade: may read, may not add access (review A-M1).
-    expect((await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
-    expect((await as(api, noIat)('/api/whoami')).status).toBe(200)
+    // Minted before the upgrade: ended at deploy, it opens nothing.
+    expect((await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
+    expect((await as(api, noIat)('/api/whoami')).status).toBe(401)
     // Signed in an hour ago: must sign in again first.
     expect((await as(api, old)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
   })
@@ -116,7 +116,7 @@ describe('a person links Google themselves', () => {
     const { _setDelegatedFetch } = await import('../src/delegated-login')
     _setDelegatedFetch((async () => Response.json({ token: 'x' })) as unknown as typeof fetch)
     try {
-      const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tl_30', pwd: 'right' }) })
+      const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tl_30', pwd: 'right', method: 'stylehr' }) })
       const { token } = (await res.json()) as { token: string }
       expect((await as(api, token)(`/api/me/identities/${hr}`, { method: 'DELETE' })).status).toBe(409)
       const mine = (await (await as(api, token)('/api/me/sign_in_methods')).json()) as { identities: { linked: boolean }[] }

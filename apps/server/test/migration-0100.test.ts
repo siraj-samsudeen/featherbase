@@ -13,6 +13,8 @@ async function preUpgradeShape() {
   await sql`delete from sign_in_method where kind = 'delegated_password' or row_id = 'google'`
   await sql`update "user" set email = 'admin@example.com' where row_id = 'Administrator'`
   await sql`alter table "user" add column if not exists stylehr_username varchar(140)`
+  // 0100 drops social_login after reading it; the pre-upgrade shape has it.
+  await sql`alter table "user" add column if not exists social_login varchar(140)`
   await sql`alter table "user" add column if not exists employee_code varchar(140)`
   for (const [field, value] of [
     ['delegated_login_label', 'StyleHR'],
@@ -112,6 +114,7 @@ describe('migration 0100: person + linked identities', () => {
     await preUpgradeShape()
     await migratePersonIdentities()
     await sql`update user_identity set subject = 'g-siraj', pending_email = null where user_id = 'siraj@jeyarama.com'`
+    await sql`alter table "user" add column if not exists social_login varchar(140)`
     await sql`update "user" set social_login = 'google' where row_id = 'siraj@jeyarama.com'`
     const again = await migratePersonIdentities()
     expect(again.googleInvites.map((g) => g.row_id)).not.toContain('siraj@jeyarama.com')
@@ -165,5 +168,14 @@ describe('migration 0100: person + linked identities', () => {
     expect(after[0].invites - before[0].invites).toBe(plan.googleInvites.length)
     expect(after[0].delegated - before[0].delegated).toBe(plan.delegatedLinks.length)
     expect(plan.seedEmailsCleared.map((p) => p.row_id)).toEqual(['Administrator'])
+  })
+
+  test('social_login is dropped once read, and a re-run without it changes nothing', async () => {
+    await preUpgradeShape()
+    await migratePersonIdentities()
+    const [col] = await sql`select 1 from information_schema.columns where table_schema = 'featherbase' and table_name = 'user' and column_name = 'social_login'`
+    expect(col).toBeUndefined()
+    const again = await migratePersonIdentities()
+    expect(again.googleInvites).toHaveLength(0)
   })
 })

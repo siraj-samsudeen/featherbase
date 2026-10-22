@@ -23,12 +23,20 @@ async function setEnabled(admin: TestClient, table: string, row: string, enabled
 }
 
 describe('email is optional contact data', () => {
-  test('an account saves with no email, and a placeholder or blank one is not kept', async () => {
+  test('an account saves with no email; a blank one means none', async () => {
     await saveDoc('User', { row_id: 'RR-7963', full_name: 'Store staff', enabled: true }, 'Administrator')
-    await saveDoc('User', { row_id: 'RR-7964', email: 'rr-7964@staff.jeyarama.invalid', enabled: true }, 'Administrator')
     await saveDoc('User', { row_id: 'RR-7965', email: '   ', enabled: true }, 'Administrator')
-    const rows = await sql`select row_id, email from "user" where row_id in ('RR-7963', 'RR-7964', 'RR-7965') order by row_id`
-    expect(rows.map((r) => r.email)).toEqual([null, null, null])
+    const rows = await sql`select row_id, email from "user" where row_id in ('RR-7963', 'RR-7965') order by row_id`
+    expect(rows.map((r) => r.email)).toEqual([null, null])
+  })
+
+  test('a placeholder address that can never receive mail is refused', async ({ admin }) => {
+    const res = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'User', row: { row_id: 'RR-7964', email: 'rr-7964@staff.jeyarama.invalid', enabled: true } }),
+    })
+    expect(res.status).toBe(417)
+    expect(Object.keys(((await res.json()) as { error: { fields: Record<string, string> } }).error.fields)).toEqual(['email'])
   })
 
   test('two accounts cannot share an address, whatever its capitals; the error names email', async ({ admin }) => {

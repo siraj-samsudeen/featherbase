@@ -126,14 +126,9 @@ export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
   return out
 }
 
-/** The method a sign-in names, or the only one there is; null when none is on.
- *  With two or more enabled, the caller must say which (design D3). */
-export async function delegatedLoginConfig(key?: string): Promise<DelegatedLoginConfig | null> {
-  const methods = await delegatedMethods()
-  if (key) return methods.find((m) => m.key === key) ?? null
-  if (methods.length > 1)
-    throw new AppError('ValidationError', 'Say which service to sign in with', { method: methods.map((m) => m.key).join(', ') })
-  return methods[0] ?? null
+/** The enabled, usable delegated method a sign-in names; null when it is off. */
+export async function delegatedLoginConfig(key: string): Promise<DelegatedLoginConfig | null> {
+  return (await delegatedMethods()).find((m) => m.key === key) ?? null
 }
 
 // Test mode (#3783): DELEGATED_LOGIN_TEST_MODE=trust-any-password skips the

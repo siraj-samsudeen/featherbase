@@ -1,8 +1,8 @@
 /* Seed the issue-#3755 sales-target experiment over the HTTP API of a running
  * server, exactly as an administrator would through the Admin: the
  * `Sales Target Assignment` Table, the `Sales Target Viewer` role, the four
- * local accounts test_employee_1..4 (synthetic @example.invalid emails — the
- * User Table requires one) and the initial assignments.
+ * local accounts test_employee_1..4 (no email; it is optional) and the
+ * initial assignments.
  *
  *   ./init.sh
  *   pnpm --filter server seed:sales-target

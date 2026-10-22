@@ -39,13 +39,13 @@ async function changesRefused(api: TestClient, token: string, identity: string) 
 }
 
 describe('sessions that cannot vouch for the person (A-M1, B-M2)', () => {
-  test('a session minted before the upgrade still reads, but cannot add or remove access', async ({ api }) => {
+  test('a session minted before the upgrade is ended: it reads nothing and changes nothing', async ({ api }) => {
     await configureDelegated()
     await person('legacy.person')
     const identity = await linkDelegated('legacy.person', 'legacy_hr')
     const legacy = await sign({ sub: 'legacy.person', exp: now() + 3600 }, SECRET) // no iat, no method
-    expect((await as(api, legacy)('/api/whoami')).status).toBe(200)
-    expect(await changesRefused(api, legacy, identity)).toEqual([403, 403, 403, 403, 403])
+    expect((await as(api, legacy)('/api/whoami')).status).toBe(401)
+    expect(await changesRefused(api, legacy, identity)).toEqual([401, 401, 401, 401, 401])
     expect(await sql`select 1 from user_identity where id = ${identity}`).toHaveLength(1)
   })
 
@@ -148,7 +148,7 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
     await configureDelegated()
     await person('RR-70')
     await linkDelegated('RR-70', 'tl_70')
-    expect((await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-70', pwd: '' }) })).status).toBe(200)
+    expect((await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-70', pwd: '', method: 'stylehr' }) })).status).toBe(200)
     const [row] = await sql`select sign_in_method, test_mode from activity_log where "user" = 'RR-70' and operation = 'login'`
     expect(row).toEqual({ sign_in_method: 'stylehr', test_mode: true })
   })

@@ -306,6 +306,9 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   } catch {
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
+  // A token minted before person-identities carries no `iat`: such sessions
+  // were ended at the upgrade (no compatibility window — Siraj, 22-Oct-2026).
+  if (typeof payload.iat !== 'number') throw new AppError('AuthenticationError', 'Invalid or expired session')
   const method = typeof payload.m === 'string' ? payload.m : null
   const identity = typeof payload.idn === 'string' ? payload.idn : null
   // One query (design D8): the person, the method the session came through,
@@ -352,14 +355,13 @@ export function assertFreshForLinking(user: SessionUser): void {
 }
 
 /** Refuse adding or removing access from a session that cannot vouch for
- *  the person (review B1, A-M1, B-M2): a test-mode sign-in, a dev-preview
- *  click-through, or a session minted before the upgrade (no `iat` — such a
- *  token also carries no method). Those keep reading until they expire; they
- *  cannot set a password, mint a token, or link or remove a sign-in method.
- *  Access tokens (no sign_in) are integration credentials and unaffected. */
+ *  the person (reviews B1, B-M2): a test-mode sign-in or a dev-preview
+ *  click-through. They can read; they cannot set a password, mint a token, or
+ *  link or remove a sign-in method. Access tokens (no sign_in) are integration
+ *  credentials and unaffected. */
 export function assertCanChangeAccess(user: SessionUser): void {
   const s = user.sign_in
   if (!s) return
-  if (s.test_mode || s.preview || s.issued_at == null)
+  if (s.test_mode || s.preview)
     throw new AppError('PermissionError', 'Not allowed from this sign-in. Sign in again normally to change how this account signs in.')
 }

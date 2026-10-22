@@ -22,10 +22,10 @@ export function foldName(value: string): string {
 }
 
 // RFC 2606 reserves the `.invalid` top-level domain for names that must never
-// resolve; every placeholder address in this codebase and in the roster sync
-// uses it. Such an address is not contact data, so it is not kept
-// (time-boxed shim, design D9). Other reserved names (example.com, .test) are
-// left alone: tests use them as stand-ins for real addresses.
+// resolve; every placeholder address this codebase and the roster sync ever
+// invented uses it. Such an address is not contact data: User saves refuse it
+// and migration 0100 clears the existing ones (design D9). Other reserved
+// names (example.com, .test) are left alone: tests use them as stand-ins.
 export function isReservedEmail(email: string): boolean {
   const at = email.lastIndexOf('@')
   if (at < 0) return false

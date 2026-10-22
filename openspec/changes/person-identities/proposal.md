@@ -50,8 +50,13 @@ system ID and a Google account is one Featherbase user.
   be matched by its address is linked to its permanent ID on its next sign-in,
   once; after that its address is never used to find the account again.
   Test mode for the HR system keeps working and still refuses privileged
-  accounts. Test-mode, preview-link and pre-upgrade sessions can keep reading
-  but cannot add or remove access.
+  accounts. Test-mode and preview-link sessions can read but cannot add or
+  remove access. Sessions from before the upgrade end; everyone signs in once
+  more.
+- **No compatibility shims** (owner, 22-Oct-2026): the old `/api/brand`
+  fields, `user.social_login`, silently dropped placeholder emails and the
+  single-service default on delegated sign-in are removed, not kept for a
+  release.
 - **BREAKING (internal):** the System Settings sign-in columns
   (`google_client_id`, `allowed_login_domains`, `delegated_login_*`) move to
   the new sign-in method rows; `/api/brand` lists enabled methods instead of

@@ -312,7 +312,7 @@ A User is a person. Its `row_id` is the permanent person id (the warehouse
 sign-up get an opaque `usr_…` id; their name, address and `username` (for
 password sign-in) are separate fields. Existing ids are unchanged. Email is
 optional contact data, unique ignoring case where present; an address ending
-in `.invalid` is not kept. The ways in are
+in `.invalid` is refused (417) — send no email instead. The ways in are
 rows of the system Table **Sign In Method** (Admin → Sign In Method, System
 Managers only); one row is one provider issuer:
 
@@ -351,9 +351,9 @@ Google's account ID, the StyleHR employee code — never by email:
   unlink. Moving a link is the `PATCH` above.
 - People see and manage their own under **Sign-in methods** (account menu,
   sidebar, and the sales-target report header), and can link Google there
-  within 15 minutes of signing in. A test-mode sign-in, a preview-link
-  sign-in, and a session from before the upgrade can keep reading but cannot
-  set a password, mint a token, or link or remove a sign-in method.
+  within 15 minutes of signing in. A test-mode or preview-link sign-in can
+  read but cannot set a password, mint a token, or link or remove a sign-in
+  method.
 
 `GET /api/brand` lists the enabled methods and returns `identity_links: true`,
 which the roster sync checks before writing links.
@@ -399,7 +399,12 @@ upgrade relabels it and sign-in no longer reads it.
    (a real email but never signed in with Google — they are deliberately not
    invited automatically), and a **parity check**: how many people can sign in
    today and how many keep a way in, naming each exception. Keep the output.
-3. Snapshot the database, then deploy (migration 0100 runs).
+3. Snapshot the database, then deploy (migration 0100 runs). **Every session
+   ends**: everyone, trial users included, signs in once more. No old shape is
+   accepted after the deploy — not the old `/api/brand` fields, not a
+   delegated sign-in without `method`, not a `.invalid` email (so the roster
+   sync must be updated before it runs again), and `user.social_login` is
+   dropped (the warehouse mirror sees the column disappear).
 4. **Right after the deploy, invite every listed person** — User form →
    Sign-in methods → invite their Google address (or
    `POST /api/users/<id>/identities {"method":"google","email":…}`). Until then

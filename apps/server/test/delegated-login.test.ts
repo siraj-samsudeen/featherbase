@@ -30,8 +30,9 @@ function provider(answer: () => Response | Promise<Response>) {
   return calls
 }
 
-const signIn = (api: TestClient, usr: string, pwd = PASSWORD) =>
-  api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr, pwd }) })
+// The sign-in always names its method (no single-method default).
+const signIn = (api: TestClient, usr: string, pwd = PASSWORD, method = 'stylehr') =>
+  api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr, pwd, method }) })
 
 const sidCookie = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith('sid='))
 
@@ -298,7 +299,8 @@ describe('delegated password sign-in', () => {
     const tl = await createUser({ email: 'tl.two.services@example.com' })
     await linkDelegated(tl.user!, 'tn_1', { key: 'stylehr_tn' })
     const calls = provider(() => Response.json({ token: 'x' }))
-    expect((await signIn(api, 'tn_1')).status).toBe(417)
+    const unnamed = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD }) })
+    expect(unnamed.status).toBe(417)
     expect(calls).toHaveLength(0)
     const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'tn_1', pwd: PASSWORD, method: 'stylehr_tn' }) })
     expect(res.status).toBe(200)
@@ -359,7 +361,7 @@ describe('delegated password sign-in', () => {
   test('the body must carry usr and pwd', async ({ api }) => {
     await configure()
     const calls = provider(() => Response.json({ ok: true }))
-    for (const body of [{}, { usr: 'x' }, { pwd: 'y' }, { usr: '', pwd: 'y' }, { usr: 1, pwd: 'y' }]) {
+    for (const body of [{}, { usr: 'x', method: 'stylehr' }, { pwd: 'y', method: 'stylehr' }, { usr: '', pwd: 'y', method: 'stylehr' }, { usr: 1, pwd: 'y', method: 'stylehr' }, { usr: 'x', pwd: 'y' }]) {
       const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify(body) })
       expect(res.status).toBe(417)
     }
@@ -429,27 +431,38 @@ describe('delegated sign-in test mode', () => {
 
   test('the login page is told, so it can say so', async ({ api }) => {
     await configure()
-    const brand = async () => (await (await api.fetch('/api/brand')).json()) as Record<string, unknown>
-    expect((await brand()).delegated_login_test_mode).toBe(false)
+    const testMode = async () =>
+      ((await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { key: string; test_mode: boolean }[] })
+        .sign_in_methods.find((m) => m.key === 'stylehr')?.test_mode
+    expect(await testMode()).toBe(false)
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
-    expect((await brand()).delegated_login_test_mode).toBe(true)
+    expect(await testMode()).toBe(true)
     // Off when no provider is connected, whatever the variable says.
     await removeDelegated()
-    expect((await brand()).delegated_login_test_mode).toBe(false)
+    expect(await testMode()).toBeUndefined()
   })
 })
 
 describe('public brand names the connected service', () => {
-  test('null when off, the label when on, the host when the label is blank', async ({ api }) => {
+  test('absent when off, the label when on, the host when the label is blank', async ({ api }) => {
     await removeDelegated()
-    const brand = async () => (await (await api.fetch('/api/brand')).json()) as Record<string, unknown>
-    expect((await brand()).delegated_login_label).toBeNull()
+    const label = async () =>
+      ((await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { kind: string; label: string }[] })
+        .sign_in_methods.find((m) => m.kind === 'delegated_password')?.label
+    expect(await label()).toBeUndefined()
     await configure()
-    expect(await brand()).toMatchObject({ delegated_login_label: 'StyleHR' })
+    expect(await label()).toBe('StyleHR')
     await configure({ label: '   ' })
-    expect((await brand()).delegated_login_label).toBe('hr.example.test')
+    expect(await label()).toBe('hr.example.test')
     await configure({ url: 'ftp://hr.example.test/' })
-    expect((await brand()).delegated_login_label).toBeNull()
+    expect(await label()).toBeUndefined()
+  })
+
+  test('the old single-service brand fields are gone', async ({ api }) => {
+    await configure()
+    const brand = (await (await api.fetch('/api/brand')).json()) as Record<string, unknown>
+    expect(brand).not.toHaveProperty('delegated_login_label')
+    expect(brand).not.toHaveProperty('delegated_login_test_mode')
   })
 })
 

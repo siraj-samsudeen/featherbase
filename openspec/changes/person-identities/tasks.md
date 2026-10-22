@@ -39,3 +39,8 @@ this change (it modifies requirements they add).
 - [x] 6.1 `docs/DEPLOY.md` (Sign In Method rows, linking, wire format, the mandatory deploy runbook, the test-mode warning) and `PROGRESS.md`.
 - [x] 6.2 Gates: server and web typecheck, full server and web suites, web e2e, `pnpm check:specs`, `git diff --check` — green in CI.
 - [x] 6.3 File the follow-ups: CDC `user_identity` deny/declare, drop `user.social_login`, remove the old `/api/brand` fields, `.invalid` → 417, StyleHR response-subject check, `All`-role audit before sign-up, close `feat/244-provider-identities` — filed as #372–#378. (The roster sync is filed in the data-warehouse repo.)
+
+## 7. Owner ruling 22-Oct-2026: opaque person ids, no compatibility shims
+
+- [x] 7.1 People created by a Google sign-in or sign-up get an opaque `usr_` id; `username` column for sign-up names; `row_id` permanent (renameDoc refusal + trigger). Verify `test/signup.test.ts`, `test/oauth.test.ts`, `test/identity-review.test.ts`.
+- [x] 7.2 Remove the shims: old `/api/brand` fields, `.invalid` stored as NULL (now 417), pre-upgrade sessions (ended), `user.social_login` (dropped by 0100), delegated sign-in without `method`. Verify `test/delegated-login.test.ts`, `test/person-identities.test.ts`, `test/identity-review.test.ts`, `test/identity-linking.test.ts`, `test/migration-0100.test.ts`.

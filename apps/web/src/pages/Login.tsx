@@ -103,7 +103,7 @@ export function LoginPage() {
       loginDelegated(
         String(form.get('delegated_id')),
         String(form.get('delegated_password') ?? ''),
-        delegatedMethods.length > 1 ? delegated?.key : undefined,
+        delegated!.key,
       ),
     )
   }

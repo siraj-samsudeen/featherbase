@@ -44,7 +44,7 @@ they have.
 A person SHALL be able to have an account, and sign in, without an email
 address. When an account has an email address, no other account may have the
 same one, ignoring capital letters. A placeholder address that can never
-receive mail, one ending in ".invalid", is not kept.
+receive mail, one ending in ".invalid", is refused.
 
 #### Scenario: Store staff without email
 
@@ -171,9 +171,8 @@ someone else is refused.
 
 A session that cannot vouch for the person SHALL NOT add or remove access to
 the account: it cannot link or remove a sign-in method, set a password, or
-create an access token. That covers a test-mode sign-in, a preview link's
-click-through sign-in, and a session that was opened before this change. Such
-a session can still read until it expires.
+create an access token. That covers a test-mode sign-in and a preview link's
+click-through sign-in. Such a session can still read until it expires.
 
 #### Scenario: Tester tries to keep a way in
 
@@ -181,20 +180,12 @@ a session can still read until it expires.
   set a password on that account or link their own Google account to it
 - **THEN** both are refused and the account is unchanged
 
-#### Scenario: Signed in before the upgrade
-
-- **WHEN** a person still signed in from before the upgrade tries to remove one
-  of their sign-in methods
-- **THEN** they are asked to sign in again first, and can keep reading meanwhile
-
 ### Requirement: Removing a sign-in method
 
 A person SHALL be able to remove a sign-in method from their account, except
 their last working one; a pending invite does not count as a way in.
 Removing a method, or an administrator turning a method off, ends the sessions
-opened with it. Sessions opened before this change do not record how they were
-opened, so they are not ended this way; they keep reading until they expire
-and cannot change access.
+opened with it.
 
 #### Scenario: Remove the last method
 
@@ -238,6 +229,17 @@ the account's history. Every other way in then refuses them too.
 - **WHEN** someone who has left signs in with their still-working HR system
   password, and later tries their Featherbase password
 - **THEN** both are refused, and the account is disabled with its history kept
+
+### Requirement: Everyone signs in once more after the upgrade
+
+Sessions opened before this change SHALL end when it is deployed; everyone
+signs in once more, by any of their ways in, and nothing else changes for them.
+
+#### Scenario: Signed in before the upgrade
+
+- **WHEN** a person who was signed in before the upgrade opens Featherbase
+  after it
+- **THEN** they are asked to sign in, and then see what they saw before
 
 ### Requirement: Existing sign-ins carry over
 
