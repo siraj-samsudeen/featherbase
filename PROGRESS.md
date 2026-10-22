@@ -17,16 +17,32 @@ tokens (`--spacing-control`, `--text-control`) are 36 px / 14 px under a mouse a
 stop zooming on focus. The names shared with the old set (canvas, ink, …) take their new values app-wide. The old-only
 names sit in a block marked RETIRED until stage 3 deletes them, with nothing aliased.
 
-`test/design-guards.test.ts` checks every text pair at 4.5:1 and every control edge at 3:1, in light and dark. It
-fails on raw palette classes, literal colours, text under 12 px, `toLocale*String` outside `lib/inr.ts`, retired token
-names and `.fc-*` classes. 50 files still break a rule; they are listed in `design-guards.pending.ts`, and a listed
-file that is clean fails the test, so the list only shrinks.
+`test/design-guards.test.ts` checks contrast: every text pair at 4.5:1 and every control edge at 3:1, in light and
+dark and in each still-selectable palette. Ivory's `positive` failed and now has its own value.
 
-**Verified:**
-- Against the old tokens the guards failed (71 of 82); with the new tokens they pass.
-- Web suite 267 passed under Node 22, matching CI. Under the local Node 24 the two `sales-target-page` tests fail on
-  `origin/main` too: jsdom's AbortSignal is rejected by Node 24's fetch.
-- Web typecheck passed; `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+It also enforces the source rules, each with probe tests of what it catches and what it ignores:
+- raw palette classes, including border-side, ring-offset and divide prefixes;
+- literal colours: 3/4/6/8-digit hex, colour functions and named colours;
+- text under 12 px in px, rem, em or pt;
+- `toLocale*String` and `Intl.*Format` outside `lib/inr.ts`;
+- retired token names, as variables or as utilities, and `.fc-*` classes.
+
+The rules read stylesheets too; only custom-property declarations are exempt. The 50 files that still break a rule
+are pinned to their exact counts in `design-guards.pending.ts`. A frozen ceiling and the list already accepted on
+`origin/main` refuse any added file or risen pin, and a fix must lower its pin (`DG_WRITE_PENDING=1` rewrites them).
+The token block is `@theme static`, so the production CSS carries every token, not only those a utility uses.
+
+Review (independent reviewer and Codex) found no blockers. The palette coverage, the pattern gaps, the true ratchet,
+stylesheet coverage and `@theme static` all came from it; each was fixed test-first.
+
+**Verified** at the PR head, under Node 22 (CI's version):
+- `pnpm --filter web exec vitest run test/design-guards.test.ts`: 395 passed. Against `origin/main`'s tokens the
+  contrast checks failed first.
+- `pnpm --filter web test`: 580 passed. `pnpm --filter web typecheck` passed.
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- `pnpm --filter web build` emits both light and dark values of every token.
+- Under the local Node 24 the two `sales-target-page` tests also fail on `origin/main`: Node 24's fetch rejects
+  jsdom's AbortSignal.
 - Before/after screenshots of login, the User list and the User form at 375 and 1280 px, light and dark, came from two
   local stacks against a private local database.
 
