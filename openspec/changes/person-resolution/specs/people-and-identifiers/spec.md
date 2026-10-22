@@ -47,9 +47,9 @@ set, so the usual case needs no set-up.
 
 - **WHEN** an administrator opens a fresh instance with the organisation's set
   applied
-- **THEN** the HR employee code, the HR record number, Aadhaar, mobile phone
-  and email address are already defined, with Aadhaar set to be fingerprinted
-  and shown by its last four digits only
+- **THEN** the HR employee code, the HR record number, mobile phone and email
+  address are already defined, and Aadhaar joins them once fingerprinting is
+  switched on, set to be shown by its last four digits only
 
 #### Scenario: A setting that would defeat duplicate detection is refused
 
@@ -94,7 +94,9 @@ Featherbase keeps only a keyed fingerprint, used to detect that two records
 carry the same number, and the last four digits, which is all anyone sees.
 When the fingerprint key is missing or wrong, such identifiers are refused one
 by one and the health page says so; nothing weaker is ever stored. Identifiers
-marked restricted are visible only to people allowed to see restricted data.
+marked restricted are visible only to people allowed to see restricted data,
+and some are kept out of sight altogether and found only by searching for the
+exact value.
 
 #### Scenario: Aadhaar on a person's record
 
@@ -118,13 +120,14 @@ marked restricted are visible only to people allowed to see restricted data.
 
 When a value that counts as a clue — a fingerprinted national ID, a phone, an
 email — is held by two or more records, Featherbase SHALL raise one group in a
-review list rather than merge anything. A group of exactly two records sharing
-a national ID is strong; any other group, including three or more records on
-one value, is weak. A reviewer sees the records side by side with the reasons
-and confirms they are one person, marks them as different people, or sets the
-group aside for later. "Different people" sticks for that group, and is
-reopened only when a stronger reason arrives. Values a person entered about
-themselves never raise a group.
+review list rather than merge anything. A group is strong when two records
+share a national ID, or when several records share one and their employments
+never overlapped; any other group, including several records on one value at
+the same time, is weak. A reviewer sees the records side by side with the
+reasons and confirms they are one person, marks them as different people, or
+sets the group aside for later. "Different people" sticks for that group until
+a stronger reason arrives or another record joins it. Values a person entered
+about themselves never raise a group.
 
 #### Scenario: Same Aadhaar on two employee records
 
@@ -135,10 +138,10 @@ themselves never raise a group.
 
 #### Scenario: Same phone, different people
 
-- **WHEN** two records share a phone number but show different Aadhaar
+- **WHEN** two records share a current phone number but show different Aadhaar
   endings, and the reviewer marks them as different people
-- **THEN** both records stay as they are and the group does not come back,
-  even when the roster brings the same phone again
+- **THEN** both records keep their phone number as current and the group does
+  not come back when the roster brings the same phone again
 
 #### Scenario: A stronger reason arrives
 
@@ -147,23 +150,37 @@ themselves never raise a group.
 - **THEN** a strong group is raised and the earlier decision is reopened,
   noting why
 
+#### Scenario: A third record joins a decided group
+
+- **WHEN** a group marked as different people gains a new record holding the
+  same value
+- **THEN** the group is reopened, noting the new record as the reason
+
+#### Scenario: An honest chain of three
+
+- **WHEN** three employee records — agency, then company, then a rehire —
+  share one Aadhaar fingerprint and their employment periods never overlap
+- **THEN** the review list shows one strong group of the three
+
 #### Scenario: One phone on seventeen records
 
-- **WHEN** seventeen records carry the same phone number
+- **WHEN** seventeen current records carry the same phone number
 - **THEN** the review list shows one weak group, not many pairs, with a note
   that the value may be a shared or placeholder number
 
 ### Requirement: Merging two records keeps everything and can be undone
 
 Confirming that two records are one person SHALL merge them into one
-surviving record: roles, data access, sign-in methods, identifiers and every
-place the other record was referred to move to the survivor; anything that
-would be duplicated is recorded before it is removed. The merged-away record
-is kept, inactive, pointing at the survivor; nothing is deleted. A record can
-also be merged by hand when the two share no identifier. One action undoes a
-merge, putting back exactly what has not changed since; what has changed is
-listed for the reviewer. An undo is refused while a later merge still builds on
-this one, and says which.
+surviving record: roles, data access, sign-in methods, access tokens,
+identifiers and every place the other record was referred to move to the
+survivor; anything that would be duplicated is recorded before it is removed.
+The merged-away record is kept, inactive, pointing at the survivor; nothing is
+deleted. A record can also be merged by hand when the two share no identifier.
+After confirming, the reviewer sees what moved, a link to the survivor and a
+way to undo. One action undoes a merge, putting back exactly what has not
+changed since; what has changed is listed for the reviewer to mark as handled,
+and an undo can be previewed first. An undo cannot itself be undone, and is
+refused while a later merge still builds on this one, and says which.
 
 #### Scenario: Conversion confirmed
 
@@ -188,6 +205,13 @@ this one, and says which.
   before, and the two rows added to the survivor since are shown for a hand
   decision
 
+#### Scenario: A row changed after the merge
+
+- **WHEN** a role that the merge moved to the survivor was later changed by
+  an administrator, and the merge is undone
+- **THEN** that role is not moved back; it is listed as left over, and the
+  reviewer marks it handled with a note once dealt with
+
 #### Scenario: Undo blocked by a later merge
 
 - **WHEN** the survivor of that merge was later merged into a third record and
@@ -195,17 +219,25 @@ this one, and says which.
 - **THEN** the undo is refused and names the later merge that must be undone
   first
 
+#### Scenario: Two reviewers merge the same record at once
+
+- **WHEN** two reviewers confirm merges involving the same record within the
+  same moment
+- **THEN** one merge completes and the other is refused with a message that
+  the record is being merged; nothing is applied twice
+
 ### Requirement: A merge never quietly widens or narrows access
 
 Before a merge is confirmed, Featherbase SHALL show the reviewer, table by
-table, every role, data access and sign-in method the surviving person would
-gain and lose, and require them to acknowledge it. Where one record could see
+table, every role, data access and way in the surviving person would gain
+and lose, and require them to acknowledge it. Where one record could see
 everything in a table and the other only part, the reviewer chooses, and the
 narrower access is the default. A merge is refused when the two records carry
-different national IDs, when it would give someone a privileged role, when it
-would add a way in to a privileged account, or when the reviewer is one of the
-two people; an Administrator may override the first with a recorded note and
-may carry a privileged role across.
+different national IDs (an erased one counts as unknown, not different), when
+it would give someone a privileged role, when it would add a way in — a
+sign-in method, a password or an access token — to a privileged account, or
+when the reviewer is one of the two people; an Administrator may override the
+first with a recorded note and may carry a privileged role across.
 
 #### Scenario: A reviewer sees what the survivor gains and loses
 
@@ -229,6 +261,18 @@ may carry a privileged role across.
   Manager into one that does not
 - **THEN** the merge is refused and names the role that only an Administrator
   may carry across
+
+#### Scenario: A way in added to a privileged account
+
+- **WHEN** a Data Quality Manager tries to merge a record that has a password
+  and an access token into a System Manager's record
+- **THEN** the merge is refused, because only an Administrator may add a way
+  in to a privileged account
+
+#### Scenario: A reviewer who is one of the two
+
+- **WHEN** a Data Quality Manager tries to merge another record into their own
+- **THEN** the merge is refused and must be done by someone else
 
 ### Requirement: Who may change an identifier
 
@@ -258,10 +302,19 @@ Every record SHALL carry a permanent person identity that never changes
 through merges, code changes or new employments, and the warehouse receives it
 together with every code that has ever mapped to it and when. A merged-away
 record keeps pointing at its final survivor so an old reference resolves in
-one step.
+one step. A report that scopes by employee code finds a person by all their
+current codes, and refuses to guess when a code is held by more than one
+person.
 
 #### Scenario: Last year's sales under an old code
 
 - **WHEN** the warehouse joins last year's sales, keyed by employee code
   21654, to people
 - **THEN** they land on the same person as this year's sales under RR-10353
+
+#### Scenario: A code held by two people
+
+- **WHEN** a Team Leader opens their report while their employee code is also
+  a current code on another person's record
+- **THEN** the report shows them no sections and the problem is recorded for
+  an administrator, rather than showing either person's sections
