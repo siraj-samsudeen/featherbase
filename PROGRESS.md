@@ -1,5 +1,37 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1a: Shop Floor tokens and the guard tests (#380)
+
+Siraj chose direction B, "Shop Floor", for Featherbase's look (JeyaramaGroup/data-warehouse#4332), and ruled out any
+backward compatibility: old token names and the four palettes go completely. OpenSpec change
+`adopt-shop-floor-design-system` carries the promises and the three stages. Stage 1 is additive and touches no file PR
+#371 owns.
+
+`apps/web/src/index.css` now has the final roles, with light and dark values:
+- canvas, surface, subtle, border, border-control, ink, ink-muted, ink-subtle;
+- action, action-hover, action-ink, action-tint, focus;
+- negative, caution, positive, opportunity and missing, each with a tint.
+
+It also has the system font, which removes the `@fontsource-variable/inter` dependency, and `color-scheme`. Density
+tokens (`--spacing-control`, `--text-control`) are 36 px / 14 px under a mouse and 48 px / 16 px on touch, so phones
+stop zooming on focus. The names shared with the old set (canvas, ink, …) take their new values app-wide. The old-only
+names sit in a block marked RETIRED until stage 3 deletes them, with nothing aliased.
+
+`test/design-guards.test.ts` checks every text pair at 4.5:1 and every control edge at 3:1, in light and dark. It
+fails on raw palette classes, literal colours, text under 12 px, `toLocale*String` outside `lib/inr.ts`, retired token
+names and `.fc-*` classes. 61 files still break a rule; they are listed in `design-guards.pending.ts`, and a listed
+file that is clean fails the test, so the list only shrinks.
+
+**Verified:**
+- Against the old tokens the guards failed (71 of 82); with the new tokens they pass.
+- Web suite 267 passed under Node 22, matching CI. Under the local Node 24 the two `sales-target-page` tests fail on
+  `origin/main` too: jsdom's AbortSignal is rejected by Node 24's fetch.
+- Web typecheck passed; `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- Before/after screenshots of login, the User list and the User form at 375 and 1280 px, light and dark, came from two
+  local stacks against a private local database.
+
+**Next:** stage 1b, the shared components (Button, Field, Card, Notice, EmptyState, Skeleton, Toast, icons).
+
 ## 2026-10-02 — The sales-target page shows one report; the smoke test survives StyleHR sign-in
 
 Screenshots of the report on live data showed the cached table and the live Dive disagreeing. For
