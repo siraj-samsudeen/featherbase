@@ -87,10 +87,12 @@ export function ColumnCards({
               {FRIENDLY.map((f) => (
                 <button
                   key={f.type}
+                  type="button"
                   title={f.hint}
+                  aria-pressed={c.column_type === f.type}
                   onClick={() => onPatch(i, { column_type: f.type, target: '' })}
                   className={pillClasses(
-                    `border px-3 py-1 transition ${
+                    `min-h-control border px-3 py-1 transition ${
                       c.column_type === f.type
                         ? 'border-action bg-action/10 text-action'
                         : 'border-border-control text-ink-muted hover:border-action hover:text-action'

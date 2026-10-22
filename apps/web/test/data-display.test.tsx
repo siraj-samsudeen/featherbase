@@ -5,7 +5,7 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
-import { fmtCount, fmtINR, fmtNumber } from '../src/lib/inr'
+import { fmtCount, fmtDay, fmtINR, fmtNumber } from '../src/lib/inr'
 import { formatNumber } from '../src/lib/settings'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
@@ -48,6 +48,16 @@ describe('fmtNumber — Float and Currency list cells', () => {
   test('list cells use it: formatNumber of 1234567.5 at precision 2 is 12,34,567.50', () => {
     expect(formatNumber(1234567.5, 2)).toBe('12,34,567.50')
     expect(formatNumber('', 2)).toBe('')
+  })
+})
+
+describe('fmtDay — dates read from a spreadsheet', () => {
+  test.each([
+    [new Date(2026, 9, 21), '21-Oct-2026'],
+    [new Date(2026, 0, 1), '01-Jan-2026'], // month is zero-based in Date: no off-by-one
+    [new Date(2025, 11, 31, 23, 59), '31-Dec-2025'], // the local day, even late in the evening
+  ])('%s reads %s', (d, text) => {
+    expect(fmtDay(d)).toBe(text)
   })
 })
 

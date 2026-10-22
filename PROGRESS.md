@@ -29,22 +29,29 @@ What changed:
   through. It checks contrast of `action-ink` on the filled meaning colours, of `on-scrim` on the scrim, and of the
   series colours at 3:1.
 
-**Verified:**
-- Web suite 762 passed under Node 22, web typecheck passed.
-- Before/after screenshots against a private local database: home, User list, report, kanban, all tables, import,
-  import history, jobs, explore, new table and column editor, at 375 and 1280 px, light and dark. "Before" is #383's
-  head.
+Codex review fixes, each test-first:
+- dark tokens apply on screen only (`@media screen`), so a page printed in dark mode is dark ink on white paper;
+- `fmtNumber` and `formatNumber` are pinned at `12,34,567.50`, which fails on the old browser-locale formatter;
+- `fmtDay` is pinned, including January and late-evening dates;
+- the table builder's type chips take the touch height and announce the chosen type with `aria-pressed` instead of
+  colour alone.
+
+CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Side padding is now the density token
+`--spacing-control-x` (12 px under a mouse, the old `.fc-btn` width; 16 px on touch), and the ListView header is
+top-aligned on desktop.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web test`: 773 passed. `pnpm --filter web typecheck` passed.
+- The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
+  web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
+  dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback
+  (22 passed).
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- Before/after screenshots against a private local database, with "before" at #383's head: home, User list, report,
+  kanban, all tables, import, import history, jobs, explore, new table and column editor, at 375 and 1280 px, light
+  and dark.
 - The shell (AdminLayout, owned by #371) still shows the old blue next to the new one in the content. That is why this
   stage merges together with stage 3.
-
-**CI fix (same day).** `listview.spec` "desktop title and toolbar share a vertical band" failed on CI's Linux font,
-which is wider than macOS's. Recipe buttons used `px-4` everywhere, so the metadata-rich toolbar wrapped to three
-rows, and the centred block put the first row above the title.
-- Side padding is now a density token, `--spacing-control-x`: 12 px under a mouse (the old `.fc-btn`) and 16 px on
-  touch.
-- The ListView header is top-aligned on desktop, so the first row of actions shares a line with the title however
-  many rows wrap.
-- Verified with the full e2e suite locally against `featherbase_design380_e2e`: 169 passed, 28 skipped.
 
 **Next:** stage 3 after #371 and person-rename merge.
 
