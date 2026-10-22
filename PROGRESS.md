@@ -37,6 +37,15 @@ What changed:
 - The shell (AdminLayout, owned by #371) still shows the old blue next to the new one in the content. That is why this
   stage merges together with stage 3.
 
+**CI fix (same day).** `listview.spec` "desktop title and toolbar share a vertical band" failed on CI's Linux font,
+which is wider than macOS's. Recipe buttons used `px-4` everywhere, so the metadata-rich toolbar wrapped to three
+rows, and the centred block put the first row above the title.
+- Side padding is now a density token, `--spacing-control-x`: 12 px under a mouse (the old `.fc-btn`) and 16 px on
+  touch.
+- The ListView header is top-aligned on desktop, so the first row of actions shares a line with the title however
+  many rows wrap.
+- Verified with the full e2e suite locally against `featherbase_design380_e2e`: 169 passed, 28 skipped.
+
 **Next:** stage 3 after #371 and person-rename merge.
 
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)

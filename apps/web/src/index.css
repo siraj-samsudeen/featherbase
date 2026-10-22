@@ -57,12 +57,14 @@
   /* Density follows the pointer: thumb-sized on touch screens (and 16px text,
      so a phone never zooms on focus), compact under a mouse. */
   --spacing-control: 2.25rem;
+  --spacing-control-x: 0.75rem; /* a control's side padding */
   --spacing-touch: 3rem;
   --text-control: 0.875rem;
 }
 @media (pointer: coarse) {
   :root {
     --spacing-control: 3rem;
+    --spacing-control-x: 1rem;
     --text-control: 1rem;
   }
 }

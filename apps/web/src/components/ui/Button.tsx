@@ -22,7 +22,7 @@ export function buttonClasses({
 }: { variant?: ButtonVariant; block?: boolean; className?: string } = {}): string {
   return recipe(
     cx(
-      'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-4',
+      'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-control-x',
       'text-control font-semibold transition-colors',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
       'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',

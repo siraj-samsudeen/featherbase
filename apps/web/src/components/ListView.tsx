@@ -323,7 +323,9 @@ export function ListView({
 
   return (
     <div data-testid="list-view">
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Top-aligned on desktop: however many rows the actions wrap to, the first
+          row sits level with the title (listview.spec "share a vertical band"). */}
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-xs text-ink-subtle">
             <Link to="/featherbase/admin" className="hover:text-ink">

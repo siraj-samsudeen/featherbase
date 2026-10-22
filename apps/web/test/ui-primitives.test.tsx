@@ -263,11 +263,19 @@ describe('focus stays visible in forced-colours mode', () => {
   })
 })
 
+describe('density', () => {
+  test('a button takes its side padding from the density token, so laptop toolbars stay as compact as before', () => {
+    const c = buttonClasses().split(' ')
+    expect(c).toContain('px-control-x')
+    expect(c).not.toContain('px-4')
+  })
+})
+
 describe('class recipes give way to the call site', () => {
   test("a call site's padding, size, radius and weight replace the recipe's own, never both", () => {
     const c = buttonClasses({ className: 'px-2 text-xs rounded-r-none font-medium' }).split(' ')
     expect(c).toContain('px-2')
-    expect(c).not.toContain('px-4')
+    expect(c).not.toContain('px-control-x')
     expect(c).toContain('text-xs')
     expect(c).not.toContain('text-control')
     expect(c).toContain('rounded-r-none')

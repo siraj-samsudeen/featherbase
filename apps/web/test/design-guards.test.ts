@@ -76,6 +76,11 @@ const ROLES = [
 // Tailwind drops theme variables no utility uses from a plain @theme block, so
 // a component reading var(--color-…) directly would get nothing in light mode
 // in the production build. The token set is the design system's API: emit it whole.
+test('control side padding is a density token: compact under a mouse, roomier on touch', () => {
+  expect(CSS).toMatch(/@theme static \{[^}]*--spacing-control-x: 0\.75rem;/)
+  expect(CSS).toMatch(/@media \(pointer: coarse\) \{\s*:root \{[^}]*--spacing-control-x: 1rem;/)
+})
+
 test('the token block is emitted whole in production (@theme static)', () => {
   expect(CSS).toMatch(/@theme static \{[^}]*--color-action-hover:/)
 })
