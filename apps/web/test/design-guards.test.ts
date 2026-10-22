@@ -12,7 +12,7 @@
 //      design-guards.pending.ts; a listed file that is already clean fails
 //      too, so the list can only shrink. Stage 3 of the change deletes it.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { PENDING_SWEEP } from './design-guards.pending'
@@ -103,29 +103,78 @@ describe.each(themes)('%s tokens', (_mode, t) => {
 
 // ---------------------------------------------------------------- rules
 
-const RULES: Record<string, RegExp> = {
-  'raw palette class':
-    /\b(?:bg|text|border|ring|divide|fill|stroke|outline|from|to|via|decoration|accent|caret|placeholder|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?(?:\/\d+)?\b/g,
-  // A colour inside a string or an arbitrary Tailwind value; issue refs like (#380) are not colours.
-  'literal colour': /[\['"`]#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g,
-  'text under 12px': /text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/g,
-  'browser-locale formatting': /\.toLocale(?:Date|Time)?String\(/g,
-  'retired token':
-    /--color-(?:brand(?:-dark|-tint)?|link|good(?:-tint|-text)?|danger(?:-tint|-text)?|warn(?:-tint|-text)?|border-strong|ink-faint|primary-btn(?:-hover|-ink)?)\b/g,
-  'retired class': /\bfc-(?:card|input|btn-primary|btn|label|pill)\b/g,
+// Each rule counts its hits in a file's text.
+type Rule = (text: string) => number
+const count = (re: RegExp): Rule => (text) => (text.match(re) ?? []).length
+
+const UTILITY = String.raw`(?:bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|divide|fill|stroke|outline|from|to|via|decoration|accent|caret|placeholder|shadow)`
+const HUE = 'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose'
+const RETIRED = String.raw`(?:brand(?:-dark|-tint)?|link|good(?:-tint|-text)?|danger(?:-tint|-text)?|warn(?:-tint|-text)?|border-strong|ink-faint|primary-btn(?:-hover|-ink)?)`
+const NAMED = 'white|black|red|green|blue|gray|grey|orange|yellow|purple|pink|silver|navy|teal|maroon|olive|lime|aqua|fuchsia|brown'
+
+/** Font sizes below 12px, in a Tailwind arbitrary value, a style object or CSS. */
+const smallText: Rule = (text) => {
+  const px = (n: number, unit = 'px') => (unit === 'rem' || unit === 'em' ? n * 16 : unit === 'pt' ? (n * 4) / 3 : n)
+  const sizes = [
+    ...text.matchAll(/text-\[(\d*\.?\d+)(px|rem|em|pt)\]/g),
+    ...text.matchAll(/fontSize:\s*['"]?(\d*\.?\d+)(px|rem|em|pt)?/g),
+    ...text.matchAll(/font-size:\s*(\d*\.?\d+)(px|rem|em|pt)/g),
+  ]
+  return sizes.filter((m) => px(Number(m[1]), m[2]) < 12).length
+}
+
+const RULES: Record<string, Rule> = {
+  'raw palette class': count(new RegExp(String.raw`\b${UTILITY}-(?:${HUE}|white|black)(?:-\d{2,3})?(?:\/\d+)?\b`, 'g')),
+  // A colour in a string or an arbitrary Tailwind value (issue refs like (#380) are not), a colour
+  // function, or a named colour given to a colour property.
+  'literal colour': (text) =>
+    (text.match(/[\['"`]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
+    (text.match(/(?<![A-Za-z0-9-])(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb)\(/g) ?? []).length +
+    (text.match(new RegExp(String.raw`\b(?:color|background|backgroundColor|borderColor|fill|stroke)\s*[:=]\s*\{?\s*['"](?:${NAMED})['"]`, 'g')) ?? []).length,
+  'text under 12px': smallText,
+  'browser-locale formatting': count(/\.toLocale(?:Date|Time)?String\(|\bIntl\.(?:NumberFormat|DateTimeFormat|RelativeTimeFormat)\b/g),
+  'retired token': (text) =>
+    (text.match(new RegExp(String.raw`--color-${RETIRED}\b`, 'g')) ?? []).length +
+    (text.match(new RegExp(String.raw`(?<![\w-])${UTILITY}-${RETIRED}(?![\w-])`, 'g')) ?? []).length,
+  'retired class': count(/(?<![\w-])fc-(?:card|input|btn-primary|btn|label|pill)(?![\w-])/g),
 }
 // The one home of Indian number and date formatting may call Intl itself.
 const RULE_EXEMPT: Record<string, string[]> = {
   'browser-locale formatting': ['src/lib/inr.ts'],
 }
 
-describe('the literal-colour rule', () => {
-  const rule = RULES['literal colour']
-  test.each([`bg-[#fff]`, `fill="#2490ef"`, `color: '#abc'`, '`#1c2126`'])('catches %s', (s) => {
-    expect(s.match(rule)).not.toBeNull()
-  })
-  test.each([`(#380)`, `see #150 for why`, `PR #92 review`, `href="/x#anchor"`])('ignores %s', (s) => {
-    expect(s.match(rule)).toBeNull()
+describe('each rule catches what it is for and nothing else', () => {
+  const probes: [string, string[], string[]][] = [
+    [
+      'raw palette class',
+      ['text-gray-500', 'border-l-red-500', 'border-x-amber-200', 'ring-offset-blue-500', 'divide-gray-200', 'bg-white', 'bg-black/30'],
+      ['text-ink-muted', 'bg-negative-tint', 'border-border-control'],
+    ],
+    [
+      'literal colour',
+      ['bg-[#fff]', 'fill="#2490ef"', "color: '#abc'", '`#1c2126`', "'#ffffff80'", "'#fff8'", 'shadow-[0_1px_2px_rgba(0,0,0,.1)]', "color: 'hsl(0 0% 0%)'", 'oklch(0.6 0.2 250)', 'fill="white"', "color: 'red'", "backgroundColor: 'black'"],
+      ['(#380)', 'see #150 for why', 'PR #92 review', 'href="/x#anchor"', "fill: 'var(--color-action)'", 'the red band'],
+    ],
+    [
+      'text under 12px',
+      ['text-[10px]', 'text-[11.5px]', 'text-[0.6rem]', 'text-[8pt]', 'fontSize: 10', "fontSize: '0.7rem'", 'font-size: 11px'],
+      ['text-xs', 'text-[12px]', 'text-[0.75rem]', 'fontSize: 14', 'text-[10pt]', 'text-[12pt]'],
+    ],
+    [
+      'browser-locale formatting',
+      ['n.toLocaleString()', 'd.toLocaleDateString()', 'new Intl.NumberFormat()', 'Intl.DateTimeFormat("en-IN")'],
+      ['fmtCount(n)', 'fmtDate(d)'],
+    ],
+    [
+      'retired token',
+      ['var(--color-brand)', 'text-[var(--color-danger)]', 'text-brand', 'bg-danger-tint', 'border-border-strong', 'bg-primary-btn', 'hover:text-link'],
+      ['text-action', 'bg-negative-tint', 'border-border-control', 'text-ink-subtle', 'border-border'],
+    ],
+    ['retired class', ['fc-btn', 'fc-btn-primary', 'fc-card'], ['buttonClasses()', 'fc-btnx', 'my-fc-card']],
+  ]
+  describe.each(probes)('%s', (rule, caught, ignored) => {
+    test.each(caught)('catches %s', (s) => expect(RULES[rule](s)).toBeGreaterThan(0))
+    test.each(ignored)('ignores %s', (s) => expect(RULES[rule](s)).toBe(0))
   })
 })
 
@@ -137,27 +186,108 @@ function sources(dir: string): string[] {
   })
 }
 
-function violations(file: string): string[] {
+/** Total rule hits in a file. CSS is checked for retired names only: index.css defines the tokens. */
+function violations(file: string): number {
   const text = readFileSync(join(WEB, file), 'utf8')
-  return Object.entries(RULES).flatMap(([rule, re]) => {
-    if (RULE_EXEMPT[rule]?.includes(file)) return []
-    if (file.endsWith('.css') && rule !== 'retired token' && rule !== 'retired class') return []
-    const hits = text.match(re) ?? []
-    return hits.length ? [`${rule} ×${hits.length}`] : []
-  })
+  return Object.entries(RULES).reduce((sum, [rule, hits]) => {
+    if (RULE_EXEMPT[rule]?.includes(file)) return sum
+    if (file.endsWith('.css') && rule !== 'retired token' && rule !== 'retired class') return sum
+    return sum + hits(text)
+  }, 0)
 }
 
 const files = sources(join(WEB, 'src'))
 
-test('every file outside the pending sweep follows the rules', () => {
-  const broken = files
-    .filter((f) => !PENDING_SWEEP.includes(f))
-    .map((f) => [f, violations(f)] as const)
-    .filter(([, v]) => v.length)
-  expect(broken).toEqual([])
+// The pending list as first written (22-Oct-2026). Files may leave it and their
+// counts may drop; nothing may be added or rise. Adding a file means editing
+// this ceiling, which a reviewer will see.
+const CEILING: Record<string, number> = {
+  'src/components/ActivityFeed.tsx': 20,
+  'src/components/ActivityTimeline.tsx': 6,
+  'src/components/Assignments.tsx': 6,
+  'src/components/Attachments.tsx': 8,
+  'src/components/CalendarView.tsx': 9,
+  'src/components/ChecklistView.tsx': 37,
+  'src/components/ColumnCards.tsx': 28,
+  'src/components/Comments.tsx': 13,
+  'src/components/ConnectionsPanel.tsx': 26,
+  'src/components/DashboardView.tsx': 8,
+  'src/components/FormView.tsx': 83,
+  'src/components/GanttView.tsx': 9,
+  'src/components/HomePageView.tsx': 13,
+  'src/components/HomeRecall.tsx': 14,
+  'src/components/ImportOverview.tsx': 27,
+  'src/components/JobMonitor.tsx': 10,
+  'src/components/KanbanView.tsx': 6,
+  'src/components/ListView.tsx': 104,
+  'src/components/Logo.tsx': 5,
+  'src/components/NamingControl.tsx': 4,
+  'src/components/PasteColumns.tsx': 13,
+  'src/components/Peek.tsx': 23,
+  'src/components/PermissionManager.tsx': 9,
+  'src/components/QueryReportView.tsx': 12,
+  'src/components/ReportView.tsx': 27,
+  'src/components/ScriptReportView.tsx': 13,
+  'src/components/TableNaming.tsx': 11,
+  'src/components/Tags.tsx': 11,
+  'src/components/WorkflowActions.tsx': 5,
+  'src/index.css': 159,
+  'src/lib/settings.ts': 1,
+  'src/pages/AccessTokens.tsx': 40,
+  'src/pages/AdminLayout.tsx': 75,
+  'src/pages/AllTables.tsx': 10,
+  'src/pages/ColumnEditor.tsx': 33,
+  'src/pages/Explore.tsx': 24,
+  'src/pages/ImportBatches.tsx': 27,
+  'src/pages/ImportWizard.tsx': 131,
+  'src/pages/Login.tsx': 22,
+  'src/pages/Portal.tsx': 11,
+  'src/pages/PrintView.tsx': 9,
+  'src/pages/PrototypeConnectSource.tsx': 57,
+  'src/pages/RelationMap.tsx': 29,
+  'src/pages/ResetPassword.tsx': 11,
+  'src/pages/SalesTarget.tsx': 8,
+  'src/pages/SourceBrowser.tsx': 21,
+  'src/pages/TableBuilder.tsx': 47,
+  'src/pages/TableMerge.tsx': 21,
+  'src/pages/WebForm.tsx': 11,
+  'src/router.tsx': 2,
+}
+
+describe('the pending sweep is a ratchet', () => {
+  test('a file outside the pending list has no violations', () => {
+    const broken = files.filter((f) => !(f in PENDING_SWEEP)).map((f) => [f, violations(f)] as const).filter(([, n]) => n)
+    expect(broken).toEqual([])
+  })
+
+  test('no file joins the list and no count rises above where it started', () => {
+    const added = Object.keys(PENDING_SWEEP).filter((f) => !(f in CEILING))
+    const risen = Object.entries(PENDING_SWEEP).filter(([f, n]) => f in CEILING && n > CEILING[f])
+    expect({ added, risen }).toEqual({ added: [], risen: [] })
+  })
+
+  test('each pinned count is exactly the file’s violations, so a fix must lower its pin', () => {
+    const off = Object.entries(PENDING_SWEEP)
+      .map(([f, n]) => [f, n, files.includes(f) ? violations(f) : 0] as const)
+      .filter(([, pinned, actual]) => pinned !== actual)
+    expect(off, 'set these pins to the actual count (and drop files at 0) in design-guards.pending.ts').toEqual([])
+  })
 })
 
-test('the pending sweep only lists files that still need it', () => {
-  const clean = PENDING_SWEEP.filter((f) => !files.includes(f) || violations(f).length === 0)
-  expect(clean, 'remove these from design-guards.pending.ts').toEqual([])
-})
+// `DG_WRITE_PENDING=1 pnpm vitest run test/design-guards.test.ts` rewrites the
+// pins to the actual counts after a sweep. The ceiling above still refuses any
+// file or count that went up.
+if (process.env.DG_WRITE_PENDING) {
+  test('write the pending pins', () => {
+    const rows = files.map((f) => [f, violations(f)] as const).filter(([, n]) => n > 0)
+    writeFileSync(
+      join(WEB, 'test/design-guards.pending.ts'),
+      '// Files still waiting for the design-system sweep (#380), each pinned to its exact\n' +
+        '// number of rule violations. A pin may only drop; a file at zero leaves the list.\n' +
+        '// Regenerate with DG_WRITE_PENDING=1 (see design-guards.test.ts). Stage 3 deletes this file.\n' +
+        'export const PENDING_SWEEP: Record<string, number> = {\n' +
+        rows.map(([f, n]) => `  '${f}': ${n},\n`).join('') +
+        '}\n',
+    )
+  })
+}
