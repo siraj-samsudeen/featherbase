@@ -91,7 +91,8 @@ describe.each([
 const RULES: Record<string, RegExp> = {
   'raw palette class':
     /\b(?:bg|text|border|ring|divide|fill|stroke|outline|from|to|via|decoration|accent|caret|placeholder|shadow)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?(?:\/\d+)?\b/g,
-  'literal colour': /['"`(\s:,]#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g,
+  // A colour inside a string or an arbitrary Tailwind value; issue refs like (#380) are not colours.
+  'literal colour': /[\['"`]#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b/g,
   'text under 12px': /text-\[(?:[0-9]|1[01])(?:\.\d+)?px\]/g,
   'browser-locale formatting': /\.toLocale(?:Date|Time)?String\(/g,
   'retired token':
