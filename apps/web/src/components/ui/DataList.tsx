@@ -94,7 +94,8 @@ export function DataList<Row>({
       <ul aria-label={caption} className={cx('flex flex-col gap-2 text-control', className)}>
         {rows.map((row) => (
           <li key={rowKey(row)} className="rounded-card border border-border bg-surface p-3.5">
-            <div className="flex items-start justify-between gap-3">
+            {/* Wraps, so a status too wide to sit beside the title moves under it. */}
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
               <div className="min-w-0 font-semibold text-ink">
                 {titles.map((c) => (
                   <div key={c.key} className="wrap-anywhere">
@@ -103,7 +104,7 @@ export function DataList<Row>({
                 ))}
               </div>
               {statuses.map((c) => (
-                <div key={c.key} className="shrink-0">
+                <div key={c.key} className="min-w-0 max-w-full wrap-anywhere [&_*]:whitespace-normal">
                   {c.cell(row)}
                 </div>
               ))}

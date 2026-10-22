@@ -135,6 +135,16 @@ describe('DataList', () => {
     expect(within(card).getByText(long[0].name).className).toMatch(/\bwrap-anywhere\b/)
   })
 
+  test('a status too wide for the card moves under the title and wraps, never past the edge', () => {
+    const wordy = [{ ...runs[0], status: 'Awaiting second-level approval from the regional office' }]
+    render(<DataList layout="cards" caption="Runs" rows={wordy} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
+    const status = within(screen.getByRole('listitem')).getByText(wordy[0].status) // the cell is plain text, so this is the status area itself
+    expect(status.parentElement?.className).toMatch(/\bflex-wrap\b/) // header wraps
+    expect(status.className).not.toMatch(/\bshrink-0\b/)
+    expect(status.className).toMatch(/\bmax-w-full\b/)
+    expect(status.className).toContain('[&_*]:whitespace-normal') // even inside a nowrap pill
+  })
+
   test('with no rows it says so and offers the way forward, instead of an empty table', () => {
     render(
       <DataList
