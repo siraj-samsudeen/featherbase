@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-10-22 — A Person, not a User; service accounts are their own principal; opaque ids (#275, person-rename)
+
+OpenSpec change `person-rename`, migration 0101. The human's record is now
+**Person** (`person`, Admin "Person", `/api/people/…`; `/api/users` removed
+with no alias), and `user_identity` is `sign_in_identity` (`person_id`).
+Service accounts moved to their own system Table **Service Account** (`svc_…`
+ids, read-only through the generic API; created, enabled and given roles only
+through `/api/service_accounts`). Tokens, Data Scope, Share and roles name a
+principal through a `person` / `service_account` pair, exactly one set
+(generated columns on `has_role`); every principal FK is `on delete restrict
+deferrable initially immediate`. Every person except Administrator and Guest
+gets an opaque `psn_` id (Person id pattern `opaque:psn_`), dev's trial
+accounts included, by one registry-driven re-id: `src/person-registry.ts`
+classifies every text column (id / json-with-ids / conditional-id / code /
+free-text), rewrites through it with the FKs deferred, and an exact-match scan
+aborts on any surviving old id. `getScopeMap(principal)` is the only
+`data_scope` reader (realtime now narrows by it too). Comment mentions are by
+`@username` or `@[Full Name]`. `cli create-user` is `create-person`;
+`cli people:plan [--rehearse <dsn>]` rehearses the person migrations rolled
+back.
+
+**Verified:** server and web typecheck; `pnpm check:specs`,
+`check:capabilities`, `check:e2e-dsl`, `lint:sql`, `git diff --check`. Server
+suite 1046/1046 passing (runtime-app artifacts built with `apps:prepare`) on a
+local Postgres 18.6; web suite passing except `sales-target-page` (fails on
+untouched main locally); the isolated Playwright suite 170 passed. Rehearsal:
+the dev snapshot `featherbase-dev-pre-371-20261022.sql.gz` restored into local
+PG 18.6, `cli people:plan --rehearse` applied 0100 + 0101 rolled back: 275
+persons re-keyed, 0 service accounts, 276 role rows, scan clean, test-mode
+sign-in by a trial code still works.
+
+**Next:** `person-resolution` Phase 1a-i (0102), released together with 0101
+(DEPLOY.md, "The person release").
+
+**Gotchas:** after 0101, `cli seed` no longer replays the shipped 0005 seed
+(it would recreate `User`); it repairs the built-in persons instead. A
+service account holding tokens can no longer be deleted (revoke or disable).
+
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
 `DataList` renders one list in two shapes, chosen live from the screen width:

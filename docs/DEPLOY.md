@@ -57,7 +57,7 @@ login is unavailable. The release step warns when no enabled human System
 Manager has a password. Provision a named manager on the production box:
 
 ```sh
-pnpm --filter server cli create-user <email> <password> --roles "System Manager"
+pnpm --filter server cli create-person <email> <password> --roles "System Manager"
 ```
 
 Use a protected operator shell; do not put real passwords in shared logs or
@@ -307,10 +307,13 @@ These steps are instructions, not authorization to deploy or mutate Dev:
 
 ## Sign-in methods and linked identities (#275)
 
-A User is a person. Its `row_id` is the permanent person id (the warehouse
-`person_id`) and cannot be renamed. People created by Google sign-in or
-sign-up get an opaque `usr_…` id; their name, address and `username` (for
-password sign-in) are separate fields. Existing ids are unchanged. Email is
+A **Person** is a human (#275, `person-rename`). Its `row_id` is the
+permanent person id (the warehouse `person_id`): an opaque `psn_…` id
+Featherbase assigns, never an address, a username or an employee code, and it
+cannot be renamed. Administrator and Guest are the two built-in persons and
+keep their ids. A person's name, address and `username` (for password
+sign-in) are separate fields. Automation accounts are not persons — see
+*Automation credentials*. Email is
 optional contact data, unique ignoring case where present; an address ending
 in `.invalid` is refused (417) — send no email instead. The ways in are
 rows of the system Table **Sign In Method** (Admin → Sign In Method, System
@@ -335,21 +338,21 @@ until what the `All` role can read has been audited.
 Outside accounts are linked to a person by the provider's permanent ID —
 Google's account ID, the StyleHR employee code — never by email:
 
-- `GET|POST /api/users/<user>/identities` (System Manager): link StyleHR
+- `GET|POST /api/people/<person>/identities` (System Manager): link StyleHR
   `{"method":"stylehr","subject":"RR-7963","sign_in_name":"name_9999999999"}`;
   invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
   — the first Google sign-in with that verified address links it for good.
   **Any change to the person's email cancels every unused invite they hold**;
   invite again after changing an email.
 - `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
-  ID (sessions survive) or `{"user_id": …}` moves a link to another person in
+  ID (sessions survive) or `{"person_id": …}` moves a link to another person in
   one step (a store mailbox at a Store Manager handover).
 - `DELETE /api/identities/<id>` unlinks.
 - Re-posting an identical link answers 200 with it; a clash answers 409 with
   `fields.clash` (`subject`, `sign_in_name` or `invite`), `fields.identity` and
-  `fields.user`. Every change is in the Activity Log under the administrator
+  `fields.person`. Every change is in the Activity Log under the administrator
   who made it.
-- On a **User form**, System Managers have a Sign-in methods panel: link a
+- On a **Person form**, System Managers have a Sign-in methods panel: link a
   connected service (employee code + login ID), invite a Google address,
   unlink. Moving a link is the `PATCH` above.
 - People see and manage their own under **Sign-in methods** (account menu,
@@ -367,7 +370,7 @@ People with no Google account and no Featherbase password can sign in with
 the ID and password of another system the organisation trusts. Featherbase
 POSTs `{"email": <ID>, "password": <password>}` as JSON to the row's
 `service_url` (10 s timeout, redirects not followed) — but only for a login ID
-linked to exactly one enabled, non-privileged User (case and surrounding spaces
+linked to exactly one enabled, non-privileged person (case and surrounding spaces
 ignored); any other ID is refused as a wrong password without contacting the
 service. Only a JSON answer with a clear yes (a token, an employee id, or
 `success: true`) signs in. A JSON no, or a 4xx, is a wrong password. An answer
@@ -408,9 +411,9 @@ upgrade relabels it and sign-in no longer reads it.
    delegated sign-in without `method`, not a `.invalid` email (so the roster
    sync must be updated before it runs again), and `user.social_login` is
    dropped (the warehouse mirror sees the column disappear).
-4. **Right after the deploy, invite every listed person** — User form →
+4. **Right after the deploy, invite every listed person** — Person form →
    Sign-in methods → invite their Google address (or
-   `POST /api/users/<id>/identities {"method":"google","email":…}`). Until then
+   `POST /api/people/<id>/identities {"method":"google","email":…}`). Until then
    they cannot sign in with Google.
 5. Run the updated roster sync: people the old sync creates have no StyleHR
    link.
@@ -441,8 +444,18 @@ authorization, exactly like the other CLI commands:
 ```sh
 # e.g. on Railway: railway ssh -- pnpm --filter server cli …
 pnpm --filter server cli create-service-account svc-installer --roles "System Manager"
-pnpm --filter server cli issue-token svc-installer --label "manifest installs"
+#   → created service account svc_… ("svc-installer")
+pnpm --filter server cli issue-token svc_… --label "manifest installs"
 ```
+
+A service account is its own kind of account (`person-rename`), not a person:
+its own system Table **Service Account** with a minted `svc_…` id and a name
+(a lowercase slug). It holds roles, data scope and shares exactly as a person
+does, and its tokens work like a person's. Its rows are read-only in the
+generic Admin screens; create it, enable or disable it and set its roles
+through *Admin → Access tokens* or the API (`POST /api/service_accounts
+{"label","roles"}`, `PATCH /api/service_accounts/<id> {"enabled"}`,
+`POST /api/service_accounts/<id>/roles {"roles":[…]}`, System Manager only).
 
 `issue-token` prints the `fbt_…` secret **once**; store it in your secret
 manager. It then rides any API call as a normal Bearer token:
@@ -456,9 +469,78 @@ Tokens are named, listable (`list-tokens`), revocable (`revoke-token`, or
 one click in *Admin → Access tokens*), and never retrievable after issue —
 only a SHA-256 lands in the database. Optional expiry via `--expires <days>`.
 Disabling the service account (Admin screen, or `enabled = false`) dead-ends
-every token it owns without destroying them; deleting it revokes them for
-good. A service account can never sign in interactively — no password, no
-session, no OAuth.
+every token it owns without destroying them. An account that still holds
+tokens, data scope, shares or roles cannot be deleted — the database refuses;
+revoke or disable instead. A service account can never sign in interactively —
+no password, no sign-in method, no email.
+
+## The person release: `person-rename` (0101) + `person-resolution` 1a-i (0102)
+
+One rehearsed release, inside a maintenance window (#275). Prod is
+platform-only; dev holds the trial accounts, which are re-keyed once.
+
+**What 0101 does.** `user` → `person` (Admin "Person", API `/api/people/…`;
+**`/api/users/…` is gone, with no alias**); `user_identity` →
+`sign_in_identity` (`person_id`); service accounts move to their own table
+with fresh `svc_…` ids and keep their tokens, roles, data scope, shares and
+rate limit; tokens, data scope, shares and roles refer to a principal through
+a `person` / `service_account` pair (exactly one set); every non-built-in
+person is re-keyed to `psn_…` (a #371 `usr_…` id too). The re-id goes through
+the handler registry (`src/person-registry.ts`), which classifies every text
+column as id / json-with-ids / conditional-id / code / free-text; an
+unclassified column stops the migration. After the rewrite an exact-match
+scan of the registered columns aborts the whole migration if any old id
+survives. Codes (`employee_code`, `stylehr_username`, a sign-in `subject`) and
+free text (comment bodies, notification subjects, activity messages) are left
+alone. The map is kept in `person_id_map (old_id, new_id, kind)`.
+
+**Consequences.** Every session ends (the JWT subject changes): everyone signs
+in once more; the sign-in page says the session ended. **Access tokens keep
+working** — the secret is unchanged; only the owner column is re-keyed.
+
+**Release order:**
+
+1. 0100 is live (#371).
+2. Take a **fresh** dev snapshot (`pg_dump`), restore it into a local
+   Postgres 18 and rehearse:
+   `pnpm --filter server cli people:plan --rehearse <local-dsn> --map --columns --check-sign-in <a trial code>`
+   (run with `FEATHERBASE_ENV` set to the snapshot's stamped environment). It
+   applies every pending migration inside one transaction, prints the id map,
+   every text column with its class, the scan and the test-mode check, and
+   rolls back. Any unclassified column or scan hit stops here.
+3. CDC rehearsal against the same restored snapshot with 0101 applied
+   (data-warehouse#4336): the worker must drop `access.user`, snapshot
+   `access.person`, and reconcile row counts.
+4. Announce the maintenance window to the trial users: 30 minutes outside
+   store hours (proposed 06:00–06:30 IST).
+5. Deploy (release runs 0101 + 0102).
+6. CDC registration change and the release tick (data-warehouse#4336):
+   remove `featherbase.user`, add `featherbase.person` (`access`); **deny**
+   `service_account`, `person_id_map` (and 0102's `sign_in_identity`,
+   `person_identifier_fingerprint`, `person_merge`); `has_role`, `data_scope`
+   and `share` keep flowing with their new `person` / `service_account`
+   columns. Repoint any warehouse model reading `access.user`,
+   `has_role.parent` or `data_scope.user` (none found on 22-Oct-2026;
+   #4336 re-checks at release).
+7. Post-deploy counts:
+   ```sql
+   select left(row_id, 4) as prefix, count(*) from person group by 1;    -- psn_ + 2 built-ins
+   select count(*) from service_account;
+   select count(person) as person_tokens, count(service_account) as service_tokens from access_token;
+   select count(*) from person_id_map;
+   ```
+   then `cli people:plan` (no `--rehearse`) on the live database: it re-scans
+   the recorded map and must report no old id; and a trial user signs in.
+8. The roster sync stays **frozen** until data-warehouse#4336 rebuilds it on
+   the identifier rows; the manual leaver procedure below is in force until
+   then.
+
+**Manual leaver procedure (until data-warehouse#4336).** The HR contact
+mails the leaver's employee code to a System Manager, who opens *Admin →
+Person*, finds the person by that code (the person's Identifiers, or the
+`employee_code` field until it is retired), and turns **Enabled** off. That
+ends every session and every way in at once (#371's rule); nothing is
+deleted. Record the code and the date in the reply.
 
 ## Smoke check
 
