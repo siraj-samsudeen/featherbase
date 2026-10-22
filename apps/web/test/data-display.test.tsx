@@ -185,6 +185,13 @@ describe('Headline', () => {
     expect(marker.style.left).toBe('75%') // 90 on a 0–120 scale
   })
 
+  test('a negative achievement (returns beat sales) stays a valid meter and still says its signed value', () => {
+    render(<Headline label="Month" conclusion="₹2,000 behind" tone="negative" progress={{ value: -12.5, label: 'Achievement' }} />)
+    const meter = screen.getByRole('meter', { name: 'Achievement' })
+    expect(meter).toHaveAttribute('aria-valuenow', '0')
+    expect(meter).toHaveAttribute('aria-valuetext', '-12.5%')
+  })
+
   test('progress beyond 100% stays a valid meter', () => {
     render(<Headline label="Yesterday" conclusion="₹4,000 ahead" tone="positive" progress={{ value: 120, label: 'Achievement' }} />)
     const meter = screen.getByRole('meter', { name: 'Achievement' })

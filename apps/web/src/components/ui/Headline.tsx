@@ -69,7 +69,7 @@ export function Headline({
             aria-label={progress.label}
             aria-valuemin={0}
             aria-valuemax={max}
-            aria-valuenow={progress.value}
+            aria-valuenow={Math.max(0, progress.value)}
             aria-valuetext={fmtPct(progress.value)}
             className="relative h-3 overflow-hidden rounded-full border border-border-control bg-surface"
           >
