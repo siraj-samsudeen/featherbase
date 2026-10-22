@@ -390,8 +390,10 @@ async function migrateData(resolvePath: string | null | undefined): Promise<Pers
       const recordRowId = record ?? newIdentifierId()
       if (!record) {
         await sql`insert into person_identifier ${sql({
+          // The mirror of the sign-in's (rewritten) subject, as write-through
+          // would have written it; ending that sign-in closes it.
           id: recordRowId, person_id: person, system: 'stylehr-employee-id', assigner: '', value: recordId,
-          verified: true, one_holder: true, one_per_person: false, source: 'migration', recorded_by: 'migration',
+          verified: true, one_holder: true, one_per_person: false, source: 'sign-in', recorded_by: 'migration',
         } as unknown as Record<string, never>)}`
         plan.recordRows++
       }

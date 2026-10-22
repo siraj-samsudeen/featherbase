@@ -402,6 +402,11 @@ export async function deleteIdentifier(id: string, actor: string): Promise<void>
 
 // ----------------------------------------------------- write-through (D5)
 
+/** The rows write-through owns: mirrors of a sign-in or of the person's own
+ *  email. A value someone entered or a feed recorded is never closed by
+ *  write-through, even when it holds the same address (Codex review on #385). */
+const MIRROR_SOURCES = ['sign-in', 'person-email', 'self-email']
+
 /** Is this address still the person's own email, or the verified address of
  *  one of their live Google links (other than `excludingIdentity`)? Then its
  *  `email` row stays current: one row stands for every live source. */
@@ -483,7 +488,8 @@ export async function endIdentityIdentifiers(identityId: string, db: Db = sql): 
     if (system === 'email' && (await emailStillBacked(person, normalised, db, identityId))) continue
     for (const r of await db`
       select id from person_identifier
-      where person_id = ${person} and system = ${system} and value = ${normalised} and upper_inf(valid)`)
+      where person_id = ${person} and system = ${system} and value = ${normalised} and upper_inf(valid)
+        and source in ${db(MIRROR_SOURCES)}`)
       await closeRow(String(r.id), db)
   }
 }
@@ -499,7 +505,8 @@ export async function writeThroughEmail(person: string, oldEmail: string | null,
   // live Google link can still back the old address.
   if (before && !(await emailStillBacked(person, before, db, null)))
     for (const r of await db`
-      select id from person_identifier where person_id = ${person} and system = 'email' and value = ${before} and upper_inf(valid)`)
+      select id from person_identifier where person_id = ${person} and system = 'email' and value = ${before} and upper_inf(valid)
+        and source in ${db(MIRROR_SOURCES)}`)
       await closeRow(String(r.id), db)
   if (after) await openRow(person, 'email', after, actor === person ? 'self-email' : 'person-email', actor !== person, db)
 }

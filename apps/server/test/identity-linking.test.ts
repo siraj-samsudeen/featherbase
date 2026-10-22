@@ -196,6 +196,18 @@ describe('write-through to identifiers', () => {
     expect((await current(p, 'email')).map((r) => r.value)).toEqual(['new@x.test'])
   })
 
+  test('an address someone entered stays when a Google link with the same address ends (Codex review on #385)', async ({ admin }) => {
+    const p = await makePerson({ full_name: 'Entered first' })
+    const { addIdentifier } = await import('../src/person-identifiers')
+    await addIdentifier(p, { system: 'email', value: 'entered@x.test' }, 'Administrator')
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('uid_entered_google', ${p}, 'google', 'g-entered', 'entered@x.test', 'test')`
+    const { writeThroughIdentity } = await import('../src/person-identifiers')
+    await writeThroughIdentity('uid_entered_google')
+    await admin.delete('/api/identities/uid_entered_google')
+    expect(await current(p, 'email')).toEqual([{ value: 'entered@x.test', source: 'manual' }])
+  })
+
   test('a session opened through a link ends when the link ends, and the ended link never opens the account again', async ({ api, admin }) => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     await configureDelegated()
