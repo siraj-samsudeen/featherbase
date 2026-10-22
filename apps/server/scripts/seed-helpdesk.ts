@@ -107,18 +107,32 @@ async function main() {
     ['cust1@acme.test', 'Carl Customer', ['Customer']],
     ['cust2@globex.test', 'Gina Customer', ['Customer']],
   ]
+  // person-rename: a person's id is minted; find each by email, create it
+  // without an id, and use the returned id from then on.
+  const personIds = new Map<string, string>()
   for (const [email, full_name, roles] of users) {
-    await ensureDoc('User', {
-      name: email,
-      email,
-      full_name,
-      enabled: true,
-      roles: roles.map((role) => ({ role })),
-    })
+    const filters = encodeURIComponent(JSON.stringify([['email', '=', email]]))
+    const found = (await must(await req('admin', `/api/table/Person?filters=${filters}&fields=${encodeURIComponent('["row_id"]')}`), `find ${email}`)) as {
+      data: { row_id: string }[]
+    }
+    let id = found.data[0]?.row_id
+    if (id) console.log(`  = Person ${email} (exists)`)
+    else {
+      const created = await must(
+        await req('admin', '/api/save_row', {
+          method: 'POST',
+          body: JSON.stringify({ table: 'Person', row: { email, full_name, enabled: true, roles: roles.map((role) => ({ role })) } }),
+        }),
+        `Person ${email}`,
+      )
+      id = String(created.row_id)
+      console.log(`  + Person ${email}`)
+    }
+    personIds.set(email, id)
     await must(
       await req('admin', '/api/set_password', {
         method: 'POST',
-        body: JSON.stringify({ user: email, password: 'demo1234' }),
+        body: JSON.stringify({ user: id, password: 'demo1234' }),
       }),
       `password ${email}`,
     )
@@ -131,7 +145,7 @@ async function main() {
     ref_table: 'HD Ticket',
     description: 'New support ticket',
     assign_to_field: 'agent',
-    users: [{ user: 'agent1@helpdesk.test' }, { user: 'agent2@helpdesk.test' }],
+    users: [{ user: personIds.get('agent1@helpdesk.test') }, { user: personIds.get('agent2@helpdesk.test') }],
   })
 
   console.log('Sample tickets (filed by the customers through the web form)')

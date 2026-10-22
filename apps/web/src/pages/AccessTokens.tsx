@@ -18,6 +18,8 @@ interface Token {
   last_used_at: string | null
   revoked_at: string | null
   owner_enabled?: boolean
+  /** The owner's name from the server (person-rename: never the opaque id). */
+  owner_name?: string | null
 }
 
 // person-rename: a service account is its own kind of account with a minted
@@ -168,7 +170,7 @@ export function AccessTokens() {
               return (
                 <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`token-${t.id}`}>
                   <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{t.label}</td>
-                  {isSM && <td className="px-3 py-2 text-[var(--color-ink-muted)]">{ownerName(t.owner)}</td>}
+                  {isSM && <td className="px-3 py-2 text-[var(--color-ink-muted)]" data-testid={`token-owner-${t.id}`}>{t.owner === me ? ownerName(t.owner) : t.owner_name ?? 'Unnamed person'}</td>}
                   <td className="px-3 py-2 text-[var(--color-ink-muted)]">{when(t.created_at)}</td>
                   <td className="px-3 py-2 text-[var(--color-ink-muted)]">
                     {t.last_used_at ? when(t.last_used_at) : 'never'}

@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
+import { principalLabel, usePrincipalName } from '../lib/people'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -935,7 +936,7 @@ function LinkControl({
   // An opaque id (a person's `psn_…`) is shown by its name.
   const current = useQuery({
     queryKey: ['link-label', target, String(value ?? '')],
-    enabled: Boolean(picker.labelField) && Boolean(value),
+    enabled: Boolean(picker.labelField) && !picker.peopleSearch && Boolean(value),
     queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
   })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -949,6 +950,13 @@ function LinkControl({
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
+        if (picker.peopleSearch) {
+          // Name, @username, address or employee code — never the id.
+          const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
+          setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
+          setOpen(true)
+          return
+        }
         const label = picker.labelField
         const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
           filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
@@ -963,7 +971,10 @@ function LinkControl({
     }, 150)
   }
 
-  const valueLabel = picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+  const principalName = usePrincipalName(picker.peopleSearch && value ? String(value) : null)
+  const valueLabel = picker.peopleSearch
+    ? value ? principalLabel(String(value), principalName, principalName === null) : null
+    : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
   const shown = query ?? valueLabel ?? String(value ?? '')
 
   return (

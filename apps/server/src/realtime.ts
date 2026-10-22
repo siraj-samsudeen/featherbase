@@ -81,6 +81,11 @@ export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Pro
   return msg.event === 'deleted' ? deletedVisible(scope, payload.table, rowId) : rowInScope(principal, payload.table, rowId)
 }
 
+// Ordering caveat: list and row events are checked asynchronously per
+// subscriber before sending, so two events for the same row published in
+// quick succession can reach a client out of order. They carry no data —
+// only {table, row_id} — and clients refetch on any of them, so the last
+// refetch shows the current row either way.
 async function deliverChecked(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
   if ((await eventVisibleTo(client.user.row_id, msg)) && client.socket.readyState === client.socket.OPEN)
     client.socket.send(data)

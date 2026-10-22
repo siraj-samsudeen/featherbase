@@ -41,8 +41,9 @@ describe('person registry: classification', () => {
     // the generated pair follows parent: scanned, never written
     expect(byKey.get('has_role.person')).toMatchObject({ class: 'id', generated: true })
     // json with ids
-    expect(classOf('saved_view.filters')).toBe('json-with-ids')
-    expect(classOf('home_page.shortcuts')).toBe('json-with-ids')
+    expect(byKey.get('saved_view.filters')).toMatchObject({ class: 'json-with-ids', typeColumn: 'ref_table' })
+    // Shortcuts hold Table names and links, never a person id.
+    expect(classOf('home_page.shortcuts')).toBe('code')
     // codes: never rewritten, never scanned
     for (const k of ['sign_in_identity.subject', 'sign_in_identity.sign_in_name', 'person.email', 'person.username'])
       expect(classOf(k), k).toBe('code')

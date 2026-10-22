@@ -186,6 +186,8 @@ export interface AccessTokenRow {
   revoked_at: string | null
   /** Only present on list results — see listAccessTokens. */
   owner_enabled?: boolean
+  /** The owner's name, for screens (never show the opaque id). List results only. */
+  owner_name?: string | null
 }
 
 const tokenFields = () => sql`id, label, coalesce(person, service_account) as owner,
@@ -237,7 +239,8 @@ export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]
     select t.id, t.label, coalesce(t.person, t.service_account) as owner,
            case when t.person is not null then 'person' else 'service_account' end as owner_kind,
            t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-           coalesce(p.enabled, s.enabled, false) as owner_enabled
+           coalesce(p.enabled, s.enabled, false) as owner_enabled,
+           coalesce(nullif(trim(p.full_name), ''), '@' || nullif(p.username, ''), nullif(p.email, ''), s.label) as owner_name
     from access_token t
     left join person p on p.row_id = t.person
     left join service_account s on s.row_id = t.service_account

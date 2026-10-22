@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
+import { PrincipalName } from '../lib/people'
 
 interface BatchTarget {
   table: string
@@ -92,7 +93,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
           {batch.file_name ?? 'Imported data'}
         </span>
         <span className="text-xs text-gray-500">{when(batch.started_at)}</span>
-        {batch.user && <span className="text-xs text-gray-500">by {batch.user}</span>}
+        {batch.user && <span className="text-xs text-gray-500">by <PrincipalName id={batch.user} /></span>}
         <span className="ml-auto text-sm">
           <Counts batch={batch} />
         </span>

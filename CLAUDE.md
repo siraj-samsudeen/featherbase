@@ -29,12 +29,17 @@ Anywhere else — anything a user reads, and any prose that speaks in the
 present tense — the product is Featherbase. Describing its *history* as a
 replication of Frappe stays accurate and is not the old name resurfacing.
 
-## Project stage — experimental, nothing is deployed
+## Project stage — experimental, with one live trial
 
-**This product is not deployed anywhere and has no users. Everything is free
-to change.** There is no install base, no production database, no external
-consumer of any URL, API shape, table name, or wire format. Treat every
-interface as provisional.
+**Featherbase is still pre-release: there is no install base outside this
+organisation and every interface is provisional.** Two instances exist (as of
+22-Oct-2026): a **dev** instance carrying a live trial — about forty store
+staff sign in daily — and a **prod** instance that holds the platform only.
+No external consumer depends on any URL, API shape, table name, or wire
+format, so names and contracts are still free to change. What the trial adds
+is a duty to its data and its people: a migration that rewrites the trial's
+data is rehearsed on a restored snapshot first, with the target's real
+environment variables, and its deploy follows docs/DEPLOY.md.
 
 So: when a name, route, schema, or contract is wrong, **change it outright**.
 Do not add redirects, aliases, deprecation shims, compatibility flags, or

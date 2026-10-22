@@ -37,6 +37,9 @@ export interface PersonRenameReport {
   conditionalRewritten: Record<string, number>
   classification: Classification
   scan: ScanHit[]
+  /** Assignment-rule conditions (JavaScript expressions, free text) that
+   *  mention an old id: listed for a person to rewrite, never edited. */
+  conditionsNamingOldIds: { rule: string; ids: string[] }[]
 }
 
 const Q = (relation: string) => `${PLATFORM_SCHEMA}.${relation}`
@@ -268,11 +271,13 @@ export async function splitPrincipals(): Promise<Moved> {
         from person where user_type = 'service' order by row_id`
     : []
   const serviceIds = services.map((s) => String(s.row_id))
-  const serviceLabels = new Map(services.map((s) => [String(s.row_id), String(s.full_name ?? s.row_id)]))
+  const serviceLabels = new Map(services.map((s) => [String(s.row_id), String(s.row_id)]))
   for (const s of services)
     await sql`insert into service_account ${sql({
       row_id: String(s.row_id),
-      label: String(s.full_name ?? s.row_id),
+      // The old id is a unique slug (#131's name rule); a full name was
+    // only ever a copy of it and need not be unique.
+    label: String(s.row_id),
       enabled: s.enabled === true,
       api_rate_limit: s.api_rate_limit ?? null,
       created_at: s.created_at,
@@ -370,6 +375,7 @@ export interface ReidResult {
   serviceMap: (IdMapEntry & { label: string })[]
   touched: Map<string, number>
   scan: ScanHit[]
+  conditionsNamingOldIds: { rule: string; ids: string[] }[]
 }
 
 /** Step 4: the re-id, in the caller's transaction. Every principal FK is
@@ -398,8 +404,21 @@ export async function reidPrincipals(
   }))
   const map: IdMapEntry[] = [...personMap, ...serviceMap.map(({ old_id, new_id, kind }) => ({ old_id, new_id, kind }))]
   await stageRewriteMap(sql, map)
-  const touched = await rewriteThroughRegistry(sql, opts.rewrite ?? columns)
+  // The keys first, explicitly: every reference is then rewritten onto a key
+  // that already exists, whatever order the handlers run in and whatever
+  // each foreign key's update action is (a cascade follows the key; a
+  // deferred one is checked at the end).
+  const isKey = (c: ClassifiedColumn) => c.schema === PLATFORM_SCHEMA && c.column === 'row_id' && (c.relation === 'person' || c.relation === 'service_account')
+  const rewrite = opts.rewrite ?? columns
+  const touched = await rewriteThroughRegistry(sql, [...rewrite.filter(isKey), ...rewrite.filter((c) => !isKey(c))])
   const scan = await scanForOldIds(sql, columns)
+  // Free-text expressions are never rewritten; the ones naming an old id are
+  // listed so a person can rewrite them (review A-m8).
+  const conditionsNamingOldIds: { rule: string; ids: string[] }[] = []
+  for (const r of await sql`select row_id, assign_condition from assignment_rule where coalesce(assign_condition, '') <> ''`) {
+    const ids = map.map((m) => m.old_id).filter((id) => String(r.assign_condition).includes(id))
+    if (ids.length) conditionsNamingOldIds.push({ rule: String(r.row_id), ids })
+  }
   if (scan.length)
     throw new Error(`person-rename: old ids survive after the re-id; nothing was changed:\n${scan.map((h) => `  ${h.column}: ${h.rows} row(s)`).join('\n')}`)
   for (let i = 0; i < map.length; i += 500) {
@@ -410,7 +429,7 @@ export async function reidPrincipals(
   }
   await sql`set constraints all immediate`
   await sql`select set_config('featherbase.allow_person_id_change', '', true)`
-  return { personMap, serviceMap, touched, scan }
+  return { personMap, serviceMap, touched, scan, conditionsNamingOldIds }
 }
 
 export async function migratePersonRename(): Promise<PersonRenameReport> {
@@ -419,7 +438,7 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
     return {
       alreadyApplied: true, persons: [], builtIns: [...BUILT_IN_PERSONS], serviceAccounts: [],
       tokens: empty, scopeRows: empty, shareRows: empty, roleRows: empty, rewritten: {}, conditionalRewritten: {},
-      classification: await classifyColumns(), scan: [],
+      classification: await classifyColumns(), scan: [], conditionsNamingOldIds: [],
     }
   }
   await renameUserToPerson()
@@ -429,7 +448,7 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
   if (classification.unclassified.length)
     throw new Error(`person-rename: unclassified text columns; classify them in src/person-registry.ts first:\n${formatClassification({ classified: [], unclassified: classification.unclassified })}`)
   const reid = await reidPrincipals(classification.classified, { serviceLabels: moved.serviceLabels })
-  const { personMap, serviceMap, touched, scan } = reid
+  const { personMap, serviceMap, touched, scan, conditionsNamingOldIds } = reid
 
   // Step 5: namespaces, enabled last.
   if (!(await constraintExists('person_id_namespace')))
@@ -449,6 +468,7 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
     conditionalRewritten: Object.fromEntries(Object.entries(rewritten).filter(([k]) => conditional.includes(k))),
     classification,
     scan,
+    conditionsNamingOldIds,
   }
 }
 
@@ -465,6 +485,7 @@ export function formatPersonRenameReport(r: PersonRenameReport, opts: { columns?
     `  conditional ids rewritten: ${Object.keys(r.conditionalRewritten).length ? Object.entries(r.conditionalRewritten).map(([k, n]) => `${k} ${n}`).join('; ') : 'none'}`,
     `  rows rewritten per column: ${Object.keys(r.rewritten).length ? '\n    ' + Object.entries(r.rewritten).map(([k, n]) => `${k}: ${n}`).join('\n    ') : 'none'}`,
     `  scan: ${r.scan.length ? r.scan.map((h) => `${h.column} ${h.rows}`).join('; ') : 'no old id survives in any registered column'}`,
+    `  assignment-rule conditions naming an old id (rewrite by hand): ${r.conditionsNamingOldIds.length ? r.conditionsNamingOldIds.map((c) => `${c.rule}: ${c.ids.join(', ')}`).join('; ') : 'none'}`,
   ]
   if (opts.map) lines.push('  id map:', ...[...r.persons, ...r.serviceAccounts].map((m) => `    ${m.old_id} → ${m.new_id}`))
   if (opts.columns) lines.push(formatClassification(r.classification))

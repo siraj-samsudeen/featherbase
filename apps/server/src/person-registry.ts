@@ -4,8 +4,10 @@
 // and what the post-check scan looks at:
 //
 //   id              holds a principal id → rewritten and scanned
-//   json-with-ids   JSON whose string leaves may be principal ids → leaves
-//                   equal to an old id are rewritten and scanned
+//   json-with-ids   JSON of filter triples ([column, op, value]) on the Table
+//                   its `typeColumn` names → only the values whose column is a
+//                   Reference to a principal (or a history column) are
+//                   rewritten and scanned
 //   conditional-id  holds a principal id only when a sibling type column names
 //                   Person or Service Account (share.share_name when
 //                   share_table = 'Person') → those rows rewritten and scanned
@@ -49,7 +51,7 @@ export interface Classification {
 const id: ColumnSpec = { class: 'id' }
 const code: ColumnSpec = { class: 'code' }
 const text: ColumnSpec = { class: 'free-text' }
-const json: ColumnSpec = { class: 'json-with-ids' }
+const filters = (typeColumn: string): ColumnSpec => ({ class: 'json-with-ids', typeColumn })
 const on = (typeColumn: string): ColumnSpec => ({ class: 'conditional-id', typeColumn })
 
 // Platform relations, by basename. `*` is the class of any column of that
@@ -90,7 +92,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   file: { file_name: text, file_url: code, mime_type: code, ref_table: code, ref_name: on('ref_table'), thumbnail_url: code },
   // The generated pair follows parent/parenttype (rewritten via `parent`).
   has_role: { person: id, service_account: id, role: code },
-  home_page: { label: text, icon: code, module: code, shortcuts: json },
+  // Shortcuts hold Table names and links, never a person id.
+  home_page: { label: text, icon: code, module: code, shortcuts: code },
   home_page_link: { label: text, type: code, link_to: code },
   home_page_role: { role: code },
   import_log: { '*': code, error_summary: text, touched: text },
@@ -110,7 +113,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
   sales_target_snapshot_row: { '*': code },
-  saved_view: { ref_table: code, label: text, filters: json },
+  saved_view: { ref_table: code, label: text, filters: filters('ref_table') },
   scheduled_job: { '*': code, description: text },
   series: { '*': code },
   server_script: { '*': code, script: text },
@@ -284,28 +287,36 @@ export async function rewriteThroughRegistry(db: Sql | TxSql, columns: Classifie
   return touched
 }
 
-function mapJson(value: unknown, map: Map<string, string>): { value: unknown; changed: boolean } {
-  if (typeof value === 'string') return map.has(value) ? { value: map.get(value), changed: true } : { value, changed: false }
-  if (Array.isArray(value)) {
-    let changed = false
-    const next = value.map((v) => {
-      const r = mapJson(v, map)
-      changed ||= r.changed
-      return r.value
-    })
-    return { value: next, changed }
-  }
-  if (value && typeof value === 'object') {
-    let changed = false
-    const next: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value)) {
-      const r = mapJson(v, map)
-      changed ||= r.changed
-      next[k] = r.value
+/** The columns of a Table whose values are principal ids: References to a
+ *  principal Table, and the history columns. */
+async function principalColumnsOf(db: Sql | TxSql, table: string, cache: Map<string, Set<string>>): Promise<Set<string>> {
+  if (cache.has(table)) return cache.get(table)!
+  const rows = await db`
+    select column_name from column_def
+    where parent = ${table} and column_type = 'Reference' and reference_table in ${db([...PRINCIPAL_TABLES])}`
+  const set = new Set<string>(['created_by', 'updated_by', ...rows.map((r) => String(r.column_name))])
+  cache.set(table, set)
+  return set
+}
+
+type Leaf = (value: string) => string | null
+
+/** Walk filter triples, applying `leaf` only to values of principal columns. */
+function mapFilterValues(raw: unknown, columns: Set<string>, leaf: Leaf): { value: unknown; changed: boolean } {
+  if (!Array.isArray(raw)) return { value: raw, changed: false }
+  let changed = false
+  const next = raw.map((t) => {
+    if (!Array.isArray(t) || t.length < 3 || typeof t[0] !== 'string' || !columns.has(t[0])) return t
+    const map = (v: unknown) => {
+      if (typeof v !== 'string') return v
+      const to = leaf(v)
+      if (to === null) return v
+      changed = true
+      return to
     }
-    return { value: next, changed }
-  }
-  return { value, changed: false }
+    return [t[0], t[1], Array.isArray(t[2]) ? t[2].map(map) : map(t[2]), ...t.slice(3)]
+  })
+  return { value: next, changed }
 }
 
 async function loadRewriteMap(db: Sql | TxSql): Promise<Map<string, string>> {
@@ -313,31 +324,31 @@ async function loadRewriteMap(db: Sql | TxSql): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [String(r.old_id), String(r.new_id)]))
 }
 
+async function jsonRows(db: Sql | TxSql, c: ClassifiedColumn) {
+  return db.unsafe(
+    `select ctid::text as ctid, "${c.column}"::text as v, "${c.typeColumn}" as tbl from ${qualified(c)} where "${c.column}" is not null`,
+  )
+}
+
 async function rewriteJsonColumn(db: Sql | TxSql, c: ClassifiedColumn): Promise<number> {
   const map = await loadRewriteMap(db)
-  if (!map.size) return 0
-  const rows = await db.unsafe(`select ctid::text as ctid, "${c.column}"::text as v from ${qualified(c)} where "${c.column}" is not null`)
+  if (!map.size || !c.typeColumn) return 0
+  const cache = new Map<string, Set<string>>()
   let n = 0
-  for (const r of rows) {
+  for (const r of await jsonRows(db, c)) {
     let parsed: unknown
     try {
       parsed = JSON.parse(String(r.v))
     } catch {
       continue
     }
-    const { value, changed } = mapJson(parsed, map)
+    const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
+    const { value, changed } = mapFilterValues(parsed, columns, (v) => map.get(v) ?? null)
     if (!changed) continue
     await db.unsafe(`update ${qualified(c)} set "${c.column}" = $1::text::jsonb where ctid = $2::text::tid`, [JSON.stringify(value), String(r.ctid)])
     n++
   }
   return n
-}
-
-function jsonHolds(value: unknown, ids: Set<string>): boolean {
-  if (typeof value === 'string') return ids.has(value)
-  if (Array.isArray(value)) return value.some((v) => jsonHolds(v, ids))
-  if (value && typeof value === 'object') return Object.values(value).some((v) => jsonHolds(v, ids))
-  return false
 }
 
 export interface ScanHit {
@@ -364,12 +375,13 @@ export async function scanForOldIds(db: Sql | TxSql, columns: ClassifiedColumn[]
          where t."${c.typeColumn}" in ('Person', 'Service Account')`,
       )
       if (r.n) hits.push({ column: key, rows: r.n })
-    } else if (c.class === 'json-with-ids') {
-      const rows = await db.unsafe(`select "${c.column}"::text as v from ${qualified(c)} where "${c.column}" is not null`)
+    } else if (c.class === 'json-with-ids' && c.typeColumn) {
+      const cache = new Map<string, Set<string>>()
       let n = 0
-      for (const r of rows) {
+      for (const r of await jsonRows(db, c)) {
         try {
-          if (jsonHolds(JSON.parse(String(r.v)), old)) n++
+          const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
+          if (mapFilterValues(JSON.parse(String(r.v)), columns, (v) => (old.has(v) ? v : null)).changed) n++
         } catch {
           /* not JSON: nothing to hold */
         }
@@ -395,7 +407,7 @@ export async function stageRewriteMap(db: Sql | TxSql, entries: IdMapEntry[]): P
 
 export function formatClassification(c: Classification): string {
   const lines = c.classified.map(
-    (x) => `  ${x.schema}.${x.relation}.${x.column}: ${x.class}${x.typeColumn ? ` (${x.typeColumn} in Person, Service Account)` : ''}${x.generated ? ' [generated]' : ''} — ${x.rule}`,
+    (x) => `  ${x.schema}.${x.relation}.${x.column}: ${x.class}${x.typeColumn ? (x.class === 'json-with-ids' ? ` (filters on the Table in ${x.typeColumn})` : ` (${x.typeColumn} in Person, Service Account)`) : ''}${x.generated ? ' [generated]' : ''} — ${x.rule}`,
   )
   const missing = c.unclassified.map((x) => `  ${x.schema}.${x.relation}.${x.column} (${x.data_type}): UNCLASSIFIED`)
   return [`text columns: ${c.classified.length} classified, ${c.unclassified.length} unclassified`, ...missing, ...lines].join('\n')

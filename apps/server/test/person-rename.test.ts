@@ -160,3 +160,82 @@ describe('person-rename: one principal model', () => {
     await expect(admin.post('/api/assign', { table: 'Role', row_id: 'Assign Probe', assign_to: account.row_id })).rejects.toMatchObject({ status: 404 })
   })
 })
+
+describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
+  test('names come back for people and service accounts; an unknown id or a nameless person is null', async ({ admin, createUser }) => {
+    const asha = await createUser({ email: 'asha.n@x.test', fullName: 'Asha Kumar' })
+    const handle = await makePerson({ username: 'ravi.m' })
+    const bare = await makePerson({})
+    const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-named' })
+    const { names } = await asha.post<{ names: Record<string, string | null> }>('/api/people/names', {
+      ids: [asha.user, handle, bare, svc.row_id, 'psn_nobodyaaaaaaaaaaaaa', 'Administrator'],
+    })
+    expect(names).toEqual({
+      [asha.user!]: 'Asha Kumar',
+      [handle]: '@ravi.m',
+      [bare]: null,
+      [svc.row_id]: 'svc-named',
+      psn_nobodyaaaaaaaaaaaaa: null,
+      Administrator: 'Administrator',
+    })
+  })
+
+  test('the Person picker searches name, username, address and employee code, labels "Name · handle", and skips built-ins', async ({ admin }) => {
+    const { sql: db } = await import('../src/db')
+    await db.unsafe(`alter table featherbase.person add column if not exists employee_code varchar(140)`)
+    const asha = await makePerson({ full_name: 'Asha Kumar', username: 'asha.k' })
+    const mail = await makePerson({ email: 'only.mail@x.test' })
+    const coded = await makePerson({ full_name: 'Coded Person' })
+    await db`update person set employee_code = 'RR-4242' where row_id = ${coded}`
+    const pick = async (q: string) => (await admin.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)).people
+    expect(await pick('asha')).toEqual([{ row_id: asha, label: 'Asha Kumar · @asha.k' }])
+    expect(await pick('ASHA.K')).toEqual([{ row_id: asha, label: 'Asha Kumar · @asha.k' }])
+    expect(await pick('only.mail')).toEqual([{ row_id: mail, label: 'only.mail@x.test' }])
+    expect(await pick('rr-4242')).toEqual([{ row_id: coded, label: 'Coded Person · RR-4242' }])
+    expect((await pick('admin')).map((p) => p.row_id)).not.toContain('Administrator')
+  })
+
+  test('the picker needs Person read and honours a Data Scope on Person', async ({ admin, createUser }) => {
+    const a = await makePerson({ full_name: 'Scope Pick A' })
+    await makePerson({ full_name: 'Scope Pick B' })
+    const none = await createUser({ email: 'no.read@x.test' })
+    await expect(none.get('/api/people/pick?q=scope')).rejects.toMatchObject({ status: 403 })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Pick Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Pick Reader', can_read: true } })
+    const reader = await createUser({ email: 'pick.reader@x.test', roles: ['Pick Reader'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reader.user, allow_table: 'Person', for_value: a } })
+    expect((await reader.get<{ people: { row_id: string }[] }>('/api/people/pick?q=scope pick')).people.map((p) => p.row_id)).toEqual([a])
+  })
+
+  test('the token list names each owner', async ({ admin, createUser }) => {
+    const p = await createUser({ email: 'token.owner@x.test', fullName: 'Token Owner' })
+    const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-token-owner' })
+    await admin.post('/api/access_tokens', { label: 'p', owner: p.user })
+    await admin.post('/api/access_tokens', { label: 's', owner: svc.row_id })
+    const { tokens } = await admin.get<{ tokens: { owner: string; owner_name: string }[] }>('/api/access_tokens')
+    expect(tokens.find((t) => t.owner === p.user)?.owner_name).toBe('Token Owner')
+    expect(tokens.find((t) => t.owner === svc.row_id)?.owner_name).toBe('svc-token-owner')
+  })
+})
+
+describe('person-rename: review minors', () => {
+  test('an opaque id is never renamed — a Service Account’s neither (A-m1)', async ({ admin }) => {
+    const svc = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-no-rename' })
+    const { renameDoc } = await import('../src/document')
+    await expect(renameDoc('Service Account', svc.row_id, 'svc_renamedaaaaaaaaaaaaa')).rejects.toMatchObject({ type: 'ValidationError' })
+    const p = await makePerson({ full_name: 'No Rename' })
+    await expect(renameDoc('Person', p, 'psn_renamedaaaaaaaaaaaaa')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('an address is not a mention: name@gmail.com notifies nobody', async ({ admin }) => {
+    const { mentionedNames } = await import('../src/controllers/comment')
+    expect(mentionedNames('write to asha@gmail.com and @ravi.m, cc @[Asha Kumar]')).toEqual({ usernames: ['ravi.m'], names: ['asha kumar'] })
+    void admin
+  })
+
+  test('an exclusion conflict no path mapped answers 409, not 500', async () => {
+    const { errorResponse } = await import('../src/errors')
+    const res = errorResponse({ json: (body: unknown, status: number) => ({ body, status }) } as never, Object.assign(new Error('x'), { code: '23P01' }))
+    expect(res).toMatchObject({ status: 409, body: { error: { type: 'ConflictError' } } })
+  })
+})

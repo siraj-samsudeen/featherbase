@@ -10,7 +10,7 @@ test('seed URL accepts loopback and refuses remote hosts', () => {
 })
 
 test('scenario contract covers the owner-approved states without production fixtures', () => {
-  assert(TASKER_SCENARIOS.users.every((user) => user.email.endsWith('@example.test')))
+  assert(TASKER_SCENARIOS.users.every((user) => user.email.endsWith('@example.test') && !('row_id' in user)))
   assert(TASKER_SCENARIOS.tasks.some((task) => !task.project && !task.personal_tasks_owner))
   assert(TASKER_SCENARIOS.tasks.some((task) => task.task_state === 'Blocked' && task.explanation))
   assert(TASKER_SCENARIOS.tasks.some((task) => task.task_state === 'On hold' && task.explanation))
@@ -23,7 +23,7 @@ test('scenario contract covers the owner-approved states without production fixt
 
 function fakeSeedServer({ environment = 'development', databaseServerLocal = true, redirectPing = false } = {}) {
   const rows = new Map([
-    ['User', []],
+    ['Person', []],
     ['tasker.project', [{ row_id: 'UNRELATED-PROJECT', project_name: 'September stock review' }]],
     ['tasker.task', [{ row_id: 'UNRELATED-TASK-1', task_title: 'Triage supplier invoice mismatch' }, { row_id: 'UNRELATED-TASK-2', task_title: 'Triage supplier invoice mismatch' }]],
     ['Comment', []],
@@ -107,16 +107,17 @@ test('seed refuses a deterministic ID occupied by unrelated work', async () => {
   assert.deepEqual(server.focus(), ['user-created-task'])
 })
 
-test('seed refuses a deterministic user ID occupied by another account', async () => {
+test('seed refuses a scenario address already used by a different person', async () => {
   const server = fakeSeedServer()
-  server.rows.get('User').push({
-    row_id: 'asha.local@example.test',
-    email: 'someone-else@example.test',
+  // person-rename: people are found by email (their ids are minted).
+  server.rows.get('Person').push({
+    row_id: 'psn_someoneelse0000000000',
+    email: 'asha.local@example.test',
     full_name: 'Someone Else',
   })
   await assert.rejects(
     seedTasker({ baseUrl: 'http://127.0.0.1:8000', fetchImpl: server.fetchImpl, log: () => {} }),
-    /ID collision.*unexpected email/,
+    /ID collision.*unexpected full_name/,
   )
   assert.equal(server.rows.get('tasker.project').length, 1)
   assert.equal(server.rows.get('tasker.task').length, 2)

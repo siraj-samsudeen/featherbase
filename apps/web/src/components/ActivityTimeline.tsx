@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { listResource } from '../lib/api'
+import { PrincipalName } from '../lib/people'
 
 interface CommentRow {
   content: string
@@ -82,7 +83,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             />
             <div className="min-w-0 flex-1">
               <div className="text-xs text-[var(--color-ink-muted)]">
-                <span className="font-medium text-[var(--color-ink)]">{e.who}</span>{' '}
+                <span className="font-medium text-[var(--color-ink)]"><PrincipalName id={e.who} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : 'edited'} ·{' '}
                 <span data-testid="activity-time">{new Date(e.at).toLocaleString()}</span>
               </div>

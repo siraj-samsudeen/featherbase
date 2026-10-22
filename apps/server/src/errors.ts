@@ -53,6 +53,10 @@ export function errorResponse(c: Context, err: unknown) {
       STATUS[err.type] as 403,
     )
   }
+  // An exclusion constraint (one holder at a time) refusing a write that no
+  // path mapped is a conflict, not a server fault.
+  if ((err as { code?: string })?.code === '23P01')
+    return c.json({ error: { type: 'ConflictError', message: 'That value is already held for an overlapping period' } }, 409)
   // A SyntaxError here means c.req.json() failed on a malformed body — a
   // client error, not a server fault.
   if (err instanceof SyntaxError) {

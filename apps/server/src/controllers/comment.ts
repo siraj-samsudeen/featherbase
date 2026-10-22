@@ -11,7 +11,8 @@ import { afterDocumentCommit } from '../action-transaction'
 // person-rename: a mention names a person, never a row id (ids are opaque):
 // `@username`, or `@[Full Name]` for someone without a username. A name that
 // matches no one, or more than one person, notifies nobody — never a guess.
-const MENTION = /@\[([^\]\n]{1,140})\]|@([a-z0-9][a-z0-9._-]{2,63})/gi
+// A mention starts a word: `name@gmail.com` mentions nobody.
+const MENTION = /(?<![\w.@-])@\[([^\]\n]{1,140})\]|(?<![\w.@-])@([a-z0-9][a-z0-9._-]{2,63})/gi
 
 export function mentionedNames(content: string): { usernames: string[]; names: string[] } {
   const usernames = new Set<string>()

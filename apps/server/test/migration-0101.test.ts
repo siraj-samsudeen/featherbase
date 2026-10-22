@@ -52,7 +52,7 @@ async function preSplitShape() {
   ]
   for (const [row_id, email, user_type] of people)
     await sql`insert into person (row_id, email, full_name, enabled, user_type, api_rate_limit)
-      values (${row_id}, ${email}, ${row_id}, true, ${user_type}, ${row_id === 'svc-bot' ? 7 : null})`
+      values (${row_id}, ${email}, ${row_id === 'svc-bot' ? 'Installer Bot' : row_id}, true, ${user_type}, ${row_id === 'svc-bot' ? 7 : null})`
   // Roles, through the child table the generic save writes.
   for (const [parent, role] of [['RR-7963', 'All'], ['svc-bot', 'System Manager']])
     await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${'hr-' + parent}, ${parent}, 'Person', 'roles', ${role})`
@@ -76,7 +76,9 @@ async function preSplitShape() {
   await sql`insert into activity_log (row_id, "user", operation) values ('a-1', 'RR-7963', 'login as RR-7963')`
   await sql`insert into user_settings ("user", table_name, settings) values ('RR-7963', 'Note', '{"pin":"21654"}')`
   await sql`insert into saved_view (row_id, created_by, updated_by, ref_table, label, filters) values
-    ('sv-1', 'RR-7963', 'RR-7963', 'ToDo', 'mine', ${sql.json([['allocated_to', '=', 'RR-7963'], ['description', 'like', '%RR-7963%']])})`
+    ('sv-1', 'RR-7963', 'RR-7963', 'ToDo', 'mine', ${sql.json([['allocated_to', '=', 'RR-7963'], ['description', 'like', '%RR-7963%'], ['description', '=', 'RR-7963']])})`
+  // A JavaScript expression naming an old id: free text, listed, never edited.
+  await sql`insert into assignment_rule (row_id, ref_table, assign_condition) values ('ar-1', 'ToDo', 'doc.owner == "21654"')`
   await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values
     ('uid_rr', 'RR-7963', 'password', 'RR-7963', 'anisha', 'migration')
     on conflict do nothing`
@@ -103,6 +105,7 @@ describe('migration 0101: person-rename', () => {
     const { id } = await migrated()
     const bot = id('svc-bot')
     expect(bot).toMatch(/^svc_[a-z2-7]{20}$/)
+    // The name is the old id — a unique slug — not the copied full name (review A-m6).
     expect((await sql`select label, api_rate_limit::int as api_rate_limit from service_account where row_id = ${bot}`)).toEqual([{ label: 'svc-bot', api_rate_limit: 7 }])
     expect(await sql`select 1 from person where row_id in (${bot}, 'svc-bot')`).toHaveLength(0)
     expect(await sql`select person, service_account from access_token where id = 'tok_bot'`).toEqual([{ person: null, service_account: bot }])
@@ -116,6 +119,8 @@ describe('migration 0101: person-rename', () => {
 
   test('every person gets an opaque id; usr_ is converted; built-ins keep theirs; nothing registered keeps an old id', async () => {
     const { id, result } = await migrated()
+    expect(result.conditionsNamingOldIds).toEqual([{ rule: 'ar-1', ids: ['21654'] }])
+    expect(await sql`select assign_condition from assignment_rule where row_id = 'ar-1'`).toEqual([{ assign_condition: 'doc.owner == "21654"' }])
     for (const old of ['RR-7963', '21654', 'siraj@jeyarama.com', USR]) expect(id(old)).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(result.personMap.map((m) => m.old_id)).not.toContain('Administrator')
     expect(await sql`select row_id from person where row_id in ('Administrator', 'Guest') order by row_id`).toHaveLength(2)
@@ -143,7 +148,9 @@ describe('migration 0101: person-rename', () => {
     expect(await sql`select ref_name from comment where row_id = 'c-1'`).toEqual([{ ref_name: k }])
     // JSON: leaves equal to an old id follow; a substring does not
     const [view] = await sql`select filters from saved_view where row_id = 'sv-1'`
-    expect(view.filters).toEqual([['allocated_to', '=', rr], ['description', 'like', '%RR-7963%']])
+    // Only a principal column's value follows; an exact old id under any
+    // other column is left alone (review A-m3).
+    expect(view.filters).toEqual([['allocated_to', '=', rr], ['description', 'like', '%RR-7963%'], ['description', '=', 'RR-7963']])
     // codes and free text keep the old values untouched
     expect(await sql`select subject from sign_in_identity where id = 'uid_rr'`).toEqual([{ subject: 'RR-7963' }])
     expect(await sql`select content from comment where row_id = 'c-1'`).toEqual([{ content: 'RR-7963 asked 21654 about svc-bot' }])

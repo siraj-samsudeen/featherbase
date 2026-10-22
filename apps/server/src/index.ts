@@ -17,6 +17,8 @@ import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
+import { resolvePreviewPerson } from './preview-person'
+import { pickPeople, principalNames } from './people-directory'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -569,8 +571,12 @@ app.post('/api/oauth/session', async (c) => {
 app.get('/preview', async (c) => {
   const config = previewLogin()
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
+  // person-rename: PREVIEW_LOGIN_USER is an email or username; the session
+  // is issued to that person's minted id.
+  const person = await resolvePreviewPerson(config.user)
+  if (!person) return c.notFound()
   // Marked, so the click-through cannot add lasting access (review B-M2).
-  const issued = await issueSession(config.user, { preview: true })
+  const issued = await issueSession(person, { preview: true })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
@@ -879,6 +885,17 @@ app.get('/api/people/:id/identities', async (c) => {
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
   return c.json({ identities: await listIdentities(user), has_password: row.has_password === true, methods })
+})
+
+// person-rename: ids are opaque, so screens ask for names (batch), and the
+// Person picker searches what people know someone by.
+app.post('/api/people/names', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
+  return c.json({ names: await principalNames(body.ids) })
+})
+
+app.get('/api/people/pick', async (c) => {
+  return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
 })
 
 app.post('/api/people/:id/identities', async (c) => {

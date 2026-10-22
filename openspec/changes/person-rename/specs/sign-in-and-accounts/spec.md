@@ -24,6 +24,20 @@ can change or be reused; the reference cannot.
   methods, signs in once more, and nothing in Featherbase still refers to the
   old identifiers
 
+#### Scenario: The sign-in page says why
+
+- **WHEN** someone whose session ended — at the upgrade, or because their
+  account was disabled — opens Featherbase
+- **THEN** the sign-in page tells them their session has ended and asks them
+  to sign in again
+
+#### Scenario: Names, never permanent references, on screen
+
+- **WHEN** a person's permanent reference would appear on a screen — a
+  comment's author, a list of people, a picker, a token's owner
+- **THEN** their name is shown instead (or their username, address or
+  employee code where they have no name), and the reference itself never is
+
 ## MODIFIED Requirements
 
 ### Requirement: Who may sign in

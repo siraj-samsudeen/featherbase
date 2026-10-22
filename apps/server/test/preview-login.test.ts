@@ -85,7 +85,8 @@ describe('the /preview route', () => {
     await sql`
       insert into person (row_id, email, full_name, enabled)
       values (${id}, ${email}, 'Preview Session Visitor', true)`
-    configure(GOOD_KEY, id)
+    configure(GOOD_KEY, email)
+    void id
     for (const hours of [1, 720]) {
       await setSessionHours(hours)
       const before = Math.floor(Date.now() / 1000)
@@ -126,7 +127,9 @@ describe('the /preview route', () => {
     await sql`
       insert into person (row_id, email, full_name, enabled)
       values (${id}, ${email}, 'Preview Visitor', true)`
-    configure(GOOD_KEY, id)
+    // person-rename: the link is configured by email (or username); the
+    // session goes to that person's minted id.
+    configure(GOOD_KEY, email)
 
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
     expect(res.status).toBe(302)
@@ -157,5 +160,30 @@ describe('the /preview route', () => {
     expect(res.headers.get('set-cookie') ?? '').not.toMatch(/sid=/)
 
     await sql`delete from person where email = ${email}`
+  })
+})
+
+describe('the preview seed (person-rename)', () => {
+  sandboxTest('creates the preview person by email with a minted id and System Manager, converges on a re-run, and /preview signs them in', async ({ api }) => {
+    const { ensurePreviewPerson } = await import('../src/preview-person')
+    const { getRoles } = await import('../src/permissions')
+    const email = 'preview-seed@example.com'
+    const id = await ensurePreviewPerson(email, 'Preview Visitor', () => {})
+    expect(id).toMatch(/^psn_[a-z2-7]{20}$/)
+    expect(await getRoles(id)).toContain('System Manager')
+    expect(await ensurePreviewPerson(email.toUpperCase(), 'Preview Visitor', () => {})).toBe(id)
+    expect(await sql`select count(*)::int as n from person where lower(email) = ${email}`).toEqual([{ n: 1 }])
+    configure(GOOD_KEY, email)
+    const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
+    expect(res.status).toBe(302)
+  })
+
+  sandboxTest('a username works too; a name that matches nobody is a 404', async ({ api }) => {
+    const { ensurePreviewPerson } = await import('../src/preview-person')
+    await ensurePreviewPerson('preview.visitor', 'Preview Visitor', () => {})
+    configure(GOOD_KEY, 'Preview.Visitor')
+    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(302)
+    configure(GOOD_KEY, 'nobody@example.com')
+    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(404)
   })
 })

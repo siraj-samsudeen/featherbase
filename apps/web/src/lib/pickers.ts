@@ -11,10 +11,13 @@ export interface PickerSpec {
   labelField: string | null
   /** Filters every search carries. */
   filters: unknown[]
+  /** Search through the server's people directory (name, @username,
+   *  address, employee code) rather than one column. */
+  peopleSearch?: boolean
 }
 
 const SPECS: Record<string, PickerSpec> = {
-  Person: { searchField: 'full_name', labelField: 'full_name', filters: [['built_in', '=', false]] },
+  Person: { searchField: 'full_name', labelField: 'full_name', filters: [['built_in', '=', false]], peopleSearch: true },
   'Service Account': { searchField: 'label', labelField: 'label', filters: [] },
 }
 
