@@ -55,8 +55,31 @@ CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Si
 `--spacing-control-x` (12 px under a mouse, the old `.fc-btn` width; 16 px on touch), and the ListView header is
 top-aligned on desktop.
 
+Independent review of #386 (no blockers), each item test-first:
+- **Display defaults** (Siraj's decision): `DEFAULT_SETTINGS` and the server default to INR. Rupees group en-IN, and
+  another currency keeps its own grouping (`fmtMoney`). Dates show DD-Mon-YYYY, the one display form. Migration 0103
+  rewrites the System Settings choices and defaults and moves a stored retired date format; a chosen currency is
+  kept. The settings e2e spec now uses a lakh-scale amount, so the two grouping systems differ.
+- **Touch sizes:** `recipe()` keeps `text-control`, `min-h-control` and `size-control` on touch and applies a
+  screen's smaller size as `pointer-fine:` (16 px, no zoom). A new guard rule fails on raw small text on
+  input/select/textarea. Tailwind's emitted order (gap before gap-x; base before `pointer-fine:`) was checked against
+  its compiler.
+- **Recipe colours:** colour utilities now dedupe in `recipe()`; the gap/gap-x precedence is documented and tested.
+- **Counts:** the listed bare row counts go through `fmtCount`. The row-count rule is anchored to one line of display
+  text, with probes both ways, and also catches `{n} {n === 1 ? 'row' : 'rows'}`.
+- **Hex rule:** it now catches `, #fff` and `1px solid #ccc`, while issue refs stay ignored.
+- **Chips:** `touchTargetClasses()` is a 32 px centred area; chips that carry one sit 8 px apart, and removing a tag
+  asks first.
+- **Scrim:** `#000` in both themes, tested darker than the canvas everywhere.
+- **Toggles:** `aria-pressed`/`aria-expanded` on TableBuilder's view toggle, the connector's engine toggle,
+  saved-view chips and related tabs. A new "state by colour alone" rule enforces it.
+- **Status dots:** meaning colours for verdicts only (done/approved, overdue/failed, not set); other statuses take a
+  series identity colour. The series colours are tested distinct (RGB distance > 90) and at 3:1 in every theme.
+
 **Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 793 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web test`: 854 passed. `pnpm --filter web typecheck` and `pnpm --filter server typecheck` passed.
+  `pnpm --filter server exec vitest run test/settings.test.ts` plus the print and migration tests: 13 passed. Full e2e
+  after the review fixes: 169 passed, 28 skipped.
 - The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
   web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
   dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback
