@@ -62,7 +62,10 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
 
 /**
  * The section of an Excel number format that applies to a value, as Excel
- * picks it: `positive;negative;zero;text` (quoted text may contain `;`).
+ * picks it. Sections are `;`-separated (quoted text may contain `;`). If any
+ * section carries a condition such as `[<=45586]`, the first whose condition
+ * holds wins and an unconditioned section is the fallback; otherwise the
+ * sections are positive;negative;zero.
  */
 function formatSectionFor(format: string, value: number): string {
   const sections: string[] = []
@@ -76,6 +79,17 @@ function formatSectionFor(format: string, value: number): string {
     } else current += ch
   }
   sections.push(current)
+  const CONDITION = /^\s*(?:\[[^\]]*\])*?\[(<=|>=|<>|<|>|=)(-?\d+(?:\.\d+)?)\]/
+  if (sections.some((s) => CONDITION.test(s))) {
+    for (const s of sections) {
+      const c = s.match(CONDITION)
+      if (!c) return s
+      const n = Number(c[2])
+      const holds = { '<=': value <= n, '>=': value >= n, '<>': value !== n, '<': value < n, '>': value > n, '=': value === n }[c[1]]
+      if (holds) return s
+    }
+    return sections[sections.length - 1]
+  }
   if (value < 0) return sections[1] ?? sections[0]
   if (value === 0) return sections[2] ?? sections[0]
   return sections[0]
@@ -123,6 +137,8 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
     if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z) continue
     const section = formatSectionFor(String(cell.z), cell.v)
     if (!XLSX.SSF.is_date(section)) continue
+    // [h], [m], [s] show elapsed time: a duration, not a date. Keep the number.
+    if (/\[(?:h+|m+|s+)\]/i.test(section.replace(/"[^"]*"/g, ''))) continue
     let day = Math.floor(cell.v)
     let ms = Math.round((cell.v - day) * DAY_MS)
     if (ms >= DAY_MS) {

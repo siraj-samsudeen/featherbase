@@ -64,6 +64,18 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe('2024-10-21')
   })
 
+  test('a conditional format section is chosen by its condition, as Excel does', async () => {
+    const fmt = '[<=45586]yyyy-mm-dd hh:mm;yyyy-mm-dd'
+    // 45585.5 meets [<=45586] and shows a time; 45587.5 does not and shows only the day (as SheetJS renders them).
+    const [sheet] = await parseWorkbook(workbookFile([[45585.5, fmt], [45587.5, fmt]]))
+    expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-20T12:00:00', '2024-10-22'])
+  })
+
+  test.each(['[m]', '[h]:mm', '[s]'])('an elapsed-time format (%s) is a duration, so the number is kept', async (fmt) => {
+    const [sheet] = await parseWorkbook(workbookFile([[0.5, fmt]]))
+    expect(sheet.rows[0][0]).toBe(0.5)
+  })
+
   test('a time-only cell (serial below 1) is a valid date-time on Excel’s day zero', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[0.5, 'h:mm']]))
     expect(sheet.rows[0][0]).toBe('1899-12-31T12:00:00')

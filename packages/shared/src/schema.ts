@@ -59,7 +59,16 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
           if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10)
           return v
         },
-        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date'),
+        z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
+          // A real calendar day (#387): Excel's fictitious 29-Feb-1900, 30-Feb or month 13 are refused here, so a
+          // dry run reports them instead of the database refusing the write.
+          .refine((v) => {
+            const [y, m, d] = v.split('-').map(Number)
+            const date = new Date(Date.UTC(y, m - 1, d))
+            return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+          }, 'is not a real calendar day'),
       )
     case 'Datetime':
       return z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
