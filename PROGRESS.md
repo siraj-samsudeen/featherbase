@@ -1,5 +1,46 @@
 # Progress Log
 
+## 2026-10-22 — A person keeps every identifier they have had (#275, person-resolution Phase 1a-i)
+
+OpenSpec change `person-resolution`, Phase 1a-i, migration 0102 (released
+together with 0101). **Identifier System** is a system Table: one namespace of
+values configured by its kind (employee record, external record, national ID,
+contact), which fills in every other setting (normalising, one holder at a
+time, one per person, editor, match), and by Sensitivity (Normal, Restricted,
+Restricted-hidden, Secret), which decides storage, display and tier together.
+Core ships `phone` and `email`; `cli seed-pack apply jeyarama` adds
+`stylehr-employee-id` (record numbers, hidden) and `stylehr-employee-code`
+(scoped by firm). `person_identifier` keeps every value a person has had with
+its half-open period, source and verification; one holder at a time is an
+exclusion constraint per assigner (btree_gist). Sign-in identities write
+through (a StyleHR record number, a Google address), the person's own email is
+an `email` row, and an identity now **ends** (left, moved, unlinked) instead of
+being deleted — an ended one never opens the account, and a move keeps who
+held it until when. Test mode resolves a typed code through current
+employee-code rows, refuses a code on two people, needs a live link, and the
+server refuses to boot with it outside development/test. The dev backfill
+reads the warehouse's resolve file; anything it cannot resolve keeps working
+by employee code and is listed. The Person form has an Identifiers panel (also
+on the person's own Sign-in methods page); the Identifier System form shows
+each setting's default with "Revert to default".
+
+**Verified:** server and web typecheck; server and web suites on local
+Postgres 18.6; `pnpm check:specs`, `lint:sql`. Rehearsal on the dev snapshot
+(0100 + 0101 + 0102, rolled back, then a real run on a copy) with a SYNTHETIC
+resolve file built from the snapshot's `employee_code` values: 271 code rows,
+271 record-number rows, 11 email rows, 271 StyleHR sign-ins rewritten, 0
+unresolved, parity 271/271; rescan clean; test-mode sign-in by `RR-10104`
+works.
+
+**Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
+and `stylehr_username` Custom Fields); then Phase 1a-ii (merge and undo).
+
+**Gotchas:** migrations run with no controllers loaded — Identifier System
+rows saved by a migration go through `saveIdentifierSystem` (seed-packs.ts),
+which fills the kind's defaults and stamps the derived columns. A person's
+delete removes only rows that mirror their own email or sign-ins; any other
+identifier blocks it (`on delete restrict`).
+
 ## 2026-10-22 — A Person, not a User; service accounts are their own principal; opaque ids (#275, person-rename)
 
 OpenSpec change `person-rename`, migration 0101. The human's record is now

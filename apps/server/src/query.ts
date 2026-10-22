@@ -213,7 +213,9 @@ export async function scopedWhere(
   function plainCond(logicalField: string, op: string, value: unknown): ReturnType<typeof sql> {
     const field = phys(logicalField)
     switch (op) {
-      case '=': return sql`${sql(field)} = ${value as string}`
+      // Null-aware like '!=' below: `[col, '=', null]` means "is empty"
+      // (person-resolution: the Person picker's `replaced_by` filter).
+      case '=': return value === null ? sql`${sql(field)} is null` : sql`${sql(field)} = ${value as string}`
       case '!=': return sql`${sql(field)} is distinct from ${value as string}`
       case '>': return sql`${sql(field)} > ${value as string}`
       case '<': return sql`${sql(field)} < ${value as string}`

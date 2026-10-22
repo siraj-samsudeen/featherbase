@@ -14,12 +14,13 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
+import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
@@ -884,7 +885,7 @@ app.get('/api/people/:id/identities', async (c) => {
   // Every method row, turned off or not, so an identity on a disabled method
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user), has_password: row.has_password === true, methods })
+  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
 // person-rename: ids are opaque, so screens ask for names (batch), and the
@@ -910,6 +911,51 @@ app.post('/api/people/:id/identities', async (c) => {
       : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
   // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
   return c.json(identity, created ? 201 : 200)
+})
+
+// person-resolution D3/D9: a person's identifiers. Reads follow the display
+// rule (restricted values only to restricted readers, hidden ones never in a
+// panel); writes follow each system's `edited_by`. Errors never echo a value.
+app.get('/api/people/:id/identifiers', async (c) => {
+  const person = c.req.param('id')
+  if (person !== who(c)) await getDoc('Person', person, who(c))
+  return c.json({ identifiers: await listIdentifiers(person, who(c)), addable: await addableSystems(person, who(c)) })
+})
+
+app.post('/api/people/:id/identifiers', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const person = c.req.param('id')
+  if (person !== who(c)) await getDoc('Person', person, who(c))
+  const body = (await c.req.json().catch(() => ({}))) as AddInput
+  const { result, identifier } = await addIdentifier(person, body, who(c))
+  return c.json({ result, identifier }, result === 'created' ? 201 : 200)
+})
+
+app.patch('/api/identifiers/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const body = (await c.req.json().catch(() => ({}))) as Parameters<typeof updateIdentifier>[1]
+  return c.json(await updateIdentifier(c.req.param('id'), body, who(c)))
+})
+
+app.delete('/api/identifiers/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  await deleteIdentifier(c.req.param('id'), who(c))
+  return c.json({ ok: true })
+})
+
+// person-resolution D2: the Identifier System form's Advanced settings, each
+// with its preset, which differ, and which options are refused and why.
+app.get('/api/identifier_systems/:key/defaults', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await systemDefaults(c.req.param('key')))
+})
+
+// Find people by an exact value (D3): `?system=<key>&value=<typed>`.
+app.get('/api/identifiers', async (c) => {
+  const system = c.req.query('system')
+  const value = c.req.query('value')
+  if (!system || !value) throw new AppError('ValidationError', 'Expected ?system=&value=', { system: 'required', value: 'required' })
+  return c.json({ people: await findByIdentifier(system, value, who(c)) })
 })
 
 app.patch('/api/identities/:identityId', async (c) => {
@@ -1871,6 +1917,8 @@ if (webDist && existsSync(webDist)) {
 }
 
 if (process.env.NODE_ENV !== 'test') {
+  // Refuse to boot a non-development server with test mode set (D5).
+  assertTestModeAllowed()
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })

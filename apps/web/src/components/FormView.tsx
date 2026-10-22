@@ -16,6 +16,8 @@ import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { PersonSignInMethods } from './PersonSignInMethods'
+import { PersonIdentifiers } from './PersonIdentifiers'
+import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
@@ -585,7 +587,9 @@ export function FormView({
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
             {/* person-identities: the one platform Table whose rows sign in. */}
+            {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
             {table === 'Person' && <PersonSignInMethods user={name} />}
+            {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
             <ConnectionsPanel table={table} name={name} />
             <Assignments table={table} name={name} />
             <Tags table={table} name={name} />

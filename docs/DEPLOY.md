@@ -494,6 +494,45 @@ survives. Codes (`employee_code`, `stylehr_username`, a sign-in `subject`) and
 free text (comment bodies, notification subjects, activity messages) are left
 alone. The map is kept in `person_id_map (old_id, new_id, kind)`.
 
+**What 0102 (person-resolution Phase 1a-i) does.** Adds the Identifier
+System Table (core rows `phone`, `email`), `person_identifier` with its
+history constraints, the reviewer and sync roles (`Data Quality Manager`,
+`Identity Sync`), `person.replaced_by`, ended sign-in identities
+(`ended_at`, `ended_reason`, `subject_kind`; uniqueness only among live
+ones), Sign In Method's `identifier_system`, and the core `people_review`
+setting. It needs the **`btree_gist`** extension (`create extension if not
+exists btree_gist`; Railway's Postgres 18.6 offers it). On dev it also:
+
+- applies the Jeyarama seed pack (`stylehr-employee-id`, Restricted-hidden;
+  `stylehr-employee-code`, scoped by firm) and links the StyleHR sign-in
+  method to the record numbers;
+- writes an employee-code row for every `employee_code` Custom Field value
+  (assigner `''`, adopted later by the sync) and an `email` row for every
+  address;
+- rewrites each StyleHR sign-in to its **StyleHR record number** from the
+  warehouse's resolve file — `stylehr_record_ids.csv`, UTF-8, header
+  `employee_code,assigner,stylehr_record_id` (data-warehouse#4336). Pass its
+  path as `PEOPLE_RESOLVE_FILE=<path>` to the release that runs 0102 (and as
+  `--resolve <path>` to `people:plan`). A sign-in the file does not name, or
+  names twice (codes collide across firms), **keeps working by its employee
+  code**, is listed by the plan and shows "awaiting its record number" on the
+  Person form. Without the file nothing is rewritten and every StyleHR
+  sign-in keeps working by code.
+
+Test mode (`DELEGATED_LOGIN_TEST_MODE=trust-any-password`) now resolves a
+typed employee code through the people's **current employee-code rows**,
+refuses a code current on two people, and needs a live link to the service.
+**A server whose environment is not `development` or `test` refuses to start
+with test mode set.** The trial instance runs test mode and its database is
+stamped `production`: before this release, either unset test mode there, or
+run it as development — set `FEATHERBASE_ENV=development` and re-stamp the
+database once by running the release with
+`DISABLE_DATABASE_ENVIRONMENT_CHECK=1` (the migrator then stamps it
+`development`).
+
+After the deploy, `pnpm --filter server cli seed-pack apply jeyarama` is safe
+to run (idempotent; it only adds what is missing).
+
 **Consequences.** Every session ends (the JWT subject changes): everyone signs
 in once more; the sign-in page says the session ended. **Access tokens keep
 working** — the secret is unchanged; only the owner column is re-keyed.
@@ -503,7 +542,7 @@ working** — the secret is unchanged; only the owner column is re-keyed.
 1. 0100 is live (#371).
 2. Take a **fresh** dev snapshot (`pg_dump`), restore it into a local
    Postgres 18 and rehearse:
-   `pnpm --filter server cli people:plan --rehearse <local-dsn> --map --columns --check-sign-in <a trial code>`
+   `pnpm --filter server cli people:plan --rehearse <local-dsn> --resolve <stylehr_record_ids.csv> --map --columns --check-sign-in <a trial code>`
    (run with `FEATHERBASE_ENV` set to the snapshot's stamped environment). It
    applies every pending migration inside one transaction, prints the id map,
    every text column with its class, the scan and the test-mode check, and
@@ -513,7 +552,9 @@ working** — the secret is unchanged; only the owner column is re-keyed.
    `access.person`, and reconcile row counts.
 4. Announce the maintenance window to the trial users: 30 minutes outside
    store hours (proposed 06:00–06:30 IST).
-5. Deploy (release runs 0101 + 0102).
+5. Deploy (release runs 0101 + 0102, with `PEOPLE_RESOLVE_FILE` pointing at
+   the warehouse's resolve file; the trial instance's test-mode setting
+   handled as above).
 6. CDC registration change and the release tick (data-warehouse#4336):
    remove `featherbase.user`, add `featherbase.person` (`access`); **deny**
    `service_account`, `person_id_map` (and 0102's `sign_in_identity`,
@@ -528,6 +569,12 @@ working** — the secret is unchanged; only the owner column is re-keyed.
    select count(*) from service_account;
    select count(person) as person_tokens, count(service_account) as service_tokens from access_token;
    select count(*) from person_id_map;
+   ```
+   ```sql
+   select system, count(*) filter (where upper_inf(valid)) as current, count(*) as total
+   from person_identifier group by 1;                                      -- codes, record numbers, emails
+   select subject_kind, count(*) from sign_in_identity
+   where method = 'stylehr' and ended_at is null group by 1;               -- employee-code = awaiting the sync
    ```
    then `cli people:plan` (no `--rehearse`) on the live database: it re-scans
    the recorded map and must report no old id; and a trial user signs in.

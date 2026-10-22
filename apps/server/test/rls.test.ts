@@ -78,6 +78,7 @@ async function cleanup() {
   await sql`delete from permission where ref_table in (${DT}, ${SECRET_DT})`
   const people = sql`select row_id from person where email = ${USER_EMAIL}`
   await sql`delete from has_role where parent in (${people})`
+  await sql`delete from person_identifier where person_id in (select row_id from person where email = ${USER_EMAIL})`
   await sql`delete from person where email = ${USER_EMAIL}`
   await sql`delete from role where row_id = ${ROLE}`
   await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`

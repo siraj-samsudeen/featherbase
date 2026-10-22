@@ -46,6 +46,7 @@ async function cleanup() {
   if (ids.length) {
     await sql`delete from access_token where person in ${sql(ids)} or service_account in ${sql(ids)}`
     await sql`delete from has_role where parent in ${sql(ids)}`
+    await sql`delete from person_identifier where person_id in ${sql(ids)}`
     await sql`delete from person where row_id in ${sql(ids)}`
     await sql`delete from service_account where row_id in ${sql(ids)}`
   }

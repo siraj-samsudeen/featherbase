@@ -3,6 +3,8 @@
 import { randomBytes } from 'node:crypto'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { applySeedPack } from '../src/seed-packs'
+import { newIdentifierId } from '../src/person-identifiers'
 
 export const DELEGATED_URL = 'https://hr.example.test/api/login/'
 
@@ -21,7 +23,23 @@ export async function configureDelegated(o: { key?: string; label?: string; url?
       'Administrator',
     )
   await sql`update sign_in_method set label = ${label}, service_url = ${url}, enabled = ${o.enabled ?? true} where row_id = ${key}`
+  // person-resolution: the instance a StyleHR row lives on carries the
+  // Jeyarama identifier systems (0102 applies the pack where there is
+  // Jeyarama data; DEPLOY.md applies it anyway).
+  await applySeedPack('jeyarama')
   return key
+}
+
+/** Give a person a current employee-code row, the way 0102's backfill and
+ *  the roster sync leave it. Test mode resolves a typed code through these. */
+export async function giveEmployeeCode(person: string, code: string) {
+  const value = code.trim().toUpperCase()
+  const [have] = await sql`select 1 from person_identifier where person_id = ${person} and system = 'stylehr-employee-code' and value = ${value}`
+  if (have) return
+  await sql`insert into person_identifier ${sql({
+    id: newIdentifierId(), person_id: person, system: 'stylehr-employee-code', assigner: '', value,
+    verified: true, one_holder: true, one_per_person: false, source: 'test', recorded_by: 'test',
+  } as unknown as Record<string, never>)}`
 }
 
 export async function removeDelegated() {
@@ -29,16 +47,21 @@ export async function removeDelegated() {
   await sql`delete from sign_in_method where kind = 'delegated_password'`
 }
 
-/** Link `user` at a delegated method: subject defaults to the user id (the
- *  roster convention, employee code = account id). */
+/** Link `user` at a delegated method: subject defaults to the user id. The
+ *  person also gets that value as a current employee code (subject_kind
+ *  `employee-code`), the trial's shape until the roster supplies record
+ *  numbers. */
 export async function linkDelegated(user: string, signInName: string | null, o: { key?: string; subject?: string } = {}) {
   const id = 'uid_' + randomBytes(6).toString('hex')
+  const [system] = await sql`select 1 from identifier_system where row_id = 'stylehr-employee-code'`
+  if (system) await giveEmployeeCode(user, o.subject ?? user)
   await sql`insert into sign_in_identity ${sql({
     id,
     person_id: user,
     method: o.key ?? 'stylehr',
     subject: o.subject ?? user,
     sign_in_name: signInName,
+    subject_kind: 'employee-code',
     linked_by: 'test',
   })}`
   return id

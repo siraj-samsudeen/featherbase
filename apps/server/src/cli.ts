@@ -12,6 +12,7 @@
 //   cli people:plan [--map] [--columns] [--resolve <csv>] [--check-sign-in <code>] [--rehearse <dsn>]
 //                                     rehearse the person migrations (0100–0102) rolled back; prints the
 //                                     id map, every text column's classification and the scan
+//   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
@@ -285,11 +286,19 @@ async function main() {
     case 'people:plan':
       await cmdPeoplePlan(rest)
       break
+    case 'seed-pack': {
+      const [verb, name] = positional
+      if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
+      const { applySeedPack } = await import('./seed-packs')
+      const r = await applySeedPack(name)
+      console.log(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
+      break
+    }
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

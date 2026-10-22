@@ -17,6 +17,7 @@
 // The password is held for one outbound request and never stored, logged,
 // thrown or echoed. Failures are logged as label + outcome only.
 import { sql } from './db'
+import { config } from './config'
 import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
@@ -146,6 +147,15 @@ export function delegatedTestMode(): boolean {
   return (process.env.DELEGATED_LOGIN_TEST_MODE ?? '').trim() === TEST_MODE_PHRASE
 }
 
+/** person-resolution D5: test mode runs only on a development or test
+ *  server; any other refuses to start with it set, and says why. */
+export function assertTestModeAllowed(environment: string = config.environment): void {
+  if (delegatedTestMode() && !['development', 'test'].includes(environment))
+    throw new Error(
+      `DELEGATED_LOGIN_TEST_MODE is set on a "${environment}" server. Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development or test. Unset it, or run this server as development/test.`,
+    )
+}
+
 /** Say once, at boot, that the provider is being skipped — same reasoning as announcePreviewLogin. */
 export function announceDelegatedTestMode(log: (message: string) => void = console.warn): void {
   if (delegatedTestMode()) log('delegated sign-in TEST MODE: the provider is not asked; a linked account signs in by its employee code, without a password')
@@ -269,18 +279,19 @@ function logOutcome(cfg: DelegatedLoginConfig, outcome: ProviderOutcome, detail:
  *  surrounding spaces; the unique index makes a second match impossible, but
  *  ambiguity still refuses rather than picking. */
 export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<{ user: string; identity: string | null }> {
-  // Test mode: a tester knows the employee code (the identity's subject), not
-  // the person's login name at the service.
-  const match = delegatedTestMode()
-    ? sql`lower(i.subject) = lower(trim(${id}))`
-    : sql`lower(i.sign_in_name) = lower(trim(${id}))`
+  if (delegatedTestMode()) return testModeUser(cfg, id)
   const rows = await sql`
     select u.row_id, u.enabled, i.id as identity,
            (u.row_id = 'Administrator' or exists (
              select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
     from sign_in_identity i join person u on u.row_id = i.person_id
-    where i.method = ${cfg.key} and i.subject is not null and ${match}
+    where i.method = ${cfg.key} and i.subject is not null and i.ended_at is null
+      and lower(i.sign_in_name) = lower(trim(${id}))
     limit 2`
+  return eligibleOne(cfg, rows)
+}
+
+function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[]): { user: string; identity: string | null } {
   if (rows.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   if (rows.length > 1)
     throw new AppError('ConflictError', `More than one account is linked to this ${cfg.label} ID. Contact your administrator.`)
@@ -289,4 +300,29 @@ export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise
   if (!rows[0].enabled || rows[0].privileged)
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
+}
+
+/** Test mode (person-resolution D5): a tester knows the employee code, not
+ *  the person's login name. The code is resolved through the people's
+ *  CURRENT employee-code identifier rows, in any mix of capitals; a code
+ *  current on two people is refused and neither is chosen; and the person
+ *  must have a live, not-ended link to this service. */
+async function testModeUser(cfg: DelegatedLoginConfig, typed: string): Promise<{ user: string; identity: string | null }> {
+  const holders = await sql`
+    select distinct i.person_id from person_identifier i
+    join identifier_system s on s.row_id = i.system and s.kind = 'employee-record' and s.enabled
+    where i.value = upper(trim(${typed})) and upper_inf(i.valid)`
+  if (holders.length > 1)
+    throw new AppError('ConflictError', `This employee code is current on more than one person. Contact your administrator.`)
+  if (holders.length === 0) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
+  const rows = await sql`
+    select u.row_id, u.enabled, i.id as identity,
+           (u.row_id = 'Administrator' or exists (
+             select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
+    from sign_in_identity i join person u on u.row_id = i.person_id
+    where i.method = ${cfg.key} and i.subject is not null and i.ended_at is null
+      and i.person_id = ${String(holders[0].person_id)}
+    order by i.linked_at
+    limit 1`
+  return eligibleOne(cfg, rows)
 }

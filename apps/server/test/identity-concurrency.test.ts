@@ -11,6 +11,7 @@ import { resolveVerified } from '../src/sign-in'
 async function cleanup(prefix: string) {
   await sql`delete from sign_in_identity where person_id like ${prefix + '%'}`
   await sql`delete from activity_log where "user" like ${prefix + '%'}`
+  await sql`delete from person_identifier where person_id like ${prefix + '%'}`
   await sql`delete from person where row_id like ${prefix + '%'}`
 }
 
@@ -66,7 +67,9 @@ it('two concurrent removals of a person\'s last two ways in: one is refused', as
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected'])
     const refused = results.find((r) => r.status === 'rejected') as PromiseRejectedResult
     expect(refused.reason).toMatchObject({ type: 'ConflictError' })
-    expect(await sql`select 1 from sign_in_identity where person_id = ${p}`).toHaveLength(1)
+    // Unlinking ends a link rather than deleting it (person-resolution D5):
+    // exactly one is still live.
+    expect(await sql`select 1 from sign_in_identity where person_id = ${p} and ended_at is null`).toHaveLength(1)
   } finally {
     if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
     else process.env.ALLOW_MOCK_OAUTH = prev

@@ -14,6 +14,7 @@ import { assertDatabaseEnvironment } from './db-environment'
 import { applyMigrationFile, pendingMigrations } from './migrate'
 import { invalidateMeta } from './meta'
 import { formatPersonRenameReport, migratePersonRename } from './person-rename-migration'
+import { formatResolutionPlan, migratePersonResolution } from './person-resolution-migration'
 import { classifyColumns, formatClassification, scanForOldIds, stageRewriteMap, type IdMapEntry } from './person-registry'
 
 export interface PlanOptions {
@@ -38,6 +39,15 @@ async function runFile(file: string, opts: PlanOptions) {
       await sql.unsafe('set local search_path = featherbase, pg_temp')
       const report = await migratePersonRename()
       console.log(formatPersonRenameReport(report, { map: opts.map, columns: opts.columns }))
+      await sql`insert into featherbase.migration (name) values (${file})`
+    })
+    invalidateMeta()
+    return
+  }
+  if (file === '0102_person_resolution.ts') {
+    await sql.begin(async () => {
+      await sql.unsafe('set local search_path = featherbase, pg_temp')
+      console.log(formatResolutionPlan(await migratePersonResolution({ resolveFile: opts.resolveFile })))
       await sql`insert into featherbase.migration (name) values (${file})`
     })
     invalidateMeta()

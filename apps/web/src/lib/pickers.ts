@@ -17,7 +17,8 @@ export interface PickerSpec {
 }
 
 const SPECS: Record<string, PickerSpec> = {
-  Person: { searchField: 'full_name', labelField: 'full_name', filters: [['built_in', '=', false]], peopleSearch: true },
+  // person-resolution D1: a replaced (merged-away) record is never offered either.
+  Person: { searchField: 'full_name', labelField: 'full_name', filters: [['built_in', '=', false], ['replaced_by', '=', null]], peopleSearch: true },
   'Service Account': { searchField: 'label', labelField: 'label', filters: [] },
 }
 

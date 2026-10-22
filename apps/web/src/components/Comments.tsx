@@ -48,7 +48,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
     queryFn: () =>
       listResource<{ row_id: string; full_name: string | null; username: string | null }>('Person', {
         fields: ['row_id', 'full_name', 'username'],
-        filters: [['built_in', '=', false]],
+        filters: [['built_in', '=', false], ['replaced_by', '=', null]],
         order_by: 'full_name asc',
         limit_page_length: 500,
       }),

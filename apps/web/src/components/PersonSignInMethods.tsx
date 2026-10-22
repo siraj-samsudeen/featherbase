@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
+import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Select, TextInput } from './ui'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
@@ -17,6 +18,11 @@ interface AdminIdentity {
   email: string | null
   pending_email: string | null
   last_used_at: string | null
+  /** person-resolution D5: an ended link stays as history. */
+  ended_at?: string | null
+  ended_reason?: string | null
+  /** `employee-code` until the roster supplies the HR record number (C4). */
+  subject_kind?: string
 }
 
 interface MethodInfo {
@@ -95,13 +101,18 @@ export function PersonSignInMethods({ user }: { user: string }) {
       <h3 className="mb-2 text-sm font-semibold text-ink">Sign-in methods</h3>
       <ul className="space-y-2 text-sm">
         {data?.has_password && <li data-testid="user-method-password">Password</li>}
-        {data?.identities.map((i) => (
+        {data?.identities.filter((i) => !i.ended_at).map((i) => (
           <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
             <span className="min-w-0">
               <span className="font-medium">{labelOf(i.method)}</span>{' '}
               <span className="text-sm text-ink-muted">
                 {i.subject == null ? `invited: ${i.pending_email}` : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')}
               </span>
+              {i.subject_kind === 'employee-code' && (
+                <span className="block text-sm text-ink-muted" data-testid={`unresolved-${i.id}`}>
+                  Awaiting its record number — signs in by employee code until the roster supplies it.
+                </span>
+              )}
             </span>
             <Button
               variant="danger"
@@ -113,7 +124,13 @@ export function PersonSignInMethods({ user }: { user: string }) {
             </Button>
           </li>
         ))}
-        {data && !data.has_password && data.identities.length === 0 && (
+        {data?.identities.filter((i) => i.ended_at).map((i) => (
+          <li key={i.id} className="text-sm text-ink-muted" data-testid={`user-method-ended-${i.id}`}>
+            {labelOf(i.method)} {[i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')} — ended{' '}
+            {fmtInstantIST(i.ended_at!)} ({i.ended_reason})
+          </li>
+        ))}
+        {data && !data.has_password && data.identities.filter((i) => !i.ended_at).length === 0 && (
           <li className="text-sm text-ink-muted">No way to sign in yet.</li>
         )}
       </ul>
@@ -124,7 +141,7 @@ export function PersonSignInMethods({ user }: { user: string }) {
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
           </Select>
-          <TextInput name="subject" aria-label="Employee code" placeholder="Employee code" required />
+          <TextInput name="subject" aria-label="Record number at the service" placeholder="Record number at the service" required />
           <TextInput name="sign_in_name" aria-label="Login ID at the service" placeholder="Login ID at the service" />
           <Button type="submit" block>Link</Button>
         </form>

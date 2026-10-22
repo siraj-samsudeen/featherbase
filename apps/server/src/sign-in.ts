@@ -8,6 +8,7 @@ import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
+import { writeThroughIdentity } from './person-identifiers'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
 import {
   KINDS,
@@ -82,7 +83,8 @@ export function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok:
 }
 
 async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
-  const [row] = await sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${subject}`
+  // person-resolution D5: an ended identity never opens an account.
+  const [row] = await sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
   return row ? { user: String(row.person_id), identity: String(row.id) } : null
 }
 
@@ -94,7 +96,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
     const claimed = await withTransaction(async () => {
       const [invite] = await sql`
         select id, person_id from sign_in_identity
-        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email!)}
+        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email!)} and ended_at is null
         for update`
       if (!invite) return null
       await assertEligible(method, String(invite.person_id))
@@ -102,6 +104,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
         update sign_in_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
         where id = ${String(invite.id)}`
+      await writeThroughIdentity(String(invite.id))
       return { user: String(invite.person_id), identity: String(invite.id) }
     })
     if (claimed) await auditIdentity(claimed.user, 'claimed', claimed.user, method.key, claimed.identity!)
@@ -157,6 +160,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
         linked_by: 'new-person',
         last_used_at: new Date(),
       })}`
+      await writeThroughIdentity(id)
       await auditIdentity(String(created.row_id), 'linked', String(created.row_id), method.key, id)
       return { user: String(created.row_id), identity: id }
     })
@@ -227,7 +231,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
       if (v.email_verified && v.email) {
         const [invite] = await sql`
           select id, person_id from sign_in_identity
-          where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} for update`
+          where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} and ended_at is null for update`
         if (invite && invite.person_id !== user)
           throw new AppError('ConflictError', 'This address is reserved for another account. Contact your administrator.')
         if (invite) await sql`delete from sign_in_identity where id = ${String(invite.id)}`
@@ -242,6 +246,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
         display_name: v.display_name ?? null,
         linked_by: 'self',
       })}`
+      await writeThroughIdentity(id)
       await auditIdentity(user, 'linked', user, method.key, id)
       return id
     })
