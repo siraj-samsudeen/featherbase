@@ -89,7 +89,7 @@ describe('a person links Google themselves', () => {
     await inviteGoogleRaw('owner', 'reserved@gmail.com')
     const token = await passwordSession(api, admin, 'grabber')
     expect(linkOutcome(await googleLink(api, token, 'x@gmail.com', { subject: 'g-owned' }))).toBe('taken')
-    expect(linkOutcome(await googleLink(api, token, 'reserved@gmail.com', { subject: 'g-new' }))).toBe('taken')
+    expect(linkOutcome(await googleLink(api, token, 'reserved@gmail.com', { subject: 'g-new' }))).toBe('reserved')
     expect(await sql`select 1 from user_identity where user_id = 'grabber'`).toHaveLength(0)
   })
 
@@ -100,10 +100,11 @@ describe('a person links Google themselves', () => {
     const noIat = await sign({ sub: 'stale', exp: now + 3600 }, secret)
     const old = await sign({ sub: 'stale', iat: now - 3600, exp: now + 3600, m: 'password' }, secret)
     await admin.post('/api/set_password', { user: 'stale', password: 'stale-pw-1' })
-    for (const token of [noIat, old]) {
-      const res = await as(api, token)('/api/oauth/google/link', { redirect: 'manual' })
-      expect(res.status).toBe(401)
-    }
+    // Minted before the upgrade: may read, may not add access (review A-M1).
+    expect((await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
+    expect((await as(api, noIat)('/api/whoami')).status).toBe(200)
+    // Signed in an hour ago: must sign in again first.
+    expect((await as(api, old)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
   })
 
   test('removing a method: never the last one; a pending invite does not count', async ({ api, admin }) => {

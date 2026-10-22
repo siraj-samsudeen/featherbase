@@ -1,18 +1,33 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KIND_CAPABILITIES, METHOD_TABLE, assertNoAdminLockout, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, assertNoAdminLockout, type MethodKind } from '../identities'
+import { wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
-// values are checked against what the kind's adapter can vouch for, and no
-// change may leave an Administrator or System Manager with no way in.
+// values are checked against what the kind's adapter can vouch for, a unique
+// kind (password, Google) has one row, a delegated row's wire format must
+// parse, and no change may leave an Administrator or System Manager with no
+// way in — counting only methods that can actually sign someone in.
 const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true'
+
+function parseSettings(v: unknown): Record<string, unknown> | null {
+  if (v == null || v === '') return null
+  if (typeof v === 'string') {
+    try {
+      return JSON.parse(v) as Record<string, unknown>
+    } catch {
+      throw new AppError('ValidationError', 'settings must be JSON', { settings: 'not JSON' })
+    }
+  }
+  return v as Record<string, unknown>
+}
 
 const controller: TableController = {
   table: METHOD_TABLE,
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
-      const caps = KIND_CAPABILITIES[kind]
+      const caps = KINDS[kind]
       if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: 'password, google or delegated_password' })
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
@@ -30,14 +45,31 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'People cannot link this method themselves: it cannot vouch for a permanent ID', {
           self_link: 'off',
         })
-      if (isNew && kind === 'password') {
-        const [other] = await tx`select row_id from sign_in_method where kind = 'password'`
-        if (other) throw new AppError('ConflictError', 'There is already a password sign-in method')
+      if (isNew && caps.unique) {
+        const [other] = await tx`select row_id from sign_in_method where kind = ${kind}`
+        if (other) throw new AppError('ConflictError', `There is already a ${kind} sign-in method (${other.row_id as string})`)
+      }
+      if (kind === 'delegated_password' && row.settings !== undefined) {
+        try {
+          wireFrom(parseSettings(row.settings))
+        } catch (err) {
+          throw new AppError('ValidationError', (err as Error).message, { settings: (err as Error).message })
+        }
       }
     },
     before_save: async ({ row, old, isNew, tx }) => {
-      if (isNew || !old || row.enabled === undefined) return
-      if (truthy(old.enabled) && !truthy(row.enabled)) await assertNoAdminLockout(String(old.row_id), false, tx)
+      if (isNew || !old) return
+      const enabledChanged = row.enabled !== undefined && truthy(old.enabled) !== truthy(row.enabled)
+      const clientChanged = row.client_id !== undefined && String(row.client_id ?? '') !== String(old.client_id ?? '')
+      if (!enabledChanged && !clientChanged) return
+      await assertNoAdminLockout(
+        String(old.row_id),
+        {
+          enabled: row.enabled !== undefined ? truthy(row.enabled) : truthy(old.enabled),
+          client_id: String((row.client_id !== undefined ? row.client_id : old.client_id) ?? ''),
+        },
+        tx,
+      )
     },
     on_trash: async ({ row, tx }) => {
       if (row.kind === 'password')

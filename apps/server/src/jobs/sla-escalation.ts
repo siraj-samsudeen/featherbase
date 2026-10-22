@@ -57,7 +57,10 @@ registerJob('check_sla', async () => {
       where hr.parenttype = 'User' and hr.role = ${role} and u.enabled = true`
     for (const row of overdue) {
       // No email, no mail: a user id is not an address (person-identities).
-      for (const h of holders.filter((x) => x.email)) {
+      const mailable = holders.filter((x) => x.email)
+      if (mailable.length < holders.length)
+        console.info(`[sla] ${table} ${row.row_id as string}: ${holders.length - mailable.length} escalation holder(s) have no email and were not mailed`)
+      for (const h of mailable) {
         await queueEmail({
           to: h.email as string,
           subject: `SLA breached: ${table} ${row.row_id as string}`,

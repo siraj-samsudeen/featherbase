@@ -255,9 +255,16 @@ export function SalesTargetPage() {
             </p>
           </div>
         </div>
-        <button type="button" className="fc-btn" data-testid="logout" onClick={() => void logout()}>
-          Log out
-        </button>
+        <div className="flex items-center gap-2">
+          {/* person-identities: a Team Leader reaches their sign-in methods
+              (e.g. to link Google) from the report they land on. */}
+          <a href="/featherbase/admin/sign-in-methods" className="fc-btn" data-testid="sign-in-methods-link">
+            Sign-in methods
+          </a>
+          <button type="button" className="fc-btn" data-testid="logout" onClick={() => void logout()}>
+            Log out
+          </button>
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col p-3">

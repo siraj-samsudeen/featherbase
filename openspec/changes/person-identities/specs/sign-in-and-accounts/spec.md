@@ -146,11 +146,13 @@ someone else is refused.
   different account
 - **THEN** the link is refused and neither account changes
 
-### Requirement: Test-mode sign-ins cannot add access
+### Requirement: Some sign-ins cannot change access
 
-A session opened through test mode SHALL NOT be able to add lasting access to
+A session that cannot vouch for the person SHALL NOT add or remove access to
 the account: it cannot link or remove a sign-in method, set a password, or
-create an access token.
+create an access token. That covers a test-mode sign-in, a preview link's
+click-through sign-in, and a session that was opened before this change. Such
+a session can still read until it expires.
 
 #### Scenario: Tester tries to keep a way in
 
@@ -158,13 +160,20 @@ create an access token.
   set a password on that account or link their own Google account to it
 - **THEN** both are refused and the account is unchanged
 
+#### Scenario: Signed in before the upgrade
+
+- **WHEN** a person still signed in from before the upgrade tries to remove one
+  of their sign-in methods
+- **THEN** they are asked to sign in again first, and can keep reading meanwhile
+
 ### Requirement: Removing a sign-in method
 
 A person SHALL be able to remove a sign-in method from their account, except
 their last working one; a pending invite does not count as a way in.
 Removing a method, or an administrator turning a method off, ends the sessions
-opened with it. Sessions opened before this change carry no record of how
-they were opened and simply run until they expire.
+opened with it. Sessions opened before this change do not record how they were
+opened, so they are not ended this way; they keep reading until they expire
+and cannot change access.
 
 #### Scenario: Remove the last method
 
@@ -179,14 +188,23 @@ they were opened and simply run until they expire.
 
 ### Requirement: Administrators are never locked out
 
-Featherbase SHALL refuse to turn off or remove a sign-in method while it is
-the only way in for an enabled Administrator or System Manager.
+Featherbase SHALL refuse any change that would leave an enabled Administrator
+or System Manager who can sign in now with no way in: turning off, removing or
+unconfiguring a sign-in method, or removing or moving one of their links. A
+connected service never counts as their way in, because they never sign in
+through it.
 
 #### Scenario: Turn off passwords
 
 - **WHEN** a System Manager tries to turn off password sign-in while the
   Administrator signs in only with a password
 - **THEN** the change is refused and names who would be locked out
+
+#### Scenario: Remove a password beside an HR system link
+
+- **WHEN** a System Manager whose other link is their HR system ID tries to
+  remove their own password
+- **THEN** they are refused, because the HR system never signs them in
 
 ### Requirement: Someone who has left is refused everywhere
 
@@ -206,8 +224,9 @@ Everyone who could sign in before this change SHALL keep signing in the same
 way without doing anything. A person who had already signed in with Google
 gets a one-time link: their next Google sign-in with the same address links
 their Google account's permanent ID, and from then on the address is never
-used to find them. Other people with an email address are listed for an
-administrator to invite.
+used to find them. Other people with an email address are listed before the
+upgrade, together with a check that everyone who can sign in today keeps a
+way in, so an administrator can invite them straight after it.
 
 #### Scenario: Store staff the morning after
 

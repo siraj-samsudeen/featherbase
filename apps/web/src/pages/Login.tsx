@@ -53,7 +53,8 @@ export function LoginPage() {
   const delegatedLabel = delegated?.label ?? null
   // Test mode (#3783): the server skips the provider, so there is no password to ask for.
   const delegatedTestMode = delegated?.test_mode === true
-  const google = (methods ?? []).find((m) => m.kind === 'google')
+  // If the brand cannot be read, offer Google as before; the server decides.
+  const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Until the brand answers, and if it cannot, the password form stays.
   const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
@@ -184,14 +185,16 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
-              <button
-                type="button"
-                data-testid="password-login-toggle"
-                className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
-                onClick={() => switchMode('password')}
-              >
-                Use email and password instead
-              </button>
+              {passwordOn && (
+                <button
+                  type="button"
+                  data-testid="password-login-toggle"
+                  className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
+                  onClick={() => switchMode('password')}
+                >
+                  Use email and password instead
+                </button>
+              )}
             </>
           ) : mode === 'signup' && signUpOpen ? (
             <>
@@ -301,6 +304,11 @@ export function LoginPage() {
               </p>
             ) : (
               <form className="space-y-3" data-testid="forgot-form" onSubmit={onForgot}>
+                {delegatedMethods.length > 0 && (
+                  <p className="text-xs text-[var(--color-ink-muted)]" data-testid="forgot-delegated-hint">
+                    {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
+                  </p>
+                )}
                 <label className="fc-label">Email or username</label>
                 <input type="text" name="usr" className="fc-input" data-testid="forgot-usr" />
                 <button type="submit" className="fc-btn w-full justify-center py-2" data-testid="forgot-submit">

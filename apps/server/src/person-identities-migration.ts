@@ -1,11 +1,17 @@
 // Migration 0100 (OpenSpec change `person-identities`, design § Migration).
-// Lives in src/ so `cli identities:plan` can run the very same code inside a
-// rolled-back transaction and print the same report before a deploy.
+//
+// planPersonIdentities() is READ-ONLY: it computes everything the upgrade will
+// do from the data as it is, takes no locks beyond plain reads, and is what
+// `cli identities:plan` prints before a deploy. migratePersonIdentities()
+// computes the same plan first, then applies it, so the rehearsal and the
+// real run cannot disagree.
 import { sql } from './db'
-import { createTable } from './table-engine'
+import { createTable, pgType } from './table-engine'
 import { saveDoc } from './document'
 import { invalidateMeta } from './meta'
-import { foldName, isReservedEmail } from './identities'
+import { PLATFORM_SCHEMA } from './platform-schema'
+import { foldName, isReservedEmail, looksLikeEmail, newIdentityId } from './identities'
+import { DEFAULT_WIRE } from './delegated-login'
 
 const OLD_SETTINGS = [
   'google_client_id',
@@ -15,42 +21,228 @@ const OLD_SETTINGS = [
   'delegated_login_user_column',
 ] as const
 
-export interface PersonIdentitiesReport {
-  methods: string[]
-  emailsTrimmed: number
-  emailsCleared: number
-  googleInvites: number
-  delegatedLinked: number
-  /** Real-email users who never signed in with Google: an administrator invites them explicitly. */
-  listedForGoogleInvite: string[]
-  /** Users sharing one delegated login ID: migrated with no sign-in name (test mode still finds them). */
-  duplicateSignInNames: string[]
-  /** Delegated users whose id differs from their employee code (report only). */
-  idNotEmployeeCode: string[]
+// The 0005 seeds invented these two; a shipped migration is never edited, so
+// they are cleared here (review minor 12).
+const SEED_EMAILS: Record<string, string> = { Administrator: 'admin@example.com', Guest: 'guest@example.com' }
+
+export interface Person {
+  row_id: string
+  full_name: string | null
+  detail?: string
 }
 
-function slug(value: string): string {
-  return foldName(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'delegated'
+export interface PersonIdentitiesPlan {
+  methods: { key: string; kind: string; label: string; enabled: boolean }[]
+  emailsTrimmed: Person[]
+  emailsCleared: Person[]
+  /** Two remaining addresses equal ignoring case: the upgrade stops on these. */
+  duplicateEmails: { email: string; users: string[] }[]
+  googleInvites: (Person & { address: string })[]
+  /** Signed in with Google before, but id and email name different addresses: invited on the email. */
+  googleIdEmailDiffer: Person[]
+  /** Real email, never signed in with Google: an administrator invites them explicitly. */
+  listedForGoogleInvite: Person[]
+  delegatedLinks: (Person & { sign_in_name: string | null })[]
+  /** People sharing one delegated login ID: linked with no sign-in name (test mode still finds them). */
+  duplicateSignInNames: Person[]
+  /** Delegated users whose id differs from their employee code (report only). */
+  idNotEmployeeCode: Person[]
+  parity: { canSignInToday: number; keepWayIn: number; exceptions: Person[] }
 }
 
 async function columnExists(table: string, column: string): Promise<boolean> {
   const [row] = await sql`
     select 1 from information_schema.columns
-    where table_schema = 'featherbase' and table_name = ${table} and column_name = ${column}`
+    where table_schema = ${PLATFORM_SCHEMA} and table_name = ${table} and column_name = ${column}`
   return Boolean(row)
 }
 
-export async function migratePersonIdentities(): Promise<PersonIdentitiesReport> {
-  const report: PersonIdentitiesReport = {
-    methods: [],
-    emailsTrimmed: 0,
-    emailsCleared: 0,
-    googleInvites: 0,
-    delegatedLinked: 0,
+async function tableExists(table: string): Promise<boolean> {
+  const [row] = await sql`
+    select 1 from information_schema.tables where table_schema = ${PLATFORM_SCHEMA} and table_name = ${table}`
+  return Boolean(row)
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+/** The old delegated configuration was ON only with a usable URL and a User
+ *  column; the migrated row keeps exactly that (review minor 2). Its key is the
+ *  provider host's first label (stylehr.in → `stylehr`), not the label. */
+function oldDelegated(url: string, label: string, column: string) {
+  if (!url) return null
+  let parsed: URL | null = null
+  try {
+    parsed = new URL(url)
+  } catch {
+    parsed = null
+  }
+  const usable = Boolean(parsed) && (parsed!.protocol === 'https:' || (parsed!.protocol === 'http:' && LOCAL_HOSTS.has(parsed!.hostname)))
+  const host = parsed?.hostname.replace(/^(www|api|login|auth)\./, '') ?? ''
+  const key = (host.split('.')[0] || 'delegated').replace(/[^a-z0-9_]+/gi, '_').toLowerCase() || 'delegated'
+  return { key, label: label || host || key, url, enabled: usable && Boolean(column) }
+}
+
+export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
+  const settingRows = await sql`
+    select field, value from single_value
+    where table_name = 'System Settings' and field in ${sql([...OLD_SETTINGS])}`
+  const setting = (f: (typeof OLD_SETTINGS)[number]) =>
+    String(settingRows.find((r) => r.field === f)?.value ?? '').trim()
+  const haveMethods = await tableExists('sign_in_method')
+  const existingMethods = haveMethods ? await sql`select row_id, kind, label, enabled, client_id from sign_in_method` : []
+  const haveIdentities = await tableExists('user_identity')
+
+  const delegated = oldDelegated(setting('delegated_login_url'), setting('delegated_login_label'), setting('delegated_login_user_column'))
+  const column = setting('delegated_login_user_column')
+  const columnOk = Boolean(delegated) && /^[a-z_][a-z0-9_]*$/.test(column) && (await columnExists('user', column))
+  const hasEmployeeCode = await columnExists('user', 'employee_code')
+
+  const methods = [
+    { key: 'password', kind: 'password', label: 'Password', enabled: true },
+    { key: 'google', kind: 'google', label: 'Google', enabled: true },
+    ...(delegated ? [{ key: delegated.key, kind: 'delegated_password', label: delegated.label, enabled: delegated.enabled }] : []),
+  ].map((m) => {
+    const have = existingMethods.find((r) => r.row_id === m.key)
+    return have ? { key: m.key, kind: String(have.kind), label: String(have.label), enabled: have.enabled === true } : m
+  })
+
+  const users = await sql`
+    select u.row_id, u.full_name, u.email, u.enabled, u.social_login, coalesce(u.user_type, 'human') as user_type,
+      (u.password_hash is not null) as has_password,
+      ${columnOk ? sql`trim(${sql(column)})` : sql`null::text`} as delegated_name,
+      ${hasEmployeeCode ? sql`trim(employee_code)` : sql`null::text`} as employee_code,
+      (u.row_id = 'Administrator' or exists (
+        select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
+    from "user" u order by u.row_id`
+  const linkedGoogle = new Set<string>()
+  const linkedDelegated = new Set<string>()
+  if (haveIdentities) {
+    for (const r of await sql`
+      select i.user_id, m.kind from user_identity i join sign_in_method m on m.row_id = i.method`) {
+      if (r.kind === 'google') linkedGoogle.add(String(r.user_id))
+      if (r.kind === 'delegated_password') linkedDelegated.add(String(r.user_id))
+    }
+  }
+  const person = (u: Record<string, unknown>, detail?: string): Person => ({
+    row_id: String(u.row_id),
+    full_name: (u.full_name as string | null) ?? null,
+    ...(detail ? { detail } : {}),
+  })
+
+  const plan: PersonIdentitiesPlan = {
+    methods,
+    emailsTrimmed: [],
+    emailsCleared: [],
+    duplicateEmails: [],
+    googleInvites: [],
+    googleIdEmailDiffer: [],
     listedForGoogleInvite: [],
+    delegatedLinks: [],
     duplicateSignInNames: [],
     idNotEmployeeCode: [],
+    parity: { canSignInToday: 0, keepWayIn: 0, exceptions: [] },
   }
+
+  // Email after the clean-up, per person.
+  const kept = new Map<string, string | null>()
+  for (const u of users) {
+    const raw = u.email == null ? null : String(u.email)
+    let next: string | null = raw == null ? null : raw.trim()
+    if (raw != null && raw !== raw.trim()) plan.emailsTrimmed.push(person(u, raw.trim()))
+    if (next != null && (!next || isReservedEmail(next) || SEED_EMAILS[String(u.row_id)] === next)) {
+      plan.emailsCleared.push(person(u, raw!))
+      next = null
+    }
+    kept.set(String(u.row_id), next)
+  }
+  const byEmail = new Map<string, string[]>()
+  for (const [id, email] of kept) if (email) byEmail.set(foldName(email), [...(byEmail.get(foldName(email)) ?? []), id])
+  for (const [email, ids] of byEmail) if (ids.length > 1) plan.duplicateEmails.push({ email, users: ids })
+
+  // Google: a one-time invite only for people who really signed in with Google
+  // (review M1), on their email — or on their id when that is the address and
+  // the email is empty (review A-M3).
+  const invited = new Set<string>()
+  for (const u of users) {
+    const id = String(u.row_id)
+    if (u.user_type === 'service' || linkedGoogle.has(id)) continue
+    const email = kept.get(id)
+    const idAddress = looksLikeEmail(id) && !isReservedEmail(id) ? id : null
+    if (u.social_login === 'google') {
+      if (email && idAddress && foldName(email) !== foldName(idAddress)) plan.googleIdEmailDiffer.push(person(u, `id ${id}, email ${email}`))
+      const address = email ?? idAddress
+      if (address && !invited.has(foldName(address))) {
+        invited.add(foldName(address))
+        plan.googleInvites.push({ ...person(u), address: foldName(address) })
+      }
+    } else if (email && !['Administrator', 'Guest'].includes(id)) plan.listedForGoogleInvite.push(person(u, email))
+  }
+
+  // The connected service: the old User column becomes linked identities.
+  if (delegated && columnOk) {
+    const named = users.filter((u) => u.user_type !== 'service' && u.delegated_name)
+    const counts = new Map<string, number>()
+    for (const u of named) counts.set(foldName(String(u.delegated_name)), (counts.get(foldName(String(u.delegated_name))) ?? 0) + 1)
+    for (const u of named) {
+      const shared = (counts.get(foldName(String(u.delegated_name))) ?? 0) > 1
+      if (shared) plan.duplicateSignInNames.push(person(u, String(u.delegated_name)))
+      if (!linkedDelegated.has(String(u.row_id)))
+        plan.delegatedLinks.push({ ...person(u), sign_in_name: shared ? null : String(u.delegated_name) })
+      if (hasEmployeeCode && (u.employee_code ?? '') !== u.row_id) plan.idNotEmployeeCode.push(person(u, `employee code ${u.employee_code ?? '—'}`))
+    }
+  }
+
+  // Parity: everyone who can sign in today keeps a way in, or is named.
+  const googleOn = Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1' ||
+    existingMethods.some((m) => m.kind === 'google' && m.enabled && (m.client_id || process.env.ALLOW_MOCK_OAUTH === '1'))
+  const delegatedOn = Boolean(delegated?.enabled && columnOk)
+  const linkedAfter = new Set([...plan.delegatedLinks.map((d) => d.row_id), ...linkedDelegated])
+  const invitedAfter = new Set([...plan.googleInvites.map((g) => g.row_id), ...linkedGoogle])
+  for (const u of users) {
+    const id = String(u.row_id)
+    if (!u.enabled || u.user_type === 'service' || id === 'Guest') continue
+    // Google matched by email or id; a placeholder address never had a Google account.
+    const viaGoogleToday = googleOn && Boolean(kept.get(id) ?? (looksLikeEmail(id) && !isReservedEmail(id) ? id : null))
+    const viaDelegatedToday = delegatedOn && Boolean(u.delegated_name) && !u.privileged
+    const today = u.has_password || viaGoogleToday || viaDelegatedToday
+    if (!today) continue
+    plan.parity.canSignInToday++
+    const after = u.has_password || (delegatedOn && !u.privileged && linkedAfter.has(id)) || (googleOn && invitedAfter.has(id))
+    if (after) plan.parity.keepWayIn++
+    else plan.parity.exceptions.push(person(u, viaGoogleToday ? 'Google by email only: invite after the deploy' : 'no way in after the upgrade'))
+  }
+  return plan
+}
+
+async function addActivityColumns() {
+  // Login rows record the method and test mode (review minor 8).
+  for (const [column_name, column_type, label] of [
+    ['sign_in_method', 'Data', 'Sign-in Method'],
+    ['test_mode', 'Check', 'Test Mode'],
+  ] as const) {
+    const [have] = await sql`select 1 from column_def where parent = 'Activity Log' and column_name = ${column_name}`
+    if (have) continue
+    await sql.unsafe(`alter table ${PLATFORM_SCHEMA}.activity_log add column if not exists "${column_name}" ${pgType(column_type)}`)
+    const [{ maxidx }] = await sql`select coalesce(max(position), 0)::int as maxidx from column_def where parent = 'Activity Log'`
+    await sql`insert into column_def ${sql({
+      parent: 'Activity Log', position: (maxidx as number) + 1, column_name, label, column_type,
+      reqd: false, unique: false, default_value: null, read_only: true, hidden: false, in_list_view: false, tier: 'basic',
+    })}`
+  }
+}
+
+export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
+  const plan = await planPersonIdentities()
+  if (plan.duplicateEmails.length)
+    throw new Error(
+      `person-identities: these accounts share an email ignoring case; fix them first:\n${plan.duplicateEmails
+        .map((d) => `  ${d.email}: ${d.users.join(', ')}`)
+        .join('\n')}`,
+    )
+  const settingRows = await sql`
+    select field, value from single_value where table_name = 'System Settings' and field in ${sql([...OLD_SETTINGS])}`
+  const setting = (f: (typeof OLD_SETTINGS)[number]) =>
+    String(settingRows.find((r) => r.field === f)?.value ?? '').trim()
 
   // 1. The Sign In Method Table and its rows, copied from System Settings.
   const [haveTable] = await sql`select 1 from table_def where name = 'Sign In Method'`
@@ -74,17 +266,9 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesReport>
       ],
     } as Parameters<typeof createTable>[0])
   invalidateMeta()
-
-  const settingRows = await sql`
-    select field, value from single_value
-    where table_name = 'System Settings' and field in ${sql([...OLD_SETTINGS])}`
-  const setting = (f: (typeof OLD_SETTINGS)[number]) =>
-    String(settingRows.find((r) => r.field === f)?.value ?? '').trim()
-
   const ensureMethod = async (row: Record<string, unknown>) => {
     const [exists] = await sql`select 1 from sign_in_method where row_id = ${String(row.row_id)}`
     if (!exists) await saveDoc('Sign In Method', row, 'Administrator')
-    report.methods.push(String(row.row_id))
   }
   await ensureMethod({ row_id: 'password', kind: 'password', label: 'Password', enabled: true, new_person: 'refuse', self_link: true })
   await ensureMethod({
@@ -97,27 +281,19 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesReport>
     self_link: true,
     client_id: setting('google_client_id'),
   })
-  let delegatedKey: string | null = null
-  const delegatedUrl = setting('delegated_login_url')
-  if (delegatedUrl) {
-    let host = 'delegated'
-    try {
-      host = new URL(delegatedUrl).hostname
-    } catch {
-      // A malformed URL leaves the method in place but unusable, as before.
-    }
-    const label = setting('delegated_login_label') || host
-    delegatedKey = slug(label)
+  const delegated = oldDelegated(setting('delegated_login_url'), setting('delegated_login_label'), setting('delegated_login_user_column'))
+  if (delegated)
     await ensureMethod({
-      row_id: delegatedKey,
+      row_id: delegated.key,
       kind: 'delegated_password',
-      label,
-      enabled: true,
+      label: delegated.label,
+      enabled: delegated.enabled,
       new_person: 'refuse',
       self_link: false,
-      service_url: delegatedUrl,
+      service_url: delegated.url,
+      // The old code spoke StyleHR's wire format; it is now written down.
+      settings: DEFAULT_WIRE,
     })
-  }
 
   // 2. Linked identities, their constraints, and the invite-cancelling trigger.
   await sql`
@@ -142,119 +318,73 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesReport>
     on user_identity (method, pending_email) where subject is null`
   await sql`create index if not exists user_identity_user_ix on user_identity (user_id)`
   // An invite tied to the contact email dies with that email (design D5),
-  // whichever path changes it: the Admin, the generic API or a roster PATCH.
+  // whichever path changes it. `on` is not a relation keyword the platform
+  // qualifier rewrites, so these statements qualify by hand.
   await sql.unsafe(`
-    create or replace function featherbase.fc_cancel_email_invites() returns trigger
+    create or replace function ${PLATFORM_SCHEMA}.fc_cancel_email_invites() returns trigger
     language plpgsql set search_path = pg_catalog as $$
     begin
       if old.email is not null and lower(trim(old.email)) is distinct from lower(trim(new.email)) then
-        delete from featherbase.user_identity
+        delete from ${PLATFORM_SCHEMA}.user_identity
         where user_id = new.row_id and subject is null and pending_email = lower(trim(old.email));
       end if;
       return new;
     end $$`)
-  // `on` is not a relation keyword the platform qualifier rewrites: qualify by hand.
-  await sql`drop trigger if exists user_cancel_email_invites on featherbase."user"`
-  await sql`create trigger user_cancel_email_invites after update of email on featherbase."user"
-    for each row execute function featherbase.fc_cancel_email_invites()`
+  await sql.unsafe(`drop trigger if exists user_cancel_email_invites on ${PLATFORM_SCHEMA}."user"`)
+  await sql.unsafe(`create trigger user_cancel_email_invites after update of email on ${PLATFORM_SCHEMA}."user"
+    for each row execute function ${PLATFORM_SCHEMA}.fc_cancel_email_invites()`)
+  await addActivityColumns()
 
   // 3. Email becomes optional contact data; nothing invented is kept.
   await sql`update column_def set reqd = false, "unique" = false where parent = 'User' and column_name = 'email'`
-  const trimmed = await sql`
-    update "user" set email = trim(email) where email is not null and email <> trim(email) returning row_id`
-  report.emailsTrimmed = trimmed.length
-  const withEmail = await sql`select row_id, email from "user" where email is not null`
-  const clear = withEmail.filter((r) => !String(r.email).trim() || isReservedEmail(String(r.email))).map((r) => String(r.row_id))
+  await sql`update "user" set email = trim(email) where email is not null and email <> trim(email)`
+  const clear = plan.emailsCleared.map((p) => p.row_id)
   if (clear.length) await sql`update "user" set email = null where row_id in ${sql(clear)}`
-  report.emailsCleared = clear.length
 
-  // 4. Only now, with placeholders gone, may two real addresses collide.
-  const dupes = await sql`
-    select lower(email) as email, array_agg(row_id order by row_id) as users from "user"
-    where email is not null group by lower(email) having count(*) > 1`
-  if (dupes.length)
-    throw new Error(
-      `person-identities: these accounts share an email ignoring case; fix them first:\n${dupes
-        .map((d) => `  ${d.email}: ${(d.users as string[]).join(', ')}`)
-        .join('\n')}`,
-    )
+  // 4. Uniqueness ignoring case, now that placeholders are gone.
   await sql`alter table "user" drop constraint if exists user_email_uq`
   await sql`create unique index if not exists user_email_lower_uq on "user" (lower(email)) where email is not null`
   invalidateMeta()
 
-  // 5a. Google: a one-time invite only for people who really signed in with Google.
-  const invites = await sql`
-    insert into user_identity (id, user_id, method, subject, pending_email, linked_by)
-    select 'uid_' || substr(md5(random()::text || u.row_id), 1, 12), u.row_id, 'google', null, lower(u.email), 'migration'
-    from "user" u
-    where u.social_login = 'google' and u.email is not null and coalesce(u.user_type, 'human') <> 'service'
-      and not exists (
-        select 1 from user_identity i join sign_in_method m on m.row_id = i.method
-        where i.user_id = u.row_id and m.kind = 'google')
-    on conflict do nothing
-    returning id`
-  report.googleInvites = invites.length
-  const listed = await sql`
-    select u.row_id from "user" u
-    where u.email is not null and coalesce(u.user_type, 'human') <> 'service'
-      and u.social_login is distinct from 'google' and u.row_id not in ('Administrator', 'Guest')
-      and not exists (
-        select 1 from user_identity i join sign_in_method m on m.row_id = i.method
-        where i.user_id = u.row_id and m.kind = 'google')
-    order by u.row_id`
-  report.listedForGoogleInvite = listed.map((r) => String(r.row_id))
+  // 5. Identities, exactly as planned.
+  for (const g of plan.googleInvites)
+    await sql`insert into user_identity ${sql({ id: newIdentityId(), user_id: g.row_id, method: 'google', subject: null, pending_email: g.address, linked_by: 'migration' })}
+      on conflict do nothing`
+  if (delegated)
+    for (const d of plan.delegatedLinks)
+      await sql`insert into user_identity ${sql({ id: newIdentityId(), user_id: d.row_id, method: delegated.key, subject: d.row_id, sign_in_name: d.sign_in_name, linked_by: 'migration' })}
+        on conflict do nothing`
 
-  // 5b. The connected service: the old User column becomes linked identities.
+  // 6. The old column stays as roster data; say it no longer signs anyone in.
   const column = setting('delegated_login_user_column')
-  if (delegatedKey && /^[a-z_][a-z0-9_]*$/.test(column) && (await columnExists('user', column))) {
-    const linked = await sql`
-      select row_id, trim(${sql(column)}) as name from "user"
-      where coalesce(trim(${sql(column)}), '') <> '' and coalesce(user_type, 'human') <> 'service'
-      order by row_id`
-    const counts = new Map<string, number>()
-    for (const r of linked) counts.set(foldName(String(r.name)), (counts.get(foldName(String(r.name))) ?? 0) + 1)
-    for (const r of linked) {
-      const shared = (counts.get(foldName(String(r.name))) ?? 0) > 1
-      if (shared) report.duplicateSignInNames.push(`${r.row_id} (${r.name})`)
-      const [row] = await sql`
-        insert into user_identity (id, user_id, method, subject, sign_in_name, linked_by)
-        values (${'uid_' + Math.random().toString(36).slice(2, 14)}, ${String(r.row_id)}, ${delegatedKey},
-                ${String(r.row_id)}, ${shared ? null : String(r.name)}, 'migration')
-        on conflict do nothing returning id`
-      if (row) report.delegatedLinked++
-    }
-    // Report only: the subject is the account id, which the roster sync makes
-    // the employee code; list anyone for whom that is not so.
-    if (await columnExists('user', 'employee_code')) {
-      const odd = await sql`
-        select row_id from "user"
-        where coalesce(trim(${sql(column)}), '') <> '' and coalesce(user_type, 'human') <> 'service'
-          and trim(coalesce(employee_code, '')) is distinct from row_id
-        order by row_id`
-      report.idNotEmployeeCode = odd.map((r) => String(r.row_id))
-    }
-    // 6. The old column stays as roster data; say it no longer signs anyone in.
-    const label = `${(await sql`select label from sign_in_method where row_id = ${delegatedKey}`)[0]?.label ?? 'Service'} ID (roster copy — sign-in uses linked identities)`
+  if (delegated && /^[a-z_][a-z0-9_]*$/.test(column)) {
+    const label = `${delegated.label} ID (roster copy — sign-in uses linked identities)`
     await sql`update custom_field set label = ${label} where dt = 'User' and column_name = ${column}`
     await sql`update column_def set label = ${label} where parent = 'User' and column_name = ${column}`
   }
 
-  // 7. The System Settings sign-in columns are gone; their values now live in rows.
+  // 7. The System Settings sign-in columns are gone; their values live in rows.
   await sql`delete from column_def where parent = 'System Settings' and column_name in ${sql([...OLD_SETTINGS])}`
   await sql`delete from single_value where table_name = 'System Settings' and field in ${sql([...OLD_SETTINGS])}`
   invalidateMeta()
-  return report
+  return plan
 }
 
-export function formatReport(r: PersonIdentitiesReport): string {
-  const list = (items: string[]) => (items.length ? `\n    ${items.join('\n    ')}` : ' none')
+export function formatPlan(p: PersonIdentitiesPlan): string {
+  const who = (x: Person) => `${x.full_name && x.full_name !== x.row_id ? `${x.full_name} (${x.row_id})` : x.row_id}${x.detail ? ` — ${x.detail}` : ''}`
+  const list = (items: Person[]) => (items.length ? `\n    ${items.map(who).join('\n    ')}` : ' none')
   return [
-    `person-identities: sign-in methods ${r.methods.join(', ')}`,
-    `  emails trimmed: ${r.emailsTrimmed}; placeholder/blank emails cleared: ${r.emailsCleared}`,
-    `  Google invites created (signed in with Google before): ${r.googleInvites}`,
-    `  connected-service identities linked: ${r.delegatedLinked}`,
-    `  listed for an explicit Google invite (real email, never signed in with Google):${list(r.listedForGoogleInvite)}`,
-    `  shared login IDs, linked with no sign-in name (test mode still finds them):${list(r.duplicateSignInNames)}`,
-    `  account id differs from employee code (relink if wrong):${list(r.idNotEmployeeCode)}`,
+    `person-identities plan`,
+    `  sign-in methods: ${p.methods.map((m) => `${m.key} (${m.kind}, ${m.label}, ${m.enabled ? 'on' : 'off'})`).join('; ')}`,
+    `  emails trimmed: ${p.emailsTrimmed.length}${list(p.emailsTrimmed)}`,
+    `  placeholder/blank/seed emails cleared: ${p.emailsCleared.length}${list(p.emailsCleared)}`,
+    `  addresses that collide ignoring case (the upgrade STOPS): ${p.duplicateEmails.length ? p.duplicateEmails.map((d) => `${d.email}: ${d.users.join(', ')}`).join('; ') : 'none'}`,
+    `  Google invites (signed in with Google before): ${p.googleInvites.length}${list(p.googleInvites.map((g) => ({ ...g, detail: g.address })))}`,
+    `  Google users whose id and email differ (invited on the email):${list(p.googleIdEmailDiffer)}`,
+    `  listed for an explicit Google invite after the deploy (real email, never signed in with Google): ${p.listedForGoogleInvite.length}${list(p.listedForGoogleInvite)}`,
+    `  connected-service identities to link: ${p.delegatedLinks.length}`,
+    `  shared login IDs, linked with no sign-in name (test mode still finds them):${list(p.duplicateSignInNames)}`,
+    `  account id differs from employee code (relink if wrong):${list(p.idNotEmployeeCode)}`,
+    `  PARITY: ${p.parity.canSignInToday} people can sign in today; ${p.parity.keepWayIn} keep a way in; ${p.parity.exceptions.length} exception(s)${list(p.parity.exceptions)}`,
   ].join('\n')
 }

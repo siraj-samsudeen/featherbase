@@ -19,7 +19,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
-import { listSignInMethods } from './identities'
+import { listSignInMethods, type SignInMethod } from './identities'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -28,6 +28,67 @@ export interface DelegatedLoginConfig {
   key: string
   label: string
   url: string
+  wire: DelegatedWire
+  /** The Sign In Method row, for the shared pipeline (sign-in.ts). */
+  method: SignInMethod
+}
+
+/** A delegated provider's wire format, from its row's `settings` JSON
+ *  (review: genericity). Every field is optional there; anything left out
+ *  takes StyleHR's value, which is what DEFAULT_WIRE holds. A second HR
+ *  provider with a different request body or answer shape is configuration
+ *  only. Values are matched against JSON keys case-insensitively. */
+export interface DelegatedWire {
+  /** Request body field names for the typed ID and the password. */
+  id_field: string
+  password_field: string
+  /** Objects one level down that may carry the answer. */
+  nested_keys: string[]
+  /** A filled value under any of these means "yes, signed in". */
+  success_keys: string[]
+  /** `true` under any of these means yes; `false` means no. */
+  success_flags: string[]
+  /** A filled value under any of these means no. */
+  error_keys: string[]
+  /** The status key, and the values of it that mean no. */
+  status_key: string
+  error_statuses: string[]
+  /** The person has left: a filled date, an inactive flag set false, or a status containing a word. */
+  left_date_keys: string[]
+  inactive_flags: string[]
+  left_status_keys: string[]
+  left_words: string[]
+}
+
+export const DEFAULT_WIRE: DelegatedWire = {
+  id_field: 'email',
+  password_field: 'password',
+  nested_keys: ['data', 'user', 'employee', 'result'],
+  success_keys: ['token', 'access', 'access_token', 'key', 'employee_id', 'employee_key', 'id'],
+  success_flags: ['success', 'ok', 'authenticated'],
+  error_keys: ['error', 'errors'],
+  status_key: 'status',
+  error_statuses: ['error', 'fail', 'failed', 'failure', 'invalid'],
+  left_date_keys: ['exit_date', 'relieving_date', 'date_of_relieving', 'termination_date', 'resignation_date', 'last_working_date'],
+  inactive_flags: ['is_active', 'active'],
+  left_status_keys: ['status', 'employment_status', 'employee_status'],
+  left_words: ['resign', 'terminat', 'reliev', 'exit', 'inactive', 'left', 'separated'],
+}
+
+/** The row's settings over the defaults; refuses a malformed shape. */
+export function wireFrom(settings: Record<string, unknown> | null): DelegatedWire {
+  const wire: DelegatedWire = { ...DEFAULT_WIRE }
+  if (!settings) return wire
+  for (const [key, fallback] of Object.entries(DEFAULT_WIRE) as [keyof DelegatedWire, string | string[]][]) {
+    const value = settings[key]
+    if (value === undefined) continue
+    const ok = Array.isArray(fallback)
+      ? Array.isArray(value) && value.every((v) => typeof v === 'string')
+      : typeof value === 'string' && value.trim() !== ''
+    if (!ok) throw new Error(`settings.${key} must be ${Array.isArray(fallback) ? 'a list of strings' : 'a string'}`)
+    ;(wire as unknown as Record<string, unknown>)[key] = Array.isArray(value) ? value.map((v) => String(v).toLowerCase()) : String(value)
+  }
+  return wire
 }
 
 // http is accepted only for a stub on this machine (tests, local dev); a
@@ -51,7 +112,13 @@ export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
   for (const m of await listSignInMethods()) {
     if (m.kind !== 'delegated_password' || !m.enabled) continue
     const url = usable(m.service_url)
-    if (url) out.push({ key: m.key, label: m.label || url.hostname, url: url.toString() })
+    let wire: DelegatedWire
+    try {
+      wire = wireFrom(m.settings)
+    } catch {
+      continue // a malformed wire format leaves the method off, like a bad URL
+    }
+    if (url) out.push({ key: m.key, label: m.label || url.hostname, url: url.toString(), wire, method: { ...m, label: m.label || url.hostname } })
   }
   return out
 }
@@ -98,33 +165,29 @@ const lowerKeys = (o: Obj): Obj => Object.fromEntries(Object.entries(o).map(([k,
 const filled = (v: unknown) => v !== null && v !== undefined && v !== '' && v !== 'null' && v !== false && v !== 0
 
 /** The body and the identity-ish objects one level down, keys lower-cased. */
-function layers(body: Obj): Obj[] {
+function layers(body: Obj, w: DelegatedWire): Obj[] {
   const top = lowerKeys(body)
-  return [top, ...['data', 'user', 'employee', 'result'].map((k) => top[k]).filter(isObj).map(lowerKeys)]
+  return [top, ...w.nested_keys.map((k) => top[k]).filter(isObj).map(lowerKeys)]
 }
 
 // A 2xx that says no. Booleans count: {"success": false} and {"status": false} are refusals.
-function saysNo(o: Obj): boolean {
-  if (filled(o.error) || filled(o.errors)) return true
-  if (o.success === false || o.ok === false || o.status === false || o.authenticated === false) return true
-  return ['error', 'fail', 'failed', 'failure', 'invalid'].includes(String(o.status ?? '').toLowerCase())
+function saysNo(o: Obj, w: DelegatedWire): boolean {
+  if (w.error_keys.some((k) => filled(o[k]))) return true
+  if ([...w.success_flags, w.status_key].some((k) => o[k] === false)) return true
+  return w.error_statuses.includes(String(o[w.status_key] ?? '').toLowerCase())
 }
 
 // Positive evidence of a session or an identity. Anything else is "could not confirm".
-const SUCCESS_KEYS = ['token', 'access', 'access_token', 'key', 'employee_id', 'employee_key', 'id']
-function saysYes(o: Obj): boolean {
-  return o.success === true || o.ok === true || o.authenticated === true || SUCCESS_KEYS.some((k) => filled(o[k]))
+function saysYes(o: Obj, w: DelegatedWire): boolean {
+  return w.success_flags.some((k) => o[k] === true) || w.success_keys.some((k) => filled(o[k]))
 }
 
-// Ported from report_server/stylehr_auth.py looks_resigned: an exit date, an inactive flag,
-// or a status that reads as gone.
-const EXIT_DATE_KEYS = ['exit_date', 'relieving_date', 'date_of_relieving', 'termination_date', 'resignation_date', 'last_working_date']
-const STATUS_KEYS = ['status', 'employment_status', 'employee_status']
-const LEFT_WORDS = ['resign', 'terminat', 'reliev', 'exit', 'inactive', 'left', 'separated']
-function saysLeft(o: Obj): boolean {
-  if (EXIT_DATE_KEYS.some((k) => filled(o[k]) && o[k] !== 'None')) return true
-  if (o.is_active === false || o.active === false) return true
-  return STATUS_KEYS.some((k) => typeof o[k] === 'string' && LEFT_WORDS.some((w) => String(o[k]).toLowerCase().includes(w)))
+// Ported from report_server/stylehr_auth.py looks_resigned: an exit date, an
+// inactive flag, or a status that reads as gone — as configured.
+function saysLeft(o: Obj, w: DelegatedWire): boolean {
+  if (w.left_date_keys.some((k) => filled(o[k]) && o[k] !== 'None')) return true
+  if (w.inactive_flags.some((k) => o[k] === false)) return true
+  return w.left_status_keys.some((k) => typeof o[k] === 'string' && w.left_words.some((word) => String(o[k]).toLowerCase().includes(word)))
 }
 
 /** Ask the provider whether `id`/`password` are good. Never throws. */
@@ -135,7 +198,7 @@ export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, p
     res = await delegatedFetch(cfg.url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ email: id, password }),
+      body: JSON.stringify({ [cfg.wire.id_field]: id, [cfg.wire.password_field]: password }),
       // A redirected POST silently stops being a POST with this body.
       redirect: 'manual',
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -173,18 +236,18 @@ export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, p
     logOutcome(cfg, 'unavailable', `http_${res.status}_not_a_json_object`)
     return 'unavailable'
   }
-  const ls = layers(body)
+  const ls = layers(body, cfg.wire)
   // Key NAMES only — enough to diagnose the first real sign-in, never a value.
   const keys = `keys=${Object.keys(body).sort().join(',')}`
-  if (ls.some(saysNo)) {
+  if (ls.some((o) => saysNo(o, cfg.wire))) {
     logOutcome(cfg, 'rejected', `http_${res.status}_error_body ${keys}`)
     return 'rejected'
   }
-  if (ls.some(saysLeft)) {
+  if (ls.some((o) => saysLeft(o, cfg.wire))) {
     logOutcome(cfg, 'left', `http_${res.status} ${keys}`)
     return 'left'
   }
-  if (!ls.some(saysYes)) {
+  if (!ls.some((o) => saysYes(o, cfg.wire))) {
     logOutcome(cfg, 'unavailable', `http_${res.status}_unrecognised_success ${keys}`)
     return 'unavailable'
   }
@@ -195,13 +258,6 @@ function logOutcome(cfg: DelegatedLoginConfig, outcome: ProviderOutcome, detail:
   console.warn(`[delegated-login] ${cfg.label}: ${outcome} (${detail})`)
 }
 
-export function unavailable(cfg: DelegatedLoginConfig): AppError {
-  return new AppError(
-    'ServiceUnavailableError',
-    `${cfg.label} is not responding right now. This is not your password — please try again in a few minutes.`,
-  )
-}
-
 /** The one human account linked to `id` at this service — resolved BEFORE
  *  the provider is asked. No link, a disabled account or a privileged one all
  *  get password login's refusal, and the password is never forwarded for
@@ -209,7 +265,7 @@ export function unavailable(cfg: DelegatedLoginConfig): AppError {
  *  into a password checker for every unlinked ID. Matching ignores case and
  *  surrounding spaces; the unique index makes a second match impossible, but
  *  ambiguity still refuses rather than picking. */
-export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<{ user: string; identity: string }> {
+export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise<{ user: string; identity: string | null }> {
   // Test mode: a tester knows the employee code (the identity's subject), not
   // the person's login name at the service.
   const match = delegatedTestMode()
@@ -231,8 +287,4 @@ export async function linkedUser(cfg: DelegatedLoginConfig, id: string): Promise
   if (!rows[0].enabled || rows[0].privileged)
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   return { user: String(rows[0].row_id), identity: String(rows[0].identity) }
-}
-
-export function left(cfg: DelegatedLoginConfig): AppError {
-  return new AppError('PermissionError', `${cfg.label} shows this account as no longer active. Contact your administrator.`)
 }

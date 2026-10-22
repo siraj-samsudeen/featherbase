@@ -40,8 +40,8 @@ export function Comments({ table, name }: { table: string; name: string }) {
     queryKey: ['mention-users'],
     enabled: mention !== null,
     queryFn: () =>
-      listResource<{ row_id: string }>('User', {
-        fields: ['row_id'],
+      listResource<{ row_id: string; full_name: string | null }>('User', {
+        fields: ['row_id', 'full_name'],
         order_by: 'row_id asc',
         limit_page_length: 500,
       }),
@@ -49,9 +49,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
   const candidates = useMemo(() => {
     if (!mention) return []
     const q = mention.q.toLowerCase()
+    // Staff ids are employee codes (person-identities), so the name is shown
+    // and searched too; the mention itself stays the id.
     return (users.data?.data ?? [])
-      .map((u) => u.row_id)
-      .filter((n) => n.toLowerCase().includes(q))
+      .filter((u) => u.row_id.toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
 
@@ -153,12 +154,12 @@ export function Comments({ table, name }: { table: string; name: string }) {
           <div className="fc-card absolute z-20 mt-1 w-56 overflow-hidden py-1" data-testid="mention-list">
             {candidates.map((u) => (
               <button
-                key={u}
-                onClick={() => applyMention(u)}
+                key={u.row_id}
+                onClick={() => applyMention(u.row_id)}
                 data-testid="mention-option"
                 className="block w-full px-3 py-1 text-left text-sm hover:bg-[var(--color-brand-tint)]"
               >
-                {u}
+                {u.full_name && u.full_name !== u.row_id ? `${u.full_name} · ${u.row_id}` : u.row_id}
               </button>
             ))}
           </div>

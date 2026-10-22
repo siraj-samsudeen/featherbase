@@ -55,7 +55,9 @@ export interface SignInClaims {
   method: string | null
   identity: string | null
   test_mode: boolean
-  /** Seconds since the epoch; null for a token minted before `iat` was set. */
+  /** A dev-preview click-through session (preview.ts). */
+  preview: boolean
+  /** Seconds since the epoch; null for a token minted before the upgrade. */
   issued_at: number | null
 }
 
@@ -63,6 +65,7 @@ export interface SessionOptions {
   method?: string
   identity?: string
   testMode?: boolean
+  preview?: boolean
 }
 
 export interface IssuedSession {
@@ -87,6 +90,7 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
       ...(opts.method ? { m: opts.method } : {}),
       ...(opts.identity ? { idn: opts.identity } : {}),
       ...(opts.testMode ? { tm: true } : {}),
+      ...(opts.preview ? { pv: true } : {}),
     },
     JWT_SECRET,
   )
@@ -94,7 +98,7 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
 }
 
 function claimsOf(opts: SessionOptions, iat: number): SignInClaims {
-  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), issued_at: iat }
+  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat }
 }
 
 /** The one account a typed username-or-email names for password sign-in and
@@ -120,34 +124,27 @@ export async function findPasswordAccount(typed: string) {
 // credentials, so a failure never reveals which it was.
 export const INVALID_CREDENTIALS = 'Invalid login credentials'
 
-export async function login(usr: string, pwd: string): Promise<IssuedSession> {
-  const user = await findPasswordAccount(usr)
-  // person-identities: the password method can be turned off like any other.
-  const [method] = await sql`select row_id, enabled from sign_in_method where kind = 'password' limit 1`
-  // #131: service accounts never sign in interactively — tokens only. The
-  // refusal is deliberately the same generic message as a bad password.
-  if (!user || !method?.enabled || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
-    throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  const opts = { method: String(method.row_id) }
-  const session = await issueSessionToken(user.row_id as string, opts)
-  // PLAT-007: record the successful authentication.
-  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
-  return {
-    token: session.token,
-    user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
-    maxAgeSeconds: session.maxAgeSeconds,
-  }
+// A real scrypt check against a throwaway hash, so a name that matches no
+// account takes as long to refuse as a wrong password (review minor 6).
+const DUMMY_HASH = hashPassword(randomBytes(16).toString('hex'))
+export function burnPasswordCheck(pwd: string): void {
+  verifyPassword(pwd, DUMMY_HASH)
 }
 
-// PLAT-006: issue a session for an already-authenticated user (e.g. after a
-// successful OAuth exchange) — the password-less counterpart to login().
+// PLAT-006: issue a session for an already-authenticated user. Every sign-in
+// method ends here through the shared pipeline (sign-in.ts), which passes the
+// method and identity so the session remembers how it was opened.
 export async function issueSession(userName: string, opts: SessionOptions = {}): Promise<IssuedSession> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
   if (!user || !user.enabled || user.user_type === 'service')
     throw new AppError('AuthenticationError', 'User cannot sign in')
   const session = await issueSessionToken(user.row_id as string, opts)
-  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
+  await logActivity(user.row_id as string, 'login', {
+    full_name: user.full_name as string | null,
+    sign_in_method: opts.method ?? (opts.preview ? 'preview' : null),
+    test_mode: Boolean(opts.testMode),
+  })
   return {
     token: session.token,
     user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
@@ -300,7 +297,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown; iat?: unknown; m?: unknown; idn?: unknown; tm?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
   } catch {
@@ -335,6 +332,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       method,
       identity,
       test_mode: payload.tm === true,
+      preview: payload.pv === true,
       issued_at: typeof payload.iat === 'number' ? payload.iat : null,
     },
   }
@@ -344,15 +342,21 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
  *  token without `iat` (minted before the upgrade) counts as stale. */
 export const LINK_FRESHNESS_SECONDS = 15 * 60
 export function assertFreshForLinking(user: SessionUser): void {
-  assertNotTestMode(user)
+  assertCanChangeAccess(user)
   const iat = user.sign_in?.issued_at
   if (!iat || Date.now() / 1000 - iat > LINK_FRESHNESS_SECONDS)
     throw new AppError('AuthenticationError', 'Sign in again first, then link the new method within a few minutes.')
 }
 
-/** Refuse anything that would add lasting access from a test-mode session
- *  (design D7, review B1): no linking, no password, no access token. */
-export function assertNotTestMode(user: SessionUser): void {
-  if (user.sign_in?.test_mode)
-    throw new AppError('PermissionError', 'Not allowed in a test-mode sign-in. Sign in normally to change how this account signs in.')
+/** Refuse adding or removing access from a session that cannot vouch for
+ *  the person (review B1, A-M1, B-M2): a test-mode sign-in, a dev-preview
+ *  click-through, or a session minted before the upgrade (no `iat` — such a
+ *  token also carries no method). Those keep reading until they expire; they
+ *  cannot set a password, mint a token, or link or remove a sign-in method.
+ *  Access tokens (no sign_in) are integration credentials and unaffected. */
+export function assertCanChangeAccess(user: SessionUser): void {
+  const s = user.sign_in
+  if (!s) return
+  if (s.test_mode || s.preview || s.issued_at == null)
+    throw new AppError('PermissionError', 'Not allowed from this sign-in. Sign in again normally to change how this account signs in.')
 }

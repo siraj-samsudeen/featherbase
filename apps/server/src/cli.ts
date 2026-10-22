@@ -8,10 +8,10 @@
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
-//   cli identities:plan               rehearse migration 0100 (person-identities) and roll it back
+//   cli identities:plan               print what migration 0100 (person-identities) will do; read-only
 //   cli console                       REPL with the row API in scope
-import { sql, withTransaction } from './db'
-import { formatReport, migratePersonIdentities } from './person-identities-migration'
+import { sql } from './db'
+import { formatPlan, planPersonIdentities } from './person-identities-migration'
 import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
@@ -239,26 +239,16 @@ async function main() {
     case 'revoke-token':
       await cmdRevokeToken(positional)
       break
-    case 'identities:plan': {
-      // Same code as migration 0100, inside a transaction that is always
-      // rolled back: prints what the deploy would do, changes nothing.
-      const ROLLBACK = new Error('identities:plan rollback')
-      try {
-        await withTransaction(async () => {
-          console.log(formatReport(await migratePersonIdentities()))
-          throw ROLLBACK
-        })
-      } catch (err) {
-        if (err !== ROLLBACK) throw err
-      }
-      console.log('identities:plan: rolled back; nothing was changed')
+    case 'identities:plan':
+      // Read-only (review minor 10): computes what migration 0100 would do from
+      // the data as it is, with the parity check, and changes nothing.
+      console.log(formatPlan(await planPersonIdentities()))
       break
-    }
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

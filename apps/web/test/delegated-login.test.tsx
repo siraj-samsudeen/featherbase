@@ -109,3 +109,36 @@ test('test mode: a notice, no password field, and an employee code alone signs i
     vi.unstubAllEnvs()
   }
 })
+
+// Review minor 11.
+test('with passwords off, the service form offers no way back to a password form', async () => {
+  const { setPasswordMethod } = await import('server/test/identity-fixtures')
+  await connectStyleHR()
+  await setPasswordMethod({ enabled: false })
+  await renderApp('/featherbase/login', anonymous)
+  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  await screen.findByTestId('delegated-login-form')
+  expect(screen.queryByTestId('password-login-toggle')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
+})
+
+test('forgot password says where service users reset theirs', async () => {
+  await connectStyleHR()
+  await renderApp('/featherbase/login', anonymous)
+  await screen.findByTestId('delegated-login-toggle')
+  await userEvent.click(screen.getByTestId('forgot-password'))
+  expect(await screen.findByTestId('forgot-delegated-hint')).toHaveTextContent('StyleHR users reset their password in StyleHR.')
+})
+
+test('if the sign-in options cannot be read, Google is still offered', async () => {
+  const bridge = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(input).startsWith('/api/brand') ? Promise.reject(new TypeError('offline')) : bridge(input, init))
+  try {
+    await renderApp('/featherbase/login', anonymous)
+    expect(await screen.findByTestId('google-login')).toBeInTheDocument()
+    expect(screen.getByTestId('login-form')).toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})

@@ -5,8 +5,8 @@
 // subject — never by email. Featherbase's own password is the person's
 // `password_hash` (one home, no identity row). Sign-in methods are rows of the
 // system Table "Sign In Method", each with its own policy for people it does
-// not recognise. This module owns those rules; adapters (oauth.ts,
-// delegated-login.ts, auth.ts) only verify credentials.
+// not recognise. This module owns the records and their rules; the shared
+// sign-in pipeline is sign-in.ts, and adapters only verify credentials.
 import { randomBytes } from 'node:crypto'
 import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
@@ -25,7 +25,7 @@ export function foldName(value: string): string {
 // resolve; every placeholder address in this codebase and in the roster sync
 // uses it. Such an address is not contact data, so it is not kept
 // (time-boxed shim, design D9). Other reserved names (example.com, .test) are
-// left alone: tests and dev seeds use them as stand-ins for real addresses.
+// left alone: tests use them as stand-ins for real addresses.
 export function isReservedEmail(email: string): boolean {
   const at = email.lastIndexOf('@')
   if (at < 0) return false
@@ -40,6 +40,8 @@ export function normaliseEmail(value: unknown): string | null {
   if (!trimmed || isReservedEmail(trimmed)) return null
   return trimmed
 }
+
+export const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 
 // --------------------------------------------------------- sign-in methods
 
@@ -56,19 +58,45 @@ export interface SignInMethod {
   self_link: boolean
   client_id: string
   service_url: string
+  /** Kind-specific configuration (a delegated provider's wire format). */
+  settings: Record<string, unknown> | null
 }
 
-/** What each kind's adapter can vouch for (design D2). Policy values are
- *  validated against these, not against a list of kinds. */
-export const KIND_CAPABILITIES: Record<MethodKind, { trustedSubject: boolean; verifiedEmail: boolean }> = {
-  password: { trustedSubject: true, verifiedEmail: false },
-  google: { trustedSubject: true, verifiedEmail: true },
-  delegated_password: { trustedSubject: false, verifiedEmail: false },
+/** What each kind's adapter can vouch for, and how the shared pipeline treats
+ *  it (design D2/D3). A new kind — say Microsoft OIDC — is one entry here plus
+ *  its verify step and routes; policies, linking, sessions and audit are shared.
+ *  - trustedSubject: returns a permanent subject it vouches for (may create people, self-link)
+ *  - verifiedEmail: returns an email it has verified (domain admission, invites)
+ *  - hostedDomain: returns a Workspace-style domain claim that must agree for a company domain
+ *  - candidateFirst: the person is found from what they typed BEFORE credentials are checked
+ *  - admitsPrivileged: may sign in an Administrator or System Manager
+ *  - unique: at most one row of this kind */
+export const KINDS: Record<
+  MethodKind,
+  { trustedSubject: boolean; verifiedEmail: boolean; hostedDomain: boolean; candidateFirst: boolean; admitsPrivileged: boolean; unique: boolean }
+> = {
+  password: { trustedSubject: true, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: true, unique: true },
+  google: { trustedSubject: true, verifiedEmail: true, hostedDomain: true, candidateFirst: false, admitsPrivileged: true, unique: true },
+  delegated_password: { trustedSubject: false, verifiedEmail: false, hostedDomain: false, candidateFirst: true, admitsPrivileged: false, unique: false },
 }
 
 export const METHOD_TABLE = 'Sign In Method'
 
+// The mock Google provider mints a session for ANY typed email from a
+// pre-auth endpoint, so only ALLOW_MOCK_OAUTH=1 turns it on (see oauth.ts).
+export function mockOAuthEnabled(): boolean {
+  return process.env.ALLOW_MOCK_OAUTH === '1'
+}
+
+/** Can a method actually sign anyone in? Google also needs a client id (or
+ *  the dev mock). Used by every way-in count, so the counts agree. */
+export function methodUsable(m: { kind: string; enabled: boolean; client_id?: string | null }): boolean {
+  if (!m.enabled) return false
+  return m.kind !== 'google' || Boolean(String(m.client_id ?? '').trim()) || mockOAuthEnabled()
+}
+
 function toMethod(r: Record<string, unknown>): SignInMethod {
+  const settings = r.settings
   return {
     key: String(r.row_id),
     kind: String(r.kind) as MethodKind,
@@ -79,28 +107,26 @@ function toMethod(r: Record<string, unknown>): SignInMethod {
     self_link: r.self_link === true,
     client_id: String(r.client_id ?? '').trim(),
     service_url: String(r.service_url ?? '').trim(),
+    settings: settings && typeof settings === 'object' && !Array.isArray(settings) ? (settings as Record<string, unknown>) : null,
   }
 }
 
+const methodFields = () =>
+  sql`row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url, settings`
+
 export async function listSignInMethods(db: Sql | TxSql = sql): Promise<SignInMethod[]> {
-  const rows = await db`
-    select row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url
-    from sign_in_method order by row_id`
+  const rows = await db`select ${methodFields()} from sign_in_method order by row_id`
   return rows.map(toMethod)
 }
 
 export async function getSignInMethod(key: string): Promise<SignInMethod | null> {
-  const [row] = await sql`
-    select row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url
-    from sign_in_method where row_id = ${key}`
+  const [row] = await sql`select ${methodFields()} from sign_in_method where row_id = ${key}`
   return row ? toMethod(row) : null
 }
 
-/** The one method of a kind (password, google). */
+/** The one method of a unique kind (password, google). */
 export async function methodOfKind(kind: MethodKind): Promise<SignInMethod | null> {
-  const [row] = await sql`
-    select row_id, kind, label, enabled, new_person, allowed_email_domains, self_link, client_id, service_url
-    from sign_in_method where kind = ${kind} order by row_id limit 1`
+  const [row] = await sql`select ${methodFields()} from sign_in_method where kind = ${kind} order by row_id limit 1`
   return row ? toMethod(row) : null
 }
 
@@ -132,13 +158,14 @@ export interface Identity {
 const identityFields = () =>
   sql`id, user_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at`
 
-const newIdentityId = () => 'uid_' + randomBytes(9).toString('base64url')
+/** The one id generator for linked identities. */
+export function newIdentityId(): string {
+  return 'uid_' + randomBytes(9).toString('base64url')
+}
 
-function conflict(err: unknown, what: string): never {
-  const e = err as { code?: string }
-  if (e?.code === '23505') throw new AppError('ConflictError', `${what} is already linked to an account`)
-  if (e?.code === '23503') throw new AppError('ValidationError', 'Unknown sign-in method or user')
-  throw err
+/** Who did what to whom, with the actor first (review B-M1). */
+export async function auditIdentity(actor: string, verb: string, target: string, method: string, id: string) {
+  await logActivity(actor, `identity_${verb} ${method} for ${target} (${id})`.slice(0, 140))
 }
 
 export async function listIdentities(user: string): Promise<Identity[]> {
@@ -159,12 +186,48 @@ async function assertHumanUser(user: string, db: Sql | TxSql = sql) {
     throw new AppError('ValidationError', 'Service accounts have no sign-in methods — issue an access token instead')
 }
 
-/** Link a subject (and optional sign-in name) to a person. 409 on collision. */
+/** A 409 the roster sync can act on: which rule clashed, and the identity
+ *  and person that already hold it (review minor 3). */
+async function clash(method: SignInMethod, what: { subject?: string | null; sign_in_name?: string | null; pending_email?: string | null }): Promise<never> {
+  const checks: [string, Promise<Record<string, unknown>[]>][] = []
+  if (what.subject)
+    checks.push(['subject', sql`select id, user_id from user_identity where method = ${method.key} and subject = ${what.subject}`])
+  if (what.sign_in_name)
+    checks.push(['sign_in_name', sql`select id, user_id from user_identity where method = ${method.key} and lower(sign_in_name) = ${foldName(what.sign_in_name)}`])
+  if (what.pending_email)
+    checks.push(['invite', sql`select id, user_id from user_identity where method = ${method.key} and subject is null and pending_email = ${what.pending_email}`])
+  for (const [kind, query] of checks) {
+    const [hit] = await query
+    if (hit) {
+      const label = kind === 'subject' ? `This ${method.label || method.key} ID` : kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
+      throw new AppError('ConflictError', `${label} is already linked to ${hit.user_id as string}`, {
+        clash: kind,
+        identity: String(hit.id),
+        user: String(hit.user_id),
+      })
+    }
+  }
+  throw new AppError('ConflictError', 'This sign-in is already linked to an account')
+}
+
+/** Run one write in its own savepoint; a unique violation becomes `onClash`. */
+async function guarded<T>(write: (t: Sql) => Promise<T>, onClash: () => Promise<never>): Promise<T> {
+  try {
+    return await sql.begin((tx) => write(tx as unknown as Sql)) as T
+  } catch (err) {
+    if ((err as { code?: string })?.code === '23505') return onClash()
+    if ((err as { code?: string })?.code === '23503') throw new AppError('ValidationError', 'Unknown sign-in method or user')
+    throw err
+  }
+}
+
+/** Link a subject (and optional sign-in name) to a person. Posting the same
+ *  link again is a no-op that returns it (`created: false`); a clash is a 409. */
 export async function linkIdentity(
   user: string,
   input: { method: string; subject: string; sign_in_name?: string | null; email?: string | null; display_name?: string | null },
   actor: string,
-): Promise<Identity> {
+): Promise<Identity & { created: boolean }> {
   const method = await getSignInMethod(input.method)
   if (!method || method.kind === 'password')
     throw new AppError('ValidationError', `Unknown outside sign-in method "${input.method}"`)
@@ -172,10 +235,12 @@ export async function linkIdentity(
   if (!subject) throw new AppError('ValidationError', 'Expected { subject }', { subject: 'required' })
   const signInName = input.sign_in_name == null ? null : String(input.sign_in_name).trim() || null
   await assertHumanUser(user)
-  let row
-  try {
-    // Its own savepoint/transaction, so a collision leaves the caller's intact.
-    ;[row] = await sql.begin((tx) => (tx as unknown as Sql)`insert into user_identity ${sql({
+  const [same] = await sql`
+    select ${identityFields()} from user_identity where method = ${method.key} and subject = ${subject} and user_id = ${user}`
+  if (same && (same.sign_in_name ?? null) === signInName) return { ...(same as unknown as Identity), created: false }
+  if (same) return { ...(await updateIdentity(String(same.id), { sign_in_name: signInName }, actor)), created: false }
+  const [row] = await guarded(
+    (t) => t`insert into user_identity ${t({
       id: newIdentityId(),
       user_id: user,
       method: method.key,
@@ -184,89 +249,114 @@ export async function linkIdentity(
       email: input.email ?? null,
       display_name: input.display_name ?? null,
       linked_by: actor,
-    })} returning ${identityFields()}`)
-  } catch (err) {
-    conflict(err, `This ${method.label} ID`)
-  }
-  await logActivity(user, `identity_linked:${method.key}:${row!.id}`)
-  return row as unknown as Identity
+    })} returning ${identityFields()}`,
+    () => clash(method, { subject, sign_in_name: signInName }),
+  )
+  await auditIdentity(actor, 'linked', user, method.key, String(row.id))
+  return { ...(row as unknown as Identity), created: true }
 }
 
 /** Invite a Google address: the first verified Google sign-in with it links
- *  the account for good (design D5). */
-export async function inviteGoogle(user: string, email: string, actor: string): Promise<Identity> {
+ *  the account for good (design D5). Re-inviting the same address is a no-op. */
+export async function inviteGoogle(user: string, email: string, actor: string): Promise<Identity & { created: boolean }> {
   const method = await methodOfKind('google')
   if (!method) throw new AppError('ValidationError', 'Google sign-in is not set up')
   const address = normaliseEmail(email)
-  if (!address || !address.includes('@')) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
+  if (!address || !looksLikeEmail(address)) throw new AppError('ValidationError', 'Expected { email }', { email: 'a real address' })
   await assertHumanUser(user)
-  let row
-  try {
-    ;[row] = await sql.begin((tx) => (tx as unknown as Sql)`insert into user_identity ${sql({
+  const pending = foldName(address)
+  const [same] = await sql`
+    select ${identityFields()} from user_identity
+    where method = ${method.key} and subject is null and pending_email = ${pending} and user_id = ${user}`
+  if (same) return { ...(same as unknown as Identity), created: false }
+  const [row] = await guarded(
+    (t) => t`insert into user_identity ${t({
       id: newIdentityId(),
       user_id: user,
       method: method.key,
       subject: null,
-      pending_email: foldName(address),
+      pending_email: pending,
       linked_by: actor,
-    })} returning ${identityFields()}`)
-  } catch (err) {
-    conflict(err, 'This Google address')
-  }
-  await logActivity(user, `identity_invited:${method.key}:${row!.id}`)
-  return row as unknown as Identity
+    })} returning ${identityFields()}`,
+    () => clash(method, { pending_email: pending }),
+  )
+  await auditIdentity(actor, 'invited', user, method.key, String(row.id))
+  return { ...(row as unknown as Identity), created: true }
 }
 
 /** Rename a sign-in name and/or move a link to another person, atomically.
- *  A rename keeps the identity id, so its sessions survive; a move does not. */
+ *  A rename keeps the identity id, so its sessions survive; a move does not,
+ *  and a move may not leave an administrator with no way in. */
 export async function updateIdentity(
   id: string,
   change: { sign_in_name?: string | null; user_id?: string },
   actor: string,
 ): Promise<Identity> {
-  return (await sql.begin(async (tx) => {
-    const t = tx as unknown as Sql
-    const [current] = await t`select ${identityFields()} from user_identity where id = ${id} for update`
-    if (!current) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
-    const patch: Record<string, unknown> = {}
-    if (change.sign_in_name !== undefined)
-      patch.sign_in_name = change.sign_in_name == null ? null : String(change.sign_in_name).trim() || null
-    if (change.user_id !== undefined && change.user_id !== current.user_id) {
-      await assertHumanUser(change.user_id, t)
-      patch.user_id = change.user_id
-      patch.linked_at = new Date()
-      patch.linked_by = actor
-    }
-    if (!Object.keys(patch).length) return current
-    let row
-    try {
-      ;[row] = await t`update user_identity set ${t(patch)} where id = ${id} returning ${identityFields()}`
-    } catch (err) {
-      conflict(err, 'This sign-in name')
-    }
-    if (patch.user_id) {
-      await logActivity(String(current.user_id), `identity_moved_out:${current.method}:${id}`)
-      await logActivity(String(patch.user_id), `identity_moved_in:${current.method}:${id}`)
-    } else await logActivity(String(current.user_id), `identity_renamed:${current.method}:${id}`)
-    return row
-  })) as unknown as Identity
+  const current = await getIdentity(id)
+  const method = (await getSignInMethod(current.method))!
+  return guarded(
+    async (t) => {
+      const [locked] = await t`select ${identityFields()} from user_identity where id = ${id} for update`
+      if (!locked) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
+      const patch: Record<string, unknown> = {}
+      if (change.sign_in_name !== undefined)
+        patch.sign_in_name = change.sign_in_name == null ? null : String(change.sign_in_name).trim() || null
+      const moving = change.user_id !== undefined && change.user_id !== locked.user_id
+      if (moving) {
+        await assertHumanUser(change.user_id!, t)
+        await assertUserKeepsWayIn(String(locked.user_id), t, id)
+        patch.user_id = change.user_id
+        patch.linked_at = new Date()
+        patch.linked_by = actor
+      }
+      if (!Object.keys(patch).length) return locked as unknown as Identity
+      const [row] = await t`update user_identity set ${t(patch)} where id = ${id} returning ${identityFields()}`
+      if (moving) await auditIdentity(actor, 'moved', `${locked.user_id} to ${change.user_id}`, String(locked.method), id)
+      else await auditIdentity(actor, 'renamed', String(locked.user_id), String(locked.method), id)
+      return row as unknown as Identity
+    },
+    () => clash(method, { sign_in_name: change.sign_in_name ?? null }),
+  )
 }
 
-/** How many working ways in a person has: a password with the password method
- *  on, plus claimed identities on enabled methods. Pending invites never count.
- *  `excluding` leaves one identity (or 'password') out of the count. */
+// A method counts as a way in only when it can actually sign the person in:
+// enabled, and for Google configured (or the dev mock on). An Administrator or
+// System Manager is never signed in through a delegated method, so for them
+// those links do not count (review A-M2).
+const usableWhere = (mock: boolean) =>
+  sql`m.enabled and (m.kind <> 'google' or coalesce(m.client_id, '') <> '' or ${mock}::boolean)`
+
+/** How many working ways in a person has right now. Pending invites never
+ *  count. `excluding` leaves one identity id (or 'password') out. */
 export async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+  const mock = mockOAuthEnabled()
   const [row] = await db`
+    with p as (
+      select (u.row_id = 'Administrator' or exists (
+        select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator'))) as privileged
+      from "user" u where u.row_id = ${user}
+    )
     select
-      (select count(*) from "user" u join sign_in_method m on m.kind = 'password' and m.enabled
+      (select count(*) from "user" u join sign_in_method m on m.kind = 'password' and ${usableWhere(mock)}
         where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
-      + (select count(*) from user_identity i join sign_in_method m on m.row_id = i.method and m.enabled
-        where i.user_id = ${user} and i.subject is not null and i.id <> ${excluding ?? ''}::text)::int as n`
+      + (select count(*) from user_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
+        where i.user_id = ${user} and i.subject is not null and i.id <> ${excluding ?? ''}::text
+          and not (m.kind = 'delegated_password' and (select privileged from p)))::int as n`
   return Number(row.n)
 }
 
+/** An administrator who can sign in now must still be able to afterwards. */
+export async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
+  const c = await candidate(user, db)
+  if (!c?.privileged || !c.enabled) return
+  if ((await waysIn(user, db)) > 0 && (await waysIn(user, db, excluding)) === 0)
+    throw new AppError('ValidationError', `This would lock out ${user}: it is their only way to sign in.`)
+}
+
 /** Remove one link. `self` refuses removing the person's last working way in;
- *  the user row is locked so two concurrent removals cannot both pass. */
+ *  an administrator removing someone's link may not lock out an
+ *  administrator. The user row is locked so concurrent removals cannot both
+ *  pass. */
 export async function unlinkIdentity(id: string, actor: string, opts: { self?: string } = {}): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
@@ -276,8 +366,9 @@ export async function unlinkIdentity(id: string, actor: string, opts: { self?: s
     await t`select 1 from "user" where row_id = ${current.user_id as string} for update`
     if (opts.self && current.subject != null && (await waysIn(String(current.user_id), t, id)) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
+    if (!opts.self && current.subject != null) await assertUserKeepsWayIn(String(current.user_id), t, id)
     await t`delete from user_identity where id = ${id}`
-    await logActivity(String(current.user_id), `identity_unlinked:${current.method}:${id}${actor === current.user_id ? '' : ` by ${actor}`}`.slice(0, 140))
+    await auditIdentity(actor, 'unlinked', String(current.user_id), String(current.method), id)
   })
 }
 
@@ -326,36 +417,45 @@ export async function disableLeaver(user: string, methodKey: string): Promise<vo
   const [row] = await sql`select updated_at, enabled from "user" where row_id = ${user}`
   if (!row || !row.enabled) return
   await saveDoc('User', { row_id: user, updated_at: row.updated_at, enabled: false }, 'Administrator')
-  await logActivity(user, `disabled_as_leaver:${methodKey}`)
+  await logActivity(user, `disabled_as_leaver ${methodKey}`)
 }
 
 // --------------------------------------------------------- lockout guard
 
 /** Refuse a method change that would leave an enabled Administrator or System
  *  Manager who can sign in now with no way in afterwards (design D2, M5).
- *  `next` is the method's enabled flag after the change; null = deleted. */
-export async function assertNoAdminLockout(methodKey: string, next: boolean | null, db: Sql | TxSql = sql) {
-  const after = next === true
+ *  `next` is the method's state after the change; null = deleted. */
+export async function assertNoAdminLockout(
+  methodKey: string,
+  next: { enabled: boolean; client_id: string } | null,
+  db: Sql | TxSql = sql,
+) {
+  const mock = mockOAuthEnabled()
+  const nextEnabled = next?.enabled === true
+  const nextClient = next?.client_id ?? ''
   const rows = await db`
     with privileged as (
       select u.row_id from "user" u
       where u.enabled and coalesce(u.user_type, 'human') <> 'service'
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
-    ), methods as (
-      select row_id, kind, enabled as before_enabled,
-        case when row_id = ${methodKey}::text then ${after}::boolean else enabled end as after_enabled
+    ), m0 as (
+      select row_id, kind, enabled, client_id from sign_in_method
+    ), m1 as (
+      select row_id, kind,
+        case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
+        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
       from sign_in_method
     ), ways as (
       select p.row_id,
-        (select count(*) from "user" u join methods m on m.kind = 'password'
-          where u.row_id = p.row_id and u.password_hash is not null and m.before_enabled) +
-        (select count(*) from user_identity i join methods m on m.row_id = i.method and m.kind <> 'delegated_password'
-          where i.user_id = p.row_id and i.subject is not null and m.before_enabled) as before_n,
-        (select count(*) from "user" u join methods m on m.kind = 'password'
-          where u.row_id = p.row_id and u.password_hash is not null and m.after_enabled) +
-        (select count(*) from user_identity i join methods m on m.row_id = i.method and m.kind <> 'delegated_password'
-          where i.user_id = p.row_id and i.subject is not null and m.after_enabled) as after_n
+        (select count(*) from "user" u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) +
+        (select count(*) from user_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          where i.user_id = p.row_id and i.subject is not null) as before_n,
+        (select count(*) from "user" u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) +
+        (select count(*) from user_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          where i.user_id = p.row_id and i.subject is not null) as after_n
       from privileged p
     )
     select row_id from ways where before_n > 0 and after_n = 0 order by row_id`

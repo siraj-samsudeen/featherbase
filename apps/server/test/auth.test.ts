@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { sql } from '../src/db'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 const json = (body: unknown) => ({
@@ -53,6 +54,9 @@ describe('API-004: authentication', () => {
   })
 
   test('login also works by email; wrong password is 401', async ({ api }) => {
+    // person-identities: the 0005 seed address is cleared by the upgrade; give
+    // the Administrator a real one to sign in by.
+    await sql`update "user" set email = 'admin@example.com' where row_id = 'Administrator'`
     const byEmail = await api.fetch(
       '/api/login',
       json({ usr: 'admin@example.com', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),

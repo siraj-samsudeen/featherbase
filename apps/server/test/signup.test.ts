@@ -34,7 +34,7 @@ describe('sign up with a username and password', () => {
     await setPasswordMethod({ new_person: 'create' })
     expect((await signUp(api, { username: 'asha', password: 'asha-pw-1', email: 'asha@example.com' })).status).toBe(417)
     expect((await signUp(api, { username: 'asha', password: 'asha-pw-1' })).status).toBe(201)
-    expect((await signUp(api, { username: 'ASHA', password: 'asha-pw-2' })).status).toBe(417) // not a lowercase slug
+    expect((await signUp(api, { username: 'ASHA', password: 'asha-pw-2' })).status).toBe(409) // folded to 'asha', which is taken
     expect((await signUp(api, { username: 'asha', password: 'asha-pw-2' })).status).toBe(409)
     expect((await signUp(api, { username: 'administrator', password: 'x-pw-123' })).status).toBe(417)
     expect((await signUp(api, { username: 'guest', password: 'x-pw-123' })).status).toBe(417)

@@ -318,11 +318,13 @@ Managers only); one row is one provider issuer:
 | `google` | google | `create_if_email_domain_allowed` (default, with `allowed_email_domains`; a company domain must match Google's Workspace claim), `create` or `refuse` |
 | e.g. `stylehr` | delegated_password | `refuse` only — the service cannot vouch for a permanent ID |
 
-Google uses the row's `client_id` (the secret stays `GOOGLE_CLIENT_SECRET`).
-Turning a row off ends the sessions opened through it; Featherbase refuses a
-change that would leave an enabled Administrator or System Manager with no way
-in. **Keep sign-up closed** until what the `All` role can read has been
-audited.
+Google uses the row's `client_id` (the secret stays `GOOGLE_CLIENT_SECRET`);
+only one `password` and one `google` row may exist. Turning a row off ends the
+sessions opened through it. Featherbase refuses any change that would leave an
+enabled Administrator or System Manager with no way in — turning a method off,
+deleting it, blanking Google's client id, or unlinking or moving their link —
+and a delegated link never counts as their way in. **Keep sign-up closed**
+until what the `All` role can read has been audited.
 
 Outside accounts are linked to a person by the provider's permanent ID —
 Google's account ID, the StyleHR employee code — never by email:
@@ -336,9 +338,18 @@ Google's account ID, the StyleHR employee code — never by email:
   ID (sessions survive) or `{"user_id": …}` moves a link to another person in
   one step (a store mailbox at a Store Manager handover).
 - `DELETE /api/identities/<id>` unlinks.
-- People see and manage their own under Admin → Sign-in methods, and can link
-  Google there within 15 minutes of signing in. A test-mode sign-in can change
-  nothing about how the account signs in, set no password and mint no token.
+- Re-posting an identical link answers 200 with it; a clash answers 409 with
+  `fields.clash` (`subject`, `sign_in_name` or `invite`), `fields.identity` and
+  `fields.user`. Every change is in the Activity Log under the administrator
+  who made it.
+- On a **User form**, System Managers have a Sign-in methods panel: link a
+  connected service (employee code + login ID), invite a Google address,
+  unlink. Moving a link is the `PATCH` above.
+- People see and manage their own under **Sign-in methods** (account menu,
+  sidebar, and the sales-target report header), and can link Google there
+  within 15 minutes of signing in. A test-mode sign-in, a preview-link
+  sign-in, and a session from before the upgrade can keep reading but cannot
+  set a password, mint a token, or link or remove a sign-in method.
 
 `GET /api/brand` lists the enabled methods and returns `identity_links: true`,
 which the roster sync checks before writing links.
@@ -364,13 +375,38 @@ To turn it on for StyleHR, as a System Manager, add a Sign In Method row:
 `row_id` `stylehr`, kind `delegated_password`, label `StyleHR`, service URL
 `https://stylehr.in/api/login/` (keep the trailing slash; StyleHR redirects
 without it, and a redirected POST loses its body). Then link each person as
-above. The `stylehr_username` Custom Field, if present, is roster data only; the
+above.
+
+The row's `settings` JSON describes the provider's wire format; anything left
+out takes StyleHR's value: `id_field` / `password_field` (request body names,
+`email` / `password`), `nested_keys`, `success_keys`, `success_flags`,
+`error_keys`, `status_key`, `error_statuses`, and the leaver rules
+`left_date_keys`, `inactive_flags`, `left_status_keys`, `left_words`. Another HR
+system with a different request or answer shape is a new row with its own
+`settings`, not code. The `stylehr_username` Custom Field, if present, is roster data only; the
 upgrade relabels it and sign-in no longer reads it.
 
-**Deploying the upgrade to an instance with a roster sync:** freeze the old
-sync, snapshot the database, rehearse with `pnpm --filter server cli
-identities:plan` (it prints what migration 0100 will do and rolls back), deploy,
-then run the updated sync — people the old sync creates have no StyleHR link.
+**Deploying the upgrade (#275) — mandatory runbook:**
+
+1. Freeze the roster sync (do not run it until step 5).
+2. Run `pnpm --filter server cli identities:plan` against the instance. It is
+   read-only. It lists, by name and id, every email it will clear, every
+   one-time Google invite, everyone **listed for an explicit Google invite**
+   (a real email but never signed in with Google — they are deliberately not
+   invited automatically), and a **parity check**: how many people can sign in
+   today and how many keep a way in, naming each exception. Keep the output.
+3. Snapshot the database, then deploy (migration 0100 runs).
+4. **Right after the deploy, invite every listed person** — User form →
+   Sign-in methods → invite their Google address (or
+   `POST /api/users/<id>/identities {"method":"google","email":…}`). Until then
+   they cannot sign in with Google.
+5. Run the updated roster sync: people the old sync creates have no StyleHR
+   link.
+
+**`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
+linked staff member by employee code, with no password.** Never set it where
+real users sign in, and remove it at the end of the trial. Test-mode sessions
+cannot change access, but they can read everything that person can.
 
 ## Automation credentials (#131)
 

@@ -7,35 +7,35 @@ this change (it modifies requirements they add).
 
 ## 1. Storage and migration
 
-- [x] 1.1 `identities.ts`: `foldName`, reserved-domain test, the `user_identity` and Sign In Method helpers. Migration `0100_person_identities.ts` steps 1–4 and 6–7 (D2, D9, D11): Sign In Method Table + rows copied from System Settings, `user_identity` with constraints, FK to the method key (`on update cascade on delete restrict`) and the email-change trigger, email optional and normalised, duplicate check after clean-up, `user_email_lower_uq`, Custom Field relabel, System Settings columns dropped; `settings.ts` type and defaults trimmed; `document.ts` maps `user_email_lower_uq` to `email` by name. Verify `test/person-identities.test.ts`, `test/sign-in-methods.test.ts`.
-- [x] 1.2 Sign In Method controller: capability validation and the administrator lockout guard (D2). Verify `test/sign-in-methods.test.ts`.
-- [x] 1.3 Migration step 5 (narrow Google invites, delegated identities incl. duplicated login IDs with no sign-in name, skip/list rules) plus `cli identities:plan` dry run. Verify `test/migration-0100.test.ts` with the dev-shaped fixture; re-run is a no-op.
+- [x] 1.1 `identities.ts` (folding, `.invalid` rule, method and identity records); migration 0100: Sign In Method Table + rows from System Settings, `user_identity` with constraints, FK to the method key and the email-change trigger, email optional and normalised, duplicate check after clean-up, `user_email_lower_uq`, Custom Field relabel, System Settings columns dropped, Activity Log `sign_in_method`/`test_mode`; `settings.ts` trimmed; `document.ts` maps `user_email_lower_uq` to `email` by name; `table-engine.ts` refuses a column-level unique on User.email. Verify `test/person-identities.test.ts`, `test/sign-in-methods.test.ts`.
+- [x] 1.2 Sign In Method controller: capability validation, unique kinds, delegated wire-format validation, and the lockout guard counting only usable methods (incl. blanking Google's client id). Verify `test/sign-in-methods.test.ts`, `test/identity-review.test.ts`.
+- [x] 1.3 Read-only `planPersonIdentities` (names, ids, parity check) shared by `cli identities:plan` and the migration; Google invites only for `social_login = 'google'`, on the email or the address-shaped id; delegated key from the provider host and on/off exactly as before; seed emails cleared. Verify `test/migration-0100.test.ts`.
 
 ## 2. Sign-in pipeline
 
-- [x] 2.1 Sessions `{sub, exp, iat, m, idn?, tm?}`, one-query `resolveToken` (method enabled, hash present for password, identity owned), session user carries `{method, testMode, issuedAt}` (D8); password login: username beats email, case-insensitive, ambiguity refused. Verify `test/auth.test.ts`, `test/token-hardening.test.ts`, `test/pre-auth-rate-limit.test.ts`.
-- [x] 2.2 Google adapter keeps `sub` and `hd`; resolution by subject, eligibility before the invite claim, claim with audit (D5), `new_person` rules incl. `hd` (D4); mock provider gains an optional subject. Verify rewritten `test/oauth.test.ts`.
-- [x] 2.3 Delegated adapter through identities: lookup by folded sign-in name before the provider; test mode by folded subject with `tm` sessions; privileged refusal; `left` disables the person (D7); unavailable with no fallback; `method` required with two delegated methods. Verify `test/delegated-login.test.ts`.
-- [x] 2.4 Direct sign-up (no email) and the `SIGNUP` limiter (D10). Verify `test/signup.test.ts`.
+- [x] 2.1 One pipeline (`sign-in.ts` `completeSignIn`) for every kind; sessions `{sub, exp, iat, m, idn?, tm?, pv?}`; one-query `resolveToken`; password verify step (username beats email, dummy scrypt). Verify `test/auth.test.ts`, `test/token-hardening.test.ts`, `test/person-identities.test.ts`.
+- [x] 2.2 Google verify step keeps `sub`/`hd`, drops unverified addresses; resolution by subject, invite claim with eligibility first, `new_person` rules incl. `hd`; race losers re-read; refusal reasons logged. Verify `test/oauth.test.ts`, `test/person-identities.test.ts`, `test/identity-concurrency.test.ts`.
+- [x] 2.3 Delegated verify step with the wire format from `settings` (StyleHR defaults); lookup before the provider; test mode by subject; `left` disables; no fallback; `method` required with two delegated rows. Verify `test/delegated-login.test.ts`, `test/identity-review.test.ts`.
+- [x] 2.4 Direct sign-up (username and password only, folded) through the pipeline, `SIGNUP` limiter. Verify `test/signup.test.ts`.
 
 ## 3. Linking
 
-- [x] 3.1 Admin identity endpoints (list, link, invite, rename/move in one transaction, unlink); unlink and move end `idn` sessions, rename does not. Verify `test/identity-linking.test.ts`.
-- [x] 3.2 Self-link Google (`purpose = link`, `iat` within 15 minutes, collision and foreign-invite refusals); self unlink and remove-password with the user row locked and pending invites not counted; test-mode sessions refused for link, unlink, `/api/set_password` and `/api/access_tokens` (B1). Verify `test/identity-linking.test.ts`, `test/delegated-login.test.ts`, `test/access-tokens.test.ts`.
+- [x] 3.1 Admin identity endpoints (list, link, invite, rename/move, unlink) with 200 on repeats, 409 details, actor-correct audit, and lockout checks on unlink/move. Verify `test/identity-linking.test.ts`, `test/identity-review.test.ts`.
+- [x] 3.2 Self-link Google (fresh session; every outcome explained); self unlink and remove-password under a row lock, privileged delegated links not counted; `assertCanChangeAccess` for test-mode, preview and pre-upgrade sessions on set_password, access tokens, link, unlink, remove-password; first password needs a fresh session. Verify `test/identity-linking.test.ts`, `test/identity-review.test.ts`, `test/identity-concurrency.test.ts`.
 
 ## 4. Email consumers
 
-- [x] 4.1 Stop inventing emails: service accounts, Administrator/Guest seeds (fresh installs), sales-target test accounts; `cli create-user` stores an email only when given one; `admin-bootstrap.ts` unchanged but covered by a test that a fresh Administrator with a hash can sign in. Verify `test/access-tokens.test.ts`, `test/sales-target.test.ts`, `test/cli.test.ts`, `test/admin-bootstrap*.test.ts`.
-- [x] 4.2 Password reset needs both an email and a password; workflow and SLA mails skip recipients without email; `SessionUser.email` nullable. Verify `test/password-reset.test.ts`, `test/workflow-notify.test.ts`, `test/sla.test.ts`, server typecheck.
+- [x] 4.1 No invented emails: service accounts, sales-target viewers, `cli create-user <username>`, the Guest session, the 0005 seeds (cleared by 0100); a fresh Administrator with only a hash signs in. Verify `test/cli.test.ts`, `test/sales-target.test.ts`, `test/identity-linking.test.ts`, `test/identity-review.test.ts`.
+- [x] 4.2 Password reset needs an email and a password; workflow and SLA mails skip people without email and log the count; `SessionUser.email` nullable; mention suggestions show the name. Verify `test/password-reset.test.ts`, `test/workflow-notify.test.ts`, `test/sla.test.ts`, server typecheck.
 
 ## 5. Web
 
-- [x] 5.1 Login page renders methods from `/api/brand` `sign_in_methods`, keeps the test-mode form, shows sign-up when `sign_up_open`. Verify `apps/web/test/delegated-login.test.tsx`, new `apps/web/test/signup.test.tsx`.
-- [x] 5.2 Sign-in methods panel for the signed-in person (list, link Google, remove). Verify `apps/web/test/sign-in-methods.test.tsx`.
-- [x] 5.3 Playwright: update `e2e/oauth.spec.ts` to the Sign In Method row. Verify with the e2e suite.
+- [x] 5.1 Login page from `/api/brand` (Google still offered if it cannot be read), service forms, forgot-password hint, no password toggle when passwords are off, sign-up. Verify `apps/web/test/delegated-login.test.tsx`, `apps/web/test/signup.test.tsx`.
+- [x] 5.2 Sign-in methods page; User-form panel for System Managers; account-menu, sidebar and sales-target links. Verify `apps/web/test/sign-in-methods.test.tsx`.
+- [ ] 5.3 Playwright: `e2e/oauth.spec.ts` on the Sign In Method row, and `e2e/login-methods.spec.ts` (password sign-in → link mock Google → sign in with a changed address, same account). Verify with the CI e2e job (no local browser).
 
 ## 6. Docs and close-out
 
-- [x] 6.1 `docs/DEPLOY.md` (replace the System Settings rows at 338–340 with Sign In Method rows; inviting a Google address; sign-up stays off until the `All` audit; the D11 deploy order) and a dated `PROGRESS.md` entry.
-- [x] 6.2 Gates: server and web typecheck, full server and web suites on an isolated database, web e2e, `pnpm check:specs`, `git diff --check`.
-- [ ] 6.3 File the follow-ups: data-warehouse roster sync (design list), CDC `user_identity` deny/declare, drop `user.social_login`, remove the old `/api/brand` delegated fields, turn the reserved-domain shim into a 417, StyleHR response-subject check, `All`-role audit before sign-up, close `feat/244-provider-identities`.
+- [x] 6.1 `docs/DEPLOY.md` (Sign In Method rows, linking, wire format, the mandatory deploy runbook, the test-mode warning) and `PROGRESS.md`.
+- [ ] 6.2 Gates: server and web typecheck, full server and web suites, web e2e, `pnpm check:specs`, `git diff --check` — green in CI.
+- [ ] 6.3 File the follow-ups: CDC `user_identity` deny/declare, drop `user.social_login`, remove the old `/api/brand` fields, `.invalid` → 417, StyleHR response-subject check, `All`-role audit before sign-up, close `feat/244-provider-identities`. (The roster sync is filed in the data-warehouse repo.)

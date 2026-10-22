@@ -11,7 +11,7 @@ import {
   revokeAccessToken,
   setUserPassword,
 } from '../src/auth'
-import { resolveGoogleSignIn } from '../src/oauth'
+import { resolveVerified } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
 
 // person-identities: Google reaches a principal through a linked account ID.
@@ -21,7 +21,10 @@ async function findOrCreateGoogleUser(user: string, name: string) {
   await sql`insert into user_identity (id, user_id, method, subject, linked_by)
     values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test') on conflict do nothing`
   const method = (await methodOfKind('google'))!
-  return resolveGoogleSignIn(method, { subject, email: '', emailVerified: false, name, hostedDomain: null })
+  // Resolve and check eligibility exactly as the shared pipeline does.
+  const { completeSignIn } = await import('../src/sign-in')
+  void resolveVerified
+  return completeSignIn(method, { status: 'verified', subject, display_name: name }, null)
 }
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { createTable } from '../src/table-engine'

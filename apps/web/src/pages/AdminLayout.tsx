@@ -680,6 +680,15 @@ export function AdminLayout() {
                 >
                   {t('Change password')}
                 </button>
+                <Link
+                  role="menuitem"
+                  to="/featherbase/admin/sign-in-methods"
+                  onClick={() => setAccountOpen(false)}
+                  data-testid="account-sign-in-methods"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  {t('Sign-in methods')}
+                </Link>
                 <button
                   role="menuitem"
                   onClick={logout}

@@ -136,30 +136,37 @@ endpoint); two StyleHR companies would be two rows.
 | `self_link` | people may link this method themselves |
 | `client_id` | Google client id (not a secret; the secret stays `GOOGLE_CLIENT_SECRET`) |
 | `service_url` | delegated provider URL (same https / local-stub rule as today) |
-| `settings` | JSON, kind-specific extras for future kinds (Microsoft tenant, SAML metadata) |
+| `settings` | JSON, kind-specific configuration. Used today by `delegated_password` for the provider's wire format (D3); a future kind keeps its extras here (a Microsoft tenant, SAML metadata) without a schema change |
 
-A controller validates each save against the **adapter's declared
-capabilities**, not a list of kinds:
+A controller validates each save against the **kind's declared
+capabilities** (`KINDS` in `identities.ts`), not a list of kinds:
 
-- `create` needs an adapter that returns a trusted subject (`google`,
+- `create` needs a kind that vouches for a permanent subject (`google`,
   `password`).
-- `create_if_email_domain_allowed` needs an adapter that returns a verified
+- `create_if_email_domain_allowed` needs a kind that returns a verified
   email (`google`).
-- `self_link` needs a trusted subject (`google`); `delegated_password`
-  allows only `new_person = refuse`, `self_link = 0`.
-- Only one row per `password` kind; the `password` row cannot be deleted.
-- **Lockout guard (M5):** turning a method off, or deleting it, is refused
-  while any enabled Administrator/System Manager who has a way in now would
-  have none afterwards. A "way in" is a hash with the password method enabled,
-  or a claimed identity on an enabled non-delegated method (delegated never
-  admits them; pending invites never count). The error names the people.
+- `self_link` needs a trusted subject; `delegated_password` allows only
+  `new_person = refuse`, `self_link = 0`.
+- `password` and `google` are unique kinds: a second row is refused (409).
+  The `password` row cannot be deleted. A method that linked sign-ins still
+  use cannot be deleted (409); turn it off instead.
+- A `delegated_password` row's `settings` must parse as a wire format.
+- **Lockout guard:** turning a method off, deleting it, or blanking Google's
+  `client_id` is refused while any enabled Administrator/System Manager who
+  has a way in now would have none afterwards; so are an administrator's
+  unlink or move of such a person's link. A "way in" counts only methods that
+  can actually sign someone in — enabled, and for Google a client id or the
+  dev mock — and never a delegated link for a privileged person (they never
+  sign in through it) or a pending invite. The error names the people.
 
 Defaults reproduce today exactly: `password` enabled with `new_person =
-refuse` (sign-up closed); `google` enabled iff `google_client_id` was set
-(else disabled; the `ALLOW_MOCK_OAUTH=1` mock serves as `google` when there is
-no `client_id`, as today), `create_if_email_domain_allowed` with the old
-`allowed_login_domains`; the delegated method from `delegated_login_*`, key =
-slug of its label (`stylehr` on dev), `new_person = refuse`, `self_link = 0`.
+refuse` (sign-up closed); `google` enabled, usable when it has a client id
+(or the `ALLOW_MOCK_OAUTH=1` mock), `create_if_email_domain_allowed` with the
+old `allowed_login_domains`. The delegated row is migrated with exactly the
+old on/off state (on only with a usable URL **and** a User column), its key
+taken from the provider host's first label (`stylehr.in` → `stylehr`, not the
+label), `new_person = refuse`, `self_link = 0`, and StyleHR's wire format
+written into `settings`.
 
 `/api/brand` returns `sign_in_methods: [{key, kind, label, test_mode}]`,
 `sign_up_open`, and `identity_links: true` (the marker the roster sync probes,
@@ -169,44 +176,55 @@ follow-up. The System Settings columns `google_client_id`,
 `allowed_login_domains`, `delegated_login_label|url|user_column` are removed
 after their values are copied.
 
-### D3. Adapters return a verified identity; one pipeline does the rest
+### D3. Each kind verifies; one pipeline does the rest
+
+`sign-in.ts` is the one post-verification pipeline. A kind supplies only a
+verify step returning
 
 ```
-adapter.verify(...) -> { subject?, sign_in_name?, email?, email_verified?, hosted_domain?, display_name?, status }
+VerifiedIdentity = { status, subject?, sign_in_name?, email?, email_verified?, display_name?, hosted_domain? }
 status ∈ verified | rejected | left | unavailable
-capabilities: { trustedSubject, verifiedEmail }
 ```
 
-Adapters: `google` (code exchange + userinfo; now keeps `sub` and `hd`),
-`mock` (dev; subject defaults to the typed email, optional `subject` field for
-tests), `delegated_password` (today's `checkWithProvider`, unchanged
-classification), and the password check. None of them reads or writes User.
-One shared pipeline resolves the candidate, checks eligibility, applies the
-policy, stamps `last_used_at`, issues the session (D8) and audits. The User
-model and the pipeline know nothing about StyleHR or Google.
+and `completeSignIn(method, verified, found)` does the rest for every kind:
+status handling (rejected → 401; unavailable → 503 naming the method, never
+another method; left → disable the person, D7), resolving the person (D5:
+linked subject → one-time invite → the method's `new_person` rule), the
+eligibility check, stamping the identity, issuing the session with `m`/`idn`/`tm`
+(D8) and the login audit row (method, test mode). Sign-up ends in the same
+call. Self-linking is `linkVerifiedToSelf`, also kind-neutral.
 
-Resolution and order of checks:
+Verify steps today:
 
-1. **Password** (`/api/login`): one query finds the candidate — an exact User
-   id first, then a case-insensitive User id, then a case-insensitive contact
-   email; **a username always beats an email** (minor 5). Two different
-   people matching at the same level ⇒ the generic 401. Then the hash check.
-2. **Delegated password** (`/api/login/delegated`): `method` is optional
-   when exactly one delegated method is enabled and **required** when two or
-   more are (400 otherwise). The candidate is found by
-   `(method, lower(sign_in_name)) = foldName(typed)` — test mode: by
-   `lower(subject)` — **before** the adapter is asked. No candidate ⇒ 401,
-   password never forwarded.
-3. **Google**: `(google, sub)` linked ⇒ that person. Else a pending invite
-   whose `pending_email` = the **verified** email ⇒ claim (D5). Else the
-   `new_person` rule (D4).
-4. **Eligibility before anything is written**: disabled ⇒ refused; service
-   account ⇒ refused; through a delegated method, the Administrator or any
-   System Manager ⇒ refused like a wrong password. For a Google invite this
-   check runs on the invite's owner **before** the claim, so an invite is
-   never claimed onto a disabled or service account.
-5. **Outcomes**: `left` ⇒ D7; `unavailable` ⇒ 503 and no other method is
-   tried; `rejected` ⇒ 401.
+- **password** (`passwordSignIn`): finds the candidate by typed name — an exact
+  User id, then a case-insensitive id, then a case-insensitive contact email;
+  **a username always beats an email**; two people at the same level answer
+  nobody — then checks the hash. With no candidate it still runs a throwaway
+  scrypt, so timing does not tell names apart.
+- **google** (`exchangeCode`): code exchange + userinfo; keeps `sub` and `hd`;
+  an unverified address is neither stored nor used. The dev mock returns the
+  same shape (optional `subject` and `hd` fields).
+- **delegated_password** (`checkWithProvider`): finds the candidate by its
+  linked sign-in name (test mode: by subject) **before** asking the provider,
+  so an unlinked ID is never forwarded (no oracle). The request field names and
+  every success / error / left rule come from the row's `settings`
+  (`DelegatedWire`), defaulting to StyleHR's values; a second HR provider with
+  a different wire format is a new row, not code. With two or more delegated
+  rows on, the sign-in must name its `method`.
+
+**What a new OIDC provider (e.g. Microsoft) still needs** — stated plainly, not
+built: a `KINDS` entry declaring its capabilities, its verify step (authorize
+URL + code exchange + claims → VerifiedIdentity, including which claim is the
+permanent subject and how its issuer/tenant is checked), and its login,
+callback and link routes (today those three routes are Google's). Everything
+after verification — policies, invites, linking, lockout, sessions, audit,
+the Admin panels — is shared and needs nothing.
+
+Eligibility (shared): disabled ⇒ refused; service account ⇒ refused;
+privileged through a kind with `admitsPrivileged = false` (delegated) ⇒
+refused like a wrong password. For an invite, eligibility runs on its owner
+**before** the claim, so an invite is never claimed onto a disabled or service
+account.
 
 ### D4. Policy for unknown subjects
 
@@ -227,21 +245,26 @@ administrator") — never turned into a link.
 ### D5. Google `sub` bridge for existing Google users — narrow, one-time
 
 We hold only an email for existing Google users. The migration creates a
-**pending Google invite** (`subject NULL`, `pending_email = foldName(email)`)
+**pending Google invite** (`subject NULL`, `pending_email = foldName(address)`)
 **only for users with `social_login = 'google'`** — people who have actually
-signed in with Google — that are human and have a real email after D9's
-clean-up. Everyone else with a real email (e.g. store mailboxes set by the
+signed in with Google. The address is their real email after D9's clean-up,
+or, when the email is empty, their User id if that is an address (old Google
+sign-ups were created with the address as the id; review A-M3). When the id
+and the email are different addresses, the invite is on the email and the
+person is listed in the plan. Everyone else with a real email (e.g. store mailboxes set by the
 roster sync's `--google-emails` but never used) is **listed** in the migration
 report for an explicit administrator invite.
 
-Claiming, on a Google sign-in with verified email E and subject S when
-`(google, S)` is not linked:
+Claiming, on a sign-in with verified email E and subject S when
+`(method, S)` is not linked (any kind with `verifiedEmail`):
 
 - eligibility of the invite's owner first (D3 step 4);
 - then, in one transaction with the invite row locked `for update`: set
   `subject = S`, clear `pending_email`, `linked_by = 'first-sign-in'`;
 - audit `identity_claimed` on the owner with method, subject and time;
-- the unique `(method, subject)` index makes concurrent claims fail cleanly.
+- the unique `(method, subject)` index decides concurrent claims; a loser
+  with the same subject re-reads and signs in as the winner, and concurrent
+  first sign-ins that create a person do the same (review minor 5).
 
 From then on the account is found **only** by S. Administrators undo a claim
 by unlinking (D6).
@@ -267,71 +290,87 @@ after it, it is strictly smaller.
 
 ### D6. Linking and unlinking
 
-Administrator (System Manager) endpoints, all single-transaction:
+Administrator (System Manager) endpoints, each single-transaction; every one
+is audited with the administrator as the actor and the person in the text
+(review B-M1):
 
-- `GET /api/users/:id/identities` — the person's linked identities, pending
-  invites, and a derived `password` entry.
+- `GET /api/users/:id/identities` — the person's linked identities and pending
+  invites, and whether they have a password.
 - `POST /api/users/:id/identities` — `{method, subject, sign_in_name?}` (e.g.
-  StyleHR), or `{method: google, email}` (invite), or `{method: google,
-  subject}`. Collisions ⇒ 409 naming the existing link.
-- `PATCH /api/identities/:identityId` — `{sign_in_name?, user_id?}`: change a
-  StyleHR login ID, or move a link to another person (store mailbox handover),
-  atomically. A rename keeps the identity id, so nobody is signed out; a move
-  ends sessions opened through it for the old owner (D8).
-- `DELETE /api/identities/:identityId` — unlink (also the undo for a claim).
+  StyleHR), `{method: google, email}` (invite) or `{method: google, subject}`.
+  Re-posting the same link or invite answers **200** with it (the roster sync
+  can repeat itself); a new one answers 201; a clash answers **409** with
+  `fields = {clash: subject | sign_in_name | invite, identity, user}`.
+- `PATCH /api/identities/:identityId` — `{sign_in_name?, user_id?}`: rename a
+  StyleHR login ID (the identity id stays, so nobody is signed out) or move a
+  link to another person (store mailbox handover); a move ends sessions opened
+  through it and may not lock out an administrator.
+- `DELETE /api/identities/:identityId` — unlink (also the undo for a claim);
+  may not lock out an administrator.
 
 Self (signed-in person, method `self_link = 1`):
 
 - `GET /api/oauth/google/link` starts the usual state + PKCE flow with
   `purpose = link` and the user id inside the signed state; the callback
-  re-checks the `sid` cookie is that same user, then links `(google, sub)`.
-- Refused when: the session is a test-mode session (D7); the session has no
-  `iat` or is older than 15 minutes ("sign in again first"); the subject is
-  linked to anyone; or another person holds an invite for that verified email.
-- `DELETE /api/me/identities/:identityId` and "remove my password" (clears the
-  hash): refused for test-mode sessions; refused when it would leave no way
-  in. The user row is locked `for update` while counting, so two concurrent
-  removals cannot both pass; pending invites do not count as a way in.
-- Setting your own password (`/api/set_password` on yourself) creates the
-  password method; refused for test-mode sessions.
+  re-checks the `sid` cookie is that same user, then links. Every outcome —
+  including a failed code exchange — returns to the Sign-in methods page as a
+  code it explains (`linked`, `taken`, `reserved`, `sign_in_again`,
+  `not_allowed`, `google_failed`, `wrong_session`).
+- Refused when the session cannot change access (D8), is older than 15
+  minutes, the subject is linked to anyone, or another person holds an invite
+  for that verified email.
+- `DELETE /api/me/identities/:identityId` and `DELETE /api/me/password`:
+  refused for sessions that cannot change access, and when it would leave no
+  working way in. The user row is locked `for update` while counting, so two
+  concurrent removals cannot both pass; pending invites do not count, and for
+  an Administrator or System Manager a delegated link does not count.
+- Setting your own password (`/api/set_password`): refused for sessions that
+  cannot change access; adding a first password needs a sign-in within 15
+  minutes (it adds a way in); changing an existing one does not.
 
 Never auto-link by email. The opt-in per-method "trust verified email" policy
 is documented and deliberately not built.
 
 ### D7. Leaver, outage, test mode
 
-- **Leaver**: when the delegated adapter answers `left`, the pipeline sets the
+- **Leaver**: when a verify step answers `left`, the pipeline sets the
   person's `enabled = false` through the normal row save (so a Version is
-  recorded, history kept), audits `disabled_as_leaver`, and answers today's 403
-  "no longer active". `resolveToken` refuses disabled people, so **every**
+  recorded, history kept), audits `disabled_as_leaver`, and answers 403 "no
+  longer active". `resolveToken` refuses disabled people, so **every**
   session they hold ends on its next request and every other method (password,
   Google) refuses them. Re-enabling is an administrator's decision.
-- **Unavailable**: 503 "not responding … This is not your password" as today;
-  never falls through to the local password or any other method.
+- **Unavailable**: 503 "not responding … This is not your password"; never
+  falls through to the local password or any other method.
 - **Test mode** (`DELEGATED_LOGIN_TEST_MODE=trust-any-password`, env only):
-  the adapter returns `verified` without calling the provider; the candidate is
-  found by `lower(subject) = foldName(typed)`. Disabled, service, unlinked and
-  privileged accounts are still refused. For roster users `subject = row_id =
-  employee code`, so testers type exactly what they type today. **Test-mode
-  sessions carry `tm: true`** and cannot: link or unlink a method, set any
-  password, or mint an access token (B1). This also closes a hole that is live
-  on dev today.
+  the verify step returns `verified` without calling the provider; the
+  candidate is found by `lower(subject) = foldName(typed)`. Disabled, service,
+  unlinked and privileged accounts are still refused. For roster users
+  `subject = row_id = employee code`, so testers type exactly what they type
+  today.
 
 ### D8. Sessions record how they were opened
 
-The session JWT becomes `{sub, exp, iat, m, idn?, tm?}`: `m` = sign-in method
-key, `idn` = identity id (outside providers), `tm` = test mode. `resolveToken`
-keeps one query per request (User left-joined to method and identity) and
-refuses when the User is disabled (today), the method `m` is disabled or gone,
-`m` is the password method and the hash is now NULL, or `idn` no longer exists
-or no longer belongs to `sub`. The session user carries `{method, testMode,
-issuedAt}` so routes can apply D6/D7.
+The session JWT is `{sub, exp, iat, m, idn?, tm?, pv?}`: `m` = sign-in method
+key, `idn` = identity id, `tm` = test mode, `pv` = a dev-preview click-through.
+`resolveToken` keeps one query per request (User left-joined to method and
+identity) and refuses when the User is disabled, the method `m` is disabled or
+gone, `m` is the password method and the hash is now NULL, or `idn` no longer
+exists or no longer belongs to `sub`. The session user carries `sign_in =
+{method, identity, test_mode, preview, issued_at}`.
 
-Tokens issued before the upgrade carry no `m`/`idn`: they stay valid until
-expiry (nobody is signed out by the deploy) and are **not** ended by unlinking
-or disabling a method — only by disabling the person. They count as stale for
-self-linking. Preview-link sessions carry `m = 'preview'` semantics today's
-code already has (no `idn`), and access tokens are unchanged.
+**Sessions that cannot change access** (`assertCanChangeAccess`, reviews B1,
+A-M1, B-M2): a test-mode session, a preview session, and a session minted
+before the upgrade may read but cannot set a password, mint an access token,
+link or unlink a sign-in method, or remove a password. A pre-upgrade token is
+recognised by its missing `iat` — every pre-upgrade token lacks both `iat` and
+`m`, and after the upgrade every sign-in route sets `m` (preview sets `pv`).
+The check keys on `iat` rather than `m` because the test fixtures mint
+method-less sessions for setup calls; in production the two are the same set.
+Access tokens (no `sign_in`) are integration credentials and are unaffected.
+
+Pre-upgrade tokens stay valid for reading until they expire (nobody is
+signed out by the deploy) and are **not** ended by unlinking or turning a
+method off — only by disabling the person.
 
 ### D9. Email: optional, unique where present, never invented
 
@@ -350,38 +389,65 @@ code already has (no `idn`), and access tokens are unchanged.
   during the deploy window. Other reserved names (`example.com`, `.test`) are
   left alone because tests and dev seeds use them as stand-ins for real
   addresses. Follow-up: once the sync is updated, refuse `.invalid` with 417.
-- Code stops inventing: service accounts and the sales-target test accounts
-  get no email. The 0005 seed addresses of Administrator and Guest
-  (`@example.com`) are left as they are (a shipped migration is never edited).
+- Code stops inventing: service accounts, the sales-target test accounts and
+  the in-code Guest session get no email. The 0005 seed addresses of
+  Administrator and Guest (`admin@example.com`, `guest@example.com`) are
+  cleared by migration 0100 (0005 itself is never edited).
 
 ### D10. Direct sign-up
 
 `POST /api/signup {username, password, full_name?}` — **no email in v1**, so
 nobody can squat an address. Public, behind a new `publicLimit('SIGNUP')`
 bucket; 404 unless the `password` method's `new_person = create`. Username:
-`^[a-z0-9][a-z0-9._-]{2,63}$`, not `administrator`/`guest`, not an existing
+`^[a-z0-9][a-z0-9._-]{2,63}$` after folding to lower case (a capital typed by
+habit is folded, not refused), not `administrator`/`guest`, not an existing
 User id (case-insensitive) ⇒ 409 "username taken" (inherent to username
 sign-up; the limiter bounds probing). Password: the same minimum as reset.
-Creates the person with `roles = []`, signs in like `/api/login`. The Login
-page shows "Create an account" only when `sign_up_open`.
+Creates the person with `roles = []` and finishes through the same pipeline
+as every sign-in. The Login page shows "Create an account" only when
+`sign_up_open`.
 
 **Sign-up stays off on every instance until the implicit `All` role has been
 audited** — what every signed-in person can read today must be known before
 strangers can become signed-in people. That audit is a follow-up.
 
-### D11. Deploy window and the roster sync
+### D11. Deploy window, the runbook, and the roster sync
 
 `identity_links: true` in `/api/brand` tells the roster sync the identity API
-exists. Order on dev:
+exists. Order on dev (mandatory runbook, also in DEPLOY.md):
 
 1. Freeze the old roster sync (do not run it).
-2. Snapshot the database; deploy Featherbase (the migration runs).
-3. Run the updated roster sync, which refuses to run unless `/api/brand`
+2. Run `cli identities:plan` against dev. It is read-only and prints, by name
+   and id, every email it will clear, every Google invite, everyone **listed
+   for an explicit invite** (real email, never signed in with Google — review
+   A-M4 keeps them out of the automatic bridge on purpose), and a **parity
+   check**: how many people can sign in today, how many keep a way in, and
+   each exception.
+3. Snapshot the database; deploy Featherbase (the migration runs).
+4. **Immediately invite every listed person** (User form → Sign-in methods →
+   invite, or `POST /api/users/<id>/identities {method:"google", email}`).
+5. Run the updated roster sync, which refuses to run unless `/api/brand`
    reports `identity_links`.
 
-The `stylehr_username` Custom Field (whichever column `delegated_login_user_column`
-named) is relabelled "StyleHR ID (roster copy — sign-in uses linked
-identities)" by the migration; sign-in no longer reads it.
+The old delegated User column's Custom Field (`stylehr_username` on dev) is
+relabelled "<label> ID (roster copy — sign-in uses linked identities)" by the
+migration; sign-in no longer reads it.
+
+### D12. Screens
+
+- **Sign-in methods** (`/featherbase/admin/sign-in-methods`): the signed-in
+  person's password, linked accounts and pending invites, with Remove and
+  "Link a Google account"; reachable from the account menu, the sidebar and
+  the sales-target report header, so a Team Leader can self-link.
+- **User form** (System Managers only): a Sign-in methods panel listing the
+  person's identities and pending invites, with link a connected service
+  (employee code + login ID), invite a Google address, and unlink (with a
+  confirmation). Moving a link stays an API call.
+- **Login page**: buttons for each enabled method from `/api/brand` (Google is
+  still offered if `/api/brand` cannot be read), the delegated form, sign-up
+  when open, a "<service> users reset their password in <service>" hint under
+  Forgot password, and no "use email and password instead" when passwords are
+  off.
 
 ## Use cases walked through
 
@@ -398,32 +464,28 @@ identities)" by the migration; sign-in no longer reads it.
    signed in by StyleHR (not test mode), links Google themselves. Both
    identities point at `RR-7963`.
 
-## Migration (`0100_person_identities.ts`, idempotent, one transaction)
+## Migration (`0100_person_identities.ts`, idempotent)
 
-Prints a summary (counts per step; every skipped or listed row with its
-reason). `cli identities:plan` runs the same code inside a rolled-back
-transaction and prints the same summary.
+`planPersonIdentities()` is read-only and computes the whole plan from the
+data as it is; `cli identities:plan` prints it (no DDL, no exclusive locks).
+`migratePersonIdentities()` computes the same plan first and applies it, so the
+rehearsal and the run cannot disagree. Steps:
 
-1. Create the Sign In Method Table; insert `password`, `google` and (if
-   configured) the delegated method from System Settings (D2).
-2. Create `user_identity`, its indexes, FK, and the email-change trigger.
-3. Email: `reqd = false`, `unique = false`; trim; blank and reserved-domain
-   addresses → NULL.
-4. **Then** the case-insensitive duplicate check: abort, listing them, if two
-   remaining emails collide ignoring case; otherwise swap `user_email_uq` for
-   `user_email_lower_uq`.
-5. Identities (service accounts excluded):
-   - pending Google invites: users with `social_login = 'google'` and a real
-     email, **skipping anyone who already has any Google identity** (so a
-     re-run after a claim is a no-op). Other real-email users are listed.
-   - delegated method: every user with a non-blank old
-     `delegated_login_user_column` value gets `subject = row_id`,
-     `sign_in_name = trim(value)`. When two users share a value (refused with
-     409 at sign-in today), **both are still migrated** with `sign_in_name =
-     NULL` (test mode still finds them by subject) and are reported. Users whose
-     `row_id` is not their employee code are listed for relinking.
-   - No password rows: the hash is the method.
-6. Relabel the old user column's Custom Field (D11).
+1. Abort, listing them, if two addresses would collide ignoring case **after**
+   the clean-up in step 4.
+2. Create the Sign In Method Table and its rows (D2).
+3. Create `user_identity` (indexes, FK to the method key `on update cascade on
+   delete restrict`), the email-change trigger, and two Activity Log columns
+   (`sign_in_method`, `test_mode`) for login rows.
+4. Email: `reqd = false`, `unique = false`; trim; clear blank, `.invalid` and
+   the two 0005 seed addresses; swap `user_email_uq` for `user_email_lower_uq`.
+5. Identities (service accounts excluded): the planned Google invites (D5;
+   anyone who already has a Google identity is skipped, so a re-run after a
+   claim is a no-op) and the planned delegated links (`subject = row_id`,
+   `sign_in_name = trim(value)`; people sharing a login ID — refused at sign-in
+   today — are still linked, with no sign-in name, and reported). No password
+   rows: the hash is the method.
+6. Relabel the old User column's Custom Field (D11).
 7. Drop the five System Settings sign-in columns.
 
 Rollback: forward-fix only; restore the pre-deploy snapshot if needed.
@@ -438,7 +500,8 @@ Rollback: forward-fix only; restore the pre-deploy snapshot if needed.
 | `/api/login/delegated` | unchanged; optional `method`, required with ≥2 delegated methods | none |
 | `/api/set_password`, `/api/access_tokens` | refused for test-mode sessions | none (B1) |
 | Password reset | no email or no password ⇒ silent no-op | in this change |
-| Workflow / SLA mails | recipients without email are skipped | in this change |
+| Workflow / SLA mails | recipients without email are skipped, and the skip count is logged | in this change |
+| Activity log | identity rows record the ACTOR as the user (an administrator's link is theirs) with the target in the operation text; login rows record the method and test mode | in this change |
 | `cli create-user <name> <pw>` | stores `email` only if the argument is an address | in this change |
 | `tenancy.ts` site users | per-site schema, out of scope | none |
 | **Data-warehouse roster sync** | see the list below — **required**, runs right after the deploy | follow-up issue |

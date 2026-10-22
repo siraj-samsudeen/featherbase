@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
-import { login } from '../src/auth'
+import { passwordSignIn as login } from '../src/sign-in'
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'

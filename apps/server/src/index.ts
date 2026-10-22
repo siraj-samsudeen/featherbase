@@ -12,13 +12,14 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertFreshForLinking, assertNotTestMode, getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, INVALID_CREDENTIALS, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, left, linkedUser, unavailable } from './delegated-login'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, resolveGoogleSignIn, linkGoogleToSelf, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
-import { disableLeaver, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, touchIdentity, unlinkIdentity, updateIdentity } from './identities'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -194,7 +195,7 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const issued = await login(usr, pwd)
+  const issued = await passwordSignIn(usr, pwd)
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -218,17 +219,10 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   // Before the provider call: never forward a password that cannot be bound.
   const id = usr.trim()
   const account = await linkedUser(cfg, id)
-  const outcome = await checkWithProvider(cfg, id, pwd)
-  // An outage never falls back to any other way in (person-identities D7).
-  if (outcome === 'unavailable') throw unavailable(cfg)
-  if (outcome === 'rejected') throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
-  if (outcome === 'left') {
-    // Refused everywhere: disabling the person ends every session they hold.
-    await disableLeaver(account.user, cfg.key)
-    throw left(cfg)
-  }
-  await touchIdentity(account.identity)
-  const issued = await issueSession(account.user, { method: cfg.key, identity: account.identity, testMode: delegatedTestMode() })
+  // The shared pipeline (sign-in.ts) does the rest: an outage never falls
+  // back to another way in, and a leaver is disabled everywhere.
+  const status = await checkWithProvider(cfg, id, pwd)
+  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode() })
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -245,7 +239,8 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   if (!method?.enabled || method.new_person !== 'create') return c.notFound()
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   if ('email' in body) throw new AppError('ValidationError', 'Sign-up takes only a username and a password', { email: 'not accepted' })
-  const username = typeof body.username === 'string' ? body.username.trim() : ''
+  // Usernames are lower case; a capital typed by habit is folded, not refused.
+  const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
   const fullName = typeof body.full_name === 'string' && body.full_name.trim() ? body.full_name.trim() : username
   if (!USERNAME_RE.test(username) || ['administrator', 'guest'].includes(username))
@@ -258,7 +253,8 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     await saveDoc('User', { row_id: username, full_name: fullName, enabled: true, roles: [] }, 'Administrator')
     await setUserPassword(username, password)
   })
-  const issued = await issueSession(username, { method: method.key })
+  // The same tail as every other sign-in (sign-in.ts).
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: username, identity: null })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   const landing = await landingFor(session.user.row_id)
@@ -375,7 +371,7 @@ app.on(
   async (c, next) => {
     const path = c.req.param('path') as string
     const user = methodAllowsGuest(path)
-      ? { row_id: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
+      ? { row_id: 'Guest', email: null, full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
     await next()
@@ -495,25 +491,28 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
-  const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
   if (state.purpose === 'link') {
     // person-identities D6: the signed-in person who started this flow links
-    // the Google account they just proved. Outcome travels back as a code.
+    // the Google account they just proved. Every outcome, including a failed
+    // exchange, travels back to the methods page as a code it can explain.
     const back = (result: string) => c.redirect(`/featherbase/admin/sign-in-methods?link=${encodeURIComponent(result)}`)
     try {
+      const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
       const me = await resolveToken(authCredential(c))
       if (me.row_id !== state.uid) return back('wrong_session')
       assertFreshForLinking(me)
       if (!google.self_link) return back('not_allowed')
-      await linkGoogleToSelf(google, me.row_id, verified)
+      await linkVerifiedToSelf(google, me.row_id, verified)
       return back('linked')
     } catch (err) {
-      const e = err as { type?: string; name?: string }
-      return back(e instanceof AppError ? (e.type === 'ConflictError' ? 'taken' : e.type === 'PermissionError' ? 'not_allowed' : 'sign_in_again') : 'failed')
+      if (!(err instanceof AppError)) return back('failed')
+      if (err.type === 'ConflictError') return back(err.message.includes('reserved') ? 'reserved' : 'taken')
+      if (err.type === 'PermissionError') return back('not_allowed')
+      return back(err.message.startsWith('Sign in again') || err.message.includes('session') ? 'sign_in_again' : 'google_failed')
     }
   }
-  const account = await resolveGoogleSignIn(google, verified)
-  const issued = await issueSession(account.user, { method: google.key, identity: account.identity })
+  const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
+  const issued = await completeSignIn(google, verified, null)
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -551,7 +550,8 @@ app.post('/api/oauth/session', async (c) => {
 app.get('/preview', async (c) => {
   const config = previewLogin()
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
-  const issued = await issueSession(config.user)
+  // Marked, so the click-through cannot add lasting access (review B-M2).
+  const issued = await issueSession(config.user, { preview: true })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
@@ -830,12 +830,19 @@ app.get('/api/settings', async (c) => {
 // Set a user's password. A user may set their own; a System Manager may set
 // anyone's. Passwords never travel through the generic document API.
 app.post('/api/set_password', async (c) => {
-  // A test-mode session must not leave a lasting way in behind (review B1).
-  assertNotTestMode(c.get('user'))
+  // A test-mode, preview or pre-upgrade session must not leave a lasting way
+  // in behind (review B1, A-M1, B-M2).
+  assertCanChangeAccess(c.get('user'))
   const { user, password } = (await c.req.json()) as { user?: string; password?: string }
   const target = user ?? who(c)
   if (!password) throw new AppError('ValidationError', 'Expected { password }')
   if (target !== who(c)) await assertSystemManager(who(c))
+  else {
+    // Adding a password where there was none is adding a way in: it needs a
+    // recent sign-in, like linking (review minor 4). Changing one does not.
+    const [mine] = await sql`select password_hash is not null as has from "user" where row_id = ${target}`
+    if (!mine?.has) assertFreshForLinking(c.get('user'))
+  }
   // #131: a service account must never become password-login-able.
   const [targetRow] = await sql`select user_type from "user" where row_id = ${target}`
   if (targetRow?.user_type === 'service')
@@ -856,27 +863,28 @@ app.get('/api/users/:id/identities', async (c) => {
 
 app.post('/api/users/:id/identities', async (c) => {
   await assertSystemManager(who(c))
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
   if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
   const google = await methodOfKind('google')
-  const identity =
+  const { created, ...identity } =
     google && body.method === google.key && !body.subject && body.email
       ? await inviteGoogle(c.req.param('id'), body.email, who(c))
       : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
-  return c.json(identity, 201)
+  // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
+  return c.json(identity, created ? 201 : 200)
 })
 
 app.patch('/api/identities/:identityId', async (c) => {
   await assertSystemManager(who(c))
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   const body = (await c.req.json().catch(() => ({}))) as { sign_in_name?: string | null; user_id?: string }
   return c.json(await updateIdentity(c.req.param('identityId'), { sign_in_name: body.sign_in_name, user_id: body.user_id }, who(c)))
 })
 
 app.delete('/api/identities/:identityId', async (c) => {
   await assertSystemManager(who(c))
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   await getIdentity(c.req.param('identityId'))
   await unlinkIdentity(c.req.param('identityId'), who(c))
   return c.json({ ok: true })
@@ -897,13 +905,13 @@ app.get('/api/me/sign_in_methods', async (c) => {
 })
 
 app.delete('/api/me/identities/:identityId', async (c) => {
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   await unlinkIdentity(c.req.param('identityId'), who(c), { self: who(c) })
   return c.json({ ok: true })
 })
 
 app.delete('/api/me/password', async (c) => {
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   await removeOwnPassword(who(c))
   return c.json({ ok: true })
 })
@@ -926,7 +934,7 @@ app.get('/api/oauth/google/link', async (c) => {
 // own; System Managers can target any principal — and only they see or act
 // on tokens beyond their own.
 app.post('/api/access_tokens', async (c) => {
-  assertNotTestMode(c.get('user'))
+  assertCanChangeAccess(c.get('user'))
   const body = (await c.req.json().catch(() => ({}))) as {
     label?: string
     owner?: string
