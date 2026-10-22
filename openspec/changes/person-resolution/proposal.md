@@ -58,11 +58,14 @@ easy to configure, "exactly like Tableau".
 - **Aadhaar is never stored.** Featherbase keeps a keyed fingerprint for
   duplicate detection and the last four digits for display, with the key
   outside the database and operational controls around it.
-- **Clean start, no backward compatibility** (owner, 22-Oct-2026): the human's
-  record is called **Person** (not User), service accounts get their own
-  table, every person gets an opaque permanent id, and #371's sign-in table is
-  renamed so "identity" (signs in) and "identifier" (does not) are never
-  confused. Dev's trial data is migrated once; prod starts clean.
+- **Clean start, no backward compatibility** (owner, 22-Oct-2026). The
+  structural part — the human's record is called **Person**, service accounts
+  get their own table, every person gets an opaque permanent id, the sign-in
+  table is renamed — is its own change, `person-rename`, which this one
+  stacks on. Here: HR sign-ins are keyed by the HR record number (a trial
+  user's link keeps working by code until the roster supplies it), and the
+  code Custom Fields are dropped in the same step that moves report scoping
+  onto identifiers.
 - **Builds on #371.** A leaver notice from the HR system closes *that* way in
   and disables the person unless the roster shows another current employment;
   an ended way in never opens an account again.
@@ -85,13 +88,13 @@ easy to configure, "exactly like Tableau".
 
 ## Impact
 
-- `apps/server`: the `person` rename and `service_account` split (folded into
-  #371 or a prerequisite change — design §Clean-start); one new system Table
-  (Identifier System); raw tables `person_identifier`,
-  `person_identifier_fingerprint`, `person_match`, `person_match_member`,
-  `person_merge`; `person.replaced_by`/`built_in`; `sign_in_identity.ended_at`;
-  controllers for identifier writes, matching, merge and undo; the sync API;
-  migration `0101` with a one-time data migration of dev.
+- `apps/server`: one new system Table (Identifier System); raw tables
+  `person_identifier`, `person_identifier_fingerprint`, `person_match`,
+  `person_match_member`, `person_merge`; `person.replaced_by`/`built_in`;
+  `sign_in_identity.ended_at`/`subject_kind`; controllers for identifier
+  writes, matching, merge and undo; the sync API; a minimal `/api/health`;
+  migration `0102` (stacked on `person-rename`'s `0101`) with a one-time data
+  migration of dev from the warehouse's record-number file.
 - `apps/web`: an Identifiers panel on the Person form, a Duplicates review
   page, a merge preview, an Identifier System form (generic, basic/Advanced).
 - Outside the repo: the data-warehouse roster sync is rewritten against the

@@ -1,61 +1,48 @@
 # Tasks
 
 Test-first throughout: each task writes its failing tests, then the code, then
-runs the named files. Builds on `person-identities` (#371, merged with M1 and
-the clean-start renames C1/C2/C4) which archives first; this change modifies a
-requirement that one adds, so the validator's "archive would refuse" note
-clears once it is archived. Phases follow D-d. Auto-link is not in this change
-(D-b).
+runs the named files. Stack: `person-identities` (#371, 0100) → `person-rename`
+(0101) → this change (0102). The two earlier changes archive first; this one
+modifies requirements they add, so the validator's "archive would refuse" note
+clears once they are archived. Auto-link is not in this change (D-b).
 
-## Phase 1a — identifiers with history, manual merge, undo (days)
+## Phase 1a-i — identifiers with history (days)
 
-### 1. Foundations
+- [ ] 1.1 `identifiers.ts` (no fingerprinting yet): kind presets, Sensitivity → storage/display/tier incl. Restricted-hidden, normalisation rules, 12-digit + Verhoeff check for `national-id`. Verify `test/identifier-systems.test.ts`, `test/person-identifiers.test.ts`.
+- [ ] 1.2 Migration `0102_person_resolution.ts` (DDL only): `btree_gist`; Identifier System Table + generic rows (`phone`, `email`); roles `Data Quality Manager`, `Identity Sync`; `person_identifier` (+ `record_identifier_id`, exclusion and partial indexes), `person_identifier_fingerprint`, `person_match`, `person_match_member`, `person_merge`; `person.replaced_by` + check, `built_in`; `sign_in_identity.ended_at`, `ended_reason`, `subject_kind`, partial unique indexes; `sign_in_method.identifier_system`; core `people_review` default. Verify `test/migration-0102.test.ts` (idempotent).
+- [ ] 1.3 Seed pack `seeds/jeyarama/identifier-systems.json` (`stylehr-employee-id`, `stylehr-employee-code`, Jeyarama `people_review`) + `cli seed-pack apply`. Verify `test/identifier-systems.test.ts`.
+- [ ] 1.4 Identifier System controller: `match ≠ Off ⇒ one_holder off`; Secret consistency; delete/flag refusals; flag changes re-stamp rows; `identifier_system` on Sign In Method. Verify `test/identifier-systems.test.ts`.
+- [ ] 1.5 Person Identifier controller + routes (`GET|POST /api/people/:id/identifiers`, `PATCH|DELETE /api/identifiers/:id`): half-open periods, exclusion by assigner, one per person, `verified`, `record_identifier_id`, `edited_by`, display/tier (hidden), search by value, unchanged writes silent, errors without values; Person id rename refused; `replaced_by`/`built_in` semantics incl. pickers. Verify `test/person-identifiers.test.ts`, `test/auth.test.ts`.
+- [ ] 1.6 Dev data migration + `cli people:plan`: code rows from the `employee_code` Custom Field (`assigner ''`), `record_identifier_id` and StyleHR subjects from `stylehr_record_ids.csv`, unresolved kept working (`subject_kind = employee-code`) and listed; `email` rows; plan parity. Verify `test/migration-0102.test.ts`.
+- [ ] 1.7 Write-through `sign_in_identity` → identifiers; ended identities (partial indexes, lookups filter, unlink ends, move ends + inserts and closes/opens `email` rows); leaver rule by record (same-firm case); test mode (ambiguous refused, live identity required, production boot refused). Verify `test/identity-linking.test.ts`, `test/delegated-login.test.ts`, `test/token-hardening.test.ts`.
+- [ ] 1.8 **In one task:** `sales-target.ts` scoping on current identifier rows — (assigner, code) or record number, several codes, ambiguous ⇒ `no_assignment` + structured log — **and** drop the `employee_code`/`stylehr_username` Custom Fields in 0102's data step. Verify `test/sales-target.test.ts`, `test/migration-0102.test.ts`.
+- [ ] 1.9 Web: Identifier System form (basic/Advanced, revert, disabled options); Identifiers panel on the Person form (display rule, unresolved-sign-in note, banners). Verify `apps/web/test/identifiers-panel.test.tsx`.
 
-- [ ] 1.1 `identifiers.ts`: kind presets, Sensitivity → storage/display/tier, normalisation rules (`trim`/`lower`/`upper`/`digits`/`indian-mobile`), Verhoeff check, fingerprint with `IDENTIFIER_FINGERPRINT_KEY` (key id, key-check value, startup check, per-identifier `fingerprint_unavailable`, never a plain hash), hint = last 4, request-log redaction for Secret systems, `isPrivileged(principal)` helper used everywhere. Verify `test/person-identifiers.test.ts`, `test/identifier-systems.test.ts`.
-- [ ] 1.2 Migration `0101_person_resolution.ts` (stacked on `0100` and the `person` rename): Identifier System Table + the two generic rows; `Data Quality Manager` and `Identity Sync` roles; `service_account` with rows and roles moved out of `person`; `person_identifier`, `person_identifier_fingerprint`, `person_match`, `person_match_member`, `person_merge` with the exclusion and partial indexes; `person.replaced_by` + check, `person.built_in`; `sign_in_identity.ended_at`/`ended_reason` and partial unique indexes; `sign_in_method.identifier_system`; `people_review` setting. Verify `test/migration-0101.test.ts` (DDL, idempotent).
-- [ ] 1.3 Dev data migration + `cli people:plan`: mint `psn_` ids and rewrite references; code rows from the `employee_code` Custom Field (never the old subject); StyleHR subjects → record numbers from the resolve file, unresolved sign-ins ended and listed; `email` rows; drop both Custom Fields; plan parity. Verify `test/migration-0101.test.ts`.
-- [ ] 1.4 Seed pack `seeds/jeyarama/identifier-systems.json` + `cli seed-pack apply` (idempotent). Verify `test/identifier-systems.test.ts`.
+## Phase 1a-ii — manual merge and undo
 
-### 2. Identifier System and Person Identifier
+- [ ] 2.1 Merge preview: configured survivor rule; survivorship; effective access per table (gains and losses, fail-closed default); refusals (different strong identifiers with erased = unknown and Admin override note; privileged role or way in incl. tokens; party to the merge; replaced or built-in); picker excludes replaced/built-in. Verify `test/person-merge.test.ts`.
+- [ ] 2.2 Merge: registry (merge mode) incl. `access_token` by principal under the privileged-way-in rule, invite-vs-identity rule, completeness test, deletions logged, loser emptied + `replaced_by`, chains repointed, email cleared, locks in order with re-check and 409 on a concurrent merge, `person_merge` row, result summary. Verify `test/person-merge.test.ts`.
+- [ ] 2.3 Undo: dry-run preview, compare-and-set, recreate deletions, restore `enabled`/`email`, repoint back, leftovers with Mark handled (note), blocked/allowed rules, cannot be redone (confirm text), group left to the steward. Verify `test/person-merge.test.ts`.
+- [ ] 2.4 Web: "Merge into…", preview with acknowledgement, result summary with survivor link and Undo shortcut, global merge History with Undo and leftovers, Undo on the replaced banner. Verify `apps/web/test/merge.test.tsx`.
 
-- [ ] 2.1 Identifier System controller: `match ≠ Off ⇒ one_holder off`; Secret consistency; no delete while in use; one-holder on refused while duplicates exist; flag changes re-stamp rows; `sign_in_method.identifier_system` validation. Verify `test/identifier-systems.test.ts`.
-- [ ] 2.2 Person Identifier controller and routes (`GET|POST /api/people/:id/identifiers`, `PATCH|DELETE /api/identifiers/:id` for end/correct): half-open periods, exclusion by assigner, one per person, `verified`, `edited_by` enforcement (source read-only; reviewers; self), display/tier filtering, search by value / hint / fingerprint with audit and rate limit, no log on unchanged writes, errors without values. Verify `test/person-identifiers.test.ts`.
-- [ ] 2.3 Person id immutability guard; `replaced_by` semantics (cannot sign in, cannot be picked, resolves to survivor, writes redirect with a resolve key or 409); `built_in` rules. Verify `test/person-identifiers.test.ts`, `test/auth.test.ts`.
+## Phase 1b — Secret storage, Sync API v1, groups, review screen, health
 
-### 3. Sign-in write-through, ended identities, leaver rule
-
-- [ ] 3.1 Write-through `sign_in_identity` → `person_identifier` (link, move, unlink ⇒ open/close rows); Google identities write `email` rows; sign-in never reads the copy except dev test mode (code → identifier → person), pinned. Verify `test/identity-linking.test.ts`, `test/person-identifiers.test.ts`.
-- [ ] 3.2 Ended identities: partial indexes; `linkedBySubject`, `linkedUser`, `resolveToken` add `ended_at is null`; unlink ends; move ends + inserts and closes/opens `email` rows; an ended identity never opens an account. Verify `test/identity-linking.test.ts`, `test/delegated-login.test.ts`, `test/token-hardening.test.ts`.
-- [ ] 3.3 Leaver rule: `left` ends the identity; liveness from roster-fed current employment rows (other assigner); unknown ⇒ disable as #371. Verify `test/delegated-login.test.ts`.
-
-### 4. Manual merge and undo
-
-- [ ] 4.1 Merge preview (`POST /api/people/merge?preview=1`): configured survivor rule, survivorship, effective access per table (gains and losses, fail-closed scope default), refusals (different strong identifiers with Admin override note, privileged role or way-in, party to the merge, replaced or built-in). Verify `test/person-merge.test.ts`.
-- [ ] 4.2 Merge: handler registry (metadata References, Dynamic References, raw tables, JSON paths, history "not rewritten"), **completeness test** over `pg_constraint` + metadata; deletions logged; loser emptied + `replaced_by`; chains repointed; email cleared; locks in order with re-check; Person Merge row; Activity Log on both. Verify `test/person-merge.test.ts`.
-- [ ] 4.3 Undo (`POST /api/people/merge/:id/undo`): compare-and-set, recreate deletions, restore `enabled` and `email`, repoint back, leftovers listed, blocked by a later re-merge, allowed past an unrelated later merge, cluster left to the steward. Verify `test/person-merge.test.ts`.
-
-### 5. Sync API, report scoping, web, docs
-
-- [ ] 5.1 Sync API (D11): `identifiers:bulk` (upsert/refingerprint, `create_missing`, idempotent, redirect, per-row results), `sign-ins:bulk`, `resolve`; `Identity Sync` role limits; `sales-target.ts` scoping reads current codes from identifier rows. Verify `test/sync-api.test.ts`, `test/sales-target.test.ts`.
-- [ ] 5.2 Web: Identifier System form (basic/Advanced, revert, disabled options); Identifiers panel on the Person form (display rule, banners, "Merge into…", merge preview with acknowledgement, History with Undo and leftovers). Verify `apps/web/test/identifiers-panel.test.tsx`, `apps/web/test/merge.test.tsx`.
-- [ ] 5.3 `docs/DEPLOY.md` (Identifier System rows, seed pack, the key and its offline backup, the deploy order with post-deploy counts, the reviewer and sync roles, the endpoints); `CONTEXT.md` glossary (person, sign-in identity, identifier, identifier system, cluster, merge, replaced record); `PROGRESS.md`.
-- [ ] 5.4 Gates: server and web typecheck, full suites, `pnpm check:specs`, `git diff --check`. File the follow-ups: data-warehouse roster sync against D11 (#4336), CDC registration (D10), the bronze Aadhaar exposure (D8), the lawyer review, the owner decision on direct StyleHR Aadhaar access.
-
-## Phase 1b — suggestions as clusters, Aadhaar fingerprinting, review screen
-
-- [ ] 6.1 Match detection on identifier write (exact normalised value / fingerprint, same system and assigner, different persons, verified rows, policy ≠ Off): clusters with members, strength (3+ = weak suspicious group), sticky `not-the-same-person` with reopen on a stronger reason, `later`, `withdrawn`, decisions carried to the survivor, re-run after merge/undo, daily cap with `deferred`. Verify `test/person-matches.test.ts`.
-- [ ] 6.2 Reopen endpoint; scheduled re-scan (policy change + weekly), snooze expiry, erasure job; `/api/health` fingerprint indicator; gauges and counters (D13). Verify `test/person-matches.test.ts`, `test/jobs.test.ts`.
-- [ ] 6.3 Duplicates screen: configured columns, side-by-side members, Merge / Not the same person / Later, header counts, Reopened filter. Verify `apps/web/test/duplicates.test.tsx`.
-- [ ] 6.4 Playwright `e2e/person-resolution.spec.ts`: sync-shaped set-up → cluster → merge → sign in through the merged-away StyleHR login opens the survivor → undo → ended identity does not open the loser.
+- [ ] 3.1 Fingerprinting: `IDENTIFIER_FINGERPRINT_KEY`, key id + key-check, startup check, per-identifier `fingerprint_unavailable`, request-log redaction, fingerprint table only + **mirror test**, search by fingerprint (audited, rate-limited), erasure job, `refingerprint`; `aadhaar` seed row added to the pack. Verify `test/person-identifiers.test.ts`, `test/identifier-systems.test.ts`.
+- [ ] 3.2 Sync API v1 (D11): `identifiers:bulk` (500-row cap, per-row transactions, every result/error code, rehire vs correction, unchanged, adopt `''`, `create_missing` limited to the fed list with duplicate warning, leaver via closing the last live record), `sign-ins:bulk` (subject resolution), `resolve`; `Identity Sync` limits. Verify `test/sync-api.test.ts`.
+- [ ] 3.3 Groups: anchor-keyed clusters on verified values; strength rules (2 national-id; non-overlapping chain strong; overlapping 3+ weak); sticky with reopen on stronger reason or new member; reopen endpoint; `later`; `withdrawn`; carry to survivor; re-run after merge/undo; daily cap, strong promoted first. Verify `test/person-matches.test.ts`.
+- [ ] 3.4 `/api/health` (key status, group counts, chain length, job status), structured log events, Activity Log counters; scheduled re-scan (policy change + weekly), snooze expiry, erasure. Verify `test/health.test.ts`, `test/jobs.test.ts`.
+- [ ] 3.5 Duplicates screen (configured columns, side by side, Merge / Not the same person / Later, header counts, Reopened filter). Verify `apps/web/test/duplicates.test.tsx`.
+- [ ] 3.6 Playwright `e2e/person-resolution.spec.ts`: set-up → group → merge → merged-away StyleHR login opens the survivor → undo → ended identity refused.
+- [ ] 3.7 `docs/DEPLOY.md` (btree_gist, seed pack, resolve file, key + offline backup, order, post-deploy counts, erasure trade-off), `CONTEXT.md` glossary, `PROGRESS.md`; gates (typecheck, suites, `pnpm check:specs`, `git diff --check`); follow-ups filed: data-warehouse#4336 (sync + resolve file + CDC registration + daily-loading checks), the bronze Aadhaar exposure, the lawyer review, the owner decision on direct StyleHR Aadhaar access.
 
 ## Phase 2 — workforce, lanes and bulk, warehouse, period scoping, auto-link
 
-- [ ] 7.1 Workforce population (~30k persons without sign-in) through the sync with `create_missing`; review lanes and bulk confirm for clean conversions.
-- [ ] 7.2 Warehouse: CDC registration with the denies; `gold.hr.person` with `canonical_person_id`; `gold.hr.person_identifier`; period joins as-of the fact date (data-warehouse repo).
-- [ ] 7.3 `sales-target.ts` scoping by codes valid in the report period (#4332 C1).
-- [ ] 7.4 Auto-link per D7 (second signal, baseline-role gate, off by default, undoable), after the undo rate on clean conversions has stayed at zero.
+- [ ] 4.1 Workforce population (~30k persons) via the sync; review lanes and bulk confirm.
+- [ ] 4.2 Warehouse: `gold.hr.person` with `canonical_person_id`, `gold.hr.person_identifier`, period joins (data-warehouse).
+- [ ] 4.3 Sales-target scoping by codes valid in the report period (#4332 C1).
+- [ ] 4.4 Auto-link per D7, after the undo rate on clean conversions has stayed at zero.
 
-## Phase 3 — fuzzy suggestions and review ergonomics
+## Phase 3
 
-- [ ] 8.1 Name + date-of-birth suggestions (weak only), backlog cap, weekly digest.
-- [ ] 8.2 Per-field survivorship choices in the preview.
+- [ ] 5.1 Fuzzy name + date-of-birth suggestions (weak only), backlog cap, weekly digest.
+- [ ] 5.2 Per-field survivorship choices in the preview.
