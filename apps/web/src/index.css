@@ -139,6 +139,8 @@
 
 /* Ivory — warm paper neutrals, clay accent (Anthropic-inspired). */
 [data-palette='ivory'] {
+  /* Shop Floor role the warm canvas would otherwise drop below 4.5:1; goes with the palette in stage 3. */
+  --color-positive: #13763a;
   --color-canvas: #f2efe9;
   --color-surface: #fbfaf7;
   --color-subtle: #f5f2ec;
@@ -166,6 +168,7 @@
   --radius-control: 0.5rem;
 }
 [data-palette='ivory'][data-theme='dark'] {
+  --color-positive: #4ade80; /* undo the light-only override above */
   --color-canvas: #1f1c17;
   --color-surface: #282420;
   --color-subtle: #2e2a24;

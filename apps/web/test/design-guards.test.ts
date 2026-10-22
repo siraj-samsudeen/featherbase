@@ -36,6 +36,24 @@ const light = colourBlock('@theme {')
 // The dark block proper; palette-compound selectors are not the default theme.
 const dark = { ...light, ...colourBlock("\n[data-theme='dark'] {") }
 
+// Until stage 3 removes the palette choice, every selectable palette must pass
+// too. Cascade order in index.css: the default tokens, then dark, then the
+// palette's own block (same specificity as dark, later in the file), then the
+// palette's dark block (two attributes, most specific).
+const PALETTES = ['ivory', 'graphite', 'indigo']
+const themes: [string, Record<string, string>][] = [
+  ['light', light],
+  ['dark', dark],
+  ...PALETTES.flatMap((p): [string, Record<string, string>][] => {
+    const own = colourBlock(`[data-palette='${p}'] {`)
+    const ownDark = colourBlock(`[data-palette='${p}'][data-theme='dark'] {`)
+    return [
+      [`${p} light`, { ...light, ...own }],
+      [`${p} dark`, { ...dark, ...own, ...ownDark }],
+    ]
+  }),
+]
+
 function luminance(hex: string): number {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
   const [r, g, b] = c.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4))
@@ -57,10 +75,7 @@ const SURFACES = ['surface', 'canvas', 'subtle']
 const TEXT = ['ink', 'ink-muted', 'ink-subtle', 'action', 'negative', 'caution', 'positive', 'opportunity', 'missing']
 const MEANING = ['negative', 'caution', 'positive', 'opportunity', 'missing']
 
-describe.each([
-  ['light', light],
-  ['dark', dark],
-] as const)('%s tokens', (_mode, t) => {
+describe.each(themes)('%s tokens', (_mode, t) => {
   test('define every role', () => {
     expect(ROLES.filter((r) => !t[r])).toEqual([])
   })
@@ -103,6 +118,16 @@ const RULES: Record<string, RegExp> = {
 const RULE_EXEMPT: Record<string, string[]> = {
   'browser-locale formatting': ['src/lib/inr.ts'],
 }
+
+describe('the literal-colour rule', () => {
+  const rule = RULES['literal colour']
+  test.each([`bg-[#fff]`, `fill="#2490ef"`, `color: '#abc'`, '`#1c2126`'])('catches %s', (s) => {
+    expect(s.match(rule)).not.toBeNull()
+  })
+  test.each([`(#380)`, `see #150 for why`, `PR #92 review`, `href="/x#anchor"`])('ignores %s', (s) => {
+    expect(s.match(rule)).toBeNull()
+  })
+})
 
 function sources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
