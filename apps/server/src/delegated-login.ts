@@ -308,9 +308,15 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
  *  current on two people is refused and neither is chosen; and the person
  *  must have a live, not-ended link to this service. */
 async function testModeUser(cfg: DelegatedLoginConfig, typed: string): Promise<{ user: string; identity: string | null }> {
+  // The method's own employee-code system: the employee-record system fed by
+  // the same roster as the record numbers its sign-ins carry (StyleHR →
+  // stylehr-employee-code). A code from any other namespace is not a
+  // credential for this method (Codex review on #385).
   const holders = await sql`
     select distinct i.person_id from person_identifier i
-    join identifier_system s on s.row_id = i.system and s.kind = 'employee-record' and s.enabled
+    join identifier_system c on c.row_id = i.system and c.kind = 'employee-record' and c.enabled
+    join identifier_system r on r.source = c.source and r.kind = 'external-record'
+    join sign_in_method m on m.identifier_system = r.row_id and m.row_id = ${cfg.key}
     where i.value = upper(trim(${typed})) and upper_inf(i.valid)`
   if (holders.length > 1)
     throw new AppError('ConflictError', `This employee code is current on more than one person. Contact your administrator.`)

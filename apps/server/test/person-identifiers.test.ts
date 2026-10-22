@@ -120,6 +120,27 @@ describe('ending and removing (Codex review on #385)', () => {
   })
 })
 
+describe('dates and audit (Codex review on #385)', () => {
+  test('an impossible calendar date is a field error, not a database error', async () => {
+    const p = await makePerson({ full_name: 'Dates' })
+    await expect(addIdentifier(p, { system: 'phone', value: '9847012345', valid_from: '2026-02-30' }, 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError', fields: { valid_from: expect.any(String) },
+    })
+    const { identifier } = await addIdentifier(p, { system: 'phone', value: '9847012345', valid_from: '2026-02-01' }, 'Administrator')
+    await expect(updateIdentifier(identifier.id, { valid_to: '2026-04-31' }, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('a search of restricted values is recorded without the value', async ({ admin }) => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Searched' })
+    await addIdentifier(p, { system: 'stylehr-employee-id', value: '77001' }, 'sync', ROSTER)
+    await admin.get('/api/identifiers?system=stylehr-employee-id&value=77001')
+    const rows = await sql`select operation from activity_log where "user" = 'Administrator' and operation like 'identifier_search%' order by created_at desc limit 1`
+    expect(rows).toEqual([{ operation: 'identifier_search stylehr-employee-id' }])
+    expect(await sql`select 1 from activity_log where operation like '%77001%'`).toHaveLength(0)
+  })
+})
+
 describe('who sees what', () => {
   test('restricted values are shown only to restricted readers; hidden ones never in a panel, but found by exact value', async ({ admin, createUser }) => {
     await applySeedPack('jeyarama')

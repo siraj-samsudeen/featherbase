@@ -87,7 +87,9 @@ const rowFieldsOf = (db: Db) => db`
 function isoDate(v: unknown, field: string): string | null {
   if (v == null || v === '') return null
   const s = String(v)
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s)))
+  // A real calendar day only: 2026-02-30 must not roll over into March.
+  const parsed = new Date(`${s}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== s)
     throw new AppError('ValidationError', `${field} must be a date (YYYY-MM-DD)`, { [field]: 'a date' })
   return s
 }
@@ -236,6 +238,9 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
     throw new AppError('ValidationError', 'Searching this identifier needs fingerprinting, which is not switched on', { code: 'fingerprint_unavailable' })
   if (s.tier === 'restricted' && !(await readsRestricted(viewer))) throw new AppError('PermissionError', `You may not search ${system.label}`)
   const value = normaliseValue(raw, system.normalise, system.kind)
+  // A search of restricted values is recorded — who, which system, when —
+  // never the value typed (D3).
+  if (s.tier === 'restricted') await logActivity(viewer, `identifier_search ${system.row_id}`)
   const rows = await sql`
     select i.person_id, coalesce(p.replaced_by, i.person_id) as resolved_to, p.replaced_by is not null as replaced,
       upper_inf(i.valid) as current, i.assigner

@@ -471,6 +471,19 @@ describe('delegated sign-in test mode', () => {
     expect((await signIn(api, other.user!, '')).status).toBe(401)
   })
 
+  test('only the method’s own employee-code system is a test-mode credential (Codex review on #385)', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.other.code@example.com' })
+    await link(tl.user!, 'tl_other_code')
+    // A code from another payroll namespace is not a StyleHR credential.
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'other-payroll-code', label: 'Other payroll', kind: 'employee-record', source: 'other-payroll' } })
+    await sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
+      values ('pid_other_payroll', ${tl.user!}, 'other-payroll-code', '', 'OP-1', true, true, 'test', 'test')`
+    expect((await signIn(api, 'OP-1', '')).status).toBe(401)
+    expect((await signIn(api, tl.user!, '')).status).toBe(200)
+  })
+
   test('a server that is not development or test refuses to start with test mode set', async () => {
     const { assertTestModeAllowed } = await import('../src/delegated-login')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
