@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           .map((t) => (
             <ToastCard key={t.id} toast={t} dismiss={dismiss} />
           ))}
-        <div role="status" aria-live="polite" className="flex flex-col gap-2">
+        <div role="status" aria-live="polite" aria-atomic="false" className="flex flex-col gap-2">
           {toasts
             .filter((t) => t.tone !== 'negative')
             .map((t) => (

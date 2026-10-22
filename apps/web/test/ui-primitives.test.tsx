@@ -171,6 +171,8 @@ describe('Toast', () => {
     )
     const live = within(screen.getByRole('region', { name: 'Notifications' })).getByRole('status')
     expect(live).toHaveAttribute('aria-live', 'polite')
+    // Not atomic: a second toast is announced alone, not the whole stack again.
+    expect(live).toHaveAttribute('aria-atomic', 'false')
     expect(live).toBeEmptyDOMElement()
     await userEvent.click(screen.getByRole('button', { name: 'Go' }))
     expect(within(live).getByText('Row saved')).toBeInTheDocument()
