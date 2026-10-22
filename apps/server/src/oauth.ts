@@ -59,6 +59,18 @@ function pack(obj: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify({ ...obj, exp: Math.floor(Date.now() / 1000) + 600 })).toString('base64url')
   return `${body}.${hmac(body)}`
 }
+/** Which flow a callback's state CLAIMS to belong to, without trusting it:
+ *  used only to choose where an error is shown (a link attempt goes back to
+ *  the Sign-in methods page). Every action still requires verifyState. */
+export function claimedPurpose(state: string | undefined): string | undefined {
+  try {
+    const obj = JSON.parse(Buffer.from(String(state ?? '').split('.')[0] ?? '', 'base64url').toString()) as { purpose?: unknown }
+    return typeof obj.purpose === 'string' ? obj.purpose : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function unpack(token: string): Record<string, unknown> {
   const [body, sig] = token.split('.')
   if (!body || !sig) throw new AppError('AuthenticationError', 'Malformed token')

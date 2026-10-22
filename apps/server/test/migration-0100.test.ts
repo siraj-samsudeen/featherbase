@@ -147,4 +147,23 @@ describe('migration 0100: person + linked identities', () => {
       ('ph-a', 'X@staff.jeyarama.invalid', true, now(), now()), ('ph-b', 'x@staff.jeyarama.invalid', true, now(), now())`
     await expect(migratePersonIdentities()).rejects.toThrow(/dup@jeyarama\.com: dup-a, dup-b/)
   })
+
+  // Review: the rehearsal must predict the run exactly.
+  test("the plan's counts equal what the migration does", async () => {
+    await preUpgradeShape()
+    const plan = await planPersonIdentities()
+    const before = await sql`select
+      (select count(*) from "user" where email is not null)::int as emails,
+      (select count(*) from user_identity where subject is null)::int as invites,
+      (select count(*) from user_identity where method = 'stylehr')::int as delegated`
+    await migratePersonIdentities()
+    const after = await sql`select
+      (select count(*) from "user" where email is not null)::int as emails,
+      (select count(*) from user_identity where subject is null)::int as invites,
+      (select count(*) from user_identity where method = 'stylehr')::int as delegated`
+    expect(before[0].emails - after[0].emails).toBe(plan.emailsCleared.length)
+    expect(after[0].invites - before[0].invites).toBe(plan.googleInvites.length)
+    expect(after[0].delegated - before[0].delegated).toBe(plan.delegatedLinks.length)
+    expect(plan.seedEmailsCleared.map((p) => p.row_id)).toEqual(['Administrator'])
+  })
 })

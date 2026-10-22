@@ -18,7 +18,7 @@ import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } f
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -480,6 +480,20 @@ app.get('/api/oauth/mock/approve', async (c) => {
 })
 
 app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
+  try {
+    return await googleCallback(c)
+  } catch (err) {
+    // A link attempt that fails before its state is verified (expired, another
+    // browser, Google turned off) still lands on a page that explains it,
+    // never raw JSON. Sign-in failures keep their status (pinned by tests).
+    if (claimedPurpose(c.req.query('state')) !== 'link') throw err
+    clearLoginChallengeCookies(c)
+    const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
+    return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
+  }
+})
+
+async function googleCallback(c: Context) {
   const google = await googleAvailable()
   if (!google) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
   const clientId = google.client_id
@@ -523,7 +537,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
-})
+}
 
 // #150: the other half of the handoff. Public — the code IS the credential,
 // alongside the sid cookie set by the callback that minted it, and the session
@@ -858,7 +872,10 @@ app.get('/api/users/:id/identities', async (c) => {
   const user = c.req.param('id')
   const [row] = await sql`select (password_hash is not null) as has_password from "user" where row_id = ${user}`
   if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
-  return c.json({ identities: await listIdentities(user), has_password: row.has_password === true })
+  // Every method row, turned off or not, so an identity on a disabled method
+  // still shows its name on the User form.
+  const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
+  return c.json({ identities: await listIdentities(user), has_password: row.has_password === true, methods })
 })
 
 app.post('/api/users/:id/identities', async (c) => {

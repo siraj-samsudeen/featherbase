@@ -70,3 +70,31 @@ test('the account menu leads to sign-in methods', async ({ admin }) => {
   await userEvent.click(await screen.findByTestId('session-user'))
   expect(await screen.findByTestId('account-sign-in-methods')).toHaveAttribute('href', '/featherbase/admin/sign-in-methods')
 })
+
+// Third review round: a refused link keeps what was typed; a link on a
+// turned-off method is still named.
+test('a refused link keeps the form; a link on a turned-off method is labelled', async ({ admin, createUser }) => {
+  await configureDelegated()
+  const taken = await createUser({ email: 'tl.taken@example.com' })
+  await linkDelegated(taken.user!, 'tl_taken', { subject: 'RR-5000' })
+  const tl = await createUser({ email: 'tl.form@example.com' })
+  await renderApp(`/featherbase/admin/User/${encodeURIComponent(tl.user!)}`, admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  const link = await within(panel).findByTestId('link-delegated-form')
+  await userEvent.type(within(link).getByLabelText('Employee code'), 'RR-5000')
+  await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
+  expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('already linked')
+  expect(within(link).getByLabelText('Employee code')).toHaveValue('RR-5000')
+
+})
+
+test('a link on a turned-off method is still named on the User form', async ({ admin, createUser }) => {
+  await configureDelegated()
+  const tl = await createUser({ email: 'tl.off@example.com' })
+  await linkDelegated(tl.user!, 'tl_off')
+  const { sql } = await import('server/src/db')
+  await sql`update sign_in_method set enabled = false where row_id = 'stylehr'`
+  await renderApp(`/featherbase/admin/User/${encodeURIComponent(tl.user!)}`, admin)
+  const panel = await screen.findByTestId('user-sign-in-methods')
+  await waitFor(() => expect(panel).toHaveTextContent('StyleHR (turned off)'))
+})

@@ -31,7 +31,10 @@ export function UserSignInMethods({ user }: { user: string }) {
   const { data } = useQuery({
     queryKey: key,
     enabled: isManager,
-    queryFn: () => api.get<{ identities: AdminIdentity[]; has_password: boolean }>(`/api/users/${encodeURIComponent(user)}/identities`),
+    queryFn: () =>
+      api.get<{ identities: AdminIdentity[]; has_password: boolean; methods: (MethodInfo & { enabled: boolean })[] }>(
+        `/api/users/${encodeURIComponent(user)}/identities`,
+      ),
   })
   const methods = useQuery({
     queryKey: ['sign-in-methods-list'],
@@ -44,9 +47,15 @@ export function UserSignInMethods({ user }: { user: string }) {
     void qc.invalidateQueries({ queryKey: key })
   }
   const fail = (err: unknown) => setError(err instanceof ApiError ? err.message : 'That did not work')
+  // The form is cleared only when the server accepted it, so a refused link
+  // (a clash, a typo) keeps what was typed for correcting.
   const add = useMutation({
-    mutationFn: (body: Record<string, string>) => api.post(`/api/users/${encodeURIComponent(user)}/identities`, body),
-    onSuccess: done,
+    mutationFn: ({ body }: { body: Record<string, string>; form: HTMLFormElement }) =>
+      api.post(`/api/users/${encodeURIComponent(user)}/identities`, body),
+    onSuccess: (_res, { form }) => {
+      form.reset()
+      done()
+    },
     onError: fail,
   })
   const unlink = useMutation({
@@ -59,19 +68,25 @@ export function UserSignInMethods({ user }: { user: string }) {
   const all = methods.data?.methods ?? []
   const delegated = all.filter((m) => m.kind === 'delegated_password')
   const google = all.find((m) => m.kind === 'google')
-  const labelOf = (k: string) => all.find((m) => m.key === k)?.label ?? k
+  // Names come from every method row, so a link on a turned-off method is
+  // still labelled (and says it is off).
+  const labelOf = (k: string) => {
+    const row = data?.methods.find((m) => m.key === k)
+    return row ? `${row.label}${row.enabled ? '' : ' (turned off)'}` : (all.find((m) => m.key === k)?.label ?? k)
+  }
 
   function onLink(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    add.mutate({ method: String(f.get('method')), subject: String(f.get('subject')).trim(), sign_in_name: String(f.get('sign_in_name')).trim() })
-    e.currentTarget.reset()
+    add.mutate({
+      body: { method: String(f.get('method')), subject: String(f.get('subject')).trim(), sign_in_name: String(f.get('sign_in_name')).trim() },
+      form: e.currentTarget,
+    })
   }
   function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    add.mutate({ method: google!.key, email: String(f.get('email')).trim() })
-    e.currentTarget.reset()
+    add.mutate({ body: { method: google!.key, email: String(f.get('email')).trim() }, form: e.currentTarget })
   }
 
   return (

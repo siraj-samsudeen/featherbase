@@ -225,3 +225,41 @@ describe('a delegated provider is configuration only (genericity)', () => {
     expect(res.status).toBe(417)
   })
 })
+
+describe('third review round', () => {
+  test('a delegated row with malformed settings is skipped with a warning naming it', async ({ api }) => {
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, self_link, service_url, settings, created_at, updated_at)
+      values ('broken_hr', 'delegated_password', 'Broken HR', true, 'refuse', false, 'https://broken.example.test/login', ${sql.json({ success_keys: 'not-a-list' })}, now(), now())`
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const brand = (await (await api.fetch('/api/brand')).json()) as { sign_in_methods: { key: string }[] }
+    expect(brand.sign_in_methods.map((m) => m.key)).not.toContain('broken_hr')
+    expect(warn.mock.calls.map((c) => String(c[0])).some((line) => line.includes('broken_hr'))).toBe(true)
+    warn.mockRestore()
+  })
+
+  test('the admin identity list names every method, including turned-off ones', async ({ admin }) => {
+    await configureDelegated({ enabled: false })
+    await person('RR-80')
+    await linkDelegated('RR-80', 'tl_80')
+    const res = await admin.get<{ methods: { key: string; label: string; enabled: boolean }[] }>('/api/users/RR-80/identities')
+    expect(res.methods).toContainEqual({ key: 'stylehr', kind: 'delegated_password', label: 'StyleHR', enabled: false })
+  })
+
+  test('a failed Google link always comes back to the Sign-in methods page, never raw JSON', async ({ api }) => {
+    await person('link.fail')
+    const token = (await issueSession('link.fail', { method: 'password' })).token
+    await sql`update "user" set password_hash = ${hashPassword('x')} where row_id = 'link.fail'`
+    const start = await api.fetch('/api/oauth/google/link', { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
+    expect(start.status).toBe(302)
+    const state = new URLSearchParams((start.headers.get('location') ?? '').split('?')[1]).get('state') as string
+    const cookies = [`sid=${token}`, ...start.headers.getSetCookie().map((c) => c.split(';')[0])].join('; ')
+    // A code the provider will not exchange.
+    const bad = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: cookies }, redirect: 'manual' })
+    expect(bad.status).toBe(302)
+    expect(bad.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=google_failed')
+    // A link callback that lost its state cookie (another browser, expired).
+    const lost = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
+    expect(lost.status).toBe(302)
+    expect(lost.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=expired')
+  })
+})

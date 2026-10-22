@@ -403,6 +403,17 @@ upgrade relabels it and sign-in no longer reads it.
 5. Run the updated roster sync: people the old sync creates have no StyleHR
    link.
 
+**The upgrade clears the seeded `admin@example.com` and `guest@example.com`.**
+The Administrator then signs in with the user id `Administrator`, no longer
+with that address. The plan lists these under "seed addresses cleared"; give
+the Administrator a real email afterwards if signing in by email matters.
+
+**Known limitation:** a roster sync that links StyleHR identities on every run
+will re-link one that the person removed themselves under Sign-in methods. The
+roster-sync change (filed in the data-warehouse repo) is to respect removals;
+until then, remove a StyleHR link from the roster source, not only in
+Featherbase.
+
 **`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
 linked staff member by employee code, with no password.** Never set it where
 real users sign in, and remove it at the end of the trial. Test-mode sessions

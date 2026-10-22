@@ -115,8 +115,11 @@ export async function delegatedMethods(): Promise<DelegatedLoginConfig[]> {
     let wire: DelegatedWire
     try {
       wire = wireFrom(m.settings)
-    } catch {
-      continue // a malformed wire format leaves the method off, like a bad URL
+    } catch (err) {
+      // A malformed wire format leaves the method off, like a bad URL — said
+      // out loud, naming the row, so an operator can find it.
+      console.warn(`[delegated-login] ${m.key}: skipped, its settings are malformed (${(err as Error).message})`)
+      continue
     }
     if (url) out.push({ key: m.key, label: m.label || url.hostname, url: url.toString(), wire, method: { ...m, label: m.label || url.hostname } })
   }

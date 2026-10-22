@@ -29,6 +29,7 @@ const LINK_OUTCOMES: Record<string, string> = {
   taken: 'That Google account belongs to another account. Contact your administrator.',
   reserved: 'That Google address is reserved for another account. Contact your administrator.',
   google_failed: 'Google did not confirm the account. Try again.',
+  expired: 'That link attempt expired or was started in another browser. Start it again from here.',
   sign_in_again: 'Sign in again first, then link within a few minutes.',
   not_allowed: 'Linking Google is not available for this sign-in.',
   wrong_session: 'That link was started by a different sign-in. Try again.',

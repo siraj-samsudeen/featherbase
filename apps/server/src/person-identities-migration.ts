@@ -35,6 +35,8 @@ export interface PersonIdentitiesPlan {
   methods: { key: string; kind: string; label: string; enabled: boolean }[]
   emailsTrimmed: Person[]
   emailsCleared: Person[]
+  /** The 0005 seed addresses among them: those accounts sign in by user id from now on. */
+  seedEmailsCleared: Person[]
   /** Two remaining addresses equal ignoring case: the upgrade stops on these. */
   duplicateEmails: { email: string; users: string[] }[]
   googleInvites: (Person & { address: string })[]
@@ -133,6 +135,7 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
     methods,
     emailsTrimmed: [],
     emailsCleared: [],
+    seedEmailsCleared: [],
     duplicateEmails: [],
     googleInvites: [],
     googleIdEmailDiffer: [],
@@ -151,6 +154,7 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
     if (raw != null && raw !== raw.trim()) plan.emailsTrimmed.push(person(u, raw.trim()))
     if (next != null && (!next || isReservedEmail(next) || SEED_EMAILS[String(u.row_id)] === next)) {
       plan.emailsCleared.push(person(u, raw!))
+      if (SEED_EMAILS[String(u.row_id)] === next) plan.seedEmailsCleared.push(person(u, `${next}: sign in as ${u.row_id} instead`))
       next = null
     }
     kept.set(String(u.row_id), next)
@@ -378,6 +382,7 @@ export function formatPlan(p: PersonIdentitiesPlan): string {
     `  sign-in methods: ${p.methods.map((m) => `${m.key} (${m.kind}, ${m.label}, ${m.enabled ? 'on' : 'off'})`).join('; ')}`,
     `  emails trimmed: ${p.emailsTrimmed.length}${list(p.emailsTrimmed)}`,
     `  placeholder/blank/seed emails cleared: ${p.emailsCleared.length}${list(p.emailsCleared)}`,
+    `  seed addresses cleared — these accounts can no longer sign in by that email, only by their id:${list(p.seedEmailsCleared)}`,
     `  addresses that collide ignoring case (the upgrade STOPS): ${p.duplicateEmails.length ? p.duplicateEmails.map((d) => `${d.email}: ${d.users.join(', ')}`).join('; ') : 'none'}`,
     `  Google invites (signed in with Google before): ${p.googleInvites.length}${list(p.googleInvites.map((g) => ({ ...g, detail: g.address })))}`,
     `  Google users whose id and email differ (invited on the email):${list(p.googleIdEmailDiffer)}`,
