@@ -91,8 +91,9 @@ disabled, all their sessions end and every other way in refuses them.
 
 A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
-only on a development or test server: any other server refuses to start with
-it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
+only on a development, test or staging server — staging being a hosted trial
+instance that is a production server in every other respect: any other server
+refuses to start with it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
 person by typing the employee code on that person's record, in any mix of
 capitals, with no password. The code must belong to exactly one person, and
 that person must have a live, unended link to the service; who may sign in is
@@ -126,11 +127,17 @@ on where real users sign in.
   people's records
 - **THEN** sign-in is refused, and neither person is chosen
 
-#### Scenario: Only a development or test server accepts test mode
+#### Scenario: Only a development, test or staging server accepts test mode
 
 - **WHEN** the switch is set on a server that is not configured as
-  development or test
+  development, test or staging
 - **THEN** the server does not start, and says why
+
+#### Scenario: A hosted trial instance runs as staging
+
+- **WHEN** a hosted trial instance is configured as staging with the switch set
+- **THEN** it starts with test mode on, and it is otherwise treated as
+  production: the Administrator gets no default password
 
 #### Scenario: Anything but the exact switch value leaves it off
 

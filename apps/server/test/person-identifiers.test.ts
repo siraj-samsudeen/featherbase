@@ -164,6 +164,22 @@ describe('who sees what', () => {
   })
 })
 
+describe('search respects who may read people (Codex review on #385)', () => {
+  test('no Person read, no search; a Data Scope narrows the results', async ({ admin, createUser }) => {
+    const p = await makePerson({ full_name: 'In scope', email: 'scoped.search@x.test' })
+    const q = await makePerson({ full_name: 'Out of scope', email: 'other.search@x.test' })
+    const none = await createUser({ email: 'no.person.read@x.test' })
+    await expect(none.get('/api/identifiers?system=email&value=scoped.search@x.test')).rejects.toMatchObject({ status: 403 })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Searcher' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Searcher', can_read: true } })
+    const scoped = await createUser({ email: 'scoped.searcher@x.test', roles: ['Person Searcher'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: 'Person', for_value: p } })
+    expect((await scoped.get<{ people: { person_id: string }[] }>('/api/identifiers?system=email&value=scoped.search@x.test')).people.map((x) => x.person_id)).toEqual([p])
+    expect((await scoped.get<{ people: unknown[] }>('/api/identifiers?system=email&value=other.search@x.test')).people).toEqual([])
+    void q
+  })
+})
+
 describe('built-in and replaced records', () => {
   test('a built-in account gets no identifiers; a replaced record refuses writes and is left out of pickers', async ({ admin }) => {
     await expect(addIdentifier('Administrator', { system: 'phone', value: '9847012345' }, 'Administrator')).rejects.toMatchObject({ fields: { code: 'built_in' } })

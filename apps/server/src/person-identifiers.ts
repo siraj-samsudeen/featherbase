@@ -6,7 +6,7 @@
 import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
-import { getRoles, isPrivileged, permittedTiers } from './permissions'
+import { getRoles, hasPermission, isPrivileged, permittedTiers } from './permissions'
 import { opaqueId } from './opaque-id'
 import {
   SENSITIVITY,
@@ -232,6 +232,7 @@ export async function systemDefaults(key: string) {
  *  Restricted-hidden systems answer only restricted readers. A replaced
  *  record answers with its survivor. */
 export async function findByIdentifier(systemKey: string, raw: string, viewer: string) {
+  if (!(await hasPermission(viewer, 'Person', 'read'))) throw new AppError('PermissionError', 'You may not search people')
   const system = await getSystem(systemKey)
   const s = SENSITIVITY[system.sensitivity]
   if (s.storage === 'fingerprint')
@@ -247,7 +248,19 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
     from person_identifier i join person p on p.row_id = i.person_id
     where i.system = ${system.row_id} and i.value = ${value}
     order by upper_inf(i.valid) desc, lower(i.valid) desc`
-  return rows.map((r) => ({
+  // Only people this viewer may read: the Person permission and Data Scope
+  // apply to search results as to any read (Codex review on #385).
+  const { getDoc } = await import('./document')
+  const readable: Record<string, unknown>[] = []
+  for (const r of rows) {
+    try {
+      await getDoc('Person', String(r.person_id), viewer)
+      readable.push(r)
+    } catch {
+      /* not theirs to see */
+    }
+  }
+  return readable.map((r) => ({
     person_id: String(r.person_id),
     resolved_to: String(r.resolved_to),
     replaced: r.replaced === true,

@@ -520,15 +520,40 @@ exists btree_gist`; Railway's Postgres 18.6 offers it). On dev it also:
   sign-in keeps working by code.
 
 Test mode (`DELEGATED_LOGIN_TEST_MODE=trust-any-password`) now resolves a
-typed employee code through the people's **current employee-code rows**,
-refuses a code current on two people, and needs a live link to the service.
-**A server whose environment is not `development` or `test` refuses to start
-with test mode set.** The trial instance runs test mode and its database is
-stamped `production`: before this release, either unset test mode there, or
-run it as development — set `FEATHERBASE_ENV=development` and re-stamp the
-database once by running the release with
-`DISABLE_DATABASE_ENVIRONMENT_CHECK=1` (the migrator then stamps it
-`development`).
+typed employee code through the people's **current employee-code rows** of
+the method's own code system, refuses a code current on two people, and
+needs a live link to the service. **A server whose environment is not
+`development`, `test` or `staging` refuses to start with test mode set**
+("DELEGATED_LOGIN_TEST_MODE is set on a "production" server …").
+
+**`staging` is the environment of a hosted trial instance**: it admits test
+mode and is production in every other respect. `development` is *not* safe
+on a public host — it gives a null Administrator hash the known password
+`admin` and silences the known-password warning. `FEATHERBASE_ENV` also
+names the environment the database is **stamped** with
+(`internal_metadata.environment`); the migrator refuses a database stamped
+for another environment, so changing the variable needs one re-stamp.
+
+**Pre-deploy step for dev (the trial instance) — before 0101 + 0102:** dev
+today has `FEATHERBASE_ENV=production` and `DELEGATED_LOGIN_TEST_MODE` set,
+and its database is stamped `production`; deployed as is, the new code would
+**not start** and the trial users would be locked out. Prod (no test mode)
+needs no change.
+
+1. On dev set `FEATHERBASE_ENV=staging` **and**
+   `DISABLE_DATABASE_ENVIRONMENT_CHECK=1`, and redeploy the **current** dev
+   release (nothing pending): the migrator skips the stamp check once and
+   re-stamps the database `staging`.
+2. Remove `DISABLE_DATABASE_ENVIRONMENT_CHECK` (never leave it set).
+3. Check: `/api/ping` answers `"environment":"staging"`; `select value from
+   internal_metadata where key = 'environment'` is `staging`; trial sign-in
+   still works.
+4. Then deploy 0101 + 0102 as below.
+
+(One release can also do it — the person release with both variables set
+re-stamps at its end — but a separate re-stamp keeps the big migration free
+of any override.) A local rehearsal of both paths on the dev snapshot is in
+#385.
 
 After the deploy, `pnpm --filter server cli seed-pack apply jeyarama` is safe
 to run (idempotent; it only adds what is missing).
@@ -541,7 +566,13 @@ working** — the secret is unchanged; only the owner column is re-keyed.
 
 1. 0100 is live (#371).
 2. Take a **fresh** dev snapshot (`pg_dump`), restore it into a local
-   Postgres 18 and rehearse:
+   Postgres 18 and rehearse **with the target's real environment variables,
+   not just its data** — export the target's `FEATHERBASE_ENV`,
+   `DELEGATED_LOGIN_TEST_MODE`, `ALLOW_MOCK_OAUTH`, `ADMIN_PASSWORD`-set-or-not
+   and `PEOPLE_RESOLVE_FILE` exactly as the target has them (only
+   `DATABASE_URL` points at the local copy), then run
+   `pnpm --filter server cli boot-check` (the server's own start-up
+   refusals; it must say "the server will start") and:
    `pnpm --filter server cli people:plan --rehearse <local-dsn> --resolve <stylehr_record_ids.csv> --map --columns --check-sign-in <a trial code>`
    (run with `FEATHERBASE_ENV` set to the snapshot's stamped environment). It
    applies every pending migration inside one transaction, prints the id map,

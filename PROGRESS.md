@@ -18,7 +18,7 @@ an `email` row, and an identity now **ends** (left, moved, unlinked) instead of
 being deleted — an ended one never opens the account, and a move keeps who
 held it until when. Test mode resolves a typed code through current
 employee-code rows, refuses a code on two people, needs a live link, and the
-server refuses to boot with it outside development/test. The dev backfill
+server refuses to boot with it outside development, test or staging (a hosted trial instance; dev must be switched to `FEATHERBASE_ENV=staging` and re-stamped before this release — DEPLOY.md). The dev backfill
 reads the warehouse's resolve file; anything it cannot resolve keeps working
 by employee code and is listed. The Person form has an Identifiers panel (also
 on the person's own Sign-in methods page); the Identifier System form shows

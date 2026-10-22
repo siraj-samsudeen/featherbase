@@ -256,6 +256,11 @@ The sync closes codes; the merge only moves rows.
   server refuses to boot with test mode set unless `config.environment`
   (`FEATHERBASE_ENV ?? NODE_ENV ?? 'development'`) is `development` or
   `test`.** This hardening ships in 1a-i (DECISION).
+  *Amended 23-Oct-2026 (build of 1a-i):* the hosted trial instance (dev)
+  must keep test mode, and `development` is not safe on a public host (it
+  gives a null Administrator hash the known default password). A third
+  value, **`staging`**, admits test mode and is production in every other
+  respect; dev runs as `staging` (DEPLOY.md gives the re-stamp).
 
 ### D6. Groups, review, merge, undo
 

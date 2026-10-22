@@ -13,6 +13,8 @@
 //                                     rehearse the person migrations (0100–0102) rolled back; prints the
 //                                     id map, every text column's classification and the scan
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
+//   cli boot-check                    run the server's start-up refusals with this process's environment
+//                                     (rehearse a target's real variables before deploying)
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
@@ -286,6 +288,15 @@ async function main() {
     case 'people:plan':
       await cmdPeoplePlan(rest)
       break
+    case 'boot-check': {
+      // The same refusals the server runs before it serves (index.ts): run
+      // with the target's real variables to know it will start.
+      const { assertTestModeAllowed, delegatedTestMode } = await import('./delegated-login')
+      const { config } = await import('./config')
+      assertTestModeAllowed()
+      console.log(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
+      break
+    }
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -298,7 +309,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

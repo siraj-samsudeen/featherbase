@@ -487,11 +487,23 @@ describe('delegated sign-in test mode', () => {
   test('a server that is not development or test refuses to start with test mode set', async () => {
     const { assertTestModeAllowed } = await import('../src/delegated-login')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
-    expect(() => assertTestModeAllowed('production')).toThrow(/development or test/)
+    expect(() => assertTestModeAllowed('production')).toThrow(/development, test or staging/)
     expect(() => assertTestModeAllowed('development')).not.toThrow()
     expect(() => assertTestModeAllowed('test')).not.toThrow()
+    // A hosted trial instance runs as staging: test mode starts there.
+    expect(() => assertTestModeAllowed('staging')).not.toThrow()
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', '1')
     expect(() => assertTestModeAllowed('production')).not.toThrow()
+  })
+
+  test('staging is production in every other respect: no default Administrator password', async () => {
+    const { bootstrapAdministrator } = await import('../src/admin-bootstrap')
+    vi.stubEnv('ADMIN_PASSWORD', '')
+    await sql`update person set password_hash = null where row_id = 'Administrator'`
+    await bootstrapAdministrator('staging')
+    expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
+    await bootstrapAdministrator('development')
+    expect((await sql`select password_hash from person where row_id = 'Administrator'`)[0].password_hash).not.toBeNull()
   })
 
   test('the login page is told, so it can say so', async ({ api }) => {

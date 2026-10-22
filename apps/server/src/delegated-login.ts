@@ -147,12 +147,17 @@ export function delegatedTestMode(): boolean {
   return (process.env.DELEGATED_LOGIN_TEST_MODE ?? '').trim() === TEST_MODE_PHRASE
 }
 
-/** person-resolution D5: test mode runs only on a development or test
- *  server; any other refuses to start with it set, and says why. */
+/** The environments test mode may run in (person-resolution D5):
+ *  development and test, and `staging` — a hosted trial instance, which is
+ *  production in every other respect (no default Administrator password, no
+ *  development seed data; mock Google stays behind ALLOW_MOCK_OAUTH). */
+export const TEST_MODE_ENVIRONMENTS = ['development', 'test', 'staging'] as const
+
+/** Any other server refuses to start with test mode set, and says why. */
 export function assertTestModeAllowed(environment: string = config.environment): void {
-  if (delegatedTestMode() && !['development', 'test'].includes(environment))
+  if (delegatedTestMode() && !(TEST_MODE_ENVIRONMENTS as readonly string[]).includes(environment))
     throw new Error(
-      `DELEGATED_LOGIN_TEST_MODE is set on a "${environment}" server. Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development or test. Unset it, or run this server as development/test.`,
+      `DELEGATED_LOGIN_TEST_MODE is set on a "${environment}" server. Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "The person release").`,
     )
 }
 
