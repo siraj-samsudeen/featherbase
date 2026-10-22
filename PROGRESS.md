@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-10-23 — Excel dates no longer import a day early in India (#387)
+
+Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
+the previous day: 21-Oct-2024 became `2024-10-20T18:29:50Z`. The import preview and the shared Date schema then
+stored that day via `toISOString().slice(0, 10)`. The Suppliers import on featherbase-dev on 12-Oct-2026 showed it.
+
+`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`) and turns each
+date-formatted cell into a local Date from `SSF.parse_date_code` (y/m/d h:m:s, no timezone), honouring 1904-based
+workbooks. A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
+coercion, the Date schema and the import preview use it. OpenSpec change `fix-excel-date-shift-ist`, with no
+capability delta.
+
+**Verified** under Node 22:
+- `apps/web/test/parse-file-ist.test.ts` (10, in IST): failed first with `[2024, 10, 20, 23, 59, 50]`. The cases are
+  month ends, a leap day, the year end, 01-Jan and a 23:59:58 time.
+- The shared schema test in IST passes, and `packages/shared` has 131 tests passing.
+- Web suite 195 passed; server import tests 88 passed; web and server typecheck passed.
+- The import and table-builder e2e specs pass on this machine, which runs in IST: 42 passed.
+
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
 `DataList` renders one list in two shapes, chosen live from the screen width:

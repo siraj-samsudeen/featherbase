@@ -226,3 +226,18 @@ describe('zodFieldErrors', () => {
     expect(zodFieldErrors(error)).toEqual({ _: 'root problem' })
   })
 })
+
+describe('#387: a Date value keeps its calendar day east of UTC', () => {
+  it('a local-midnight Date in IST validates as that day, not the day before', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'Asia/Kolkata'
+    try {
+      const schema = tableSchemaToZod([col('due', 'Date')])
+      const parsed = schema.parse({ due: new Date(2024, 9, 21) })
+      expect(parsed.due).toBe('2024-10-21')
+    } finally {
+      if (tz === undefined) delete process.env.TZ
+      else process.env.TZ = tz
+    }
+  })
+})

@@ -1,4 +1,5 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export { calendarDay, isLocalMidnight, localIso } from './dates'
 export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, appHref } from './app-routes'
 export type { WebFormColumn, WebFormConfig } from './webform'
 export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs } from './runtime-actions'

@@ -60,16 +60,37 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
   return 'visible'
 }
 
+/**
+ * #387: every numeric cell with a date number format becomes a local Date
+ * built from the serial's own y/m/d h:m:s (SSF.parse_date_code, no timezone),
+ * so a date-only cell is local midnight of the day the sheet shows, which the
+ * shared inference and coercion read back as that day.
+ */
+function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSheet, date1904: boolean) {
+  for (const address of Object.keys(sheet)) {
+    if (address.startsWith('!')) continue
+    const cell = sheet[address] as import('xlsx').CellObject
+    if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue
+    const p = XLSX.SSF.parse_date_code(cell.v, { date1904 })
+    if (!p) continue
+    cell.t = 'd'
+    cell.v = new Date(p.y, p.m - 1, p.d, p.H, p.M, p.S)
+  }
+}
+
 // IMP-010: parse every non-empty sheet — a multi-sheet workbook yields one
 // ParsedSheet per sheet, a CSV exactly one.
 export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
   const XLSX = await import('xlsx')
-  // cellDates keeps Excel date cells as JS Dates instead of serial numbers,
-  // which is what the shared type inference expects.
+  // #387: date cells are read as serial numbers WITH their number format
+  // (cellDates: false, cellNF: true) and turned into calendar dates below.
+  // SheetJS's own cellDates conversion shifts them across timezones: under
+  // Asia/Kolkata (xlsx 0.18.5) 21-Oct-2024 became 20-Oct 23:59:50 local, so
+  // every import stored the day before.
   // raw applies to text formats at READ time: sheet_to_json cannot recover
   // padding or precision after SheetJS has already converted a CSV/TSV cell.
-  // Native XLSX cell types (including numeric/date cells) remain intact.
-  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true, raw: true })
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false, cellNF: true, raw: true })
+  const date1904 = Boolean(wb.Workbook?.WBProps?.date1904)
   if (!wb.SheetNames.length) throw new Error('The file has no sheets')
   const sheets: ParsedSheet[] = []
   // #198: read visibility by the sheet's own index in SheetNames, before any
@@ -81,6 +102,7 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
     // survives as all-nulls instead of silently vanishing and shifting
     // every row number below it. coerceRows is the single place blanks are
     // dropped, and it records each survivor's source index.
+    calendarDates(XLSX, wb.Sheets[sheetName], date1904)
     const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], {
       header: 1,
       defval: null,

@@ -1,3 +1,4 @@
+import { calendarDay } from './dates'
 import { z } from 'zod'
 
 // META-013: one zod schema generated from Table metadata, used by the
@@ -53,7 +54,8 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
       // timestamps; normalize them back to the date part.
       return z.preprocess(
         (v) => {
-          if (v instanceof Date) return v.toISOString().slice(0, 10)
+          // #387: a Date's calendar day, never toISOString() (that is the previous day east of UTC).
+          if (v instanceof Date) return calendarDay(v)
           if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10)
           return v
         },
