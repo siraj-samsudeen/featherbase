@@ -7,12 +7,11 @@
 // system; the core people_review default.
 //
 // Data (dev): code rows from the `employee_code` Custom Field (assigner ''),
-// StyleHR record numbers and subjects from the warehouse's resolve file
-// (`stylehr_record_ids.csv`, given as PEOPLE_RESOLVE_FILE or
-// `cli people:plan --resolve`), `email` rows. A sign-in that cannot be
-// resolved keeps working by its employee code and is listed. Nothing is
+// `email` rows. Every StyleHR sign-in keeps working by its employee code
+// (`subject_kind = 'employee-code'`); the move to record numbers is the
+// post-deploy `cli people:resolve <csv>` (people-resolve.ts), not part of the
+// release. Parity is proven through test mode's own resolver. Nothing is
 // merged. `cli people:plan` prints all of it.
-import { readFileSync } from 'node:fs'
 import { sql } from './db'
 import { createTable } from './table-engine'
 import { invalidateMeta } from './meta'
@@ -21,6 +20,7 @@ import { PLATFORM_SCHEMA } from './platform-schema'
 import { EDITED_BY, IDENTIFIER_KINDS, MATCH, NORMALISE_RULES, SENSITIVITIES } from './identifiers'
 import { applySeedPack, saveIdentifierSystem, seedPackFile } from './seed-packs'
 import { CORE_PEOPLE_REVIEW, newIdentifierId } from './person-identifiers'
+import { testModeUser, type DelegatedLoginConfig } from './delegated-login'
 
 const Q = (relation: string) => `${PLATFORM_SCHEMA}.${relation}`
 
@@ -244,31 +244,6 @@ async function genericSystems() {
 
 // ------------------------------------------------------------------ data
 
-export interface ResolveRow {
-  employee_code: string
-  assigner: string
-  stylehr_record_id: string
-}
-
-/** Read the warehouse's resolve file: UTF-8, comma-separated, header row
- *  `employee_code,assigner,stylehr_record_id` (D11). */
-export function parseResolveFile(text: string): ResolveRow[] {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim())
-  if (!lines.length) return []
-  const header = lines[0].split(',').map((h) => h.trim().toLowerCase())
-  const at = (name: string) => {
-    const i = header.indexOf(name)
-    if (i < 0) throw new Error(`resolve file: missing column ${name} (want employee_code,assigner,stylehr_record_id)`)
-    return i
-  }
-  const [c, a, r] = [at('employee_code'), at('assigner'), at('stylehr_record_id')]
-  return lines.slice(1).map((line, n) => {
-    const cells = line.split(',').map((x) => x.trim())
-    if (!cells[c] || !cells[r]) throw new Error(`resolve file: line ${n + 2} needs an employee_code and a stylehr_record_id`)
-    return { employee_code: cells[c], assigner: cells[a] ?? '', stylehr_record_id: cells[r] }
-  })
-}
-
 export interface Listed {
   person: string
   full_name: string | null
@@ -279,40 +254,35 @@ export interface PersonResolutionPlan {
   seedPackApplied: boolean
   codeRows: number
   emailRows: number
-  recordRows: number
-  subjectsResolved: number
-  unresolved: Listed[]
-  colliding: Listed[]
+  /** Live StyleHR sign-ins marked as keyed by employee code (all of them: the
+   *  record numbers come later, from `cli people:resolve`). */
+  keptByCode: number
   /** Two dev people holding the same employee code: no row, listed. */
   sharedCodes: Listed[]
-  /** Every StyleHR sign-in that works today still works after (resolved, or kept by code). */
-  parity: { liveStyleHrSignIns: number; keepWorking: number }
+  /** Every StyleHR sign-in that works today, checked through test mode's own
+   *  resolver (`testModeUser`): typing the code finds the same person. */
+  parity: { liveStyleHrSignIns: number; keepWorking: number; failing: Listed[] }
 }
 
-async function readResolveFile(path: string | undefined | null): Promise<ResolveRow[] | null> {
-  if (!path) return null
-  return parseResolveFile(readFileSync(path, 'utf8'))
-}
-
-/** Backfill identifier rows for dev and rewrite StyleHR subjects to record
- *  numbers. Idempotent: a row already written is not written again. */
-async function migrateData(resolvePath: string | null | undefined): Promise<PersonResolutionPlan> {
+/** Backfill identifier rows for dev and mark StyleHR sign-ins as keyed by
+ *  employee code. Idempotent: a row already written is not written again. */
+async function migrateData(): Promise<PersonResolutionPlan> {
   const plan: PersonResolutionPlan = {
-    seedPackApplied: false, codeRows: 0, emailRows: 0, recordRows: 0, subjectsResolved: 0,
-    unresolved: [], colliding: [], sharedCodes: [], parity: { liveStyleHrSignIns: 0, keepWorking: 0 },
+    seedPackApplied: false, codeRows: 0, emailRows: 0, keptByCode: 0, sharedCodes: [],
+    parity: { liveStyleHrSignIns: 0, keepWorking: 0, failing: [] },
   }
   const hasCode = await columnExists('person', 'employee_code')
-  const [stylehr] = await sql`select row_id from sign_in_method where kind = 'delegated_password' and row_id = 'stylehr'`
-  // The Jeyarama systems are needed exactly when there is Jeyarama data to
-  // carry over; the pack is idempotent and DEPLOY.md applies it anyway.
-  if (hasCode || stylehr) {
+  const [stylehr] = await sql`select row_id, label from sign_in_method where kind = 'delegated_password' and row_id = 'stylehr'`
+  // The Jeyarama systems belong exactly where the StyleHR sign-in method is
+  // (A-m5): an employee_code column alone is not Jeyarama data.
+  if (stylehr) {
     await applySeedPack('jeyarama')
     plan.seedPackApplied = true
   }
 
   // Code rows from the employee_code Custom Field, assigner '' (adopted by
   // the sync later, D11).
-  if (hasCode) {
+  if (hasCode && plan.seedPackApplied) {
     const people = await sql`
       select row_id, full_name, upper(trim(employee_code)) as code from person
       where employee_code is not null and trim(employee_code) <> '' and not built_in`
@@ -354,73 +324,57 @@ async function migrateData(resolvePath: string | null | undefined): Promise<Pers
     plan.emailRows++
   }
 
-  // StyleHR subjects → record numbers, from the resolve file (C4).
+  // StyleHR sign-ins: the subject today IS the employee code. Mark it so;
+  // write-through mirrors only record numbers, and `cli people:resolve`
+  // moves each to its record number after the deploy (C4, D11).
   if (stylehr) {
-    const resolve = await readResolveFile(resolvePath ?? process.env.PEOPLE_RESOLVE_FILE)
-    const rowsByCode = new Map<string, ResolveRow[]>()
-    for (const r of resolve ?? []) {
-      const key = r.employee_code.trim().toUpperCase()
-      rowsByCode.set(key, [...(rowsByCode.get(key) ?? []), r])
-    }
-    const identities = await sql`
-      select i.id, i.person_id, i.subject, i.subject_kind, p.full_name
-      from sign_in_identity i join person p on p.row_id = i.person_id
-      where i.method = 'stylehr' and i.subject is not null and i.ended_at is null`
-    plan.parity.liveStyleHrSignIns = identities.length
-    for (const i of identities) {
+    plan.keptByCode = (await sql`
+      update sign_in_identity i set subject_kind = 'employee-code'
+      where i.method = 'stylehr' and i.subject is not null and i.ended_at is null and i.subject_kind = 'record-id'
+        and not exists (
+          select 1 from person_identifier r where r.person_id = i.person_id and r.system = 'stylehr-employee-id'
+            and r.value = i.subject and upper_inf(r.valid))
+      returning 1`).length
+    // Parity (A-m4): the sign-ins that work today — enabled, not privileged —
+    // each resolve to the same person through test mode's own lookup.
+    const cfg = { key: 'stylehr', label: String(stylehr.label || 'StyleHR') } as DelegatedLoginConfig
+    const live = await sql`
+      select i.person_id, i.subject, i.subject_kind, p.full_name from sign_in_identity i join person p on p.row_id = i.person_id
+      where i.method = 'stylehr' and i.subject is not null and i.ended_at is null and p.enabled
+        and p.row_id <> 'Administrator'
+        and not exists (select 1 from has_role r where r.parent = p.row_id and r.role in ('System Manager', 'Administrator'))
+      order by p.full_name, i.person_id`
+    plan.parity.liveStyleHrSignIns = live.length
+    for (const i of live) {
       const person = String(i.person_id)
-      const who = { person, full_name: (i.full_name as string | null) ?? null }
-      if (i.subject_kind === 'record-id' && (await recordRowFor(person, String(i.subject)))) {
+      const code = i.subject_kind === 'employee-code' ? String(i.subject) : await currentCode(person)
+      try {
+        if (!code) throw new Error('no current employee code')
+        const found = await testModeUser(cfg, code)
+        if (found.user !== person) throw new Error(`code ${code} finds another person`)
         plan.parity.keepWorking++
-        continue
+      } catch (err) {
+        plan.parity.failing.push({ person, full_name: (i.full_name as string | null) ?? null, detail: `test-mode sign-in by ${code ?? '(no code)'}: ${(err as Error).message}` })
       }
-      const code = String(i.subject).trim().toUpperCase()
-      const matches = rowsByCode.get(code) ?? []
-      if (matches.length !== 1) {
-        // Kept working by its employee code until the sync resolves it.
-        await sql`update sign_in_identity set subject_kind = 'employee-code' where id = ${String(i.id)}`
-        if (matches.length === 0) plan.unresolved.push({ ...who, detail: `employee code ${code}${resolve ? ' not in the resolve file' : ' (no resolve file given)'}` })
-        else plan.colliding.push({ ...who, detail: `employee code ${code} has ${matches.length} StyleHR records (firms ${matches.map((m) => m.assigner || '?').join(', ')})` })
-        plan.parity.keepWorking++
-        continue
-      }
-      const recordId = matches[0].stylehr_record_id.trim()
-      await sql`update sign_in_identity set subject = ${recordId}, subject_kind = 'record-id' where id = ${String(i.id)}`
-      const record = await recordRowFor(person, recordId)
-      const recordRowId = record ?? newIdentifierId()
-      if (!record) {
-        await sql`insert into person_identifier ${sql({
-          // The mirror of the sign-in's (rewritten) subject, as write-through
-          // would have written it; ending that sign-in closes it.
-          id: recordRowId, person_id: person, system: 'stylehr-employee-id', assigner: '', value: recordId,
-          verified: true, one_holder: true, one_per_person: false, source: 'sign-in', recorded_by: 'migration',
-        } as unknown as Record<string, never>)}`
-        plan.recordRows++
-      }
-      await sql`
-        update person_identifier set record_identifier_id = ${recordRowId}
-        where person_id = ${person} and system = 'stylehr-employee-code' and value = ${code} and upper_inf(valid)`
-      plan.subjectsResolved++
-      plan.parity.keepWorking++
     }
   }
   return plan
 }
 
-async function recordRowFor(person: string, recordId: string): Promise<string | null> {
+async function currentCode(person: string): Promise<string | null> {
   const [row] = await sql`
-    select id from person_identifier where person_id = ${person} and system = 'stylehr-employee-id' and value = ${recordId} and upper_inf(valid)`
-  return row ? String(row.id) : null
+    select value from person_identifier where person_id = ${person} and system = 'stylehr-employee-code' and upper_inf(valid) limit 1`
+  return row ? String(row.value) : null
 }
 
-export async function migratePersonResolution(opts: { resolveFile?: string | null } = {}): Promise<PersonResolutionPlan> {
+export async function migratePersonResolution(): Promise<PersonResolutionPlan> {
   await createIdentifierSystemTable()
   await createIdentifierTables()
   await endableIdentities()
   await rolesAndSettings()
   await genericSystems()
   invalidateMeta()
-  return migrateData(opts.resolveFile)
+  return migrateData()
 }
 
 export function formatResolutionPlan(p: PersonResolutionPlan): string {
@@ -431,11 +385,9 @@ export function formatResolutionPlan(p: PersonResolutionPlan): string {
     `  Jeyarama seed pack applied: ${p.seedPackApplied ? `yes (${seedPackFile('jeyarama')})` : 'no (no Jeyarama data)'}`,
     `  employee-code rows written (assigner ''): ${p.codeRows}`,
     `  email rows written: ${p.emailRows}`,
-    `  StyleHR record-number rows written: ${p.recordRows}`,
-    `  StyleHR sign-ins rewritten to the record number: ${p.subjectsResolved}`,
-    `  StyleHR sign-ins kept working by employee code (not in the resolve file): ${p.unresolved.length}${list(p.unresolved)}`,
-    `  StyleHR sign-ins kept working by employee code (code on 2+ StyleHR records — resolve by hand): ${p.colliding.length}${list(p.colliding)}`,
+    `  StyleHR sign-ins marked as keyed by employee code: ${p.keptByCode} (record numbers: run \`cli people:resolve <csv>\` after the deploy)`,
     `  employee codes on 2+ people here (no row written): ${p.sharedCodes.length}${list(p.sharedCodes)}`,
-    `  PARITY: ${p.parity.liveStyleHrSignIns} live StyleHR sign-ins; ${p.parity.keepWorking} keep working`,
+    `  PARITY (test mode's own lookup): ${p.parity.liveStyleHrSignIns} StyleHR sign-ins work today; ${p.parity.keepWorking} still find the same person by code`,
+    `  StyleHR sign-ins test mode would NOT find: ${p.parity.failing.length}${list(p.parity.failing)}`,
   ].join('\n')
 }

@@ -80,6 +80,27 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
   return errors
 }
 
+/** Migrations that apply as ONE transaction (person-resolution review A-M1):
+ *  the person release is all-or-nothing, so a failure in 0102 cannot leave
+ *  0101's re-id committed without it. Members must be adjacent in name order. */
+export const ONE_TRANSACTION: readonly (readonly string[])[] = [
+  ['0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
+]
+
+/** The pending files, batched: each alone, except the pending members of a
+ *  ONE_TRANSACTION group, which share one batch. Pure, for the unit test. */
+export function migrationBatches(pending: string[]): string[][] {
+  const batches: string[][] = []
+  let open: readonly string[] | null = null
+  for (const file of pending) {
+    const group = ONE_TRANSACTION.find((g) => g.includes(file)) ?? null
+    if (group && group === open) batches[batches.length - 1].push(file)
+    else batches.push([file])
+    open = group
+  }
+  return batches
+}
+
 /** Apply one migration file and record it, inside the caller's transaction
  *  (the migrator's per-file transaction, or the rolled-back rehearsal of
  *  `cli people:plan`). */
@@ -154,8 +175,8 @@ export async function runMigrations() {
     name text primary key,
     applied_at timestamptz not null default now()
   )`)
-  for (const file of files) {
-    if (applied.has(file)) continue
+  for (const batch of migrationBatches(files.filter((f) => !applied.has(f)))) {
+    const [file] = batch
     // 0088–0093 require public storage; 0094 needs their columns and prototype
     // conversion before it can move that storage. Never rewrite shipped SQL.
     if (legacy && file < '0094_featherbase_schema.sql') {
@@ -164,14 +185,21 @@ export async function runMigrations() {
         await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
         await tx`insert into public.migration (name) values (${file})`
       })
-    } else await withTransaction(() => applyMigrationFile(file))
+    } else
+      await withTransaction(async () => {
+        for (const member of batch) {
+          await applyMigrationFile(member)
+          // Each member validates against the metadata the previous one left.
+          invalidateMeta()
+        }
+      })
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A
     // fresh-database run otherwise crashes at the first save that uses a
     // column added this way — caught by CI's first-ever run.
     invalidateMeta()
-    console.log(`applied ${file}`)
+    for (const member of batch) console.log(`applied ${member}${batch.length > 1 ? ` (one transaction: ${batch.join(', ')})` : ''}`)
   }
   // Claim (or re-affirm) the database for this environment. Re-stamping every
   // run keeps databases created before 0081 correct too.

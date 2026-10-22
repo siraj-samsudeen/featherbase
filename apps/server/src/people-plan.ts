@@ -2,9 +2,10 @@
 // person migrations — every pending migration, 0100/0101/0102 included —
 // inside ONE transaction that is always rolled back, and print what they did:
 // the id map, every text column with its classification, the post-check
-// scan, and (with --resolve) the identifier backfill. Nothing is committed.
+// scan, and 0102's identifier backfill with its test-mode parity. Nothing is
+// committed.
 //
-//   people:plan [--map] [--columns] [--resolve <csv>] [--check-sign-in <code>...]
+//   people:plan [--map] [--columns] [--check-sign-in <code>...]
 //   people:plan --rehearse <dsn> [...]      the same against another database
 //
 // Run as its own process so DATABASE_URL can point at the rehearsal target
@@ -20,7 +21,6 @@ import { classifyColumns, formatClassification, scanForOldIds, stageRewriteMap, 
 export interface PlanOptions {
   map: boolean
   columns: boolean
-  resolveFile: string | null
   checkSignIn: string[]
 }
 
@@ -47,7 +47,7 @@ async function runFile(file: string, opts: PlanOptions) {
   if (file === '0102_person_resolution.ts') {
     await sql.begin(async () => {
       await sql.unsafe('set local search_path = featherbase, pg_temp')
-      console.log(formatResolutionPlan(await migratePersonResolution({ resolveFile: opts.resolveFile })))
+      console.log(formatResolutionPlan(await migratePersonResolution()))
       await sql`insert into featherbase.migration (name) values (${file})`
     })
     invalidateMeta()
@@ -124,12 +124,12 @@ export async function rehearse(opts: PlanOptions): Promise<void> {
 }
 
 export function parsePlanOptions(argv: string[]): PlanOptions & { rehearse: string | null } {
-  const opts: PlanOptions & { rehearse: string | null } = { map: false, columns: false, resolveFile: null, checkSignIn: [], rehearse: null }
+  const opts: PlanOptions & { rehearse: string | null } = { map: false, columns: false, checkSignIn: [], rehearse: null }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--map') opts.map = true
     else if (a === '--columns') opts.columns = true
-    else if (a === '--resolve') opts.resolveFile = argv[++i] ?? null
+    else if (a === '--resolve') throw new Error('people:plan: --resolve is gone — 0102 reads no file; run `cli people:resolve <csv>` after the deploy')
     else if (a === '--rehearse') opts.rehearse = argv[++i] ?? null
     else if (a === '--check-sign-in') opts.checkSignIn.push(argv[++i] ?? '')
     else throw new Error(`people:plan: unknown argument ${a}`)
@@ -142,7 +142,6 @@ export function parsePlanOptions(argv: string[]): PlanOptions & { rehearse: stri
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? '')
 if (isMain && process.argv[1]?.endsWith('people-plan.ts')) {
   const opts = parsePlanOptions(process.argv.slice(2))
-  if (opts.resolveFile) process.env.PEOPLE_RESOLVE_FILE = opts.resolveFile
   rehearse(opts)
     .then(() => sql.end())
     .catch(async (err) => {

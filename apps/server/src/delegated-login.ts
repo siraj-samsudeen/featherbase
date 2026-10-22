@@ -312,7 +312,7 @@ function eligibleOne(cfg: DelegatedLoginConfig, rows: Record<string, unknown>[])
  *  CURRENT employee-code identifier rows, in any mix of capitals; a code
  *  current on two people is refused and neither is chosen; and the person
  *  must have a live, not-ended link to this service. */
-async function testModeUser(cfg: DelegatedLoginConfig, typed: string): Promise<{ user: string; identity: string | null }> {
+export async function testModeUser(cfg: DelegatedLoginConfig, typed: string): Promise<{ user: string; identity: string | null }> {
   // The method's own employee-code system: the employee-record system fed by
   // the same roster as the record numbers its sign-ins carry (StyleHR →
   // stylehr-employee-code). A code from any other namespace is not a

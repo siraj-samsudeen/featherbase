@@ -9,12 +9,15 @@
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
 //   cli identities:plan               print what migration 0100 (person-identities) will do; read-only
-//   cli people:plan [--map] [--columns] [--resolve <csv>] [--check-sign-in <code>] [--rehearse <dsn>]
+//   cli people:plan [--map] [--columns] [--check-sign-in <code>] [--rehearse <dsn>]
 //                                     rehearse the person migrations (0100–0102) rolled back; prints the
 //                                     id map, every text column's classification and the scan
+//   cli people:resolve <csv> [--dry-run]
+//                                     after the person release: move each StyleHR sign-in from its
+//                                     employee code to its record number (warehouse file); idempotent
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
-//   cli boot-check                    run the server's start-up refusals with this process's environment
-//                                     (rehearse a target's real variables before deploying)
+//   cli boot-check                    run the server's start-up refusal and the release preflight with this
+//                                     process's environment (rehearse a target's real variables); read-only
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
@@ -288,13 +291,30 @@ async function main() {
     case 'people:plan':
       await cmdPeoplePlan(rest)
       break
+    case 'people:resolve': {
+      // The flag may come before or after the file.
+      const file = rest.find((a) => !a.startsWith('--'))
+      if (!file) throw new Error('usage: cli people:resolve <stylehr_record_ids.csv> [--dry-run]')
+      const dryRun = rest.includes('--dry-run')
+      const { assertDatabaseEnvironment } = await import('./db-environment')
+      await assertDatabaseEnvironment()
+      const { formatResolveReport, runPeopleResolve } = await import('./people-resolve')
+      console.log(formatResolveReport(await runPeopleResolve(file, { dryRun }), { dryRun }))
+      break
+    }
     case 'boot-check': {
-      // The same refusals the server runs before it serves (index.ts): run
-      // with the target's real variables to know it will start.
+      // Read-only. Exactly these, with the target's real variables:
+      //  1. the server's one start-up refusal (index.ts): test mode outside
+      //     development/test/staging;
+      //  2. the release preflight (release-preflight.ts): the database's
+      //     environment stamp matches, its label allows test mode, and
+      //     btree_gist can be created when 0102 is pending.
       const { assertTestModeAllowed, delegatedTestMode } = await import('./delegated-login')
       const { config } = await import('./config')
       assertTestModeAllowed()
       console.log(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
+      const { preflightRelease } = await import('./release-preflight')
+      for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)
       break
     }
     case 'seed-pack': {
