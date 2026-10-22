@@ -52,14 +52,32 @@ describe('fmtNumber — Float and Currency list cells', () => {
   })
 })
 
-describe('fmtDay — dates read from a spreadsheet', () => {
-  test.each([
-    [new Date(2026, 9, 21), '21-Oct-2026'],
-    [new Date(2026, 0, 1), '01-Jan-2026'], // month is zero-based in Date: no off-by-one
-    [new Date(2025, 11, 31, 23, 59), '31-Dec-2025'], // the local day, even late in the evening
-  ])('%s reads %s', (d, text) => {
-    expect(fmtDay(d)).toBe(text)
-  })
+describe('fmtDay — dates read from a spreadsheet keep their calendar day on any clock', () => {
+  // The parser hands over local-midnight Dates (#387); a date-only string parses to UTC midnight.
+  const inZone = (tz: string, fn: () => void) => {
+    const before = process.env.TZ
+    process.env.TZ = tz
+    try {
+      fn()
+    } finally {
+      if (before === undefined) delete process.env.TZ
+      else process.env.TZ = before
+    }
+  }
+
+  test.each(['Asia/Kolkata', 'America/New_York', 'UTC'])('in %s, a local-midnight day reads as itself', (tz) =>
+    inZone(tz, () => {
+      expect(fmtDay(new Date(2026, 9, 21))).toBe('21-Oct-2026')
+      expect(fmtDay(new Date(2024, 1, 29))).toBe('29-Feb-2024')
+      expect(fmtDay(new Date(2026, 0, 1))).toBe('01-Jan-2026') // month is zero-based in Date: no off-by-one
+    }),
+  )
+
+  test.each(['Asia/Kolkata', 'America/New_York'])('in %s, a UTC-midnight day (from "2026-01-15") reads as that day too', (tz) =>
+    inZone(tz, () => {
+      expect(fmtDay(new Date('2026-01-15'))).toBe('15-Jan-2026')
+    }),
+  )
 })
 
 describe('list counts', () => {

@@ -101,9 +101,17 @@ export function fmtMonthYear(d: Date): string {
   return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`
 }
 
-/** A local calendar day (a Date read from a spreadsheet) as DD-Mon-YYYY. */
+/**
+ * A Date that stands for a day (a spreadsheet date cell, or a date-only string)
+ * as DD-Mon-YYYY, read off whichever clock says midnight: a parsed cell is
+ * local midnight (#387), "2026-01-15" is UTC midnight. The same rule as
+ * shared calendarDay(); never toISOString(), which moves a local day east of UTC.
+ */
 export function fmtDay(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
+  const localMidnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0
+  const utcMidnight = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0
+  if (!localMidnight && utcMidnight) return fmtDate(`${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`)
   return fmtDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
 }
 

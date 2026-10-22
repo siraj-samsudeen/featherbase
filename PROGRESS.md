@@ -75,6 +75,9 @@ Independent review of #386 (no blockers), each item test-first:
   saved-view chips and related tabs. A new "state by colour alone" rule enforces it.
 - **Status dots:** meaning colours for verdicts only (done/approved, overdue/failed, not set); other statuses take a
   series identity colour. The series colours are tested distinct (RGB distance > 90) and at 3:1 in every theme.
+- **`fmtDay`:** the old test encoded SheetJS's shifted late-evening Date, the same bug fixed separately in #387/#388.
+  It now reads a local-midnight Date (what the fixed parser produces) or a UTC-midnight one by the shared
+  `calendarDay` rule, tested in Asia/Kolkata, America/New_York and UTC.
 
 **Verified** at the PR head, under Node 22:
 - `pnpm --filter web test`: 854 passed. `pnpm --filter web typecheck` and `pnpm --filter server typecheck` passed.
