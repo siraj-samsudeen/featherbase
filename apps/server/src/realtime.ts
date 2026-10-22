@@ -40,18 +40,46 @@ interface Client {
   scope?: Map<string, Set<string>>
 }
 
-/** Is this row within the principal's Data Scope for its own Table? */
+/** Is this row within the principal's Data Scope — by its own Table AND by
+ *  every Reference to a scoped Table? Decided by the same row read the API
+ *  serves (getDoc applies every Data Scope rule), so realtime can never show
+ *  a row the list would hide. */
 export async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
   if (await isPrivileged(principal)) return true
-  const allowed = (await getScopeMap(principal)).get(table)
-  return !allowed || allowed.has(rowId)
+  if (!(await getScopeMap(principal)).size) return true
+  const { getDoc } = await import('./document')
+  try {
+    await getDoc(table, rowId, principal)
+    return true
+  } catch {
+    return false
+  }
 }
 
-function listEventVisible(client: Client, channel: string, payload: unknown): boolean {
-  if (!channel.startsWith('list:') || !client.scope) return true
-  const allowed = client.scope.get(channel.slice(5))
-  const rowId = (payload as { row_id?: unknown } | undefined)?.row_id
-  return !allowed || rowId == null || allowed.has(String(rowId))
+/** A deleted row can no longer be read; its event goes to a scoped
+ *  subscriber only when the Table's own scope names it and no Reference
+ *  column points at a scoped Table (where membership is now unknowable). */
+async function deletedVisible(scope: Map<string, Set<string>>, table: string, rowId: string): Promise<boolean> {
+  const own = scope.get(table)
+  if (own && !own.has(rowId)) return false
+  const { getMeta } = await import('./meta')
+  const meta = await getMeta(table).catch(() => null)
+  if (!meta) return false
+  return !meta.columns.some((c) => c.column_type === 'Reference' && c.reference_table && scope.has(c.reference_table))
+}
+
+/** May a scoped subscriber see this list event? */
+export async function eventVisibleTo(principal: string, scope: Map<string, Set<string>>, msg: RealtimeEvent): Promise<boolean> {
+  const payload = msg.payload as { row_id?: unknown } | undefined
+  if (payload?.row_id == null) return true
+  const table = msg.channel.slice(5)
+  const rowId = String(payload.row_id)
+  return msg.event === 'deleted' ? deletedVisible(scope, table, rowId) : rowInScope(principal, table, rowId)
+}
+
+async function deliverScoped(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
+  if ((await eventVisibleTo(client.user.row_id, client.scope!, msg)) && client.socket.readyState === client.socket.OPEN)
+    client.socket.send(data)
 }
 
 const clients = new Set<Client>()
@@ -92,8 +120,11 @@ export function publish(channel: string, event: string, payload?: unknown): void
   }
   const data = JSON.stringify(msg)
   for (const c of clients) {
-    if (c.channels.has(channel) && c.socket.readyState === c.socket.OPEN && listEventVisible(c, channel, payload))
-      c.socket.send(data)
+    if (!c.channels.has(channel) || c.socket.readyState !== c.socket.OPEN) continue
+    // person-rename R2: a scoped subscriber gets a list event only for a row
+    // it could read (own-Table and Reference scopes alike).
+    if (channel.startsWith('list:') && c.scope?.size) void deliverScoped(c, msg, data).catch(() => {})
+    else c.socket.send(data)
   }
 }
 

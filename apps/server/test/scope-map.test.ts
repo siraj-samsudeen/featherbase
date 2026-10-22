@@ -12,7 +12,7 @@ import { app } from '../src/index'
 import { config } from '../src/config'
 import { issueAccessToken, type SessionUser } from '../src/auth'
 import { runReportChart } from '../src/report-chart'
-import { canSubscribe } from '../src/realtime'
+import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
 
@@ -94,6 +94,30 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     const user: SessionUser = { row_id: id, kind: 'service_account', email: null, full_name: 'svc-scope' }
     expect(await canSubscribe(user, `row:${STORE}:ATK`)).toBe(true)
     expect(await canSubscribe(user, `row:${STORE}:KNP`)).toBe(false)
+  })
+
+  test('realtime: a row scoped through a Reference is neither watchable nor announced', async ({ admin }) => {
+    const { id } = await world(admin)
+    await admin.post('/api/table_def', {
+      name: 'Scope Invoice',
+      columns: [{ column_name: 'store', column_type: 'Reference', reference_table: STORE }],
+    })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Scope Invoice', role: ROLE, can_read: true } })
+    const atk = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Scope Invoice', row: { store: 'ATK' } })
+    const knp = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Scope Invoice', row: { store: 'KNP' } })
+    const user: SessionUser = { row_id: id, kind: 'service_account', email: null, full_name: 'svc-scope' }
+    expect(await canSubscribe(user, `row:Scope Invoice:${atk.row_id}`)).toBe(true)
+    expect(await canSubscribe(user, `row:Scope Invoice:${knp.row_id}`)).toBe(false)
+    const scope = await getScopeMap(id)
+    const event = (row: string, ev: string) => ({ channel: 'list:Scope Invoice', event: ev, payload: { table: 'Scope Invoice', row_id: row } })
+    expect(await eventVisibleTo(id, scope, event(atk.row_id, 'updated'))).toBe(true)
+    expect(await eventVisibleTo(id, scope, event(knp.row_id, 'updated'))).toBe(false)
+    // A deleted row cannot be read any more: where a Reference scope applies
+    // the event is withheld; an own-Table scope still decides by id.
+    expect(await eventVisibleTo(id, scope, event(knp.row_id, 'deleted'))).toBe(false)
+    const own = (row: string) => ({ channel: `list:${STORE}`, event: 'deleted', payload: { table: STORE, row_id: row } })
+    expect(await eventVisibleTo(id, scope, own('ATK'))).toBe(true)
+    expect(await eventVisibleTo(id, scope, own('KNP'))).toBe(false)
   })
 
   test('a source-bound Table', async ({ admin }) => {

@@ -27,6 +27,12 @@ afterEach(() => {
     else process.env[k] = saved[k]
 })
 
+async function personId(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, username: string): Promise<string> {
+  const filters = encodeURIComponent(JSON.stringify([['username', '=', username]]))
+  const found = (await (await admin.fetch(`/api/table/Person?filters=${filters}`)).json()) as { data: { row_id: string }[] }
+  return found.data[0].row_id
+}
+
 async function viewer(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }) {
   await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
     { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001'] },
@@ -72,8 +78,10 @@ test('a Store Manager is told they see the whole store as Store Manager', async 
     ['Store Manager', { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' }],
   ] as const)
     await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table, row }) })
-  const doc = (await (await admin.fetch('/api/table/Person/test_employee_2')).json()) as { updated_at: string }
-  await admin.fetch('/api/table/Person/test_employee_2', {
+  // person-rename: the account's id is minted; find it by its username.
+  const id = await personId(admin, 'test_employee_2')
+  const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
+  await admin.fetch(`/api/table/Person/${id}`, {
     method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
   })
 
@@ -105,8 +113,10 @@ test('more than three Sections are counted, not listed; a Store Manager reads "W
     method: 'POST',
     body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-10104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
   })
-  const doc = (await (await admin.fetch('/api/table/Person/test_employee_2')).json()) as { updated_at: string }
-  await admin.fetch('/api/table/Person/test_employee_2', {
+  // person-rename: the account's id is minted; find it by its username.
+  const id = await personId(admin, 'test_employee_2')
+  const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
+  await admin.fetch(`/api/table/Person/${id}`, {
     method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
   })
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })

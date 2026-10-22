@@ -92,6 +92,15 @@ async function resolveRowId(
   if (values.amended_from != null && values[ROW_KEY])
     return String(values[ROW_KEY])
   const rule = meta.id_pattern || 'hash'
+  // person-rename R1: an opaque id is assigned, never chosen — a caller (a
+  // form, an API client, an import) may not supply one.
+  if (rule.startsWith('opaque:')) {
+    if (String(values[ROW_KEY] ?? '').trim())
+      throw new AppError('ValidationError', `${meta.name} ids are assigned by Featherbase; leave the id blank`, {
+        [ROW_KEY]: 'assigned automatically',
+      })
+    return opaqueId(rule.slice('opaque:'.length))
+  }
   // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
@@ -102,9 +111,6 @@ async function resolveRowId(
     if (supplied) return supplied
   }
   if (rule === 'hash') return hashRowId()
-  // person-rename R1: `opaque:<prefix>` mints a permanent opaque id such as
-  // `psn_…` — never derived from what the caller typed.
-  if (rule.startsWith('opaque:')) return opaqueId(rule.slice('opaque:'.length))
   if (rule === 'prompt') {
     const rowId = String(values[ROW_KEY] ?? '').trim()
     if (!rowId)

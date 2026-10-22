@@ -45,6 +45,14 @@ describe('person-rename: the human record is a Person', () => {
         await saveDoc('Person', { row_id: 'chosen@x.test', email: 'chosen@x.test' }, 'Administrator', 'insert')
       }),
     ).rejects.toMatchObject({ type: 'ValidationError', fields: { row_id: 'assigned automatically' } })
+    // Not even one shaped like a minted id (Codex P2 on #384).
+    await expect(
+      sql.begin(async () => {
+        const { saveDoc } = await import('../src/document')
+        await saveDoc('Person', { row_id: 'psn_chosen', email: 'chosen@x.test' }, 'Administrator', 'insert')
+      }),
+    ).rejects.toMatchObject({ type: 'ValidationError', fields: { row_id: 'assigned automatically' } })
+    await expect(admin.post('/api/table/Person', { row_id: 'psn_chosen', email: 'chosen@x.test' })).rejects.toMatchObject({ status: 417 })
   })
 
   test('a Person saved with roles through the generic path; the generated pair follows parent', async ({ admin }) => {
@@ -112,6 +120,13 @@ describe('person-rename: one principal model', () => {
     await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: [] })
     expect(await isPrivileged(account.row_id)).toBe(false)
     await expect(admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['No Such Role'] })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a service-account name names one account, held by the database (Codex P2 on #384)', async () => {
+    await sql`insert into service_account (row_id, label) values ('svc_aaaaaaaaaaaaaaaaaaaa', 'svc-once')`
+    await expect(sql.begin((tx) => tx`insert into service_account (row_id, label) values ('svc_bbbbbbbbbbbbbbbbbbbb', 'SVC-ONCE')`)).rejects.toThrow(
+      /service_account_label_lower_uq/,
+    )
   })
 
   test('a service account writes as itself: created_by is its id, and it is rate-limited by its own budget', async ({ admin }) => {

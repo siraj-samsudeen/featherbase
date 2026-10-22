@@ -26,7 +26,10 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
   expect(await sql`select name from installed_app where name = 'scopeproof'`).toHaveLength(0)
   expect(await discoverPackages([resolve('../..', 'runtime-apps/scope-proof')])).toEqual([])
   await installApp('scopeproof')
-  await saveDoc('Person', { row_id: user, email, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
+  // A person id is assigned, never chosen; this committed proof needs a known
+  // one across connections, so the row is written directly.
+  await sql`insert into person (row_id, email, full_name, enabled) values (${user}, ${email}, ${email}, true)`
+  await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${'hr-' + user}, ${user}, 'Person', 'roles', 'Scope Planner')`
   const grant = () => saveDoc('Data Scope', { person: user, allow_table: 'scopeproof.store', for_value: 'A' }, 'Administrator', 'insert')
   const revoke = () => sql`delete from data_scope where person = ${user}`
   try {
@@ -80,7 +83,10 @@ prove('actual HTTP callback failures are redacted and audited after committed ro
   const directory = resolve('../..', 'runtime-apps/scope-proof')
   expect(await discoverPackages([directory])).toEqual([])
   await installApp('scopeproof')
-  await saveDoc('Person', { row_id: user, email, enabled: true, roles: [{ role: 'Scope Planner' }] }, 'Administrator', 'insert')
+  // A person id is assigned, never chosen; this committed proof needs a known
+  // one across connections, so the row is written directly.
+  await sql`insert into person (row_id, email, full_name, enabled) values (${user}, ${email}, ${email}, true)`
+  await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${'hr-' + user}, ${user}, 'Person', 'roles', 'Scope Planner')`
   const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
   const module = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 })

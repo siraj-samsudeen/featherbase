@@ -85,6 +85,11 @@ export async function createServiceAccount(label: string, roles: string[], actor
       position: 0,
     } as unknown as Record<string, never>)}`
     await writeRoles(id, wanted, actor)
+  }).catch((err) => {
+    // Lost a race to the same name: the unique index decides.
+    if ((err as { code?: string; constraint_name?: string })?.code === '23505')
+      throw new AppError('ConflictError', `A service account named "${name}" already exists`)
+    throw err
   })
   await logActivity(actor, `service_account_created ${id}`)
   return getServiceAccount(id)
