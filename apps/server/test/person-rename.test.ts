@@ -53,6 +53,18 @@ describe('person-rename: the human record is a Person', () => {
       }),
     ).rejects.toMatchObject({ type: 'ValidationError', fields: { row_id: 'assigned automatically' } })
     await expect(admin.post('/api/table/Person', { row_id: 'psn_chosen', email: 'chosen@x.test' })).rejects.toMatchObject({ status: 417 })
+    // Nor through the amendment path: `amended_from` does not let a chosen id
+    // in on an opaque-id Table (Codex review on #384).
+    await admin.post('/api/table_def', {
+      name: 'Opaque Doc', is_submittable: true, id_pattern: 'opaque:opq_',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    const { saveDoc } = await import('../src/document')
+    const first = await saveDoc('Opaque Doc', { title: 'one' }, 'Administrator', 'insert')
+    expect(first.row_id).toMatch(/^opq_[a-z2-7]{20}$/)
+    const amended = await saveDoc('Opaque Doc', { row_id: 'opq_chosen', amended_from: first.row_id, title: 'two' }, 'Administrator', 'insert')
+    expect(amended.row_id).not.toBe('opq_chosen')
+    expect(amended.row_id).toMatch(/^opq_[a-z2-7]{20}$/)
   })
 
   test('a Person saved with roles through the generic path; the generated pair follows parent', async ({ admin }) => {

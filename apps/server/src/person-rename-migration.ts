@@ -249,9 +249,6 @@ async function createServiceAccountTable() {
         { column_name: 'api_rate_limit', label: 'API rate limit', column_type: 'Int' },
       ],
     } as Parameters<typeof createTable>[0])
-  // A name names one account, ignoring case — held by the database, so two
-  // concurrent creates cannot both pass.
-  await sql.unsafe(`create unique index if not exists service_account_label_lower_uq on ${Q('service_account')} (lower(label))`)
   invalidateMeta()
 }
 

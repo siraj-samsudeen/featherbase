@@ -88,19 +88,21 @@ async function resolveRowId(
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
-  // DOC-008: amended rows carry a pre-derived ROWID-n.
-  if (values.amended_from != null && values[ROW_KEY])
-    return String(values[ROW_KEY])
   const rule = meta.id_pattern || 'hash'
   // person-rename R1: an opaque id is assigned, never chosen — a caller (a
-  // form, an API client, an import) may not supply one.
+  // form, an API client, an import) may not supply one. Checked before the
+  // amendment path, so `amended_from` cannot smuggle one in: an amendment of
+  // an opaque-id row simply gets a fresh opaque id.
   if (rule.startsWith('opaque:')) {
-    if (String(values[ROW_KEY] ?? '').trim())
+    if (values.amended_from == null && String(values[ROW_KEY] ?? '').trim())
       throw new AppError('ValidationError', `${meta.name} ids are assigned by Featherbase; leave the id blank`, {
         [ROW_KEY]: 'assigned automatically',
       })
     return opaqueId(rule.slice('opaque:'.length))
   }
+  // DOC-008: amended rows carry a pre-derived ROWID-n.
+  if (values.amended_from != null && values[ROW_KEY])
+    return String(values[ROW_KEY])
   // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied

@@ -35,9 +35,6 @@ interface Client {
   socket: WebSocket
   user: SessionUser
   channels: Set<string>
-  /** person-rename R2: the subscriber's Data Scope, read when a list channel
-   *  is subscribed; list events for rows outside it are not sent. */
-  scope?: Map<string, Set<string>>
 }
 
 /** Is this row within the principal's Data Scope — by its own Table AND by
@@ -68,17 +65,21 @@ async function deletedVisible(scope: Map<string, Set<string>>, table: string, ro
   return !meta.columns.some((c) => c.column_type === 'Reference' && c.reference_table && scope.has(c.reference_table))
 }
 
-/** May a scoped subscriber see this list event? */
-export async function eventVisibleTo(principal: string, scope: Map<string, Set<string>>, msg: RealtimeEvent): Promise<boolean> {
-  const payload = msg.payload as { row_id?: unknown } | undefined
-  if (payload?.row_id == null) return true
-  const table = msg.channel.slice(5)
+/** May this subscriber see this list or row event? Decided against the
+ *  principal's CURRENT Data Scope at delivery, so a scope granted or a
+ *  Reference changed after subscribing is honoured at once. */
+export async function eventVisibleTo(principal: string, msg: RealtimeEvent): Promise<boolean> {
+  const payload = msg.payload as { table?: unknown; row_id?: unknown } | undefined
+  if (payload?.row_id == null || typeof payload.table !== 'string') return true
+  if (await isPrivileged(principal)) return true
+  const scope = await getScopeMap(principal)
+  if (!scope.size) return true
   const rowId = String(payload.row_id)
-  return msg.event === 'deleted' ? deletedVisible(scope, table, rowId) : rowInScope(principal, table, rowId)
+  return msg.event === 'deleted' ? deletedVisible(scope, payload.table, rowId) : rowInScope(principal, payload.table, rowId)
 }
 
-async function deliverScoped(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
-  if ((await eventVisibleTo(client.user.row_id, client.scope!, msg)) && client.socket.readyState === client.socket.OPEN)
+async function deliverChecked(client: Client, msg: RealtimeEvent, data: string): Promise<void> {
+  if ((await eventVisibleTo(client.user.row_id, msg)) && client.socket.readyState === client.socket.OPEN)
     client.socket.send(data)
 }
 
@@ -121,9 +122,9 @@ export function publish(channel: string, event: string, payload?: unknown): void
   const data = JSON.stringify(msg)
   for (const c of clients) {
     if (!c.channels.has(channel) || c.socket.readyState !== c.socket.OPEN) continue
-    // person-rename R2: a scoped subscriber gets a list event only for a row
-    // it could read (own-Table and Reference scopes alike).
-    if (channel.startsWith('list:') && c.scope?.size) void deliverScoped(c, msg, data).catch(() => {})
+    // person-rename R2: a list or row event reaches a subscriber only for a
+    // row it can read now (own-Table and Reference scopes alike).
+    if (channel.startsWith('list:') || channel.startsWith('row:')) void deliverChecked(c, msg, data).catch(() => {})
     else c.socket.send(data)
   }
 }
@@ -178,8 +179,6 @@ export function attachRealtime(server: Server): void {
             for (const ch of msg.subscribe ?? []) {
               // Authorize each subscription; silently drop unpermitted ones.
               if (await canSubscribe(client.user, ch)) {
-                if (ch.startsWith('list:') && !client.scope && !(await isPrivileged(client.user.row_id)))
-                  client.scope = await getScopeMap(client.user.row_id)
                 client.channels.add(ch)
                 registered.push(ch)
               }

@@ -15,6 +15,7 @@ import { runReportChart } from '../src/report-chart'
 import { canSubscribe, eventVisibleTo } from '../src/realtime'
 import { getScopeMap } from '../src/permissions'
 import { invalidateSources } from '../src/sources/registry'
+import { sql } from '../src/db'
 
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
@@ -108,16 +109,30 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     const user: SessionUser = { row_id: id, kind: 'service_account', email: null, full_name: 'svc-scope' }
     expect(await canSubscribe(user, `row:Scope Invoice:${atk.row_id}`)).toBe(true)
     expect(await canSubscribe(user, `row:Scope Invoice:${knp.row_id}`)).toBe(false)
-    const scope = await getScopeMap(id)
     const event = (row: string, ev: string) => ({ channel: 'list:Scope Invoice', event: ev, payload: { table: 'Scope Invoice', row_id: row } })
-    expect(await eventVisibleTo(id, scope, event(atk.row_id, 'updated'))).toBe(true)
-    expect(await eventVisibleTo(id, scope, event(knp.row_id, 'updated'))).toBe(false)
+    expect(await eventVisibleTo(id, event(atk.row_id, 'updated'))).toBe(true)
+    expect(await eventVisibleTo(id, event(knp.row_id, 'updated'))).toBe(false)
+    // A row channel is rechecked at delivery: the Reference moving out of
+    // scope after subscribing withholds its next event (Codex review on #384).
+    const rowEvent = { channel: `row:Scope Invoice:${atk.row_id}`, event: 'updated', payload: { table: 'Scope Invoice', row_id: atk.row_id } }
+    expect(await eventVisibleTo(id, rowEvent)).toBe(true)
+    await sql.unsafe(`update featherbase.scope_invoice set store = 'KNP' where row_id = $1`, [atk.row_id])
+    expect(await eventVisibleTo(id, rowEvent)).toBe(false)
     // A deleted row cannot be read any more: where a Reference scope applies
     // the event is withheld; an own-Table scope still decides by id.
-    expect(await eventVisibleTo(id, scope, event(knp.row_id, 'deleted'))).toBe(false)
+    expect(await eventVisibleTo(id, event(knp.row_id, 'deleted'))).toBe(false)
     const own = (row: string) => ({ channel: `list:${STORE}`, event: 'deleted', payload: { table: STORE, row_id: row } })
-    expect(await eventVisibleTo(id, scope, own('ATK'))).toBe(true)
-    expect(await eventVisibleTo(id, scope, own('KNP'))).toBe(false)
+    expect(await eventVisibleTo(id, own('ATK'))).toBe(true)
+    expect(await eventVisibleTo(id, own('KNP'))).toBe(false)
+  })
+
+  test('realtime: a scope granted after subscribing applies to the very next event (Codex review on #384)', async ({ admin }) => {
+    await world(admin)
+    const late = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-late-scope', roles: [ROLE] })
+    const ev = { channel: `list:${STORE}`, event: 'updated', payload: { table: STORE, row_id: 'KNP' } }
+    expect(await eventVisibleTo(late.row_id, ev)).toBe(true)
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { service_account: late.row_id, allow_table: STORE, for_value: 'ATK' } })
+    expect(await eventVisibleTo(late.row_id, ev)).toBe(false)
   })
 
   test('a source-bound Table', async ({ admin }) => {
