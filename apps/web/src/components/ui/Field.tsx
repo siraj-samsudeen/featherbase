@@ -15,7 +15,7 @@ import { Eye, EyeOff, Search } from './icons'
 export function inputClasses(className?: string): string {
   return cx(
     'block w-full min-h-control rounded-control border border-border-control bg-surface px-3 text-control text-ink',
-    'placeholder:text-ink-subtle focus:outline-none focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30',
+    'placeholder:text-ink-subtle focus:outline-hidden focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30',
     'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted aria-invalid:border-negative',
     className,
   )

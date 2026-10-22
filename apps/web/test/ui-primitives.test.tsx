@@ -11,6 +11,7 @@ import {
   Card,
   EmptyState,
   Field,
+  inputClasses,
   Notice,
   PasswordInput,
   SearchInput,
@@ -18,6 +19,7 @@ import {
   Skeleton,
   StatusPill,
   TextInput,
+  TOAST_MS,
   ToastProvider,
   useToast,
 } from '../src/components/ui'
@@ -154,12 +156,27 @@ describe('Skeleton', () => {
 describe('Toast', () => {
   afterEach(() => vi.useRealTimers())
 
-  function Trigger({ tone, message }: { tone: 'positive' | 'negative'; message: string }) {
+  function Trigger({ tone, message, label = 'Go' }: { tone: 'positive' | 'negative'; message: string; label?: string }) {
     const toast = useToast()
-    return <Button onClick={() => toast({ tone, message })}>Go</Button>
+    return <Button onClick={() => toast({ tone, message })}>{label}</Button>
   }
+  const tick = (ms: number) => act(async () => vi.advanceTimersByTime(ms))
 
-  test('a confirmation appears in the live region and leaves on its own', async () => {
+  test('one polite live region is there before any toast, and confirmations appear inside it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(
+      <ToastProvider>
+        <Trigger tone="positive" message="Row saved" />
+      </ToastProvider>,
+    )
+    const live = within(screen.getByRole('region', { name: 'Notifications' })).getByRole('status')
+    expect(live).toHaveAttribute('aria-live', 'polite')
+    expect(live).toBeEmptyDOMElement()
+    await userEvent.click(screen.getByRole('button', { name: 'Go' }))
+    expect(within(live).getByText('Row saved')).toBeInTheDocument()
+  })
+
+  test('a confirmation leaves on its own', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(
       <ToastProvider>
@@ -167,13 +184,50 @@ describe('Toast', () => {
       </ToastProvider>,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Go' }))
-    const region = screen.getByRole('region', { name: 'Notifications' })
-    expect(within(region).getByText('Row saved')).toBeInTheDocument()
-    await act(async () => vi.advanceTimersByTime(5100))
-    expect(within(region).queryByText('Row saved')).toBeNull()
+    await tick(TOAST_MS + 100)
+    expect(screen.queryByText('Row saved')).toBeNull()
   })
 
-  test('a failure stays until the user dismisses it', async () => {
+  test("a second toast does not restart the first one's timer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(
+      <ToastProvider>
+        <Trigger tone="positive" message="First" label="One" />
+        <Trigger tone="positive" message="Second" label="Two" />
+      </ToastProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'One' }))
+    await tick(3000)
+    await userEvent.click(screen.getByRole('button', { name: 'Two' }))
+    await tick(2100)
+    expect(screen.queryByText('First')).toBeNull()
+    expect(screen.getByText('Second')).toBeInTheDocument()
+  })
+
+  test('pointing at a toast or focusing it pauses its timer', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    render(
+      <ToastProvider>
+        <Trigger tone="positive" message="Row saved" />
+      </ToastProvider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Go' }))
+    await tick(2000)
+    const card = screen.getByText('Row saved').closest('[data-toast]') as HTMLElement
+    await userEvent.hover(card)
+    await tick(TOAST_MS * 2)
+    expect(screen.getByText('Row saved')).toBeInTheDocument()
+    await userEvent.unhover(card)
+    const dismiss = within(card).getByRole('button', { name: 'Dismiss' })
+    await act(async () => dismiss.focus())
+    await tick(TOAST_MS * 2)
+    expect(screen.getByText('Row saved')).toBeInTheDocument()
+    await act(async () => dismiss.blur())
+    await tick(TOAST_MS - 2000 + 100)
+    expect(screen.queryByText('Row saved')).toBeNull()
+  })
+
+  test('a failure is an alert and stays until the user dismisses it', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     render(
       <ToastProvider>
@@ -181,10 +235,18 @@ describe('Toast', () => {
       </ToastProvider>,
     )
     await userEvent.click(screen.getByRole('button', { name: 'Go' }))
-    await act(async () => vi.advanceTimersByTime(20000))
+    await tick(20000)
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent('Could not save')
     await userEvent.click(within(alert).getByRole('button', { name: 'Dismiss' }))
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('focus stays visible in forced-colours mode', () => {
+  test('a text box hides its outline with a transparent one, never removes it', () => {
+    const c = inputClasses().split(' ')
+    expect(c).toContain('focus:outline-hidden')
+    expect(c).not.toContain('focus:outline-none')
   })
 })
