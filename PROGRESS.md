@@ -9,15 +9,17 @@ stored that day via `toISOString().slice(0, 10)`. The Suppliers import on feathe
 `parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`) and reads each
 date-formatted cell with `SSF.parse_date_code` (no timezone), honouring 1904-based workbooks:
 - a date-only cell becomes a local-midnight Date;
-- a cell with a time becomes local date-time text with its milliseconds, so 05:30 IST (exactly UTC midnight) is never
-  mistaken for a bare day. A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
+- a cell whose number format shows a time becomes local date-time text, even at 00:00. Its time is the serial's
+  day fraction in whole milliseconds, so a rounded-up 23:59:59.9996 carries into the next day, and 05:30 IST
+  (exactly UTC midnight) is never mistaken for a bare day. A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
 coercion, the Date schema and the import preview use it. OpenSpec change `fix-excel-date-shift-ist`, with no
 capability delta.
 
 **Verified** under Node 22:
-- `apps/web/test/parse-file-ist.test.ts` (12, in IST): failed first with `[2024, 10, 20, 23, 59, 50]`. The cases are
+- `apps/web/test/parse-file-ist.test.ts` (14, in IST): failed first with `[2024, 10, 20, 23, 59, 50]`. The cases are
   month ends, a leap day, the year end, 01-Jan, a 23:59:58.272 time, an IST 05:30 time that stays a Datetime, and
-  `.123` seconds.
+  `.123` seconds,
+  a midnight date-time cell, and a rounding carry past the second and past midnight.
 - The shared schema test in IST passes, and `packages/shared` has 131 tests passing.
 - Web suite 197 passed; server import tests 88 passed; web and server typecheck passed.
 - The import and table-builder e2e specs on this machine, which runs in IST: 41 of 42 passed. The one failure is

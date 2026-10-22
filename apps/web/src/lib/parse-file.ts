@@ -60,32 +60,51 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
   return 'visible'
 }
 
+/** Does an Excel number format show a time? (hours, seconds, AM/PM; quoted text and [colour] tags ignored) */
+function formatShowsTime(format: string): boolean {
+  const bare = format.replace(/"[^"]*"/g, '').replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
+  return /[hs]|AM\/PM|A\/P/i.test(bare)
+}
+
 /**
- * #387: every numeric cell with a date number format is read from the serial's
- * own parts (SSF.parse_date_code, no timezone):
- * - a date-only cell becomes local midnight of the day the sheet shows, which
- *   the shared inference reads as a Date;
- * - a cell with a time becomes its local date-time as text,
- *   `YYYY-MM-DDTHH:MM:SS[.mmm]`, which the inference reads as a Datetime. A Date
- *   object would be ambiguous: 05:30 in India is exactly UTC midnight, which the
- *   date-only heuristic would mistake for a bare day.
+ * #387: every numeric cell with a date number format is read from the serial
+ * itself, never through a timezone:
+ * - a cell whose format shows only a date becomes local midnight of the day
+ *   the sheet shows (SSF.parse_date_code), which the shared inference reads as
+ *   a Date;
+ * - a cell whose format shows a time becomes its local date-time as text,
+ *   `YYYY-MM-DDTHH:MM:SS[.mmm]`, read as a Datetime, even at 00:00. A Date
+ *   object would be ambiguous: 05:30 in India is exactly UTC midnight, which
+ *   the date-only heuristic would take for a bare day. The time is the serial's
+ *   day fraction in whole milliseconds, so a rounded-up 23:59:59.9996 carries
+ *   into the next day instead of being clipped.
  */
 function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSheet, date1904: boolean) {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
+  const DAY_MS = 86_400_000
   for (const address of Object.keys(sheet)) {
     if (address.startsWith('!')) continue
     const cell = sheet[address] as import('xlsx').CellObject
     if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue
-    const p = XLSX.SSF.parse_date_code(cell.v, { date1904 })
+    let day = Math.floor(cell.v)
+    let ms = Math.round((cell.v - day) * DAY_MS)
+    if (ms >= DAY_MS) {
+      day += 1
+      ms -= DAY_MS
+    }
+    const p = XLSX.SSF.parse_date_code(day, { date1904 })
     if (!p) continue
-    const ms = Math.min(999, Math.round((p.u ?? 0) * 1000))
-    if (!p.H && !p.M && !p.S && !ms) {
+    if (!formatShowsTime(String(cell.z))) {
       cell.t = 'd'
       cell.v = new Date(p.y, p.m - 1, p.d)
-    } else {
-      cell.t = 's'
-      cell.v = `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.H)}:${pad(p.M)}:${pad(p.S)}${ms ? `.${pad(ms, 3)}` : ''}`
+      continue
     }
+    const H = Math.floor(ms / 3_600_000)
+    const M = Math.floor((ms % 3_600_000) / 60_000)
+    const S = Math.floor((ms % 60_000) / 1000)
+    const frac = ms % 1000
+    cell.t = 's'
+    cell.v = `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(H)}:${pad(M)}:${pad(S)}${frac ? `.${pad(frac, 3)}` : ''}`
   }
 }
 

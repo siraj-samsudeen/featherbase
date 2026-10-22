@@ -50,6 +50,23 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(rows[0].values.when).toBe('2024-10-21T05:30:00')
   })
 
+  test('a date-time cell at exactly midnight is still a date-time: the format says so', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586, 'yyyy-mm-dd hh:mm:ss'], [45587, 'yyyy-mm-dd hh:mm:ss']]))
+    expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-21T00:00:00', '2024-10-22T00:00:00'])
+    expect(inferColumnType(sheet.rows.map((r) => r[0]))).toBe('Datetime')
+  })
+
+  test('a fraction that rounds up carries into the next second, and past midnight into the next day', async () => {
+    const at = (h: number, m: number, s: number) => (h * 3600 + m * 60 + s) / 86400
+    const [sheet] = await parseWorkbook(
+      workbookFile([
+        [45586 + at(12, 34, 56.9996), 'yyyy-mm-dd hh:mm:ss.000'],
+        [45586 + at(23, 59, 59.9996), 'yyyy-mm-dd hh:mm:ss.000'],
+      ]),
+    )
+    expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-21T12:34:57', '2024-10-22T00:00:00'])
+  })
+
   test('fractional seconds survive', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.5 + 0.123 / 86400, 'yyyy-mm-dd hh:mm:ss.000']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00.123')
