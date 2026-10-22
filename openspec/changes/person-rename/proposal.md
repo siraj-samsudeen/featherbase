@@ -24,7 +24,8 @@ dev holds ~280 trial accounts that are migrated once as data.
 - **Automation accounts are their own kind of principal.** A service account
   moves out of the person table into its own, keeping its tokens, roles, data
   access and shares exactly as today. Tokens, roles, data access and shares
-  refer to *a principal* — a person or a service account — through one model.
+  refer to *a principal* — a person or a service account — through one
+  model: a Person reference or a Service Account reference, exactly one set.
 - **Every person gets an opaque permanent id**, including dev's trial
   accounts, which are re-keyed once in one transaction with a check that no
   old id survives in any place that refers to a person (codes and free text

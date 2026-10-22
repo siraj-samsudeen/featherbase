@@ -62,38 +62,44 @@ is removed).
 
 ### R2. One principal model; service accounts in their own table
 
-- Raw table `service_account (row_id 'svc_…' pk, label, enabled, created_at,
-  created_by)`. Rows with `user_type = 'service'` move here and **get fresh
+- **Service Account is a Table** (`featherbase.service_account`, Core,
+  `system = true`, **read-only through the generic API** — every write goes
+  through `service-accounts.ts`), so Reference pickers and forms work
+  generically. Columns: `row_id 'svc_…'`, `label`, `enabled`, `created_at`,
+  `created_by`. Rows with `user_type = 'service'` move here and **get fresh
   `svc_` ids through the registry** (DECISION); `user_type` is dropped.
-- **A principal is a person or a service account.** Every table that refers
-  to "who may act" uses **`principal_kind` (`person` \| `service_account`) +
-  `principal_id`** — `access_token` (replaces `owner`), `data_scope`
-  (replaces `"user"`), `share` (replaces `user`), `has_role` (`parenttype` =
-  `Person` \| `Service Account`, `parent` = id). A `check` constrains the
-  kind; an **existence trigger** is the FK (Postgres cannot FK two tables):
-  it refuses an insert or update whose principal does not exist **and
-  refuses deleting a principal that still holds scope, share or token rows**
-  (the old NO ACTION semantics, now for both kinds). Pinned by tests.
-- **Admin forms.** Data Scope and Share are Tables, so the generic FormView
-  renders them from metadata: `principal_kind` is a `Choice` column and
-  `principal_id` is a **`Dynamic Reference`** whose target table is driven by
-  `principal_kind` (`Person` ⇒ the Person picker, which excludes service
-  accounts, replaced and built-in records; `Service Account` ⇒ the
-  service-account picker). The engine already supports Dynamic Reference
-  columns (Share's target uses one); no per-form code.
+- **A principal is a person or a service account — two nullable Reference
+  columns, exactly one set** (DECISION; the engine has no Dynamic Reference
+  type — `meta.ts` `COLUMN_TYPE_VALUES` lists none, Share's target is a
+  Reference to Table plus plain-text `share_name`). On `access_token`
+  (replaces `owner`), `data_scope` (replaces `"user"`), `share` (replaces
+  `user`) and `has_role`: `person` → `Reference → Person`, `service_account`
+  → `Reference → Service Account`, `check ((person is null) <> (service_account
+  is null))`. For `has_role` the engine's `parent` + `parenttype` stay as
+  the storage (`Person` \| `Service Account`); the two columns are the
+  metadata view of the same fact. Both References are **real foreign keys
+  with `on delete restrict`**, so deleting a principal that still holds
+  scope, share, token or role rows is refused by the database — no existence
+  trigger needed. Pinned by tests.
+- **Admin forms.** Data Scope and Share render from metadata: two pickers,
+  "Person" and "Service account", one of which must be filled; the controller
+  returns the check's refusal as a field error when both or neither are set.
+  **The Person picker excludes service accounts by construction and
+  excludes replaced and built-in records through the picker's filter**
+  (`replaced_by is null and not built_in`).
 - **Service-account roles are written only through `service-accounts.ts`**
   (`POST /api/service-accounts/:id/roles`), never through the generic
   document path; `has_role` rows with `parenttype = 'Service Account'` are
   refused by the generic save.
-- **Personal tokens stay.** `auth.ts` resolves a token to either kind,
-  refuses a disabled owner of either kind; the session carries
-  `principal_kind`.
+- **Personal tokens stay.** `auth.ts` resolves a token to whichever column is
+  set, refuses a disabled owner of either kind; the session carries the
+  principal's kind.
 - **One `getScopeMap(principal)`** replaces `getUserPermissionMap(user)` and
-  is the only reader of `data_scope` — used by list, get, query/report,
-  search, export, realtime, sales-target and bound sources. **Test:** a
-  scoped service-account token is narrowed on every one of those paths.
-  Nothing a service account holds is lost; a scope row that cannot be moved
-  aborts the migration (never fail-open).
+  is the only reader of `data_scope` — it reads whichever column is set — used
+  by list, get, query/report, search, export, realtime, sales-target and
+  bound sources. **Test:** a scoped service-account token is narrowed on
+  every one of those paths. Nothing a service account holds is lost; a scope
+  row that cannot be moved aborts the migration (never fail-open).
 - **Inventory of person-assuming places** (each a task + test): `who(c)` and
   every `created_by`/`owner`/`modified_by` writer; Activity Log, Version,
   Comment, notification writers; `isBypassUser` → `isPrivileged(principal)`;
@@ -101,7 +107,7 @@ is removed).
   `getUserPermissionMap`; Reference pickers; `resolveToken`; the lockout
   guard (persons only); `service-accounts.ts` (creation, listing, the "owner
   enabled" subquery, roles endpoint); **`rate-limit.ts`** (`api_rate_limit`
-  rows move with service accounts and key on `principal_id`); **comment
+  rows move with service accounts and key on the principal's id); **comment
   mentions** (by display name, never `row_id`); **`assignment-rules.ts`**
   (`assignment_rule_user`, `last_user` → person ids); **`sales-target.ts`**
   (`platformRelation('user')` → `person`; the seed's `row_id: a.username`
@@ -134,19 +140,29 @@ is removed).
   `stylehr_username` Custom Fields, and `sign_in_identity.subject` (an
   employee code until `person-resolution` C4 rewrites it). **Free text is
   never scanned and left alone**: Comment bodies, notification subjects,
-  Activity Log messages. The registry therefore classifies every text column
-  of every Table as `id` / `json-with-ids` / `code` / `free-text`, and
-  **`cli people:plan` lists every text column with its classification**; an
-  unclassified column fails the plan.
+  Activity Log messages. **Conditional ids** (A-MAJOR): a text column holds a
+  person id only when a sibling type column says `Person` — class
+  **`conditional-id (type_column = 'Person')`**, with handlers for
+  `data_scope.for_value when allow_table = 'Person'` and `share.share_name
+  when share_table = 'Person'`; these rows are rewritten and scanned, other
+  rows of the same column are left alone. The registry therefore classifies
+  every text column of every Table as `id` / `json-with-ids` /
+  `conditional-id` / `code` / `free-text`, and **`cli people:plan` lists
+  every text column with its classification**; an unclassified column fails
+  the plan.
 - **One transaction**: set `allow_person_id_change`, mint the map (built-ins
   excluded), rewrite through the registry, run the scan; one exact hit in a
   registered column aborts and the migration prints the column. Write
   `person_id_map (old_id, new_id, kind)` (not mirrored).
 - **Test:** a fixture with populated `employee_code`, `stylehr_username`,
   `subject`, Comment bodies and notification subjects that *contain* old ids
-  passes the scan; a planted old id in a registered column fails it.
+  passes the scan; a planted old id in a registered column fails it; a
+  planted old id in `data_scope.for_value` under `allow_table = 'Person'` and
+  in `share.share_name` under `share_table = 'Person'` each fails it, while
+  the same value under another type is left alone.
 - **Sessions end at deploy** (the JWT `sub` changes); everyone signs in
-  again once. **Tokens are rewritten** (`principal_id` → new id; the secret
+  again once. **Tokens are rewritten** (`access_token.person` /
+  `service_account` → the new id; the secret
   is unchanged, so scripts keep working).
 
 ### R4. `user_identity` → `sign_in_identity`
@@ -158,7 +174,8 @@ rewrite to StyleHR record numbers is `person-resolution`'s (C4).
 
 - Registration: `featherbase.user` removed, `featherbase.person` added
   (`access`); `service_account`, `person_id_map` denied; `has_role`,
-  `data_scope`, `share` keep flowing with `principal_kind`/`principal_id`.
+  `data_scope`, `share` keep flowing with their `person` / `service_account`
+  columns.
 - **CDC rehearsal before the release tick** (A-M2): run the worker against
   a restored dev snapshot with 0101 applied — the `user` → `person` rename
   and the dropped `data_scope."user"` — and confirm it drops `access.user`,
@@ -192,10 +209,11 @@ rewrite to StyleHR record numbers is `person-resolution`'s (C4).
    `table_def`/`column_def`, every `Reference → User`); `user_identity` →
    `sign_in_identity` (`person_id`); add `person.built_in` and the namespace
    check (deferred until after step 4).
-2. Create `service_account`; `principal_kind`/`principal_id` + check +
-   existence trigger on `access_token`, `data_scope`, `share`; `has_role`
-   parenttypes; move `user_type = 'service'` rows; drop `user_type`,
-   `access_token.owner`, `data_scope."user"`, `share.user`.
+2. Create the Service Account Table; add the `person` and `service_account`
+   Reference columns with the exactly-one check (FKs `on delete restrict`) to
+   `access_token`, `data_scope`, `share`, `has_role`; move `user_type =
+   'service'` rows; drop `user_type`, `access_token.owner`,
+   `data_scope."user"`, `share.user`.
 3. Classify every text column (R3); abort on an unclassified one.
 4. Re-id through the registry (persons `psn_`, service accounts `svc_`,
    built-ins excluded, `usr_` converted), scan, `person_id_map`.
@@ -222,9 +240,11 @@ leaver procedure in force until #4336.
 ## Test plan
 
 `person-rename.test.ts`: tables renamed; `/api/users` gone; namespace
-checks; built-ins untouched; `usr_` converted; `username` carried; principal
-check and existence trigger incl. delete refusal; Dynamic Reference rendering
-of Data Scope / Share; service-account roles only via `service-accounts.ts`;
+checks; built-ins untouched; `usr_` converted; `username` carried; the
+exactly-one principal check and `on delete restrict` refusal; Service Account
+read-only through the generic API; Data Scope / Share forms with the two
+pickers and the Person picker filter; service-account roles only via
+`service-accounts.ts`;
 `isPrivileged` both kinds; pickers exclude service accounts; `who(c)` writes
 principal ids; mentions by name; rate limits move. `scope-map.test.ts`: a
 scoped service-account token narrowed on list, get, query/report, search,
