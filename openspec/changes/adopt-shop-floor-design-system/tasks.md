@@ -6,7 +6,7 @@
   with its pending-sweep list; run them against the current tokens to see them fail.
 - [x] 1.2 Replace the token block with the final roles (light and dark), the system font, shape and density tokens;
   remove the Inter dependency; verify the contrast test passes.
-- [ ] 1.3 Add the primitives (Button, Field with Input/Password/Select/Search, Card, Notice, EmptyState, Skeleton,
+- [x] 1.3 Add the primitives (Button, Field with Input/Password/Select/Search, Card, Notice, EmptyState, Skeleton,
   Toast, icon set) with component tests.
 - [ ] 1.4 Add DataList (table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`, with tests.
 - [ ] 1.5 Add the component gallery page; capture light, dark, 375 px and 1280 px screenshots; run web typecheck, the

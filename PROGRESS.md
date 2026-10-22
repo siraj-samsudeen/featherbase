@@ -1,5 +1,33 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1b: the shared components (#380)
+
+`apps/web/src/components/ui/` holds the primitives every screen will build from:
+- `Button`, with primary, secondary, quiet and danger variants, a loading state that keeps its label and refuses
+  clicks, and a `buttonClasses()` recipe so a router Link or an anchor can look like a button without being wrapped;
+- `Field`, which names its control with the label, describes it with the hint and the error, and marks it invalid;
+  plus `TextInput`, `PasswordInput` (show/hide with `aria-pressed`), `Select` and `SearchInput`;
+- `Card`, which is a named region when titled;
+- `Notice`, an alert for failures and a polite status for anything else;
+- `StatusPill`, which always shows the status in words;
+- `EmptyState`, `Skeleton` (announces what is loading; the bars are silent) and `Toast` (a confirmation leaves after
+  5 s, a failure stays until dismissed).
+
+Icons come from `lucide-react` 1.50.0 (exact pin, ISC, released 02-Oct-2026) through one curated module, `icons.ts`.
+Controls use the density tokens, so under phone emulation they measure 48 px with 16 px input text.
+
+`apps/web/gallery.html` (served by the dev server at `/gallery.html`, not built for production) renders every
+primitive live, in either theme.
+
+**Verified:**
+- `test/ui-primitives.test.tsx` has 17 tests; it failed on the missing module first.
+- Web suite 284 passed under Node 22, web typecheck passed, `vite build` passed (gallery not in `dist`).
+- `pnpm check:specs` and `git diff --check` are clean.
+- Gallery screenshots at 375 and 1280 px, light and dark, came from the local dev server. Under phone emulation
+  `(pointer: coarse)` matched and the first button measured 48 px.
+
+**Next:** stage 1c, DataList (a table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`.
+
 ## 2026-10-22 — Design system stage 1a: Shop Floor tokens and the guard tests (#380)
 
 Siraj chose direction B, "Shop Floor", for Featherbase's look (JeyaramaGroup/data-warehouse#4332), and ruled out any
