@@ -64,11 +64,13 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Names Row', role: 'All', can_read: true } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Names Row', row: { title: 'discuss' } })
-  await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right' } })
+  await asha.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Names Row', ref_name: doc.row_id, content: 'looks right, mail me on @gmail.com' } })
   await renderApp(`/featherbase/admin/Names%20Row/${doc.row_id}`, admin)
   const author = await screen.findByTestId('comment-author')
   await waitFor(() => expect(author).toHaveTextContent('Asha Kumar'))
   expect(screen.getByTestId('comment-initials')).toHaveTextContent('AK')
+  // A bare address domain is not highlighted as a mention.
+  expect(screen.getByText('@gmail.com').className).not.toMatch(/color-brand/)
   expect(screen.getByTestId('comment-list').textContent).not.toContain(asha.user!)
 })
 

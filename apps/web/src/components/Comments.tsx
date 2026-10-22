@@ -117,9 +117,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
   function renderContent(text: string) {
     // `@username` or `@[Full Name]` (person-rename: never a row id).
     // A mention starts a word: `name@gmail.com` is an address, not a mention.
+    // A bare `@gmail.com` (a web-domain suffix) is the tail of an address too.
     const parts = text.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g)
     return parts.map((p, i) =>
-      p.startsWith('@') ? (
+      p.startsWith('@') && !/\.(com|net|org|in|co|io|edu|gov|info|biz|me|ai|uk|us)\.?$/i.test(p) ? (
         <span key={i} className="font-medium text-[var(--color-brand)]">
           {p}
         </span>

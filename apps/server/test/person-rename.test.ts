@@ -230,6 +230,8 @@ describe('person-rename: review minors', () => {
   test('an address is not a mention: name@gmail.com notifies nobody', async ({ admin }) => {
     const { mentionedNames } = await import('../src/controllers/comment')
     expect(mentionedNames('write to asha@gmail.com and @ravi.m, cc @[Asha Kumar]')).toEqual({ usernames: ['ravi.m'], names: ['asha kumar'] })
+    // A bare domain is the tail of an address, not a username; a trailing full stop is punctuation.
+    expect(mentionedNames('our mail is on @gmail.com and @jeyarama.in. Ask @ravi.m.')).toEqual({ usernames: ['ravi.m'], names: [] })
     void admin
   })
 
