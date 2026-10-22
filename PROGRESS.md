@@ -1,5 +1,31 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1: review fixes on #381–#383 (#380)
+
+An independent review and Codex found no blockers. What changed, test-first in each case:
+
+- **#381:**
+  - The contrast guard now covers every selectable palette × theme. Ivory's `positive` failed and was fixed, including
+    the light value leaking into Ivory dark.
+  - The rules are counters with probe tests: border-side and ring-offset prefixes, 4/8-digit hex, colour functions,
+    named colours, sub-12 px text in rem/em/pt/`fontSize`, `Intl.*Format`, and retired names used as utilities.
+  - The pending list pins each file's exact count under a frozen ceiling, so nothing can be added or rise.
+- **#382:**
+  - Each Toast keeps its own timer; another toast arriving used to restart it.
+  - One polite live region exists from the start.
+  - A confirmation pauses on hover and focus.
+  - Inputs use `outline-hidden`, so forced-colours mode keeps focus visible.
+- **#383:**
+  - `fmtCount` rounds first and never shows -0.
+  - `fmtINR` groups crore figures the Indian way.
+  - The achievement tone is judged on the shown one-decimal value (89.96 → 90%, caution). This replaced the earlier
+    89.99 → negative case, which contradicted the reviewed rule.
+  - The meter's text value comes from `fmtPct`, and its track has a 3:1 edge.
+  - DataList: a keyboard-scrollable named region, `<th scope="row">` first cells, `text-control` (16 px on touch),
+    and a Try again slot on failure.
+
+**Verified:** web suite 629 passed under Node 22, web typecheck passed. The pause test fails with pausing disabled.
+
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
 `DataList` renders one list in two shapes:

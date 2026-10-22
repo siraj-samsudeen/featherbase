@@ -54,15 +54,19 @@ export function fmtINR(x: number | null | undefined, { signed = false }: { signe
   if (rupees < 1_00_000) body = rupees.toLocaleString('en-IN')
   else {
     const lakh = Math.round(rupees / 1_000) / 100
-    body = lakh < 100 ? `${lakh.toFixed(2)} L` : `${(Math.round(rupees / 1_00_000) / 100).toFixed(2)} Cr`
+    const crore = Math.round(rupees / 1_00_000) / 100
+    // A thousand crore and up keeps Indian grouping on the crore figure.
+    body = lakh < 100 ? `${lakh.toFixed(2)} L` : `${crore.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`
   }
   return `${sign}₹${body}`
 }
 
-/** A count or quantity: Indian grouping, no unit, no ₹. Null-safe. */
+/** A count or quantity: rounded first, Indian grouping, no unit, no ₹, never "-0". Null-safe. */
 export function fmtCount(x: number | null | undefined, decimals = 0): string {
   if (x == null || Number.isNaN(x) || !Number.isFinite(x)) return '—'
-  return x.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
+  const scale = 10 ** decimals
+  const rounded = Math.round(x * scale) / scale || 0 // `|| 0` turns -0 into 0
+  return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

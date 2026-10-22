@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Button } from './Button'
 import { cx } from './cx'
 import { EmptyState } from './EmptyState'
 import { Notice } from './Notice'
@@ -38,6 +39,7 @@ export function DataList<Row>({
   state = 'ready',
   error,
   empty,
+  onRetry,
   className,
 }: {
   /** Names the table or list for assistive tech; also the loading message. */
@@ -49,13 +51,25 @@ export function DataList<Row>({
   state?: 'loading' | 'error' | 'ready'
   error?: ReactNode
   empty?: { title: ReactNode; body?: ReactNode; action?: ReactNode }
+  /** Offered as "Try again" when the load failed. */
+  onRetry?: () => void
   className?: string
 }) {
   const narrow = useMediaQuery(NARROW_QUERY)
   const cards = layout === 'cards' || (layout === 'auto' && narrow)
 
   if (state === 'loading') return <Skeleton label={`Loading ${caption.toLowerCase()}`} lines={4} className={className} />
-  if (state === 'error') return <Notice tone="negative" className={className}>{error ?? `Cannot load ${caption.toLowerCase()}`}</Notice>
+  if (state === 'error')
+    return (
+      <Notice tone="negative" className={className}>
+        <p>{error ?? `Cannot load ${caption.toLowerCase()}`}</p>
+        {onRetry && (
+          <Button className="mt-2" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+      </Notice>
+    )
   if (!rows.length)
     return (
       <EmptyState title={empty?.title ?? 'No rows yet'} action={empty?.action} className={className}>
@@ -67,7 +81,7 @@ export function DataList<Row>({
     const role = (r: PhoneRole) => columns.filter((c) => (c.phone ?? 'value') === r)
     const [titles, statuses, metas, values] = [role('title'), role('status'), role('meta'), role('value')]
     return (
-      <ul aria-label={caption} className={cx('flex flex-col gap-2', className)}>
+      <ul aria-label={caption} className={cx('flex flex-col gap-2 text-control', className)}>
         {rows.map((row) => (
           <li key={rowKey(row)} className="rounded-card border border-border bg-surface p-3.5">
             <div className="flex items-start justify-between gap-3">
@@ -83,7 +97,7 @@ export function DataList<Row>({
               ))}
             </div>
             {metas.length > 0 && (
-              <p className="mt-1 text-sm text-ink-muted">
+              <p className="mt-1 text-ink-muted">
                 {metas.map((c, i) => (
                   <span key={c.key}>
                     {i > 0 && ' · '}
@@ -93,7 +107,7 @@ export function DataList<Row>({
               </p>
             )}
             {values.length > 0 && (
-              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                 {values.map((c) => (
                   <div key={c.key} className="contents">
                     <dt className="text-ink-muted">{c.header}</dt>
@@ -109,8 +123,17 @@ export function DataList<Row>({
   }
 
   return (
-    <div className={cx('overflow-x-auto rounded-card border border-border bg-surface', className)}>
-      <table className="w-full border-collapse text-sm">
+    // Focusable and named, so a keyboard can scroll a table wider than the screen.
+    <div
+      role="region"
+      aria-label={caption}
+      tabIndex={0}
+      className={cx(
+        'overflow-x-auto rounded-card border border-border bg-surface focus-visible:outline-2 focus-visible:outline-focus',
+        className,
+      )}
+    >
+      <table className="w-full border-collapse text-control">
         <caption className="sr-only">{caption}</caption>
         <thead className="bg-subtle">
           <tr>
@@ -131,11 +154,19 @@ export function DataList<Row>({
         <tbody>
           {rows.map((row) => (
             <tr key={rowKey(row)} className="border-b border-border last:border-b-0">
-              {columns.map((c) => (
-                <td key={c.key} className={cx('px-3 py-2.5 text-ink', c.align === 'end' && 'text-right tabular-nums')}>
-                  {c.cell(row)}
-                </td>
-              ))}
+              {columns.map((c, i) => {
+                const cls = cx('px-3 py-2.5 text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-semibold')
+                // The first cell names its row for screen readers.
+                return i === 0 ? (
+                  <th key={c.key} scope="row" className={cls}>
+                    {c.cell(row)}
+                  </th>
+                ) : (
+                  <td key={c.key} className={cls}>
+                    {c.cell(row)}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>

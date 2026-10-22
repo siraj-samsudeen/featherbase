@@ -2,7 +2,8 @@
 // Pure tests: no server, no database.
 
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, test } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
 import { fmtCount, fmtINR } from '../src/lib/inr'
 
@@ -16,6 +17,7 @@ describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
     [99_99_999, '₹1.00 Cr'], // 99.99… lakh is a crore, never "₹100.00 L"
     [9_99_99_999, '₹10.00 Cr'],
     [1_74_00_000, '₹1.74 Cr'],
+    [12_34_56_79_00_000, '₹1,23,456.79 Cr'], // a thousand crore and up keeps Indian grouping
     [-72_000, '-₹72,000'],
     [0, '₹0'],
   ])('%d reads %s', (value, text) => {
@@ -41,6 +43,12 @@ describe('fmtCount', () => {
     expect(fmtCount(1234567)).toBe('12,34,567')
     expect(fmtCount(12.5, 1)).toBe('12.5')
     expect(fmtCount(null)).toBe('—')
+  })
+
+  test('rounds before formatting and never shows a negative zero', () => {
+    expect(fmtCount(-0.4)).toBe('0')
+    expect(fmtCount(2.6)).toBe('3')
+    expect(fmtCount(-0.04, 1)).toBe('0')
   })
 })
 
@@ -70,6 +78,27 @@ describe('DataList', () => {
     const table = screen.getByRole('table', { name: 'Checklist runs' })
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Checklist', 'Date', 'Done', 'Status', 'Row ID'])
     expect(within(table).getByRole('cell', { name: '14 of 18' }).className).toMatch(/\btext-right\b/)
+  })
+
+  test('a table too wide for the screen scrolls by keyboard, and each row is named by its first cell', () => {
+    render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    const scroller = screen.getByRole('region', { name: 'Checklist runs' })
+    expect(scroller).toHaveAttribute('tabindex', '0')
+    expect(screen.getByRole('rowheader', { name: 'Opening checklist' })).toHaveAttribute('scope', 'row')
+  })
+
+  test('row text uses the density size, so it is 16px on a touch screen at any width', () => {
+    const { container } = render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    expect(container.querySelector('table')?.className).toMatch(/\btext-control\b/)
+    render(<DataList layout="cards" caption="Runs as cards" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    expect(screen.getByRole('list', { name: 'Runs as cards' }).className).toMatch(/\btext-control\b/)
+  })
+
+  test('a failed load offers a retry', async () => {
+    const retry = vi.fn()
+    render(<DataList state="error" error="Cannot load rows" onRetry={retry} caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} />)
+    await userEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' }))
+    expect(retry).toHaveBeenCalledOnce()
   })
 
   test('on a phone each row is a card: title, status and date first, figures labelled, hidden columns left out', () => {
@@ -132,6 +161,13 @@ describe('Headline', () => {
     const meter = within(region).getByRole('meter', { name: 'Achievement' })
     expect(meter).toHaveAttribute('aria-valuenow', '81.7')
     expect(meter).toHaveAttribute('aria-valuetext', '81.7%')
+    // The empty part of the track has an edge a reader can see (3:1), not only a faint fill.
+    expect(meter.className).toMatch(/\bborder-border-control\b/)
+  })
+
+  test('the meter says its value the way the page shows it', () => {
+    render(<Headline label="Month" conclusion="Nearly there" progress={{ value: 1234.56, label: 'Achievement' }} />)
+    expect(screen.getByRole('meter', { name: 'Achievement' })).toHaveAttribute('aria-valuetext', '1,234.6%')
   })
 
   test('progress beyond 100% stays a valid meter', () => {
@@ -144,9 +180,11 @@ describe('Headline', () => {
 describe('achievementTone — the bands of the sales-target legend', () => {
   test.each([
     [62.4, 'negative'],
-    [89.99, 'negative'],
+    [89.94, 'negative'], // shown as 89.9%
     [90, 'caution'],
     [99.9, 'caution'],
+    [89.96, 'caution'], // shown as 90%, so it reads as the 90% band, not below it
+    [99.96, 'positive'], // shown as 100%
     [100, 'positive'],
     [126.2, 'positive'],
     [null, 'missing'],

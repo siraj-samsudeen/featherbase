@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react'
+import { fmtPct } from '../../lib/inr'
 import { cx } from './cx'
 
 export type HeadlineTone = 'negative' | 'caution' | 'positive' | 'missing' | 'neutral'
@@ -25,8 +26,10 @@ const TONE_FILL: Record<HeadlineTone, string> = {
  */
 export function achievementTone(pct: number | null | undefined): HeadlineTone {
   if (pct == null || Number.isNaN(pct)) return 'missing'
-  if (pct < 90) return 'negative'
-  if (pct < 100) return 'caution'
+  // Judge the value as the page shows it (one decimal), so 89.96 shown as 90% is not red.
+  const shown = Math.round(pct * 10) / 10
+  if (shown < 90) return 'negative'
+  if (shown < 100) return 'caution'
   return 'positive'
 }
 
@@ -67,8 +70,8 @@ export function Headline({
             aria-valuemin={0}
             aria-valuemax={max}
             aria-valuenow={progress.value}
-            aria-valuetext={`${progress.value}%`}
-            className="relative h-2.5 overflow-hidden rounded-full bg-missing-tint"
+            aria-valuetext={fmtPct(progress.value)}
+            className="relative h-3 overflow-hidden rounded-full border border-border-control bg-surface"
           >
             <div
               className={cx('absolute inset-y-0 left-0 rounded-full', TONE_FILL[tone])}
