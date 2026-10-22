@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
+import { PrincipalName } from '../lib/people'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it
 // came from and whether it is verified. What the viewer may not see is left
 // out by the server (restricted values, hidden record numbers). Values fed by
-// another system are read-only here; the person can add their own phone.
+// another system are read-only here — except that, until the roster sync
+// runs, a System Manager may record or end an employee code by hand with a
+// note (review B-M6); the person can add their own phone.
 
 interface Identifier {
   id: string
@@ -21,6 +24,27 @@ interface Identifier {
   source: string
   worker_type: string | null
   editable: boolean
+  note_required?: boolean
+}
+
+interface Addable {
+  row_id: string
+  label: string
+  note_required?: boolean
+}
+
+/** Where a value came from, in words (the stored codes are for machines). */
+const SOURCES: Record<string, string> = {
+  'sign-in': 'from a sign-in',
+  'person-email': 'the person’s email',
+  'self-email': 'their own email',
+  self: 'added by the person',
+  manual: 'recorded by hand',
+  migration: 'carried over at the upgrade',
+  'stylehr-roster-sync': 'StyleHR roster',
+}
+export function sourceLabel(source: string): string {
+  return SOURCES[source] ?? source
 }
 
 function period(i: Identifier): string {
@@ -34,9 +58,12 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   const { data } = useQuery({
     queryKey: key,
     queryFn: () =>
-      api.get<{ identifiers: Identifier[]; addable: { row_id: string; label: string }[] }>(`/api/people/${encodeURIComponent(person)}/identifiers`),
+      api.get<{ identifiers: Identifier[]; addable: Addable[] }>(`/api/people/${encodeURIComponent(person)}/identifiers`),
   })
   const addable = data?.addable ?? []
+  const [chosen, setChosen] = useState<string | null>(null)
+  const system = chosen ?? (addable.some((s) => s.row_id === 'phone') ? 'phone' : addable[0]?.row_id)
+  const needsNote = addable.find((s) => s.row_id === system)?.note_required === true
   const [error, setError] = useState<string | null>(null)
   const done = () => {
     setError(null)
@@ -54,7 +81,8 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   })
   const end = useMutation({
     // The server ends it today by its own clock.
-    mutationFn: (id: string) => api.patch(`/api/identifiers/${encodeURIComponent(id)}`, { end: true }),
+    mutationFn: ({ id, note }: { id: string; note?: string }) =>
+      api.patch(`/api/identifiers/${encodeURIComponent(id)}`, note ? { end: true, note } : { end: true }),
     onSuccess: done,
     onError: fail,
   })
@@ -65,7 +93,10 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   function onAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    add.mutate({ body: { system: String(f.get('system')), value: String(f.get('value')).trim() }, form: e.currentTarget })
+    const body: Record<string, string> = { system: String(f.get('system')), value: String(f.get('value')).trim() }
+    const note = String(f.get('note') ?? '').trim()
+    if (note) body.note = note
+    add.mutate({ body, form: e.currentTarget })
   }
 
   return (
@@ -73,7 +104,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
       <h3 className="mb-2 text-sm font-semibold text-[var(--color-ink)]">Identifiers</h3>
       {replacedBy && (
         <p className="mb-2 rounded bg-[var(--color-surface-muted,#f5f5f5)] px-2 py-1 text-xs text-[var(--color-ink)]" data-testid="replaced-banner">
-          This record was merged into {replacedBy}. Open that record to make changes.
+          This record was merged into <PrincipalName id={replacedBy} />. Open that record to make changes.
         </p>
       )}
       {groups.size === 0 && <p className="text-xs text-[var(--color-ink-muted)]">None recorded.</p>}
@@ -87,13 +118,22 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
                   <span className={i.current ? 'font-medium' : 'text-[var(--color-ink-muted)] line-through'}>{i.value}</span>
                   {i.assigner && <span className="text-xs text-[var(--color-ink-muted)]"> · {i.assigner}</span>}
                   <span className="block text-xs text-[var(--color-ink-muted)]">
-                    {period(i)} · {i.source}
+                    {period(i)} · {sourceLabel(i.source)}
                     {i.worker_type ? ` · ${i.worker_type}` : ''}
                     {i.verified ? '' : ' · not verified'}
                   </span>
                 </span>
                 {i.current && i.editable && !replacedBy && (
-                  <button type="button" className="text-xs text-[var(--color-danger)] hover:underline" onClick={() => end.mutate(i.id)}>
+                  <button
+                    type="button"
+                    className="text-xs text-[var(--color-danger)] hover:underline"
+                    onClick={() => {
+                      if (!i.note_required) return end.mutate({ id: i.id })
+                      // By hand while the roster sync is frozen: say why.
+                      const note = window.prompt('Why are you ending this by hand? (kept with the record)')?.trim()
+                      if (note) end.mutate({ id: i.id, note })
+                    }}
+                  >
                     End
                   </button>
                 )}
@@ -104,12 +144,22 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
       ))}
       {!replacedBy && addable.length > 0 && (
         <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form">
-          <select name="system" className="fc-input" aria-label="Identifier" defaultValue={addable.some((s) => s.row_id === 'phone') ? 'phone' : addable[0].row_id}>
+          <select name="system" className="fc-input" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)}>
             {addable.map((s) => (
               <option key={s.row_id} value={s.row_id}>{s.label}</option>
             ))}
           </select>
           <input name="value" className="fc-input" aria-label="Value" placeholder="Value" required />
+          {needsNote && (
+            <input
+              name="note"
+              className="fc-input"
+              aria-label="Note"
+              placeholder="Why by hand? e.g. joiner, mailed by HR on 23-Oct"
+              required
+              data-testid="identifier-note"
+            />
+          )}
           <button type="submit" className="fc-btn w-full justify-center">Add</button>
         </form>
       )}

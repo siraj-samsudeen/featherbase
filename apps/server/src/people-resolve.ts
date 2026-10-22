@@ -96,7 +96,9 @@ export async function resolveStyleHrSubjects(rows: ResolveRow[]): Promise<Resolv
       select person_id from person_identifier
       where system = ${recordSystem} and value = ${recordId} and upper_inf(valid) and person_id <> ${person}`
     if (otherLink || otherRow) {
-      report.heldElsewhere.push({ ...who, detail: `record ${recordId} (code ${code}) is already ${String((otherLink ?? otherRow).person_id)}'s` })
+      const holder = String((otherLink ?? otherRow).person_id)
+      const [h] = await sql`select coalesce(nullif(trim(full_name), ''), '@' || username, email) as name from person where row_id = ${holder}`
+      report.heldElsewhere.push({ ...who, detail: `record ${recordId} (code ${code}) is already held by ${(h?.name as string | null) ?? 'another person'} (${holder})` })
       continue
     }
     await sql`update sign_in_identity set subject = ${recordId}, subject_kind = 'record-id' where id = ${String(i.id)}`

@@ -77,13 +77,6 @@ const rowFields = (db: Db) => db`
   case when upper_inf(valid) then null else upper(valid)::text end as valid_to,
   verified, record_identifier_id, worker_type, source, recorded_at, recorded_by, note`
 
-/** The same columns, qualified, for a query that joins identifier_system. */
-const rowFieldsOf = (db: Db) => db`
-  i.id, i.person_id, i.system, i.assigner, i.value, i.value_hint,
-  case when lower_inf(i.valid) or lower(i.valid) = '-infinity'::date then null else lower(i.valid)::text end as valid_from,
-  case when upper_inf(i.valid) then null else upper(i.valid)::text end as valid_to,
-  i.verified, i.record_identifier_id, i.worker_type, i.source, i.recorded_at, i.recorded_by, i.note`
-
 function isoDate(v: unknown, field: string): string | null {
   if (v == null || v === '') return null
   const s = String(v)
@@ -103,14 +96,29 @@ export async function readsRestricted(viewer: string): Promise<boolean> {
   return (await permittedTiers(viewer, 'Person', 'read')).has('restricted')
 }
 
+/** Has this system's source (the roster sync) written any row yet? Until it
+ *  has, its values are FROZEN at what the migration carried over, and a
+ *  System Manager keeps the joiner and correction procedures going by hand
+ *  (review decision B-M6). Derived, so the hand path closes by itself the day
+ *  the sync starts writing. */
+export async function sourceFrozen(system: IdentifierSystemRow, db: Db = sql): Promise<boolean> {
+  if (!system.source) return false
+  const [fed] = await db`select 1 from person_identifier where system = ${system.row_id} and source = ${system.source} limit 1`
+  return !fed
+}
+
 /** Who may add, end or correct a value of this system (D9). Returns whether
- *  the write is verified (self ⇒ false). Never echoes a value. */
-export async function assertMayEdit(actor: string, system: IdentifierSystemRow, person: string): Promise<{ verified: boolean }> {
+ *  the write is verified (self ⇒ false) and whether it must carry a note (a
+ *  System Manager's hand entry in a source-fed system while its source is
+ *  frozen: unverified, with the reason written down). Never echoes a value. */
+export async function assertMayEdit(actor: string, system: IdentifierSystemRow, person: string): Promise<{ verified: boolean; noteRequired?: boolean }> {
   const roles = await getRoles(actor)
   const manager = actor === 'Administrator' || roles.includes('System Manager')
   switch (system.edited_by) {
     case 'source':
       if (roles.includes('Identity Sync')) return { verified: true }
+      if (manager && SENSITIVITY[system.sensitivity]?.tier !== 'restricted' && (await sourceFrozen(system)))
+        return { verified: false, noteRequired: true }
       throw new AppError(
         'PermissionError',
         `${system.label} comes from ${system.source || 'another system'}; correct it there`,
@@ -130,12 +138,20 @@ export async function assertMayEdit(actor: string, system: IdentifierSystemRow, 
   throw new AppError('PermissionError', `You may not change ${system.label} values`, { code: 'not_allowed' })
 }
 
+/** "This record was merged into Asha Kumar" — a name, never the survivor's
+ *  opaque id (review B-M2); the id stays in the error's data for links. */
+export async function mergedInto(survivor: string, db: Db = sql): Promise<AppError> {
+  const [p] = await db`select coalesce(nullif(trim(full_name), ''), '@' || username, email) as name from person where row_id = ${survivor}`
+  const name = (p?.name as string | null) ?? 'another record'
+  return new AppError('ConflictError', `This record was merged into ${name}. Open that record to make changes.`, { code: 'replaced_by', survivor })
+}
+
 async function assertWritablePerson(person: string, db: Db) {
   const [p] = await db`select row_id, built_in, replaced_by from person where row_id = ${person} for share`
   if (!p) throw new AppError('NotFoundError', `Person ${person} not found`)
   if (p.built_in) throw new AppError('ValidationError', 'A built-in account has no identifiers', { code: 'built_in' })
   if (p.replaced_by)
-    throw new AppError('ConflictError', `This record was merged into ${String(p.replaced_by)}`, { code: 'replaced_by', survivor: String(p.replaced_by) })
+    throw await mergedInto(String(p.replaced_by), db)
 }
 
 // ------------------------------------------------------------- reads
@@ -156,6 +172,8 @@ export interface PanelRow {
   note: string | null
   worker_type: string | null
   editable: boolean
+  /** A System Manager's hand edit while the source is frozen: needs a note. */
+  note_required: boolean
 }
 
 /** A person's identifiers as this viewer may see them (D3): Normal values to
@@ -164,12 +182,13 @@ export interface PanelRow {
  *  its last four digits. */
 export async function listIdentifiers(person: string, viewer: string): Promise<PanelRow[]> {
   const restricted = viewer === person || (await readsRestricted(viewer))
+  // One column list (rowFields) for every read; the panel's extra columns join on.
   const rows = await sql`
-    select ${rowFieldsOf(sql)}, s.label as system_label, s.kind, s.sensitivity, s.edited_by, s.source as system_source,
-      s.row_id as system_key, upper_inf(i.valid) as current
-    from person_identifier i join identifier_system s on s.row_id = i.system
-    where i.person_id = ${person}
-    order by s.label, upper_inf(i.valid) desc, lower(i.valid) desc`
+    select i.*, s.label as system_label, s.kind, s.sensitivity, s.edited_by, s.source as system_source, s.row_id as system_key
+    from (select ${rowFields(sql)}, upper_inf(valid) as current, lower(valid) as starts
+          from person_identifier where person_id = ${person}) i
+    join identifier_system s on s.row_id = i.system
+    order by s.label, i.current desc, i.starts desc`
   const out: PanelRow[] = []
   for (const r of rows) {
     const shown = displayValue(
@@ -179,9 +198,11 @@ export async function listIdentifiers(person: string, viewer: string): Promise<P
     )
     if (!shown.shown) continue
     let editable = false
+    let noteRequired = false
     try {
-      await assertMayEdit(viewer, { row_id: String(r.system_key), label: String(r.system_label), source: r.system_source as string | null, edited_by: r.edited_by as EditedBy } as IdentifierSystemRow, person)
+      const may = await assertMayEdit(viewer, { row_id: String(r.system_key), label: String(r.system_label), source: r.system_source as string | null, edited_by: r.edited_by as EditedBy, sensitivity: r.sensitivity as Sensitivity } as IdentifierSystemRow, person)
       editable = true
+      noteRequired = may.noteRequired === true
     } catch {
       editable = false
     }
@@ -190,7 +211,7 @@ export async function listIdentifiers(person: string, viewer: string): Promise<P
       assigner: String(r.assigner ?? ''), value: shown.value, valid_from: r.valid_from as string | null,
       valid_to: r.valid_to as string | null, current: r.current === true, verified: r.verified === true,
       source: String(r.source), recorded_at: String(r.recorded_at), note: (r.note as string | null) ?? null,
-      worker_type: (r.worker_type as string | null) ?? null, editable,
+      worker_type: (r.worker_type as string | null) ?? null, editable, note_required: noteRequired,
     })
   }
   return out
@@ -199,14 +220,14 @@ export async function listIdentifiers(person: string, viewer: string): Promise<P
 /** The systems this viewer may add a value to for this person (the panel's
  *  add form): enabled, stored in plain (Secret needs Phase 1b), and allowed
  *  by the system's `edited_by`. */
-export async function addableSystems(person: string, viewer: string): Promise<{ row_id: string; label: string }[]> {
+export async function addableSystems(person: string, viewer: string): Promise<{ row_id: string; label: string; note_required: boolean }[]> {
   const systems = (await sql`select * from identifier_system where enabled order by label`) as unknown as IdentifierSystemRow[]
-  const out: { row_id: string; label: string }[] = []
+  const out: { row_id: string; label: string; note_required: boolean }[] = []
   for (const s of systems) {
     if (SENSITIVITY[s.sensitivity]?.storage !== 'plain') continue
     try {
-      await assertMayEdit(viewer, s, person)
-      out.push({ row_id: s.row_id, label: s.label })
+      const may = await assertMayEdit(viewer, s, person)
+      out.push({ row_id: s.row_id, label: s.label, note_required: may.noteRequired === true })
     } catch {
       /* not theirs to add */
     }
@@ -310,7 +331,10 @@ export async function addIdentifier(
   if (!system.enabled) throw new AppError('ValidationError', `${system.label} is turned off`, { code: 'system_disabled' })
   if (SENSITIVITY[system.sensitivity].storage === 'fingerprint')
     throw new AppError('ValidationError', `${system.label} needs fingerprinting, which is not switched on yet`, { code: 'fingerprint_unavailable' })
-  const verified = opts.internal ? opts.internal.verified : (await assertMayEdit(actor, system, person)).verified
+  const may = opts.internal ? { verified: opts.internal.verified, noteRequired: false } : await assertMayEdit(actor, system, person)
+  const verified = may.verified
+  if (may.noteRequired && !String(input.note ?? '').trim())
+    throw new AppError('ValidationError', `Say why you are recording this ${system.label} by hand (the roster sync is not running yet)`, { note: 'required' })
   const source = opts.internal?.source ?? (actor === person ? 'self' : 'manual')
   const value = normaliseValue(input.value, system.normalise, system.kind)
   const assigner = system.assigner_scoped ? String(input.assigner ?? '').trim() : ''
@@ -372,6 +396,14 @@ async function lockedRow(id: string, db: Db) {
   return row as unknown as IdentifierRow & { lower_raw: string }
 }
 
+/** Whose identifier this is — for the routes' Person read / Data Scope check
+ *  (the same one adding a value runs). Never echoes the value. */
+export async function identifierPerson(id: string): Promise<string> {
+  const [row] = await sql`select person_id from person_identifier where id = ${id}`
+  if (!row) throw new AppError('NotFoundError', `Identifier ${id} not found`)
+  return String(row.person_id)
+}
+
 /** End a value (valid_to) or correct its spell (bounds, assigner, note). An
  *  unchanged write changes and logs nothing. */
 export async function updateIdentifier(
@@ -390,7 +422,9 @@ export async function updateIdentifier(
       const t = tx as unknown as Sql
       const current = await lockedRow(id, t)
       const system = await getSystem(current.system, t)
-      await assertMayEdit(actor, system, current.person_id)
+      const may = await assertMayEdit(actor, system, current.person_id)
+      if (may.noteRequired && !String(change.note ?? '').trim())
+        throw new AppError('ValidationError', `Say why you are changing this ${system.label} by hand (the roster sync is not running yet)`, { note: 'required' })
       await assertWritablePerson(current.person_id, t)
       const from = change.valid_from !== undefined ? isoDate(change.valid_from, 'valid_from') : current.valid_from
       const to = change.valid_to !== undefined ? isoDate(change.valid_to, 'valid_to') : current.valid_to
@@ -427,7 +461,11 @@ export async function deleteIdentifier(id: string, actor: string): Promise<void>
     const t = tx as unknown as Sql
     const current = await lockedRow(id, t)
     const system = await getSystem(current.system, t)
-    await assertMayEdit(actor, system, current.person_id)
+    const may = await assertMayEdit(actor, system, current.person_id)
+    // By hand in a frozen source-fed system, only what was recorded by hand
+    // may be removed; a carried-over value is ended (with a note), not erased.
+    if (may.noteRequired && current.source !== 'manual')
+      throw new AppError('PermissionError', `This ${system.label} was not recorded by hand; end it instead`, { code: 'source_managed' })
     // A replaced record is inert: its history is not edited (D1).
     await assertWritablePerson(current.person_id, t)
     await t`delete from person_identifier where id = ${id}`

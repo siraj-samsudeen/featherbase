@@ -2,7 +2,7 @@ import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { USERNAME_RE, normaliseEmail } from '../identities'
 import { PERSON_ID_PREFIX } from '../opaque-id'
-import { writeThroughEmail } from '../person-identifiers'
+import { mergedInto, writeThroughEmail } from '../person-identifiers'
 
 // person-identities (D9): email is optional contact data — blank means none,
 // a `.invalid` placeholder is refused (normaliseEmail). A username is a
@@ -40,7 +40,7 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'Built-in is fixed', { built_in: 'fixed' })
       // person-resolution D1: a replaced record is inert; edit its survivor.
       if (!isNew && old?.replaced_by)
-        throw new AppError('ConflictError', `This record was merged into ${String(old.replaced_by)}`, { code: 'replaced_by', survivor: String(old.replaced_by) })
+        throw await mergedInto(String(old.replaced_by), tx)
       if ('email' in row) row.email = normaliseEmail(row.email)
       if ('username' in row) {
         const username = row.username == null ? null : String(row.username).trim().toLowerCase() || null

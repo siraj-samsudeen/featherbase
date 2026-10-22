@@ -19,18 +19,23 @@ being deleted — an ended one never opens the account, and a move keeps who
 held it until when. Test mode resolves a typed code through current
 employee-code rows, refuses a code on two people, needs a live link, and the
 server refuses to boot with it outside development, test or staging (a hosted trial instance; dev must be switched to `FEATHERBASE_ENV=staging` and re-stamped before this release — DEPLOY.md). The dev backfill
-reads the warehouse's resolve file; anything it cannot resolve keeps working
-by employee code and is listed. The Person form has an Identifiers panel (also
+writes code and email rows and keeps every StyleHR sign-in working by its
+employee code; `cli people:resolve <csv>` moves them to record numbers after
+the deploy (idempotent, with a report). The release runs a preflight before
+the first migration and applies 0101–0102 as one transaction. Until the
+roster sync runs, a System Manager records or ends an employee code by hand
+with a note (Admin → Person → Find by code for the lookup). The Person form has an Identifiers panel (also
 on the person's own Sign-in methods page); the Identifier System form shows
 each setting's default with "Revert to default".
 
 **Verified:** server and web typecheck; server and web suites on local
 Postgres 18.6; `pnpm check:specs`, `lint:sql`. Rehearsal on the dev snapshot
-(0100 + 0101 + 0102, rolled back, then a real run on a copy) with a SYNTHETIC
-resolve file built from the snapshot's `employee_code` values: 271 code rows,
-271 record-number rows, 11 email rows, 271 StyleHR sign-ins rewritten, 0
-unresolved, parity 271/271; rescan clean; test-mode sign-in by `RR-10104`
-works.
+(0100 + 0101 + 0102, rolled back, then the real `release.ts` on a copy
+re-stamped `staging`, with the target's variables): 275 re-keyed, scan clean,
+271 code rows, 11 email rows, 271 sign-ins kept by code, parity through
+`testModeUser` 271/271. Then `people:resolve` with a SYNTHETIC file over the
+snapshot's codes: 265 moved, 6 listed (3 absent, 2 on two records, 1 record
+already held), second run 0 moved; parity after it 271/271.
 
 **Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
 and `stylehr_username` Custom Fields); then Phase 1a-ii (merge and undo).

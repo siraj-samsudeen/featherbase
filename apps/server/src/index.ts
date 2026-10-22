@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
-import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
+import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
@@ -931,14 +931,23 @@ app.post('/api/people/:id/identifiers', async (c) => {
   return c.json({ result, identifier }, result === 'created' ? 201 : 200)
 })
 
+// Changing or removing a value needs the same read of its person as adding one:
+// the Person permission and Data Scope (review on #385).
+async function assertReadsIdentifierPerson(id: string, viewer: string) {
+  const person = await identifierPerson(id)
+  if (person !== viewer) await getDoc('Person', person, viewer)
+}
+
 app.patch('/api/identifiers/:id', async (c) => {
   assertCanChangeAccess(c.get('user'))
+  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
   const body = (await c.req.json().catch(() => ({}))) as Parameters<typeof updateIdentifier>[1]
   return c.json(await updateIdentifier(c.req.param('id'), body, who(c)))
 })
 
 app.delete('/api/identifiers/:id', async (c) => {
   assertCanChangeAccess(c.get('user'))
+  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
   await deleteIdentifier(c.req.param('id'), who(c))
   return c.json({ ok: true })
 })

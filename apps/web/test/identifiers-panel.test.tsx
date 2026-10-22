@@ -46,14 +46,36 @@ test('a person adds their own phone and sees it is not yet verified', async ({ c
   await waitFor(() => expect(within(panel).queryByTestId('identifier-group-phone')).toBeNull())
 })
 
-test('a merged-away record says so and offers no changes', async ({ admin, createUser }) => {
-  const survivor = await createUser({ email: 'survivor.ids@example.com' })
+test('a merged-away record names its survivor (never its id) and offers no changes', async ({ admin, createUser }) => {
+  const survivor = await createUser({ email: 'survivor.ids@example.com', fullName: 'Survivor Sasi' })
   const loser = await createUser({ email: 'loser.ids@example.com' })
   await sql`update person set enabled = false, replaced_by = ${survivor.user!} where row_id = ${loser.user!}`
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(loser.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
-  expect(await within(panel).findByTestId('replaced-banner')).toHaveTextContent(survivor.user!)
+  const banner = await within(panel).findByTestId('replaced-banner')
+  await waitFor(() => expect(banner).toHaveTextContent('merged into Survivor Sasi'))
+  expect(banner.textContent).not.toContain(survivor.user!)
   expect(within(panel).queryByTestId('add-identifier-form')).toBeNull()
+})
+
+test('until the roster sync runs, a System Manager records a joiner’s code by hand with a note', async ({ admin, createUser }) => {
+  await applySeedPack('jeyarama')
+  await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
+  const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(joiner.user!)}`, admin)
+  const panel = await screen.findByTestId('person-identifiers')
+  const form = await within(panel).findByTestId('add-identifier-form')
+  expect(within(form).queryByTestId('identifier-note')).toBeNull()
+  await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'stylehr-employee-code')
+  await userEvent.type(within(form).getByLabelText('Value'), 'rr-30001')
+  await userEvent.type(await within(form).findByTestId('identifier-note'), 'Joiner, HR mail 23-Oct')
+  await userEvent.click(within(form).getByRole('button', { name: 'Add' }))
+  const codes = await within(panel).findByTestId('identifier-group-stylehr-employee-code')
+  expect(codes).toHaveTextContent('RR-30001')
+  expect(codes).toHaveTextContent('recorded by hand')
+  expect(codes).toHaveTextContent('not verified')
+  // The address mirrors the person's own email: said in words.
+  expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('the person’s email')
 })
 
 test('a StyleHR sign-in still keyed by employee code says it is awaiting its record number', async ({ admin, createUser }) => {
@@ -81,4 +103,21 @@ test('revert to default puts back the kind’s setting', async ({ admin }) => {
   expect(normalise).toHaveTextContent('default upper')
   await userEvent.click(within(normalise).getByRole('button', { name: 'Revert to default' }))
   await waitFor(async () => expect((await sql`select normalise from identifier_system where row_id = 'badge-code'`)[0].normalise).toBe('upper'))
+})
+
+test('the Person list links to Find by code; an old code finds the person, shown by name', async ({ admin, createUser }) => {
+  await applySeedPack('jeyarama')
+  const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
+  await addIdentifier(leaver.user!, { system: 'stylehr-employee-code', value: 'RR-777', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
+  await renderApp('/featherbase/admin/Person', admin)
+  expect(await screen.findByTestId('open-find-person')).toHaveAttribute('href', '/featherbase/admin/find-person')
+  await renderApp('/featherbase/admin/find-person', admin)
+  const page = await screen.findByTestId('find-person')
+  await waitFor(() => expect(within(page).getByLabelText('Identifier')).toHaveValue('stylehr-employee-code'))
+  await userEvent.type(within(page).getByLabelText('Value'), 'rr-777')
+  await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
+  const results = await within(page).findByTestId('find-person-results')
+  await waitFor(() => expect(results).toHaveTextContent('Leaving Latha'))
+  expect(results).toHaveTextContent('held it before')
+  expect(results.textContent).not.toContain(leaver.user!)
 })

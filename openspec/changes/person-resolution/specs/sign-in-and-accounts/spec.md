@@ -36,15 +36,28 @@ record, and the same provider ID can later be linked afresh.
 An HR system sign-in SHALL be linked to the person by the HR system's own
 record number, which never changes, rather than by the employee code, which
 can change or be shared between companies. A link set up before this was so
-keeps working by its employee code until the roster supplies the record
-number, and is listed for the administrator meanwhile.
+keeps working by its employee code until its record number is supplied, and
+is listed for the administrator meanwhile. The upgrade itself reads no file:
+the record numbers are supplied afterwards, from the warehouse's list of
+employee codes and record numbers, by a step an administrator can run again
+without changing anything twice. A code the list does not name, names on two
+records, or names with a record already another person's, stays on its code
+and is listed.
 
 #### Scenario: A trial user before the roster catches up
 
-- **WHEN** the upgrade cannot yet find the HR record number for a Team
-  Leader's sign-in link
+- **WHEN** the upgrade has run but the record numbers have not yet been
+  supplied for a Team Leader's sign-in link
 - **THEN** the Team Leader signs in the next morning exactly as before, and the
-  link shows as awaiting its record number until the roster supplies it
+  link shows as awaiting its record number
+
+#### Scenario: The record numbers arrive after the upgrade
+
+- **WHEN** an administrator supplies the warehouse's list of codes and record
+  numbers after the upgrade, and supplies it again a day later
+- **THEN** each link the list names once moves to its record number and the
+  Team Leader still signs in; the second run changes nothing; a code on two
+  records stays on its code and is listed to be settled by hand
 
 ## MODIFIED Requirements
 

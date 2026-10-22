@@ -194,3 +194,95 @@ describe('built-in and replaced records', () => {
     expect(listed.data.map((r) => r.row_id)).toEqual([survivor])
   })
 })
+
+describe('the freeze: employee codes by hand until the roster sync runs (review B-M6)', () => {
+  const STYLEHR_CODE = 'stylehr-employee-code'
+
+  test('a joiner: a System Manager records the code with a note; it is unverified, and test mode signs them in by it', async ({ admin, api }) => {
+    await applySeedPack('jeyarama')
+    await sql`delete from person_identifier where system = ${STYLEHR_CODE} and source = 'stylehr-roster-sync'`
+    const p = await makePerson({ full_name: 'New Joiner' })
+    const addable = (await admin.get<{ addable: { row_id: string; note_required: boolean }[] }>(`/api/people/${p}/identifiers`)).addable
+    expect(addable.find((s) => s.row_id === STYLEHR_CODE)).toEqual({ row_id: STYLEHR_CODE, label: 'StyleHR employee code', note_required: true })
+    await expect(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'rr-20001' })).rejects.toMatchObject({ status: 417 })
+    const { identifier } = await admin.post<{ identifier: { verified: boolean; source: string; note: string; value: string } }>(
+      `/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'rr-20001', note: 'Joiner 23-Oct, mailed by HR' })
+    expect(identifier).toMatchObject({ value: 'RR-20001', verified: false, source: 'manual', note: 'Joiner 23-Oct, mailed by HR' })
+    // The record number is not hand-editable, even now.
+    await expect(admin.post(`/api/people/${p}/identifiers`, { system: 'stylehr-employee-id', value: '90001', note: 'x' })).rejects.toMatchObject({ status: 403 })
+
+    const { configureDelegated } = await import('./identity-fixtures')
+    await configureDelegated()
+    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, subject_kind, linked_by)
+      values ('uid_joiner_20001', ${p}, 'stylehr', 'RR-20001', 'new.joiner', 'employee-code', 'Administrator')`
+    const { vi } = await import('vitest')
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    try {
+      const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: 'RR-20001', pwd: '', method: 'stylehr' }) })
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(p)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test('a correction: a carried-over code is ended with a note, never erased; a hand-recorded one may be removed', async ({ admin }) => {
+    await applySeedPack('jeyarama')
+    await sql`delete from person_identifier where system = ${STYLEHR_CODE} and source = 'stylehr-roster-sync'`
+    const p = await makePerson({ full_name: 'Wrong Code' })
+    const { identifier: carried } = await addIdentifier(p, { system: STYLEHR_CODE, value: 'RR-1' }, 'migration', { internal: { source: 'migration', verified: true } })
+    const patch = (id: string, body: unknown) => admin.fetch(`/api/identifiers/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+    expect((await patch(carried.id, { end: true })).status).toBe(417)
+    expect((await patch(carried.id, { end: true, note: 'Wrong code; HR mail 23-Oct' })).status).toBe(200)
+    expect((await admin.fetch(`/api/identifiers/${carried.id}`, { method: 'DELETE' })).status).toBe(403)
+    const { identifier: typed } = await admin.post<{ identifier: { id: string } }>(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'RR-2', note: 'Right code' })
+    expect((await admin.fetch(`/api/identifiers/${typed.id}`, { method: 'DELETE' })).status).toBe(200)
+  })
+
+  test('once the roster sync has written a code, the hand path closes; a non-manager never had it', async ({ admin, createUser }) => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'After Sync' })
+    const someoneElse = await makePerson({ full_name: 'Synced' })
+    const clerk = await createUser({ email: 'clerk.codes@x.test' })
+    await expect(clerk.post(`/api/people/${clerk.user}/identifiers`, { system: STYLEHR_CODE, value: 'RR-3', note: 'mine' })).rejects.toMatchObject({ status: 403 })
+    await addIdentifier(someoneElse, { system: STYLEHR_CODE, value: 'RR-4' }, 'sync', ROSTER)
+    await expect(admin.post(`/api/people/${p}/identifiers`, { system: STYLEHR_CODE, value: 'RR-5', note: 'too late' })).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+describe('changing a value needs a read of its person (review on #385)', () => {
+  test('PATCH and DELETE follow the Person permission and Data Scope, as adding does', async ({ admin, createUser }) => {
+    const { saveIdentifierSystem } = await import('../src/seed-packs')
+    await saveIdentifierSystem({ row_id: 'badge', label: 'Badge', kind: 'contact', source: 'self', match: 'Off', sensitivity: 'Normal', edited_by: 'reviewers' })
+    const inScope = await makePerson({ full_name: 'Badge In' })
+    const outOfScope = await makePerson({ full_name: 'Badge Out' })
+    const a = await addIdentifier(inScope, { system: 'badge', value: 'b-1' }, 'Administrator')
+    const b = await addIdentifier(outOfScope, { system: 'badge', value: 'b-2' }, 'Administrator')
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Data Quality Manager', can_read: true } })
+    const reviewer = await createUser({ email: 'scoped.reviewer@x.test', roles: ['Data Quality Manager'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: reviewer.user, allow_table: 'Person', for_value: inScope } })
+    const patch = (id: string) => reviewer.fetch(`/api/identifiers/${id}`, { method: 'PATCH', body: JSON.stringify({ note: 'checked' }) })
+    expect((await patch(a.identifier.id)).status).toBe(200)
+    expect([403, 404]).toContain((await patch(b.identifier.id)).status)
+    expect([403, 404]).toContain((await reviewer.fetch(`/api/identifiers/${b.identifier.id}`, { method: 'DELETE' })).status)
+    expect(await sql`select note from person_identifier where id = ${b.identifier.id}`).toEqual([{ note: null }])
+  })
+})
+
+describe('the Person picker finds people by their current employee code (review B-M3)', () => {
+  test('by a current code row, with the code as the label’s detail; an ended code or a replaced record is not offered', async ({ admin }) => {
+    await applySeedPack('jeyarama')
+    const coded = await makePerson({ full_name: 'Coded Kala' })
+    await addIdentifier(coded, { system: 'stylehr-employee-code', value: 'RR-41001' }, 'sync', ROSTER)
+    const ended = await makePerson({ full_name: 'Ended Eswar' })
+    await addIdentifier(ended, { system: 'stylehr-employee-code', value: 'RR-41002', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'sync', ROSTER)
+    const survivor = await makePerson({ full_name: 'Kept Kavya' })
+    const merged = await makePerson({ full_name: 'Merged Mani' })
+    await addIdentifier(merged, { system: 'stylehr-employee-code', value: 'RR-41003' }, 'sync', ROSTER)
+    await sql`update person set enabled = false, replaced_by = ${survivor} where row_id = ${merged}`
+    const pick = async (q: string) => (await admin.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${q}`)).people
+    expect(await pick('rr-41001')).toEqual([{ row_id: coded, label: 'Coded Kala · RR-41001' }])
+    expect(await pick('RR-41002')).toEqual([])
+    expect(await pick('RR-41003')).toEqual([])
+  })
+})

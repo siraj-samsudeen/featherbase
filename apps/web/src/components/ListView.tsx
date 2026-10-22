@@ -412,6 +412,11 @@ export function ListView({
             Report
           </Link>
           <ExploreSplitButton table={table} />
+          {table === 'Person' && (
+            <Link to="/featherbase/admin/find-person" className="fc-btn" data-testid="open-find-person">
+              Find by code
+            </Link>
+          )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
           {!isSourceReadOnly(meta.data) && (
