@@ -8,6 +8,7 @@ import { achievementTone, DataList, Headline, type DataColumn } from '../src/com
 import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '../src/lib/inr'
 import { formatNumber } from '../src/lib/settings'
 import { indicatorColor, pageRange } from '../src/components/ListView'
+import { previewValue } from '../src/pages/TableBuilder'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
   test.each([
@@ -53,7 +54,7 @@ describe('fmtNumber — Float and Currency list cells', () => {
 })
 
 describe('fmtDay — dates read from a spreadsheet keep their calendar day on any clock', () => {
-  // The parser hands over local-midnight Dates (#387); a date-only string parses to UTC midnight.
+  // A Date built from local parts is local midnight; a date-only string parses to UTC midnight.
   const inZone = (tz: string, fn: () => void) => {
     const before = process.env.TZ
     process.env.TZ = tz
@@ -78,6 +79,15 @@ describe('fmtDay — dates read from a spreadsheet keep their calendar day on an
       expect(fmtDay(new Date('2026-01-15'))).toBe('15-Jan-2026')
     }),
   )
+})
+
+describe('the table builder preview shows days as DD-Mon-YYYY', () => {
+  test('from YYYY-MM-DD text (what the workbook parser hands over since #387) or a Date', () => {
+    expect(previewValue('2024-10-21')).toBe('21-Oct-2024')
+    expect(previewValue(new Date(2024, 9, 21))).toBe('21-Oct-2024')
+    expect(previewValue('2024-10-21T05:30:00')).toBe('2024-10-21T05:30:00')
+    expect(previewValue(null)).toBe('')
+  })
 })
 
 describe('list counts', () => {

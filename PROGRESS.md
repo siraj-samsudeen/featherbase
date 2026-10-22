@@ -76,11 +76,12 @@ Independent review of #386 (no blockers), each item test-first:
 - **Status dots:** meaning colours for verdicts only (done/approved, overdue/failed, not set); other statuses take a
   series identity colour. The series colours are tested distinct (RGB distance > 90) and at 3:1 in every theme.
 - **`fmtDay`:** the old test encoded SheetJS's shifted late-evening Date, the same bug fixed separately in #387/#388.
-  It now reads a local-midnight Date (what the fixed parser produces) or a UTC-midnight one by the shared
-  `calendarDay` rule, tested in Asia/Kolkata, America/New_York and UTC.
+  It now reads a Date by the shared `calendarDay` rule (local midnight or UTC midnight), tested in Asia/Kolkata,
+  America/New_York and UTC. Since #388 the parser hands days over as `YYYY-MM-DD` text, so the table-builder preview
+  (`previewValue`) formats that text as DD-Mon-YYYY too.
 
 **Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 854 passed. `pnpm --filter web typecheck` and `pnpm --filter server typecheck` passed.
+- `pnpm --filter web test`: 857 passed. `pnpm --filter web typecheck` and `pnpm --filter server typecheck` passed.
   `pnpm --filter server exec vitest run test/settings.test.ts` plus the print and migration tests: 13 passed. Full e2e
   after the review fixes: 169 passed, 28 skipped.
 - The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter

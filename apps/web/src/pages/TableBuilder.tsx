@@ -23,7 +23,7 @@ import {
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, touchTargetClasses } from '../components/ui'
-import { fmtCount, fmtDay } from '../lib/inr'
+import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
 
 // A column as SENT: its grid row travels with it. The payload drops
 // blank-named rows, so the server's `columns.<n>` counts a different list
@@ -86,6 +86,14 @@ type BuilderView = 'grid' | 'cards'
 
 // #151: the input recipe at table density, so the grid and the cards read as
 // one design; grid rows are too short for the touch-sized control height.
+/** A sheet value in the preview: a day as DD-Mon-YYYY, whether it arrives as a Date or as YYYY-MM-DD text (#387). */
+export function previewValue(v: unknown): string {
+  if (v == null) return ''
+  if (v instanceof Date) return fmtDay(v)
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return fmtDate(v)
+  return String(v)
+}
+
 const CELL_INPUT = inputClasses('min-h-0 px-2 py-1 text-sm')
 
 // The kicker style shared with the cards view's "COLUMN n" headers.
@@ -729,7 +737,7 @@ export function TableBuilder() {
                     const v = r[c.source_index!]
                     return (
                       <td key={c.column_name} className="px-2 py-1 text-ink-muted">
-                        {v instanceof Date ? fmtDay(v) : v == null ? '' : String(v)}
+                        {previewValue(v)}
                       </td>
                     )
                   })}

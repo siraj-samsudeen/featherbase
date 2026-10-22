@@ -102,10 +102,11 @@ export function fmtMonthYear(d: Date): string {
 }
 
 /**
- * A Date that stands for a day (a spreadsheet date cell, or a date-only string)
- * as DD-Mon-YYYY, read off whichever clock says midnight: a parsed cell is
- * local midnight (#387), "2026-01-15" is UTC midnight. The same rule as
- * shared calendarDay(); never toISOString(), which moves a local day east of UTC.
+ * A Date that stands for a day as DD-Mon-YYYY, read off whichever clock says
+ * midnight: a Date built from local parts is local midnight, "2026-01-15" parses
+ * to UTC midnight. The same rule as shared calendarDay(); never toISOString(),
+ * which moves a local day east of UTC. (Since #387 the workbook parser hands
+ * days over as YYYY-MM-DD text, which fmtDate formats directly.)
  */
 export function fmtDay(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
