@@ -6,6 +6,7 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { useStepOptions } from '../lib/explore-steps'
+import { buttonClasses, cardClasses } from '../components/ui'
 
 type Row = Record<string, unknown>
 
@@ -67,9 +68,9 @@ export function RelationMap({
   })
 
   if (meta.isLoading || doc.isLoading)
-    return <p className="text-sm text-[var(--color-ink-faint)]">Loading…</p>
+    return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="text-sm text-[var(--color-danger)]">Cannot load {table} {name}</p>
+    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const d = doc.data!
@@ -129,14 +130,14 @@ export function RelationMap({
 
   return (
     <div data-testid="relation-map">
-      <div className="mb-1 text-xs text-[var(--color-ink-faint)]">
-        <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">Home</Link>
+      <div className="mb-1 text-xs text-ink-subtle">
+        <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
         {' / '}
         <Link
           to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
-          className="hover:text-[var(--color-ink)]"
+          className="hover:text-ink"
         >
           {table}
         </Link>
@@ -144,16 +145,16 @@ export function RelationMap({
         Map
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-[var(--color-ink)]">
+        <h1 className="text-xl font-semibold text-ink">
           {String(d[m.title_column ?? ''] ?? name)}
         </h1>
-        <span className="text-xs text-[var(--color-ink-faint)]">{table} · {name}</span>
+        <span className="text-xs text-ink-subtle">{table} · {name}</span>
         <Link
           to="/featherbase/admin/$table/$name"
           params={{ table, name }}
           search={{ prefill: undefined }}
           data-testid="map-open-form"
-          className="fc-btn"
+          className={buttonClasses()}
         >
           Open form ↗
         </Link>
@@ -165,30 +166,30 @@ export function RelationMap({
             select: JSON.stringify([name]),
           }}
           data-testid="map-open-explore"
-          className="fc-btn"
+          className={buttonClasses()}
         >
           Open in Explore
         </Link>
       </div>
       {parsedTrail.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs" data-testid="map-trail">
-          <span className="text-[var(--color-ink-faint)]">Trail:</span>
+          <span className="text-ink-subtle">Trail:</span>
           {parsedTrail.map(([t, n], i) => (
             <span key={`${t}:${n}:${i}`} className="flex items-center gap-1.5">
               <button
                 onClick={() => backTo(i)}
-                className="text-[var(--color-brand)] hover:underline"
+                className="text-action hover:underline"
                 data-testid={`map-trail-${i}`}
               >
                 {n}
               </button>
-              <span className="text-[var(--color-ink-faint)]">›</span>
+              <span className="text-ink-subtle">›</span>
             </span>
           ))}
-          <span className="font-medium text-[var(--color-ink)]">{name}</span>
+          <span className="font-medium text-ink">{name}</span>
         </div>
       )}
-      <div className="fc-card overflow-x-auto p-2">
+      <div className={cardClasses('overflow-x-auto p-2')}>
         <svg
           viewBox={`0 0 ${W} ${H}`}
           className="block h-auto w-full min-w-[700px]"
@@ -204,7 +205,7 @@ export function RelationMap({
                 y1={nodeY(i) + NODE_H / 2}
                 x2={340}
                 y2={cy + NODE_H / 2}
-                stroke="var(--color-border-strong)"
+                stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
               <text
@@ -212,7 +213,7 @@ export function RelationMap({
                 y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
                 textAnchor="middle"
                 fontSize={9.5}
-                fill="var(--color-ink-faint)"
+                fill="var(--color-ink-subtle)"
               >
                 {truncate(f.label, 18)} →
               </text>
@@ -225,7 +226,7 @@ export function RelationMap({
                 y1={cy + NODE_H / 2}
                 x2={660}
                 y2={nodeY(i) + NODE_H / 2}
-                stroke="var(--color-border-strong)"
+                stroke="var(--color-border-control)"
                 strokeWidth={1.2}
               />
               <text
@@ -233,7 +234,7 @@ export function RelationMap({
                 y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
                 textAnchor="middle"
                 fontSize={9.5}
-                fill="var(--color-ink-faint)"
+                fill="var(--color-ink-subtle)"
               >
                 {g.kind === 'child' ? 'contains →' : `← ${truncate(g.cnx?.column ?? '', 14)}`}
               </text>
@@ -247,8 +248,8 @@ export function RelationMap({
               width={220}
               height={NODE_H}
               rx={8}
-              fill="var(--color-brand-tint)"
-              stroke="var(--color-brand)"
+              fill="var(--color-action-tint)"
+              stroke="var(--color-action)"
               strokeWidth={1.5}
             />
             <text x={352} y={cy + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
@@ -273,8 +274,8 @@ export function RelationMap({
                 height={NODE_H}
                 rx={8}
                 fill="var(--color-surface)"
-                stroke="var(--color-border-strong)"
-                className="hover:stroke-[var(--color-brand)]"
+                stroke="var(--color-border-control)"
+                className="hover:stroke-action"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
                 {truncate(f.row_id, 20)}
@@ -299,7 +300,7 @@ export function RelationMap({
                 height={NODE_H}
                 rx={8}
                 fill="var(--color-surface)"
-                stroke={openGroup === i ? 'var(--color-brand)' : 'var(--color-border-strong)'}
+                stroke={openGroup === i ? 'var(--color-action)' : 'var(--color-border-control)'}
                 strokeWidth={openGroup === i ? 1.5 : 1}
                 strokeDasharray="3 3"
               />
@@ -308,7 +309,7 @@ export function RelationMap({
                 y={nodeY(i) + 20}
                 fontSize={12.5}
                 fontWeight={600}
-                fill={g.count ? 'var(--color-ink)' : 'var(--color-ink-faint)'}
+                fill={g.count ? 'var(--color-ink)' : 'var(--color-ink-subtle)'}
               >
                 {truncate(g.label, 20)}
               </text>
@@ -321,7 +322,7 @@ export function RelationMap({
                 textAnchor="end"
                 fontSize={11}
                 fontWeight={700}
-                fill="var(--color-brand)"
+                fill="var(--color-action)"
               >
                 {g.count}
               </text>
@@ -330,8 +331,8 @@ export function RelationMap({
         </svg>
       </div>
       {active && (
-        <div className="fc-card mt-3 overflow-x-auto" data-testid="map-group-rows">
-          <div className="border-b border-[var(--color-border)] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        <div className={cardClasses('mt-3 overflow-x-auto')} data-testid="map-group-rows">
+          <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
             {active.label} — click a row to re-center the map
           </div>
           {active.kind === 'child' ? (
@@ -415,12 +416,12 @@ function GroupRows({
         limit_page_length: 10,
       }),
   })
-  if (!list.data) return <p className="px-4 py-3 text-sm text-[var(--color-ink-faint)]">Loading…</p>
+  if (!list.data) return <p className="px-4 py-3 text-sm text-ink-subtle">Loading…</p>
   return (
     <>
       <SimpleRowsTable cols={columns} rows={list.data.data} settings={settings} onPick={onPick} />
       {list.data.total > list.data.data.length && (
-        <p className="px-4 py-2 text-xs text-[var(--color-ink-faint)]">
+        <p className="px-4 py-2 text-xs text-ink-subtle">
           Showing {list.data.data.length} of {list.data.total}
         </p>
       )}
@@ -441,12 +442,12 @@ function SimpleRowsTable({
 }) {
   return (
     <table className="w-full text-sm">
-      <thead className="bg-[var(--color-subtle)]">
+      <thead className="bg-subtle">
         <tr>
           {cols.map((c) => (
             <th
               key={c.column_name}
-              className="border-b border-[var(--color-border)] px-4 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]"
+              className="border-b border-border px-4 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted"
             >
               {c.label}
             </th>
@@ -459,12 +460,12 @@ function SimpleRowsTable({
             key={String(r.row_id ?? i)}
             onClick={() => r.row_id && onPick(String(r.row_id))}
             data-testid="map-row"
-            className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
+            className="cursor-pointer border-b border-border last:border-0 hover:bg-subtle"
           >
             {cols.map((c, j) => (
               <td
                 key={c.column_name}
-                className={`px-4 py-1.5 ${j === 0 ? 'font-medium text-[var(--color-brand)]' : ''}`}
+                className={`px-4 py-1.5 ${j === 0 ? 'font-medium text-action' : ''}`}
               >
                 {formatValue(c.column_type, r[c.column_name], settings) || '—'}
               </td>
@@ -473,7 +474,7 @@ function SimpleRowsTable({
         ))}
         {!rows.length && (
           <tr>
-            <td colSpan={cols.length} className="px-4 py-5 text-center text-sm text-[var(--color-ink-faint)]">
+            <td colSpan={cols.length} className="px-4 py-5 text-center text-sm text-ink-subtle">
               No rows
             </td>
           </tr>

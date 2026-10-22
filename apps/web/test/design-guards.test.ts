@@ -71,6 +71,7 @@ const ROLES = [
   'action', 'action-hover', 'action-ink', 'action-tint', 'focus',
   'negative', 'negative-tint', 'caution', 'caution-tint', 'positive', 'positive-tint',
   'opportunity', 'opportunity-tint', 'missing', 'missing-tint',
+  'scrim', 'on-scrim', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5',
 ]
 // Tailwind drops theme variables no utility uses from a plain @theme block, so
 // a component reading var(--color-…) directly would get nothing in light mode
@@ -94,13 +95,19 @@ describe.each(themes)('%s tokens', (_mode, t) => {
     ['action', 'action-tint'],
     ['action-ink', 'action'],
     ['action-ink', 'action-hover'],
+    // Text on a filled meaning colour (a done tick, an ok/fail chip) and over the scrim.
+    ['action-ink', 'negative'],
+    ['action-ink', 'positive'],
+    ['action-ink', 'caution'],
+    ['on-scrim', 'scrim'],
   ]
   test.each(textPairs)('text %s on %s reaches 4.5:1', (fg, bg) => {
     expect(t[fg] && t[bg], `${fg} or ${bg} undefined`).toBeTruthy()
     expect(ratio(t[fg], t[bg])).toBeGreaterThanOrEqual(4.5)
   })
 
-  const edgePairs: [string, string][] = ['border-control', 'focus'].flatMap((fg) =>
+  // Series colours mark dots and bars, so they need the non-text 3:1.
+  const edgePairs: [string, string][] = ['border-control', 'focus', 'series-1', 'series-2', 'series-3', 'series-4', 'series-5'].flatMap((fg) =>
     ['surface', 'canvas'].map((bg) => [fg, bg] as [string, string]),
   )
   test.each(edgePairs)('control edge %s on %s reaches 3:1', (fg, bg) => {
@@ -137,7 +144,7 @@ const RULES: Record<string, Rule> = {
   // function, or a named colour given to a colour property.
   'literal colour': (text, css) =>
     // In a stylesheet a hex follows a property's colon; in code, a colon before #123 is usually an issue ref.
-    (text.match(css ? /(?:[\['"`]|:\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g : /[\['"`]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
+    (text.match(css ? /(?:[\['"`,]|:\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g : /[\['"`,]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
     (text.match(/(?<![A-Za-z0-9-])(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb)\(/g) ?? []).length +
     (text.match(new RegExp(String.raw`\b(?:color|background|backgroundColor|borderColor|fill|stroke)\s*[:=]\s*\{?\s*['"](?:${NAMED})['"]`, 'g')) ?? []).length,
   'text under 12px': smallText,
@@ -161,8 +168,8 @@ describe('each rule catches what it is for and nothing else', () => {
     ],
     [
       'literal colour',
-      ['bg-[#fff]', 'fill="#2490ef"', "color: '#abc'", '`#1c2126`', "'#ffffff80'", "'#fff8'", 'shadow-[0_1px_2px_rgba(0,0,0,.1)]', "color: 'hsl(0 0% 0%)'", 'oklch(0.6 0.2 250)', 'fill="white"', "color: 'red'", "backgroundColor: 'black'"],
-      ['(#380)', 'see #150 for why', 'PR #92 review', 'href="/x#anchor"', "fill: 'var(--color-action)'", 'the red band'],
+      ['bg-[#fff]', 'border-[var(--x,#d1d8dd)]', 'fill="#2490ef"', "color: '#abc'", '`#1c2126`', "'#ffffff80'", "'#fff8'", 'shadow-[0_1px_2px_rgba(0,0,0,.1)]', "color: 'hsl(0 0% 0%)'", 'oklch(0.6 0.2 250)', 'fill="white"', "color: 'red'", "backgroundColor: 'black'"],
+      ['(#380)', 'see #150 for why', 'PR #92 review', 'issues #12, #13', 'href="/x#anchor"', "fill: 'var(--color-action)'", 'the red band'],
     ],
     [
       'text under 12px',

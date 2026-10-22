@@ -22,6 +22,7 @@ import { coerceRows, sanitizeColumnName } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { type TableMeta } from '../lib/meta'
 import { sendImportRun, type ImportFailure } from '../lib/import-run'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 // Columns a merge can carry: real storage, and not the platform's own.
 const SKIP_TYPES = ['Section Break', 'Column Break', 'Sub-table']
@@ -206,7 +207,7 @@ export function TableMerge() {
 
   if (sourceMeta.isError)
     return (
-      <p className="text-sm text-[var(--color-danger)]" data-testid="tm-error">
+      <p className="text-sm text-negative" data-testid="tm-error">
         {sourceMeta.error instanceof ApiError ? sourceMeta.error.message : 'Could not load'}
       </p>
     )
@@ -217,7 +218,7 @@ export function TableMerge() {
 
   return (
     <div data-testid="table-merge" className="max-w-4xl">
-      <h1 className="mb-1 text-xl font-semibold text-[var(--color-ink)]">
+      <h1 className="mb-1 text-xl font-semibold text-ink">
         Merge{' '}
         <Link
           to="/featherbase/admin/$table"
@@ -229,16 +230,16 @@ export function TableMerge() {
         </Link>{' '}
         into another Table
       </h1>
-      <p className="mb-4 text-xs text-gray-500">
+      <p className="mb-4 text-xs text-ink-muted">
         Copies {source}&apos;s {rowCount.data?.count ?? '…'} rows into the Table you choose, column
         by column. {source} itself is left alone — delete it afterwards if you no longer want it.
       </p>
 
-      <div className="fc-card mb-3 p-3">
-        <label className="fc-label m-0">
+      <div className={cardClasses('mb-3 p-3')}>
+        <label className={labelClasses('m-0')}>
           Merge into
           <select
-            className="fc-input ml-2 w-64 py-1"
+            className={inputClasses('ml-2 w-64 py-1')}
             data-testid="tm-target"
             value={target}
             onChange={(e) => {
@@ -261,16 +262,16 @@ export function TableMerge() {
       </div>
 
       {target && targetMeta.data && (
-        <div className="fc-card mb-3 p-3" data-testid="tm-mapping">
-          <div className="fc-label mb-1">Columns</div>
-          <p className="mb-2 text-xs text-gray-500">
+        <div className={cardClasses('mb-3 p-3')} data-testid="tm-mapping">
+          <div className={labelClasses('mb-1')}>Columns</div>
+          <p className="mb-2 text-xs text-ink-muted">
             Columns whose names match — ignoring case, spaces and punctuation — are paired for you.
             Nothing else is guessed: if <code>Glor</code> and <code>Floor</code> are the same thing,
             only you know that, so say so here.
           </p>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
+              <tr className="text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="py-1">{source} column</th>
                 <th>First values</th>
                 <th>→ {target} column</th>
@@ -280,22 +281,22 @@ export function TableMerge() {
               {sourceColumns.map((column) => (
                 <tr
                   key={column.column_name}
-                  className="border-t border-[var(--color-border)]"
+                  className="border-t border-border"
                   data-testid={`tm-row-${column.column_name}`}
                 >
                   <td className="py-1 pr-2">
                     {column.label || column.column_name}{' '}
-                    <span className="font-mono text-xs text-gray-400">{column.column_name}</span>
+                    <span className="font-mono text-xs text-ink-subtle">{column.column_name}</span>
                   </td>
                   <td
-                    className="max-w-xs truncate pr-2 text-xs text-gray-500"
+                    className="max-w-xs truncate pr-2 text-xs text-ink-muted"
                     data-testid={`tm-sample-${column.column_name}`}
                   >
                     {sampleOf(column.column_name)}
                   </td>
                   <td>
                     <select
-                      className="fc-input w-56 py-0.5"
+                      className={inputClasses('w-56 py-0.5')}
                       aria-label={`Target column for ${column.column_name}`}
                       data-testid={`tm-map-${column.column_name}`}
                       value={effective[column.column_name] ?? ''}
@@ -314,14 +315,14 @@ export function TableMerge() {
             </tbody>
           </table>
 
-          <p className="mt-2 text-xs text-gray-500" data-testid="tm-tally">
+          <p className="mt-2 text-xs text-ink-muted" data-testid="tm-tally">
             {mapped.length} of {sourceColumns.length} columns mapped
             {unmapped.length > 0 &&
               `; ${unmapped.map((c) => c.column_name).join(', ')} will be left behind`}
             .
           </p>
           {unmapped.length > 0 && (
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1 text-xs text-ink-muted">
               Missing a column on {target}?{' '}
               <Link
                 to="/featherbase/admin/$table/columns"
@@ -338,18 +339,18 @@ export function TableMerge() {
       )}
 
       {busy && (
-        <p className="mb-2 text-sm text-gray-500" data-testid="tm-progress">
+        <p className="mb-2 text-sm text-ink-muted" data-testid="tm-progress">
           {busy}
         </p>
       )}
       {error && (
-        <p className="mb-2 text-sm text-[var(--color-danger)]" data-testid="tm-error">
+        <p className="mb-2 text-sm text-negative" data-testid="tm-error">
           {error}
         </p>
       )}
       {outcome && (
-        <div className="fc-card mb-3 p-3 text-sm" data-testid="tm-outcome">
-          <span className={outcome.failed.length ? 'text-red-600' : 'text-green-700'}>
+        <div className={cardClasses('mb-3 p-3 text-sm')} data-testid="tm-outcome">
+          <span className={outcome.failed.length ? 'text-negative' : 'text-positive'}>
             Merged {outcome.inserted} rows into{' '}
             <Link
               to="/featherbase/admin/$table"
@@ -363,7 +364,7 @@ export function TableMerge() {
               `; ${outcome.failed.length} failed (first: row ${outcome.failed[0].sourceIndex + 1}: ${outcome.failed[0].message})`}
             .
           </span>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-ink-muted">
             {/* A merge is an import, so it undoes like one. */}
             {source} still has its own rows — this copied them.{' '}
             <Link
@@ -389,7 +390,7 @@ export function TableMerge() {
 
       <button
         type="button"
-        className="fc-btn-primary disabled:opacity-40"
+        className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
         data-testid="tm-go"
         disabled={!!busy || !target || mapped.length === 0}
         onClick={() => void merge()}

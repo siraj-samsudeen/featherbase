@@ -8,20 +8,25 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react'
-import { cx } from './cx'
+import { cx, recipe } from './cx'
 import { Eye, EyeOff, Search } from './icons'
 
 /** The look of anything the user types into or picks from. */
 export function inputClasses(className?: string): string {
-  return cx(
-    'block w-full min-h-control rounded-control border border-border-control bg-surface px-3 text-control text-ink',
-    'placeholder:text-ink-subtle focus:outline-hidden focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30',
-    'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted aria-invalid:border-negative',
+  return recipe(
+    cx(
+      'block w-full min-h-control rounded-control border border-border-control bg-surface px-3 text-control text-ink',
+      'placeholder:text-ink-subtle focus:outline-hidden focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/30',
+      'disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted aria-invalid:border-negative',
+    ),
     className,
   )
 }
 
-export const labelClasses = 'mb-1.5 block text-sm font-semibold text-ink'
+/** The look of a field label. */
+export function labelClasses(className?: string): string {
+  return recipe('mb-1.5 block text-sm font-semibold text-ink', className)
+}
 
 interface Described {
   id?: string
@@ -54,7 +59,7 @@ export function Field({
   const describedBy = [children.props['aria-describedby'], hintId, errorId].filter(Boolean).join(' ') || undefined
   return (
     <div className={className}>
-      <label htmlFor={id} className={labelClasses}>
+      <label htmlFor={id} className={labelClasses()}>
         {label}
       </label>
       {cloneElement(children, {

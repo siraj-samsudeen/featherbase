@@ -13,6 +13,7 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
+import { labelClasses, pillClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -61,7 +62,7 @@ export function PeekProvider({ children }: { children: React.ReactNode }) {
       {stack.length > 0 && (
         <>
           <div
-            className="fixed inset-0 z-40 bg-black/25"
+            className="fixed inset-0 z-40 bg-scrim/25"
             data-testid="peek-scrim"
             onClick={() => setStack([])}
           />
@@ -121,32 +122,32 @@ function PeekPanel({
   return (
     <div
       data-testid={`peek-panel-${depth}`}
-      className="fixed bottom-0 top-0 z-50 flex w-[min(430px,92vw)] flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-2xl"
+      className="fixed bottom-0 top-0 z-50 flex w-[min(430px,92vw)] flex-col border-l border-border-control bg-surface shadow-2xl"
       style={{ right: offset, filter: isTop ? undefined : 'brightness(0.97)' }}
     >
-      <div className="flex items-center gap-1 border-b border-[var(--color-border)] px-3 py-2">
+      <div className="flex items-center gap-1 border-b border-border px-3 py-2">
         {depth > 0 && (
           <button
             onClick={onPop}
             aria-label="Back one level"
             data-testid="peek-back"
-            className="rounded px-1.5 py-0.5 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]"
+            className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
           >
             ←
           </button>
         )}
         <div className="min-w-0 flex-1 px-1">
-          <div className="truncate text-sm font-semibold text-[var(--color-ink)]" data-testid="peek-title">
+          <div className="truncate text-sm font-semibold text-ink" data-testid="peek-title">
             {title}
           </div>
-          <div className="text-[11px] text-[var(--color-ink-faint)]">
+          <div className="text-xs text-ink-subtle">
             {frame.table} · level {depth + 1} of {count}
           </div>
         </div>
         <button
           onClick={openFull}
           data-testid="peek-open-full"
-          className="rounded px-1.5 py-0.5 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]"
+          className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
           title="Open full page"
         >
           ↗
@@ -155,7 +156,7 @@ function PeekPanel({
           onClick={onClose}
           aria-label="Close"
           data-testid="peek-close"
-          className="rounded px-1.5 py-0.5 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]"
+          className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
         >
           ✕
         </button>
@@ -188,9 +189,9 @@ function PeekRecord({
   const cnx = useConnections(table, name)
 
   if (meta.isLoading || doc.isLoading)
-    return <p className="p-4 text-sm text-[var(--color-ink-faint)]">Loading…</p>
+    return <p className="p-4 text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="p-4 text-sm text-[var(--color-danger)]">Cannot load {table} {name}</p>
+    return <p className="p-4 text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const d = doc.data!
@@ -205,8 +206,8 @@ function PeekRecord({
           .filter((f) => f.column_type !== 'Sub-table' && !f.hidden)
           .map((f) => (
             <div key={f.column_name} className="min-w-0">
-              <dt className="fc-label mb-0">{f.label ?? f.column_name}</dt>
-              <dd className="truncate text-sm text-[var(--color-ink)]">
+              <dt className={labelClasses('mb-0')}>{f.label ?? f.column_name}</dt>
+              <dd className="truncate text-sm text-ink">
                 <PeekValue field={f} value={d[f.column_name]} settings={settings} push={push} />
               </dd>
             </div>
@@ -218,8 +219,8 @@ function PeekRecord({
           <PeekChildGrid key={f.column_name} field={f} rows={(d[f.column_name] as Row[]) ?? []} push={push} />
         ))}
       {(cnx.data?.connections.length ?? 0) > 0 && (
-        <div className="border-t border-[var(--color-border)]">
-          <div className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        <div className="border-t border-border">
+          <div className="px-4 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Connections
           </div>
           {cnx.data!.connections.map((c) => (
@@ -229,13 +230,13 @@ function PeekRecord({
                 push({ kind: 'list', table: c.table, filters: c.filters, title: connectionLabel(c) })
               }
               data-testid={`peek-connection-${c.table}`}
-              className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-[var(--color-subtle)]"
+              className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-subtle"
             >
-              <span className={c.count ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-faint)]'}>
+              <span className={c.count ? 'text-ink' : 'text-ink-subtle'}>
                 {connectionLabel(c)}
               </span>
               <span
-                className={`fc-pill ${c.count ? 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]' : 'bg-[var(--color-subtle)] text-[var(--color-ink-faint)]'}`}
+                className={pillClasses(`${c.count ? 'bg-action-tint text-action' : 'bg-subtle text-ink-subtle'}`)}
               >
                 {c.count}
               </span>
@@ -258,12 +259,12 @@ function PeekValue({
   settings: ReturnType<typeof useSettings>
   push: (f: PeekFrame) => void
 }) {
-  if (value == null || value === '') return <span className="text-[var(--color-ink-faint)]">—</span>
+  if (value == null || value === '') return <span className="text-ink-subtle">—</span>
   if (field.column_type === 'Reference' && field.reference_table)
     return (
       <button
         onClick={() => push({ kind: 'record', table: field.reference_table!, name: String(value) })}
-        className="font-medium text-[var(--color-brand)] hover:underline"
+        className="font-medium text-action hover:underline"
         data-testid={`peek-ref-${field.column_name}`}
       >
         {String(value)}
@@ -290,15 +291,15 @@ function PeekChildGrid({
     .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
     .slice(0, 4)
   return (
-    <div className="border-t border-[var(--color-border)] px-4 py-3">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+    <div className="border-t border-border px-4 py-3">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
         {field.label ?? field.column_name} ({rows.length})
       </div>
       <table className="w-full text-xs">
         <thead>
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-[var(--color-border)] py-1 pr-2 text-left font-medium text-[var(--color-ink-muted)]">
+              <th key={c.column_name} className="border-b border-border py-1 pr-2 text-left font-medium text-ink-muted">
                 {c.label ?? c.column_name}
               </th>
             ))}
@@ -308,13 +309,13 @@ function PeekChildGrid({
           {rows.map((r, i) => (
             <tr key={String(r.row_id ?? i)}>
               {cols.map((c) => (
-                <td key={c.column_name} className="border-b border-[var(--color-border)] py-1 pr-2 last:border-0">
+                <td key={c.column_name} className="border-b border-border py-1 pr-2 last:border-0">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <button
                       onClick={() =>
                         push({ kind: 'record', table: c.reference_table!, name: String(r[c.column_name]) })
                       }
-                      className="text-[var(--color-brand)] hover:underline"
+                      className="text-action hover:underline"
                     >
                       {String(r[c.column_name])}
                     </button>
@@ -346,9 +347,9 @@ function PeekList({
   const list = useQueryList(table, filters, columns.map((c) => c.column_name))
 
   if (meta.isLoading || list.isLoading)
-    return <p className="p-4 text-sm text-[var(--color-ink-faint)]">Loading…</p>
+    return <p className="p-4 text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || list.isError)
-    return <p className="p-4 text-sm text-[var(--color-danger)]">Cannot load {table}</p>
+    return <p className="p-4 text-sm text-negative">Cannot load {table}</p>
 
   const rows = list.data!.data
   return (
@@ -357,7 +358,7 @@ function PeekList({
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.column_name} className="border-b border-[var(--color-border)] px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+              <th key={c.column_name} className="border-b border-border px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
                 {c.label}
               </th>
             ))}
@@ -367,12 +368,12 @@ function PeekList({
           {rows.map((r) => (
             <tr
               key={String(r.row_id)}
-              className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
+              className="cursor-pointer border-b border-border last:border-0 hover:bg-subtle"
               onClick={() => push({ kind: 'record', table, name: String(r.row_id) })}
               data-testid="peek-list-row"
             >
               {columns.map((c, i) => (
-                <td key={c.column_name} className={`px-3 py-1.5 ${i === 0 ? 'font-medium text-[var(--color-brand)]' : ''}`}>
+                <td key={c.column_name} className={`px-3 py-1.5 ${i === 0 ? 'font-medium text-action' : ''}`}>
                   {formatValue(c.column_type, r[c.column_name], settings) || '—'}
                 </td>
               ))}
@@ -380,7 +381,7 @@ function PeekList({
           ))}
           {!rows.length && (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]">
+              <td colSpan={columns.length} className="px-3 py-6 text-center text-sm text-ink-subtle">
                 No rows
               </td>
             </tr>
@@ -388,7 +389,7 @@ function PeekList({
         </tbody>
       </table>
       {list.data!.total > rows.length && (
-        <p className="px-3 py-2 text-xs text-[var(--color-ink-faint)]">
+        <p className="px-3 py-2 text-xs text-ink-subtle">
           Showing {rows.length} of {list.data!.total} — open full ↗ for everything
         </p>
       )}

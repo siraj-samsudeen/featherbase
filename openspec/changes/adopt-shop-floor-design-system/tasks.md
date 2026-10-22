@@ -14,15 +14,17 @@
 
 ## 2. Sweep of every screen not owned by #371 (PR 2)
 
-- [ ] 2.1 Move every such screen onto the primitives and final token names; replace browser-locale formatting and text
-  under 12 px; remove each cleaned file from the pending list.
-- [ ] 2.2 Before/after screenshots of a list, a form and a Checklist at 375 px and 1280 px; web suite, typecheck and
-  the affected e2e specs.
+- [x] 2.1 Move every such screen onto the primitives and final token names; replace browser-locale formatting and text
+  under 12 px; remove each cleaned file from the pending list. (36 files. AccessTokens, PermissionManager, Assignments,
+  ActivityFeed and ActivityTimeline wait for the person-rename change, #384, and move to 3.1.)
+- [x] 2.2 Before/after screenshots of the swept screens at 375 px and 1280 px, light and dark; web suite and typecheck;
+  the e2e suite in CI.
 
 ## 3. After #371 merges (PR 3)
 
-- [ ] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout, router, Comments, FormView and #371's new
-  screens.
+- [ ] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout (using `useMediaQuery`), router, Comments,
+  FormView and #371's new screens; after person-rename (#384), AccessTokens, PermissionManager, Assignments,
+  ActivityFeed and ActivityTimeline.
 - [ ] 3.2 Remove the palette: picker, client preference, server endpoint and stored column (migration), and its tests.
 - [ ] 3.3 Theme choice of light, dark or follow-the-device, and follow-the-device before sign-in.
 - [ ] 3.4 Delete every old token name and the six `fc-*` classes; delete the pending list so every rule is a hard zero.

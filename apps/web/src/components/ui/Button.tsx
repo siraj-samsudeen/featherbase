@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { cx } from './cx'
+import { cx, recipe } from './cx'
 import { LoaderCircle } from './icons'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
@@ -20,13 +20,15 @@ export function buttonClasses({
   block = false,
   className,
 }: { variant?: ButtonVariant; block?: boolean; className?: string } = {}): string {
-  return cx(
-    'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-4',
-    'text-control font-semibold transition-colors',
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-    'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
-    VARIANT[variant],
-    block && 'w-full',
+  return recipe(
+    cx(
+      'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-4',
+      'text-control font-semibold transition-colors',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+      'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
+      VARIANT[variant],
+      block && 'w-full',
+    ),
     className,
   )
 }

@@ -69,6 +69,27 @@ export function fmtCount(x: number | null | undefined, decimals = 0): string {
   return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
+/**
+ * A number at a fixed precision with Indian digit grouping: list cells for Float
+ * and Currency columns. The currency symbol is added by the caller.
+ */
+export function fmtNumber(x: number, precision: number): string {
+  return x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** A calendar heading: "October 2026". */
+export function fmtMonthYear(d: Date): string {
+  return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/** A local calendar day (a Date read from a spreadsheet) as DD-Mon-YYYY. */
+export function fmtDay(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return fmtDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** ISO day -> DD-Mon-YYYY (ADR 844). Slash forms are ambiguous and never used. */

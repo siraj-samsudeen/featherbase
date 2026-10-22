@@ -9,11 +9,13 @@ import {
   Button,
   buttonClasses,
   Card,
+  cardClasses,
   EmptyState,
   Field,
   inputClasses,
   Notice,
   PasswordInput,
+  pillClasses,
   SearchInput,
   Select,
   Skeleton,
@@ -258,5 +260,33 @@ describe('focus stays visible in forced-colours mode', () => {
     const c = inputClasses().split(' ')
     expect(c).toContain('focus:outline-hidden')
     expect(c).not.toContain('focus:outline-none')
+  })
+})
+
+describe('class recipes give way to the call site', () => {
+  test("a call site's padding, size, radius and weight replace the recipe's own, never both", () => {
+    const c = buttonClasses({ className: 'px-2 text-xs rounded-r-none font-medium' }).split(' ')
+    expect(c).toContain('px-2')
+    expect(c).not.toContain('px-4')
+    expect(c).toContain('text-xs')
+    expect(c).not.toContain('text-control')
+    expect(c).toContain('rounded-r-none')
+    expect(c).toContain('font-medium')
+    expect(c).not.toContain('font-semibold')
+  })
+
+  test('colours and layout from the call site sit beside the recipe; the touch height always stays', () => {
+    const c = inputClasses('w-auto py-1 text-sm').split(' ')
+    expect(c).toEqual(expect.arrayContaining(['w-auto', 'py-1', 'text-sm', 'min-h-control', 'border-border-control']))
+    expect(c).not.toContain('text-control')
+    expect(c).not.toContain('w-full')
+  })
+
+  test('a card keeps its surface and takes the caller padding', () => {
+    expect(cardClasses('p-4').split(' ')).toEqual(expect.arrayContaining(['p-4', 'rounded-card', 'bg-surface']))
+  })
+
+  test('a pill is only a shape; the caller brings the colour', () => {
+    expect(pillClasses('bg-positive-tint text-positive').split(' ')).toEqual(expect.arrayContaining(['rounded-full', 'text-xs', 'text-positive']))
   })
 })

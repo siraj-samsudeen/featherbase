@@ -1,5 +1,44 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 2: every screen not owned by #371 or person-rename (#380)
+
+36 web files now use the final tokens and the shared recipes, and none of them breaks a design rule. The pending list
+holds only the 14 files that must wait:
+- #371's 8: Login, ResetPassword, Portal, SalesTarget, AdminLayout, router, Comments, FormView;
+- `index.css`, which still carries the retired names and `.fc-*` classes for those 8;
+- the 5 next to person-rename (#384): AccessTokens, PermissionManager, Assignments, ActivityFeed, ActivityTimeline.
+
+What changed:
+- **Classes.** `.fc-*` classes became `buttonClasses` / `inputClasses` / `cardClasses` / `labelClasses` /
+  `pillClasses`. The recipes now merge with the call site's classes: a call site's padding, size, radius, weight,
+  width, min-height, gap, justify or display replaces the recipe's, so the two never fight in CSS order.
+- **Colours.**
+  - `x-[var(--color-…)]` became utilities with the final names.
+  - Raw palette classes became roles.
+  - `text-white` on a filled colour became `action-ink`.
+  - White over the photo scrim became the new `on-scrim`.
+  - Modal backdrops use the new `scrim`.
+  - ListView's value dots use meaning colours for lifecycle words and the new `series-1…5` for anything else.
+  - Undefined-token fallbacks (`--color-brand-strong`, `--color-hairline-strong`) are gone.
+- **Formatting.**
+  - `formatNumber` uses `fmtNumber` (Indian grouping).
+  - ImportOverview counts use `fmtCount`, the Calendar heading `fmtMonthYear`, import times `fmtInstantIST`, and
+    sheet dates `fmtDay`.
+  - No `toLocale*String` remains outside `lib/inr.ts` and the waiting files.
+- **Guard additions.** It now catches a hex after a comma, as in `var(--x,#d1d8dd)`; two such fallbacks had slipped
+  through. It checks contrast of `action-ink` on the filled meaning colours, of `on-scrim` on the scrim, and of the
+  series colours at 3:1.
+
+**Verified:**
+- Web suite 762 passed under Node 22, web typecheck passed.
+- Before/after screenshots against a private local database: home, User list, report, kanban, all tables, import,
+  import history, jobs, explore, new table and column editor, at 375 and 1280 px, light and dark. "Before" is #383's
+  head.
+- The shell (AdminLayout, owned by #371) still shows the old blue next to the new one in the content. That is why this
+  stage merges together with stage 3.
+
+**Next:** stage 3 after #371 and person-rename merge.
+
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
 `DataList` renders one list in two shapes, chosen live from the screen width:

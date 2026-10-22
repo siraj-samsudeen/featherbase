@@ -38,6 +38,18 @@
   --color-missing: #5b6472; /* no data, no target set */
   --color-missing-tint: #f1f5f9;
 
+  /* Behind a dialog: dims the page in either theme */
+  --color-scrim: #0b1220;
+  --color-on-scrim: #ffffff; /* text and icons over the scrim, both themes */
+
+  /* Categorical series (charts, value dots): distinct hues that avoid the
+     meaning colours, so a series never reads as good or bad. */
+  --color-series-1: #2563eb;
+  --color-series-2: #0f766e;
+  --color-series-3: #be185d;
+  --color-series-4: #4338ca;
+  --color-series-5: #92400e;
+
   /* Shape */
   --radius-card: 14px;
   --radius-control: 10px;
@@ -82,6 +94,12 @@
   --color-opportunity-tint: #2c1844;
   --color-missing: #94a3b8;
   --color-missing-tint: #1c2740;
+
+  --color-series-1: #60a5fa;
+  --color-series-2: #2dd4bf;
+  --color-series-3: #f472b6;
+  --color-series-4: #a5b4fc;
+  --color-series-5: #e0a96d;
 }
 
 :root {

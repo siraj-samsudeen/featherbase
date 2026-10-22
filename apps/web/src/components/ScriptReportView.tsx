@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
 
 // RPT-005: renders a server-side Code Report — its declared filter controls
 // and the columns+rows its execute() returns.
@@ -34,7 +35,7 @@ function FilterControl({
   if (def.column_type === 'Choice') {
     const opts = (def.choices ?? '').split('\n')
     return (
-      <select className="fc-input" data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select className={inputClasses()} data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)}>
         {opts.map((o) => (
           <option key={o} value={o}>
             {o || '(any)'}
@@ -55,7 +56,7 @@ function FilterControl({
   const type = def.column_type === 'Date' ? 'date' : def.column_type === 'Int' ? 'number' : 'text'
   return (
     <input
-      className="fc-input"
+      className={inputClasses()}
       type={type}
       data-testid={testid}
       value={value}
@@ -96,23 +97,23 @@ export function ScriptReportView({ name }: { name: string }) {
 
   if (meta.isError)
     return (
-      <div className="fc-card p-4 text-sm text-red-600" data-testid="script-report-error">
+      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="script-report-error">
         {meta.error instanceof ApiError ? meta.error.message : 'Report not found'}
       </div>
     )
-  if (!meta.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
+  if (!meta.data) return <div className="p-4 text-ink-subtle">Loading…</div>
 
   return (
     <div data-testid="script-report" className="space-y-4">
-      <h1 className="text-lg font-semibold text-[var(--color-ink)]" data-testid="script-report-title">
+      <h1 className="text-lg font-semibold text-ink" data-testid="script-report-title">
         {meta.data.name}
       </h1>
 
       {meta.data.filters.length > 0 && (
-        <div className="fc-card flex flex-wrap items-end gap-3 p-3" data-testid="script-report-filters">
+        <div className={cardClasses('flex flex-wrap items-end gap-3 p-3')} data-testid="script-report-filters">
           {meta.data.filters.map((f) => (
             <div key={f.column_name}>
-              <label className="fc-label">{f.label}</label>
+              <label className={labelClasses()}>{f.label}</label>
               <FilterControl
                 def={f}
                 value={values[f.column_name] ?? ''}
@@ -120,23 +121,23 @@ export function ScriptReportView({ name }: { name: string }) {
               />
             </div>
           ))}
-          <button className="fc-btn fc-btn-primary" data-testid="script-report-run" onClick={() => void run()}>
+          <button className={buttonClasses({ variant: 'primary' })} data-testid="script-report-run" onClick={() => void run()}>
             {running ? 'Running…' : 'Run'}
           </button>
         </div>
       )}
 
       {error && (
-        <div className="fc-card p-3 text-sm text-red-600" data-testid="script-report-run-error">
+        <div className={cardClasses('p-3 text-sm text-negative')} data-testid="script-report-run-error">
           {error}
         </div>
       )}
 
       {result && (
-        <div className="fc-card overflow-x-auto">
+        <div className={cardClasses('overflow-x-auto')}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-ink-muted)]">
+              <tr className="border-b border-border text-left text-ink-muted">
                 {result.columns.map((col) => (
                   <th key={col} className="px-3 py-2 font-medium" data-testid={`sr-col-${col}`}>
                     {col}
@@ -146,9 +147,9 @@ export function ScriptReportView({ name }: { name: string }) {
             </thead>
             <tbody data-testid="script-report-rows">
               {result.rows.map((row, i) => (
-                <tr key={i} className="border-b border-[var(--color-border)] last:border-0">
+                <tr key={i} className="border-b border-border last:border-0">
                   {result.columns.map((col) => (
-                    <td key={col} className="px-3 py-2 text-[var(--color-ink)]">
+                    <td key={col} className="px-3 py-2 text-ink">
                       {row[col] == null ? '—' : String(row[col])}
                     </td>
                   ))}
@@ -156,7 +157,7 @@ export function ScriptReportView({ name }: { name: string }) {
               ))}
               {!result.rows.length && (
                 <tr>
-                  <td colSpan={result.columns.length || 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]" data-testid="script-report-empty">
+                  <td colSpan={result.columns.length || 1} className="px-3 py-8 text-center text-ink-subtle" data-testid="script-report-empty">
                     No rows
                   </td>
                 </tr>

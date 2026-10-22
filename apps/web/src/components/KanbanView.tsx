@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
+import { buttonClasses, inputClasses, pillClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -44,9 +45,9 @@ export function KanbanView({
       }),
   })
 
-  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   if (!field)
-    return <p className="text-sm text-[var(--color-ink-muted)]" data-testid="kanban-no-select">This Table has no Choice column to group by.</p>
+    return <p className="text-sm text-ink-muted" data-testid="kanban-no-select">This Table has no Choice column to group by.</p>
 
   const options = (choiceColumns.find((f) => f.column_name === field)?.choices ?? '')
     .split('\n')
@@ -93,18 +94,18 @@ export function KanbanView({
     <div data-testid="kanban-view" onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Kanban</h1>
-          <span className="text-xs text-[var(--color-ink-muted)]" data-testid="kanban-total">
+          <h1 className="text-xl font-semibold text-ink">{table} — Kanban</h1>
+          <span className="text-xs text-ink-muted" data-testid="kanban-total">
             {data.length} cards
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+          <label className="flex items-center gap-2 text-sm text-ink-muted">
             Group by
             <select
               value={field}
               onChange={(e) => onGroupByChange?.(e.target.value)}
-              className="fc-input w-44"
+              className={inputClasses('w-44')}
               data-testid="kanban-groupby"
             >
               {choiceColumns.map((f) => (
@@ -118,7 +119,7 @@ export function KanbanView({
             to="/featherbase/admin/$table"
             params={{ table }}
             search={{ filters: undefined }}
-            className="fc-btn"
+            className={buttonClasses()}
             data-testid="kanban-to-list"
           >
             List view
@@ -127,7 +128,7 @@ export function KanbanView({
       </div>
 
       {error && (
-        <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="kanban-error">
+        <p className="mb-3 text-sm text-negative" data-testid="kanban-error">
           {error}
         </p>
       )}
@@ -138,11 +139,11 @@ export function KanbanView({
             key={col || '(empty)'}
             data-column={col}
             data-testid={`kanban-column-${col || 'empty'}`}
-            className="flex w-64 shrink-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-subtle)] p-2"
+            className="flex w-64 shrink-0 flex-col rounded-lg border border-border bg-subtle p-2"
           >
-            <div className="mb-2 flex items-center justify-between px-1 text-sm font-medium text-[var(--color-ink)]">
+            <div className="mb-2 flex items-center justify-between px-1 text-sm font-medium text-ink">
               <span>{col || '(none)'}</span>
-              <span className="fc-pill bg-[var(--color-canvas)] text-[var(--color-ink-muted)]" data-testid={`kanban-count-${col || 'empty'}`}>
+              <span className={pillClasses('bg-canvas text-ink-muted')} data-testid={`kanban-count-${col || 'empty'}`}>
                 {byColumn.get(col)!.length}
               </span>
             </div>
@@ -153,7 +154,7 @@ export function KanbanView({
                   data-testid="kanban-card"
                   data-card={String(row.row_id)}
                   onPointerDown={() => setDragging({ row_id: String(row.row_id), from: col })}
-                  className={`cursor-grab rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm shadow-sm ${
+                  className={`cursor-grab rounded-md border border-border bg-surface p-2 text-sm shadow-sm ${
                     dragging?.row_id === row.row_id ? 'opacity-50' : ''
                   }`}
                 >
@@ -161,7 +162,7 @@ export function KanbanView({
                     to="/featherbase/admin/$table/$name"
                     search={{ prefill: undefined }}
                     params={{ table, name: String(row.row_id) }}
-                    className="font-medium text-[var(--color-brand)] hover:underline"
+                    className="font-medium text-action hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
                     {String(row[titleColumn] ?? row.row_id)}
