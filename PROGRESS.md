@@ -6,25 +6,32 @@
 - `Button`, with primary, secondary, quiet and danger variants, a loading state that keeps its label and refuses
   clicks, and a `buttonClasses()` recipe so a router Link or an anchor can look like a button without being wrapped;
 - `Field`, which names its control with the label, describes it with the hint and the error, and marks it invalid;
-  plus `TextInput`, `PasswordInput` (show/hide with `aria-pressed`), `Select` and `SearchInput`;
+  plus `TextInput`, `PasswordInput` (show/hide with `aria-pressed`), `Select` and `SearchInput`. Inputs use
+  `focus:outline-hidden`, so forced-colours mode keeps a focus outline.
 - `Card`, which is a named region when titled;
 - `Notice`, an alert for failures and a polite status for anything else;
 - `StatusPill`, which always shows the status in words;
-- `EmptyState`, `Skeleton` (announces what is loading; the bars are silent) and `Toast` (a confirmation leaves after
-  5 s, a failure stays until dismissed).
+- `EmptyState`, which takes a title plus an explanation or a way forward (a title alone is a type error);
+- `Skeleton`, which announces what is loading while its bars stay silent;
+- `Toast`: one persistent polite, non-atomic live region. Each toast keeps its own timer, so a new toast never restarts
+  another's. A confirmation leaves after 5 s and pauses on hover or focus; a failure is an alert that stays until
+  dismissed.
 
 Icons come from `lucide-react` 1.50.0 (exact pin, ISC, released 02-Oct-2026) through one curated module, `icons.ts`.
 Controls use the density tokens, so under phone emulation they measure 48 px with 16 px input text.
-
 `apps/web/gallery.html` (served by the dev server at `/gallery.html`, not built for production) renders every
 primitive live, in either theme.
 
-**Verified:**
-- `test/ui-primitives.test.tsx` has 17 tests; it failed on the missing module first.
-- Web suite 284 passed under Node 22, web typecheck passed, `vite build` passed (gallery not in `dist`).
+Review (independent reviewer and Codex) found no blockers. The Toast timer, live-region and pause fixes, the
+forced-colours outline and the EmptyState contract all came from it; each was fixed test-first. The pause test fails
+with pausing disabled.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web exec vitest run test/ui-primitives.test.tsx`: 22 passed.
+- `pnpm --filter web test`: 602 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web build` passed, with no gallery in `dist`.
 - `pnpm check:specs` and `git diff --check` are clean.
-- Gallery screenshots at 375 and 1280 px, light and dark, came from the local dev server. Under phone emulation
-  `(pointer: coarse)` matched and the first button measured 48 px.
+- Gallery screenshots at 375 and 1280 px, light and dark, came from the local dev server.
 
 **Next:** stage 1c, DataList (a table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`.
 
