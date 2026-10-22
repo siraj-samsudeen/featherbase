@@ -581,7 +581,8 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
 
 ### In the window — in this order
 
-1. **Pause the Featherbase CDC worker.** The coordinator sets its schedule to
+1. **Pause the Featherbase CDC worker.** The coordinator first **writes down
+   the worker's current schedule** (step 9 puts it back), then sets it to
    `0 5 29 2 *` (it fires only on 29 February) in data-warehouse, and
    confirms no run is in progress. Nothing reads the tables mid-rename.
 2. **Dev only — re-stamp `staging`.** Set `FEATHERBASE_ENV=staging` **and**
@@ -598,7 +599,9 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
    then `pg_restore -l` on the file must list `featherbase.user`. Keep it
    until the release is signed off.
 4. **`cli boot-check`** in the dev service's own environment (its real
-   variables and `DATABASE_URL`): "the server will start", then
+   variables and `DATABASE_URL`):
+   `railway ssh -p <project> -e dev -s jeyarama-featherbase -- pnpm --filter server cli boot-check`.
+   Expect "the server will start", then
    `database environment matches "staging"`, `test mode on, allowed here`,
    `btree_gist available for 0102`, and the pending migrations (0101, 0101a,
    0102). Any error: stop here; nothing has changed.
@@ -647,7 +650,8 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
    runs one tick. Verify: `access.user` is dropped or marked retired;
    `access.person` is baselined with as many rows as `select count(*) from
    person` (277 in the rehearsal); `has_role`, `data_scope` and `share` carry
-   their `person` / `service_account` columns. Repoint any warehouse model
+   their `person` / `service_account` columns. Put back the schedule written
+   down in step 1. Repoint any warehouse model
    reading `access.user`, `has_role.parent` or `data_scope.user` (none found on
    22-Oct-2026; #4336 re-checks).
 10. Close the window. After it, `pnpm --filter server cli seed-pack apply
@@ -673,6 +677,14 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
   the window is closed to users, so there should be nothing.
 - **Step 8 wrong** (a file that named the wrong records): restore the
   pre-resolve snapshot the same way; the release itself stays.
+- **After step 9** (the CDC registration already says `person`): if the
+  release must be undone now, restore the step-3 snapshot as above **and**
+  have the coordinator put the registration back (`person` → `user` in
+  `system_tables`, `person_identifier` out of the deny list) before the
+  worker runs again; then let it run one tick and check `access.user` is
+  current again and `access.person` is marked retired. If only the CDC tick
+  failed, the release stays: pause the worker again (`0 5 29 2 *`), fix the
+  registration, and re-run the tick.
 
 ### Manual procedures while the roster sync is frozen (until data-warehouse#4336)
 
@@ -682,6 +694,15 @@ marked **recorded by hand** and **not verified**, and is still accepted by test
 mode. A carried-over code is ended, never erased. The HR record number is never
 typed by hand except as a sign-in link's subject. The hand path closes by itself
 once the feed writes.
+
+**The `employee_code` mirror (temporary).** Sales-target scoping still reads
+the `employee_code` Custom Field. So every hand entry, end or correction of a
+StyleHR employee code, and every `people:resolve` move, copies the person's
+current code into that field in the same transaction. Ending the last current
+code clears it. A joiner therefore sees their Sections at once, and a
+corrected code moves the Sections to the right person. Task 2.1 (the
+sales-target scoping PR) moves scoping onto the identifier rows and removes
+this mirror.
 
 **Find a person by code:** *Admin → Person →* **Find by code**
 (`/featherbase/admin/find-person`). Choose *StyleHR employee code* and type the
@@ -700,10 +721,13 @@ by code.
   with a note ("Joiner, HR mail 23-Oct"). Under Sign-in methods link
   **StyleHR**: *Record number at the service* = the record number, *Login ID
   at the service* = their StyleHR login. Give roles and Data Scope as for
-  their post.
+  their post. Their Sections follow the code at once (the `employee_code`
+  mirror above); check *Sales target* opens on their Sections.
 - **Correction** (a wrong code). On the person's Identifiers panel, **End** the
   wrong code with a note saying why; then add the right one with a note. The
-  wrong one stays as history. A code recorded by hand by mistake on the same
+  wrong one stays as history. If the wrong code belonged to someone else, add
+  it to them the same way. The mirror moves the Sections with the code: the
+  wrong holder stops seeing them, and the right one sees them. A code recorded by hand by mistake on the same
   day can be removed instead.
 
 ## Smoke check

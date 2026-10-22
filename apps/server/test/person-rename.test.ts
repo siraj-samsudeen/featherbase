@@ -194,12 +194,15 @@ describe('person-rename: names, not ids (review B-M2, B-M3)', () => {
 
   test('the Person picker searches name, username, address and employee code, labels "Name · handle", and skips built-ins', async ({ admin }) => {
     const { sql: db } = await import('../src/db')
-    // The employee_code Custom Field, as the sales-target seed creates it.
-    await admin.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Person-employee_code', dt: 'Person', column_name: 'employee_code', label: 'Employee code', column_type: 'Data' } })
+    // person-resolution: the code a person is found by is a current
+    // employee-record identifier row, not the employee_code Custom Field.
+    const { applySeedPack } = await import('../src/seed-packs')
+    await applySeedPack('jeyarama')
     const asha = await makePerson({ full_name: 'Asha Kumar', username: 'asha.k' })
     const mail = await makePerson({ email: 'only.mail@x.test' })
     const coded = await makePerson({ full_name: 'Coded Person' })
-    await db`update person set employee_code = 'RR-4242' where row_id = ${coded}`
+    await db`insert into person_identifier (id, person_id, system, value, one_holder, source, recorded_by)
+      values ('pid_pickcode4242aaaaaaaa', ${coded}, 'stylehr-employee-code', 'RR-4242', true, 'test', 'test')`
     const pick = async (q: string) => (await admin.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)).people
     expect(await pick('asha')).toEqual([{ row_id: asha, label: 'Asha Kumar · @asha.k' }])
     expect(await pick('ASHA.K')).toEqual([{ row_id: asha, label: 'Asha Kumar · @asha.k' }])

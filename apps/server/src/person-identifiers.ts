@@ -8,6 +8,7 @@ import { AppError } from './errors'
 import { logActivity } from './audit'
 import { getRoles, hasPermission, isPrivileged, permittedTiers } from './permissions'
 import { opaqueId } from './opaque-id'
+import { PLATFORM_SCHEMA } from './platform-schema'
 import {
   SENSITIVITY,
   assuranceOf,
@@ -366,6 +367,7 @@ export async function addIdentifier(
           update person_identifier set source = ${source}, verified = verified or ${verified}, edited_at = now(), edited_by = ${actor}
           where id = ${String(same.id)} returning ${rowFields(t)}`
         await logActivity(actor, `identifier_recorded ${system.row_id} for ${person} (${String(same.id)})`.slice(0, 140))
+        if (system.row_id === EMPLOYEE_CODE_SYSTEM) await mirrorEmployeeCodeField(person, t)
         return { result: 'updated' as const, identifier: row as unknown as IdentifierRow }
       }
       return { result: 'unchanged' as const, identifier: same as unknown as IdentifierRow }
@@ -380,6 +382,7 @@ export async function addIdentifier(
         ${source}, ${actor}, ${input.note ?? null})
       returning ${rowFields(t)}`
     await logActivity(actor, `identifier_added ${system.row_id} for ${person} (${id})`.slice(0, 140))
+    if (system.row_id === EMPLOYEE_CODE_SYSTEM) await mirrorEmployeeCodeField(person, t)
     return { result: 'created' as const, identifier: row as unknown as IdentifierRow }
   }
   try {
@@ -394,6 +397,31 @@ async function lockedRow(id: string, db: Db) {
     select ${rowFields(db)}, lower(valid)::text as lower_raw from person_identifier where id = ${id} for update`
   if (!row) throw new AppError('NotFoundError', `Identifier ${id} not found`)
   return row as unknown as IdentifierRow & { lower_raw: string }
+}
+
+// ------------------------------------------- the employee_code mirror
+
+/** The system whose current value is copied into the `employee_code` Custom
+ *  Field. TEMPORARY: sales-target scoping (`derivedFromSections`) still reads
+ *  that field; task 2.1 moves it onto identifier rows and deletes this mirror. */
+export const EMPLOYEE_CODE_SYSTEM = 'stylehr-employee-code'
+
+/** Copy the person's current employee code — the most recent current
+ *  `stylehr-employee-code` row — into `employee_code`, or clear it when none
+ *  is current. Runs in the caller's transaction, after every write of a code
+ *  row, so a hand-added joiner gets their Sections and a corrected code moves
+ *  them. A no-op where the Custom Field does not exist. */
+export async function mirrorEmployeeCodeField(person: string, db: Db = sql): Promise<void> {
+  const [col] = await db`
+    select 1 from information_schema.columns
+    where table_schema = ${PLATFORM_SCHEMA} and table_name = 'person' and column_name = 'employee_code'`
+  if (!col) return
+  const [current] = await db`
+    select value from person_identifier
+    where person_id = ${person} and system = ${EMPLOYEE_CODE_SYSTEM} and upper_inf(valid)
+    order by lower(valid) desc, recorded_at desc limit 1`
+  const code = (current?.value as string | undefined) ?? null
+  await db`update person set employee_code = ${code} where row_id = ${person} and employee_code is distinct from ${code}`
 }
 
 /** Whose identifier this is — for the routes' Person read / Data Scope check
@@ -440,6 +468,7 @@ export async function updateIdentifier(
       if (to && from && to === from && change.valid_to !== undefined && to !== current.valid_to) {
         await t`delete from person_identifier where id = ${id}`
         await logActivity(actor, `identifier_removed ${system.row_id} for ${current.person_id} (${id})`.slice(0, 140))
+        if (system.row_id === EMPLOYEE_CODE_SYSTEM) await mirrorEmployeeCodeField(current.person_id, t)
         return { result: 'updated' as const, identifier: { ...current, valid_to: to } }
       }
       const [row] = await t`
@@ -448,6 +477,7 @@ export async function updateIdentifier(
           assigner = ${assigner}, note = ${note}, worker_type = ${workerType}, edited_at = now(), edited_by = ${actor}
         where id = ${id} returning ${rowFields(t)}`
       await logActivity(actor, `identifier_${to && !current.valid_to ? 'ended' : 'corrected'} ${system.row_id} for ${current.person_id} (${id})`.slice(0, 140))
+      if (system.row_id === EMPLOYEE_CODE_SYSTEM) await mirrorEmployeeCodeField(current.person_id, t)
       return { result: 'updated' as const, identifier: row as unknown as IdentifierRow }
     })
   } catch (err) {
@@ -470,6 +500,7 @@ export async function deleteIdentifier(id: string, actor: string): Promise<void>
     await assertWritablePerson(current.person_id, t)
     await t`delete from person_identifier where id = ${id}`
     await logActivity(actor, `identifier_removed ${system.row_id} for ${current.person_id} (${id})`.slice(0, 140))
+    if (system.row_id === EMPLOYEE_CODE_SYSTEM) await mirrorEmployeeCodeField(current.person_id, t)
   })
 }
 
@@ -511,10 +542,15 @@ async function openRow(person: string, systemKey: string, value: string, source:
   const [have] = await db`
     select 1 from person_identifier where person_id = ${person} and system = ${systemKey} and value = ${normalised} and upper_inf(valid)`
   if (have) return
-  await db`
-    insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, one_per_person, source, recorded_by)
-    values (${newIdentifierId()}, ${person}, ${systemKey}, '', ${normalised}, daterange(current_date, null, '[)'),
-      ${verified}, ${system.one_holder_at_a_time === true}, ${system.one_per_person === true}, ${source}, ${source})`
+  try {
+    await db`
+      insert into person_identifier (id, person_id, system, assigner, value, valid, verified, one_holder, one_per_person, source, recorded_by)
+      values (${newIdentifierId()}, ${person}, ${systemKey}, '', ${normalised}, daterange(current_date, null, '[)'),
+        ${verified}, ${system.one_holder_at_a_time === true}, ${system.one_per_person === true}, ${source}, ${source})`
+  } catch (err) {
+    // A value someone else holds for an overlapping period (23P01) is a 409.
+    mapWriteError(err)
+  }
 }
 
 /** What a live sign-in identity writes: the matching identifier row for a
@@ -539,8 +575,9 @@ export async function writeThroughIdentity(identityId: string, db: Db = sql): Pr
       await openRow(person, system, value, 'sign-in', true, db)
     } catch (err) {
       // A provider value that does not fit the system's format is not worth
-      // refusing the sign-in over; it is simply not mirrored.
-      if (!(err instanceof AppError)) throw err
+      // refusing the sign-in over; it is simply not mirrored. A value another
+      // person holds is a conflict (409) and stops the link.
+      if (!(err instanceof AppError) || err.type !== 'ValidationError') throw err
     }
   }
 }

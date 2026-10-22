@@ -303,7 +303,12 @@ record a joiner's code or end a wrong one by hand, always with a note saying
 why; such a value is marked not verified, still signs the person in during a
 trial, and a carried-over value is ended rather than erased. The hand path
 closes by itself once the feed writes. The HR record number is never entered
-by hand.
+by hand. When the feed starts, it reconciles each value recorded by hand:
+it adopts one that the roster confirms, and lists the rest for a System
+Manager, never ending one silently.
+Until the sales report reads codes from these values directly, each change
+to a person's current employee code also updates the code the report uses,
+at the same moment.
 
 A value that only mirrored a sign-in or the person's own email address is
 taken over when someone records the same value independently, so removing
@@ -329,6 +334,13 @@ the sign-in or changing the address no longer ends it.
 - **WHEN** a carried-over employee code turns out to be wrong
 - **THEN** a System Manager ends it with a note and records the right one;
   the wrong one stays as history and cannot be erased
+
+#### Scenario: A joiner's Sections follow their code
+
+- **WHEN** a System Manager records a joiner's employee code by hand, and
+  later moves a mistaken code from one person to another
+- **THEN** the joiner's sales report opens on their Sections at once, and
+  after the correction only the right person sees the Sections of that code
 
 #### Scenario: An address recorded by hand outlives the sign-in it mirrored
 

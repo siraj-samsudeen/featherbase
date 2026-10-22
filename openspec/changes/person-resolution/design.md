@@ -401,7 +401,17 @@ false`, **a note required**; end or correct one with a note; delete only a
 hand-recorded one. Test mode accepts an unverified code (it reads current
 rows). This keeps the joiner and correction procedures (`docs/DEPLOY.md`)
 running while the roster sync is frozen. Record numbers (Restricted, hidden)
-are never hand-entered. `PATCH`/`DELETE /api/identifiers/:id` run the same
+are never hand-entered. **Follow-up (Phase 1b, task 4.2):** when the sync
+starts, it reconciles every leftover `manual` row of a `source` system — it
+adopts the row when the roster holds the same value, and lists it for a
+System Manager otherwise. It never silently ends one.
+*Also amended 23-Oct-2026 (final review round on #385):* until task 2.1 moves
+sales-target scoping onto identifier rows, every write of a current
+`stylehr-employee-code` row (hand entry, end, correction, `people:resolve`)
+copies the person's current code into the `employee_code` Custom Field in
+the same transaction (`mirrorEmployeeCodeField`). Ending the last current
+code clears it. Task 2.1 removes the mirror. The Person picker searches
+current employee-record rows, not the Custom Field. `PATCH`/`DELETE /api/identifiers/:id` run the same
 Person read / Data Scope check as `POST`.
 
 ### D10. What the warehouse consumes; report scoping

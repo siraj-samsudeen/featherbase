@@ -7,7 +7,7 @@
 // The file: UTF-8, comma-separated, header `employee_code,assigner,stylehr_record_id`.
 import { readFileSync } from 'node:fs'
 import { sql, withTransaction } from './db'
-import { writeThroughIdentity } from './person-identifiers'
+import { mirrorEmployeeCodeField, writeThroughIdentity } from './person-identifiers'
 
 export interface ResolveRow {
   employee_code: string
@@ -110,6 +110,7 @@ export async function resolveStyleHrSubjects(rows: ResolveRow[]): Promise<Resolv
       await sql`
         update person_identifier set record_identifier_id = ${String(record.id)}
         where person_id = ${person} and system = 'stylehr-employee-code' and value = ${code} and upper_inf(valid)`
+    await mirrorEmployeeCodeField(person)
     report.resolved.push({ ...who, detail: `${code} → record ${recordId}` })
   }
   return report
