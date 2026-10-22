@@ -61,20 +61,31 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
 }
 
 /**
- * #387: every numeric cell with a date number format becomes a local Date
- * built from the serial's own y/m/d h:m:s (SSF.parse_date_code, no timezone),
- * so a date-only cell is local midnight of the day the sheet shows, which the
- * shared inference and coercion read back as that day.
+ * #387: every numeric cell with a date number format is read from the serial's
+ * own parts (SSF.parse_date_code, no timezone):
+ * - a date-only cell becomes local midnight of the day the sheet shows, which
+ *   the shared inference reads as a Date;
+ * - a cell with a time becomes its local date-time as text,
+ *   `YYYY-MM-DDTHH:MM:SS[.mmm]`, which the inference reads as a Datetime. A Date
+ *   object would be ambiguous: 05:30 in India is exactly UTC midnight, which the
+ *   date-only heuristic would mistake for a bare day.
  */
 function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSheet, date1904: boolean) {
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0')
   for (const address of Object.keys(sheet)) {
     if (address.startsWith('!')) continue
     const cell = sheet[address] as import('xlsx').CellObject
     if (cell.t !== 'n' || typeof cell.v !== 'number' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue
     const p = XLSX.SSF.parse_date_code(cell.v, { date1904 })
     if (!p) continue
-    cell.t = 'd'
-    cell.v = new Date(p.y, p.m - 1, p.d, p.H, p.M, p.S)
+    const ms = Math.min(999, Math.round((p.u ?? 0) * 1000))
+    if (!p.H && !p.M && !p.S && !ms) {
+      cell.t = 'd'
+      cell.v = new Date(p.y, p.m - 1, p.d)
+    } else {
+      cell.t = 's'
+      cell.v = `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.H)}:${pad(p.M)}:${pad(p.S)}${ms ? `.${pad(ms, 3)}` : ''}`
+    }
   }
 }
 

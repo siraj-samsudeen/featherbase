@@ -5,7 +5,7 @@ process.env.TZ = 'Asia/Kolkata'
 
 import * as XLSX from 'xlsx'
 import { describe, expect, test } from 'vitest'
-import { coerceRows } from 'shared'
+import { coerceRows, inferColumnType } from 'shared'
 import { parseWorkbook } from '../src/lib/parse-file'
 import { previewCell } from '../src/pages/ImportWizard'
 
@@ -38,9 +38,21 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(local(sheet.rows[0][0])).toEqual([...ymd, 0, 0, 0])
   })
 
-  test('a date with a time keeps its exact local time, just before midnight', async () => {
+  test('a date with a time is its exact local date-time, seconds and fraction included', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45657.99998, 'yyyy-mm-dd hh:mm:ss']]))
-    expect(local(sheet.rows[0][0])).toEqual([2024, 12, 31, 23, 59, 58])
+    expect(sheet.rows[0][0]).toBe('2024-12-31T23:59:58.272')
+  })
+
+  test('a time that is exactly UTC midnight in IST (05:30) stays a date-time, never just a day', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586 + 5.5 / 24, 'dd-mmm-yyyy hh:mm']]))
+    expect(inferColumnType(sheet.rows.map((r) => r[0]))).toBe('Datetime')
+    const rows = coerceRows([{ column_name: 'when', column_type: 'Datetime' }], sheet.rows)
+    expect(rows[0].values.when).toBe('2024-10-21T05:30:00')
+  })
+
+  test('fractional seconds survive', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5 + 0.123 / 86400, 'yyyy-mm-dd hh:mm:ss.000']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00.123')
   })
 
   test('imported rows store the sheet’s day, not the day before', async () => {
