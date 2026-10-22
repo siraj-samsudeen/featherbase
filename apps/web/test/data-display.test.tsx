@@ -5,7 +5,8 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
-import { fmtCount, fmtINR } from '../src/lib/inr'
+import { fmtCount, fmtINR, fmtNumber } from '../src/lib/inr'
+import { formatNumber } from '../src/lib/settings'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
   test.each([
@@ -34,6 +35,19 @@ describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
     expect(fmtINR(null)).toBe('—')
     expect(fmtINR(undefined)).toBe('—')
     expect(fmtINR(Number.NaN)).toBe('—')
+  })
+})
+
+describe('fmtNumber — Float and Currency list cells', () => {
+  test('groups the Indian way at the configured precision, above a lakh where the two systems differ', () => {
+    expect(fmtNumber(1234567.5, 2)).toBe('12,34,567.50')
+    expect(fmtNumber(-98765432.1, 1)).toBe('-9,87,65,432.1')
+    expect(fmtNumber(1234.5, 2)).toBe('1,234.50') // under a lakh, the same as western grouping
+  })
+
+  test('list cells use it: formatNumber of 1234567.5 at precision 2 is 12,34,567.50', () => {
+    expect(formatNumber(1234567.5, 2)).toBe('12,34,567.50')
+    expect(formatNumber('', 2)).toBe('')
   })
 })
 

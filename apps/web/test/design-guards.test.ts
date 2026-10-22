@@ -35,7 +35,7 @@ function colourBlock(opener: string): Record<string, string> {
 
 const light = colourBlock('@theme static {')
 // The dark block proper; palette-compound selectors are not the default theme.
-const dark = { ...light, ...colourBlock("\n[data-theme='dark'] {") }
+const dark = { ...light, ...colourBlock("\n  [data-theme='dark'] {") }
 
 // Until stage 3 removes the palette choice, every selectable palette must pass
 // too. Cascade order in index.css: the default tokens, then dark, then the
@@ -79,6 +79,29 @@ const ROLES = [
 test('control side padding is a density token: compact under a mouse, roomier on touch', () => {
   expect(CSS).toMatch(/@theme static \{[^}]*--spacing-control-x: 0\.75rem;/)
   expect(CSS).toMatch(/@media \(pointer: coarse\) \{\s*:root \{[^}]*--spacing-control-x: 1rem;/)
+})
+
+/** The stylesheet with every `@media screen { … }` block removed: what paper sees. */
+function printOnly(css: string): string {
+  let out = ''
+  let i = 0
+  for (const m of css.matchAll(/@media screen\s*\{/g)) {
+    if (m.index! < i) continue
+    out += css.slice(i, m.index)
+    let depth = 0
+    let j = m.index! + m[0].length - 1
+    for (; j < css.length; j++) {
+      if (css[j] === '{') depth++
+      else if (css[j] === '}' && --depth === 0) break
+    }
+    i = j + 1
+  }
+  return out + css.slice(i)
+}
+
+test('dark values only reach the screen, so a page printed in dark mode is dark ink on white paper', () => {
+  expect(printOnly(CSS.replace(/\/\*[\s\S]*?\*\//g, ''))).not.toContain("[data-theme='dark']")
+  expect(printOnly('a{} @media screen { b { c: d } } e{}')).toBe('a{}  e{}')
 })
 
 test('the token block is emitted whole in production (@theme static)', () => {
