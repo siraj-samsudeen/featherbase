@@ -75,10 +75,11 @@ export function Headline({
           >
             <div
               className={cx('absolute inset-y-0 left-0 rounded-full', TONE_FILL[tone])}
-              style={{ width: `${Math.min(100, Math.max(0, progress.value))}%` }}
+              style={{ width: `${(Math.max(0, progress.value) / max) * 100}%` }}
             />
             {progress.marker != null && (
-              <div aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-ink/60" style={{ left: `${progress.marker}%` }} />
+              // Placed on the meter's own scale, which stretches past 100 when the value does.
+              <div aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-ink/60" style={{ left: `${(progress.marker / max) * 100}%` }} />
             )}
           </div>
           {progress.marker != null && (

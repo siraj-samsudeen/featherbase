@@ -22,6 +22,16 @@ export interface DataColumn<Row> {
   phone?: PhoneRole
 }
 
+/**
+ * What an empty list says: a title plus an explanation, a way forward, or
+ * both — never a bare "no rows" (usable-on-any-device: screens say when they
+ * are empty, with the way forward).
+ */
+export type EmptyDescriptor = { title: ReactNode } & (
+  | { body: ReactNode; action?: ReactNode }
+  | { action: ReactNode; body?: ReactNode }
+)
+
 /** Below this width a list reads as cards (the usable-on-any-device promise). */
 export const NARROW_QUERY = '(width < 40rem)'
 
@@ -50,7 +60,7 @@ export function DataList<Row>({
   layout?: 'auto' | 'table' | 'cards'
   state?: 'loading' | 'error' | 'ready'
   error?: ReactNode
-  empty?: { title: ReactNode; body?: ReactNode; action?: ReactNode }
+  empty: EmptyDescriptor
   /** Offered as "Try again" when the load failed. */
   onRetry?: () => void
   className?: string
@@ -72,8 +82,8 @@ export function DataList<Row>({
     )
   if (!rows.length)
     return (
-      <EmptyState title={empty?.title ?? 'No rows yet'} action={empty?.action} className={className}>
-        {empty?.body}
+      <EmptyState title={empty.title} action={empty.action} className={className}>
+        {empty.body}
       </EmptyState>
     )
 

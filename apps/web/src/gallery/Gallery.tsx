@@ -165,7 +165,13 @@ export function Gallery() {
         </Section>
 
         <Section title="List (a table when wide, cards on a phone)">
-          <DataList caption="Where the gap is" rows={LINES} columns={LINE_COLUMNS} rowKey={(l) => l.name} />
+          <DataList
+            caption="Where the gap is"
+            rows={LINES}
+            columns={LINE_COLUMNS}
+            rowKey={(l) => l.name}
+            empty={{ title: 'No targets this month', body: 'Targets appear here once they are set for your Sections.' }}
+          />
           <DataList
             caption="Checklist runs"
             rows={[] as Line[]}

@@ -72,37 +72,46 @@ const columns: DataColumn<Run>[] = [
   { key: 'id', header: 'Row ID', cell: (r) => r.id, phone: 'hidden' },
 ]
 
+const EMPTY = { title: 'No checklists yet', body: 'Runs you start appear here.' }
+
 describe('DataList', () => {
+  test('an empty state with a way forward is required, not a bare "no rows"', () => {
+    // @ts-expect-error — omitting the empty state is a type error
+    render(<DataList caption="A" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    // @ts-expect-error — a title alone gives no explanation or way forward
+    render(<DataList caption="B" rows={runs} columns={columns} rowKey={(r) => r.id} empty={{ title: 'Nothing' }} />)
+  })
+
   test('on a wide screen it is a table named by its caption, numbers aligned to the end', () => {
-    render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     const table = screen.getByRole('table', { name: 'Checklist runs' })
     expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Checklist', 'Date', 'Done', 'Status', 'Row ID'])
     expect(within(table).getByRole('cell', { name: '14 of 18' }).className).toMatch(/\btext-right\b/)
   })
 
   test('a table too wide for the screen scrolls by keyboard, and each row is named by its first cell', () => {
-    render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     const scroller = screen.getByRole('region', { name: 'Checklist runs' })
     expect(scroller).toHaveAttribute('tabindex', '0')
     expect(screen.getByRole('rowheader', { name: 'Opening checklist' })).toHaveAttribute('scope', 'row')
   })
 
   test('row text uses the density size, so it is 16px on a touch screen at any width', () => {
-    const { container } = render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    const { container } = render(<DataList layout="table" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     expect(container.querySelector('table')?.className).toMatch(/\btext-control\b/)
-    render(<DataList layout="cards" caption="Runs as cards" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList layout="cards" caption="Runs as cards" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     expect(screen.getByRole('list', { name: 'Runs as cards' }).className).toMatch(/\btext-control\b/)
   })
 
   test('a failed load offers a retry', async () => {
     const retry = vi.fn()
-    render(<DataList state="error" error="Cannot load rows" onRetry={retry} caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList state="error" error="Cannot load rows" onRetry={retry} caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     await userEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' }))
     expect(retry).toHaveBeenCalledOnce()
   })
 
   test('on a phone each row is a card: title, status and date first, figures labelled, hidden columns left out', () => {
-    render(<DataList layout="cards" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList layout="cards" caption="Checklist runs" rows={runs} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     const list = screen.getByRole('list', { name: 'Checklist runs' })
     const cards = within(list).getAllByRole('listitem')
     expect(cards).toHaveLength(2)
@@ -132,13 +141,13 @@ describe('DataList', () => {
   })
 
   test('while loading it announces the list it is loading', () => {
-    render(<DataList state="loading" caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} />)
+    render(<DataList state="loading" caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     expect(screen.getByRole('status')).toHaveTextContent('Loading checklist runs')
   })
 
   test('a failed load is an alert, never an empty list', () => {
     render(
-      <DataList state="error" error="Cannot load rows for Checklist" caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} />,
+      <DataList state="error" error="Cannot load rows for Checklist" caption="Checklist runs" rows={[]} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />,
     )
     expect(screen.getByRole('alert')).toHaveTextContent('Cannot load rows for Checklist')
     expect(screen.queryByText('No rows yet')).toBeNull()
@@ -168,6 +177,12 @@ describe('Headline', () => {
   test('the meter says its value the way the page shows it', () => {
     render(<Headline label="Month" conclusion="Nearly there" progress={{ value: 1234.56, label: 'Achievement' }} />)
     expect(screen.getByRole('meter', { name: 'Achievement' })).toHaveAttribute('aria-valuetext', '1,234.6%')
+  })
+
+  test('past 100% the marker moves with the scale, so it still sits at the value it names', () => {
+    render(<Headline label="Month" conclusion="₹4,000 ahead" tone="positive" progress={{ value: 120, marker: 90, label: 'Achievement' }} />)
+    const marker = screen.getByRole('meter', { name: 'Achievement' }).querySelector('[aria-hidden="true"]') as HTMLElement
+    expect(marker.style.left).toBe('75%') // 90 on a 0–120 scale
   })
 
   test('progress beyond 100% stays a valid meter', () => {
