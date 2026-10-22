@@ -32,7 +32,7 @@ function colourBlock(opener: string): Record<string, string> {
   return out
 }
 
-const light = colourBlock('@theme {')
+const light = colourBlock('@theme static {')
 // The dark block proper; palette-compound selectors are not the default theme.
 const dark = { ...light, ...colourBlock("\n[data-theme='dark'] {") }
 
@@ -71,6 +71,13 @@ const ROLES = [
   'negative', 'negative-tint', 'caution', 'caution-tint', 'positive', 'positive-tint',
   'opportunity', 'opportunity-tint', 'missing', 'missing-tint',
 ]
+// Tailwind drops theme variables no utility uses from a plain @theme block, so
+// a component reading var(--color-…) directly would get nothing in light mode
+// in the production build. The token set is the design system's API: emit it whole.
+test('the token block is emitted whole in production (@theme static)', () => {
+  expect(CSS).toMatch(/@theme static \{[^}]*--color-action-hover:/)
+})
+
 const SURFACES = ['surface', 'canvas', 'subtle']
 const TEXT = ['ink', 'ink-muted', 'ink-subtle', 'action', 'negative', 'caution', 'positive', 'opportunity', 'missing']
 const MEANING = ['negative', 'caution', 'positive', 'opportunity', 'missing']
