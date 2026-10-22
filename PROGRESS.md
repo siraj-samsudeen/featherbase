@@ -1,57 +1,47 @@
 # Progress Log
 
-## 2026-10-22 — Design system stage 1: review fixes on #381–#383 (#380)
-
-An independent review and Codex found no blockers. What changed, test-first in each case:
-
-- **#381:**
-  - The contrast guard now covers every selectable palette × theme. Ivory's `positive` failed and was fixed, including
-    the light value leaking into Ivory dark.
-  - The rules are counters with probe tests: border-side and ring-offset prefixes, 4/8-digit hex, colour functions,
-    named colours, sub-12 px text in rem/em/pt/`fontSize`, `Intl.*Format`, and retired names used as utilities.
-  - The pending list pins each file's exact count under a frozen ceiling, so nothing can be added or rise.
-- **#382:**
-  - Each Toast keeps its own timer; another toast arriving used to restart it.
-  - One polite live region exists from the start.
-  - A confirmation pauses on hover and focus.
-  - Inputs use `outline-hidden`, so forced-colours mode keeps focus visible.
-- **#383:**
-  - `fmtCount` rounds first and never shows -0.
-  - `fmtINR` groups crore figures the Indian way.
-  - The achievement tone is judged on the shown one-decimal value (89.96 → 90%, caution). This replaced the earlier
-    89.99 → negative case, which contradicted the reviewed rule.
-  - The meter's text value comes from `fmtPct`, and its track has a 3:1 edge.
-  - DataList: a keyboard-scrollable named region, `<th scope="row">` first cells, `text-control` (16 px on touch),
-    and a Try again slot on failure.
-
-**Verified:** web suite 629 passed under Node 22, web typecheck passed. The pause test fails with pausing disabled.
-
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
-`DataList` renders one list in two shapes:
+`DataList` renders one list in two shapes, chosen live from the screen width:
 - below 40rem, a card per row: the `title` and `status` columns lead, `meta` follows in one line, `value` columns
-  become labelled figures and `hidden` ones are left off;
-- above 40rem, a captioned table whose number columns are right-aligned with tabular figures.
+  become labelled figures and `hidden` ones are left off. Everything inside a card wraps, so a long SKU, URL, status
+  or label never widens the page. Measured in a browser at 320 and 375 px.
+- above 40rem, a captioned table in a keyboard-scrollable named region, with `<th scope="row">` first cells and
+  right-aligned tabular numbers.
 
-Loading is a Skeleton, a failure is an alert and no rows is an EmptyState with the way forward, so a failed load can
-never read as an empty list. `Headline` is the answer-first block: the period, the conclusion in words coloured by
-meaning, the supporting figures, and an optional progress `meter` with a marker (for example the 90% band edge).
-`achievementTone` holds the sales-target legend bands (<90 negative, 90–<100 caution, ≥100 positive, none missing).
+Row text uses `text-control`, 16 px on touch. Loading is a Skeleton and a failure is an alert with a Try again slot.
+The empty state is required (the same `EmptyDescriptor` as `EmptyState`), so a failed load can never read as an empty
+list and an empty one always offers the way forward.
+
+`Headline` is the answer-first block: the period, the conclusion coloured by meaning, the supporting figures and an
+optional progress `meter`:
+- the meter's scale stretches past 100%, and its marker and fill sit on that scale;
+- `aria-valuenow` is clamped at 0, while `aria-valuetext` keeps the signed `fmtPct` value;
+- the track has a 3:1 edge.
+
+`achievementTone` holds the sales-target legend bands (<90 negative, 90–<100 caution, ≥100 positive, none missing),
+judged on the one-decimal value the page shows.
 
 `lib/inr.ts` gains `fmtINR` and `fmtCount`:
-- `fmtINR` is the readable ADR 750 ladder (`₹850`, `₹45,600`, `₹1.21 L`, `₹1.74 Cr`; `signed` for gaps). It rounds
-  before choosing the rung, so ₹99,999.60 reads ₹1.00 L and 99.99… lakh reads ₹1.00 Cr.
-- `fmtCount` gives Indian grouping with no unit.
+- `fmtINR` is the readable ADR 750 ladder (`₹850`, `₹45,600`, `₹1.21 L`, `₹1.74 Cr`, `₹1,23,456.79 Cr`; `signed`
+  for gaps). It rounds before choosing lakh or crore.
+- `fmtCount` rounds first, uses Indian grouping and never shows -0.
 
-Siraj ruled on 22-Oct that the sales-target summary and rows are the readable regime. `fmtExact` stays for amounts
-that foot or are paid. The file's header now says which helper is for what.
+Siraj ruled on 22-Oct that the sales-target summary and rows are the readable regime; `fmtExact` stays for amounts
+that foot or are paid.
 
-**Verified:**
-- `test/data-display.test.tsx` has 27 tests; they failed first on the missing exports. One expectation was itself
-  wrong (9,99,99,999 is ₹10.00 Cr, not ₹1.00 Cr) and was corrected before the code was written.
-- Web suite 311 passed under Node 22, web typecheck and `vite build` passed.
+Review (independent reviewer and Codex) found no blockers. Every item above that goes beyond the first cut came from
+it: crore grouping, -0, tone on the shown value, meter scale and clamp, track edge, keyboard region, row headers,
+touch text, retry, the required empty state, auto-layout coverage and card wrapping. Each was fixed test-first, and
+the auto-layout tests fail with the reviewer's mutation applied.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web exec vitest run test/data-display.test.tsx`: 43 passed.
+- `pnpm --filter web test`: 645 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web build` passed.
 - `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
-- Gallery screenshots of the Headline and DataList at 375 px (cards) and 1280 px (table), light and dark.
+- Gallery screenshots of the Headline and DataList at 375 px (cards) and 1280 px (table), light and dark, plus the
+  long-values card at 320 and 375 px.
 
 **Next:** stage 2, moving every screen not owned by #371 onto the primitives and final tokens (opened for review,
 merged together with stage 3 once #371 lands).
