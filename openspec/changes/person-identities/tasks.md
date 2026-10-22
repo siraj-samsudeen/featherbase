@@ -32,10 +32,10 @@ this change (it modifies requirements they add).
 
 - [x] 5.1 Login page from `/api/brand` (Google still offered if it cannot be read), service forms, forgot-password hint, no password toggle when passwords are off, sign-up. Verify `apps/web/test/delegated-login.test.tsx`, `apps/web/test/signup.test.tsx`.
 - [x] 5.2 Sign-in methods page; User-form panel for System Managers; account-menu, sidebar and sales-target links. Verify `apps/web/test/sign-in-methods.test.tsx`.
-- [ ] 5.3 Playwright: `e2e/oauth.spec.ts` on the Sign In Method row, and `e2e/login-methods.spec.ts` (password sign-in → link mock Google → sign in with a changed address, same account). Verify with the CI e2e job (no local browser).
+- [x] 5.3 Playwright: `e2e/oauth.spec.ts` on the Sign In Method row, and `e2e/login-methods.spec.ts` (password sign-in → link mock Google → sign in with a changed address, same account). Verified by the CI e2e job (run 39793477625).
 
 ## 6. Docs and close-out
 
 - [x] 6.1 `docs/DEPLOY.md` (Sign In Method rows, linking, wire format, the mandatory deploy runbook, the test-mode warning) and `PROGRESS.md`.
-- [ ] 6.2 Gates: server and web typecheck, full server and web suites, web e2e, `pnpm check:specs`, `git diff --check` — green in CI.
-- [ ] 6.3 File the follow-ups: CDC `user_identity` deny/declare, drop `user.social_login`, remove the old `/api/brand` fields, `.invalid` → 417, StyleHR response-subject check, `All`-role audit before sign-up, close `feat/244-provider-identities`. (The roster sync is filed in the data-warehouse repo.)
+- [x] 6.2 Gates: server and web typecheck, full server and web suites, web e2e, `pnpm check:specs`, `git diff --check` — green in CI.
+- [x] 6.3 File the follow-ups: CDC `user_identity` deny/declare, drop `user.social_login`, remove the old `/api/brand` fields, `.invalid` → 417, StyleHR response-subject check, `All`-role audit before sign-up, close `feat/244-provider-identities` — filed as #372–#378. (The roster sync is filed in the data-warehouse repo.)
