@@ -12,6 +12,7 @@ import { invalidateMeta } from './meta'
 import { PLATFORM_SCHEMA } from './platform-schema'
 import { foldName, isReservedEmail, looksLikeEmail, newIdentityId } from './identities'
 import { DEFAULT_WIRE } from './delegated-login'
+import { NEW_PERSON_RULES, SIGN_IN_METHOD_KINDS } from 'shared'
 
 const OLD_SETTINGS = [
   'google_client_id',
@@ -101,7 +102,7 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
 
   const methods = [
     { key: 'password', kind: 'password', label: 'Password', enabled: true },
-    { key: 'google', kind: 'google', label: 'Google', enabled: true },
+    { key: 'google', kind: 'google', label: 'Google', enabled: Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1' },
     ...(delegated ? [{ key: delegated.key, kind: 'delegated_password', label: delegated.label, enabled: delegated.enabled }] : []),
   ].map((m) => {
     const have = existingMethods.find((r) => r.row_id === m.key)
@@ -292,10 +293,10 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
       title_column: 'label',
       system: true,
       columns: [
-        { column_name: 'kind', column_type: 'Choice', choices: 'password\ngoogle\ndelegated_password', reqd: true, in_list_view: true },
+        { column_name: 'kind', column_type: 'Choice', choices: SIGN_IN_METHOD_KINDS.join('\n'), reqd: true, in_list_view: true },
         { column_name: 'label', column_type: 'Data', reqd: true, in_list_view: true },
         { column_name: 'enabled', column_type: 'Check', default_value: '1', in_list_view: true },
-        { column_name: 'new_person', column_type: 'Choice', choices: 'refuse\ncreate_if_email_domain_allowed\ncreate', default_value: 'refuse', in_list_view: true },
+        { column_name: 'new_person', column_type: 'Choice', choices: NEW_PERSON_RULES.join('\n'), default_value: 'refuse', in_list_view: true },
         { column_name: 'allowed_email_domains', column_type: 'Data' },
         { column_name: 'self_link', column_type: 'Check', default_value: '0' },
         { column_name: 'client_id', column_type: 'Data' },
@@ -309,11 +310,13 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
     if (!exists) await saveDoc('Sign In Method', row, 'Administrator')
   }
   await ensureMethod({ row_id: 'password', kind: 'password', label: 'Password', enabled: true, new_person: 'refuse', self_link: true })
+  // On only when it can work: a client id, or the dev mock (Codex P2 on #371).
+  const googleUsable = Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1'
   await ensureMethod({
     row_id: 'google',
     kind: 'google',
     label: 'Google',
-    enabled: true,
+    enabled: googleUsable,
     new_person: 'create_if_email_domain_allowed',
     allowed_email_domains: setting('allowed_login_domains'),
     self_link: true,
@@ -355,16 +358,18 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
   await sql`create unique index if not exists user_identity_pending_uq
     on user_identity (method, pending_email) where subject is null`
   await sql`create index if not exists user_identity_user_ix on user_identity (user_id)`
-  // An invite tied to the contact email dies with that email (design D5),
-  // whichever path changes it. `on` is not a relation keyword the platform
-  // qualifier rewrites, so these statements qualify by hand.
+  // Any real change of the person's email — set, changed or cleared — cancels
+  // EVERY unclaimed invite they hold, whatever address it was for (Codex P1 on
+  // #371): an administrator re-invites deliberately. Whichever path changes the
+  // email. `on` is not a relation keyword the platform qualifier rewrites, so
+  // these statements qualify by hand.
   await sql.unsafe(`
     create or replace function ${PLATFORM_SCHEMA}.fc_cancel_email_invites() returns trigger
     language plpgsql set search_path = pg_catalog as $$
     begin
-      if old.email is not null and lower(trim(old.email)) is distinct from lower(trim(new.email)) then
+      if lower(trim(coalesce(old.email, ''))) is distinct from lower(trim(coalesce(new.email, ''))) then
         delete from ${PLATFORM_SCHEMA}.user_identity
-        where user_id = new.row_id and subject is null and pending_email = lower(trim(old.email));
+        where user_id = new.row_id and subject is null;
       end if;
       return new;
     end $$`)

@@ -12,10 +12,12 @@ export async function configureDelegated(o: { key?: string; label?: string; url?
   const label = o.label ?? 'StyleHR'
   const url = o.url ?? DELEGATED_URL
   const [have] = await sql`select 1 from sign_in_method where row_id = ${key}`
+  // Created with a usable address (the controller refuses an enabled method
+  // without one); tests that need a bad address set it directly below.
   if (!have)
     await saveDoc(
       'Sign In Method',
-      { row_id: key, kind: 'delegated_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: url },
+      { row_id: key, kind: 'delegated_password', label: label || key, enabled: true, new_person: 'refuse', self_link: false, service_url: DELEGATED_URL },
       'Administrator',
     )
   await sql`update sign_in_method set label = ${label}, service_url = ${url}, enabled = ${o.enabled ?? true} where row_id = ${key}`

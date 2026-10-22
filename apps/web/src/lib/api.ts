@@ -1,3 +1,4 @@
+import type { SignInMethodKind } from 'shared'
 // Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'
@@ -141,14 +142,14 @@ export async function loginDelegated(usr: string, pwd: string, method: string): 
 
 /** Direct sign-up (person-identities): a username and a password, when the
  *  instance has opened it. Signs the new person in like `login`. */
-export async function signUp(username: string, password: string, fullName?: string): Promise<SessionUser> {
-  return rememberLogin(await api.post<LoginResponse>('/api/signup', fullName ? { username, password, full_name: fullName } : { username, password }))
+export async function signUp(username: string, password: string): Promise<SessionUser> {
+  return rememberLogin(await api.post<LoginResponse>('/api/signup', { username, password }))
 }
 
 /** One way in, as `/api/brand` lists it for the sign-in page. */
 export interface BrandSignInMethod {
   key: string
-  kind: 'password' | 'google' | 'delegated_password'
+  kind: SignInMethodKind
   label: string
   test_mode: boolean
 }

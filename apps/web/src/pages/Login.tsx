@@ -111,9 +111,7 @@ export function LoginPage() {
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() =>
-      signUp(String(form.get('username')).trim(), String(form.get('password')), String(form.get('full_name') ?? '').trim() || undefined),
-    )
+    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))))
   }
 
   function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
@@ -203,10 +201,6 @@ export function LoginPage() {
                   <label className="fc-label" htmlFor="signup-username">Username</label>
                   <input id="signup-username" type="text" name="username" autoComplete="username"
                     autoCapitalize="none" autoCorrect="off" spellCheck={false} className="fc-input" />
-                </div>
-                <div>
-                  <label className="fc-label" htmlFor="signup-full-name">Your name</label>
-                  <input id="signup-full-name" type="text" name="full_name" autoComplete="name" className="fc-input" />
                 </div>
                 <div>
                   <label className="fc-label" htmlFor="signup-password">Password</label>

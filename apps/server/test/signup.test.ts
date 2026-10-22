@@ -20,12 +20,12 @@ describe('sign up with a username and password', () => {
   test('open: the account is created with no email and no roles, and signed in', async ({ api }) => {
     await setPasswordMethod({ new_person: 'create' })
     expect(((await (await api.fetch('/api/brand')).json()) as { sign_up_open: boolean }).sign_up_open).toBe(true)
-    const res = await signUp(api, { username: 'meena', password: 'meena-pw-1', full_name: 'Meena K' })
+    const res = await signUp(api, { username: 'meena', password: 'meena-pw-1' })
     expect(res.status).toBe(201)
     const body = (await res.json()) as { token: string; user: { row_id: string; email: string | null } }
     // The id is opaque and permanent; the username is how the person signs in.
     expect(body.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
-    expect(body.user).toMatchObject({ email: null, full_name: 'Meena K' })
+    expect(body.user).toMatchObject({ email: null, full_name: 'meena' })
     const [row] = await sql`select username from "user" where row_id = ${body.user.row_id}`
     expect(row.username).toBe('meena')
     expect(res.headers.getSetCookie().some((c) => c.startsWith('sid='))).toBe(true)

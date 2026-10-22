@@ -171,9 +171,15 @@ capabilities** (`KINDS` in `identities.ts`), not a list of kinds:
   sign in through it) or a pending invite. The error names the people.
 
 Defaults reproduce today exactly: `password` enabled with `new_person =
-refuse` (sign-up closed); `google` enabled, usable when it has a client id
-(or the `ALLOW_MOCK_OAUTH=1` mock), `create_if_email_domain_allowed` with the
-old `allowed_login_domains`. The delegated row is migrated with exactly the
+refuse` (sign-up closed); `google` enabled **only if** it can work — a client
+id, or the `ALLOW_MOCK_OAUTH=1` mock — with `create_if_email_domain_allowed`
+and the old `allowed_login_domains`. The controller refuses any change that
+leaves an enabled method unusable (Google without a client id, a delegated
+method without an https/local address); turn it off instead. The kinds and
+`new_person` values come from one shared list (`SIGN_IN_METHOD_KINDS`,
+`NEW_PERSON_RULES` in `packages/shared`): the server's `KINDS` record, the
+Table's choices, the controller's messages and the web client's types derive
+from it, so a missing kind is a compile error. The delegated row is migrated with exactly the
 old on/off state (on only with a usable URL **and** a User column), its key
 taken from the provider host's first label (`stylehr.in` → `stylehr`, not the
 label), `new_person = refuse`, `self_link = 0`, and StyleHR's wire format
@@ -207,8 +213,9 @@ call. Self-linking is `linkVerifiedToSelf`, also kind-neutral.
 Verify steps today:
 
 - **password** (`passwordSignIn`): finds the candidate by typed name — an exact
-  User id, then a case-insensitive id or `username`, then a case-insensitive
-  contact email;
+  User id, then a case-insensitive id or `username` (same rank: an id and
+  another person's username tying there answers nobody), then a
+  case-insensitive contact email;
   **a username always beats an email**; two people at the same level answer
   nobody — then checks the hash. With no candidate it still runs a throwaway
   scrypt, so timing does not tell names apart.
@@ -281,10 +288,11 @@ Claiming, on a sign-in with verified email E and subject S when
 From then on the account is found **only** by S. Administrators undo a claim
 by unlinking (D6).
 
-Invites are cancelled automatically: a database trigger on `user` deletes the
-person's unclaimed invites whenever their `email` changes or is cleared, so a
-contact-email edit — through the Admin, the generic API or the roster sync —
-can never leave an invite pointing at an address the person no longer holds.
+Invites are cancelled automatically: a database trigger on `user` deletes
+**every** unclaimed invite the person holds whenever their `email` is set,
+changed or cleared (ignoring case and spaces), whatever address the invite was
+for (Codex P1 on #371) — through the Admin, the generic API or the roster
+sync. An administrator re-invites deliberately after an email change.
 Invites do not expire otherwise.
 
 The same pending-invite mechanism is how an administrator links a Google
@@ -391,7 +399,10 @@ credentials and are unaffected.
 - Blank (`''`/whitespace) is stored as NULL.
 - An address on the `.invalid` top-level domain (RFC 2606's never-resolving
   name, used by every placeholder this codebase and the roster sync ever
-  invented) is **refused** with a field error (417) on any User save. The
+  invented) is **refused** with a field error (417) on every path: a User
+  save, a Google invite, and a person a sign-in would create.
+- A `username` (generic save or sign-up) is a lowercase slug and may not equal
+  another person's id, username or email, ignoring case; nor may a new id. The
   migration clears the existing ones (data, not a shim). Other reserved names
   (`example.com`, `.test`) are accepted: tests use them as stand-ins. The
   updated roster sync must send no email rather than a placeholder.
@@ -402,8 +413,9 @@ credentials and are unaffected.
 
 ### D10. Direct sign-up
 
-`POST /api/signup {username, password, full_name?}` — **no email in v1**, so
-nobody can squat an address. Public, behind a new `publicLimit('SIGNUP')`
+`POST /api/signup {username, password}` — **nothing else** (any other field is
+a 417), so nobody can squat an address; the display name starts as the
+username. Public, behind a new `publicLimit('SIGNUP')`
 bucket; 404 unless the `password` method's `new_person = create`. Username:
 `^[a-z0-9][a-z0-9._-]{2,63}$` after folding to lower case (a capital typed by
 habit is folded, not refused), not `administrator`/`guest`, not an existing

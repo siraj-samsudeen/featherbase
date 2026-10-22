@@ -19,12 +19,12 @@ test('open: a visitor picks a username and a password and is signed in', async (
   await renderApp('/featherbase/login', anonymous)
   await userEvent.click(await screen.findByTestId('sign-up-toggle'))
   expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Your name')).not.toBeInTheDocument() // username and password only
   await userEvent.type(screen.getByLabelText('Username'), 'meena.k')
-  await userEvent.type(screen.getByLabelText('Your name'), 'Meena K')
   await userEvent.type(screen.getByLabelText('Password'), 'meena-pw-1')
   await userEvent.click(screen.getByTestId('sign-up-submit'))
   await screen.findByTestId('session-user')
-  expect(JSON.parse(localStorage.getItem('fc_user')!)).toMatchObject({ email: null, full_name: 'Meena K' })
+  expect(JSON.parse(localStorage.getItem('fc_user')!)).toMatchObject({ email: null, full_name: 'meena.k' })
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toMatch(/^usr_/)
 })
 

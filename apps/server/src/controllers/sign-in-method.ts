@@ -1,7 +1,7 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, assertNoAdminLockout, type MethodKind } from '../identities'
-import { wireFrom } from '../delegated-login'
+import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, methodUsable, type MethodKind } from '../identities'
+import { usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
 // values are checked against what the kind's adapter can vouch for, a unique
@@ -28,7 +28,7 @@ const controller: TableController = {
     before_validate: async ({ row, old, isNew, tx }) => {
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
       const caps = KINDS[kind]
-      if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: 'password, google or delegated_password' })
+      if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: SIGN_IN_METHOD_KINDS.join(', ') })
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
       const newPerson = String(row.new_person ?? old?.new_person ?? 'refuse')
@@ -58,10 +58,23 @@ const controller: TableController = {
       }
     },
     before_save: async ({ row, old, isNew, tx }) => {
-      if (isNew || !old) return
+      // An enabled method must be able to sign someone in (Codex P2 on #371):
+      // Google needs a client id (or the dev mock); a delegated method a usable
+      // address. Turn it off instead. Checked after the lockout guard below so
+      // a lockout is reported by name first.
+      const merged = { ...(old ?? {}), ...row }
+      const usableCheck = () => {
+        if (!truthy(merged.enabled)) return
+        const kind = String(merged.kind)
+        if (kind === 'google' && !methodUsable({ kind, enabled: true, client_id: String(merged.client_id ?? '') }))
+          throw new AppError('ValidationError', 'Google cannot be on without a client id; set one or turn it off', { client_id: 'required while on' })
+        if (kind === 'delegated_password' && !usableServiceUrl(String(merged.service_url ?? '')))
+          throw new AppError('ValidationError', 'A connected service needs an https address (or a local stub) while it is on', { service_url: 'https required' })
+      }
+      if (isNew || !old) return usableCheck()
       const enabledChanged = row.enabled !== undefined && truthy(old.enabled) !== truthy(row.enabled)
       const clientChanged = row.client_id !== undefined && String(row.client_id ?? '') !== String(old.client_id ?? '')
-      if (!enabledChanged && !clientChanged) return
+      if (!enabledChanged && !clientChanged) return usableCheck()
       await assertNoAdminLockout(
         String(old.row_id),
         {
@@ -70,6 +83,7 @@ const controller: TableController = {
         },
         tx,
       )
+      usableCheck()
     },
     on_trash: async ({ row, tx }) => {
       if (row.kind === 'password')

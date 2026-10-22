@@ -95,6 +95,11 @@ export function wireFrom(settings: Record<string, unknown> | null): DelegatedWir
 // password never crosses a network in the clear.
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
 
+/** Is this a service address a password may be sent to (https, or a local stub)? */
+export function usableServiceUrl(raw: string): boolean {
+  return usable(raw) !== null
+}
+
 function usable(raw: string): URL | null {
   let url: URL
   try {

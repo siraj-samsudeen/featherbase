@@ -125,8 +125,9 @@ An administrator SHALL be able to link a sign-in method to any person, change
 or move a link in one step, and remove one. A Google account can be invited
 by its address before the person first signs in: their first Google sign-in
 with that address links the account for good, and after that the address is
-never used to find them. An invite is cancelled when the person's email
-changes or is cleared, and is never claimed for a disabled account.
+never used to find them. Any change to the person's email — set, changed or
+cleared — cancels every invite they have not yet used, whatever address it
+was for; an invite is never claimed for a disabled account.
 
 #### Scenario: Invite a store manager's Google account
 
@@ -282,7 +283,9 @@ holds itself.
 
 Signing in SHALL check a username or email, ignoring capital letters, against
 a password. When what was typed is one person's username and another
-person's email, the username wins. A failed attempt SHALL be refused with the
+person's email, the username wins; when it names two different people equally
+— one person's account ID and another's username — nobody is signed in. A
+username can never be set to another person's ID, username or email. A failed attempt SHALL be refused with the
 same generic message whether the account doesn't exist, the password is
 wrong, or the account can't sign in this way, so it never reveals which.
 
@@ -290,6 +293,13 @@ wrong, or the account can't sign in this way, so it never reveals which.
 
 - **WHEN** a user signs in with an account that exists but the wrong password
 - **THEN** they are refused with a generic invalid-credentials message
+
+#### Scenario: Two people named equally
+
+- **WHEN** what was typed is one person's account ID and another person's
+  username
+- **THEN** the attempt is refused like a wrong password, whichever password
+  was typed
 
 #### Scenario: Username beats email
 

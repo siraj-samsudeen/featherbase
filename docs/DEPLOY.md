@@ -323,6 +323,8 @@ Managers only); one row is one provider issuer:
 | e.g. `stylehr` | delegated_password | `refuse` only — the service cannot vouch for a permanent ID |
 
 Google uses the row's `client_id` (the secret stays `GOOGLE_CLIENT_SECRET`);
+the upgrade turns the `google` row on only if a client id was configured, and
+an enabled method can never be left unusable;
 only one `password` and one `google` row may exist. Turning a row off ends the
 sessions opened through it. Featherbase refuses any change that would leave an
 enabled Administrator or System Manager with no way in — turning a method off,
@@ -336,8 +338,9 @@ Google's account ID, the StyleHR employee code — never by email:
 - `GET|POST /api/users/<user>/identities` (System Manager): link StyleHR
   `{"method":"stylehr","subject":"RR-7963","sign_in_name":"name_9999999999"}`;
   invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
-  — the first Google sign-in with that verified address links it for good,
-  and an invite is cancelled when the person's email changes.
+  — the first Google sign-in with that verified address links it for good.
+  **Any change to the person's email cancels every unused invite they hold**;
+  invite again after changing an email.
 - `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
   ID (sessions survive) or `{"user_id": …}` moves a link to another person in
   one step (a store mailbox at a Store Manager handover).

@@ -12,6 +12,7 @@ import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
+import { SIGN_IN_METHOD_KINDS, type NewPersonRule as SharedNewPersonRule, type SignInMethodKind } from 'shared'
 
 // ---------------------------------------------------------------- folding
 
@@ -33,20 +34,28 @@ export function isReservedEmail(email: string): boolean {
   return domain === 'invalid' || domain.endsWith('.invalid')
 }
 
-/** What a User's email is stored as: trimmed, or NULL when blank or reserved. */
+/** What an email is stored as: trimmed, or NULL when blank. A `.invalid`
+ *  placeholder is refused (417) on every path — User saves, invites, and a
+ *  person created by a sign-in. */
 export function normaliseEmail(value: unknown): string | null {
   if (value == null) return null
   const trimmed = String(value).trim()
-  if (!trimmed || isReservedEmail(trimmed)) return null
+  if (!trimmed) return null
+  if (isReservedEmail(trimmed))
+    throw new AppError('ValidationError', 'That address cannot receive mail', { email: 'not a real address (.invalid)' })
   return trimmed
 }
+
+/** A username: a lowercase slug (sign-up and the generic User save share it). */
+export const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/
 
 export const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 
 // --------------------------------------------------------- sign-in methods
 
-export type MethodKind = 'password' | 'google' | 'delegated_password'
-export type NewPersonRule = 'create' | 'create_if_email_domain_allowed' | 'refuse'
+export type MethodKind = SignInMethodKind
+export type NewPersonRule = SharedNewPersonRule
+export { SIGN_IN_METHOD_KINDS }
 
 export interface SignInMethod {
   key: string

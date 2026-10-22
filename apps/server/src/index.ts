@@ -19,7 +19,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
-import { getIdentity, newPersonId, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { USERNAME_RE, getIdentity, newPersonId, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -206,6 +206,9 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
 // ID and password; the session is then issued exactly like /api/login's.
 // Off answers like any unknown route, so the route does not advertise itself.
 app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
+  // Nothing connected: answer as an unknown route, whatever the body, so the
+  // route does not advertise itself.
+  if (!(await delegatedMethods()).length) return c.notFound()
   const { usr, pwd, method } = (await c.req.json().catch(() => ({}))) as { usr?: string; pwd?: string; method?: string }
   // Every sign-in names its method; there is no single-service default.
   if (typeof method !== 'string' || !method || typeof usr !== 'string' || typeof pwd !== 'string' || !usr.trim() || (!pwd && !delegatedTestMode()))
@@ -231,26 +234,27 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
 // person-identities D10: direct sign-up with a username and password, open
 // only when the password method's rule for unknown people is `create`. No
 // email in v1, so nobody can squat an address. Public, behind its own bucket.
-const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,63}$/
 app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   const method = await methodOfKind('password')
   if (!method?.enabled || method.new_person !== 'create') return c.notFound()
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
-  if ('email' in body) throw new AppError('ValidationError', 'Sign-up takes only a username and a password', { email: 'not accepted' })
+  // A username and a password, nothing else (spec; Codex P2 on #371).
+  const extra = Object.keys(body).filter((k) => k !== 'username' && k !== 'password')
+  if (extra.length)
+    throw new AppError('ValidationError', 'Sign-up takes only a username and a password', Object.fromEntries(extra.map((k) => [k, 'not accepted'])))
   // Usernames are lower case; a capital typed by habit is folded, not refused.
   const username = typeof body.username === 'string' ? body.username.trim().toLowerCase() : ''
   const password = typeof body.password === 'string' ? body.password : ''
-  const fullName = typeof body.full_name === 'string' && body.full_name.trim() ? body.full_name.trim() : username
   if (!USERNAME_RE.test(username) || ['administrator', 'guest'].includes(username))
     throw new AppError('ValidationError', 'Choose a username of 3–64 lowercase letters, digits, dots, dashes or underscores', { username: 'invalid' })
   if (password.length < MIN_PASSWORD_LENGTH)
     throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, { password: 'too short' })
-  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username} or lower(username) = ${username}`
+  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username} or lower(username) = ${username} or lower(email) = ${username}`
   if (taken) throw new AppError('ConflictError', 'That username is taken')
   // The person's id is opaque and permanent; the username is how they sign in.
   const personId = newPersonId()
   await withTransaction(async () => {
-    await saveDoc('User', { row_id: personId, username, full_name: fullName, enabled: true, roles: [] }, 'Administrator')
+    await saveDoc('User', { row_id: personId, username, full_name: username, enabled: true, roles: [] }, 'Administrator')
     await setUserPassword(personId, password)
   })
   // The same tail as every other sign-in (sign-in.ts).
