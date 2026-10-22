@@ -34,18 +34,26 @@ Codex review fixes, each test-first:
 - `fmtNumber` and `formatNumber` are pinned at `12,34,567.50`, which fails on the old browser-locale formatter;
 - `fmtDay` is pinned, including January and late-evening dates;
 - the table builder's type chips take the touch height and announce the chosen type with `aria-pressed` instead of
-  colour alone.
+  colour alone;
+- icon-only buttons take the new `iconButtonClasses()` (a square at the control size): Attachments' delete,
+  ColumnCards' remove, Peek's back/open/close and the photo viewer's close. Glyphs inside chips (a tag's ×, Explore's
+  release, the builder's clear-file) take `touchTargetClasses()`, an invisible larger hit area that does not grow the
+  chip.
+
+ListView as phone cards (Codex) is deliberately left to page adoption, tracked as OpenSpec task 4.1. Its selection,
+bulk actions, expandable rows and sorting need their own change.
 
 CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Side padding is now the density token
 `--spacing-control-x` (12 px under a mouse, the old `.fc-btn` width; 16 px on touch), and the ListView header is
 top-aligned on desktop.
 
 **Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 773 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web test`: 775 passed. `pnpm --filter web typecheck` passed.
 - The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
   web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
   dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback
-  (22 passed).
+  (22 passed), plus attachments, checklist, explore, responsive and table-builder after the icon-button change (14
+  passed).
 - `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
 - Before/after screenshots against a private local database, with "before" at #383's head: home, User list, report,
   kanban, all tables, import, import history, jobs, explore, new table and column editor, at 375 and 1280 px, light

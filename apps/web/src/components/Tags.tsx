@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses, touchTargetClasses } from './ui'
 
 // UI-017: free-form tags on a row.
 export function Tags({ table, name }: { table: string; name: string }) {
@@ -57,7 +57,7 @@ export function Tags({ table, name }: { table: string; name: string }) {
             <button
               onClick={() => remove(t)}
               aria-label={`Remove ${t}`}
-              className="ml-1 text-action hover:text-negative"
+              className={touchTargetClasses('ml-1 text-action hover:text-negative')}
             >
               ×
             </button>

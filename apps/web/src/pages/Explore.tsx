@@ -5,7 +5,7 @@ import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { usePeek } from '../components/Peek'
-import { cardClasses, inputClasses, pillClasses } from '../components/ui'
+import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '../components/ui'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -306,7 +306,7 @@ function Chips({
               <button
                 aria-label={`Release ${n}`}
                 onClick={() => g.clear(n)}
-                className="hover:opacity-70"
+                className={touchTargetClasses('hover:opacity-70')}
               >
                 ×
               </button>

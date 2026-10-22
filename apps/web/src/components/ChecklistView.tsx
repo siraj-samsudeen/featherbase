@@ -587,7 +587,7 @@ function PhotoLightbox({ fileUrl, onClose }: { fileUrl: string; onClose: () => v
         type="button"
         onClick={onClose}
         aria-label="Close photo"
-        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-scrim/60 text-lg text-on-scrim"
+        className="absolute right-4 top-4 flex size-control items-center justify-center rounded-full bg-scrim/60 text-lg text-on-scrim"
       >
         ×
       </button>

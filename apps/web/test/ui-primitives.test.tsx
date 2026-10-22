@@ -8,6 +8,8 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   Button,
   buttonClasses,
+  iconButtonClasses,
+  touchTargetClasses,
   Card,
   cardClasses,
   EmptyState,
@@ -260,6 +262,20 @@ describe('focus stays visible in forced-colours mode', () => {
     const c = inputClasses().split(' ')
     expect(c).toContain('focus:outline-hidden')
     expect(c).not.toContain('focus:outline-none')
+  })
+})
+
+describe('icon-only controls are thumb-sized', () => {
+  test('a standalone icon button is a square of the control size', () => {
+    const c = iconButtonClasses('hover:text-negative').split(' ')
+    expect(c).toEqual(expect.arrayContaining(['size-control', 'inline-flex', 'items-center', 'justify-center', 'hover:text-negative']))
+  })
+
+  test('a glyph inside a chip gets an invisible larger hit area without growing the chip', () => {
+    const c = touchTargetClasses().split(' ')
+    expect(c).toContain('relative')
+    expect(c).toContain("before:absolute")
+    expect(c.some((x) => /^before:-inset-/.test(x))).toBe(true)
   })
 })
 

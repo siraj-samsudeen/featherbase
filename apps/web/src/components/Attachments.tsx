@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
-import { cardClasses } from './ui'
+import { cardClasses, iconButtonClasses } from './ui'
 
 interface FileRow {
   row_id: string
@@ -127,7 +127,7 @@ export function Attachments({ table, name }: { table: string; name: string }) {
               aria-label={`Remove ${f.file_name}`}
               onClick={() => remove(f.row_id)}
               data-testid="attachment-delete"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-ink-muted hover:text-negative focus-visible:outline-2 focus-visible:outline-action"
+              className={iconButtonClasses('hover:text-negative')}
             >
               ×
             </button>

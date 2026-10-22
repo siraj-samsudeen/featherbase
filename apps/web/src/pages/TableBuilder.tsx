@@ -22,7 +22,7 @@ import {
   parseWorkbook,
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, touchTargetClasses } from '../components/ui'
 import { fmtDay } from '../lib/inr'
 
 // A column as SENT: its grid row travels with it. The payload drops
@@ -419,7 +419,7 @@ export function TableBuilder() {
                 e.stopPropagation()
                 clearImport()
               }}
-              className="ml-1 text-ink-subtle hover:text-negative"
+              className={touchTargetClasses('ml-1 text-ink-subtle hover:text-negative')}
               aria-label="Remove file"
             >
               ×

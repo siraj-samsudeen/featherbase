@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { listResource } from '../lib/api'
 import { BuilderColumn, ColumnVerdict, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from './ui'
 
 // The engine's types behind words a spreadsheet user already has. Types the
 // cards don't offer (Sub-table, layout breaks, …) still render as a raw
@@ -63,7 +63,7 @@ export function ColumnCards({
                 <button
                   aria-label="Remove column"
                   onClick={() => onRemove(i)}
-                  className="rounded px-1.5 text-sm text-ink-subtle transition hover:bg-subtle hover:text-negative"
+                  className={iconButtonClasses('text-sm text-ink-subtle hover:text-negative')}
                 >
                   ✕
                 </button>

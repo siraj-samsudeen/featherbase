@@ -1,6 +1,6 @@
 // Shop Floor UI primitives (#380). Screens build from these and the tokens in
 // src/index.css; design-guards.test.ts keeps raw colours and sizes out.
-export { Button, buttonClasses, type ButtonProps, type ButtonVariant } from './Button'
+export { Button, buttonClasses, iconButtonClasses, touchTargetClasses, type ButtonProps, type ButtonVariant } from './Button'
 export { Card, cardClasses } from './Card'
 export { cx, recipe } from './cx'
 export { EmptyState, type EmptyDescriptor } from './EmptyState'

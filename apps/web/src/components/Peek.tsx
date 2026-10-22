@@ -13,7 +13,7 @@ import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/me
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Filter } from '../lib/connections'
 import { Indicator } from './ListView'
-import { labelClasses, pillClasses } from './ui'
+import { iconButtonClasses, labelClasses, pillClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -131,7 +131,7 @@ function PeekPanel({
             onClick={onPop}
             aria-label="Back one level"
             data-testid="peek-back"
-            className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
+            className={iconButtonClasses()}
           >
             ←
           </button>
@@ -147,7 +147,7 @@ function PeekPanel({
         <button
           onClick={openFull}
           data-testid="peek-open-full"
-          className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
+          className={iconButtonClasses()}
           title="Open full page"
         >
           ↗
@@ -156,7 +156,7 @@ function PeekPanel({
           onClick={onClose}
           aria-label="Close"
           data-testid="peek-close"
-          className="rounded px-1.5 py-0.5 text-ink-muted hover:bg-subtle"
+          className={iconButtonClasses()}
         >
           ✕
         </button>

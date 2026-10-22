@@ -31,3 +31,13 @@
 - [ ] 3.5 Update the visual-identity directive in `CLAUDE.md`/`AGENTS.md` and the Purpose lines of
   `admin-ui-feedback` and `personal-preferences` that mention palettes; archive this change after
   `/openspec-verify-change`.
+
+## 4. Page adoption (after stage 3)
+
+- [ ] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
+  sorting working in both shapes. This delivers "Lists fit a phone".
+- [ ] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
+- [ ] 4.3 Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).
+- [ ] 4.4 A tab bar for staff roles on phones.
+- [ ] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
+  check that measures controls at phone width.

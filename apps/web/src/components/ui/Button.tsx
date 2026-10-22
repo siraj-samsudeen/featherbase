@@ -55,3 +55,22 @@ export function Button({ variant, block, loading = false, icon, className, disab
     </button>
   )
 }
+
+/**
+ * A button that is only an icon or a glyph (×, ←, ↗): a square of the control
+ * size, so it is as easy to hit as any other control. Give it an aria-label.
+ */
+export function iconButtonClasses(className?: string): string {
+  return recipe(
+    'inline-flex size-control shrink-0 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none',
+    className,
+  )
+}
+
+/**
+ * For a small glyph that must stay inside a chip (a tag's ×): an invisible
+ * hit area around it, so a thumb can hit it without the chip growing.
+ */
+export function touchTargetClasses(className?: string): string {
+  return recipe("relative before:absolute before:-inset-3 before:content-['']", className)
+}
