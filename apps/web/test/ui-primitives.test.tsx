@@ -139,9 +139,17 @@ describe('Card', () => {
 
 describe('EmptyState', () => {
   test('says what is empty and offers the way forward', () => {
-    render(<EmptyState title="No checklists yet" action={<Button>Start a checklist</Button>}>Runs appear here.</EmptyState>)
+    render(<EmptyState title="No checklists yet" body="Runs appear here." action={<Button>Start a checklist</Button>} />)
     expect(screen.getByRole('heading', { name: 'No checklists yet' })).toBeInTheDocument()
+    expect(screen.getByText('Runs appear here.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start a checklist' })).toBeInTheDocument()
+  })
+
+  test('a title alone is not an empty state: it needs an explanation or an action', () => {
+    // @ts-expect-error — no way forward
+    render(<EmptyState title="Nothing here" />)
+    render(<EmptyState title="Explained" body="Rows appear once someone adds one." />)
+    render(<EmptyState title="Actionable" action={<Button>Add one</Button>} />)
   })
 })
 

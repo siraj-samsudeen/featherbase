@@ -3,7 +3,7 @@
 export { Button, buttonClasses, type ButtonProps, type ButtonVariant } from './Button'
 export { Card, cardClasses } from './Card'
 export { cx } from './cx'
-export { EmptyState } from './EmptyState'
+export { EmptyState, type EmptyDescriptor } from './EmptyState'
 export { Field, inputClasses, labelClasses, PasswordInput, SearchInput, Select, TextInput } from './Field'
 export { Notice, type NoticeTone } from './Notice'
 export { Skeleton } from './Skeleton'

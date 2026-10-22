@@ -111,9 +111,11 @@ export function Gallery() {
 
         <Section title="Card, empty state, loading">
           <Card title="Checklists" actions={<Button variant="quiet">See all</Button>}>
-            <EmptyState title="No checklists yet" action={<Button variant="primary">Start a checklist</Button>}>
-              Runs you start appear here, newest first.
-            </EmptyState>
+            <EmptyState
+              title="No checklists yet"
+              body="Runs you start appear here, newest first."
+              action={<Button variant="primary">Start a checklist</Button>}
+            />
           </Card>
           <Card className="p-4">
             <Skeleton label="Loading your numbers" lines={4} />
