@@ -423,6 +423,12 @@ Person read / Data Scope check as `POST`.
 - CDC: `identifier_system`, `person_identifier`, `person_match`,
   `person_match_member` in `access`; **deny** `person_identifier_fingerprint`,
   `person_merge`, `sign_in_identity`, `service_account`, `person_id_map`.
+  *Amended 23-Oct-2026 (warehouse CDC review):* the one Featherbase CDC
+  worker mirrors **prod**, so the switch happens at the production promotion
+  (DEPLOY.md, data-warehouse#4339). `identifier_system` is mirrored;
+  **`person_identifier` stays denied until Phase 2**. `has_role.person` /
+  `service_account` are stored generated columns, which logical replication
+  does not send: readers use `parent` + `parenttype`.
 - Gold (Phase 2): `gold.hr.person`, `gold.hr.person_identifier` (Normal
   systems); period join as-of the fact date, half-open; within-person overlaps
   resolve to one canonical id; no match ⇒ most recent holder + `period_gap`.

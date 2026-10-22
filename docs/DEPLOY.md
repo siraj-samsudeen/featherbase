@@ -516,7 +516,7 @@ sign-in method exists (dev) it also:
   works today, typed as its code, still finds the same person.
 
 **0102 reads no file.** Moving each StyleHR sign-in to its **StyleHR record
-number** is a separate step after the deploy, `cli people:resolve` (step 8).
+number** is a separate step after the deploy, `cli people:resolve` (dev step 7).
 
 **The release cannot half-apply.** `release.ts` runs a **preflight before the
 first migration** (`src/release-preflight.ts`): the database's environment
@@ -542,10 +542,10 @@ on a public host — it gives a null Administrator hash the known password
 `admin` and silences the known-password warning. `FEATHERBASE_ENV` also
 names the environment the database is **stamped** with
 (`internal_metadata.environment`); the migrator refuses a database stamped
-for another environment, so changing the variable needs one re-stamp (step 2).
+for another environment, so changing the variable needs one re-stamp (dev step 1).
 Dev today has `FEATHERBASE_ENV=production`, `DELEGATED_LOGIN_TEST_MODE` set
 and a database stamped `production`: deployed as is, the release refuses at
-its preflight. Prod (no test mode) skips step 2.
+its preflight. Prod (no test mode) skips the re-stamp.
 
 **`cli boot-check`** (read-only) runs exactly: (1) the server's one start-up
 refusal — test mode outside `development`/`test`/`staging`; (2) the release
@@ -556,11 +556,11 @@ refusal is an error and a non-zero exit.
 in once more; the sign-in page says the session ended. **Access tokens keep
 working** — the secret is unchanged; only the owner column is re-keyed.
 
-### Before the window
+### Before the dev window
 
 A. **Rehearse on a fresh snapshot, with the target's real variables.**
    `pg_dump -Fc` dev, restore it into a local Postgres 18, and re-stamp the
-   copy `staging` exactly as step 2 will (`update internal_metadata set value
+   copy `staging` exactly as step 1 will (`update internal_metadata set value
    = 'staging' where key = 'environment'`). Export the target's
    `FEATHERBASE_ENV` (`staging`), `DELEGATED_LOGIN_TEST_MODE`,
    `ALLOW_MOCK_OAUTH` and `ADMIN_PASSWORD`-set-or-not exactly as the target
@@ -571,21 +571,19 @@ A. **Rehearse on a fresh snapshot, with the target's real variables.**
       — every pending migration in one rolled-back transaction: the id map,
       every text column with its class, the scan, 0102's parity, the
       test-mode check; any unclassified column or scan hit stops here;
-   3. `pnpm --filter server release` on the copy, then the step-6 counts, and
+   3. `pnpm --filter server release` on the copy, then the step-5 counts, and
       `pnpm --filter server cli people:resolve <stylehr_record_ids.csv> --dry-run`.
-B. **CDC rehearsal** against the same copy (data-warehouse#4336): the worker
-   drops or retires `access.user`, baselines `access.person`, and reconciles
-   row counts.
-C. Announce the maintenance window to the trial users: 30 minutes outside
+B. Announce the maintenance window to the trial users: 30 minutes outside
    store hours (proposed 06:00–06:30 IST).
 
-### In the window — in this order
+**No CDC step belongs in the dev window.** The only Featherbase CDC worker,
+`jeyarama-cdc-featherbase`, mirrors **prod**, not dev. Pausing it, switching
+its registration and verifying the warehouse all happen when the release is
+promoted to production (below).
 
-1. **Pause the Featherbase CDC worker.** The coordinator first **writes down
-   the worker's current schedule** (step 9 puts it back), then sets it to
-   `0 5 29 2 *` (it fires only on 29 February) in data-warehouse, and
-   confirms no run is in progress. Nothing reads the tables mid-rename.
-2. **Dev only — re-stamp `staging`.** Set `FEATHERBASE_ENV=staging` **and**
+### In the dev window — in this order
+
+1. **Re-stamp `staging`.** Set `FEATHERBASE_ENV=staging` **and**
    `DISABLE_DATABASE_ENVIRONMENT_CHECK=1`; redeploy the **current** dev
    release (nothing pending) — the migrator skips the stamp check once and
    re-stamps the database `staging`. Remove
@@ -593,25 +591,25 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
    `/api/ping` answers `"environment":"staging"`; `select value from
    internal_metadata where key = 'environment'` is `staging`; a trial sign-in
    still works.
-3. **Snapshot — the rollback point.** After the re-stamp, so a restore comes
+2. **Snapshot — the rollback point.** After the re-stamp, so a restore comes
    back already `staging`:
    `pg_dump -Fc --no-owner "$DATABASE_URL" > featherbase-dev-pre-person-<YYYY-MM-DD>.dump`,
    then `pg_restore -l` on the file must list `featherbase.user`. Keep it
    until the release is signed off.
-4. **`cli boot-check`** in the dev service's own environment (its real
+3. **`cli boot-check`** in the dev service's own environment (its real
    variables and `DATABASE_URL`):
    `railway ssh -p <project> -e dev -s jeyarama-featherbase -- pnpm --filter server cli boot-check`.
    Expect "the server will start", then
    `database environment matches "staging"`, `test mode on, allowed here`,
    `btree_gist available for 0102`, and the pending migrations (0101, 0101a,
    0102). Any error: stop here; nothing has changed.
-5. **Deploy.** The release logs its `preflight:` lines, then
+4. **Deploy.** The release logs its `preflight:` lines, then
    `applied 0101_person_rename.ts (one transaction: 0101…, 0101a…, 0102…)`.
    Read: `scan: no old id survives in any registered column`;
    `PARITY (test mode's own lookup): N StyleHR sign-ins work today; N still
    find the same person by code`; `StyleHR sign-ins test mode would NOT find:
    0`.
-6. **Post-deploy counts.** Expected values are from the rehearsal on the
+5. **Post-deploy counts.** Expected values are from the rehearsal on the
    22-Oct-2026 dev snapshot; a fresh snapshot differs only by people added
    since, and the differences must agree with each other.
    ```sql
@@ -628,10 +626,10 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
    ```
    Then `pnpm --filter server cli people:plan` (no `--rehearse`) on the live
    database: it re-scans the recorded map and must report no old id.
-7. **Sign-in checks.** A trial user by their employee code (test mode) gets
+6. **Sign-in checks.** A trial user by their employee code (test mode) gets
    in; the Administrator by password gets in; a tab left open from before
    lands on the sign-in page saying the session ended.
-8. **Record numbers.** Take a second snapshot first (same command,
+7. **Record numbers.** Take a second snapshot first (same command,
    `…-pre-resolve-…dump`). Then
    `pnpm --filter server cli people:resolve <stylehr_record_ids.csv> --dry-run`
    (data-warehouse#4336's file: UTF-8, header
@@ -642,49 +640,81 @@ C. Announce the maintenance window to the trial users: 30 minutes outside
    another person's — all 6 keep working by code and are listed; second run:
    0 moved, 265 already moved; parity after it 271 / 271. Settle a listed one
    by hand (its Person form) or in the next file.
-9. **Resume CDC.** The coordinator applies the registration change
-   (`pg_md_cdc/registrations/featherbase.yml` in data-warehouse: `user` →
-   `person` in `system_tables`; add `person_identifier` to **deny** until
-   Phase 2, beside `service_account`, `person_id_map`, `sign_in_identity`,
-   `person_identifier_fingerprint`, `person_merge`), restores the schedule and
-   runs one tick. Verify: `access.user` is dropped or marked retired;
-   `access.person` is baselined with as many rows as `select count(*) from
-   person` (277 in the rehearsal); `has_role`, `data_scope` and `share` carry
-   their `person` / `service_account` columns. Put back the schedule written
-   down in step 1. Repoint any warehouse model
-   reading `access.user`, `has_role.parent` or `data_scope.user` (none found on
-   22-Oct-2026; #4336 re-checks).
-10. Close the window. After it, `pnpm --filter server cli seed-pack apply
-    jeyarama` is safe to run (idempotent). The roster sync stays **frozen**
-    until data-warehouse#4336 rebuilds it on the identifier rows; the manual
-    procedures below are in force until then.
+8. Close the window. After it, `pnpm --filter server cli seed-pack apply
+   jeyarama` is safe to run (idempotent). The roster sync stays **frozen**
+   until data-warehouse#4336 rebuilds it on the identifier rows; the manual
+   procedures below are in force until then.
 
-### If something goes wrong
+### If something goes wrong in the dev window
 
-- **Steps 4–5 refuse or fail** (boot-check error, preflight refusal, a failed
+- **Steps 3–4 refuse or fail** (boot-check error, preflight refusal, a failed
   migration): nothing has changed — the preflight runs before any migration,
   and 0101–0102 are one transaction. Confirm `select max(name) from migration`
   is still `0100_person_identities.ts`, roll the service back to its previous
-  deployment, resume CDC with the **old** registration (restore the schedule
-  only), and fix before trying again.
+  deployment, and fix before trying again.
 - **Released, but wrong** (counts disagree, sign-in fails): take the service
-  off the air, restore the step-3 snapshot —
+  off the air, restore the step-2 snapshot —
   `pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" featherbase-dev-pre-person-<date>.dump`
   — check `select max(name) from migration` is `0100_person_identities.ts`
   and the stamp is `staging`, roll the service back to its previous
-  deployment, check a trial sign-in, and resume CDC with the old
-  registration. Anything written between the deploy and the restore is lost;
-  the window is closed to users, so there should be nothing.
-- **Step 8 wrong** (a file that named the wrong records): restore the
+  deployment, and check a trial sign-in. Anything written between the deploy
+  and the restore is lost; the window is closed to users, so there should be
+  nothing.
+- **Step 7 wrong** (a file that named the wrong records): restore the
   pre-resolve snapshot the same way; the release itself stays.
-- **After step 9** (the CDC registration already says `person`): if the
-  release must be undone now, restore the step-3 snapshot as above **and**
-  have the coordinator put the registration back (`person` → `user` in
-  `system_tables`, `person_identifier` out of the deny list) before the
-  worker runs again; then let it run one tick and check `access.user` is
-  current again and `access.person` is marked retired. If only the CDC tick
-  failed, the release stays: pause the worker again (`0 5 29 2 *`), fix the
-  registration, and re-run the tick.
+
+### Promoting to production
+
+Prod deploys the **`production`** branch, and only with the owner's approval.
+Prod is platform-only: it has no test mode and no StyleHR sign-in method, so
+it skips the re-stamp, and 0102 writes no Jeyarama rows. This is where the
+CDC steps happen, because `jeyarama-cdc-featherbase` mirrors prod. The exact
+operator commands for the warehouse side are in **data-warehouse PR #4339**
+(draft, "DO NOT MERGE before…"):
+https://github.com/JeyaramaGroup/data-warehouse/pull/4339.
+
+**What the warehouse receives after the switch.** `person` replaces `user`,
+and **`identifier_system`** is mirrored (design D10). **`person_identifier`
+stays denied until Phase 2.** `sign_in_identity`, `person_id_map`,
+`service_account`, `person_identifier_fingerprint` and `person_merge` are
+denied. On `has_role`, `person` / `service_account` are **stored generated
+columns, which logical replication does not send**. Warehouse readers use
+`parent` + `parenttype`.
+
+1. **Rehearse** the CDC switch against a restored prod snapshot with 0101 and
+   0102 applied (#4339): the worker freezes `access."user"`, baselines
+   `access.person`, and reconciles row counts.
+2. **Pause** `jeyarama-cdc-featherbase`. Write down its current schedule
+   first, then set it to `0 5 29 2 *` (it fires only on 29 February), and
+   confirm no run is in progress.
+3. **Snapshot prod** (`pg_dump -Fc --no-owner`); this is the rollback point.
+   Then run `cli boot-check` in the prod service's environment: `environment
+   production; test mode off`, and the preflight lines.
+4. **Promote:** merge to `production` (owner-approved); the release runs the
+   preflight, then 0101 + 0101a + 0102 in one transaction.
+5. **Counts** on prod, as in dev step 5 (no StyleHR rows: `person_identifier`
+   holds only `email` rows), and `cli people:plan` on the live database
+   reports no old id.
+6. **Merge data-warehouse #4339** — only now — then run its `plan` and read
+   it.
+7. **Resume:** put back the schedule written down in step 2 and let one tick
+   run.
+8. **Verify:** `access.person` is baselined with as many rows as `select
+   count(*) from person`; `access.identifier_system` is present;
+   `person_identifier` and the denied tables are absent.
+9. **Resnapshot** `data_scope`, `share` and `has_role`, so their rows carry
+   the re-keyed ids.
+10. **Drop the frozen `access."user"`** once the warehouse reads `access.person`
+    (repoint any model still reading `access.user`, `has_role.person` or
+    `data_scope.user`; none was found on 22-Oct-2026).
+
+**If something goes wrong in production:** before step 6 (the registration
+is unchanged), restore the step-3 snapshot, roll the service back, put back
+the schedule and let the worker resume on the old registration. After
+step 6, restore the snapshot **and** revert #4339's registration change
+before the worker runs again; then run one tick and check `access."user"` is
+current again. If only a CDC tick fails, the release stays: pause the worker
+again, fix the registration, and re-run the tick.
 
 ### Manual procedures while the roster sync is frozen (until data-warehouse#4336)
 
