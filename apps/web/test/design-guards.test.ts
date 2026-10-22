@@ -161,6 +161,8 @@ const smallText: Rule = (text) => {
   const sizes = [
     ...text.matchAll(/text-\[(\d*\.?\d+)(px|rem|em|pt)\]/g),
     ...text.matchAll(/fontSize:\s*['"]?(\d*\.?\d+)(px|rem|em|pt)?/g),
+    // JSX attribute on SVG text or an element: fontSize={9.5} or fontSize="11"
+    ...text.matchAll(/fontSize=\{?\s*['"]?(\d*\.?\d+)(px|rem|em|pt)?/g),
     ...text.matchAll(/font-size:\s*(\d*\.?\d+)(px|rem|em|pt)/g),
   ]
   return sizes.filter((m) => px(Number(m[1]), m[2]) < 12).length
@@ -203,8 +205,8 @@ describe('each rule catches what it is for and nothing else', () => {
     ],
     [
       'text under 12px',
-      ['text-[10px]', 'text-[11.5px]', 'text-[0.6rem]', 'text-[8pt]', 'fontSize: 10', "fontSize: '0.7rem'", 'font-size: 11px'],
-      ['text-xs', 'text-[12px]', 'text-[0.75rem]', 'fontSize: 14', 'text-[10pt]', 'text-[12pt]'],
+      ['text-[10px]', 'text-[11.5px]', 'text-[0.6rem]', 'text-[8pt]', 'fontSize={9.5}', 'fontSize="11"', 'fontSize: 10', "fontSize: '0.7rem'", 'font-size: 11px'],
+      ['text-xs', 'text-[12px]', 'text-[0.75rem]', 'fontSize: 14', 'fontSize={12}', 'text-[10pt]', 'text-[12pt]'],
     ],
     [
       'browser-locale formatting',

@@ -213,10 +213,10 @@ export function RelationMap({
                 x={277}
                 y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
                 textAnchor="middle"
-                fontSize={9.5}
+                fontSize={12}
                 fill="var(--color-ink-subtle)"
               >
-                {truncate(f.label, 18)} →
+                {truncate(f.label, 15)} →
               </text>
             </g>
           ))}
@@ -234,10 +234,10 @@ export function RelationMap({
                 x={608}
                 y={(nodeY(i) + NODE_H / 2 + cy + NODE_H / 2) / 2 - 6}
                 textAnchor="middle"
-                fontSize={9.5}
+                fontSize={12}
                 fill="var(--color-ink-subtle)"
               >
-                {g.kind === 'child' ? 'contains →' : `← ${truncate(g.cnx?.column ?? '', 14)}`}
+                {g.kind === 'child' ? 'contains →' : `← ${truncate(g.cnx?.column ?? '', 12)}`}
               </text>
             </g>
           ))}
@@ -256,7 +256,7 @@ export function RelationMap({
             <text x={352} y={cy + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
               {truncate(String(d[m.title_column ?? ''] ?? name), 28)}
             </text>
-            <text x={352} y={cy + 35} fontSize={10.5} fill="var(--color-ink-muted)">
+            <text x={352} y={cy + 35} fontSize={12} fill="var(--color-ink-muted)">
               {truncate(table, 30)}
             </text>
           </g>
@@ -281,7 +281,7 @@ export function RelationMap({
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
                 {truncate(f.row_id, 20)}
               </text>
-              <text x={52} y={nodeY(i) + 35} fontSize={10.5} fill="var(--color-ink-muted)">
+              <text x={52} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
                 {truncate(f.table, 24)}
               </text>
             </g>
@@ -314,14 +314,14 @@ export function RelationMap({
               >
                 {truncate(g.label, 20)}
               </text>
-              <text x={672} y={nodeY(i) + 35} fontSize={10.5} fill="var(--color-ink-muted)">
+              <text x={672} y={nodeY(i) + 35} fontSize={12} fill="var(--color-ink-muted)">
                 {g.kind === 'child' ? 'child rows' : 'backlink'}
               </text>
               <text
                 x={848}
                 y={nodeY(i) + 21}
                 textAnchor="end"
-                fontSize={11}
+                fontSize={12}
                 fontWeight={700}
                 fill="var(--color-action)"
               >

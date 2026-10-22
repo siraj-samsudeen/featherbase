@@ -44,7 +44,9 @@ Codex review fixes, each test-first:
   merge, plus the report total, dashboard card and bar values, connection counts, Explore's "N of M" (`fmtShowing`)
   and checklist runs. The import's type-to-confirm prompt shows the count grouped, and `confirmsCount` accepts it
   with or without the commas. A new guard rule, "raw row count", fails on any expression printed straight before
-  rows/total/records (props such as `total={…}` excepted), so this is enforced rather than found screen by screen.
+  rows/total/records (props such as `total={…}` excepted), so this is enforced rather than found screen by screen;
+- the relation map's SVG labels are 12 units, up from 9.5, 10.5 and 11, with edge labels truncated a little sooner.
+  The small-text rule now also reads JSX `fontSize={…}`, which it had missed.
 
 ListView as phone cards (Codex) is deliberately left to page adoption, tracked as OpenSpec task 4.1. Its selection,
 bulk actions, expandable rows and sorting need their own change.
