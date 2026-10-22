@@ -12,6 +12,7 @@
 //      design-guards.pending.ts; a listed file that is already clean fails
 //      too, so the list can only shrink. Stage 3 of the change deletes it.
 
+import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
@@ -111,7 +112,7 @@ describe.each(themes)('%s tokens', (_mode, t) => {
 // ---------------------------------------------------------------- rules
 
 // Each rule counts its hits in a file's text.
-type Rule = (text: string) => number
+type Rule = (text: string, css: boolean) => number
 const count = (re: RegExp): Rule => (text) => (text.match(re) ?? []).length
 
 const UTILITY = String.raw`(?:bg|text|border(?:-[xytrblse])?|ring(?:-offset)?|divide|fill|stroke|outline|from|to|via|decoration|accent|caret|placeholder|shadow)`
@@ -134,8 +135,9 @@ const RULES: Record<string, Rule> = {
   'raw palette class': count(new RegExp(String.raw`\b${UTILITY}-(?:${HUE}|white|black)(?:-\d{2,3})?(?:\/\d+)?\b`, 'g')),
   // A colour in a string or an arbitrary Tailwind value (issue refs like (#380) are not), a colour
   // function, or a named colour given to a colour property.
-  'literal colour': (text) =>
-    (text.match(/[\['"`]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
+  'literal colour': (text, css) =>
+    // In a stylesheet a hex follows a property's colon; in code, a colon before #123 is usually an issue ref.
+    (text.match(css ? /(?:[\['"`]|:\s*)#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g : /[\['"`]#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})\b/g) ?? []).length +
     (text.match(/(?<![A-Za-z0-9-])(?:rgba?|hsla?|oklch|oklab|lch|lab|hwb)\(/g) ?? []).length +
     (text.match(new RegExp(String.raw`\b(?:color|background|backgroundColor|borderColor|fill|stroke)\s*[:=]\s*\{?\s*['"](?:${NAMED})['"]`, 'g')) ?? []).length,
   'text under 12px': smallText,
@@ -180,8 +182,8 @@ describe('each rule catches what it is for and nothing else', () => {
     ['retired class', ['fc-btn', 'fc-btn-primary', 'fc-card'], ['buttonClasses()', 'fc-btnx', 'my-fc-card']],
   ]
   describe.each(probes)('%s', (rule, caught, ignored) => {
-    test.each(caught)('catches %s', (s) => expect(RULES[rule](s)).toBeGreaterThan(0))
-    test.each(ignored)('ignores %s', (s) => expect(RULES[rule](s)).toBe(0))
+    test.each(caught)('catches %s', (s) => expect(RULES[rule](s, false)).toBeGreaterThan(0))
+    test.each(ignored)('ignores %s', (s) => expect(RULES[rule](s, false)).toBe(0))
   })
 })
 
@@ -193,15 +195,35 @@ function sources(dir: string): string[] {
   })
 }
 
-/** Total rule hits in a file. CSS is checked for retired names only: index.css defines the tokens. */
-function violations(file: string): number {
-  const text = readFileSync(join(WEB, file), 'utf8')
+/**
+ * Total rule hits in a source text. In a stylesheet, custom-property
+ * declarations (`--color-ink: #111827;`) are the one place a colour literal
+ * belongs, so only those lines are exempt — every other rule still applies.
+ */
+function countText(text: string, file: string): number {
+  const css = file.endsWith('.css')
+  const body = css ? text.replace(/^\s*--[\w-]+\s*:[^;]*;.*$/gm, '') : text
   return Object.entries(RULES).reduce((sum, [rule, hits]) => {
     if (RULE_EXEMPT[rule]?.includes(file)) return sum
-    if (file.endsWith('.css') && rule !== 'retired token' && rule !== 'retired class') return sum
-    return sum + hits(text)
+    // Retired names are counted even in declarations: stage 3 deletes them too.
+    return sum + hits(rule === 'retired token' ? text : body, css)
   }, 0)
 }
+function violations(file: string): number {
+  return countText(readFileSync(join(WEB, file), 'utf8'), file)
+}
+
+describe('stylesheets are checked too, except their token declarations', () => {
+  test.each([
+    ['.x { color: #fff; }', 1],
+    ['.x { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); }', 1],
+    ['.x { font-size: 10px; }', 1],
+    ['  --color-ink: #111827;', 0],
+    ['  --color-scrim: rgb(11 18 32);', 0],
+  ])('%s → %i', (css, n) => {
+    expect(countText(css, 'probe.css')).toBe(n)
+  })
+})
 
 const files = sources(join(WEB, 'src'))
 
@@ -238,7 +260,7 @@ const CEILING: Record<string, number> = {
   'src/components/TableNaming.tsx': 11,
   'src/components/Tags.tsx': 11,
   'src/components/WorkflowActions.tsx': 5,
-  'src/index.css': 159,
+  'src/index.css': 161, // +2 on 22-Oct: rules now read stylesheets (the fc-card shadow's two rgba())
   'src/lib/settings.ts': 1,
   'src/pages/AccessTokens.tsx': 40,
   'src/pages/AdminLayout.tsx': 75,
@@ -261,16 +283,43 @@ const CEILING: Record<string, number> = {
   'src/router.tsx': 2,
 }
 
+/** What main has accepted: its pending pins, read from git. Null where main has none yet. */
+function acceptedOnMain(): Record<string, number> | null {
+  try {
+    const src = execFileSync('git', ['show', 'origin/main:apps/web/test/design-guards.pending.ts'], {
+      cwd: WEB,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return Object.fromEntries([...src.matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]))
+  } catch {
+    return null
+  }
+}
+
+/** Files added to the list, and pins above what was allowed. */
+function ratchetBreaks(pins: Record<string, number>, allowed: Record<string, number>) {
+  return {
+    added: Object.keys(pins).filter((f) => !(f in allowed)),
+    risen: Object.entries(pins).filter(([f, n]) => f in allowed && n > allowed[f]).map(([f]) => f),
+  }
+}
+
 describe('the pending sweep is a ratchet', () => {
   test('a file outside the pending list has no violations', () => {
     const broken = files.filter((f) => !(f in PENDING_SWEEP)).map((f) => [f, violations(f)] as const).filter(([, n]) => n)
     expect(broken).toEqual([])
   })
 
-  test('no file joins the list and no count rises above where it started', () => {
-    const added = Object.keys(PENDING_SWEEP).filter((f) => !(f in CEILING))
-    const risen = Object.entries(PENDING_SWEEP).filter(([f, n]) => f in CEILING && n > CEILING[f])
-    expect({ added, risen }).toEqual({ added: [], risen: [] })
+  test('a pin cleaned on main cannot climb back, even below where it started', () => {
+    // Codex's case: 20 at the start, 10 accepted on main, 15 proposed.
+    expect(ratchetBreaks({ 'a.tsx': 15 }, { 'a.tsx': 10 })).toEqual({ added: [], risen: ['a.tsx'] })
+    expect(ratchetBreaks({ 'a.tsx': 9, 'b.tsx': 1 }, { 'a.tsx': 10 })).toEqual({ added: ['b.tsx'], risen: [] })
+  })
+
+  test('no file joins the list and no pin rises above what main accepted (or the start, before main has a list)', () => {
+    expect(ratchetBreaks(PENDING_SWEEP, acceptedOnMain() ?? CEILING)).toEqual({ added: [], risen: [] })
+    expect(ratchetBreaks(PENDING_SWEEP, CEILING)).toEqual({ added: [], risen: [] })
   })
 
   test('each pinned count is exactly the file’s violations, so a fix must lower its pin', () => {
