@@ -91,7 +91,7 @@ disabled, all their sessions end and every other way in refuses them.
 
 A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
-never on a production deployment: a production server refuses to start with
+only on a development or test server: any other server refuses to start with
 it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
 person by typing the employee code on that person's record, in any mix of
 capitals, with no password. The code must belong to exactly one person, and
@@ -126,9 +126,10 @@ on where real users sign in.
   people's records
 - **THEN** sign-in is refused, and neither person is chosen
 
-#### Scenario: Production refuses test mode
+#### Scenario: Only a development or test server accepts test mode
 
-- **WHEN** the switch is set on a server configured as production
+- **WHEN** the switch is set on a server that is not configured as
+  development or test
 - **THEN** the server does not start, and says why
 
 #### Scenario: Anything but the exact switch value leaves it off

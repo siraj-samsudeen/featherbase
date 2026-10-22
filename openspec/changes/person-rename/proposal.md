@@ -26,8 +26,14 @@ dev holds ~280 trial accounts that are migrated once as data.
   access and shares exactly as today. Tokens, roles, data access and shares
   refer to *a principal* — a person or a service account — through one model.
 - **Every person gets an opaque permanent id**, including dev's trial
-  accounts, which are re-keyed once in one transaction with a post-check that
-  no old id survives anywhere. Sessions end at deploy; tokens keep working.
+  accounts, which are re-keyed once in one transaction with a check that no
+  old id survives in any place that refers to a person (codes and free text
+  are left alone). Administrator and Guest keep their ids. Sessions end at
+  deploy; tokens keep working.
+- **One rehearsed release together with the first slice of
+  `person-resolution`**, inside a maintenance window; the roster sync stays
+  frozen until the warehouse rebuilds it, and leavers are disabled by hand
+  meanwhile.
 - **The sign-in table is renamed** `sign_in_identity`, so "identity" (signs
   in) and "identifier" (does not) are never confused once
   `person-resolution` adds identifiers.
