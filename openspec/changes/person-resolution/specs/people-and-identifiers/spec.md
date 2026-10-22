@@ -120,14 +120,16 @@ exact value.
 
 When a value that counts as a clue — a fingerprinted national ID, a phone, an
 email — is held by two or more records, Featherbase SHALL raise one group in a
-review list rather than merge anything. A group is strong when two records
-share a national ID, or when several records share one and their employments
-never overlapped; any other group, including several records on one value at
-the same time, is weak. A reviewer sees the records side by side with the
-reasons and confirms they are one person, marks them as different people, or
-sets the group aside for later. "Different people" sticks for that group until
-a stronger reason arrives or another record joins it. Values a person entered
-about themselves never raise a group.
+review list rather than merge anything. A group is strong only for a national
+ID: when two records share one, or when several records share one and every
+one of them has known employment dates that never overlapped; any other group
+— a shared phone or email, several records on one value at the same time, or a
+record whose employment is unknown — is weak. A reviewer sees the records side
+by side with the reasons and confirms they are one person, marks them as
+different people, or sets the group aside for later. "Different people" sticks
+for that group until a stronger reason arrives or another record joins it. A
+group of several records stays open as its members are merged, until one
+remains. Values a person entered about themselves never raise a group.
 
 #### Scenario: Same Aadhaar on two employee records
 

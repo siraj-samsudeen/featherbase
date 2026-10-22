@@ -17,6 +17,12 @@ issues its tokens on its behalf.
 - **THEN** they are refused, the same as for any account with no working
   password
 
+#### Scenario: A service account's data access applies everywhere
+
+- **WHEN** a service account limited to one store's rows reads a list, opens
+  a row, runs a report, searches, exports or listens for live updates
+- **THEN** it sees only that store's rows on every one of those paths
+
 #### Scenario: A service account keeps what it has
 
 - **WHEN** the instance is upgraded so that automation accounts are kept apart

@@ -1,21 +1,24 @@
 # Tasks
 
-Test-first throughout. Stacked on `person-identities` (#371); `person-resolution`
-stacks on this. Prod is empty; dev is migrated once as data.
+Test-first throughout. Stacked on `person-identities` (#371, head 8f3d906).
+Deploys to dev **together with `person-resolution` Phase 1a-i** in one
+release (DECISION A-B2); the roster sync stays frozen until
+data-warehouse#4336.
 
 ## 1. Principal model and rename
 
-- [ ] 1.1 `isPrivileged(principal)` helper replacing `isBypassUser` and the inline Administrator/System Manager checks; `getRoles` reads `has_role` for `Person` and `Service Account` parent types. Verify `test/person-rename.test.ts`, `test/permissions.test.ts`.
-- [ ] 1.2 Migration `0101_person_rename.ts` part 1: `user` → `person` (table, indexes, trigger, `table_def`/`column_def`, every `Reference → User`, `data_scope`, `share`, `has_role.parenttype`); `user_identity` → `sign_in_identity` (`person_id`); `/api/people/…` routes replace `/api/users/…`. Verify `test/person-rename.test.ts`, `test/identity-linking.test.ts`.
-- [ ] 1.3 Migration part 2: `service_account` table; `principal_kind`/`principal_id` with check + existence trigger on `access_token`, `data_scope`, `share`; rows moved, `user_type` and `access_token.owner` dropped; `auth.ts`/`index.ts` token routes resolve either kind; `service-accounts.ts` reworked; pickers exclude service accounts; `who(c)` and the Activity Log / Version / Comment / notification writers take a principal id. Verify `test/person-rename.test.ts`, `test/token-hardening.test.ts`, `test/access-tokens.test.ts` (a service-account token does everything it does today).
+- [ ] 1.1 `isPrivileged(principal)` replacing `isBypassUser` and inline checks; `getRoles` for `Person` and `Service Account` parent types; **`getScopeMap(principal)`** replacing `getUserPermissionMap` as the only `data_scope` reader (list, get, query/report, search, export, realtime, sales-target, bound sources). Verify `test/scope-map.test.ts`, `test/permissions.test.ts`.
+- [ ] 1.2 Migration 0101 part 1: `user` → `person` (indexes incl. username, trigger renamed `person_id_is_permanent`, `table_def`/`column_def`, every `Reference → User`); `user_identity` → `sign_in_identity`; `/api/people/…` routes replace `/api/users/…` (no alias); `newPersonId()` → `psn_`. Verify `test/person-rename.test.ts`, `test/identity-linking.test.ts`.
+- [ ] 1.3 Migration part 2: `service_account`; `principal_kind` + `principal_id` with check and existence trigger (insert/update existence, delete refusal) on `access_token`, `data_scope`, `share`; `has_role` parenttypes; rows moved; `user_type`, `access_token.owner`, `data_scope."user"`, `share.user` dropped; Data Scope / Share metadata with `Choice` + `Dynamic Reference`; service-account roles only via `service-accounts.ts`; `auth.ts`/`index.ts` token routes resolve either kind; `who(c)` and Activity Log / Version / Comment / notification writers take a principal id. Verify `test/person-rename.test.ts`, `test/token-hardening.test.ts`.
+- [ ] 1.4 Inventory sweep with a test each: `rate-limit.ts` (`api_rate_limit` by principal), comment mentions by name, `assignment-rules.ts`, `sales-target.ts` (`person` relation; seed uses `username`), `workflow.ts`, `jobs/sla-escalation.ts`, `reports/user-report.ts`, `app-access.ts`, `admin-bootstrap.ts`, `password-reset.ts`, `cli.ts`; pickers exclude service accounts. Verify `test/person-rename.test.ts`, `test/access-tokens.test.ts` (a service-account token does everything it does today).
 
-## 2. Re-id
+## 2. Re-id and scan
 
-- [ ] 2.1 Handler registry (shared with `person-resolution`) with history handlers (`created_by`, `owner`, `modified_by`, Activity Log, Version, Comment, notifications), raw tables (`access_token`, `user_settings`, `password_reset`, `saved_view`, `home_page`, `sign_in_identity`, `data_scope`, `share`, `has_role`) and JSON ids; completeness test over `pg_constraint` + metadata. Verify `test/person-registry.test.ts`.
-- [ ] 2.2 Migration part 3: mint `psn_` ids, re-id through the registry in one transaction, post-check scan (one hit aborts), `person_id_map` written; `cli people:plan` prints the map and the columns the scan visits. Verify `test/migration-0101.test.ts` (planted old id caught; idempotent re-run; plan parity).
+- [ ] 2.1 Handler registry (shared with `person-resolution`): history handlers, raw tables (`access_token`, `api_rate_limit`, `user_settings`, `password_reset`, `saved_view`, `home_page`, `sign_in_identity`, `data_scope`, `share`, `has_role`, `assignment_rule_user`), JSON paths; **column classification** `id` / `json-with-ids` / `code` / `free-text` for every text column; completeness test. Verify `test/person-registry.test.ts`.
+- [ ] 2.2 Migration part 3: `allow_person_id_change` set for the transaction; mint `psn_`/`svc_` (built-ins excluded, `usr_` converted); rewrite through the registry; exact-match scan over registered columns and JSON paths only; `person_id_map`; namespace checks enabled last. `cli people:plan` prints the map and every text column with its classification; `--rehearse <dsn>` runs 0101 + 0102 + scan in a rolled-back transaction. Verify `test/migration-0101.test.ts` (code and free-text columns containing old ids pass; planted id fails; idempotent; parity).
 
-## 3. Web, CDC, docs
+## 3. Web, CDC, deploy, docs
 
-- [ ] 3.1 Web: "Person" wherever a person is meant; service-account list; sign-in-again notice. Verify `apps/web/test/person-rename.test.tsx`.
-- [ ] 3.2 `docs/DEPLOY.md`: the order (0100 live → plan → snapshot → deploy, everyone signs in again → CDC change → warehouse models repointed → post-deploy counts); CDC registration PR and the repoint list filed in data-warehouse#4336. `PROGRESS.md`.
+- [ ] 3.1 Web: "Person" wherever a person is meant; Data Scope / Share forms with kind + picker; service-account list; sign-in-again notice. Verify `apps/web/test/person-rename.test.tsx`.
+- [ ] 3.2 `docs/DEPLOY.md`: joint release order (fresh snapshot → rehearsal → CDC rehearsal → maintenance window → deploy → CDC change → counts); the **manual leaver procedure** until #4336; no `/api/users` alias. CDC registration PR and the repoint re-check filed in data-warehouse#4336. `PROGRESS.md`.
 - [ ] 3.3 Gates: typecheck, full suites, `pnpm check:specs`, `git diff --check`.

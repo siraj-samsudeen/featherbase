@@ -42,7 +42,12 @@ faster.**
 - **Round 2, structure:** `person-rename` (0101) carries C1–C3 and the
   `sign_in_identity` rename; this change (0102) carries identifiers, the C4
   subject rewrite, C5, merge and undo, clusters.
-- **Round 2, phases:** 1a-i (days) · 1a-ii · 1b · 2 · 3 — see Phasing.
+- **Round 2/3, phases:** 1a-i (about a week) · 1a-ii · 1b · 2 · 3 — see
+  Phasing. **Round 3 (DECISION):** 0102's Phase 1a-i deploys to dev together
+  with `person-rename`'s 0101 in one release; test-mode hardening stays in
+  1a-i because test mode resolves through identifiers from that day; the
+  record-based leaver rule moves to 1b (it needs the Sync feed); sales-target
+  scoping is a separate PR that also drops the `employee_code` Custom Field.
 - **Round 2, who is fed:** the warehouse sends the list (TLs, DMs and SMs from
   section ownership plus Store Manager — today's report viewers);
   `create_missing` applies only to that list; everyone else is resolve-only.
@@ -56,7 +61,7 @@ faster.**
 | # | Decision | Reason |
 |---|---|---|
 | C4 | **StyleHR sign-in subject = the StyleHR record number**, not the employee code; `sign_in_name` stays the login. Dev's existing subjects are rewritten from the warehouse's resolve file (D11); an unresolved one **keeps working by employee code until resolved**, flagged, never ended silently. | Only id StyleHR guarantees unique (28 collisions). Trial users must keep signing in. |
-| C5 | **The `employee_code` and `stylehr_username` Custom Fields are dropped** in the same task that moves sales-target scoping onto identifier rows, so the suite never goes red. | One home per fact. |
+| C5 | **The `employee_code` and `stylehr_username` Custom Fields are dropped** in the separate sales-target scoping PR that moves scoping onto identifier rows — the same PR, so the suite never goes red; 1a-i leaves both fields in place. | One home per fact. |
 | C6 | **No `use` column**: current = open upper bound. | One fact, one place. |
 | C7 | **`person.email` stays** as the primary contact; every address is also an `email` identifier row by write-through. | Mail senders read one column (performance, not compatibility). |
 | C8 | No reliance on #371's removed shims (`identity_links`, `.invalid`, pre-upgrade sessions, `social_login`). | They are gone. |
@@ -232,7 +237,9 @@ The sync closes codes; the merge only moves rows.
   null`; `linkedBySubject`, `linkedUser`, `resolveToken` filter on it. An
   ended identity never opens an account; its session ends on the next
   request; unlink ends rather than deletes.
-- **Leaver rule (compares records).** On `left` for identity I of person P:
+- **Leaver rule (compares records; Phase 1b — it needs the Sync feed's
+  employment rows; until then #371's rule stands: `left` disables the
+  person).** On `left` for identity I of person P:
   (1) end I; (2) P is **live** iff P has a current, verified, source-fed
   `employee-record` row whose `record_identifier_id` is **a different record**
   from the one I's subject names; (3) live ⇒ P stays enabled; not live, **or
@@ -245,7 +252,9 @@ The sync closes codes; the merge only moves rows.
   resolves to more than one person**; requires a **live, not-ended
   `sign_in_identity` of that method** on the resolved person, then the
   eligibility and privilege checks exactly as with the provider asked. **The
-  server refuses to boot with test mode set when `FEATHERBASE_ENV=production`.**
+  server refuses to boot with test mode set unless `config.environment`
+  (`FEATHERBASE_ENV ?? NODE_ENV ?? 'development'`) is `development` or
+  `test`.** This hardening ships in 1a-i (DECISION).
 
 ### D6. Groups, review, merge, undo
 
@@ -257,15 +266,16 @@ the value — never by the value or fingerprint (A-N1 = B-N2). Members in
 | column | meaning |
 |---|---|
 | `id`, `system`, `assigner`, `anchor_identifier_id` | the group; screens show the value (Normal/Restricted) or the hint (Secret) by reading the anchor row |
-| `strength` | **strong**: `national-id` with exactly 2 members, **or** 3+ members whose employment-record periods do not overlap (an honest agency → company → rehire chain); **weak**: anything else, incl. 3+ overlapping members (a "suspicious group") |
+| `strength` | **strong** only for `national-id` systems: exactly 2 members, **or** 3+ members every one of whom has employment-record rows and whose periods pairwise do not overlap (an honest agency → company → rehire chain) — a member with **no** employment rows counts as unknown and keeps the group weak; **weak**: anything else, incl. every contact-system group and 3+ overlapping members (a "suspicious group") |
 | `status` | `open` \| `deferred` \| `later` (`snoozed_until`) \| `merged` \| `not-the-same-person` \| `withdrawn` |
 | `decided_by`, `decided_at`, `decision_note`, `reopened_at`, `reopen_reason` | decisions and reopens |
 
 Rules: raised once per shared verified value; `not-the-same-person` sticks
 until **a stronger reason arrives or a new member joins** the decided group
 (reopened, reason recorded); reopen endpoint + filter; `later` returns to
-`open` after N days (30); a merged-away member ⇒ re-evaluate (one left ⇒
-`withdrawn`; its decisions carry to the survivor); matching re-runs on moved
+`open` after N days (30); a merged-away member ⇒ re-evaluate: **a group of
+3+ stays `open` with its remaining members until one member remains, then
+`withdrawn`** (its decisions carry to the survivor); matching re-runs on moved
 identifiers after merge or undo; **daily cap** on new open groups (default
 50) — beyond it groups are `deferred` and **strong ones are promoted first**
 the next day; header shows counts; re-scan on `match` change and weekly;
@@ -385,32 +395,54 @@ carry privileged roles.
 
 ### D11. Sync contract (one page; data-warehouse#4336 cites it)
 
-**Who is fed (DECISION):** the warehouse sends today's report viewers — TLs,
-DMs and SMs from section ownership plus the Store Manager table.
-`create_missing` applies only to that list; every other row is resolve-only.
+**Who is fed (DECISION):** the warehouse holds the fed list — today's report
+viewers: TLs, DMs and SMs from section ownership plus the Store Manager
+table — and **refreshes it on every sync run (daily, with the roster)**.
+`create_missing` is **per call**: the warehouse sets it on the call that
+carries the fed list and leaves it off for every other row. **A person who
+drops off the list changes nothing** in Featherbase: no row is closed, no
+access removed; only leavers (below) and explicit role changes do that.
 
-**Inputs the warehouse produces:** `stylehr_record_ids.csv`
-(`employee_code,assigner,stylehr_record_id`) for the one-time subject rewrite
-(D5); the bulk bodies below from `silver_stylehr`. **Aadhaar travels as the
-`value` of a row whose `system` is `aadhaar`** — no other field — and only
-once direct StyleHR read access is granted (owner decision).
+**Inputs the warehouse produces** (data-warehouse#4336):
+
+- **`stylehr_record_ids.csv`** for the one-time subject rewrite (D5) — UTF-8,
+  comma-separated, header row, columns `employee_code,assigner,stylehr_record_id`:
+  `employee_code` is the code **exactly as StyleHR's employee master stores
+  it** (`silver_stylehr.employee.employee_code`, from `employee_employee.
+  employee_id`); `assigner` is the **StyleHR company**, `firm_firm.id` of the
+  current store × firm posting (`employee_employeestoresandfirms`), carried as
+  text; `stylehr_record_id` is `silver_stylehr.employee.employee_key`
+  (`employee_employee.id`). Delivered as a file path given to the migration
+  command (`cli people:plan --resolve <path>`, DEPLOY.md). A dev person whose
+  code matches **2+ rows** (the 28 colliding codes) is **listed for manual
+  resolution and keeps working by code**.
+- The bulk bodies below, from `silver_stylehr`. **Aadhaar travels as the
+  `value` of a row whose `system` is `aadhaar`** — no other field — and only
+  once direct StyleHR read access is granted (owner decision).
 
 **Credential:** access token of a `service_account` with role `Identity Sync`.
 
 **`POST /api/people/identifiers:bulk`** — max **500 rows per call**, processed
 in body order, **one transaction per row** (a failed row never aborts others).
+**`valid_from` is inclusive and `valid_to` is EXCLUSIVE** — half-open, exactly
+as stored: a spell that ended on 02-Mar-2026 has `valid_to: "2026-03-03"`.
 
 ```json
 { "mode": "upsert", "create_missing": true,
   "rows": [
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
+      "person_fields": { "full_name": "A. Kumar", "email": null,
+                         "worker_type": "Regular", "firm": "JRPL" },
       "system": "stylehr-employee-id", "value": "48213" },
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
-      "system": "stylehr-employee-code", "assigner": "JRPL", "value": "RR-10353",
+      "system": "stylehr-employee-code", "assigner": "12", "value": "RR-10353",
       "valid_from": "2026-03-03" },
     { "person": { "system": "stylehr-employee-id", "value": "31177" },
-      "system": "stylehr-employee-code", "assigner": "AgencyX", "value": "21654",
-      "valid_from": "2024-06-01", "valid_to": "2026-03-02" },
+      "person_fields": { "full_name": "A. Kumar", "worker_type": "Agency", "firm": "AgencyX" },
+      "system": "stylehr-employee-id", "value": "31177" },
+    { "person": { "system": "stylehr-employee-id", "value": "31177" },
+      "system": "stylehr-employee-code", "assigner": "7", "value": "21654",
+      "valid_from": "2024-06-01", "valid_to": "2026-03-03" },
     { "person": { "system": "stylehr-employee-id", "value": "48213" },
       "system": "aadhaar", "value": "<12 digits>" } ] }
 ```
@@ -419,20 +451,30 @@ in body order, **one transaction per row** (a failed row never aborts others).
 { "results": [
     { "row": 0, "result": "created", "person_id": "psn_7k…", "created_person": true },
     { "row": 1, "result": "created", "person_id": "psn_7k…" },
-    { "row": 2, "result": "updated", "person_id": "psn_3m…", "note": "spell closed" },
-    { "row": 3, "result": "error", "code": "fingerprint_unavailable" } ],
-  "summary": { "created": 2, "updated": 1, "unchanged": 0, "redirected": 0, "error": 1 } }
+    { "row": 2, "result": "created", "person_id": "psn_3m…", "created_person": true },
+    { "row": 3, "result": "created", "person_id": "psn_3m…", "note": "closed spell" },
+    { "row": 4, "result": "error", "code": "fingerprint_unavailable" } ],
+  "summary": { "created": 4, "updated": 0, "unchanged": 0, "redirected": 0, "error": 1 } }
 ```
 
-- `person` is a **resolve key**. Results: `created` (a new row; also
-  `created_person: true` when the key made a person) · `updated` ·
-  **`unchanged`** (same value, same bounds, same assigner, same flags —
-  nothing written, no log) · `redirected` (the key hit a replaced record; the
-  write went to the survivor, `person_id` is the survivor) · `error` with
-  `code` ∈ `not_found` (key resolves to nobody and `create_missing` is false
-  or the row is outside the fed list) · `ambiguous` (key resolves to several
-  persons — never guessed) · `fingerprint_unavailable` · `invalid_format` ·
-  `overlap` (exclusion constraint) · `system_disabled` · `not_allowed`.
+- `person` is a **resolve key**. **`person_fields`** (`full_name`, `email`,
+  `worker_type`, `firm`) is used **only when the key creates a person** (it
+  sets `full_name`/`email`; `worker_type` and `firm` are recorded in the
+  creation note for the review screen); on an existing person it is ignored
+  with no error — the roster never overwrites a person's profile. Results:
+  `created` (a new row; also `created_person: true` when the key made a
+  person) · `updated` · **`unchanged`** (same value, same bounds, same
+  assigner, same flags — nothing written, no log) · `redirected` (the key
+  hit a replaced record; the write went to the survivor, `person_id` is the
+  survivor) · `error` with `code` ∈ `not_found` (key resolves to nobody and
+  `create_missing` is false) · `ambiguous` (key resolves to several persons
+  — never guessed) · `fingerprint_unavailable` · `invalid_format` · `overlap`
+  (exclusion constraint) · `system_disabled` · `not_allowed`.
+- **Roles and section assignment** are not identifiers: the sync grants the
+  `Sales Target Viewer` role and Data Scope through the renamed principal
+  endpoints — `POST /api/people/:id/roles` and `POST /api/people/:id/scope`
+  (`{principal_kind: "person", …}`; the service-account twins are
+  `/api/service-accounts/:id/roles|scope`).
 - **Rehire vs correction:** a row for a code whose latest spell is **closed**
   and whose `valid_from` is after that spell's end **opens a new spell**; a
   row whose `valid_from` falls inside an existing spell **corrects that spell**
@@ -458,8 +500,16 @@ in body order, **one transaction per row** (a failed row never aborts others).
 - **`mode: refingerprint`:** Secret rows only, for the given `key_id`.
 
 **`POST /api/people/sign-ins:bulk`** — same envelope; rows `{person: <key>,
-method: "stylehr", subject: "<record id>", sign_in_name}`; rewrites an
-`employee-code` subject to the record id (`updated`, note `subject resolved`).
+method: "stylehr", subject: "<record id>", sign_in_name}`. **Never creates a
+person** (`not_found` when the key resolves to nobody). Rewrites an
+`employee-code` subject to the record id (`updated`, note `subject
+resolved`). **Subject already linked to an ended identity:** a live link is
+created for the resolved person and the ended row stays as history
+(`created`, note `relinked after end`) — unless the ended identity's person
+is a *different* person than the key resolves to and that person is not
+replaced by this one, in which case the row answers `error` `conflict` and
+is listed for review (the record number should never move between living
+persons).
 
 **`POST /api/people/resolve`** (read-only) — `{keys: [...]}` →
 `[{key, person_id, canonical_person_id, replaced}]`; `not_found`/`ambiguous`
@@ -489,18 +539,28 @@ History with Undo and leftovers; search shows "→ survivor".
 
 ## Phasing
 
-- **1a-i (days):** Identifier System with generic rows + the seed pack
-  (`stylehr-*`); Person Identifier with history (`record_identifier_id`,
-  exclusion, btree_gist); write-through; subject rewrite from the resolve
-  file with unresolved kept working; ended identities; leaver rule by record;
-  test-mode rules; Identifiers panel; sales-target scoping on identifier rows
-  + drop of the Custom Fields in one task.
+- **1a-i (about a week; deploys with `person-rename` 0101 in one release):**
+  Identifier System with generic rows + the seed pack (`stylehr-*`); Person
+  Identifier with history (`record_identifier_id`, exclusion, btree_gist);
+  write-through; the dev data migration (code rows, subject rewrite from the
+  resolve file with unresolved and colliding codes kept working by code);
+  ended identities; **test-mode hardening** (ambiguous refused, live identity
+  required, boot refused outside development/test); the Identifiers panel.
+  The `employee_code` and `stylehr_username` Custom Fields stay.
+- **Sales-target scoping — a separate PR** right after 1a-i: scoping on
+  identifier rows ((assigner, code) or record number, several codes,
+  ambiguous ⇒ `no_assignment`) **and** the drop of both Custom Fields, so the
+  suite never goes red.
 - **1a-ii:** manual merge and undo with the registry (merge mode), preview
   with gains/losses, result summary, dry-run undo, leftovers with Mark
   handled, global History, Undo on the banner.
 - **1b:** Secret storage and key operations, `aadhaar` seed row, Sync API v1
-  (`identifiers:bulk`, `sign-ins:bulk`, `resolve`), clusters, review screen,
-  `/api/health`, jobs.
+  (`identifiers:bulk`, `sign-ins:bulk`, `resolve`), **the record-based leaver
+  rule** (replacing #371's until then), clusters, review screen,
+  `/api/health`, jobs. **Exit criteria** include the day-one alert in place:
+  the warehouse's daily-loading check reads `/api/health` and raises
+  **"fingerprint key degraded"** (`fingerprint_key_ok = 0` or any Secret
+  system degraded) on the morning rollup, plus the post-deploy counts.
 - **2:** workforce population, lanes and bulk confirm, gold person +
   `canonical_person_id`, period-valid scoping (#4332 C1), auto-link (D7).
 - **3:** fuzzy name + DOB, per-field survivorship.
