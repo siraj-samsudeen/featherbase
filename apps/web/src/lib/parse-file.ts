@@ -62,7 +62,7 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
 
 /**
  * The section of an Excel number format that applies to a value, as Excel
- * picks it. Sections are `;`-separated (quoted text may contain `;`). If any
+ * picks it. Sections are `;`-separated (quoted text and a backslash-escaped `;` do not split). If any
  * section carries a condition such as `[<=45586]`, the first whose condition
  * holds wins and an unconditioned section is the fallback; otherwise the
  * sections are positive;negative;zero.
@@ -71,7 +71,13 @@ function formatSectionFor(format: string, value: number): string {
   const sections: string[] = []
   let current = ''
   let quoted = false
-  for (const ch of format) {
+  for (let i = 0; i < format.length; i++) {
+    const ch = format[i]
+    if (ch === '\\' && i + 1 < format.length) {
+      // A backslash escapes the next character, including a ";".
+      current += ch + format[++i]
+      continue
+    }
     if (ch === '"') quoted = !quoted
     if (ch === ';' && !quoted) {
       sections.push(current)
@@ -140,17 +146,18 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
     // [h], [m], [s] show elapsed time: a duration, not a date. Keep the number.
     if (/\[(?:h+|m+|s+)\]/i.test(section.replace(/"[^"]*"/g, ''))) continue
     let day = Math.floor(cell.v)
+    cell.t = 's'
+    if (!formatShowsTime(section)) {
+      // A date-only format shows the serial's whole day; a hidden time never moves it.
+      cell.v = serialDay(day, date1904)
+      continue
+    }
     let ms = Math.round((cell.v - day) * DAY_MS)
     if (ms >= DAY_MS) {
       day += 1
       ms -= DAY_MS
     }
     const date = serialDay(day, date1904)
-    cell.t = 's'
-    if (!formatShowsTime(section)) {
-      cell.v = date
-      continue
-    }
     const H = Math.floor(ms / 3_600_000)
     const M = Math.floor((ms % 3_600_000) / 60_000)
     const S = Math.floor((ms % 60_000) / 1000)

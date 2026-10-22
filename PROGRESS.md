@@ -21,18 +21,19 @@ coercion, the Date schema and the import preview use it. OpenSpec change `fix-ex
 capability delta.
 
 **Verified** under Node 22:
-- `apps/web/test/parse-file-ist.test.ts` (27): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. It covers:
+- `apps/web/test/parse-file-ist.test.ts` (29): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. It covers:
   - month ends, the leap day, the year end and 01-Jan;
   - São Paulo's missing midnight and Samoa's skipped day;
   - 1900 serials 1/59/60/61 and a 1904 workbook;
   - a time-only cell, a multi-section format, a midnight date-time;
   - `.123` and `.272` seconds, and rounding carries past the second and past midnight;
   - an IST 05:30 time that stays a Datetime;
-  - a conditional format section, and the elapsed `[m]`, `[h]:mm` and `[s]` formats.
+  - a conditional format section, and the elapsed `[m]`, `[h]:mm` and `[s]` formats;
+  - an escaped `\;`, and a date-only cell with a hidden time just before midnight.
 - The shared Date schema now refuses impossible calendar days, such as Excel's 29-Feb-1900, 30-Feb or month 13. A dry
-  run reports them instead of Postgres refusing the write; 7 schema tests cover it.
+  run reports them instead of Postgres refusing the write; 9 schema tests cover it, including years 0001 and 0099.
 - The shared schema test in IST passes, and `packages/shared` has 131 tests passing.
-- Web suite 212 passed; shared 138; server import and document tests 105; web and server typecheck passed.
+- Web suite 214 passed; shared 140; server import and document tests 105; web and server typecheck passed.
 - The import, table-builder, form and settings e2e specs on this machine (IST): 30 of 30 passed after the last
   change. Earlier, one
   failure was

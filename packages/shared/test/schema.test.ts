@@ -247,7 +247,7 @@ describe('#387: a Date must be a real calendar day', () => {
   it.each(['1900-02-29', '2024-02-30', '2023-02-29', '2024-13-01'])('%s is refused before anything is written', (v) => {
     expect(schema.safeParse({ due: v }).success).toBe(false)
   })
-  it.each(['2024-02-29', '2000-02-29', '1900-02-28'])('%s is accepted', (v) => {
+  it.each(['2024-02-29', '2000-02-29', '1900-02-28', '0001-01-01', '0099-12-31'])('%s is accepted', (v) => {
     expect(schema.safeParse({ due: v }).success).toBe(true)
   })
 })

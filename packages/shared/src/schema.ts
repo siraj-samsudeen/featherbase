@@ -66,7 +66,9 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
           // dry run reports them instead of the database refusing the write.
           .refine((v) => {
             const [y, m, d] = v.split('-').map(Number)
-            const date = new Date(Date.UTC(y, m - 1, d))
+            // setUTCFullYear, not Date.UTC: Date.UTC reads years 0-99 as 1900-1999.
+            const date = new Date(0)
+            date.setUTCFullYear(y, m - 1, d)
             return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
           }, 'is not a real calendar day'),
       )

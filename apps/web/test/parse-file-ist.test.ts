@@ -76,6 +76,16 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe(0.5)
   })
 
+  test('an escaped semicolon is part of the format, not a section break', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd\\;hh:mm;hh:mm']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
+  })
+
+  test('a date-only cell never carries a hidden time into the next day', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.9999999943, 'yyyy-mm-dd']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
   test('a time-only cell (serial below 1) is a valid date-time on Excel’s day zero', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[0.5, 'h:mm']]))
     expect(sheet.rows[0][0]).toBe('1899-12-31T12:00:00')
