@@ -130,7 +130,7 @@ describe('DataList', () => {
     render(<DataList layout="cards" caption="Runs" rows={long} columns={columns} rowKey={(r) => r.id} empty={EMPTY} />)
     const card = screen.getByRole('listitem')
     // jsdom does no layout, so pin the two CSS facts that keep the grid inside the card.
-    expect(card.querySelector('dl')?.className).toMatch(/grid-cols-\[auto_minmax\(0,1fr\)\]/)
+    expect(card.querySelector('dl')?.className).toMatch(/grid-cols-\[fit-content\(50%\)_minmax\(0,1fr\)\]/)
     expect(within(card).getByText('Done').nextElementSibling?.className).toMatch(/\bwrap-anywhere\b/)
     expect(within(card).getByText(long[0].name).className).toMatch(/\bwrap-anywhere\b/)
   })
@@ -143,6 +143,24 @@ describe('DataList', () => {
     expect(status.className).not.toMatch(/\bshrink-0\b/)
     expect(status.className).toMatch(/\bmax-w-full\b/)
     expect(status.className).toContain('[&_*]:whitespace-normal') // even inside a nowrap pill
+  })
+
+  test('every part of a phone card wraps inside it: title, status, meta, labels and values', () => {
+    const LONG = 'X'.repeat(80)
+    const cols: DataColumn<Run>[] = [
+      { key: 'name', header: 'Checklist', cell: () => LONG, phone: 'title' },
+      { key: 'status', header: 'Status', cell: () => <span className="whitespace-nowrap">{LONG}</span>, phone: 'status' },
+      { key: 'day', header: 'Date', cell: () => <span className="whitespace-nowrap">{LONG}</span>, phone: 'meta' },
+      { key: 'done', header: `Label${LONG}`, cell: () => LONG, phone: 'value' },
+    ]
+    render(<DataList layout="cards" caption="Runs" rows={[runs[0]]} columns={cols} rowKey={(r) => r.id} empty={EMPTY} />)
+    const card = screen.getByRole('listitem')
+    // jsdom does no layout: pin the CSS that keeps every role inside the card.
+    expect(card.className).toMatch(/\bmin-w-0\b/)
+    expect(card.className).toMatch(/\bwrap-anywhere\b/) // inherited by every descendant
+    expect(card.className).toContain('[&_*]:whitespace-normal') // beats nowrap children
+    expect(card.querySelector('dl')?.className).toContain('grid-cols-[fit-content(50%)_minmax(0,1fr)]') // a label never takes more than half
+    expect(card.querySelector('dt')?.className).toMatch(/\bmin-w-0\b/)
   })
 
   test('with no rows it says so and offers the way forward, instead of an empty table', () => {

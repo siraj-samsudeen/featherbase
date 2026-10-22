@@ -173,6 +173,18 @@ export function Gallery() {
             empty={{ title: 'No targets this month', body: 'Targets appear here once they are set for your Sections.' }}
           />
           <DataList
+            caption="Long values wrap inside a phone card"
+            rows={[{ name: 'SKU-0123456789012345678901234567890123456789-SAREE-KANCHIPURAM', target: 1_62_000, sales: 1_21_000 }]}
+            columns={[
+              ...LINE_COLUMNS.slice(0, 1),
+              { key: 'status', header: 'Status', phone: 'status', cell: () => <StatusPill tone="caution">Awaiting second-level approval from the regional office</StatusPill> },
+              { key: 'meta', header: 'Reference', phone: 'meta', cell: () => 'https://example.invalid/a/very/long/reference/path/without/any/spaces/at/all' },
+              { key: 'v', header: 'AVeryLongMetadataDerivedColumnHeaderWithoutSpaces', cell: (l) => fmtINR(l.sales) },
+            ]}
+            rowKey={(l) => l.name}
+            empty={{ title: 'Nothing to show', body: 'This example always has one row.' }}
+          />
+          <DataList
             caption="Checklist runs"
             rows={[] as Line[]}
             columns={LINE_COLUMNS}

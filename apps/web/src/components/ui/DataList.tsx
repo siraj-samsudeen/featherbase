@@ -93,7 +93,12 @@ export function DataList<Row>({
     return (
       <ul aria-label={caption} className={cx('flex flex-col gap-2 text-control', className)}>
         {rows.map((row) => (
-          <li key={rowKey(row)} className="rounded-card border border-border bg-surface p-3.5">
+          // Everything inside a card wraps rather than widening it: overflow-wrap is
+          // inherited, and the descendant rule beats any nowrap a cell brings.
+          <li
+            key={rowKey(row)}
+            className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
+          >
             {/* Wraps, so a status too wide to sit beside the title moves under it. */}
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
               <div className="min-w-0 font-semibold text-ink">
@@ -110,7 +115,7 @@ export function DataList<Row>({
               ))}
             </div>
             {metas.length > 0 && (
-              <p className="mt-1 text-ink-muted">
+              <p className="mt-1 min-w-0 text-ink-muted">
                 {metas.map((c, i) => (
                   <span key={c.key}>
                     {i > 0 && ' · '}
@@ -120,11 +125,11 @@ export function DataList<Row>({
               </p>
             )}
             {values.length > 0 && (
-              // A zero-minimum value track, so a long unbroken value wraps instead of widening the card.
-              <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+              // A label takes at most half the card and a value the rest, both able to wrap, so neither widens the card.
+              <dl className="mt-2 grid grid-cols-[fit-content(50%)_minmax(0,1fr)] gap-x-4 gap-y-1">
                 {values.map((c) => (
                   <div key={c.key} className="contents">
-                    <dt className="text-ink-muted">{c.header}</dt>
+                    <dt className="min-w-0 text-ink-muted">{c.header}</dt>
                     <dd className={cx('min-w-0 wrap-anywhere text-ink', c.align === 'end' && 'text-right tabular-nums')}>{c.cell(row)}</dd>
                   </div>
                 ))}
