@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { pickerFor } from '../src/lib/pickers'
 import { isOpaqueId, principalLabel } from '../src/lib/people'
+import { recordAction } from '../src/lib/recents'
 
 const anonymous = { user: null, token: null } as never
 
@@ -115,4 +116,35 @@ test('a Person form is headed by the name, never the id, offers no Rename, and R
   await waitFor(() => expect(row).toHaveTextContent('Asha Form'))
   expect(row.textContent).not.toContain(asha.user!)
   expect(row.getAttribute('title') ?? '').not.toContain(asha.user!)
+})
+
+// #414 review (Codex P2): renaming the person on their form updates the name
+// the heading, breadcrumb and Recent read — it is cached per id.
+test('saving a new full name on the Person form shows the new name at once', async ({ admin, createUser }) => {
+  const p = await createUser({ email: 'renamed.form@example.com', fullName: 'Old Name' })
+  localStorage.clear()
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(p.user!)}`, admin)
+  const form = await screen.findByTestId('form-view')
+  const heading = within(form).getByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent('Person: Old Name'))
+  const field = form.querySelector('[data-field=full_name]') as HTMLInputElement
+  await userEvent.clear(field)
+  await userEvent.type(field, 'New Name')
+  await userEvent.click(within(form).getByTestId('form-save'))
+  await waitFor(() => expect(heading).toHaveTextContent('Person: New Name'))
+  expect(within(form).getByTestId('breadcrumbs')).toHaveTextContent('New Name')
+})
+
+// A remembered row with no table caption still shows the name, and its
+// tooltip never falls back to the id.
+test('a Recent row for a person with no caption shows the name and no id tooltip', async ({ admin, createUser }) => {
+  const p = await createUser({ email: 'nosub.recent@example.com', fullName: 'Nosub Person' })
+  localStorage.clear()
+  recordAction(admin.user!, { kind: 'row', key: `row:Person/${p.user!}`, label: p.user!, path: `/featherbase/admin/Person/${p.user!}` })
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const rows = await screen.findAllByTestId('sidebar-recent')
+  const row = rows.find((r) => r.getAttribute('href')?.includes(p.user!))!
+  await waitFor(() => expect(row).toHaveTextContent('Nosub Person'))
+  expect(row.textContent).not.toContain(p.user!)
+  expect(row.getAttribute('title') ?? '').not.toContain(p.user!)
 })

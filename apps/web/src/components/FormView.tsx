@@ -260,6 +260,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      // #414: a person's name is cached per id for the heading, breadcrumb
+      // and Recent; a save may have changed it.
+      if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
       if (isNew) {
         navigate({
           to: '/featherbase/admin/$table/$name',
