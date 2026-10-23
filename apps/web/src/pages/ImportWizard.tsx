@@ -1187,6 +1187,15 @@ export function ImportWizard() {
     )
   }
 
+  // #416: a refused column is named by the sheet's header that feeds it, so
+  // the message points at a column the user can find in their own file.
+  function headerLabel(sheet: ParsedSheet, plan: SheetPlan) {
+    return (column: string) => {
+      const idx = plan.mapping.findIndex((target, i) => target === column && plan.include[i])
+      return idx >= 0 && sheet.headers[idx] ? String(sheet.headers[idx]) : column
+    }
+  }
+
   function planIdPattern(plan: SheetPlan): string {
     return plan.id_pattern ?? idPatternFor(plan.table)
   }
@@ -1239,7 +1248,8 @@ export function ImportWizard() {
         const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0 }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const m of plan.members) {
-          const rows = mappedRows(memberSheet(plan, m), plan)
+          const sheet = memberSheet(plan, m)
+          const rows = mappedRows(sheet, plan)
           // IMP-I1 disclosure: data rows with nothing in any MAPPED column
           // are sent nowhere — say so instead of letting the counts quietly
           // disagree with the file.
@@ -1250,6 +1260,7 @@ export function ImportWizard() {
             rows,
             dryRun: true,
             upsert: upsertArgs(plan),
+            columnLabel: headerLabel(sheet, plan),
           })
           totals.valid += report.valid
           totals.updated += report.updated
@@ -1362,6 +1373,7 @@ export function ImportWizard() {
             table: plan.table,
             rows,
             upsert: plan.mode === 'existing' ? upsertArgs(plan) : null,
+            columnLabel: plan.mode === 'existing' ? headerLabel(memberSheet(plan, m), plan) : undefined,
             // IMP-011: recorded in the Import Log alongside the counts.
             context: (part, parts) => ({
               file_name: fileName ?? undefined,
