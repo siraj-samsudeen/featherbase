@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import type { SearchHit } from '../src/search'
+import { registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { createUserWithRole, grantRole, makeTable, type TableRef } from './fixtures'
 
@@ -231,5 +231,13 @@ describe('global search labels (#431)', () => {
     expect(results.find((h) => h.table === 'Table' && h.row_id === table.name)).toMatchObject({
       kind_label: 'Table definition',
     })
+  })
+
+  test('Object.prototype keys are not registries', () => {
+    for (const name of ['constructor', 'toString', 'valueOf', '__proto__']) {
+      expect(registryLabel(name)).toBeUndefined()
+    }
+    expect(registryLabel('Table')).toBe('Table definition')
+    expect(registryLabel('Metadata Override')).toBe('Metadata override')
   })
 })
