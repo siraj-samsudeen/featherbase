@@ -416,12 +416,14 @@ export async function currentAssignment(user: string, period: Period = currentPe
     throw new AppError(
       'ValidationError',
       `Your account is set up for more than one store (${[...plants].sort().join(', ')}), and this report shows one store at a time. Ask your administrator to check which store you belong to.`,
+      // The page shows exactly this refusal's sentence and no other (matched on the code).
+      { code: 'multiple_stores' },
     )
   const plant = [...plants][0]
   // The maps are edited by the store, and the live read and the Dive both put these codes into
   // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
   // cell is dropped and logged rather than allowed to break, or rewrite, anyone's report.
-  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `${user} maps to a store code that is not four digits: ${JSON.stringify(plant)}`)
+  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `Your account maps to a store code that is not four digits (${JSON.stringify(plant)}). Ask your administrator to correct it.`)
   const all = [...new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])]
   const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
   if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)

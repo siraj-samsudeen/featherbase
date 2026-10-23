@@ -1,7 +1,8 @@
 // The sales-target report page (#3783): one report on the page, not two. When the live MotherDuck
 // Dive is embedded, the cached table folds away behind a line naming its age; when the Dive is not
 // there, the cached table is the report and stays open. Server in-process; MotherDuck stubbed.
-import { afterEach, beforeEach } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
+import type { Sql } from 'postgres'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
@@ -163,18 +164,15 @@ test('a person with no viewer role is told plainly, with no API wording and no i
 })
 
 // #404: a two-store account gets the server's sentence in a neutral card, not the red developer frame.
-test('a person set up for two stores sees the server\'s sentence, not "Report unavailable"', async ({ admin }) => {
+test('a person set up for two stores sees the server\'s sentence, not "Report unavailable"', async ({ admin, createUser }) => {
   await viewer(admin)
-  const id = await personId(admin, 'test_employee_1')
-  await admin.fetch('/api/save_row', {
-    method: 'POST',
-    body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: id, plant_code: '1515', store_label: 'K', material_group: '010101001' } }),
-  })
-  const login = await (await admin.fetch('/api/set_password', { method: 'POST', body: JSON.stringify({ user: id, password: 'pw-1' }) })).text()
-  void login
-  const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
-  const { token } = (await res.json()) as { token: string }
-  await renderApp('/featherbase/sales-target', { token, user: id } as never)
+  const reader = await createUser({ email: 'two.stores@example.com', roles: ['Sales Target Viewer'] })
+  for (const [plant, group] of [['1501', '010101003'], ['1515', '010101002']])
+    await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: reader.user, plant_code: plant, store_label: 'S', material_group: group } }),
+    })
+  await renderApp('/featherbase/sales-target', reader)
   const note = await screen.findByTestId('embed-refused')
   expect(note).toHaveTextContent('more than one store (1501, 1515)')
   expect(note).toHaveTextContent('Ask your administrator')
@@ -183,10 +181,54 @@ test('a person set up for two stores sees the server\'s sentence, not "Report un
   expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
 })
 
+// Only the two-store refusal gets the neutral card; any other validation failure keeps the generic "unavailable" frame.
+test('another validation refusal keeps the generic frame, not the neutral card', async ({ admin, createUser }) => {
+  await viewer(admin)
+  const reader = await createUser({ email: 'other.refusal@example.com', roles: ['Sales Target Viewer'] })
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('/api/sales_target/me'))
+      return Response.json({ error: { type: 'ValidationError', message: 'internal detail psn_secretid' } }, { status: 417 })
+    return real(input, init)
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader)
+    await screen.findByText('Report unavailable')
+    expect(screen.queryByTestId('embed-refused')).not.toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+// The role is deleted right after /me succeeded: the report calls answer 403 and the page shows the plain no-access card.
+test('a role taken away mid-session shows the no-access card and no cached table', async ({ admin, createUser, db }) => {
+  await viewer(admin)
+  const reader = await createUser({ email: 'role.revoked@example.com', roles: ['Sales Target Viewer'] })
+  const id = reader.user!
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    // The jsdom AbortSignal is not the one the bridge expects; the page's own fetches drop it here.
+    const { signal: _signal, ...rest } = (init ?? {}) as RequestInit
+    const res = await real(input, rest)
+    if (String(input).includes('/api/sales_target/me'))
+      await (db as Sql)`delete from has_role where parent = ${id} and role = 'Sales Target Viewer'`
+    return res
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader)
+    expect(await screen.findByText("You don't have access to this report")).toBeInTheDocument()
+    expect(screen.queryByTestId('snapshot-report')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Numbers unavailable/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
+
 test('a person with no full name is shown by email, never by id, in the header', async ({ admin, createUser, db }) => {
   await viewer(admin)
   const nobody = await createUser({ email: 'no.fullname@example.com', roles: ['Sales Target Viewer'] })
-  await (db as { unsafe: (q: string) => Promise<unknown> }).unsafe(`update person set full_name = null where row_id = '${nobody.user}'`)
+  await (db as Sql)`update person set full_name = null where row_id = ${nobody.user!}`
   await renderApp('/featherbase/sales-target', nobody)
   await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('no.fullname@example.com'))
   expect(screen.getByTestId('identity')).not.toHaveTextContent('psn_')

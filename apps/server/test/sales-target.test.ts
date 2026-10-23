@@ -445,6 +445,31 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(message).toMatch(/administrator/i)
   })
 
+  test('both refusals address the reader, name no id, and only the two-store one carries its own code', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
+    const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+    const twoRes = await api.fetch('/api/sales_target/me', { headers: r.headers })
+    const two = (await twoRes.json()) as { error: { message: string; fields?: { code?: string } } }
+    expect(two.error.fields).toEqual({ code: 'multiple_stores' })
+
+    // A store code that is not four digits: the same plain refusal, with no id and no stores code.
+    await admin.post('/api/save_row', { table: 'Section Merchandise Map', row: { store_code: '15O1', material_group: '010505009', mch_subcategory: 'Kurti Z', section_name: 'Kurti' } })
+    await admin.post('/api/save_row', { table: 'Employee Section Map', row: { store_code: '15O1', employee_code: 'RR-11093', subcategory: 'Kurti Z', section_name: 'Kurti' } })
+    await admin.post('/api/save_row', { table: 'Person', row: { username: 'bad_store_person', full_name: 'Bad Store', enabled: true, roles: [{ role: VIEWER_ROLE }] } })
+    await setEmployeeCode(admin, 'bad_store_person', 'RR-11093')
+    await admin.post('/api/set_password', { user: await idOf('bad_store_person'), password: 'pw-bad_store_person' })
+    const b = await loginAs(api, 'bad_store_person', 'pw-bad_store_person')
+    const res = await api.fetch('/api/sales_target/me', { headers: b.headers })
+    expect(res.status).toBe(417)
+    const body = (await res.json()) as { error: { message: string; fields?: unknown } }
+    expect(body.error.message).toContain('not four digits')
+    expect(body.error.message).not.toMatch(/psn_/)
+    expect(body.error.message).toMatch(/administrator/i)
+    expect(body.error.fields).toBeUndefined()
+  })
+
   test('display_name never falls back to the opaque id: full name, then username, then email', async ({ admin, createUser }) => {
     await seed(admin)
     const nobody = await createUser({ email: 'no.fullname.me@example.com', roles: [VIEWER_ROLE] })

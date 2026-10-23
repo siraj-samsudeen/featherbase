@@ -162,7 +162,7 @@ export function SalesTargetPage() {
             const body = (await res.json().catch(() => ({}))) as Report & { no_assignment?: boolean }
             const ms = performance.now() - t0
             if (!current()) return
-            if (res.status === 403) setPre({ kind: 'error', message: 'no access' }) // hidden: the embed call shows the no-access card
+            if (res.status === 403) setEmbed({ kind: 'no-access' }) // role taken away: the plain card, never a red "Numbers unavailable"
             else if (body.no_assignment) setPre({ kind: 'no-assignment' })
             else if (res.ok) setPre({ kind: 'ready', report: body, ms })
             else setPre({ kind: 'error', message: `HTTP ${res.status}` })
@@ -200,7 +200,7 @@ export function SalesTargetPage() {
         if (!current()) return
         // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else if (err instanceof ApiError && err.type === 'ValidationError') setEmbed({ kind: 'refused', message: err.message })
+        else if (err instanceof ApiError && err.fields?.code === 'multiple_stores') setEmbed({ kind: 'refused', message: err.message })
         else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
       }
     })()
