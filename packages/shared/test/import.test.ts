@@ -351,6 +351,10 @@ describe('#387: a Datetime wall time goes on the wire as the instant it names', 
     expect(wire('2024-10-21T12:00:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
     expect(wire('2024-10-21 12:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
   })
+  test('fractional seconds keep every digit the text has', () => {
+    const second = new Date(2024, 9, 21, 12).toISOString().slice(0, 19)
+    expect(wire('2024-10-21T12:00:00.123456')).toBe(`${second}.123456Z`)
+  })
   test('a date-only value is local midnight on the importing clock', () => {
     expect(wire('2024-10-21')).toBe(new Date(2024, 9, 21).toISOString())
   })

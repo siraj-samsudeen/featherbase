@@ -45,8 +45,9 @@ const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)
  * A Datetime with no zone is the importer's wall clock: send the instant it
  * names (toISOString), or the database would read it in the server's timezone
  * and an IST noon would come back as 17:30. A bare day is that day's local
- * midnight. Zoned text, and text naming an impossible day (which validation
- * then refuses), is returned unchanged.
+ * midnight, and fractional seconds keep every digit (PostgreSQL holds
+ * microseconds). Zoned text, and text naming an impossible day (which
+ * validation then refuses), is returned unchanged.
  *
  * Daylight-saving edges follow the JavaScript Date rules: a wall time inside a
  * spring-forward gap moves forward by the gap (São Paulo, 04-Nov-2018 00:30 is
@@ -56,6 +57,11 @@ const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)
 export function wallTimeToInstant(s: string): string {
   const m = s.match(WALL_TIME)
   if (!m || !isCalendarDay(Number(m[1]), Number(m[2]), Number(m[3]))) return s
-  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4] ?? '00:00'}`)
-  return Number.isNaN(d.getTime()) ? s : d.toISOString()
+  // Convert the whole seconds only and keep the text's own fraction: every zone
+  // offset is whole seconds, and toISOString() would cut microseconds to .mmm.
+  const [clock, fraction] = (m[4] ?? '00:00').split('.')
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${clock}`)
+  if (Number.isNaN(d.getTime())) return s
+  const iso = d.toISOString()
+  return fraction ? `${iso.slice(0, 19)}.${fraction}Z` : iso
 }

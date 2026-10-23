@@ -87,6 +87,7 @@ describe('Excel dates in IST (+05:30)', () => {
   test('a wall time inside a DST gap moves forward (São Paulo, 04-Nov-2018 00:30 is 01:30 -02:00)', () => {
     expect(onClock('America/Sao_Paulo', () => datetimeWire('2018-11-04T00:30'))).toBe('2018-11-04T03:30:00.000Z')
     expect(onClock('America/Sao_Paulo', () => datetimeWire('2018-11-04'))).toBe('2018-11-04T03:00:00.000Z')
+    expect(onClock('America/Sao_Paulo', () => datetimeWire('2018-11-04T00:30:00.250001'))).toBe('2018-11-04T03:30:00.250001Z')
   })
 
   test('an ambiguous wall time takes its first occurrence (New York, 03-Nov-2024 01:30 EDT)', () => {
@@ -118,6 +119,8 @@ describe('Excel dates in IST (+05:30)', () => {
   test.each([
     ['2024-10-21T12:00:00', '2024-10-21T06:30:00.000Z'],
     ['2024-10-21 12:00', '2024-10-21T06:30:00.000Z'],
+    ['2024-10-21T12:00:00.123456', '2024-10-21T06:30:00.123456Z'],
+    ['2024-10-21T12:00:00.5', '2024-10-21T06:30:00.5Z'],
     ['2024-10-21T12:00:00+05:30', '2024-10-21T12:00:00+05:30'],
     ['2024-10-21T06:30:00Z', '2024-10-21T06:30:00Z'],
   ])('a Datetime %s goes on the wire as %s: a wall time is the importing clock', (cell, wire) => {

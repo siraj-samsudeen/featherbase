@@ -24,7 +24,7 @@ day with `toISOString().slice(0, 10)`: the import preview and the shared Date sc
     read as time codes.
 - **Wall time goes on the wire as an instant.** `coerceRows` passes a Datetime with no zone through
   `wallTimeToInstant`. It reads the text on the importing browser's clock and sends `toISOString()`; a bare day is
-  local midnight. A `+HH:MM` suffix was rejected: IST's 1899 local mean time is `+05:21:10`, which `Date.parse`
+  local midnight, and fractional seconds keep every digit the text has (only whole seconds are converted). A `+HH:MM` suffix was rejected: IST's 1899 local mean time is `+05:21:10`, which `Date.parse`
   cannot read. Zoned text is sent unchanged. Daylight-saving edges follow JavaScript Date: a time in a
   spring-forward gap moves forward by the gap, and an ambiguous fall-back time takes its first occurrence.
   `coerceRows` runs only in the browser (ImportWizard, TableBuilder, TableMerge).

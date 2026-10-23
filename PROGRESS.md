@@ -18,7 +18,7 @@ SheetJS renders (a port of `choose_fmt`) and converts each date cell with no tim
 - a serial below 0 or past 31-Dec-9999, and an elapsed `[h]`/`[m]`/`[s]` duration, stays a number.
 
 `coerceRows` sends a Datetime with no zone through `wallTimeToInstant`, which reads it on the importing browser's
-clock; a bare day is local midnight. Before, it went to the server bare and PostgreSQL read an IST noon as UTC
+clock; a bare day is local midnight and fractional seconds keep every digit. Before, it went to the server bare and PostgreSQL read an IST noon as UTC
 (17:30). This applies to CSV date-time text too, and that is a data-shape change. The Date and Datetime schemas
 share `isCalendarDay`, which refuses 30-Feb, Excel's 29-Feb-1900 and year 0 before the write.
 
@@ -27,7 +27,7 @@ capability delta. Follow-ups: #389 (correct rows imported before this) and #390 
 day).
 
 **Verified** under Node 22:
-- `apps/web/test/parse-file-ist.test.ts` (48): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. Beyond the
+- `apps/web/test/parse-file-ist.test.ts` (50): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. Beyond the
   month, leap-day and year ends, it covers:
   - São Paulo's missing midnight and Samoa's skipped day;
   - the 1900 and 1904 systems, and their last days;
@@ -37,7 +37,7 @@ day).
   - carries past the second and past midnight;
   - date-only and wall-time Datetimes on the wire in IST and New York;
   - a daylight-saving gap and an ambiguous time.
-- Web suite 693 passed; shared 153 passed at 100% line coverage; server import tests 88; web, shared and server
+- Web suite 695 passed; shared 154 passed at 100% line coverage; server import tests 88; web, shared and server
   typecheck passed.
 - The import and table-builder e2e specs locally in IST: 41 of 42 passed. The one failure, `import-upsert-journey`
   UPS-J2, also fails locally on untouched `main` (`de6c151c`, twice), so it predates this change; CI passes it.
