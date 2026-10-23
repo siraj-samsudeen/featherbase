@@ -530,6 +530,33 @@ describe('#432: kept history and the database clock', () => {
     expect((await history()).data).toHaveLength(0)
   })
 
+  test('the namesake rule is an anti-join with the same results as a per-row check', async ({ admin }) => {
+    const { scopedWhere } = await import('../src/query')
+    await makeTable(admin, { name: 'Audit Plan', columns: ['title'], id_pattern: 'prompt', track_changes: true })
+    for (const id of ['P-1', 'P-2']) {
+      const r = await admin.post<{ updated_at: string }>('/api/table/Audit%20Plan', { row_id: id, title: 'a' })
+      await patchDoc(admin, `/api/table/Audit%20Plan/${id}`, { title: 'b', updated_at: r.updated_at })
+    }
+    await admin.delete('/api/table_def/Audit%20Plan')
+    await recreateLater(admin, 'Audit Plan')
+    const { table, where } = await scopedWhere('Version', 'Administrator', [])
+    const [{ n }] = await sql`select count(*)::int as n from ${sql(table)} where ${where}`
+    // The reference formulation: a row is hidden only when its Table name
+    // was created after it was written.
+    const [{ expected }] = await sql`
+      select count(*)::int as expected from version v
+      where v.created_at >= coalesce((select td.created_at from table_def td where td.name = v.ref_table), '-infinity'::timestamptz)`
+    expect(n).toBe(expected)
+    expect(await sql`select 1 from version where ref_table = 'Audit Plan'`).toHaveLength(2)
+    const visible = await admin.get<{ data: unknown[] }>(
+      `/api/table/Version?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', 'Audit Plan']]))}`,
+    )
+    expect(visible.data).toHaveLength(0)
+    const plan = (await sql`explain select count(*) from ${sql(table)} where ${where}`).map((r) => String(r['QUERY PLAN'])).join('\n')
+    expect(plan).toMatch(/Anti Join/)
+    expect(plan).not.toMatch(/SubPlan/)
+  })
+
   test('an email queued for a deleted Table fails rather than render its namesake', async ({ admin }) => {
     await loadJobs()
     await makeTable(admin, { name: 'Audit Mail', columns: ['title'], id_pattern: 'prompt' })

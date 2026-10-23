@@ -11,7 +11,8 @@ history, queued email and notifications keep naming the deleted table and can
 still be read. A place that merely mentions the table's name in passing, such
 as an activity log entry, is not a link and SHALL survive as a historical
 record. History kept for a deleted table SHALL never act on a new table later
-created under the same name.
+created under the same name: once the name is reused, the old history leaves
+list views but can still be read by opening the record itself.
 
 #### Scenario: A log entry outlives the table it names
 
