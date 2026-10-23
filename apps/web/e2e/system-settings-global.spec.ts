@@ -59,8 +59,9 @@ test('SET-004: date format and currency render globally', async ({ session, requ
     .visit(`/admin/${encodeURIComponent(DT)}`)
     .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('$1,234,567.50'))
 
-  await setSettings(request, { currency: 'INR', currency_precision: 3 })
+  // Precision may show fewer decimals than the currency's ISO 4217 minor unit, never more (#4332).
+  await setSettings(request, { currency: 'INR', currency_precision: 0 })
   await session
     .reload()
-    .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('₹12,34,567.500'))
+    .within('[data-testid="cell-amount"]', (cell) => cell.assertExactText('₹12,34,568'))
 })
