@@ -106,6 +106,12 @@ jobs:
       - name: Validate E2E suite uses DSL fixtures
         run: pnpm check:e2e-dsl
 
+      # This repository is public: no real Aadhaar-like numbers, Indian mobile
+      # numbers or client-domain personal emails in tracked files. Synthetic
+      # values are listed in tools/check-sensitive.allow.
+      - name: Check for personal data in tracked files
+        run: pnpm check:sensitive
+
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 

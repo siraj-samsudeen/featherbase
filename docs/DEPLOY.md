@@ -339,7 +339,7 @@ Outside accounts are linked to a person by the provider's permanent ID —
 Google's account ID, the StyleHR employee code — never by email:
 
 - `GET|POST /api/people/<person>/identities` (System Manager): link StyleHR
-  `{"method":"stylehr","subject":"RR-7963","sign_in_name":"name_9999999999"}`;
+  `{"method":"stylehr","subject":"RR-0101","sign_in_name":"name_9999999999"}`;
   invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
   — the first Google sign-in with that verified address links it for good.
   **Any change to the person's email cancels every unused invite they hold**;

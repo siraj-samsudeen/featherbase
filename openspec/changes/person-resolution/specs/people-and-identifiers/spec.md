@@ -80,12 +80,12 @@ for example on two companies' payrolls.
 
 #### Scenario: An agency code that became a company code
 
-- **WHEN** a sales assistant who started through an agency as 21654 is later
-  hired directly as RR-10353, the HR roster closes 21654 on the day the agency
+- **WHEN** a sales assistant who started through an agency as 30654 is later
+  hired directly as RR-0102, the HR roster closes 30654 on the day the agency
   spell ended, and the two records are confirmed as one person
-- **THEN** searching 21654 finds them, their record shows 21654 valid until
-  that day and RR-10353 as current, and a report for a month before the
-  conversion still counts 21654's sales as theirs
+- **THEN** searching 30654 finds them, their record shows 30654 valid until
+  that day and RR-0102 as current, and a report for a month before the
+  conversion still counts 30654's sales as theirs
 
 #### Scenario: Two live employments
 
@@ -146,8 +146,8 @@ remains. Values a person entered about themselves never raise a group.
 
 #### Scenario: Same Aadhaar on two employee records
 
-- **WHEN** the roster brings in RR-10353 whose Aadhaar fingerprint equals the
-  one already on 21654's record
+- **WHEN** the roster brings in RR-0102 whose Aadhaar fingerprint equals the
+  one already on 30654's record
 - **THEN** a strong group of the two records appears in the review list,
   showing their worker types and dates and the matching last four digits
 
@@ -199,9 +199,9 @@ refused while a later merge still builds on this one, and says which.
 
 #### Scenario: Conversion confirmed
 
-- **WHEN** a reviewer confirms that 21654 and RR-10353 are one person
-- **THEN** RR-10353's record survives with both codes, both sign-in methods
-  and the union of their access; 21654's record stays, inactive, and opening
+- **WHEN** a reviewer confirms that 30654 and RR-0102 are one person
+- **THEN** RR-0102's record survives with both codes, both sign-in methods
+  and the union of their access; 30654's record stays, inactive, and opening
   it leads to the survivor
 
 #### Scenario: The CEO's second account merged by hand
@@ -368,8 +368,8 @@ person.
 #### Scenario: Last year's sales under an old code
 
 - **WHEN** the warehouse joins last year's sales, keyed by employee code
-  21654, to people
-- **THEN** they land on the same person as this year's sales under RR-10353
+  30654, to people
+- **THEN** they land on the same person as this year's sales under RR-0102
 
 #### Scenario: A code held by two people
 

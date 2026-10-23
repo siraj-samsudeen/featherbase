@@ -153,7 +153,7 @@ export function LoginPage() {
                 {delegatedTestMode ? (
                   <p role="status" data-testid="delegated-test-mode"
                     className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-6761) to open that person's view — no password needed.
+                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
                   </p>
                 ) : (
                   <p className="text-sm text-[var(--color-ink-muted)]">

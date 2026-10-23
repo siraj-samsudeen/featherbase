@@ -20,8 +20,8 @@ async function devShape() {
   invalidateMeta()
   const people: Record<string, string> = {}
   for (const [key, code, email] of [
-    ['anisha', 'RR-7963', 'sm.atk@jeyarama.com'],
-    ['kumar', '21654', null],
+    ['devi', 'RR-0101', 'sm.atk@jeyarama.com'],
+    ['kumar', '30654', null],
     ['collide', 'RR-8001', null],
     ['missing', 'RR-9999', null],
     ['twinA', 'DUP-1', null],
@@ -33,7 +33,7 @@ async function devShape() {
   }
   // The pre-0102 shape: identities keyed by the employee code, no code rows yet.
   await sql`delete from person_identifier where person_id in ${sql(Object.values(people))}`
-  for (const key of ['anisha', 'kumar', 'collide', 'missing'] as const) {
+  for (const key of ['devi', 'kumar', 'collide', 'missing'] as const) {
     const [code] = await sql`select employee_code from person where row_id = ${people[key]}`
     const id = await linkDelegated(people[key], `${key}_login`, { subject: String(code.employee_code) })
     await sql`update sign_in_identity set subject_kind = 'record-id' where id = ${id}`
@@ -52,15 +52,15 @@ describe('migration 0102: identifiers from the dev roster', () => {
 
     const subject = async (person: string) =>
       (await sql`select subject, subject_kind from sign_in_identity where person_id = ${person} and method = 'stylehr'`)[0]
-    expect(await subject(p.anisha)).toEqual({ subject: 'RR-7963', subject_kind: 'employee-code' })
-    expect(await subject(p.kumar)).toEqual({ subject: '21654', subject_kind: 'employee-code' })
+    expect(await subject(p.devi)).toEqual({ subject: 'RR-0101', subject_kind: 'employee-code' })
+    expect(await subject(p.kumar)).toEqual({ subject: '30654', subject_kind: 'employee-code' })
 
     // Code rows (assigner ''), no record numbers yet; email rows.
     expect(await sql`
       select system, assigner, value, verified, record_identifier_id from person_identifier
-      where person_id = ${p.anisha} order by system`).toEqual([
+      where person_id = ${p.devi} order by system`).toEqual([
       { system: 'email', assigner: '', value: 'sm.atk@jeyarama.com', verified: true, record_identifier_id: null },
-      { system: 'stylehr-employee-code', assigner: '', value: 'RR-7963', verified: true, record_identifier_id: null },
+      { system: 'stylehr-employee-code', assigner: '', value: 'RR-0101', verified: true, record_identifier_id: null },
     ])
     expect(await sql`select 1 from person_identifier where system = 'stylehr-employee-id' and person_id in ${sql(Object.values(p))}`).toHaveLength(0)
     expect(await sql`select 1 from person_identifier where person_id in (${p.twinA}, ${p.twinB})`).toHaveLength(0)
@@ -94,7 +94,7 @@ describe('migration 0102: identifiers from the dev roster', () => {
     const p = await devShape()
     await migratePersonResolution()
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
-    for (const [code, person] of [['rr-7963', p.anisha], ['21654', p.kumar], ['RR-9999', p.missing], ['RR-8001', p.collide]]) {
+    for (const [code, person] of [['rr-0101', p.devi], ['30654', p.kumar], ['RR-9999', p.missing], ['RR-8001', p.collide]]) {
       const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: code, pwd: '', method: 'stylehr' }) })
       expect(res.status, code).toBe(200)
       expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(person)
