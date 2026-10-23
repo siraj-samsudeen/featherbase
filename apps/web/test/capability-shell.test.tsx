@@ -114,20 +114,25 @@ test('a viewer whose only grants are to the All role gets the report, not the Ad
 })
 
 // (3) ListView toolbar follows what the person may do.
-test('a Table list offers Columns and Merge only to a System Manager, Import only where rows can be created', async ({ admin, createUser }) => {
+test('a Table list offers Columns, Merge and Import only to a System Manager, and New only where rows can be created', async ({ admin, createUser }) => {
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_read: true, can_create: true } })
   const clerk = await createUser({ email: 'clerk-list@example.com', roles: ['Shelf Clerk'] })
 
   await renderApp('/featherbase/admin/Back%20Office', clerk)
-  await screen.findByTestId('open-import')
+  await screen.findByTestId('list-new')
+  // Import is a System Manager tool (its route and wizard are), even for someone who can create rows.
+  expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-columns')).not.toBeInTheDocument()
   expect(screen.queryByTestId('open-merge')).not.toBeInTheDocument()
   cleanup()
 
   await renderApp('/featherbase/admin/Shelf%20Note', clerk)
   await screen.findByTestId('list-columns')
-  expect(screen.queryByTestId('open-import')).not.toBeInTheDocument()
+  // A read-only clerk gets no way to add rows, in the toolbar or the empty list.
+  expect(screen.queryByTestId('list-new')).not.toBeInTheDocument()
+  expect(await screen.findByText('No rows')).toBeInTheDocument()
+  expect(screen.queryByTestId('list-empty-new')).not.toBeInTheDocument()
   cleanup()
 
   await renderApp('/featherbase/admin/Back%20Office', admin)
@@ -167,4 +172,14 @@ test('the preview banner shows on the no-access page', async ({ createUser }) =>
   await screen.findByTestId('no-access')
   expect(await screen.findByTestId('preview-banner')).toBeInTheDocument()
   vi.unstubAllEnvs()
+})
+
+// (3) A create-only grant is a grant of their own: the shared-rows page is for people with none.
+test('a create-only grant holder is not told "nothing is open to you"', async ({ admin, createUser }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_create: true } })
+  const writer = await createUser({ email: 'writer-only@example.com', roles: ['Shelf Clerk'] })
+  await renderApp('/featherbase/admin', writer)
+  await screen.findByTestId('admin-sidebar')
+  await waitFor(() => expect(screen.queryByTestId('shared-only')).not.toBeInTheDocument())
 })

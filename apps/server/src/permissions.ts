@@ -133,7 +133,7 @@ export async function assertPermission(
 export async function tableAccessFor(
   principal: string,
   roles: string[],
-): Promise<{ readable: string[]; creatable: string[]; any: boolean }> {
+): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.can_create, p.owner_app,
       (p.can_read or p.can_write or p.can_create or p.can_delete
@@ -149,10 +149,12 @@ export async function tableAccessFor(
   const [shared] = await sql`
     select 1 from share
     where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
+  const ownGrant = active.some((r) => r.role !== 'All')
   return {
     readable: names((r) => r.can_read),
     creatable: names((r) => r.can_create),
-    any: active.some((r) => r.role !== 'All') || Boolean(shared),
+    ownGrant,
+    any: ownGrant || Boolean(shared),
   }
 }
 

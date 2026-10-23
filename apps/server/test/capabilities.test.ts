@@ -7,7 +7,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { VIEWER_ROLE } from '../src/sales-target'
 
-type Caps = { manage: boolean; report: boolean; table_access: boolean; tables: string[]; creatable: string[] }
+type Caps = { manage: boolean; report: boolean; table_access: boolean; own_grant: boolean; tables: string[]; creatable: string[] }
 type Admin = TestClient
 
 async function capsOf(client: { get: <T>(path: string) => Promise<T> }): Promise<Caps> {
@@ -26,13 +26,13 @@ async function seedRoleAndTable(admin: Admin) {
 describe('#410 capabilities in whoami', () => {
   test('a System Manager can manage; the Table list is not repeated in whoami', async ({ admin }) => {
     await seedRoleAndTable(admin)
-    expect(await capsOf(admin)).toEqual({ manage: true, report: false, table_access: true, tables: [], creatable: [] })
+    expect(await capsOf(admin)).toEqual({ manage: true, report: false, table_access: true, own_grant: true, tables: [], creatable: [] })
   })
 
   test('a person holding only the Sales Target Viewer role gets the report and nothing else', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     const tl = await createUser({ email: 'tl.viewer@example.com', roles: [VIEWER_ROLE] })
-    expect(await capsOf(tl)).toEqual({ manage: false, report: true, table_access: false, tables: [], creatable: [] })
+    expect(await capsOf(tl)).toEqual({ manage: false, report: true, table_access: false, own_grant: false, tables: [], creatable: [] })
   })
 
   test('a person with a read grant sees exactly the tables they can read', async ({ admin, createUser }) => {
@@ -42,13 +42,13 @@ describe('#410 capabilities in whoami', () => {
       row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true },
     })
     const clerk = await createUser({ email: 'clerk@example.com', roles: ['Shelf Clerk'] })
-    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, table_access: true, tables: ['Shelf Note'], creatable: [] })
+    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, table_access: true, own_grant: true, tables: ['Shelf Note'], creatable: [] })
   })
 
   test('a person with no role beyond the implicit one has no capability at all', async ({ admin, createUser }) => {
     await seedRoleAndTable(admin)
     const nobody = await createUser({ email: 'nobody@example.com' })
-    expect(await capsOf(nobody)).toEqual({ manage: false, report: false, table_access: false, tables: [], creatable: [] })
+    expect(await capsOf(nobody)).toEqual({ manage: false, report: false, table_access: false, own_grant: false, tables: [], creatable: [] })
   })
 
   test('a grant removed mid-session is reflected on the next call', async ({ admin, createUser }) => {
@@ -84,7 +84,7 @@ describe('#410 capabilities in whoami', () => {
     // A grant left behind for a Table that no longer exists.
     await sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('ghost-grant', 'Gone Table', 'Shelf Clerk', 'basic', true)`
     const clerk = await createUser({ email: 'clerk4@example.com', roles: ['Shelf Clerk'] })
-    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, table_access: false, tables: [], creatable: [] })
+    expect(await capsOf(clerk)).toEqual({ manage: false, report: false, table_access: false, own_grant: false, tables: [], creatable: [] })
   })
 
   test('a grant to the built-in All role lists the Table but does not earn the Admin shell', async ({ admin, createUser }) => {
@@ -92,11 +92,23 @@ describe('#410 capabilities in whoami', () => {
     // Runtime apps write these straight to the table; `All` is implicit, not a Role row.
     await sql`insert into permission (row_id, ref_table, role, tier, can_read) values ('all-grant', 'Shelf Note', 'All', 'basic', true)`
     const viewer = await createUser({ email: 'viewer-all@example.com', roles: [VIEWER_ROLE] })
-    expect(await capsOf(viewer)).toEqual({ manage: false, report: true, table_access: false, tables: ['Shelf Note'], creatable: [] })
+    expect(await capsOf(viewer)).toEqual({ manage: false, report: true, table_access: false, own_grant: false, tables: ['Shelf Note'], creatable: [] })
     // With a grant of their own, the same person earns the shell and still sees the All-granted Table.
     await admin.post('/api/table_def', { name: 'Back Office', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_read: true } })
     const clerk = await createUser({ email: 'clerk5@example.com', roles: ['Shelf Clerk'] })
     expect(await capsOf(clerk)).toMatchObject({ table_access: true, tables: ['Back Office', 'Shelf Note'] })
+  })
+
+  test('own_grant is false for a shared row alone, true for a create-only grant', async ({ admin, createUser }) => {
+    await seedRoleAndTable(admin)
+    const row = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Shelf Note', row: { title: 'Hello' } })
+    const guest = await createUser({ email: 'guest@example.com' })
+    await admin.post('/api/save_row', { table: 'Share', row: { share_table: 'Shelf Note', share_name: row.row_id, person: guest.user, read: true } })
+    expect(await capsOf(guest)).toMatchObject({ table_access: true, own_grant: false, tables: [] })
+
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_create: true } })
+    const writer = await createUser({ email: 'writer@example.com', roles: ['Shelf Clerk'] })
+    expect(await capsOf(writer)).toMatchObject({ table_access: true, own_grant: true, tables: [], creatable: ['Shelf Note'] })
   })
 })

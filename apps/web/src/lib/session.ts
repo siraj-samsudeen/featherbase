@@ -8,7 +8,8 @@ import { api, getSessionUser, listResource } from './api'
 export interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
   report: boolean // the Sales Target report
-  table_access: boolean // holds any Table grant or shared row
+  table_access: boolean // holds any Table grant of their own, or a shared row
+  own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
   creatable: string[] // Tables the person can add rows to
 }
