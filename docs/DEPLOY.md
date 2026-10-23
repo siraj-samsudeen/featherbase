@@ -695,8 +695,10 @@ columns, which logical replication does not send**. Warehouse readers use
    publishes them. Check `select pubname, pubgencols from pg_publication`:
    every publication covering `has_role` must show `s`. If not, run
    `ALTER PUBLICATION <name> SET (publish_generated_columns = stored)` (the
-   data-warehouse CDC change sets it for `featherbase_cdc_pub`). The release
-   preflight refuses otherwise, naming the publication and this command.
+   data-warehouse CDC change sets it for `featherbase_cdc_pub`). A column
+   list on `has_role` overrides that setting and cannot name 0101's columns
+   yet, so publish `has_role` without one. The release preflight refuses
+   otherwise, naming the publication and the fix.
 4. **Snapshot prod** (`pg_dump -Fc --no-owner`); this is the rollback point.
    Then run `cli boot-check` in the prod service's environment: `environment
    production; test mode off`, and the preflight lines, including `no
@@ -734,6 +736,9 @@ step 7, restore the snapshot **and** revert #4339's registration change
 before the worker runs again; then run one tick and check `access."user"` is
 current again. If only a CDC tick fails, the release stays: pause the worker
 again, fix the registration, and re-run the tick.
+The step-3 `publish_generated_columns = stored` change can stay after a
+restore: on the pre-release schema `has_role` has no generated columns, so it
+publishes nothing extra and blocks nothing.
 
 ### Manual procedures while the roster sync is frozen (until data-warehouse#4336)
 
