@@ -3,6 +3,21 @@
 > **Frozen 23-Oct-2026 — not updated any more.** Work is recorded in pull requests, their issues and
 > OpenSpec changes; decisions in `docs/adr/`. This file is kept as history. Do not add entries.
 
+## 2026-10-23 — An import check names the refused column (#416)
+
+The import wizard's Check showed a bad row only as "Invalid values for <Table>". The server's dry run (and real run)
+already returns the per-column reasons as `fields`; `lib/import-run.ts` dropped them. `failureMessage` appends them:
+`row 4: Invalid values for Section Ownership — effective_from: must be a YYYY-MM-DD date`.
+
+**Verified:** `apps/web/test/import-failure-message.test.ts` (red first: no such export), `import-upsert-split`;
+browser check of a Section Ownership CSV whose date cell is `23-10-2026` shows the column and reason. Real Excel date
+cells import on the right day (the #387 fix holds). Open question left on the issue: should a Date column also accept
+the app's own display form `23-Oct-2026`? (Filed as its own follow-up.)
+
+Review follow-ups: the message names the column by the file's own header (the wizard passes `columnLabel`), a
+`sendImportRun` test with a mocked server answer fails if the `fields` mapping is reverted, and OpenSpec change
+`import-check-names-column` adds the scenario to `spreadsheet-import`.
+
 ## 2026-10-23 — Real email through an SMTP server (#395)
 
 `apps/server/src/email.ts` now sends through SMTP (nodemailer) when `SMTP_HOST` is set, and still delivers to the

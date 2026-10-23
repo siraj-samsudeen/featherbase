@@ -18,6 +18,17 @@ export interface ImportFailure {
   message: string
 }
 
+/** What a refused row says (#416): the server's message plus, when it names
+ *  them, each refused column and why — "Invalid values for X" alone does not
+ *  tell anyone which cell to fix. */
+export function failureMessage(
+  f: { message: string; fields?: Record<string, string> },
+  columnLabel: (column: string) => string = (c) => c,
+): string {
+  const parts = Object.entries(f.fields ?? {}).map(([column, why]) => `${columnLabel(column)}: ${why}`)
+  return parts.length ? `${f.message} — ${parts.join('; ')}` : f.message
+}
+
 // UPS-R1's optional upsert arguments, as the server expects them.
 export interface ImportUpsertArgs {
   key_column: string
@@ -83,6 +94,9 @@ export async function sendImportRun(opts: {
   context?: (part: number, parts: number) => Record<string, unknown>
   // Progress, in sent-row terms (1-based from..to of total sent rows).
   onChunk?: (info: { from: number; to: number; total: number }) => void
+  // #416: how a refused column is named to the user — the file's own header
+  // when the caller knows the mapping, the column name otherwise.
+  columnLabel?: (column: string) => string
 }): Promise<ImportRunReport> {
   const { send, sendIdx, dupFailed } = splitForSend(opts.rows, opts.upsert?.key_column ?? null)
   const failed: ImportFailure[] = [...dupFailed]
@@ -98,7 +112,7 @@ export async function sendImportRun(opts: {
       valid?: number
       updated?: number
       inserted?: number
-      failed: { index: number; message: string }[]
+      failed: { index: number; message: string; fields?: Record<string, string> }[]
     }>(`/api/table/${encodeURIComponent(opts.table)}:import`, {
       rows: chunk,
       ...(opts.dryRun ? { dry_run: true } : {}),
@@ -113,7 +127,7 @@ export async function sendImportRun(opts: {
     // The server's per-chunk index becomes a source index HERE and never
     // leaves this module (#115).
     failed.push(
-      ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: f.message })),
+      ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: failureMessage(f, opts.columnLabel) })),
     )
   }
   failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
