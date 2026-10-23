@@ -436,7 +436,22 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
     expect(res.status).toBe(417)
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain('more than one store')
+    const message = ((await res.json()) as { error: { message: string } }).error.message
+    expect(message).toContain('more than one store')
+    // #404: the refusal is written for the person, with the stores and who to ask — never an opaque id.
+    expect(message).not.toMatch(/psn_/)
+    expect(message).toContain('1501')
+    expect(message).toContain('1515')
+    expect(message).toMatch(/administrator/i)
+  })
+
+  // #405: a person with no username (every StyleHR person) is not shown as their opaque id.
+  test('the identity route reports no username for a person who has none, never the opaque id', async ({ admin, createUser }) => {
+    await seed(admin)
+    const nobody = await createUser({ email: 'no.username.me@example.com', fullName: 'Asha Nair', roles: [VIEWER_ROLE] })
+    const me = await nobody.get<{ username: string | null; display_name: string }>('/api/sales_target/me')
+    expect(me.username).toBeNull()
+    expect(me.display_name).toBe('Asha Nair')
   })
 
   // The roster: who leads and who manages each Section. The merchandise map speaks merch Section

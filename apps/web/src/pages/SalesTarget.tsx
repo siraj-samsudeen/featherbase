@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buttonClasses } from '../components/ui'
 import { useNavigate } from '@tanstack/react-router'
-import { api, clearSession, getSessionUser, getToken } from '../lib/api'
+import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { Logo } from '../components/Logo'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
 import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
@@ -14,7 +14,8 @@ import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '.
 // embed origin; the browser chooses nothing.
 
 interface Me {
-  username: string
+  /** null for a person who has none — StyleHR people sign in by ID and have no username. */
+  username: string | null
   display_name: string
   assignment: {
     plant_code: string
@@ -43,6 +44,7 @@ type Embed =
   | { kind: 'frame'; src: string }
   | { kind: 'no-assignment' }
   | { kind: 'not-configured' }
+  | { kind: 'no-access' }
   | { kind: 'error'; message: string }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
@@ -191,7 +193,9 @@ export function SalesTargetPage() {
         else setEmbed({ kind: 'error', message: body.error?.message ?? `HTTP ${res.status}` })
       } catch (err) {
         if (!current()) return
-        setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
+        if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
+        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
       }
     })()
     return () => controller.abort()
@@ -252,7 +256,7 @@ export function SalesTargetPage() {
               )}
             </div>
             <p className="text-xs text-[var(--color-ink-muted)]" data-testid="identity-sub">
-              {me ? `Signed in as ${me.username}${basisLine ? ` · ${basisLine}` : ''} · Sales before tax, net of returns` : ''}
+              {me ? `${me.username ? `Signed in as ${me.username} · ` : ''}${basisLine ? `${basisLine} · ` : ''}Sales before tax, net of returns` : ''}
             </p>
           </div>
         </div>
@@ -276,6 +280,8 @@ export function SalesTargetPage() {
           times a day while the warehouse loads sales intraday, so shown side by side the two
           disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
           live report is not there — not configured, failed, or still opening. */}
+      {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
+      {me && (
       <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
@@ -393,6 +399,7 @@ export function SalesTargetPage() {
         )}
       </section>
       </QuickTable>
+      )}
 
         {embed.kind === 'frame' ? (
           <iframe
@@ -410,6 +417,14 @@ export function SalesTargetPage() {
                 <p className="font-medium text-[var(--color-ink)]">No subcategories assigned</p>
                 <p className="mt-1 text-[var(--color-ink-muted)]">
                   This account has no store–subcategory assignment. Ask your manager to assign your subcategories.
+                </p>
+              </>
+            )}
+            {embed.kind === 'no-access' && (
+              <>
+                <p className="font-medium text-[var(--color-ink)]">You don't have access to this report</p>
+                <p className="mt-1 text-[var(--color-ink-muted)]">
+                  Ask your manager or administrator to give you access.
                 </p>
               </>
             )}

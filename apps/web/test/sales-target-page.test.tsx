@@ -141,3 +141,23 @@ test('three Sections or fewer are named outright, with nothing to expand', async
   await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
   expect(screen.queryByTestId('identity-sections')).not.toBeInTheDocument()
 })
+
+// A person who has no username is shown by name; the opaque id is never put on the screen (#405).
+test('the header never shows the opaque person id', async ({ admin, createUser }) => {
+  await viewer(admin)
+  const nobody = await createUser({ email: 'no.username@example.com', fullName: 'Asha Nair', roles: ['Sales Target Viewer'] })
+  expect(nobody.user).toMatch(/^psn_/)
+  await renderApp('/featherbase/sales-target', nobody)
+  await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('Asha Nair'))
+  expect(screen.getByTestId('identity-sub')).not.toHaveTextContent('psn_')
+  expect(screen.getByTestId('identity-sub')).not.toHaveTextContent('Signed in as')
+})
+
+test('a person with no viewer role is told plainly, with no API wording and no id', async ({ createUser }) => {
+  const outsider = await createUser({ email: 'outsider.page@example.com' })
+  await renderApp('/featherbase/sales-target', outsider)
+  const note = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(note).toHaveTextContent("You don't have access to this report"))
+  expect(note).not.toHaveTextContent('Requires the')
+  expect(note).not.toHaveTextContent('session could not be created')
+})

@@ -27,6 +27,15 @@ describe('normalising', () => {
 })
 
 describe('identifiers with history', () => {
+  // #407: the panel's timestamps are ISO 8601 like every other time on the wire, not a locale string.
+  test('a panel row carries recorded_at as an ISO 8601 instant', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'T. Iso' })
+    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '12', value: 'rr-20001' }, 'sync', ROSTER)
+    const [row] = (await listIdentifiers(p, 'Administrator')).filter((r) => r.system === 'stylehr-employee-code')
+    expect(row.recorded_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/)
+  })
+
   test('an agency code that became a company code: both kept, each with its period; two live employments are allowed', async () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'A. Kumar' })

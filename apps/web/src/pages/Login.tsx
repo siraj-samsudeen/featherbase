@@ -100,13 +100,14 @@ export function LoginPage() {
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() =>
-      loginDelegated(
-        String(form.get('delegated_id')),
-        String(form.get('delegated_password') ?? ''),
-        delegated!.key,
-      ),
-    )
+    const id = String(form.get('delegated_id') ?? '').trim()
+    const password = String(form.get('delegated_password') ?? '')
+    // Nothing typed is the person's slip, not an API validation failure (#406).
+    if (!id || (!delegatedTestMode && !password)) {
+      setError(delegatedTestMode ? 'Enter your employee code.' : `Enter your ${delegatedLabel} ID and password.`)
+      return
+    }
+    await signIn(() => loginDelegated(id, password, delegated!.key))
   }
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {

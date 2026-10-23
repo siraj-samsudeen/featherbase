@@ -142,3 +142,29 @@ test('if the sign-in options cannot be read, Google is still offered', async () 
     spy.mockRestore()
   }
 })
+
+// Nothing typed is a mistake the page names itself, not the API's validation text (#406).
+test('submitting no employee code says what to enter and sends nothing', async ({ createUser }) => {
+  vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+  try {
+    await connectStyleHR()
+    const asked = vi.fn(() => Response.json({}))
+    providerAnswers(asked)
+    await renderApp('/featherbase/login', anonymous)
+    await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+    await userEvent.click(screen.getByTestId('delegated-login-submit'))
+    expect(await screen.findByText('Enter your employee code.')).toBeInTheDocument()
+    expect(screen.queryByText(/Expected \{/)).not.toBeInTheDocument()
+    expect(asked).not.toHaveBeenCalled()
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
+
+test('submitting no StyleHR ID or no password says what to enter', async () => {
+  await connectStyleHR()
+  await renderApp('/featherbase/login', anonymous)
+  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  await userEvent.click(screen.getByTestId('delegated-login-submit'))
+  expect(await screen.findByText('Enter your StyleHR ID and password.')).toBeInTheDocument()
+})

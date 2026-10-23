@@ -411,7 +411,11 @@ export async function currentAssignment(user: string, period: Period = currentPe
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
-    throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].sort().join(', ')}`)
+    // Written for the reader (#404): the report shows one store at a time. No person id — it is opaque and means nothing to them.
+    throw new AppError(
+      'ValidationError',
+      `Your account is set up for more than one store (${[...plants].sort().join(', ')}), and this report shows one store at a time. Ask your administrator to check which store you belong to.`,
+    )
   const plant = [...plants][0]
   // The maps are edited by the store, and the live read and the Dive both put these codes into
   // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
@@ -537,8 +541,9 @@ salesTargetRoutes.get('/me', async (c) => {
   const [person] = await sql`select username from person where row_id = ${user.row_id}`
   const username = (person?.username as string | null | undefined) ?? null
   return c.json({
-    // person-rename: the id is opaque (`psn_…`); the reader is shown by username.
-    username: username ?? user.row_id,
+    // person-rename: the id is opaque (`psn_…`) and never shown. Most people have no username
+    // (StyleHR sign-ins carry none); the page shows them by display_name (#405).
+    username,
     display_name: user.full_name ?? username ?? user.row_id,
     assignment: a,
     ...period,
