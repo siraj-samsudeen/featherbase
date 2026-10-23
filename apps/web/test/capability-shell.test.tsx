@@ -176,10 +176,13 @@ test('the preview banner shows on the no-access page', async ({ createUser }) =>
 
 // (3) A create-only grant is a grant of their own: the shared-rows page is for people with none.
 test('a create-only grant holder is not told "nothing is open to you"', async ({ admin, createUser }) => {
-  await seed(admin)
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Back Office', role: 'Shelf Clerk', can_create: true } })
-  const writer = await createUser({ email: 'writer-only@example.com', roles: ['Shelf Clerk'] })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Drop Box Clerk' } })
+  await admin.post('/api/table_def', { name: 'Drop Box', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  // The role's ONLY grant: create. It reads nothing, so `tables` is empty.
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Drop Box', role: 'Drop Box Clerk', can_create: true } })
+  const writer = await createUser({ email: 'writer-only@example.com', roles: ['Drop Box Clerk'] })
   await renderApp('/featherbase/admin', writer)
-  await screen.findByTestId('admin-sidebar')
-  await waitFor(() => expect(screen.queryByTestId('shared-only')).not.toBeInTheDocument())
+  // Wait for a positive marker: the empty-home note or the home page has rendered.
+  await waitFor(() => expect(screen.queryByTestId('admin-index-empty') ?? screen.queryByTestId('home-page')).not.toBeNull())
+  expect(screen.queryByTestId('shared-only')).not.toBeInTheDocument()
 })
