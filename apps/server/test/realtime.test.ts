@@ -129,4 +129,36 @@ describe('subscription acknowledgment', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
   })
+
+  // #426: the browser sends its subscribe frame the moment the socket opens
+  // (apps/web/src/lib/realtime.ts), not after 'ready'. That frame arrives
+  // while the server is still authenticating the upgrade, a database round
+  // trip. It must be answered, not dropped: a dropped frame leaves the page
+  // subscribed to nothing, with no error and no retry (RT-003 timed out on it).
+  test('a subscribe frame sent the moment the socket opens is still answered', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { cookie: `sid=${admin.token}` },
+    })
+    const frames: RealtimeEvent[] = []
+    socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+    socket.on('open', () => socket.send(JSON.stringify({ subscribe: ['list:User'] })))
+    try {
+      const deadline = Date.now() + 5_000
+      while (!frames.some((f) => f.event === 'subscribed')) {
+        if (Date.now() > deadline) throw new Error(`no 'subscribed' frame arrived; saw ${JSON.stringify(frames)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(frames.find((f) => f.event === 'subscribed')?.payload).toEqual({ channels: ['list:User'] })
+      // 'ready' still comes first: the page is told who it is before anything else.
+      expect(frames[0].event).toBe('ready')
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
 })
