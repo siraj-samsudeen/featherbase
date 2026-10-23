@@ -434,8 +434,8 @@ out takes StyleHR's value: `id_field` / `password_field` (request body names,
 `error_keys`, `status_key`, `error_statuses`, and the leaver rules
 `left_date_keys`, `inactive_flags`, `left_status_keys`, `left_words`. Another HR
 system with a different request or answer shape is a new row with its own
-`settings`, not code. The `stylehr_username` Custom Field, if present, is roster data only; the
-upgrade relabels it and sign-in no longer reads it.
+`settings`, not code. Sign-in never reads the old `stylehr_username` Custom Field; migration
+0106 drops it (#408).
 
 **Deploying the upgrade (#275) — mandatory runbook:**
 
@@ -790,14 +790,15 @@ mode. A carried-over code is ended, never erased. The HR record number is never
 typed by hand except as a sign-in link's subject. The hand path closes by itself
 once the feed writes.
 
-**The `employee_code` mirror (temporary).** Sales-target scoping still reads
-the `employee_code` Custom Field. So every hand entry, end or correction of a
-StyleHR employee code, and every `people:resolve` move, copies the person's
-current code into that field in the same transaction. Ending the last current
-code clears it. A joiner therefore sees their Sections at once, and a
-corrected code moves the Sections to the right person. Task 2.1 (the
-sales-target scoping PR) moves scoping onto the identifier rows and removes
-this mirror.
+**Sections follow the employee code** (#408). Sales-target scoping reads each
+person's **current StyleHR employee-code rows** (every one of them: two
+payrolls give both codes' Sections). A hand entry, end or correction moves the
+Sections at once. A code current on **two people** (two firms) scopes neither
+of them for that code; the server logs a `sales_target_ambiguous_employee_code`
+warning naming the people and rows (never the code) — fix the holders on the
+Identifiers panel. Migration **0106** removed the old `employee_code` and
+`stylehr_username` Custom Fields from Person (a no-op where they never existed,
+such as prod); the warehouse mirror of `person` sees the two columns disappear.
 
 **Find a person by code:** *Admin → Person →* **Find by code**
 (`/featherbase/admin/find-person`). Choose *StyleHR employee code* and type the
@@ -816,13 +817,13 @@ by code.
   with a note ("Joiner, HR mail 23-Oct"). Under Sign-in methods link
   **StyleHR**: *Record number at the service* = the record number, *Login ID
   at the service* = their StyleHR login. Give roles and Data Scope as for
-  their post. Their Sections follow the code at once (the `employee_code`
-  mirror above); check *Sales target* opens on their Sections.
+  their post. Their Sections follow the code at once; check *Sales target*
+  opens on their Sections.
 - **Correction** (a wrong code). On the person's Identifiers panel, **End** the
   wrong code with a note saying why; then add the right one with a note. The
   wrong one stays as history. If the wrong code belonged to someone else, add
-  it to them the same way. The mirror moves the Sections with the code: the
-  wrong holder stops seeing them, and the right one sees them. A code recorded by hand by mistake on the same
+  it to them the same way. The Sections move with the code: the wrong holder
+  stops seeing them, and the right one sees them. A code recorded by hand by mistake on the same
   day can be removed instead.
 
 ## Smoke check

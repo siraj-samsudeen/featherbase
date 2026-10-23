@@ -19,6 +19,7 @@ import { logAccess } from './audit'
 import type { SessionUser } from './auth'
 import { platformRelation } from './platform-schema'
 import { tableRelation } from './table-engine'
+import { EMPLOYEE_CODE_SYSTEM } from './person-identifiers'
 
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
 export const VIEWER_ROLE = 'Sales Target Viewer'
@@ -171,26 +172,6 @@ export async function seedSalesTarget(
   if (role.status === 404)
     await ok(await f('/api/save_row', json({ table: 'Role', row: { row_id: VIEWER_ROLE } })), 'create role')
 
-  // #3783: the host derives an employee's sections from the Store Sections maps, which key on
-  // the StyleHR employee code. A Custom Field is the framework's way to give a platform Table
-  // one more attribute an app needs — no migration, no fork of Person.
-  const field = await f(`/api/table/${enc('Custom Field')}/${enc(EMPLOYEE_CODE_FIELD_ID)}`)
-  if (field.status === 404)
-    await ok(
-      await f('/api/save_row', json({
-        table: 'Custom Field',
-        row: {
-          row_id: EMPLOYEE_CODE_FIELD_ID,
-          dt: 'Person',
-          column_name: EMPLOYEE_CODE_FIELD,
-          label: 'Employee code (StyleHR)',
-          column_type: 'Data',
-          in_list_view: true,
-        },
-      })),
-      'create employee_code custom field',
-    )
-
   // person-rename: a person's id is minted (`psn_…`); the seed finds and
   // creates the test accounts by username.
   const users: string[] = []
@@ -263,10 +244,6 @@ export interface Assignment {
   scope_basis: ScopeBasis[]
 }
 
-/** The StyleHR employee code lives on Person as a Custom Field the sales-target seed declares. */
-export const EMPLOYEE_CODE_FIELD = 'employee_code'
-export const EMPLOYEE_CODE_FIELD_ID = `Person-${EMPLOYEE_CODE_FIELD}`
-
 async function relationExists(name: string): Promise<boolean> {
   const [row] = await sql`select to_regclass(${platformRelation(name)}) as relation`
   return Boolean(row?.relation)
@@ -277,6 +254,40 @@ async function columnExists(table: string, column: string): Promise<boolean> {
     select 1 from information_schema.columns
     where table_schema = 'featherbase' and table_name = ${table} and column_name = ${column}`
   return Boolean(row)
+}
+
+/**
+ * #408 (person-resolution D10): the person's employee codes are their CURRENT
+ * `stylehr-employee-code` identifier rows — every one of them, so a person on
+ * two payrolls gets the union of both codes' Sections. The Store Sections maps
+ * carry the code but not the firm, and a code can be current on two people in
+ * two firms; such a code is withheld (no Sections from it) and raised as a
+ * structured alert naming rows, never the code. Period-valid codes: Phase 2.
+ */
+async function currentEmployeeCodes(user: string): Promise<string[]> {
+  const rows = await sql`
+    select mine.value, array_agg(distinct held.person_id order by held.person_id) as holders,
+           array_agg(distinct held.id order by held.id) as identifier_ids
+    from person_identifier mine
+    join person_identifier held
+      on held.system = mine.system and held.value = mine.value and upper_inf(held.valid)
+    where mine.person_id = ${user} and mine.system = ${EMPLOYEE_CODE_SYSTEM} and upper_inf(mine.valid)
+      and mine.value is not null and mine.value <> ''
+    group by mine.value`
+  const codes: string[] = []
+  for (const r of rows) {
+    const holders = r.holders as string[]
+    if (holders.length === 1) { codes.push(String(r.value)); continue }
+    console.warn(JSON.stringify({
+      event: 'sales_target_ambiguous_employee_code',
+      person: user,
+      holders: holders.length,
+      holder_ids: holders,
+      identifier_ids: r.identifier_ids,
+      outcome: 'code withheld from scope',
+    }))
+  }
+  return codes
 }
 
 interface Derived {
@@ -300,12 +311,9 @@ interface Derived {
  * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
  */
 async function derivedFromSections(user: string, today: string): Promise<Derived[]> {
-  if (!(await columnExists('person', EMPLOYEE_CODE_FIELD))) return []
   if (!(await relationExists('section_merchandise_map'))) return []
-  const [u] = await sql`
-    select employee_code from ${sql(platformRelation('person'))} where row_id = ${user}`
-  const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
-  if (!code) return []
+  const codes = await currentEmployeeCodes(user)
+  if (!codes.length) return []
   const merch = sql(platformRelation('section_merchandise_map'))
   const out: Derived[] = []
 
@@ -316,7 +324,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
       join ${merch} m
         on  m.store_code = e.store_code
         and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
-      where e.employee_code = ${code}
+      where upper(trim(e.employee_code)) = any(${codes}::text[])
         and m.material_group is not null and m.material_group <> ''`
     for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'section_staff' })
   }
@@ -347,7 +355,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
             where x.store_code = r.store_code and x.section_key = r.section_key)
         ), roster_led as (
           select c.store_code, c.section_key from current_roster c
-          where trim(c.${sql(column)}) = ${code}
+          where upper(trim(c.${sql(column)})) = any(${codes}::text[])
         ), led as (
           -- A roster Section can span several merchandise Sections (Home Décor & Stationery is
           -- Home Décor + Stationery at ATK): every alias row counts, plus the roster name itself.
@@ -375,7 +383,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
       select distinct m.store_code as plant_code, m.material_group
       from ${sql(platformRelation('store_manager'))} s
       join ${merch} m on m.store_code = s.store_code
-      where trim(s.employee_code) = ${code}
+      where upper(trim(s.employee_code)) = any(${codes}::text[])
         and m.material_group is not null and m.material_group <> ''`
     for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'store_manager' })
   }
