@@ -20,6 +20,8 @@
 //                                     employee code to its record number (warehouse file); idempotent
 //   cli mail:test <to>                send one test message through the configured transport (SMTP when
 //                                     SMTP_HOST is set, otherwise the Email Sink); exits 1 if delivery fails
+//   cli settings:set <field> --stdin set one System Settings text field to the whole of stdin, e.g.
+//                                     `cli settings:set privacy_notice --stdin < notice.md`
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -33,6 +35,7 @@ import { getMeta } from './meta'
 import { issueAccessToken, listAccessTokens, revokeAccessToken, setPasswordFromShell, setUserPassword } from './auth'
 import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
+import { logActivity } from './audit'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
@@ -254,6 +257,27 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+// stdin is text, taken unchanged: typed fields (Check, Int, Choice …) and
+// layout or child-table columns are set in the System Settings form instead.
+const TEXT_TYPES = new Set(['Data', 'Text', 'Long Text'])
+
+// #401: System Settings text fields only, through saveDoc (validation), and
+// recorded in the Activity Log with actor `cli`.
+// The value is the whole of stdin, unchanged, so a reviewed file applies as is.
+async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
+  const [field] = positional
+  if (!field || flags.stdin !== true || positional.length !== 1) throw new Error('usage: cli settings:set <field> --stdin')
+  const meta = await getMeta('System Settings')
+  const column = meta.columns.find((c) => c.column_name === field)
+  if (!column) throw new Error(`System Settings has no field ${field}`)
+  if (!TEXT_TYPES.has(column.column_type))
+    throw new Error(`System Settings field ${field} is ${column.column_type}; settings:set writes text fields only`)
+  const value = await readStdin()
+  await saveDoc('System Settings', { [field]: value }, 'Administrator')
+  await logActivity('cli', `settings_set ${field}`)
+  console.log(`System Settings ${field} set (${value.length} characters)`)
+}
+
 async function cmdConsole() {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
@@ -357,6 +381,9 @@ async function main() {
       console.log(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
       break
     }
+    case 'settings:set':
+      await cmdSettingsSet(positional, flags)
+      break
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -369,7 +396,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|mail:test|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|settings:set|mail:test|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

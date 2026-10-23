@@ -33,7 +33,7 @@ describe('person-rename: the human record is a Person', () => {
     ])
     const id = await makePerson({ email: 'ns@x.test' })
     expect(id).toMatch(/^psn_[a-z2-7]{20}$/)
-    await expect(sql.begin((tx) => tx`insert into person (row_id, full_name) values ('RR-7963', 'x')`)).rejects.toThrow(/person_id_namespace/)
+    await expect(sql.begin((tx) => tx`insert into person (row_id, full_name) values ('RR-0101', 'x')`)).rejects.toThrow(/person_id_namespace/)
     await expect(sql.begin((tx) => tx`insert into service_account (row_id, label) values ('svc-bot', 'x')`)).rejects.toThrow(/service_account_id_namespace/)
   })
 

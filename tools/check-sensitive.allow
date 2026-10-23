@@ -1,0 +1,39 @@
+# Intentional synthetic values for tools/check-sensitive.mjs.
+# One value per line: digits only for numbers, lower-case for emails.
+# Add a value here ONLY when it is synthetic (or a shared role mailbox, not a person).
+
+# Aadhaar-like: the published Verhoeff worked example, used as a test fixture.
+234123412346
+# A synthetic +91 test phone (person-identifiers.test.ts) whose 12 digits happen to
+# pass Verhoeff, so the Aadhaar rule (not the mobile rule) needs this entry.
+919847099999
+
+# Synthetic test mobile numbers.
+9847012345
+9847099999
+
+# Client-domain addresses: shared store / role mailboxes (configuration, not people).
+sm.atk@jeyarama.com
+sm.cbe@jeyarama.com
+sm.kat@jeyarama.com
+dm.test@jeyarama.com
+
+# Client-domain addresses: synthetic test accounts (no real person behind them).
+admitted@jeyarama.com
+alias@jeyarama.com
+alias.r@jeyarama.com
+dup@jeyarama.com
+gone@jeyarama.com
+hr.only@jeyarama.com
+keep@jeyarama.com
+member@jeyarama.com
+new@jeyarama.com
+old@jeyarama.com
+one@jeyarama.com
+owner@jeyarama.com
+person.a@jeyarama.com
+plain.user@jeyarama.com
+resetme@jeyarama.com
+set@jeyarama.com
+someone@jeyarama.com
+two@jeyarama.com

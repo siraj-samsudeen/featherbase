@@ -194,7 +194,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const [row] = await sql`select 1 from person where email = 'stranger@gmail.com'`
     expect(row).toBeUndefined()
 
-    const admitted = await mockSignIn(api, 'kannan@jeyarama.com')
+    const admitted = await mockSignIn(api, 'admitted@jeyarama.com')
     expect(admitted.status).toBe(302)
     expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })

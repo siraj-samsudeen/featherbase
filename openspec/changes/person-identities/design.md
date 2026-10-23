@@ -114,7 +114,7 @@ Subjects per method:
 | method | subject | found by |
 |---|---|---|
 | Google | OIDC `sub` from userinfo (never the email) | `sub` |
-| StyleHR (delegated password) | employee code (`RR-7963`, `21654`) | `sign_in_name` = StyleHR login ID; test mode: `subject` |
+| StyleHR (delegated password) | employee code (`RR-0101`, `30654`) | `sign_in_name` = StyleHR login ID; test mode: `subject` |
 | Featherbase password | the User id (derived, no row) | User id or contact email (D3) |
 
 **Case folding lives in one helper** (`foldName(s) = s.trim().toLowerCase()`,
@@ -472,15 +472,15 @@ migration; sign-in no longer reads it.
 1. **Direct sign-up** — admin sets `password.new_person = create` (after the
    `All` audit); a visitor picks `meena` + password → User `meena`, no email,
    hash set, signed in with no roles.
-2. **StyleHR-only staff** — roster sync creates User `RR-7963` (no email) and
-   links `(stylehr, subject = RR-7963, sign_in_name = name_9999999999)`. They
+2. **StyleHR-only staff** — roster sync creates User `RR-0101` (no email) and
+   links `(stylehr, subject = RR-0101, sign_in_name = name_9999999999)`. They
    type their StyleHR ID, any case; candidate found before StyleHR is asked;
    verified ⇒ session `{m: stylehr, idn}`. Unknown IDs get the 401 with no
    StyleHR call.
 3. **StyleHR + Google, one person** — the admin/sync invites the person's
    Google address (claimed at first Google sign-in), or the person, freshly
    signed in by StyleHR (not test mode), links Google themselves. Both
-   identities point at `RR-7963`.
+   identities point at `RR-0101`.
 
 ## Migration (`0100_person_identities.ts`, idempotent)
 
