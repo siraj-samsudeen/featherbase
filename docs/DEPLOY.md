@@ -457,7 +457,8 @@ cacheable for five minutes, so a change can take that long to show.
   railway ssh -p <project> -e <env> -s <service> -- pnpm --filter server cli settings:set privacy_notice --stdin < privacy-notice.md
   ```
 
-  The CLI accepts only System Settings data fields and records
+  The CLI writes only System Settings text fields (typed ones are set in the
+  form) and records
   `settings_set <field>` in the Activity Log with actor `cli`.
 
   Not yet rehearsed over `railway ssh` (#401): if the file does not reach the

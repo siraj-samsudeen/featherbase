@@ -9,12 +9,12 @@ ahead of the legacy-path redirect (which otherwise answers it with a 308), and r
 third-party pixel loads). The page has no script, a meta CSP with `script-src 'none'; img-src 'none'` (the global
 `secureHeaders` rewrites the response header after the handler), light and dark via `prefers-color-scheme`, a 16px
 phone gutter and `Cache-Control: public, max-age=300`. Blank or unset = a plain HTML 404 page; `/privacy/` 301s to
-`/privacy`. `cli settings:set <field> --stdin` writes one System Settings data field (layout and child-table columns
-refused) from the whole of stdin through `saveDoc`, and logs `settings_set <field>` to the Activity Log as `cli`; DEPLOY.md says where an instance's text lives (its
+`/privacy`. `cli settings:set <field> --stdin` writes one System Settings text field (Data, Text, Long Text; typed,
+layout and child-table columns refused — Codex P2) from the whole of stdin through `saveDoc`, and logs `settings_set <field>` to the Activity Log as `cli`; DEPLOY.md says where an instance's text lives (its
 own repo) and how to apply it. OpenSpec change `instance-privacy-notice` adds the requirement to
 `sign-in-and-accounts`.
 
-**Verified** on PostgreSQL 18: `test/privacy-notice.test.ts` (9) and the four new `test/cli.test.ts` cases failed
+**Verified** on PostgreSQL 18: `test/privacy-notice.test.ts` (9) and the five new `test/cli.test.ts` cases failed
 first (308 instead of 404/200; unknown field; no such command), pass now; full server suite 1130 passed; the new
 and neighbouring files (26) also pass on PostgreSQL 17. Server and web typecheck clean; `pnpm check:specs` clean.
 Not rehearsed: piping the file through `railway ssh` (DEPLOY.md names the form as the fallback).

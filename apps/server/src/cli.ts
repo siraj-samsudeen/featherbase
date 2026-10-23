@@ -15,7 +15,7 @@
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
-//   cli settings:set <field> --stdin set one System Settings field to the whole of stdin, e.g.
+//   cli settings:set <field> --stdin set one System Settings text field to the whole of stdin, e.g.
 //                                     `cli settings:set privacy_notice --stdin < notice.md`
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
@@ -231,10 +231,11 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-// Layout and child-table columns carry no value of their own.
-const NO_VALUE_TYPES = new Set(['Section Break', 'Column Break', 'Tab Break', 'Sub-table', 'Table'])
+// stdin is text, taken unchanged: typed fields (Check, Int, Choice …) and
+// layout or child-table columns are set in the System Settings form instead.
+const TEXT_TYPES = new Set(['Data', 'Text', 'Long Text'])
 
-// #401: System Settings data fields only, through saveDoc (validation), and
+// #401: System Settings text fields only, through saveDoc (validation), and
 // recorded in the Activity Log with actor `cli`.
 // The value is the whole of stdin, unchanged, so a reviewed file applies as is.
 async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
@@ -243,7 +244,8 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   const meta = await getMeta('System Settings')
   const column = meta.columns.find((c) => c.column_name === field)
   if (!column) throw new Error(`System Settings has no field ${field}`)
-  if (NO_VALUE_TYPES.has(column.column_type)) throw new Error(`System Settings field ${field} holds no value (${column.column_type})`)
+  if (!TEXT_TYPES.has(column.column_type))
+    throw new Error(`System Settings field ${field} is ${column.column_type}; settings:set writes text fields only`)
   const value = await readStdin()
   await saveDoc('System Settings', { [field]: value }, 'Administrator')
   await logActivity('cli', `settings_set ${field}`)

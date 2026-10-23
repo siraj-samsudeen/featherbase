@@ -225,7 +225,7 @@ describe('#401: cli settings:set', () => {
     try {
       const f = failure(['settings:set', name, '--stdin'], 'x')
       expect(f?.status).toBe(1)
-      expect(f?.stderr).toContain(`System Settings field ${name} holds no value`)
+      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text fields only`)
     } finally {
       if (!layout) await sql`delete from column_def where parent = 'System Settings' and column_name = ${name}`
     }
@@ -235,6 +235,14 @@ describe('#401: cli settings:set', () => {
     const f = failure(['settings:set', 'no_such_field', '--stdin'], 'x')
     expect(f?.status).toBe(1)
     expect(f?.stderr).toContain('System Settings has no field no_such_field')
+  }, 60_000)
+
+  // Codex P2: stdin is text, so a typed field (Check, Int, Choice) would fail
+  // validation or take a stray newline; those are set in the form.
+  it('refuses a typed, non-text field', async () => {
+    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'true')
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('System Settings field allow_signup is Check; settings:set writes text fields only')
   }, 60_000)
 
   it('refuses without --stdin', async () => {
