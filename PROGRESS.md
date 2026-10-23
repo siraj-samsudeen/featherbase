@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-10-23 — Person screens after the person release: names not ids, readable identifier dates (#414, #415)
+
+Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release. (#413, a stale Person
+form writing the employee code back, went away with the field itself in #423.)
+
+- **#414** — the Person form heading and breadcrumb, the sidebar Recent/Frequent rows, the command-bar recents and the
+  Home resume tiles render `ShownName` (a `PrincipalName` for an opaque id). Rename is hidden for an opaque id (the
+  server always refused it). The Unlink confirmation names the person. A Person save invalidates the cached
+  `['principal-name', id]`, so a new full name shows at once (review, Codex P2).
+- **#415** — identifier periods use `fmtDate` (`since 23-Oct-2026`); End and Unlink are `shrink-0` so they no longer
+  wrap one letter per line in the narrow card.
+
+**Verified:** web `person-rename` (heading is the name, no Rename, Recent shows the name; a renamed person shows the new
+name; a Recent row with no caption shows the name and no id tooltip) and `identifiers-panel` (DD-Mon-YYYY periods,
+`shrink-0`), design guards. Browser (Playwright, 1280 px): heading `Person: <name>`, no Rename, Recent shows names,
+End/Unlink on one line.
+
 ## 2026-10-23 — Signing out ends that session, not just the cookie (#411)
 
 Sessions are signed tokens, and sign-out only cleared the `sid` cookie, so a copied token kept
@@ -3942,7 +3959,6 @@ The pin survives the refactor rather than passing vacuously.
 `bg-blue-50` literals outside the error UI — all pre-dating this change and
 out of this branch's scope.
 
-
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
 Third item of the production-readiness push. Each sheet card now carries a
@@ -5886,7 +5902,6 @@ Next: worth a guard so this class of bug can't return — either a test assertin
 no `column_def.choices` contains a literal backslash-n after migration, or a
 lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
 sites are fixed, but nothing stops a sixth.
-
 
 ## 2026-07-31 — fix #94: the e2e specs address column rows by marker, not position
 

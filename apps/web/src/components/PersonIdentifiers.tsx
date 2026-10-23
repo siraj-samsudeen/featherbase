@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
+import { fmtDate } from '../lib/inr'
 import { PrincipalName } from '../lib/people'
 import { Button, Card, Notice, Select, TextInput } from './ui'
 
@@ -49,8 +50,8 @@ export function sourceLabel(source: string): string {
 }
 
 function period(i: Identifier): string {
-  const from = i.valid_from ?? 'before Featherbase'
-  return i.current ? `since ${from}` : `${from} – ${i.valid_to}`
+  const from = i.valid_from ? fmtDate(i.valid_from) : 'before Featherbase'
+  return i.current ? `since ${from}` : `${from} – ${fmtDate(i.valid_to)}`
 }
 
 export function PersonIdentifiers({ person, replacedBy }: { person: string; replacedBy?: string | null }) {
@@ -129,6 +130,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
                 {i.current && i.editable && !replacedBy && (
                   <Button
                     variant="danger"
+                    className="shrink-0"
                     onClick={() => {
                       if (!i.note_required) return end.mutate({ id: i.id })
                       // By hand while the roster sync is frozen: say why.

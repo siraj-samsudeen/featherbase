@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser } from '../lib/api'
 import { ago, recentActions, type RecentEntry } from '../lib/recents'
+import { ShownName } from '../lib/people'
 
 // #101 Phase 5: the Home Page's first job becomes resuming. ResumeStrip
 // offers the last row / list / search as one-click tiles (instant, straight
@@ -80,7 +81,7 @@ export function ResumeStrip() {
               {t.head}
             </div>
             <div className="mt-0.5 truncate text-sm font-medium text-[var(--color-ink)]">
-              {t.entry.label}
+              <ShownName id={t.entry.label} />
             </div>
             <div className="mt-0.5 truncate text-xs text-[var(--color-ink-muted)]">
               {t.entry.sub ? `${t.entry.sub} · ` : ''}
@@ -124,7 +125,7 @@ export function RoutineCard() {
             title={t.sub}
             className="max-w-72 truncate rounded-full bg-[var(--color-brand-tint)] px-3 py-1 text-xs font-medium text-[var(--color-brand)] hover:opacity-80"
           >
-            {t.label}
+            <ShownName id={t.label} />
             {t.sub ? <span className="ml-1 opacity-70">· {t.sub}</span> : null}
           </button>
         ))}
@@ -152,7 +153,7 @@ export function RoutineCard() {
         {targets.map((t, i) => (
           <span key={t.key} className="font-medium text-[var(--color-ink)]">
             {i > 0 ? ', ' : ''}
-            {t.label}
+            <ShownName id={t.label} />
             {t.sub ? ` (${t.sub})` : ''}
           </span>
         ))}

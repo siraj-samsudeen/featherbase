@@ -70,3 +70,9 @@ export function PrincipalName({ id }: { id: string }) {
   const { name, loading } = usePrincipalNameState(id)
   return <span data-testid="principal-name" title={name ?? undefined}>{principalLabel(id, name, loading)}</span>
 }
+
+/** A record name as a person would read it: a principal's name for an opaque
+ *  id (#414), the text itself for anything else. */
+export function ShownName({ id }: { id: string }) {
+  return isOpaqueId(id) ? <PrincipalName id={id} /> : <>{id}</>
+}
