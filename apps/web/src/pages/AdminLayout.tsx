@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_HOME_DESTINATION } from 'shared'
-import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, listResource, signOut } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -251,8 +251,12 @@ function AdminShell() {
     // Invalidate the sid cookie BEFORE dropping local state: while it lives,
     // any token-less request fired in the logout gap re-authenticates as the
     // departing user and re-poisons the cache for the next account in this
-    // tab (#101 review).
-    await api.post('/api/logout', {}).catch(() => {})
+    // tab (#101 review). #411: if the server could not end the session, say
+    // so and stay signed in rather than pretend it ended.
+    if (!(await signOut())) {
+      window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
     clearSession()
     delete document.documentElement.dataset.palette
     delete document.documentElement.dataset.theme
