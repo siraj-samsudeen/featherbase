@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
 import { cardClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { fmtAsStored, fmtCount } from '../lib/inr'
 
 // UI-026: renders a saved Dashboard — number cards and bar charts computed on
 // demand from live data through the permission-scoped dashboard endpoints.
@@ -12,7 +12,7 @@ interface CardCfg {
   table: string
   filters?: Filter[]
 }
-interface ChartCfg {
+export interface ChartCfg {
   label: string
   // A chart is driven EITHER by a Table + group_by (UI-026) OR by a saved
   // Report (RPT-006). Report-driven charts recompute from live report data.
@@ -45,6 +45,11 @@ function NumberCard({ card }: { card: CardCfg }) {
       </div>
     </div>
   )
+}
+
+/** A table chart, or a report grouped by a field, counts rows; a report value chart shows its field as stored. */
+export function chartValueText(chart: ChartCfg, value: number): string {
+  return chart.report && !chart.group_by ? fmtAsStored(value) : fmtCount(value)
 }
 
 function BarChart({ chart }: { chart: ChartCfg }) {
@@ -81,7 +86,7 @@ function BarChart({ chart }: { chart: ChartCfg }) {
               />
             </div>
             <div className="min-w-8 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`bar-value-${r.label}`}>
-              {fmtCount(r.value, 2)}
+              {chartValueText(chart, r.value)}
             </div>
           </div>
         ))}

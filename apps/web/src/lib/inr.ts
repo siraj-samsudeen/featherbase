@@ -69,6 +69,11 @@ export function fmtCount(x: number | null | undefined, decimals = 0): string {
   return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
+/** A value exactly as stored: Indian grouping and every decimal it has, never rounded (ADR 750 evidence rule). */
+export function fmtAsStored(x: number): string {
+  return (x || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 20 })
+}
+
 /**
  * A number at a fixed precision with Indian digit grouping: list cells for Float
  * and Currency columns. The currency symbol is added by the caller.
