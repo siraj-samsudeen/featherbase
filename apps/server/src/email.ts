@@ -1,13 +1,15 @@
 import { randomBytes } from 'node:crypto'
+import type { ConnectionOptions } from 'node:tls'
+import { createTransport } from 'nodemailer'
 import { sql } from './db'
 import { AppError } from './errors'
 import { registerJob, enqueue } from './jobs'
 import { getDoc } from './document'
 import { renderPdf, renderPrintHtml } from './print'
 
-// EML-001/002/003/005: outbound email. In dev, delivery lands in the Email
-// Sink (the local mailbox). The same code path would drive a real SMTP
-// transport in production.
+// EML-001/002/003/005: outbound email. With SMTP_HOST unset (development,
+// the test suite) delivery lands in the Email Sink, the local mailbox. With
+// SMTP_HOST set, the same code path sends through that SMTP server (#395).
 
 export interface Attachment {
   filename: string
@@ -55,8 +57,133 @@ export function renderTemplate(
   })
 }
 
-// Deliver a message to the sink (the dev transport). Real SMTP would go here.
-export async function deliverToSink(msg: MailMessage): Promise<void> {
+// --- SMTP transport (#395) -------------------------------------------------
+
+export interface SmtpConfig {
+  host: string
+  port: number
+  user?: string
+  password?: string
+  /** MAIL_FROM: the deployment's one sender (e.g. `Feather Dash <noreply@…>`). */
+  from?: string
+  /** Extra TLS options. Never read from the environment: tests use it to
+   *  trust a throwaway certificate. */
+  tls?: ConnectionOptions
+}
+
+// Read per send, not at import, so a changed environment needs no restart of
+// this module (and the tests can switch transports). Blank means unset.
+export function readSmtpConfig(env: Record<string, string | undefined> = process.env): SmtpConfig | null {
+  const val = (k: string) => env[k]?.trim() || undefined
+  const host = val('SMTP_HOST')
+  if (!host) return null
+  const rawPort = val('SMTP_PORT') ?? '587'
+  const port = Number(rawPort)
+  if (!/^\d+$/.test(rawPort) || port < 1 || port > 65535)
+    throw new Error('SMTP_PORT must be a port number (587 for STARTTLS, 465 for implicit TLS)')
+  // The password is taken as given: a Workspace app password is 16 letters
+  // that Google displays in groups of four, and spaces are not part of it.
+  const password = env.SMTP_PASSWORD?.replace(/\s+/g, '') || undefined
+  return { host, port, user: val('SMTP_USER'), password, from: val('MAIL_FROM') }
+}
+
+// 465 is implicit TLS. Everywhere else the session starts in plain text and
+// STARTTLS is REQUIRED (nodemailer refuses to go on if the server does not
+// offer it) on 587, and whenever a password would be sent: credentials never
+// cross the wire unencrypted. Only an unauthenticated session on another port
+// (a local relay, the test server) may stay plain. The certificate is always
+// verified.
+export function smtpTransportOptions(cfg: SmtpConfig) {
+  const secure = cfg.port === 465
+  const auth = cfg.user ? { user: cfg.user, pass: cfg.password ?? '' } : undefined
+  return {
+    host: cfg.host,
+    port: cfg.port,
+    secure,
+    requireTLS: !secure && (cfg.port === 587 || auth !== undefined),
+    auth,
+    tls: { minVersion: 'TLSv1.2' as const, ...cfg.tls },
+    // A hung relay must not hold a request (a password reset) open for minutes.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 30_000,
+    logger: false,
+    debug: false,
+  }
+}
+
+/** A message the SMTP server did not accept. The message names the failure
+ *  class and the server's reply code only — never an address, a body or a
+ *  credential — so it is safe to log, store and show to the caller. */
+export class MailDeliveryError extends AppError {
+  code: string
+  responseCode?: number
+  constructor(code: string, responseCode?: number) {
+    super('ServiceUnavailableError', `Mail delivery failed (${code}${responseCode ? ` ${responseCode}` : ''})`)
+    this.code = code
+    this.responseCode = responseCode
+  }
+}
+
+function toDeliveryError(err: unknown): MailDeliveryError {
+  if (err instanceof MailDeliveryError) return err
+  const e = (err ?? {}) as { code?: unknown; responseCode?: unknown }
+  // nodemailer's codes are fixed identifiers (ECONNECTION, ETLS, EAUTH,
+  // EENVELOPE, ...); anything else is reported as an unknown failure rather
+  // than echoing free text that could carry an address.
+  const code = typeof e.code === 'string' && /^[A-Z_]{2,32}$/.test(e.code) ? e.code : 'EUNKNOWN'
+  const responseCode = typeof e.responseCode === 'number' ? e.responseCode : undefined
+  return new MailDeliveryError(code, responseCode)
+}
+
+/** One structured log line per failed delivery: what the mail was for and
+ *  why it failed, never who it was to or what it said. */
+export function logMailFailure(purpose: string, err: unknown): void {
+  const e = toDeliveryError(err)
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      event: 'mail_delivery_failed',
+      purpose,
+      code: e.code,
+      ...(e.responseCode ? { smtp_response_code: e.responseCode } : {}),
+    }),
+  )
+}
+
+export async function sendViaSmtp(cfg: SmtpConfig, msg: MailMessage): Promise<void> {
+  const transport = createTransport(smtpTransportOptions(cfg))
+  try {
+    await transport.sendMail({
+      // MAIL_FROM wins: a relay that accepts only the deployment's own domain
+      // must not be handed an Email Account address from somewhere else.
+      from: cfg.from ?? msg.from,
+      to: msg.to,
+      subject: msg.subject,
+      text: msg.body,
+      attachments: (msg.attachments ?? []).map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content_b64, 'base64'),
+      })),
+    })
+  } catch (err) {
+    throw toDeliveryError(err)
+  } finally {
+    transport.close()
+  }
+}
+
+/** Deliver one message through the configured transport: SMTP when
+ *  SMTP_HOST is set, otherwise the Email Sink. Throws MailDeliveryError when
+ *  the SMTP server does not take it; each caller decides what that means. */
+export async function deliverEmail(msg: MailMessage): Promise<void> {
+  const smtp = readSmtpConfig()
+  if (smtp) return await sendViaSmtp(smtp, { ...msg, from: msg.from ?? (await defaultSender()) })
+  await deliverToSink(msg)
+}
+
+// The dev transport: the local mailbox.
+async function deliverToSink(msg: MailMessage): Promise<void> {
   const from = msg.from ?? (await defaultSender())
   await sql`
     insert into email_sink ${sql({
@@ -72,10 +199,11 @@ export async function deliverToSink(msg: MailMessage): Promise<void> {
     })}`
 }
 
-// EML-001: send immediately (used for "send a test mail").
+// EML-001: send immediately (used for "send a test mail" and `cli mail:test`).
+// A delivery failure is thrown to the operator who asked for the test.
 export async function sendTestEmail(to: string): Promise<void> {
   const from = await defaultSender()
-  await deliverToSink({
+  await deliverEmail({
     to,
     from,
     subject: 'Test email from Featherbase',
@@ -146,7 +274,7 @@ registerJob('send_email', async (payload) => {
       }
     }
 
-    await deliverToSink({
+    await deliverEmail({
       to: row.recipient as string,
       from: row.sender as string,
       subject,
@@ -156,6 +284,7 @@ registerJob('send_email', async (payload) => {
       attachments,
     })
   } catch (err) {
+    if (err instanceof MailDeliveryError) logMailFailure('queued_email', err)
     await sql`
       update email_queue set send_status = 'error', error = ${
         err instanceof Error ? err.message : String(err)

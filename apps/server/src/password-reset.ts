@@ -3,10 +3,10 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError } from './errors'
 import { findPasswordAccount, setUserPassword } from './auth'
-import { deliverToSink } from './email'
+import { deliverEmail, logMailFailure } from './email'
 
 // SET-002: password reset via an emailed link. A request mints a single-use,
-// time-limited token and mails a reset link to the user (the dev sink). The
+// time-limited token and mails a reset link to the user. The
 // reset endpoint consumes the token and sets the new password.
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -35,11 +35,18 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
   })}`
 
   const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
-  await deliverToSink({
-    to: user.email as string,
-    subject: 'Reset your password',
-    body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
-  })
+  try {
+    await deliverEmail({
+      to: user.email as string,
+      subject: 'Reset your password',
+      body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
+    })
+  } catch (err) {
+    // The caller is anonymous and the route answers ok either way, so a
+    // failed send must not become an error that tells an existing account
+    // from an unknown one (#395). It is logged instead, without the address.
+    logMailFailure('password_reset', err)
+  }
   return token
 }
 

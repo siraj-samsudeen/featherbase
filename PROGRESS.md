@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-10-23 — Real email through an SMTP server (#395)
+
+`apps/server/src/email.ts` now sends through SMTP (nodemailer) when `SMTP_HOST` is set, and still delivers to the
+Email Sink when it is unset, so development and the test suite are unchanged. Configuration is `SMTP_HOST`,
+`SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM`; docs/DEPLOY.md "Email" has the Google
+Workspace relay settings. STARTTLS is required on 587 and whenever a password would be sent; certificates are
+verified. `MAIL_FROM` wins over Email Account addresses because the relay accepts only the domain's senders.
+
+A failed send becomes `MailDeliveryError` (a 503 `ServiceUnavailableError`) whose message carries only nodemailer's
+code and the SMTP reply code, and is logged as one JSON line (`event: mail_delivery_failed`, `purpose`, `code`) with no
+address, body or credential. Password reset swallows it after logging, so the public route still answers ok for
+every account; a queued email turns `error`; the test mail returns the error to the System Manager. New
+`cli mail:test <to>`.
+
+**Verified:** `apps/server/test/email-smtp.test.ts` (18) runs a real `smtp-server` on a local port: plain delivery,
+the queued job, password reset, STARTTLS + AUTH with a generated certificate, an untrusted certificate refused
+before AUTH, a server without STARTTLS refused before AUTH when credentials are set, failure logging, and the CLI.
+Not yet sent through the real Workspace relay (needs the app password on a deployed instance).
+
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
 Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on

@@ -28,6 +28,7 @@
     "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
     "mysql2": "^3.23.3",
+    "nodemailer": "^10.2.1",
     "playwright": "^1.61.1",
     "postgres": "^3.4.5",
     "shared": "workspace:*",
@@ -42,6 +43,7 @@
     "fast-check": "^4.9.0",
     "feather-testing-postgres": "0.2.0",
     "pdf-parse": "^2.4.5",
+    "smtp-server": "^3.21.1",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }

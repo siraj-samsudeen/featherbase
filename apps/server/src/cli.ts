@@ -15,6 +15,8 @@
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
+//   cli mail:test <to>                send one test message through the configured transport (SMTP when
+//                                     SMTP_HOST is set, otherwise the Email Sink); exits 1 if delivery fails
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -317,6 +319,17 @@ async function main() {
       for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)
       break
     }
+    case 'mail:test': {
+      const [to] = positional
+      if (!to) throw new Error('usage: cli mail:test <to>')
+      const { readSmtpConfig, sendTestEmail } = await import('./email')
+      const smtp = readSmtpConfig()
+      await sendTestEmail(to)
+      // The recipient is not echoed: the operator typed it, and output may be
+      // captured in deploy logs.
+      console.log(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
+      break
+    }
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -329,7 +342,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|mail:test|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()
