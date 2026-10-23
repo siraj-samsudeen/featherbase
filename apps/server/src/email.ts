@@ -72,6 +72,13 @@ export async function deliverToSink(msg: MailMessage): Promise<void> {
     })}`
 }
 
+/** Deliver one message through the configured transport (#430). On this
+ *  branch that is the Email Sink; the SMTP transport (#395/#398) replaces the
+ *  body behind the same signature and throws when the server refuses. */
+export async function deliverEmail(msg: MailMessage): Promise<void> {
+  await deliverToSink(msg)
+}
+
 // EML-001: send immediately (used for "send a test mail").
 export async function sendTestEmail(to: string): Promise<void> {
   const from = await defaultSender()

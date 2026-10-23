@@ -530,6 +530,24 @@ cacheable for five minutes, so a change can take that long to show.
   remote command, a System Manager pastes it into the System Settings form
   instead. Either way, check the result at `https://<host>/privacy`.
 
+## Invitation email (#430)
+
+Inviting a Google address on a Person's sign-in methods emails it by default
+(the inviter can untick it; Resend sends it again, at most once in ten
+minutes). The email is built from instance configuration, never from the
+repo:
+
+- **Name:** System Settings `app_name` ("Example Dash invited you…").
+- **Introduction (optional):** System Settings `invitation_email_intro`, plain
+  text, one paragraph or two on what the service is for. Set it in the form or
+  `pnpm --filter server cli settings:set invitation_email_intro --stdin < intro.txt`.
+- **Link:** `SITE_URL` + `/featherbase/login`. Set `SITE_URL`: without it the
+  link is derived from the inviter's request.
+
+Mail goes through the instance's transport (the Email Sink until SMTP is
+configured). A failed send leaves the invite in place, tells the inviter, and
+logs `mail_delivery_failed` with purpose `sign_in_invitation` and no address.
+
 ## Automation credentials (#131)
 
 Scripts, CI, and instance-manifest installs authenticate with **access

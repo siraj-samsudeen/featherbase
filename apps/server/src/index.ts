@@ -22,6 +22,7 @@ import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { sendInvitation } from './invitation-email'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -943,15 +944,39 @@ app.get('/api/people/pick', async (c) => {
 app.post('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    method?: string; subject?: string; sign_in_name?: string; email?: string; send_invitation_email?: boolean
+  }
   if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
   const google = await methodOfKind('google')
-  const { created, ...identity } =
-    google && body.method === google.key && !body.subject && body.email
-      ? await inviteGoogle(c.req.param('id'), body.email, who(c))
-      : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
+  if (google && body.method === google.key && !body.subject && body.email) {
+    const { created, ...identity } = await inviteGoogle(c.req.param('id'), body.email, who(c))
+    // #430: a new invite emails the address unless the inviter said not to; a
+    // re-invite sends nothing (Resend does). A failed send keeps the invite.
+    if (!created) return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'already_invited' } }, 200)
+    if (body.send_invitation_email === false)
+      return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'not_requested' } }, 201)
+    // The invite is already committed: whatever happens to the email, answer 201.
+    const sent = await sendInvitation(identity.id, who(c), externalOrigin(c).origin).catch((err) => {
+      console.error(JSON.stringify({ level: 'error', event: 'invitation_email_error', type: err instanceof AppError ? err.type : 'InternalError' }))
+      return { invitation_email: { status: 'failed', error: 'The invitation email was not sent' }, invitation_sent_at: null }
+    })
+    return c.json({ ...identity, ...sent }, 201)
+  }
+  const { created, ...identity } = await linkIdentity(
+    c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
   // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
   return c.json(identity, created ? 201 : 200)
+})
+
+// #430: send a pending invite's email again, at most once in ten minutes. A
+// failed send is the answer here (503), since the email is all this does.
+app.post('/api/identities/:id/resend_invitation', async (c) => {
+  await assertSystemManager(who(c))
+  assertCanChangeAccess(c.get('user'))
+  const sent = await sendInvitation(c.req.param('id'), who(c), externalOrigin(c).origin)
+  if (sent.invitation_email.status === 'failed') throw new AppError('ServiceUnavailableError', sent.invitation_email.error)
+  return c.json(sent)
 })
 
 // person-resolution D3/D9: a person's identifiers. Reads follow the display
