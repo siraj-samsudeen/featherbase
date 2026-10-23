@@ -19,11 +19,11 @@ once they are archived. Auto-link is not in this change (D-b).
 - [x] 1.8 Web: Identifier System form (basic/Advanced, revert, disabled options); Identifiers panel on the Person form (display rule, unresolved-sign-in note, banners). Verify `apps/web/test/identifiers-panel.test.tsx`.
 - [x] 1.9 `docs/DEPLOY.md` for the joint release (with `person-rename` 3.2): staging re-stamp, snapshot + rollback, boot-check, CDC pause/resume, btree_gist, seed pack, `people:resolve` after the deploy, expected counts, leaver/joiner/correction procedures; `CONTEXT.md` glossary; `PROGRESS.md`; gates.
 - [x] 1.10 The freeze (review B-M6): a System Manager records or ends a `source` employee code by hand with a required note (`verified = false`) until the feed first writes; test mode accepts it. Verify `test/person-identifiers.test.ts`, `apps/web/test/identifiers-panel.test.tsx`.
-- [x] 1.11 The `employee_code` mirror until 2.1 (final review round): every write of a current `stylehr-employee-code` row copies the current code into the Custom Field in the same transaction; ending the last one clears it; the Person picker searches current employee-record rows. Verify `test/employee-code-mirror.test.ts`.
+- [x] 1.11 The `employee_code` mirror until 2.1 (final review round): every write of a current `stylehr-employee-code` row copies the current code into the Custom Field in the same transaction; ending the last one clears it; the Person picker searches current employee-record rows. Verify `test/employee-code-mirror.test.ts` (superseded by 2.1: renamed `test/employee-code-scope.test.ts`).
 
 ## Sales-target scoping — separate PR after 1a-i
 
-- [ ] 2.1 (also delete the temporary `mirrorEmployeeCodeField` mirror and its call sites) `sales-target.ts` scoping on current identifier rows — (assigner, code) or record number, several codes, ambiguous ⇒ `no_assignment` + structured log — **and** drop the `employee_code`/`stylehr_username` Custom Fields in the same PR. Verify `test/sales-target.test.ts`.
+- [x] 2.1 (also delete the temporary `mirrorEmployeeCodeField` mirror and its call sites) `sales-target.ts` scoping on current identifier rows — (assigner, code) or record number, several codes, ambiguous ⇒ `no_assignment` + structured log — **and** drop the `employee_code`/`stylehr_username` Custom Fields in the same PR (migration `0107`, #408). Verify `test/sales-target.test.ts`, `test/employee-code-scope.test.ts`, `test/migration-0107.test.ts`.
 
 ## Phase 1a-ii — manual merge and undo
 
@@ -42,7 +42,7 @@ once they are archived. Auto-link is not in this change (D-b).
 - [ ] 4.5 `/api/health` (key status, group counts, chain length, job status), structured log events, Activity Log counters; scheduled re-scan (policy change + weekly), snooze expiry, erasure; **exit criterion:** the daily-loading check for "fingerprint key degraded" is live in data-warehouse (#4336). Verify `test/health.test.ts`, `test/jobs.test.ts`.
 - [ ] 4.6 Duplicates screen (configured columns, side by side, Merge / Not the same person / Later, header counts, Reopened filter). Verify `apps/web/test/duplicates.test.tsx`.
 - [ ] 4.7 Playwright `e2e/person-resolution.spec.ts`: set-up → group → merge → merged-away StyleHR login opens the survivor → undo → ended identity refused.
-- [ ] 4.8 DEPLOY.md (key + offline backup, erasure trade-off, sync contract pointer, fed-list cadence), follow-ups filed: data-warehouse#4336 (sync + resolve file + CDC registration + daily-loading checks), the bronze Aadhaar exposure, the lawyer review, the owner decision on direct StyleHR Aadhaar access.
+- [ ] 4.8 DEPLOY.md (key + offline backup, erasure trade-off, sync contract pointer, fed-list cadence), follow-ups filed: data-warehouse#4336 (sync + resolve file + CDC registration + daily-loading checks), the warehouse national-ID handling (private), the lawyer review, the owner decision on direct StyleHR Aadhaar access.
 
 ## Phase 2 — workforce, lanes and bulk, warehouse, period scoping, auto-link
 

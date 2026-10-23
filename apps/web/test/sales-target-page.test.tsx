@@ -6,6 +6,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
+import { applySeedPack } from 'server/src/seed-packs'
 import { test, expect, renderApp } from './pg-test'
 
 const saved = { ...process.env }
@@ -31,6 +32,15 @@ async function personId(admin: { fetch: (path: string, init?: RequestInit) => Pr
   const filters = encodeURIComponent(JSON.stringify([['username', '=', username]]))
   const found = (await (await admin.fetch(`/api/table/Person?filters=${filters}`)).json()) as { data: { row_id: string }[] }
   return found.data[0].row_id
+}
+
+// #408: a person's employee code is a current identifier row, recorded as the joiner procedure does.
+async function recordCode(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, id: string, code: string) {
+  await applySeedPack('jeyarama')
+  const res = await admin.fetch(`/api/people/${id}/identifiers`, {
+    method: 'POST', body: JSON.stringify({ system: 'stylehr-employee-code', value: code, note: 'Joiner, HR mail' }),
+  })
+  expect(res.status).toBe(201)
 }
 
 async function viewer(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }) {
@@ -75,15 +85,12 @@ test('a Store Manager is told they see the whole store as Store Manager', async 
     })
   for (const [table, row] of [
     ['Section Merchandise Map', { store_code: '1501', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' }],
-    ['Store Manager', { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' }],
+    ['Store Manager', { store_code: '1501', employee_code: 'RR-0104', full_name: 'A. Kumar', email: 'sm.atk@jeyarama.com' }],
   ] as const)
     await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table, row }) })
   // person-rename: the account's id is minted; find it by its username.
   const id = await personId(admin, 'test_employee_2')
-  const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
-  await admin.fetch(`/api/table/Person/${id}`, {
-    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
-  })
+  await recordCode(admin, id, 'RR-0104')
 
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
   const { token } = (await login.json()) as { token: string }
@@ -111,14 +118,11 @@ test('more than three Sections are counted, not listed; a Store Manager reads "W
     })
   await admin.fetch('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-10104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
+    body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-0104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
   })
   // person-rename: the account's id is minted; find it by its username.
   const id = await personId(admin, 'test_employee_2')
-  const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
-  await admin.fetch(`/api/table/Person/${id}`, {
-    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
-  })
+  await recordCode(admin, id, 'RR-0104')
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
   const { token } = (await login.json()) as { token: string }
   await renderApp('/featherbase/sales-target', { token, user: 'test_employee_2' } as never)

@@ -148,8 +148,8 @@ describe('write-through to identifiers', () => {
   test('a StyleHR link writes its record number; unlinking closes it', async ({ admin }) => {
     await configureDelegated()
     const p = await makePerson({ full_name: 'Writes Through' })
-    const { id } = await admin.post<{ id: string }>(`/api/people/${p}/identities`, { method: 'stylehr', subject: '48213', sign_in_name: 'wt_login' })
-    expect(await current(p, 'stylehr-employee-id')).toEqual([{ value: '48213', source: 'sign-in' }])
+    const { id } = await admin.post<{ id: string }>(`/api/people/${p}/identities`, { method: 'stylehr', subject: '900001', sign_in_name: 'wt_login' })
+    expect(await current(p, 'stylehr-employee-id')).toEqual([{ value: '900001', source: 'sign-in' }])
     await admin.delete(`/api/identities/${id}`)
     expect(await current(p, 'stylehr-employee-id')).toEqual([])
   })

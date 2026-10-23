@@ -1,28 +1,70 @@
 # Progress Log
 
-## 2026-10-23 — Person screens after the person release: stale form, names not ids, readable dates (#413, #414, #415)
+## 2026-10-23 — Person screens after the person release: names not ids, readable identifier dates (#414, #415)
 
-Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release.
+Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release. (#413, a stale Person
+form writing the employee code back, went away with the field itself in #423.)
 
-- **#413** — `mirrorEmployeeCodeField` changed `person.employee_code` without moving `updated_at`. A Person form opened
-  before an identifier write still passed optimistic concurrency, so saving it (any unrelated change) wrote the stale
-  field back: record a code then save → the person lost their Target scope; end a code then save → they kept it. The
-  mirror now moves `updated_at`, so the stale save is a 409; the Identifiers panel also invalidates the Person row so
-  the form beside it reloads.
 - **#414** — the Person form heading and breadcrumb, the sidebar Recent/Frequent rows, the command-bar recents and the
   Home resume tiles render `ShownName` (a `PrincipalName` for an opaque id). Rename is hidden for an opaque id (the
-  server always refused it). The Unlink confirmation names the person.
+  server always refused it). The Unlink confirmation names the person. A Person save invalidates the cached
+  `['principal-name', id]`, so a new full name shows at once (review, Codex P2).
 - **#415** — identifier periods use `fmtDate` (`since 23-Oct-2026`); End and Unlink are `shrink-0` so they no longer
   wrap one letter per line in the narrow card.
 
-**Verified:** server `test/employee-code-mirror.test.ts` (two new stale-form tests, red first: the stale save
-succeeded), plus `person*`, `people-resolve`, `identifier-systems`, `sales-target` — 112 passed on PG18. Web
-`identifiers-panel` and `person-rename` (new tests red first), design guards; full web suite 709 passed, 3 failing
-the same way on main (Tasker not built, Dive env). Browser (Playwright, 1280 px): recorded a code by hand, the form
-showed it at once, a later save kept it in the database; heading `Person: <name>`, no Rename, Recent shows the name.
+**Verified:** web `person-rename` (heading is the name, no Rename, Recent shows the name; a renamed person shows the new
+name; a Recent row with no caption shows the name and no id tooltip) and `identifiers-panel` (DD-Mon-YYYY periods,
+`shrink-0`), design guards. Browser (Playwright, 1280 px): heading `Person: <name>`, no Rename, Recent shows names,
+End/Unlink on one line.
 
-**Not fixed here:** #408 (the field can still be typed over on the form, and Person import writes it with no
-identifier — commented there).
+## 2026-10-23 — Sales-target scope comes from identifier rows; the Person code fields are gone (#408)
+
+A tester typed another person's code into Person's free-text **Employee code (StyleHR)** field and the
+report moved to that person's Team Lead scope, with no identifier history and no one-holder check. That
+field was a copy of the person's current `stylehr-employee-code` row, but an ordinary editable one.
+
+Sales-target scoping (`currentEmployeeCodes` in `src/sales-target.ts`) now reads the person's **current**
+(`upper_inf(valid)`) `stylehr-employee-code` identifier rows, every one of them: two payrolls give the union
+of both codes' Sections. The Store Sections maps carry the code but not the firm, so a code current on two
+people blocks each of them entirely (`no_assignment`, no partial scope from their other codes or explicit
+rows — design D10) and logs a structured `sales_target_ambiguous_employee_code` warning (people and row ids,
+never the code); DEPLOY.md's leaver procedure now says to END the code so the next holder is not blocked. Map codes compare trimmed and upper-cased, as identifier values
+are stored. Migration **0107** drops the `employee_code` and `stylehr_username` Custom Fields (records,
+column_def rows, columns); the sales-target seed no longer creates one; the temporary
+`mirrorEmployeeCodeField` and its five call sites are gone. A Person import whose file has an
+`employee_code` / `stylehr_username` column refuses that column with a pointer to the Identifiers panel or
+`people:resolve` (`retiredColumnNotice` / `autoMapImportColumns` in `packages/shared/src/import.ts`), never
+maps it — not even onto a re-created, inert Custom Field — and never offers to create it. OpenSpec
+person-resolution task 2.1.
+
+**Verified:** server and web typecheck; `check:specs`; `lint:sql`; the full server suite on Postgres 18.
+New tests: one code, several codes, an ended code, an ambiguous code (whole person no_assignment + alert,
+unblocked once the other holder's code ends), the import refusal (shared + wizard render), and the #408
+repro (saving a Person with another code moves nothing). Parity on the 23-Oct dev snapshot: all 271
+StyleHR-linked people get identical scope from the old code (field) and the new code (rows) — 267 scoped,
+3 refused as before, 1 with no scope.
+
+**Next:** Phase 1a-ii (merge and undo). Matching on (firm, code) waits for the Store Sections maps to carry
+the firm.
+
+## 2026-10-23 — The privacy notice is instance configuration (#401)
+
+Featherbase is public, so an organisation's privacy wording does not belong in the repo (#393's PR #394 hard-coded
+it). System Settings gains `privacy_notice` (Long Text, Markdown; migration 0105). `GET /privacy` is public, sits
+ahead of the legacy-path redirect (which otherwise answers it with a 308), and renders the notice with `markdown-it`
+14.3.2 (`html: false`; its link check drops `javascript:`; image syntax renders as a link with its alt text, so no
+third-party pixel loads). The page has no script, a meta CSP with `script-src 'none'; img-src 'none'` (the global
+`secureHeaders` rewrites the response header after the handler), light and dark via `prefers-color-scheme`, a 16px
+phone gutter and `Cache-Control: public, max-age=300`. Blank or unset = a plain HTML 404 page; `/privacy/` 301s to
+`/privacy`. `cli settings:set <field> --stdin` writes one System Settings text field (Data, Text, Long Text; typed,
+layout and child-table columns refused — Codex P2) from the whole of stdin through `saveDoc`, and logs `settings_set <field>` to the Activity Log as `cli`; DEPLOY.md says where an instance's text lives (its
+own repo) and how to apply it. OpenSpec change `instance-privacy-notice` adds the requirement to
+`sign-in-and-accounts`.
+
+**Verified** on PostgreSQL 18: `test/privacy-notice.test.ts` (9) and the five new `test/cli.test.ts` cases failed
+first (308 instead of 404/200; unknown field; no such command), pass now; full server suite 1130 passed; the new
+and neighbouring files (26) also pass on PostgreSQL 17. Server and web typecheck clean; `pnpm check:specs` clean.
+Not rehearsed: piping the file through `railway ssh` (DEPLOY.md names the form as the fallback).
 
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
@@ -104,7 +146,7 @@ snapshot's codes: 265 moved, 6 listed (3 absent, 2 on two records, 1 record
 already held), second run 0 moved; parity after it 271/271.
 
 **Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
-and `stylehr_username` Custom Fields); then Phase 1a-ii (merge and undo).
+and `stylehr_username` Custom Fields — done 23-Oct, #408); then Phase 1a-ii (merge and undo).
 
 **Gotchas:** migrations run with no controllers loaded — Identifier System
 rows saved by a migration go through `saveIdentifierSystem` (seed-packs.ts),
@@ -467,13 +509,13 @@ new test was run against the pre-fix code and failed there: roster derivation re
 
 Browser proof (local, Playwright, MotherDuck embed stubbed):
 
-- TL RR-3769 by password lands on the report: 2 Section subtotals, 90 rows, served from a
+- TL RR-0106 by password lands on the report: 2 Section subtotals, 90 rows, served from a
   snapshot in 88 ms. The embed starting state carries 90 groups, each with its Section,
   for 01–02-Oct, Dive version 3.
 - An unprovisioned Google address is refused.
 
 Locally, against the real ATK roster (64 TLs/DMs provisioned by the data-warehouse
-`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-3769 got 90 groups in
+`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-0106 got 90 groups in
 Home Décor and Stationery. The report showed ₹2,16,284.95 target and ₹91,802.52 actual for
 01–02-Oct, which matched a direct warehouse query to the paisa.
 
@@ -1220,8 +1262,8 @@ The deterministic prototype migration preserves rows, references, comments, priv
 focus and grants, and aborts collisions. Its regression covers the real Comment,
 Version, File and Share pointers rather than only the task rows. Read-only
 inspection found three tasks in the developer database, including TASK-00003,
-“Follow up with Deepak on the GoFrugal discrepancy discussed in the call with
-Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+a follow-up task about a GoFrugal discrepancy (names withheld), in TPROJ-0001
+“GoFrugal Data Quality”.
 That database was not migrated; migration tests and browser proof use disposable
 databases only. Starting normal init will run the migration and needs operator
 authorization for those existing developer rows.
@@ -1456,7 +1498,7 @@ each, sorted; maps alone serve an employee with no assignment row; maps and
 assignment naming different stores are refused with 417; without the Tables
 or a code nothing changes); full server suite 788 passed / 15 skipped / 1 failed (the pre-existing root-runs-chmod `sources-csv.test.ts` case, identical on base); `pnpm --filter web
 test` 133 passed. Next: on featherbase-dev, create the Custom Field and set
-`employee_code` on a test account to a mapped ATK employee (e.g. RR-11092,
+`employee_code` on a test account to a mapped ATK employee (e.g. RR-0103,
 Kurti) and watch the report widen; the maps' arrival in
 `bronze_featherbase.application` is the data-warehouse side's check.
 
@@ -3263,7 +3305,7 @@ The #127 email tier is now working end to end on
   correct client id, the exact registered https `redirect_uri` (SITE_URL
   path), `prompt=select_account`, and a PKCE S256 challenge; Google renders
   the "continue to Jeyarama Dashboards" page — no `redirect_uri_mismatch`.
-  The owner then completed a real `siraj@jeyarama.com` sign-in and landed
+  The owner then completed a real `@jeyarama.com` sign-in (his own account) and landed
   in `/admin`; the user row was auto-provisioned exactly per design:
   `social_login='google'`, enabled, no roles.
 - Filed on the way: #158 — the disabled-account refusal at the OAuth
@@ -10297,7 +10339,7 @@ For the data-warehouse #3783 user trial on featherbase-dev:
 
 - **#366 / #367 — delegated sign-in test mode** (OpenSpec `delegated-login-test-mode`).
   `DELEGATED_LOGIN_TEST_MODE=trust-any-password` (exact phrase, environment only) skips the
-  StyleHR check: a tester types a linked person's **employee code** (`RR-6761`), no password. The
+  StyleHR check: a tester types a linked person's **employee code** (`RR-0107`), no password. The
   account must still be linked, enabled and not privileged. The login page shows a notice and asks
   for an employee code. Leavers are kept out by a disabled account (the data-warehouse roster sync
   runs with `--disable-leavers`). Set on featherbase-dev only; prod has the code, not the switch.

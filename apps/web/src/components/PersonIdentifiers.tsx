@@ -70,9 +70,6 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   const done = () => {
     setError(null)
     void qc.invalidateQueries({ queryKey: key })
-    // #413: an employee-code write also moves the Person row (its mirrored
-    // field and updated_at), so the form beside this panel reloads it.
-    void qc.invalidateQueries({ queryKey: ['doc', 'Person', person] })
   }
   const fail = (err: unknown) => setError(err instanceof ApiError ? err.message : 'That did not work')
   const add = useMutation({

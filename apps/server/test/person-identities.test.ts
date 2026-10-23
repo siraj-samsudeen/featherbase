@@ -71,12 +71,12 @@ describe('Google is matched by its permanent account ID', () => {
   })
 
   test('an unlinked Google account with someone else\'s address never opens that account', async ({ api }) => {
-    const meera = await makePerson({ email: 'meera@jeyarama.com' })
+    const meera = await makePerson({ email: 'member@jeyarama.com' })
     await configureGoogle({ allowed_email_domains: '' })
-    expect((await googleSignIn(api, 'meera@jeyarama.com', { subject: 'g-stranger' })).status).toBe(401)
+    expect((await googleSignIn(api, 'member@jeyarama.com', { subject: 'g-stranger' })).status).toBe(401)
     // Even with open admission it is refused, not linked: the address is in use.
     await configureGoogle({ allowed_email_domains: '*' })
-    const res = await googleSignIn(api, 'meera@jeyarama.com', { subject: 'g-stranger' })
+    const res = await googleSignIn(api, 'member@jeyarama.com', { subject: 'g-stranger' })
     expect(res.status).toBe(401)
     const links = await sql`select 1 from sign_in_identity where person_id = ${meera}`
     expect(links).toHaveLength(0)
