@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
-import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
@@ -394,7 +394,7 @@ export function ListView({
               offering New on a directly-reached child list could only ever
               produce an error. */}
           {canAddRows &&
-            !isSourceReadOnly(meta.data) &&
+            !isRowsReadOnly(meta.data) &&
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
@@ -424,7 +424,7 @@ export function ListView({
           )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
-          {!isSourceReadOnly(meta.data) && caps?.manage && (
+          {!isRowsReadOnly(meta.data) && caps?.manage && (
             <Link
               to="/featherbase/admin/import"
               search={{ table: table }}
@@ -437,7 +437,7 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
@@ -448,7 +448,7 @@ export function ListView({
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
-          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/merge"
               params={{ table }}
@@ -495,15 +495,18 @@ export function ListView({
           <ChecklistSwitch table={table} meta={meta.data} />
           {isSystemManager && (
             <>
-              {/* NAM-001: change how new rows in this Table are named. */}
-              <Link
-                to="/featherbase/admin/naming/$table"
-                params={{ table }}
-                className="fc-btn"
-                data-testid="open-naming"
-              >
-                Naming
-              </Link>
+              {/* NAM-001: change how new rows in this Table are named —
+                  never for a Table whose rows the platform writes (#432). */}
+              {!isSystemWritten(meta.data) && (
+                <Link
+                  to="/featherbase/admin/naming/$table"
+                  params={{ table }}
+                  className="fc-btn"
+                  data-testid="open-naming"
+                >
+                  Naming
+                </Link>
+              )}
               <Link
                 to="/featherbase/admin/permissions/$table"
                 params={{ table }}
@@ -515,7 +518,7 @@ export function ListView({
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
-              {!meta.data?.system && (
+              {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
                   className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
@@ -588,7 +591,7 @@ export function ListView({
           <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
         </>
       )}
-      {selected.size > 0 && !isSourceReadOnly(meta.data) && (
+      {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
           className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
           data-testid="bulk-bar"
@@ -651,7 +654,7 @@ export function ListView({
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
-              {!isSourceReadOnly(meta.data) && (
+              {!isRowsReadOnly(meta.data) && (
                 <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
                   <input
                     type="checkbox"
@@ -690,7 +693,7 @@ export function ListView({
                 settings={settings}
                 selected={selected.has(String(row.row_id))}
                 onToggleSelect={() => toggleRow(String(row.row_id))}
-                selectable={!isSourceReadOnly(meta.data)}
+                selectable={!isRowsReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
                 expanded={expanded.has(String(row.row_id))}
@@ -710,7 +713,7 @@ export function ListView({
                   colSpan={
                     columns.length +
                     (expandable ? 1 : 0) +
-                    (isSourceReadOnly(meta.data) ? 0 : 1)
+                    (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
                   className={`px-3 py-8 text-center ${list.isError ? 'text-[var(--color-danger)]' : 'text-[var(--color-ink-faint)]'}`}
                   data-testid={list.isError ? 'list-rows-error' : undefined}
@@ -730,7 +733,7 @@ export function ListView({
                           needs the way forward, so the empty state carries it
                           too — the toolbar action is not the only door. */}
                       {canAddRows &&
-                        !isSourceReadOnly(meta.data) &&
+                        !isRowsReadOnly(meta.data) &&
                         meta.data?.kind !== 'settings' &&
                         meta.data?.kind !== 'sub_table' && (
                         <>

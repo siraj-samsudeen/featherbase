@@ -5,6 +5,7 @@ import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
+import { assertNotSystemWritten } from './system-written'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -185,6 +186,8 @@ export async function applyWorkflowAction(
   action: string,
   user: string,
 ): Promise<Record<string, unknown>> {
+  // #432: a workflow step writes the row directly, so it gates here too.
+  assertNotSystemWritten(await getMeta(table), 'changed')
   const wf = await getActiveWorkflow(table)
   if (!wf) throw new AppError('ValidationError', `No active workflow for ${table}`)
   const field = stateField(wf)

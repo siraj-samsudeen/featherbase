@@ -1,0 +1,376 @@
+// #432: audit tables are system-written. No principal — not Administrator, not
+// a System Manager, not an access token — may create, change or delete their
+// rows through the generic API, bulk paths or structure changes; only the
+// server's own writers (sign-in logging, the job runner, the import logger,
+// the version trail) put rows there. Reads are unchanged.
+import { describe, expect } from 'vitest'
+import type { TestClient } from 'feather-testing-postgres'
+import { test } from './pg-test'
+import { sql } from '../src/db'
+import { app } from '../src/index'
+import * as documentModule from '../src/document'
+import { listActions } from '../src/actions'
+import { logActivity } from '../src/audit'
+import { setUserPassword } from '../src/auth'
+import { drainJobs, enqueue, loadJobs } from '../src/jobs'
+import { expectApiError, grantRole, makeTable, patchDoc } from './fixtures'
+
+const AL = 'Activity Log'
+const ENC = encodeURIComponent(AL)
+const REFUSED = { status: 403, type: 'PermissionError', message: expect.stringMatching(/written only by the platform/) }
+
+// The decision per platform table, as the migration sets it. Every table here
+// is written by the server alone; the ones left out are edited by people.
+const SYSTEM_WRITTEN = [
+  'Access Log',
+  'Activity Log',
+  'Background Job',
+  'Dataset Miss',
+  'Dataset Snapshot',
+  'Email Queue',
+  'Email Sink',
+  'Import Log',
+  'Job Execution',
+  'Notification Log',
+  'User Event',
+  'Version',
+]
+
+async function seedActivity(operation = 'seeded for #432'): Promise<string> {
+  await logActivity('Administrator', operation)
+  const [row] = await sql`select row_id from activity_log where operation = ${operation} order by created_at desc limit 1`
+  return String(row.row_id)
+}
+
+// A Bearer-token client: a service account holding System Manager, so the
+// token is as privileged as a token can be.
+async function tokenClient(admin: TestClient, api: TestClient): Promise<TestClient> {
+  const sa = await admin.post<{ row_id: string }>('/api/service_accounts', {
+    label: 'audit-forger-bot',
+    roles: ['System Manager'],
+  })
+  const { token } = await admin.post<{ token: string }>('/api/access_tokens', { label: 'forger', owner: sa.row_id })
+  const auth = { authorization: `Bearer ${token}` }
+  const wrap = (init: RequestInit = {}) => ({ ...init, headers: { ...auth, ...(init.headers ?? {}) } })
+  const asJson = async (res: Response) => {
+    if (!res.ok) return res
+    return res.json()
+  }
+  return {
+    ...api,
+    fetch: (path: string, init?: RequestInit) => api.fetch(path, wrap(init)),
+    get: (path: string) => api.fetch(path, wrap()).then(asJson),
+    post: (path: string, body?: unknown) =>
+      api.fetch(path, wrap({ method: 'POST', body: JSON.stringify(body ?? {}) })).then(asJson),
+    put: (path: string, body?: unknown) =>
+      api.fetch(path, wrap({ method: 'PUT', body: JSON.stringify(body ?? {}) })).then(asJson),
+    delete: (path: string) => api.fetch(path, wrap({ method: 'DELETE' })).then(asJson),
+  } as unknown as TestClient
+}
+
+type Principal = 'Administrator' | 'System Manager' | 'access token'
+const PRINCIPALS: Principal[] = ['Administrator', 'System Manager', 'access token']
+
+async function as(who: Principal, ctx: { admin: TestClient; api: TestClient; createUser: (o: { roles: string[] }) => Promise<TestClient> }) {
+  if (who === 'Administrator') return ctx.admin
+  if (who === 'System Manager') return ctx.createUser({ roles: ['System Manager'] })
+  return tokenClient(ctx.admin, ctx.api)
+}
+
+async function activityCount(): Promise<number> {
+  const [{ n }] = await sql`select count(*)::int as n from activity_log`
+  return Number(n)
+}
+
+describe('#432: every privileged principal is refused on an audit table', () => {
+  for (const who of PRINCIPALS) {
+    describe(who, () => {
+      test('insert, through the row API and save_row', async ({ admin, api, createUser }) => {
+        const client = await as(who, { admin, api, createUser })
+        const before = await activityCount()
+        await expectApiError(client.post(`/api/table/${ENC}`, { user: 'Administrator', operation: 'forged login' }), REFUSED)
+        await expectApiError(client.post('/api/save_row', { table: AL, row: { user: 'Administrator', operation: 'forged' } }), REFUSED)
+        expect(await activityCount()).toBe(before)
+      })
+
+      test('update', async ({ admin, api, createUser }) => {
+        const id = await seedActivity()
+        const client = await as(who, { admin, api, createUser })
+        await expectApiError(patchDoc(client, `/api/table/${ENC}/${id}`, { operation: 'rewritten' }), REFUSED)
+        await expectApiError(client.post('/api/save_row', { table: AL, row: { row_id: id, operation: 'rewritten' } }), REFUSED)
+        const [row] = await sql`select operation from activity_log where row_id = ${id}`
+        expect(row.operation).toBe('seeded for #432')
+      })
+
+      test('delete, one row and a bulk selection', async ({ admin, api, createUser }) => {
+        const ids = [await seedActivity('first'), await seedActivity('second')]
+        const client = await as(who, { admin, api, createUser })
+        // The list's bulk delete sends one delete per selected row.
+        for (const id of ids) await expectApiError(client.delete(`/api/table/${ENC}/${id}`), REFUSED)
+        expect(await sql`select row_id from activity_log where row_id in ${sql(ids)}`).toHaveLength(2)
+      })
+
+      test('rename', async ({ admin, api, createUser }) => {
+        const id = await seedActivity()
+        const client = await as(who, { admin, api, createUser })
+        await expectApiError(client.post(`/api/table/${ENC}/${id}:rename`, { new_name: 'forged-id' }), REFUSED)
+        expect(await sql`select 1 from activity_log where row_id = ${id}`).toHaveLength(1)
+      })
+
+      test('import and merge (a merge is an import into the target), dry run included', async ({ admin, api, createUser }) => {
+        const client = await as(who, { admin, api, createUser })
+        const before = await activityCount()
+        const rows = [{ user: 'Administrator', operation: 'imported forgery' }]
+        await expectApiError(client.post(`/api/table/${ENC}:import`, { rows }), REFUSED)
+        await expectApiError(client.post(`/api/table/${ENC}:import`, { rows, dry_run: true }), REFUSED)
+        await expectApiError(client.post(`/api/table/${ENC}:import-revert`, { run_id: 'any' }), REFUSED)
+        expect(await activityCount()).toBe(before)
+      })
+
+      test('column changes: schema, rename column, naming, custom field, delete table', async ({ admin, api, createUser }) => {
+        const client = await as(who, { admin, api, createUser })
+        const meta = await admin.get<{ columns: unknown[] }>(`/api/table/${ENC}:meta`)
+        await expectApiError(
+          client.put(`/api/table_def/${ENC}`, {
+            columns: [...meta.columns, { column_name: 'forged_note', column_type: 'Data' }],
+          }),
+          REFUSED,
+        )
+        await expectApiError(client.post(`/api/table_def/${ENC}/rename_column`, { from: 'operation', to: 'op' }), REFUSED)
+        await expectApiError(client.put(`/api/table_def/${ENC}/id_pattern`, { id_pattern: 'prompt' }), REFUSED)
+        await expectApiError(
+          client.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Activity Log-forged_flag', dt: AL, column_name: 'forged_flag', column_type: 'Check' } }),
+          REFUSED,
+        )
+        await expectApiError(client.delete(`/api/table_def/${ENC}`), REFUSED)
+        const after = await admin.get<{ columns: { column_name: string }[]; id_pattern: string }>(`/api/table/${ENC}:meta`)
+        expect(after.columns.map((c) => c.column_name)).not.toContain('forged_note')
+        expect(after.columns.map((c) => c.column_name)).not.toContain('forged_flag')
+        expect(after.columns.map((c) => c.column_name)).toContain('operation')
+        expect(after.id_pattern).not.toBe('prompt')
+      })
+    })
+  }
+})
+
+describe('#432: the flag', () => {
+  test('is set on exactly the server-written platform tables and exposed on the table meta', async ({ admin }) => {
+    const flagged = await sql`select name from table_def where system_written order by name`
+    expect(flagged.map((r) => r.name)).toEqual(SYSTEM_WRITTEN)
+    expect(await admin.get(`/api/table/${ENC}:meta`)).toMatchObject({ system_written: true })
+    expect(await admin.get('/api/table/Comment:meta')).toMatchObject({ system_written: false })
+  })
+
+  test('every flagged table refuses create, update and delete — before any existence check', async ({ admin }) => {
+    for (const table of SYSTEM_WRITTEN) {
+      const enc = encodeURIComponent(table)
+      await expectApiError(admin.post(`/api/table/${enc}`, {}), REFUSED)
+      await expectApiError(patchDoc(admin, `/api/table/${enc}/no-such-row`, {}), REFUSED)
+      await expectApiError(admin.delete(`/api/table/${enc}/no-such-row`), REFUSED)
+    }
+  })
+
+  test('a person-built table can never claim the flag', async ({ admin }) => {
+    await makeTable(admin, { name: 'Claims Audit', columns: ['title'], system_written: true })
+    expect(await admin.get('/api/table/Claims%20Audit:meta')).toMatchObject({ system_written: false })
+    await admin.post('/api/table/Claims%20Audit', { title: 'ordinary row' })
+  })
+
+  test('a grant on an audit table never makes it creatable', async ({ admin, createUser }) => {
+    await grantRole(admin, { role: 'Audit Writer', table: AL, can_read: true, can_create: true, can_write: true, can_delete: true })
+    const user = await createUser({ roles: ['Audit Writer'] })
+    const boot = await user.get<{ capabilities: { creatable: string[]; tables: string[] } }>('/api/whoami')
+    expect(boot.capabilities.creatable).not.toContain(AL)
+    expect(boot.capabilities.tables).toContain(AL)
+    await expectApiError(user.post(`/api/table/${ENC}`, { user: user.user, operation: 'forged' }), REFUSED)
+  })
+})
+
+describe('#432: the server still writes, and everyone still reads', () => {
+  test('signing in records an activity', async ({ admin, api }) => {
+    const person = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Person', row: { email: 'audit-signin@x.com' } })
+    await setUserPassword(person.row_id, 'auditpw123')
+    const res = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'audit-signin@x.com', pwd: 'auditpw123' }) })
+    expect(res.status).toBe(200)
+    const rows = await sql`select operation from activity_log where "user" = ${person.row_id}`
+    expect(rows.map((r) => r.operation)).toContain('login')
+  })
+
+  test('the job runner records the job and its execution', async () => {
+    await loadJobs()
+    const job = await enqueue('ping_job', {})
+    await drainJobs()
+    const [bj] = await sql`select job_status from background_job where row_id = ${job}`
+    expect(bj.job_status).toBe('done')
+    expect(await sql`select 1 from job_execution where job = ${job}`).not.toHaveLength(0)
+  })
+
+  test('an import into an ordinary table still writes its Import Log', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Import Target', columns: ['title'] })
+    await admin.post('/api/table/Audit%20Import%20Target:import', { rows: [{ title: 'one' }] })
+    const logs = await sql`select inserted from import_log where ref_table = 'Audit Import Target'`
+    expect(logs.map((l) => Number(l.inserted))).toEqual([1])
+  })
+
+  test('saving a tracked row still writes its Version', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Tracked', columns: ['title'], track_changes: true })
+    const row = await admin.post<{ row_id: string; updated_at: string }>('/api/table/Audit%20Tracked', { title: 'a' })
+    await patchDoc(admin, `/api/table/Audit%20Tracked/${row.row_id}`, { title: 'b', updated_at: row.updated_at })
+    expect(await sql`select 1 from version where ref_table = 'Audit Tracked' and ref_name = ${row.row_id}`).not.toHaveLength(0)
+  })
+
+  test('a failed job can still be retried through its dedicated action', async ({ admin }) => {
+    await loadJobs()
+    await sql`insert into background_job ${sql({ row_id: 'audit-failed-job', created_by: 'Administrator', updated_by: 'Administrator', method: 'ping_job', job_status: 'failed', attempts: 3, max_attempts: 3, payload: '{}' })}`
+    await admin.post('/api/retry_job', { row_id: 'audit-failed-job' })
+    const [job] = await sql`select job_status from background_job where row_id = 'audit-failed-job'`
+    expect(job.job_status).toBe('queued')
+  })
+
+  test('reads are unchanged: list, row and meta', async ({ admin, createUser }) => {
+    const id = await seedActivity()
+    const sm = await createUser({ roles: ['System Manager'] })
+    for (const client of [admin, sm]) {
+      const list = await client.get<{ data: { row_id: string }[] }>(`/api/table/${ENC}?limit_page_length=500`)
+      expect(list.data.map((r) => r.row_id)).toContain(id)
+      expect(await client.get(`/api/table/${ENC}/${id}`)).toMatchObject({ row_id: id, operation: 'seeded for #432' })
+    }
+  })
+})
+
+// Completeness: the guard has to hold on every way in, including ways added
+// after this test. Each list below is enumerated from the running code, so a
+// new entry point fails here until it is classified.
+describe('#432: every write entry point is covered', () => {
+  test('every write-effect row and collection action is refused on an audit table', async ({ admin }) => {
+    const id = await seedActivity()
+    const { row, collection } = listActions()
+    const writes = [...row, ...collection].filter((a) => a.effect === 'write')
+    expect(writes.length).toBeGreaterThan(0)
+    for (const a of collection.filter((x) => x.effect === 'write'))
+      await expectApiError(admin.post(`/api/table/${ENC}:${a.action}`, {}), REFUSED)
+    for (const a of row.filter((x) => x.effect === 'write'))
+      await expectApiError(admin.post(`/api/table/${ENC}/${id}:${a.action}`, {}), REFUSED)
+  })
+
+  // Every exported function of the document engine is either a reader, the
+  // trusted internal writer, or a public writer that refuses audit tables.
+  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'getDoc', 'validateRowForUpdate']
+  const TRUSTED = ['saveSystemRow']
+  const PUBLIC_WRITERS: Record<string, (id: string) => Promise<unknown>> = {
+    saveDoc: () => documentModule.saveDoc(AL, { user: 'Administrator', operation: 'forged' }),
+    deleteDoc: (id) => documentModule.deleteDoc(AL, id),
+    renameDoc: (id) => documentModule.renameDoc(AL, id, 'forged-id'),
+    submitDoc: (id) => documentModule.submitDoc(AL, id),
+    cancelDoc: (id) => documentModule.cancelDoc(AL, id),
+    amendDoc: (id) => documentModule.amendDoc(AL, id),
+    saveSingle: () => documentModule.saveSingle(AL, {}),
+  }
+
+  test('every exported document-engine writer is classified and refuses as Administrator', async () => {
+    const exported = Object.entries(documentModule)
+      .filter(([, v]) => typeof v === 'function')
+      .map(([k]) => k)
+      .sort()
+    expect(exported).toEqual([...READERS, ...TRUSTED, ...Object.keys(PUBLIC_WRITERS)].sort())
+    const id = await seedActivity()
+    for (const [name, call] of Object.entries(PUBLIC_WRITERS))
+      await expect(call(id), name).rejects.toMatchObject({ type: 'PermissionError', message: expect.stringMatching(/written only by the platform/) })
+  })
+
+  test('the trusted writer still inserts into an audit table', async () => {
+    const saved = await documentModule.saveSystemRow('Import Log', { ref_table: 'Person', inserted: 0, updated: 0, failed: 0 }, 'Administrator')
+    expect(await sql`select 1 from import_log where row_id = ${String(saved.row_id)}`).toHaveLength(1)
+  })
+
+  // Every state-changing HTTP route, classified. "row" and "structure" routes
+  // are exercised above; the rest never write an audit table's rows or columns.
+  const ROUTES: Record<string, 'row' | 'structure' | string> = {
+    'POST /api/table/:table': 'row',
+    'POST /api/table/:table/:name': 'row',
+    'PATCH /api/table/:table/:name': 'row',
+    'DELETE /api/table/:table/:name': 'row',
+    'POST /api/save_row': 'row',
+    'PUT /api/table_def/:name': 'structure',
+    'PUT /api/table_def/:name/id_pattern': 'structure',
+    'POST /api/table_def/:name/rename_column': 'structure',
+    'DELETE /api/table_def/:name': 'structure',
+    'POST /api/import_customizations': 'structure — custom fields go through the guarded save',
+    'POST /api/reapply_custom_fields': 'structure — re-applies existing custom fields only',
+    'POST /api/import/batches/:id/delete_tables': 'structure — deletes person-built tables; audit tables are system tables',
+    'POST /api/table_def': 'creates a new table; cannot claim the flag',
+    'POST /api/tenancy/table_def': 'creates a table on another site',
+    'POST /api/login': 'internal writer: records the sign-in',
+    'POST /api/login/delegated': 'internal writer: records the sign-in',
+    'POST /api/signup': 'creates a person',
+    'POST /api/logout': 'internal writer: records the sign-out',
+    'POST /api/reset_password_request': 'password reset',
+    'POST /api/reset_password': 'password reset',
+    'POST /api/web_form/:route': 'web form insert through the guarded save',
+    'POST /api/method/:path{.+}': 'server methods write through the guarded save',
+    'POST /api/oauth/session': 'sign-in',
+    'POST /api/sales_target/embed_session': 'sign-in',
+    'POST /api/events': 'internal writer: the caller\'s own usage events',
+    'POST /api/saved_views': 'saved views',
+    'POST /api/saved_views/:name/share': 'saved views',
+    'DELETE /api/saved_views/:name': 'saved views',
+    'POST /api/set_theme': 'personal preference',
+    'POST /api/set_palette': 'personal preference',
+    'POST /api/set_language': 'personal preference',
+    'POST /api/set_password': 'credentials',
+    'POST /api/people/names': 'read',
+    'POST /api/people/:id/identities': 'person identities',
+    'POST /api/people/:id/identifiers': 'person identifiers',
+    'PATCH /api/identifiers/:id': 'person identifiers',
+    'DELETE /api/identifiers/:id': 'person identifiers',
+    'PATCH /api/identities/:identityId': 'person identities',
+    'DELETE /api/identities/:identityId': 'person identities',
+    'DELETE /api/me/identities/:identityId': 'person identities',
+    'DELETE /api/me/password': 'credentials',
+    'POST /api/access_tokens': 'credentials',
+    'DELETE /api/access_tokens/:id': 'credentials',
+    'POST /api/service_accounts': 'service accounts',
+    'PATCH /api/service_accounts/:name': 'service accounts',
+    'POST /api/service_accounts/:id/roles': 'service accounts',
+    'POST /api/access_log': 'internal writer: records the caller\'s own export',
+    'POST /api/upload_file': 'creates a File row through the guarded save',
+    'POST /api/dashboard/count': 'read',
+    'POST /api/dashboard/chart': 'read',
+    'POST /api/report_chart': 'read',
+    'POST /api/pin_chart_to_dashboard': 'dashboards',
+    'POST /api/permissions/:table': 'grants; a grant never makes an audit table writable',
+    'POST /api/run_query_report': 'read',
+    'POST /api/tenancy/sites': 'tenancy',
+    'POST /api/tenancy/user': 'tenancy',
+    'POST /api/app_actions/:app/:action': 'app actions refuse system tables',
+    'POST /api/app_reads/:app/:read': 'read',
+    'POST /api/preview_app_upgrade': 'app lifecycle',
+    'POST /api/upgrade_app': 'app lifecycle',
+    'POST /api/activate_app_upgrade': 'app lifecycle',
+    'POST /api/set_app_enabled': 'app lifecycle',
+    'POST /api/install_app': 'app lifecycle',
+    'POST /api/uninstall_app': 'app lifecycle',
+    'POST /api/run_auto_email_report': 'internal writer: queues email',
+    'POST /api/run_script_report': 'read',
+    'POST /api/server_script/:method': 'server scripts write through the guarded save',
+    'PUT /api/user_settings/:table': 'personal preference',
+    'POST /api/assign': 'creates a ToDo; the assigned row is not changed',
+    'POST /api/tags': 'tags live beside the row; the row is not changed',
+    'DELETE /api/tags/:table/:name/:tag': 'tags live beside the row; the row is not changed',
+    'POST /api/send_test_email': 'internal writer: dedicated email action',
+    'POST /api/queue_email': 'internal writer: dedicated email action',
+    'POST /api/enqueue_job': 'internal writer: dedicated job action',
+    'POST /api/retry_job': 'internal writer: dedicated job action',
+  }
+
+  test('every state-changing HTTP route is classified', () => {
+    const routes = [
+      ...new Set(
+        app.routes
+          .filter((r) => !['GET', 'ALL', 'OPTIONS', 'HEAD'].includes(r.method))
+          .map((r) => `${r.method} ${r.path}`),
+      ),
+    ].sort()
+    expect(routes).toEqual(Object.keys(ROUTES).sort())
+  })
+})

@@ -135,7 +135,9 @@ export async function tableAccessFor(
   roles: string[],
 ): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
   const rows = await sql`
-    select p.ref_table, p.role, p.can_read, p.can_create, p.owner_app,
+    select p.ref_table, p.role, p.can_read, p.owner_app,
+      -- #432: a grant never makes a system-written Table creatable.
+      (p.can_create and not d.system_written) as can_create,
       (p.can_read or p.can_write or p.can_create or p.can_delete
         or p.can_submit or p.can_cancel or p.can_amend) as any_action
     from permission p

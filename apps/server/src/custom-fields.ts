@@ -1,3 +1,4 @@
+import { assertNotSystemWritten } from './system-written'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
@@ -25,6 +26,8 @@ export async function applyCustomField(
 ): Promise<void> {
   const columnType = rec.column_type || 'Data'
   const meta = await getMeta(rec.dt)
+  // #432: a system-written Table's columns are the platform's alone.
+  assertNotSystemWritten(meta, 'changed')
   // Column (layout/sub-table types have none).
   const col = pgType(columnType)
   if (col)

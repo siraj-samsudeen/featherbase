@@ -10,6 +10,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import { saveUpload, deleteStored } from '../src/storage'
+import { saveSystemRow } from '../src/document'
 import { fileURLToPath } from 'node:url'
 
 const storageRoot = process.env.FILE_STORAGE_DIR ?? fileURLToPath(new URL('../storage', import.meta.url))
@@ -160,15 +161,14 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
   }) => {
     await makeTable(admin)
     // Residue an import journey would leave: a permission row, an Import
-    // Log entry, and the module home-page link created with the Table.
+    // Log entry, and the module home-page link created with the Table. The
+    // Import Log is system-written (#432), so the entry is written the way
+    // the importer writes it.
     await admin.post('/api/save_row', {
       table: 'Permission',
       row: { ref_table: DT, role: 'All', can_read: true },
     })
-    await admin.post('/api/save_row', {
-      table: 'Import Log',
-      row: { ref_table: DT, file_name: 'zones.csv', inserted: 8, failed: 0 },
-    })
+    await saveSystemRow('Import Log', { ref_table: DT, file_name: 'zones.csv', inserted: 8, failed: 0 }, 'Administrator')
     await admin.delete(`/api/table_def/${ENC}`)
 
     const [perms] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`

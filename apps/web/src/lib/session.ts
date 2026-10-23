@@ -75,6 +75,8 @@ export interface TableSummary {
   row_id: string
   module: string
   system: boolean
+  // #432: no "New" anywhere for a Table only the platform writes.
+  system_written?: boolean
 }
 
 /**
@@ -91,7 +93,7 @@ export function useShellTables(): TableSummary[] | undefined {
     queryFn: () =>
       listResource<TableSummary>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system'],
+        fields: ['row_id', 'module', 'system', 'system_written'],
         order_by: 'row_id asc',
         limit_page_length: 200,
       }),

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
+import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
@@ -148,6 +149,7 @@ export function validateIdPattern(pattern: string, columnNames: string[]): void 
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
+  assertNotSystemWritten(meta, 'renamed or changed')
   validateIdPattern(pattern, meta.columns.map((c) => c.column_name))
   await sql`update table_def set id_pattern = ${pattern}, updated_at = ${new Date()}
             where name = ${name}`
@@ -292,6 +294,7 @@ export async function updateTable(
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
+  assertNotSystemWritten(existing, 'changed')
   const parsed = tableDefSchema.safeParse({ ...(input as object), name })
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -585,6 +588,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
 // definition, columns, physical table, and every live pointer at it.
 export async function deleteTable(name: string, user = 'Administrator'): Promise<void> {
   const meta = await getMeta(name)
+  assertNotSystemWritten(meta, 'deleted')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
@@ -681,6 +685,7 @@ export async function renameColumn(
   user = 'Administrator',
 ): Promise<TableMeta> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
   // BV1: a bound Table's storage belongs to the source. Renaming its column

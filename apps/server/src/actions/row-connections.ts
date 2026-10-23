@@ -1,5 +1,5 @@
 import { AppError } from '../errors'
-import { ROW_KEY, getBacklinks } from '../meta'
+import { ROW_KEY, getBacklinks, getMeta } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
@@ -27,6 +27,9 @@ export interface Connection {
   via: string | null
   count: number
   filters: Filter[]
+  // #432: the platform alone writes the connected Table's rows, so the Desk
+  // offers no "new connected row" for it.
+  system_written: boolean
 }
 
 // Table-level shape of the same map, no counts — what a pane-chain picker
@@ -69,6 +72,7 @@ registerRowAction('connections', {
           via: bl.via,
           count: await countDocs(bl.table, filters, user.row_id),
           filters,
+          system_written: (await getMeta(bl.table)).system_written === true,
         })
       } else {
         const filters: Filter[] = [[bl.column, '=', name]]
@@ -78,6 +82,7 @@ registerRowAction('connections', {
           via: null,
           count: await countDocs(bl.table, filters, user.row_id),
           filters,
+          system_written: (await getMeta(bl.table)).system_written === true,
         })
       }
     }

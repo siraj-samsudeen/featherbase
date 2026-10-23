@@ -6,6 +6,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
+import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
@@ -1871,6 +1872,9 @@ app.post('/api/table/:table', async (c) => {
     const action = getCollectionAction(suffix)
     if (!action || action.effect !== 'write')
       throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
+    // #432: one gate for every write action, present and future (import,
+    // import-revert, …) — a system-written Table takes none of them.
+    assertNotSystemWritten(await getMeta(table), 'changed')
     const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await action.handler({ table, args, user }), 201)
   }
@@ -1907,6 +1911,8 @@ app.post('/api/table/:table/:name', async (c) => {
   const action = getRowAction(suffix)
   if (!action || action.effect !== 'write')
     throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
+  // #432: submit, cancel, amend, rename, workflow actions and any later one.
+  assertNotSystemWritten(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
   publishDocEvent(table, name, 'updated')

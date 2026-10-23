@@ -16,6 +16,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workfl
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { assertNotSystemWritten } from './system-written'
 import {
   assertDocPermission,
   assertPermission,
@@ -522,12 +523,32 @@ export interface SaveOptions {
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
   return appOperation(() => saveDocImpl(...args))
 }
+// #432: the public save. A system-written Table is refused here, ahead of any
+// permission check, so no principal's bypass reaches the write.
 async function saveDocImpl(
   table: string,
   values: RowValues,
   user = 'Administrator',
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
+): Promise<RowValues> {
+  assertNotSystemWritten(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
+  return writeDoc(table, values, user, mode, opts)
+}
+
+// #432: the trusted path for the server's own writers into a system-written
+// Table (the import logger today). Insert-only and permission-free; it is
+// reached by importing it, never through any route, action or script.
+export function saveSystemRow(table: string, values: RowValues, actor: string) {
+  return appOperation(() => writeDoc(table, values, actor, 'insert', { skipPermissions: true }))
+}
+
+async function writeDoc(
+  table: string,
+  values: RowValues,
+  user: string,
+  mode: 'upsert' | 'insert',
+  opts: SaveOptions,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   if (ENGINE_MANAGED.has(table))
@@ -972,6 +993,7 @@ async function setStatus(
   user: string,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const tbl = await tableRelation(table)
@@ -1043,6 +1065,7 @@ async function amendDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'amended')
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const source = await getDoc(table, name, user)
@@ -1085,6 +1108,7 @@ async function deleteDocImpl(
   opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'deleted')
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
@@ -1243,6 +1267,7 @@ async function renameDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'renamed')
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   // person-identities: a User's id is the permanent person id (the warehouse
@@ -1396,6 +1421,7 @@ async function saveSingleImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'saved')
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')
   const writeTiers = await permittedTiers(user, table, 'write')

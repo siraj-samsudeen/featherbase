@@ -99,6 +99,9 @@ export interface TableMeta {
   // #74: true for platform tables created by the migration chain. The Admin
   // sidebar groups (never hides) these; POST/PUT /api/table_def reject it.
   system: boolean
+  // #432: rows are written by the server's own code alone; every public write
+  // path refuses the Table for every principal (system-written.ts).
+  system_written?: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes
   // dispatch through sources/ (see sources/dispatch.ts).
