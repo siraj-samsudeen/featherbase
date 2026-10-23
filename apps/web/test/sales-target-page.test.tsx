@@ -225,6 +225,30 @@ test('a role taken away mid-session shows the no-access card and no cached table
   }
 })
 
+// Only /report answers 403 here (embed_session never answers): its refusal alone must produce the plain card, never the red "Numbers unavailable".
+test('a 403 from /report alone shows the no-access card', async ({ admin, createUser, db }) => {
+  await viewer(admin)
+  const reader = await createUser({ email: 'report.only@example.com', roles: ['Sales Target Viewer'] })
+  const id = reader.user!
+  const real = globalThis.fetch
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const { signal: _signal, ...rest } = (init ?? {}) as RequestInit
+    if (String(input).includes('/api/sales_target/embed_session')) return new Promise<Response>(() => {})
+    const res = await real(input, rest)
+    if (String(input).includes('/api/sales_target/me'))
+      await (db as Sql)`delete from has_role where parent = ${id} and role = 'Sales Target Viewer'`
+    return res
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader)
+    expect(await screen.findByText("You don't have access to this report")).toBeInTheDocument()
+    expect(screen.queryByText(/Numbers unavailable/)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('snapshot-error')).not.toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
+
 test('a person with no full name is shown by email, never by id, in the header', async ({ admin, createUser, db }) => {
   await viewer(admin)
   const nobody = await createUser({ email: 'no.fullname@example.com', roles: ['Sales Target Viewer'] })
