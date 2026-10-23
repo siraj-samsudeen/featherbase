@@ -18,6 +18,7 @@ const DT = 'Cli Test Widget'
 const USER = 'cli-test-user@x.com'
 const SVC = 'svc-cli-test'
 const DUP_USER = 'cli-dup-user@x.com'
+const NAME_USER = 'cli-name-only'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
@@ -37,8 +38,8 @@ function cli(args: string[], input = ''): string {
 // Case-insensitive: a run that fails mid-way can leave a case-variant row
 // behind, and an exact-match delete would strand it for every later run.
 async function cleanup() {
-  await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC])}`
-  await sql`delete from "user" where lower(row_id) in ${sql([USER, DUP_USER, SVC])}` // cascades access_token rows
+  await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC, NAME_USER])}`
+  await sql`delete from "user" where lower(row_id) in ${sql([USER, DUP_USER, SVC, NAME_USER])}` // cascades access_token rows
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists featherbase.cli_test_widget')
 }
@@ -81,10 +82,21 @@ describe('PLAT-004: developer CLI', () => {
     expect(roles.map((r) => r.role)).toContain('System Manager')
   }, 60_000)
 
+  // person-identities: a username is not an address, so no email is stored;
+  // a service account gets none either.
+  it('create-user with a plain username stores no email', async () => {
+    cli(['create-user', NAME_USER, 'clitestpw123'])
+    const [u] = await sql`select email, password_hash is not null as has_pw from "user" where row_id = ${NAME_USER}`
+    expect(u).toEqual({ email: null, has_pw: true })
+    const [byEmail] = await sql`select email from "user" where row_id = ${USER}`
+    expect(byEmail.email).toBe(USER)
+  }, 60_000)
+
   it('service-account + token lifecycle: create, issue, list, revoke (#131)', async () => {
     const created = cli(['create-service-account', SVC, '--roles', 'System Manager'])
     expect(created).toContain(`created service account ${SVC}`)
-    const [u] = await sql`select enabled, user_type, password_hash from "user" where row_id = ${SVC}`
+    const [u] = await sql`select enabled, user_type, password_hash, email from "user" where row_id = ${SVC}`
+    expect(u.email).toBeNull()
     expect(u.user_type).toBe('service')
     expect(u.enabled).toBe(true)
     expect(u.password_hash).toBeNull()

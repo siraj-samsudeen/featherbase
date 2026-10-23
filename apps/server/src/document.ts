@@ -192,7 +192,13 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     // real debugging time on `translation_lang_src` (issue #42).
     const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
     const prefix = `${tableName(meta.name)}_`
-    const fields = detailCols
+    // An expression index names an expression, not a column, in its detail
+    // (`lower(email::text)`): map the case-insensitive email rule by name.
+    const fields = e.constraint_name === 'user_email_lower_uq'
+      ? ['email']
+      : e.constraint_name === 'user_username_lower_uq'
+      ? ['username']
+      : detailCols
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
       : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
         ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]
@@ -1227,6 +1233,10 @@ async function renameDocImpl(
   const meta = await getMeta(table)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
+  // person-identities: a User's id is the permanent person id (the warehouse
+  // person_id); change the name or username instead. A trigger backs this up.
+  if (meta.name === 'User')
+    throw new AppError('ValidationError', 'A person\'s id is permanent and cannot be renamed; change their name or username instead')
   if (isBound(meta))
     throw new AppError(
       'ValidationError',

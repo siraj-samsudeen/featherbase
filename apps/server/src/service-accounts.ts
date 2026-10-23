@@ -7,8 +7,8 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { saveDoc } from './document'
 
-// A slug, not an email — 'svc-rama-installer'. The synthetic email keeps the
-// User row's unique-email invariant without claiming a routable address.
+// A slug, not an email — 'svc-rama-installer'. No email at all
+// (person-identities): a service account has nothing to be mailed.
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{1,63}$/
 
 export interface ServiceAccount {
@@ -36,7 +36,6 @@ export async function createServiceAccount(
     'User',
     {
       row_id: name,
-      email: `${name}@service.invalid`,
       full_name: name,
       enabled: true,
       ...(roles.length ? { roles: roles.map((role) => ({ role })) } : {}),

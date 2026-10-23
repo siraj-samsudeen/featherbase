@@ -1,6 +1,7 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
 export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, appHref } from './app-routes'
 export type { WebFormColumn, WebFormConfig } from './webform'
+export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, type SignInMethodKind, type NewPersonRule } from './sign-in'
 export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs } from './runtime-actions'
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization } from './app-access'
 export {

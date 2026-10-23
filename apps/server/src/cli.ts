@@ -3,13 +3,15 @@
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
-//   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli create-user <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
+//   cli identities:plan               print what migration 0100 (person-identities) will do; read-only
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
+import { formatPlan, planPersonIdentities } from './person-identities-migration'
 import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
@@ -86,7 +88,9 @@ async function cmdCreateUser(
     'User',
     {
       row_id: email,
-      email,
+      // person-identities: the name is a username or an address; only an
+      // address is kept as the person's email.
+      ...(email.includes('@') ? { email } : {}),
       full_name: fullName,
       enabled: true,
       ...(roles.length ? { roles: roles.map((role) => ({ role })) } : {}),
@@ -235,11 +239,16 @@ async function main() {
     case 'revoke-token':
       await cmdRevokeToken(positional)
       break
+    case 'identities:plan':
+      // Read-only (review minor 10): computes what migration 0100 would do from
+      // the data as it is, with the parity check, and changes nothing.
+      console.log(formatPlan(await planPersonIdentities()))
+      break
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

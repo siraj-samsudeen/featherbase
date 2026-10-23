@@ -680,6 +680,15 @@ export function AdminLayout() {
                 >
                   {t('Change password')}
                 </button>
+                <Link
+                  role="menuitem"
+                  to="/featherbase/admin/sign-in-methods"
+                  onClick={() => setAccountOpen(false)}
+                  data-testid="account-sign-in-methods"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint"
+                >
+                  {t('Sign-in methods')}
+                </Link>
                 <button
                   role="menuitem"
                   onClick={logout}
@@ -824,6 +833,16 @@ export function AdminLayout() {
               }}
             >
               Access tokens
+            </Link>
+            <Link
+              to="/featherbase/admin/sign-in-methods"
+              data-testid="sign-in-methods-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
+              activeProps={{
+                className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
+              }}
+            >
+              Sign-in methods
             </Link>
           </div>
         </aside>

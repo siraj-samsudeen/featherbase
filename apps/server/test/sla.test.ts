@@ -97,6 +97,11 @@ describe('SLA: deadline stamping + escalation', () => {
     admin,
   }) => {
     await setup(admin)
+    await sql`insert into "user" ${sql({ row_id: 'sla-mgr-noemail', created_by: 'Administrator', updated_by: 'Administrator', enabled: true })}`
+    await sql`insert into has_role ${sql({
+      row_id: 'sla-hr-2', created_by: 'Administrator', updated_by: 'Administrator',
+      parent: 'sla-mgr-noemail', parenttype: 'User', parentfield: 'roles', position: 1, role: ROLE,
+    })}`
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
     const done = await saveDoc(DT, { title: 'done in time', priority: 'High' }, 'Administrator')
     // Force both past their deadline; mark one Resolved via the workflow (the
@@ -119,6 +124,10 @@ describe('SLA: deadline stamping + escalation', () => {
       select recipient from email_queue
       where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(mails.map((m) => m.recipient)).toContain(MGR)
+    // person-identities: a holder without an email is skipped, not mailed at
+    // their user id.
+    expect(mails.map((m) => m.recipient)).not.toContain('sla-mgr-noemail')
+    expect(mails).toHaveLength(1)
 
     // A second sweep must not escalate (or email) the same document again.
     await enqueue('check_sla', {})

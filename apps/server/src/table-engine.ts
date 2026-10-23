@@ -294,6 +294,13 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  // person-identities (D9): a User email is unique ignoring case through the
+  // index user_email_lower_uq. A column-level `unique` would re-add the
+  // case-sensitive user_email_uq beside it, so it is refused here.
+  if (name === 'User' && def.columns.some((f) => f.column_name === 'email' && f.unique))
+    throw new AppError('ValidationError', 'User email is already unique ignoring case; it cannot be made unique again', {
+      'columns.email.unique': 'managed by the platform',
+    })
   // BV3: the binding is immutable — whatever the caller sent, the existing
   // binding is what validateDef judges against (and what stays stored).
   if (existing.data_source) {

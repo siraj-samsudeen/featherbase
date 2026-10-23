@@ -98,6 +98,9 @@ describe('#3755 sales-target host: accounts and login', () => {
     )
     expect(rows.data).toHaveLength(8)
     expect(new Set(rows.data.map((r) => r.store_subcategory)).size).toBe(8)
+    // person-identities: the seeded viewers carry no invented email.
+    const emails = await sql`select email from "user" where row_id like 'test_employee_%'`
+    expect(emails.map((r) => r.email)).toEqual([null, null, null, null])
   })
 
   test('each account logs in with its password and is told to land on /featherbase/sales-target; not a System Manager', async ({ admin, api }) => {
@@ -202,7 +205,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
   test('an account with no assignment rows gets the explicit no-assignment marker and no upstream call', async ({ admin, api, createUser }) => {
     await seed(admin)
     const calls = stubUpstream()
-    const nobody = await createUser({ email: 'test_employee_none@example.invalid', roles: [VIEWER_ROLE] })
+    const nobody = await createUser({ email: 'test_employee_none@example.com', roles: [VIEWER_ROLE] })
     const res = await nobody.fetch('/api/sales_target/embed_session', { method: 'POST' })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ no_assignment: true })
@@ -404,7 +407,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await seedSectionMaps(admin)
     await admin.post('/api/save_row', {
       table: 'User',
-      row: { row_id: 'test_employee_5', email: 'test_employee_5@example.invalid', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
+      row: { row_id: 'test_employee_5', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
     })
     await setEmployeeCode(admin, 'test_employee_5', 'RR-11092')
     await admin.post('/api/set_password', { user: 'test_employee_5', password: 'sandbox-pw-5' })
@@ -472,7 +475,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   async function viewer(admin: TestClient, user: string, code: string) {
     await admin.post('/api/save_row', {
       table: 'User',
-      row: { row_id: user, email: `${user}@example.invalid`, full_name: user, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+      row: { row_id: user, full_name: user, enabled: true, roles: [{ role: VIEWER_ROLE }] },
     })
     await setEmployeeCode(admin, user, code)
     await admin.post('/api/set_password', { user, password: `pw-${user}` })

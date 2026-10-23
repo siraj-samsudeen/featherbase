@@ -305,46 +305,131 @@ These steps are instructions, not authorization to deploy or mutate Dev:
    in the separately delivered Tasker UI, and verify an old tab rejects writes.
    Do not run the local development scenario seeder against Railway.
 
-## Delegated password sign-in (StyleHR)
+## Sign-in methods and linked identities (#275)
+
+A User is a person. Its `row_id` is the permanent person id (the warehouse
+`person_id`) and cannot be renamed. People created by Google sign-in or
+sign-up get an opaque `usr_…` id; their name, address and `username` (for
+password sign-in) are separate fields. Existing ids are unchanged. Email is
+optional contact data, unique ignoring case where present; an address ending
+in `.invalid` is refused (417) — send no email instead. The ways in are
+rows of the system Table **Sign In Method** (Admin → Sign In Method, System
+Managers only); one row is one provider issuer:
+
+| Row | Kind | Rule for people it does not know (`new_person`) |
+| --- | --- | --- |
+| `password` | password | `refuse` (default) — `create` opens username sign-up |
+| `google` | google | `create_if_email_domain_allowed` (default, with `allowed_email_domains`; a company domain must match Google's Workspace claim), `create` or `refuse` |
+| e.g. `stylehr` | delegated_password | `refuse` only — the service cannot vouch for a permanent ID |
+
+Google uses the row's `client_id` (the secret stays `GOOGLE_CLIENT_SECRET`);
+the upgrade turns the `google` row on only if a client id was configured, and
+an enabled method can never be left unusable;
+only one `password` and one `google` row may exist. Turning a row off ends the
+sessions opened through it. Featherbase refuses any change that would leave an
+enabled Administrator or System Manager with no way in — turning a method off,
+deleting it, blanking Google's client id, or unlinking or moving their link —
+and a delegated link never counts as their way in. **Keep sign-up closed**
+until what the `All` role can read has been audited.
+
+Outside accounts are linked to a person by the provider's permanent ID —
+Google's account ID, the StyleHR employee code — never by email:
+
+- `GET|POST /api/users/<user>/identities` (System Manager): link StyleHR
+  `{"method":"stylehr","subject":"RR-7963","sign_in_name":"name_9999999999"}`;
+  invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
+  — the first Google sign-in with that verified address links it for good.
+  **Any change to the person's email cancels every unused invite they hold**;
+  invite again after changing an email.
+- `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
+  ID (sessions survive) or `{"user_id": …}` moves a link to another person in
+  one step (a store mailbox at a Store Manager handover).
+- `DELETE /api/identities/<id>` unlinks.
+- Re-posting an identical link answers 200 with it; a clash answers 409 with
+  `fields.clash` (`subject`, `sign_in_name` or `invite`), `fields.identity` and
+  `fields.user`. Every change is in the Activity Log under the administrator
+  who made it.
+- On a **User form**, System Managers have a Sign-in methods panel: link a
+  connected service (employee code + login ID), invite a Google address,
+  unlink. Moving a link is the `PATCH` above.
+- People see and manage their own under **Sign-in methods** (account menu,
+  sidebar, and the sales-target report header), and can link Google there
+  within 15 minutes of signing in. A test-mode or preview-link sign-in can
+  read but cannot set a password, mint a token, or link or remove a sign-in
+  method.
+
+`GET /api/brand` lists the enabled methods and returns `identity_links: true`,
+which the roster sync checks before writing links.
+
+### Delegated password sign-in (StyleHR)
 
 People with no Google account and no Featherbase password can sign in with
 the ID and password of another system the organisation trusts. Featherbase
-POSTs `{"email": <ID>, "password": <password>}` as JSON to the configured URL
-(10 s timeout, redirects not followed) — but only for an ID that is linked to
-exactly one enabled, non-privileged User (case and surrounding spaces
+POSTs `{"email": <ID>, "password": <password>}` as JSON to the row's
+`service_url` (10 s timeout, redirects not followed) — but only for a login ID
+linked to exactly one enabled, non-privileged User (case and surrounding spaces
 ignored); any other ID is refused as a wrong password without contacting the
 service. Only a JSON answer with a clear yes (a token, an employee id, or
 `success: true`) signs in. A JSON no, or a 4xx, is a wrong password. An answer
-showing the person has left is refused. Anything else — empty, a web page,
-3xx, 408/429, 5xx, a timeout — reports the service as unavailable, never as a
-wrong password. The password is not stored or logged, and the provider's
-answer never picks the account. The Administrator and System Managers can
-never sign in this way.
+showing the person has left **disables the account**, which ends all their
+sessions and every other way in. Anything else — empty, a web page, 3xx,
+408/429, 5xx, a timeout — reports the service as unavailable, never as a
+wrong password, and never falls back to another method. The password is not
+stored or logged. The Administrator and System Managers can never sign in this
+way. With two delegated rows enabled, the sign-in names its `method`.
 
-To turn it on for StyleHR, as a System Manager:
+To turn it on for StyleHR, as a System Manager, add a Sign In Method row:
+`row_id` `stylehr`, kind `delegated_password`, label `StyleHR`, service URL
+`https://stylehr.in/api/login/` (keep the trailing slash; StyleHR redirects
+without it, and a redirected POST loses its body). Then link each person as
+above.
 
-1. **Add the ID column to User.** In the Admin, add a row to the *Custom
-   Field* table: Table `User`, column name `stylehr_username`, type Data,
-   label "StyleHR Username". Equivalent API call:
-   `POST /api/save_row {"table":"Custom Field","row":{"row_id":"User-stylehr_username","dt":"User","column_name":"stylehr_username","label":"StyleHR Username","column_type":"Data"}}`.
-2. **Link each person.** On each Team Leader's User, set *StyleHR Username*
-   to their StyleHR login ID — the system-generated `name_9999999999` form,
-   not the employee code. The User must be enabled and must not be a service
-   account. Two Users with the same ID are refused, never resolved.
-3. **Connect the service** in *System Settings*:
+The row's `settings` JSON describes the provider's wire format; anything left
+out takes StyleHR's value: `id_field` / `password_field` (request body names,
+`email` / `password`), `nested_keys`, `success_keys`, `success_flags`,
+`error_keys`, `status_key`, `error_statuses`, and the leaver rules
+`left_date_keys`, `inactive_flags`, `left_status_keys`, `left_words`. Another HR
+system with a different request or answer shape is a new row with its own
+`settings`, not code. The `stylehr_username` Custom Field, if present, is roster data only; the
+upgrade relabels it and sign-in no longer reads it.
 
-   | Setting | Value |
-   | --- | --- |
-   | Delegated Login Label (`delegated_login_label`) | `StyleHR` |
-   | Delegated Login URL (`delegated_login_url`) | `https://stylehr.in/api/login/` — keep the trailing slash; StyleHR redirects without it, and a redirected POST loses its body |
-   | Delegated Login User Column (`delegated_login_user_column`) | `stylehr_username` |
+**Deploying the upgrade (#275) — mandatory runbook:**
 
-The login page then shows **Sign in with StyleHR**. Blank the URL to turn it
-off: the button disappears and `POST /api/login/delegated` answers 404. The
-URL must be `https://` (plain `http://` is accepted only for `localhost` /
-`127.0.0.1` stubs); anything else, or a blank column, also leaves it off. A
-column that is not a real User column answers 503 "not set up correctly"
-without contacting the provider.
+1. Freeze the roster sync (do not run it until step 5).
+2. Run `pnpm --filter server cli identities:plan` against the instance. It is
+   read-only. It lists, by name and id, every email it will clear, every
+   one-time Google invite, everyone **listed for an explicit Google invite**
+   (a real email but never signed in with Google — they are deliberately not
+   invited automatically), and a **parity check**: how many people can sign in
+   today and how many keep a way in, naming each exception. Keep the output.
+3. Snapshot the database, then deploy (migration 0100 runs). **Every session
+   ends**: everyone, trial users included, signs in once more. No old shape is
+   accepted after the deploy — not the old `/api/brand` fields, not a
+   delegated sign-in without `method`, not a `.invalid` email (so the roster
+   sync must be updated before it runs again), and `user.social_login` is
+   dropped (the warehouse mirror sees the column disappear).
+4. **Right after the deploy, invite every listed person** — User form →
+   Sign-in methods → invite their Google address (or
+   `POST /api/users/<id>/identities {"method":"google","email":…}`). Until then
+   they cannot sign in with Google.
+5. Run the updated roster sync: people the old sync creates have no StyleHR
+   link.
+
+**The upgrade clears the seeded `admin@example.com` and `guest@example.com`.**
+The Administrator then signs in with the user id `Administrator`, no longer
+with that address. The plan lists these under "seed addresses cleared"; give
+the Administrator a real email afterwards if signing in by email matters.
+
+**Known limitation:** a roster sync that links StyleHR identities on every run
+will re-link one that the person removed themselves under Sign-in methods. The
+roster-sync change (filed in the data-warehouse repo) is to respect removals;
+until then, remove a StyleHR link from the roster source, not only in
+Featherbase.
+
+**`DELEGATED_LOGIN_TEST_MODE=trust-any-password` lets anyone sign in as any
+linked staff member by employee code, with no password.** Never set it where
+real users sign in, and remove it at the end of the trial. Test-mode sessions
+cannot change access, but they can read everything that person can.
 
 ## Automation credentials (#131)
 

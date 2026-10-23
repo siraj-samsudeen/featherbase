@@ -8,6 +8,7 @@ import { loadInstalledApps } from 'server/src/apps'
 import { saveDoc } from 'server/src/document'
 import { mintHandoffCode } from 'server/src/oauth'
 import { requestPasswordReset } from 'server/src/password-reset'
+import { setUserPassword } from 'server/src/auth'
 import { api, clearSession, setSession } from '../src/lib/api'
 
 // Each component test represents a fresh page; the module stays loaded in jsdom.
@@ -16,6 +17,8 @@ afterEach(() => vi.restoreAllMocks())
 
 test('public credential exchanges and logout do not bootstrap with an expired saved bearer', async ({ admin, createUser }) => {
   const member = await createUser({ email: 'fresh-reset@example.com' })
+  // person-identities: a reset link goes only to an account with a password.
+  await setUserPassword(member.user!, 'initial-local-password')
   const key = await requestPasswordReset(member.user!)
   const session = { token: admin.token!, user: { row_id: 'Administrator', email: '', full_name: null } }
   const code = mintHandoffCode(session)

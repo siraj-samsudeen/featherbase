@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 
 // WF-004: transitioning a document INTO a state that still has outgoing
 // transitions makes it pending someone's action. The holders of those
@@ -112,5 +113,16 @@ describe('WF-004: pending-approval notifications', () => {
       await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
     )[0].n as number
     expect(after).toBe(before) // no new email on entering a terminal state
+  })
+
+  // person-identities: an approver with no email is skipped, never mailed at
+  // their user id.
+  test('an approver without an email is skipped', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await saveDoc('User', { row_id: 'RR-wf-noemail', enabled: true, roles: [{ role: APPROVER_ROLE }] }, 'Administrator')
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-2', title: 'No-mail approver' })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/wf-notify-2:apply_workflow_action`, { action: 'Submit' })
+    const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-2'`
+    expect(emails.map((e) => e.recipient)).toEqual([APPROVER])
   })
 })

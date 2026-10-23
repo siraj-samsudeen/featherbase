@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
-import { ApiError, api, landingPath, login, loginDelegated, type SessionUser } from '../lib/api'
+import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
+import { Button, Field, TextInput } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(
@@ -29,25 +30,34 @@ export function LoginPage() {
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
   const [appName, setAppName] = useState('Featherbase')
-  // Delegated sign-in: the outside service's name (e.g. StyleHR) when an
-  // administrator connected one, else null and the option is not offered.
-  const [delegatedLabel, setDelegatedLabel] = useState<string | null>(null)
-  const [mode, setMode] = useState<'password' | 'delegated'>('password')
-  // Test mode (#3783): the server skips the provider, so there is no password to ask for.
-  const [delegatedTestMode, setDelegatedTestMode] = useState(false)
+  // person-identities: the ways in an administrator has turned on (password,
+  // Google, a connected service such as StyleHR), and whether sign-up is open.
+  const [methods, setMethods] = useState<BrandSignInMethod[] | null>(null)
+  const [signUpOpen, setSignUpOpen] = useState(false)
+  const [mode, setMode] = useState<'password' | 'delegated' | 'signup'>('password')
+  const [delegatedKey, setDelegatedKey] = useState<string | null>(null)
   useEffect(() => {
     fetch('/api/brand')
       .then((r) => (r.ok ? r.json() : null))
-      .then((b: { app_name?: string; delegated_login_label?: string | null; delegated_login_test_mode?: boolean } | null) => {
+      .then((b: { app_name?: string; sign_in_methods?: BrandSignInMethod[]; sign_up_open?: boolean } | null) => {
         if (b?.app_name) {
           setAppName(b.app_name)
           document.title = b.app_name
         }
-        setDelegatedLabel(b?.delegated_login_label || null)
-        setDelegatedTestMode(b?.delegated_login_test_mode === true)
+        setMethods(Array.isArray(b?.sign_in_methods) ? b.sign_in_methods : null)
+        setSignUpOpen(b?.sign_up_open === true)
       })
       .catch(() => {})
   }, [])
+  const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'delegated_password')
+  const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
+  const delegatedLabel = delegated?.label ?? null
+  // Test mode (#3783): the server skips the provider, so there is no password to ask for.
+  const delegatedTestMode = delegated?.test_mode === true
+  // If the brand cannot be read, offer Google as before; the server decides.
+  const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
+  // Until the brand answers, and if it cannot, the password form stays.
+  const passwordOn = methods === null || methods.some((m) => m.kind === 'password')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [forgot, setForgot] = useState(false)
@@ -90,11 +100,24 @@ export function LoginPage() {
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() => loginDelegated(String(form.get('delegated_id')), String(form.get('delegated_password') ?? '')))
+    await signIn(() =>
+      loginDelegated(
+        String(form.get('delegated_id')),
+        String(form.get('delegated_password') ?? ''),
+        delegated!.key,
+      ),
+    )
   }
 
-  function switchMode(next: 'password' | 'delegated') {
+  async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))))
+  }
+
+  function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
     setError(null)
+    setDelegatedKey(key)
     setMode(next)
   }
 
@@ -111,7 +134,7 @@ export function LoginPage() {
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
           <h1 className="text-lg font-semibold text-[var(--color-ink)]">{appName}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
-            {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : 'Sign in to your account'}
+            {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>
         </div>
         <div className="fc-card p-6">
@@ -161,17 +184,39 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
-              <button
-                type="button"
-                data-testid="password-login-toggle"
-                className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
-                onClick={() => switchMode('password')}
-              >
-                Use email and password instead
-              </button>
+              {passwordOn && (
+                <button
+                  type="button"
+                  data-testid="password-login-toggle"
+                  className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
+                  onClick={() => switchMode('password')}
+                >
+                  Use email and password instead
+                </button>
+              )}
+            </>
+          ) : mode === 'signup' && signUpOpen ? (
+            <>
+              <form className="space-y-4" data-testid="sign-up-form" onSubmit={onSignUpSubmit}>
+                <Field label="Username">
+                  <TextInput id="signup-username" name="username" autoComplete="username"
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                </Field>
+                <Field label="Password">
+                  <TextInput id="signup-password" type="password" name="password" autoComplete="new-password" />
+                </Field>
+                {errorLine}
+                <Button type="submit" variant="primary" block loading={busy} data-testid="sign-up-submit">
+                  Create account
+                </Button>
+              </form>
+              <Button variant="quiet" className="mt-4" onClick={() => switchMode('password')}>
+                I already have an account
+              </Button>
             </>
           ) : (
           <>
+          {passwordOn && (
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
             <div>
               <label className="fc-label" htmlFor="login-email">Email or username</label>
@@ -200,26 +245,36 @@ export function LoginPage() {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+          )}
           {/* PLAT-006: social login. A full-page navigation (not fetch) so the
-              server's OAuth redirects drive the browser. */}
-          <a
-            href="/api/oauth/google/login"
-            data-testid="google-login"
-            className="fc-btn mt-3 flex w-full justify-center py-2"
-          >
-            Sign in with Google
-          </a>
-          {/* Delegated sign-in: offered only when an administrator connected
-              an outside service (System Settings delegated_login_*). */}
-          {delegatedLabel && (
-            <button
-              type="button"
-              data-testid="delegated-login-toggle"
+              server's OAuth redirects drive the browser. Offered only when
+              the Google sign-in method is on. */}
+          {google && (
+            <a
+              href="/api/oauth/google/login"
+              data-testid="google-login"
               className="fc-btn mt-3 flex w-full justify-center py-2"
-              onClick={() => switchMode('delegated')}
             >
-              Sign in with {delegatedLabel}
+              Sign in with {google.label}
+            </a>
+          )}
+          {/* Delegated sign-in: one button per connected service (a Sign In
+              Method row of kind delegated_password). */}
+          {delegatedMethods.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              data-testid={delegatedMethods.length === 1 ? 'delegated-login-toggle' : `delegated-login-toggle-${m.key}`}
+              className="fc-btn mt-3 flex w-full justify-center py-2"
+              onClick={() => switchMode('delegated', m.key)}
+            >
+              Sign in with {m.label}
             </button>
+          ))}
+          {signUpOpen && (
+            <Button variant="quiet" className="mt-3" data-testid="sign-up-toggle" onClick={() => switchMode('signup')}>
+              Create an account
+            </Button>
           )}
           <div className="mt-4 border-t border-[var(--color-border)] pt-4">
             {!forgot ? (
@@ -237,6 +292,11 @@ export function LoginPage() {
               </p>
             ) : (
               <form className="space-y-3" data-testid="forgot-form" onSubmit={onForgot}>
+                {delegatedMethods.length > 0 && (
+                  <p className="text-sm text-ink-muted" data-testid="forgot-delegated-hint">
+                    {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
+                  </p>
+                )}
                 <label className="fc-label">Email or username</label>
                 <input type="text" name="usr" className="fc-input" data-testid="forgot-usr" />
                 <button type="submit" className="fc-btn w-full justify-center py-2" data-testid="forgot-submit">

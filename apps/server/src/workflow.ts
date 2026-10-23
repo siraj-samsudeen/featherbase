@@ -274,9 +274,12 @@ async function notifyPendingApprovers(
     join "user" u on u.row_id = hr.parent
     where hr.parenttype = 'User' and hr.role in ${sql(roles)}
       and u.enabled = true`
-  const approvers = holders
-    .filter((h) => h.parent !== actingUser)
-    .map((h) => ({ user: h.parent, email: h.email ?? h.parent }))
+  // A person without an email gets no mail — a user id is not an address
+  // (person-identities: email is optional contact data).
+  const eligible = holders.filter((h) => h.parent !== actingUser)
+  const approvers = eligible.filter((h) => h.email).map((h) => ({ user: h.parent, email: h.email as string }))
+  const skipped = eligible.length - approvers.length
+  if (skipped) console.info(`[workflow] ${table} ${name}: ${skipped} approver(s) have no email and were not mailed`)
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')

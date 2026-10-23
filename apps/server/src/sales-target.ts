@@ -101,14 +101,11 @@ export function embedConfig(): EmbedConfig {
 export interface TestAccount {
   username: string
   display_name: string
-  /** Synthetic — Featherbase's User requires an email; real staff need not have one. */
-  email: string
 }
 
 export const TEST_ACCOUNTS: TestAccount[] = [1, 2, 3, 4].map((n) => ({
   username: `test_employee_${n}`,
   display_name: `Employee ${n}`,
-  email: `test_employee_${n}@example.invalid`,
 }))
 
 export interface AssignmentRecord {
@@ -203,7 +200,7 @@ export async function seedSalesTarget(
       await ok(
         await f('/api/save_row', json({
           table: 'User',
-          row: { row_id: a.username, email: a.email, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+          row: { row_id: a.username, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
         })),
         `create ${a.username}`,
       )

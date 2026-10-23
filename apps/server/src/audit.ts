@@ -14,10 +14,13 @@ async function tableExists(table: string, db: Sql | TxSql = sql): Promise<boolea
   return Boolean(row)
 }
 
+/** Record an activity. `user` is the ACTOR — the person who did it; a
+ *  target person belongs in the operation text (person-identities, review
+ *  B-M1). Sign-ins also record the method and whether it was test mode. */
 export async function logActivity(
   user: string,
   operation: string,
-  extra: { full_name?: string | null; ip_address?: string | null } = {},
+  extra: { full_name?: string | null; ip_address?: string | null; sign_in_method?: string | null; test_mode?: boolean } = {},
 ): Promise<void> {
   if (!(await tableExists('activity_log'))) return
   const now = new Date()
@@ -32,6 +35,7 @@ export async function logActivity(
     operation,
     full_name: extra.full_name ?? null,
     ip_address: extra.ip_address ?? null,
+    ...(extra.sign_in_method !== undefined ? { sign_in_method: extra.sign_in_method, test_mode: extra.test_mode === true } : {}),
   })}`
 }
 

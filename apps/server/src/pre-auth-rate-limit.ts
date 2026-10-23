@@ -3,7 +3,7 @@ import { isIP } from 'node:net'
 import type { Context, Next } from 'hono'
 import { sql, type Sql } from './db'
 
-const DEFAULTS = { LOGIN: 60, PASSWORD: 5, OAUTH_LOGIN: 30, OAUTH_CALLBACK: 30, FORM: 30 } as const
+const DEFAULTS = { LOGIN: 60, PASSWORD: 5, OAUTH_LOGIN: 30, OAUTH_CALLBACK: 30, FORM: 30, SIGNUP: 10 } as const
 type Kind = keyof typeof DEFAULTS
 
 function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number) {

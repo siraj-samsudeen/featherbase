@@ -13,6 +13,7 @@ import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
+import { UserSignInMethods } from './UserSignInMethods'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
@@ -581,6 +582,8 @@ export function FormView({
         </div>
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+            {/* person-identities: the one platform Table whose rows sign in. */}
+            {table === 'User' && <UserSignInMethods user={name} />}
             <ConnectionsPanel table={table} name={name} />
             <Assignments table={table} name={name} />
             <Tags table={table} name={name} />
