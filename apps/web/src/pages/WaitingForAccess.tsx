@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, type QueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { DataList, type DataColumn } from '../components/ui'
@@ -20,6 +20,14 @@ export interface WaitingPerson {
 
 export const WAITING_QUERY_KEY = ['waiting-for-access'] as const
 export const WAITING_COUNT_QUERY_KEY = ['waiting-for-access-count'] as const
+
+/** Saving or deleting a person or a role assignment can change who is
+ *  waiting, so the list and the menu count are asked again. */
+export async function refreshWaitingAfterSave(queryClient: QueryClient, table: string): Promise<void> {
+  if (table !== 'Person' && table !== 'Has Role') return
+  await queryClient.invalidateQueries({ queryKey: WAITING_QUERY_KEY })
+  await queryClient.invalidateQueries({ queryKey: WAITING_COUNT_QUERY_KEY })
+}
 
 const columns: DataColumn<WaitingPerson>[] = [
   {

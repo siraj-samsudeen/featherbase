@@ -67,3 +67,22 @@ test('someone who is not a System Manager gets no link, no count call and no pag
   expect(screen.queryByTestId('waiting-for-access-link')).not.toBeInTheDocument()
   expect(urls.filter((u) => u.includes('waiting_for_access'))).toEqual([])
 })
+
+test('saving a Person refreshes the count, so someone given a role leaves the badge', async ({ admin }) => {
+  await clearWaiting()
+  const a = await waitingPerson('First Waiting', 'first.waiting@staff.example.com')
+  const b = await waitingPerson('Second Waiting', 'second.waiting@staff.example.com')
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(a)}`, admin)
+  const link = await screen.findByTestId('waiting-for-access-link')
+  await waitFor(() => expect(within(link).getByTestId('waiting-for-access-count')).toHaveTextContent('2'))
+
+  // Someone else gives the second person a role; this form's save asks again.
+  await sql`insert into has_role (row_id, parent, parenttype, parentfield, role, created_by, updated_by)
+    values ('hr_wfa_web', ${b}, 'Person', 'roles', 'System Manager', 'Administrator', 'Administrator')`
+  const form = await screen.findByTestId('form-view')
+  const field = form.querySelector('[data-field=full_name]') as HTMLInputElement
+  await userEvent.clear(field)
+  await userEvent.type(field, 'First Renamed')
+  await userEvent.click(within(form).getByTestId('form-save'))
+  await waitFor(() => expect(within(link).getByTestId('waiting-for-access-count')).toHaveTextContent('1'))
+})

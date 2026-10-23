@@ -9,7 +9,11 @@ import type { SignInMethod } from './identities'
 export const ALERT_SUBJECT = 'New sign-in waiting for access'
 /** Alerts across the whole instance per day; past it, one line in the log. */
 export const DAILY_ALERT_CAP = 20
-const ALERT_OPERATION = 'access_alert'
+/** The alert row's actor: the system, not a person (the person is the target). */
+const ALERT_ACTOR = 'system'
+const alertOperation = (person: string) => `access_alert for ${person}`
+/** The day the cap counts: India's, whatever the database session's zone. */
+const ALERT_DAY_ZONE = 'Asia/Kolkata'
 export const WAITING_PATH = '/featherbase/admin/waiting-for-access'
 
 // A role of their own: `All` and `Guest` are implicit, so they do not count.
@@ -29,6 +33,17 @@ export interface WaitingPerson {
   created_at: string
   first_sign_in: string | null
   last_sign_in: string | null
+}
+
+/** A name that is still an address shows as its domain only (#429). */
+export function shownName(name: string | null | undefined): string | null {
+  if (!name) return null
+  return name.includes('@') ? name.split('@').pop() || null : name
+}
+
+/** The dev mock Google provider serves whenever Google has no client id. */
+export function isMockProvider(method: SignInMethod): boolean {
+  return method.kind === 'google' && !String(method.client_id ?? '').trim()
 }
 
 const iso = (v: unknown) => (v == null ? null : new Date(v as string).toISOString())
@@ -55,7 +70,7 @@ export async function listWaitingForAccess(): Promise<WaitingPerson[]> {
     order by p.created_at desc, p.row_id`
   return rows.map((r) => ({
     person: String(r.row_id),
-    full_name: (r.full_name as string | null) ?? null,
+    full_name: shownName(r.full_name as string | null),
     email_domain: (r.email_domain as string | null) ?? null,
     method: (r.method as string | null) ?? null,
     method_label: (r.method_label as string | null) || (r.method as string | null) || null,
@@ -83,34 +98,39 @@ export function _setAlertSender(fn: Sender | null): void {
 
 /** One email to every enabled System Manager with an address, the first time
  *  a sign-in rule creates `person`. Never throws: a sign-in must not fail
- *  because mail did. */
+ *  because mail did. The cap is best-effort: arrivals at the same moment can
+ *  pass it by a few. An arrival past the cap is recorded as alerted and is
+ *  never mailed later; the page still lists them. */
 export async function alertNewArrival(person: string, method: SignInMethod): Promise<void> {
   try {
-    // A savepoint, so a failure here cannot poison a surrounding transaction.
+    // Runs after the sign-in's own transaction committed, in one of its own:
+    // the activity row, the queued emails and their jobs commit together, or
+    // none of them do.
     await withTransaction(async () => {
       const [p] = await sql`select p.full_name, p.email from person p where p.row_id = ${person} and ${waitingWhere()}`
       if (!p) return
-      const [seen] = await sql`select 1 from activity_log where operation = ${ALERT_OPERATION} and "user" = ${person} limit 1`
+      const [seen] = await sql`select 1 from activity_log where operation = ${alertOperation(person)} limit 1`
       if (seen) return
       const [{ n }] = await sql`
         select count(*)::int as n from activity_log
-        where operation = ${ALERT_OPERATION} and created_at >= date_trunc('day', now())`
-      await logActivity(person, ALERT_OPERATION, { full_name: (p.full_name as string | null) ?? null, sign_in_method: method.key })
+        where operation like 'access\_alert for %'
+          and created_at >= (date_trunc('day', now() at time zone ${ALERT_DAY_ZONE}) at time zone ${ALERT_DAY_ZONE})`
+      await logActivity(ALERT_ACTOR, alertOperation(person))
       if (Number(n) >= DAILY_ALERT_CAP) {
         if (Number(n) === DAILY_ALERT_CAP)
           console.warn(JSON.stringify({ event: 'waiting_for_access_alert_cap', cap: DAILY_ALERT_CAP, note: 'further alerts today are not emailed; see the Waiting for access page' }))
         return
       }
       const managers = await sql`
-        select distinct p.email from person p
+        select distinct lower(trim(p.email)) as email from person p
         join has_role r on r.parent = p.row_id and r.parenttype = 'Person' and r.role = 'System Manager'
         where p.enabled and p.replaced_by is null and coalesce(trim(p.email), '') <> ''
-        order by p.email`
+        order by 1`
       const domain = String(p.email ?? '').split('@')[1] || 'no address'
       const body = [
         'Someone signed in for the first time and has no access yet.',
         '',
-        `Name: ${(p.full_name as string | null) || 'not given'}`,
+        `Name: ${shownName(p.full_name as string | null) || 'not given'}`,
         `Email domain: ${domain}`,
         `Signed in with: ${method.label || method.key}`,
         '',

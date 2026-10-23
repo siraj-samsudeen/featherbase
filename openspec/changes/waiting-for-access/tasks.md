@@ -15,6 +15,13 @@
 - [x] 3.1 Add failing web tests: the page lists waiting people and opens the Person form, the menu count, the empty state, nothing for someone who is not a System Manager.
 - [x] 3.2 Build the page and the menu link with its count.
 
-## 4. Verification
+## 4. Review round
 
-- [x] 4.1 Run the server and web suites, both typechecks, `pnpm check:specs` and the sensitive-content check.
+- [x] 4.1 Start a nameless new person's name from the part of the address before the @; show only the domain where a name is an address.
+- [x] 4.2 Count the daily cap by the India day; log the alert with the system as actor and the person in the text; one mail per address; no alert for test-mode or mock sign-ins.
+- [x] 4.3 Index the sign-in log for per-person and alert lookups.
+- [x] 4.4 Refresh the waiting list and count after a person or role assignment is saved.
+
+## 5. Verification
+
+- [x] 5.1 Run the server and web suites, both typechecks, `pnpm check:specs` and the sensitive-content check.
