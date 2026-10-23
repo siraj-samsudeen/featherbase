@@ -351,6 +351,9 @@ describe('#387: a Datetime wall time goes on the wire as the instant it names', 
     expect(wire('2024-10-21T12:00:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
     expect(wire('2024-10-21 12:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
   })
+  test('a date-only value is local midnight on the importing clock', () => {
+    expect(wire('2024-10-21')).toBe(new Date(2024, 9, 21).toISOString())
+  })
   test.each(['2024-10-21T12:00:00+05:30', '2024-10-21T06:30:00Z', '1900-02-29T12:00:00', '2024-10-21T25:00', 'soon'])(
     '%s is sent as typed (zoned, impossible, or not a date-time)',
     (cell) => expect(wire(cell)).toBe(cell),

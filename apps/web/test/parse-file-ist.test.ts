@@ -18,6 +18,19 @@ function workbookFile(cells: [number, string][], date1904 = false): File {
   return { name: 'dates.xlsx', arrayBuffer: async () => buf } as unknown as File
 }
 
+/** Run fn on another clock, restoring the test's own afterwards. */
+function onClock<T>(tz: string, fn: () => T): T {
+  const before = process.env.TZ
+  process.env.TZ = tz
+  try {
+    return fn()
+  } finally {
+    process.env.TZ = before
+  }
+}
+
+const datetimeWire = (cell: string) => coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [[cell]])[0].values.when
+
 describe('Excel dates in IST (+05:30)', () => {
   test('the clock really is IST', () => {
     expect(new Date(2024, 9, 21).getTimezoneOffset()).toBe(-330)
@@ -62,6 +75,39 @@ describe('Excel dates in IST (+05:30)', () => {
   test('a 1904-based workbook counts from 01-Jan-1904', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[44124, 'yyyy-mm-dd']], true)) // 21-Oct-2024 in the 1904 system
     expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
+  test.each([
+    ['Asia/Kolkata', '2024-10-20T18:30:00.000Z'],
+    ['America/New_York', '2024-10-21T04:00:00.000Z'],
+  ])('a date-only value in a Datetime column is local midnight on the importing clock (%s)', (tz, wire) => {
+    expect(onClock(tz, () => datetimeWire('2024-10-21'))).toBe(wire)
+  })
+
+  test('a wall time inside a DST gap moves forward (São Paulo, 04-Nov-2018 00:30 is 01:30 -02:00)', () => {
+    expect(onClock('America/Sao_Paulo', () => datetimeWire('2018-11-04T00:30'))).toBe('2018-11-04T03:30:00.000Z')
+    expect(onClock('America/Sao_Paulo', () => datetimeWire('2018-11-04'))).toBe('2018-11-04T03:00:00.000Z')
+  })
+
+  test('an ambiguous wall time takes its first occurrence (New York, 03-Nov-2024 01:30 EDT)', () => {
+    expect(onClock('America/New_York', () => datetimeWire('2024-11-03T01:30'))).toBe('2024-11-03T05:30:00.000Z')
+  })
+
+  test.each([1e12, -1, 2958466])('a serial outside Excel\'s date range (%s) stays a number', async (serial) => {
+    const [sheet] = await parseWorkbook(workbookFile([[serial, 'yyyy-mm-dd']]))
+    expect(sheet.rows[0][0]).toBe(serial)
+  })
+
+  test('the last day Excel can show, 31-Dec-9999, still converts', async () => {
+    // 2958465.9999999995 rounds up to 10000-01-01 00:00, past the last day: it stays a number.
+    const [sheet] = await parseWorkbook(workbookFile([[2958465.5, 'yyyy-mm-dd'], [2958465.9999999995, 'yyyy-mm-dd hh:mm']]))
+    expect(sheet.rows[0][0]).toBe('9999-12-31')
+    expect(sheet.rows[1][0]).toBe(2958465.9999999995)
+  })
+
+  test('the 1904 system ends at serial 2957003 (31-Dec-9999)', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[2957003, 'yyyy-mm-dd'], [2957004, 'yyyy-mm-dd']], true))
+    expect(sheet.rows.map((r) => r[0])).toEqual(['9999-12-31', 2957004])
   })
 
   test('a conditioned second section is checked before the unconditioned first', async () => {

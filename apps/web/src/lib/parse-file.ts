@@ -143,6 +143,10 @@ function formatShowsTime(section: string): boolean {
   return /[hs]|AM\/PM|A\/P/i.test(bare)
 }
 
+/** 31-Dec-9999, the last day Excel can show, in each date system. */
+const LAST_SERIAL_1900 = 2_958_465
+const LAST_SERIAL_1904 = 2_957_003
+
 /**
  * #387: every numeric cell whose (applicable) number format is a date is read
  * from the serial itself, never through a timezone, and handed on as text:
@@ -167,10 +171,13 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
     if (!XLSX.SSF.is_date(section)) continue
     // [h], [m], [s] show elapsed time: a duration, not a date. Keep the number.
     if (/\[(?:h+|m+|s+)\]/i.test(literalFree(section))) continue
+    // Excel shows no date before serial 0 or after 31-Dec-9999; such a cell stays a number.
+    const lastDay = date1904 ? LAST_SERIAL_1904 : LAST_SERIAL_1900
+    if (cell.v < 0 || cell.v >= lastDay + 1) continue
     let day = Math.floor(cell.v)
-    cell.t = 's'
     if (!formatShowsTime(section)) {
       // A date-only format shows the serial's whole day; a hidden time never moves it.
+      cell.t = 's'
       cell.v = serialDay(day, date1904)
       continue
     }
@@ -179,6 +186,8 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
       day += 1
       ms -= DAY_MS
     }
+    if (day > lastDay) continue
+    cell.t = 's'
     const date = serialDay(day, date1904)
     const H = Math.floor(ms / 3_600_000)
     const M = Math.floor((ms % 3_600_000) / 60_000)

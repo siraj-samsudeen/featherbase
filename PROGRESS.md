@@ -6,39 +6,41 @@ Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel
 the previous day: 21-Oct-2024 became `2024-10-20T18:29:50Z`. The import preview and the shared Date schema then
 stored that day via `toISOString().slice(0, 10)`. The Suppliers import on featherbase-dev on 12-Oct-2026 showed it.
 
-`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`) and converts each
-cell whose applicable format section is a date, with no timezone anywhere:
-- the day comes from pure UTC arithmetic on the serial (`serialDay`). This handles 1900 quirks (serial 0 is
+`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`). It picks the section
+SheetJS renders (a port of `choose_fmt`) and converts each date cell with no timezone anywhere:
+- the day comes from pure UTC arithmetic on the serial (`serialDay`). This handles the 1900 quirks (serial 0 is
   31-Dec-1899, 60 is the fictitious 29-Feb-1900) and 1904-based workbooks. `SSF.parse_date_code` builds a local Date
   and was wrong in Samoa;
 - a date-only format gives `YYYY-MM-DD` text, not a Date: some zones have no local midnight on a day;
-- a format that shows a time gives local date-time text, `YYYY-MM-DDTHH:MM:SS[.mmm]`, even at 00:00. Its time is the
+- a format that shows a time gives wall-clock text, `YYYY-MM-DDTHH:MM:SS[.mmm]`, even at 00:00. Its time is the
   serial's day fraction in whole milliseconds, carrying into the next day, so 05:30 IST (exactly UTC midnight) is
-  never mistaken for a bare day.
+  never mistaken for a bare day;
+- a serial below 0 or past 31-Dec-9999, and an elapsed `[h]`/`[m]`/`[s]` duration, stays a number.
 
-A new `packages/shared/src/dates.ts` (`calendarDay`, `localIso`) is the one way to read a Date's day; the
-coercion, the Date schema and the import preview use it. OpenSpec change `fix-excel-date-shift-ist`, with no
-capability delta.
+`coerceRows` sends a Datetime with no zone through `wallTimeToInstant`, which reads it on the importing browser's
+clock; a bare day is local midnight. Before, it went to the server bare and PostgreSQL read an IST noon as UTC
+(17:30). This applies to CSV date-time text too, and that is a data-shape change. The Date and Datetime schemas
+share `isCalendarDay`, which refuses 30-Feb, Excel's 29-Feb-1900 and year 0 before the write.
+
+`packages/shared/src/dates.ts` is the one home for these helpers. OpenSpec change `fix-excel-date-shift-ist`, with no
+capability delta. Follow-ups: #389 (correct rows imported before this) and #390 (Datetime list cells show the UTC
+day).
 
 **Verified** under Node 22:
-- `apps/web/test/parse-file-ist.test.ts` (29): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. It covers:
-  - month ends, the leap day, the year end and 01-Jan;
+- `apps/web/test/parse-file-ist.test.ts` (48): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. Beyond the
+  month, leap-day and year ends, it covers:
   - São Paulo's missing midnight and Samoa's skipped day;
-  - 1900 serials 1/59/60/61 and a 1904 workbook;
-  - a time-only cell, a multi-section format, a midnight date-time;
-  - `.123` and `.272` seconds, and rounding carries past the second and past midnight;
-  - an IST 05:30 time that stays a Datetime;
-  - a conditional format section, and the elapsed `[m]`, `[h]:mm` and `[s]` formats;
-  - an escaped `\;`, and a date-only cell with a hidden time just before midnight.
-- The shared Date schema now refuses impossible calendar days, such as Excel's 29-Feb-1900, 30-Feb or month 13. A dry
-  run reports them instead of Postgres refusing the write; 9 schema tests cover it, including years 0001 and 0099.
-- The shared schema test in IST passes, and `packages/shared` has 131 tests passing.
-- Web suite 214 passed; shared 140; server import and document tests 105; web and server typecheck passed.
-- The import, table-builder, form and settings e2e specs on this machine (IST): 30 of 30 passed after the last
-  change. Earlier, one
-  failure was
-  `import-upsert-journey` UPS-J2, which also fails intermittently on untouched `main` locally (fail, then pass on
-  two runs), so it predates this change; CI passes it.
+  - the 1900 and 1904 systems, and their last days;
+  - out-of-range serials (`1e12`, `-1`);
+  - format section choice, including conditions;
+  - escaped, quoted, `_x` and `*x` characters;
+  - carries past the second and past midnight;
+  - date-only and wall-time Datetimes on the wire in IST and New York;
+  - a daylight-saving gap and an ambiguous time.
+- Web suite 693 passed; shared 153 passed at 100% line coverage; server import tests 88; web, shared and server
+  typecheck passed.
+- The import and table-builder e2e specs locally in IST: 41 of 42 passed. The one failure, `import-upsert-journey`
+  UPS-J2, also fails locally on untouched `main` (`de6c151c`, twice), so it predates this change; CI passes it.
 
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
