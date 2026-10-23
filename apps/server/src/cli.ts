@@ -4,6 +4,9 @@
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-person <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli set-password <person-id> --stdin
+//                                     break-glass reset (#391): the password is read from stdin, never argv;
+//                                     ends the person's sessions and logs the actor `cli`
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
@@ -25,7 +28,8 @@ import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
-import { issueAccessToken, listAccessTokens, revokeAccessToken, setUserPassword } from './auth'
+import { issueAccessToken, listAccessTokens, revokeAccessToken, setPasswordFromShell, setUserPassword } from './auth'
+import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
@@ -107,6 +111,24 @@ async function cmdCreatePerson(
   )
   await setUserPassword(String(created.row_id), password)
   console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}`)
+}
+
+// #391: argv lands in shell history and the process list, so a password is
+// taken from stdin only, and a second positional is refused unread.
+async function cmdSetPassword(argv: string[]) {
+  const positional = argv.filter((a) => !a.startsWith('--'))
+  if (positional.length > 1)
+    throw new Error('set-password never takes the password as an argument; pipe it in with --stdin')
+  const [person] = positional
+  if (!person || !argv.includes('--stdin')) throw new Error('usage: cli set-password <person-id> --stdin  (password piped on stdin)')
+  // A terminal would echo what is typed; ask for a pipe instead.
+  if (process.stdin.isTTY) throw new Error('set-password --stdin wants the password piped in, not typed')
+  // One trailing newline is the pipe's (`echo`, a heredoc), not the password's.
+  const password = (await readStdin()).replace(/\r?\n$/, '')
+  // The sign-up and reset minimum (index.ts, password-reset.ts).
+  if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  await setPasswordFromShell(person, password)
+  console.log(`password set for ${person}; their sessions are ended`)
 }
 
 /** Spawn the rehearsal as its own process, so --rehearse can point
@@ -271,6 +293,9 @@ async function main() {
     case 'create-person':
       await cmdCreatePerson(positional, flags)
       break
+    case 'set-password':
+      await cmdSetPassword(rest)
+      break
     case 'create-service-account':
       await cmdCreateServiceAccount(positional, flags)
       break
@@ -329,7 +354,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

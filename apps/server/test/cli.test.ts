@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { issueSession, resolveToken, setUserPassword, verifyPassword } from '../src/auth'
+import { createServiceAccount } from '../src/service-accounts'
 
 // PLAT-004: the developer CLI runs real commands against the dev database.
 // We spawn it as a subprocess (its own connection) and assert the DB effects.
@@ -19,6 +21,8 @@ const USER = 'cli-test-user@x.com'
 const SVC = 'svc-cli-test'
 const DUP_USER = 'cli-dup-user@x.com'
 const NAME_USER = 'cli-name-only'
+const PW_USER = 'cli-pw-user'
+const PW_SVC = 'svc-cli-pw-test'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
@@ -40,12 +44,13 @@ function cli(args: string[], input = ''): string {
 // person-rename: ids are minted, so the people are found by email/username
 // and the service account by its label.
 async function cleanup() {
-  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER])} or lower(username) = ${NAME_USER}`
-  const services = await sql`select row_id from service_account where lower(label) = ${SVC}`
+  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER])} or lower(username) in ${sql([NAME_USER, PW_USER])}`
+  const services = await sql`select row_id from service_account where lower(label) in ${sql([SVC, PW_SVC])}`
   const ids = [...people, ...services].map((r) => String(r.row_id))
   if (ids.length) {
     await sql`delete from access_token where person in ${sql(ids)} or service_account in ${sql(ids)}`
     await sql`delete from has_role where parent in ${sql(ids)}`
+    await sql`delete from activity_log where "user" in ${sql(ids)}`
     await sql`delete from person_identifier where person_id in ${sql(ids)}`
     await sql`delete from person where row_id in ${sql(ids)}`
     await sql`delete from service_account where row_id in ${sql(ids)}`
@@ -175,4 +180,97 @@ describe('PLAT-004: developer CLI', () => {
     )
     expect(stdout).toContain('NAME=Administrator')
   }, 60_000)
+  // #391: break-glass reset. The password arrives on stdin only, is never
+  // printed, ends the person's sessions and leaves an Activity Log entry.
+  describe('set-password (#391)', () => {
+    const OLD = 'old-pw-391'
+    const NEW = 'new-pw-391-secret'
+
+    async function makePerson() {
+      const p = await saveDoc('Person', { username: PW_USER, full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
+      const id = String(p.row_id)
+      await setUserPassword(id, OLD)
+      return id
+    }
+    async function dropPerson(id: string) {
+      await sql`delete from activity_log where "user" = ${id}`
+      await sql`delete from person where row_id = ${id}`
+    }
+    const hashOf = async (id: string) =>
+      String((await sql`select password_hash from person where row_id = ${id}`)[0].password_hash)
+    const attempt = (args: string[], input = '') => {
+      try {
+        return { ok: cli(args, input) }
+      } catch (err) {
+        return { err: err as { status?: number; stdout?: string; stderr?: string } }
+      }
+    }
+
+    it('sets the password from stdin, refuses the old one, ends sessions and logs the actor cli', async () => {
+      const id = await makePerson()
+      try {
+        const before = await hashOf(id)
+        const { token } = await issueSession(id)
+        await expect(resolveToken(`Bearer ${token}`)).resolves.toMatchObject({ row_id: id })
+
+        const out = cli(['set-password', id, '--stdin'], `${NEW}\n`)
+        expect(out).toContain(`password set for ${id}`)
+        expect(out).not.toContain(NEW)
+
+        const after = await hashOf(id)
+        expect(after).not.toBe(before)
+        expect(verifyPassword(NEW, after)).toBe(true) // the trailing newline is not part of it
+        expect(verifyPassword(OLD, after)).toBe(false)
+        await expect(resolveToken(`Bearer ${token}`)).rejects.toThrow('Invalid or expired session')
+
+        const logs = await sql`select created_by, operation from activity_log where "user" = ${id}`
+        expect(logs).toContainEqual({ created_by: 'cli', operation: 'password_set' })
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses a password given as an argument, and never echoes it', async () => {
+      const id = await makePerson()
+      try {
+        const before = await hashOf(id)
+        const { err } = attempt(['set-password', id, NEW])
+        expect(err?.status).toBe(1)
+        expect(err?.stderr).toContain('--stdin')
+        expect(`${err?.stdout}${err?.stderr}`).not.toContain(NEW)
+        expect(await hashOf(id)).toBe(before)
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses without --stdin, an empty or short password, and an unknown person', async () => {
+      const id = await makePerson()
+      try {
+        const before = await hashOf(id)
+        expect(attempt(['set-password', id], `${NEW}\n`).err?.stderr).toContain('--stdin')
+        expect(attempt(['set-password', id, '--stdin'], '\n').err?.stderr).toContain('at least 6 characters')
+        expect(attempt(['set-password', id, '--stdin'], 'abc\n').err?.stderr).toContain('at least 6 characters')
+        expect(await hashOf(id)).toBe(before)
+        expect(attempt(['set-password', 'psn_nobodyhere391', '--stdin'], `${NEW}\n`).err?.stderr).toContain(
+          'Person psn_nobodyhere391 not found',
+        )
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses a service account', async () => {
+      const svc = await createServiceAccount(PW_SVC, [], 'Administrator')
+      try {
+        const { err } = attempt(['set-password', svc.row_id, '--stdin'], `${NEW}\n`)
+        expect(err?.status).toBe(1)
+        expect(err?.stderr).toContain('Service accounts have no password')
+        const logs = await sql`select 1 from activity_log where "user" = ${svc.row_id}`
+        expect(logs).toHaveLength(0)
+      } finally {
+        await sql`delete from service_account where row_id = ${svc.row_id}`
+      }
+    }, 60_000)
+  })
 })

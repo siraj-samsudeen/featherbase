@@ -44,6 +44,15 @@ export async function setUserPassword(name: string, password: string) {
     where row_id = ${name}`
 }
 
+/** #391: the break-glass reset from an operator shell. The same write as
+ *  every other route (so the same refusals), then every live session of the
+ *  person ends and the Activity Log records the actor `cli`. */
+export async function setPasswordFromShell(person: string, password: string) {
+  await setUserPassword(person, password)
+  await sql`update person set sessions_ended_at = now() where row_id = ${person}`
+  await logActivity(person, 'password_set', { actor: 'cli' })
+}
+
 export type PrincipalKind = 'person' | 'service_account'
 
 export interface SessionUser {
@@ -346,6 +355,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // unlinked or moved. Tokens from before the upgrade carry no m/idn.
   const [user] = await sql`
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
+      extract(epoch from u.sessions_ended_at) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
       i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended
     from person u
@@ -357,6 +367,9 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     !user.enabled ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
+    // #391: a session issued before the person's sessions were ended. `iat`
+    // is whole seconds, so one issued in that same second ends too.
+    (user.sessions_ended_at != null && payload.iat < Number(user.sessions_ended_at)) ||
     // person-resolution D5: a session opened through an identity that has
     // since ended (left, moved, unlinked) ends on its next request.
     (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))

@@ -82,6 +82,27 @@ Migration 0006 remains immutable history; the migration runner explicitly
 supersedes its unsafe password action on fresh chains. Migration 0083 and
 deliberate seed use the same null-only policy.
 
+### Locked out (#391)
+
+When no System Manager can sign in, reset a person's password from an
+operator shell — shell access is the authorization. The password is read from
+**stdin only** (an argument is refused: argv lands in shell history and the
+process list), must be at least 6 characters, and is never printed. It ends
+every live session of that person and writes an Activity Log entry
+(`password_set`, actor `cli`). Service accounts are refused; they use tokens.
+
+```sh
+# Prompts without echo locally, then pipes the value through the SSH session.
+read -rs PW && printf '%s\n' "$PW" | \
+  railway ssh -p <project> -e <env> -s jeyarama-featherbase -- \
+  pnpm --filter server cli set-password Administrator --stdin; unset PW
+#   → password set for Administrator; their sessions are ended
+```
+
+`<person-id>` is the Person's id (`Administrator`, or a `psn_…`). Sign in
+with the new password, then rotate it through the password UI if it passed
+through anything you do not trust.
+
 ## Public-route abuse limits
 
 Password login (including delegated sign-in), Google OAuth initiation/callback,
