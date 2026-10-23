@@ -685,7 +685,7 @@ export function AdminLayout() {
                   to="/featherbase/admin/sign-in-methods"
                   onClick={() => setAccountOpen(false)}
                   data-testid="account-sign-in-methods"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint"
                 >
                   {t('Sign-in methods')}
                 </Link>
@@ -837,10 +837,9 @@ export function AdminLayout() {
             <Link
               to="/featherbase/admin/sign-in-methods"
               data-testid="sign-in-methods-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
               activeProps={{
-                className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
               }}
             >
               Sign-in methods

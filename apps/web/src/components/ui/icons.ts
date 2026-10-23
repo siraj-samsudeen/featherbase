@@ -1,0 +1,35 @@
+// The one curated icon set (lucide, outline, 1.8 stroke via each call site's
+// size). Import icons from here, not from lucide-react directly, so the set
+// stays small and consistent across screens.
+export {
+  ArrowDown,
+  ArrowUp,
+  Bell,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  CircleX,
+  Clock,
+  Ellipsis,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Funnel,
+  House,
+  Inbox,
+  Info,
+  ListChecks,
+  LoaderCircle,
+  LogOut,
+  Menu,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+  Target,
+  TriangleAlert,
+  User,
+  X,
+} from 'lucide-react'
+export type { LucideIcon } from 'lucide-react'

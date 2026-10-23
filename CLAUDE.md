@@ -110,10 +110,14 @@ belongs, dated.
   lives in its own repo; fix it there and release, never vendor it back in.
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
-**Visual identity is a standing directive.** Every new UI feature must inherit
-the Frappe-inspired Admin look — design tokens and the `.fc-card` / `.fc-input` /
-`.fc-btn` component classes. The rules are at the top of `PROGRESS.md`; read
-them before writing any UI.
+**Visual identity is a standing directive.** Every UI uses the Shop Floor design
+system (#380, OpenSpec change `adopt-shop-floor-design-system`): the colour,
+shape and density tokens in `apps/web/src/index.css` and the shared components.
+`apps/web/test/design-guards.test.ts` enforces it — text contrast in light and
+dark, and no raw palette classes, literal colours, text under 12px, browser-locale
+number/date formatting or retired token and `.fc-*` class names outside the
+shrinking `design-guards.pending.ts` list. The older "Visual identity" section in
+`PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
 
 ## Environment
 

@@ -1,5 +1,134 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
+
+`DataList` renders one list in two shapes, chosen live from the screen width:
+- below 40rem, a card per row: the `title` and `status` columns lead, `meta` follows in one line, `value` columns
+  become labelled figures and `hidden` ones are left off. Everything inside a card wraps, so a long SKU, URL, status
+  or label never widens the page. Measured in a browser at 320 and 375 px.
+- above 40rem, a captioned table in a keyboard-scrollable named region, with `<th scope="row">` first cells and
+  right-aligned tabular numbers.
+
+Row text uses `text-control`, 16 px on touch. Loading is a Skeleton and a failure is an alert with a Try again slot.
+The empty state is required (the same `EmptyDescriptor` as `EmptyState`), so a failed load can never read as an empty
+list and an empty one always offers the way forward.
+
+`Headline` is the answer-first block: the period, the conclusion coloured by meaning, the supporting figures and an
+optional progress `meter`:
+- the meter's scale stretches past 100%, and its marker and fill sit on that scale;
+- `aria-valuenow` is clamped at 0, while `aria-valuetext` keeps the signed `fmtPct` value;
+- the track has a 3:1 edge.
+
+`achievementTone` holds the sales-target legend bands (<90 negative, 90–<100 caution, ≥100 positive, none missing),
+judged on the one-decimal value the page shows.
+
+`lib/inr.ts` gains `fmtINR` and `fmtCount`:
+- `fmtINR` is the readable ADR 750 ladder (`₹850`, `₹45,600`, `₹1.21 L`, `₹1.74 Cr`, `₹1,23,456.79 Cr`; `signed`
+  for gaps). It rounds before choosing lakh or crore.
+- `fmtCount` rounds first, uses Indian grouping and never shows -0.
+
+Siraj ruled on 22-Oct that the sales-target summary and rows are the readable regime; `fmtExact` stays for amounts
+that foot or are paid.
+
+Review (independent reviewer and Codex) found no blockers. Every item above that goes beyond the first cut came from
+it: crore grouping, -0, tone on the shown value, meter scale and clamp, track edge, keyboard region, row headers,
+touch text, retry, the required empty state, auto-layout coverage and card wrapping. Each was fixed test-first, and
+the auto-layout tests fail with the reviewer's mutation applied.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web exec vitest run test/data-display.test.tsx`: 43 passed.
+- `pnpm --filter web test`: 645 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web build` passed.
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- Gallery screenshots of the Headline and DataList at 375 px (cards) and 1280 px (table), light and dark, plus the
+  long-values card at 320 and 375 px.
+
+**Next:** stage 2, moving every screen not owned by #371 onto the primitives and final tokens (opened for review,
+merged together with stage 3 once #371 lands).
+
+## 2026-10-22 — Design system stage 1b: the shared components (#380)
+
+`apps/web/src/components/ui/` holds the primitives every screen will build from:
+- `Button`, with primary, secondary, quiet and danger variants, a loading state that keeps its label and refuses
+  clicks, and a `buttonClasses()` recipe so a router Link or an anchor can look like a button without being wrapped;
+- `Field`, which names its control with the label, describes it with the hint and the error, and marks it invalid;
+  plus `TextInput`, `PasswordInput` (show/hide with `aria-pressed`), `Select` and `SearchInput`. Inputs use
+  `focus:outline-hidden`, so forced-colours mode keeps a focus outline.
+- `Card`, which is a named region when titled;
+- `Notice`, an alert for failures and a polite status for anything else;
+- `StatusPill`, which always shows the status in words;
+- `EmptyState`, which takes a title plus an explanation or a way forward (a title alone is a type error);
+- `Skeleton`, which announces what is loading while its bars stay silent;
+- `Toast`: one persistent polite, non-atomic live region. Each toast keeps its own timer, so a new toast never restarts
+  another's. A confirmation leaves after 5 s and pauses on hover or focus; a failure is an alert that stays until
+  dismissed.
+
+Icons come from `lucide-react` 1.50.0 (exact pin, ISC, released 02-Oct-2026) through one curated module, `icons.ts`.
+Controls use the density tokens, so under phone emulation they measure 48 px with 16 px input text.
+`apps/web/gallery.html` (served by the dev server at `/gallery.html`, not built for production) renders every
+primitive live, in either theme.
+
+Review (independent reviewer and Codex) found no blockers. The Toast timer, live-region and pause fixes, the
+forced-colours outline and the EmptyState contract all came from it; each was fixed test-first. The pause test fails
+with pausing disabled.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web exec vitest run test/ui-primitives.test.tsx`: 22 passed.
+- `pnpm --filter web test`: 602 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web build` passed, with no gallery in `dist`.
+- `pnpm check:specs` and `git diff --check` are clean.
+- Gallery screenshots at 375 and 1280 px, light and dark, came from the local dev server.
+
+**Next:** stage 1c, DataList (a table on wide screens, cards on narrow), Headline, `fmtINR` and `fmtCount`.
+
+## 2026-10-22 — Design system stage 1a: Shop Floor tokens and the guard tests (#380)
+
+Siraj chose direction B, "Shop Floor", for Featherbase's look (JeyaramaGroup/data-warehouse#4332), and ruled out any
+backward compatibility: old token names and the four palettes go completely. OpenSpec change
+`adopt-shop-floor-design-system` carries the promises and the three stages. Stage 1 is additive and touches no file PR
+#371 owns.
+
+`apps/web/src/index.css` now has the final roles, with light and dark values:
+- canvas, surface, subtle, border, border-control, ink, ink-muted, ink-subtle;
+- action, action-hover, action-ink, action-tint, focus;
+- negative, caution, positive, opportunity and missing, each with a tint.
+
+It also has the system font, which removes the `@fontsource-variable/inter` dependency, and `color-scheme`. Density
+tokens (`--spacing-control`, `--text-control`) are 36 px / 14 px under a mouse and 48 px / 16 px on touch, so phones
+stop zooming on focus. The names shared with the old set (canvas, ink, …) take their new values app-wide. The old-only
+names sit in a block marked RETIRED until stage 3 deletes them, with nothing aliased.
+
+`test/design-guards.test.ts` checks contrast: every text pair at 4.5:1 and every control edge at 3:1, in light and
+dark and in each still-selectable palette. Ivory's `positive` failed and now has its own value.
+
+It also enforces the source rules, each with probe tests of what it catches and what it ignores:
+- raw palette classes, including border-side, ring-offset and divide prefixes;
+- literal colours: 3/4/6/8-digit hex, colour functions and named colours;
+- text under 12 px in px, rem, em or pt;
+- `toLocale*String` and `Intl.*Format` outside `lib/inr.ts`;
+- retired token names, as variables or as utilities, and `.fc-*` classes.
+
+The rules read stylesheets too; only custom-property declarations are exempt. The 50 files that still break a rule
+are pinned to their exact counts in `design-guards.pending.ts`. A frozen ceiling and the list already accepted on
+`origin/main` refuse any added file or risen pin, and a fix must lower its pin (`DG_WRITE_PENDING=1` rewrites them).
+The token block is `@theme static`, so the production CSS carries every token, not only those a utility uses.
+
+Review (independent reviewer and Codex) found no blockers. The palette coverage, the pattern gaps, the true ratchet,
+stylesheet coverage and `@theme static` all came from it; each was fixed test-first.
+
+**Verified** at the PR head, under Node 22 (CI's version):
+- `pnpm --filter web exec vitest run test/design-guards.test.ts`: 395 passed. Against `origin/main`'s tokens the
+  contrast checks failed first.
+- `pnpm --filter web test`: 580 passed. `pnpm --filter web typecheck` passed.
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- `pnpm --filter web build` emits both light and dark values of every token.
+- Under the local Node 24 the two `sales-target-page` tests also fail on `origin/main`: Node 24's fetch rejects
+  jsdom's AbortSignal.
+- Before/after screenshots of login, the User list and the User form at 375 and 1280 px, light and dark, came from two
+  local stacks against a private local database.
+
+**Next:** stage 1b, the shared components (Button, Field, Card, Notice, EmptyState, Skeleton, Toast, icons).
+
 ## 2026-10-22 — A User is a person: email optional, sign-ins linked by permanent ID (#275)
 
 OpenSpec change `person-identities`. Store staff no longer need an invented

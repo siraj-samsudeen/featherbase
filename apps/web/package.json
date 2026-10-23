@@ -12,9 +12,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.2.8",
     "@tanstack/react-query": "^5.66.0",
     "@tanstack/react-router": "^1.97.0",
+    "lucide-react": "1.50.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "shared": "workspace:*",

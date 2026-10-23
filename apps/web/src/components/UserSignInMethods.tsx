@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
+import { Button, Card, Select, TextInput } from './ui'
 
 // person-identities (#275, review B-M4): on a User's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -90,56 +91,55 @@ export function UserSignInMethods({ user }: { user: string }) {
   }
 
   return (
-    <section className="fc-card p-3" data-testid="user-sign-in-methods">
-      <h3 className="mb-2 text-sm font-semibold text-[var(--color-ink)]">Sign-in methods</h3>
+    <Card className="p-3" data-testid="user-sign-in-methods">
+      <h3 className="mb-2 text-sm font-semibold text-ink">Sign-in methods</h3>
       <ul className="space-y-2 text-sm">
         {data?.has_password && <li data-testid="user-method-password">Password</li>}
         {data?.identities.map((i) => (
           <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`user-method-${i.id}`}>
             <span className="min-w-0">
               <span className="font-medium">{labelOf(i.method)}</span>{' '}
-              <span className="text-xs text-[var(--color-ink-muted)]">
+              <span className="text-sm text-ink-muted">
                 {i.subject == null ? `invited: ${i.pending_email}` : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')}
               </span>
             </span>
-            <button
-              type="button"
-              className="text-xs text-[var(--color-danger)] hover:underline"
+            <Button
+              variant="danger"
               onClick={() => {
                 if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${user}?`)) unlink.mutate(i.id)
               }}
             >
               Unlink
-            </button>
+            </Button>
           </li>
         ))}
         {data && !data.has_password && data.identities.length === 0 && (
-          <li className="text-xs text-[var(--color-ink-muted)]">No way to sign in yet.</li>
+          <li className="text-sm text-ink-muted">No way to sign in yet.</li>
         )}
       </ul>
       {delegated.length > 0 && (
         <form className="mt-3 space-y-2" onSubmit={onLink} data-testid="link-delegated-form">
-          <select name="method" className="fc-input" aria-label="Service" defaultValue={delegated[0].key}>
+          <Select name="method" aria-label="Service" defaultValue={delegated[0].key}>
             {delegated.map((m) => (
               <option key={m.key} value={m.key}>{m.label}</option>
             ))}
-          </select>
-          <input name="subject" className="fc-input" aria-label="Employee code" placeholder="Employee code" required />
-          <input name="sign_in_name" className="fc-input" aria-label="Login ID at the service" placeholder="Login ID at the service" />
-          <button type="submit" className="fc-btn w-full justify-center">Link</button>
+          </Select>
+          <TextInput name="subject" aria-label="Employee code" placeholder="Employee code" required />
+          <TextInput name="sign_in_name" aria-label="Login ID at the service" placeholder="Login ID at the service" />
+          <Button type="submit" block>Link</Button>
         </form>
       )}
       {google && (
         <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
-          <input name="email" type="email" className="fc-input" aria-label="Google address to invite" placeholder="Google address to invite" required />
-          <button type="submit" className="fc-btn w-full justify-center">Invite {google.label} address</button>
+          <TextInput name="email" type="email" aria-label="Google address to invite" placeholder="Google address to invite" required />
+          <Button type="submit" block>Invite {google.label} address</Button>
         </form>
       )}
       {error && (
-        <p className="mt-2 text-xs text-[var(--color-danger)]" data-testid="user-method-error">
+        <p className="mt-2 text-sm text-negative" data-testid="user-method-error">
           {error}
         </p>
       )}
-    </section>
+    </Card>
   )
 }

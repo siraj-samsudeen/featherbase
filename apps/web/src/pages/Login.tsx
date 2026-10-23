@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
+import { Button, Field, TextInput } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(
@@ -197,23 +198,21 @@ export function LoginPage() {
           ) : mode === 'signup' && signUpOpen ? (
             <>
               <form className="space-y-4" data-testid="sign-up-form" onSubmit={onSignUpSubmit}>
-                <div>
-                  <label className="fc-label" htmlFor="signup-username">Username</label>
-                  <input id="signup-username" type="text" name="username" autoComplete="username"
-                    autoCapitalize="none" autoCorrect="off" spellCheck={false} className="fc-input" />
-                </div>
-                <div>
-                  <label className="fc-label" htmlFor="signup-password">Password</label>
-                  <input id="signup-password" type="password" name="password" autoComplete="new-password" className="fc-input" />
-                </div>
+                <Field label="Username">
+                  <TextInput id="signup-username" name="username" autoComplete="username"
+                    autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                </Field>
+                <Field label="Password">
+                  <TextInput id="signup-password" type="password" name="password" autoComplete="new-password" />
+                </Field>
                 {errorLine}
-                <button type="submit" disabled={busy} data-testid="sign-up-submit" className="fc-btn-primary w-full justify-center py-2">
-                  {busy ? 'Creating…' : 'Create account'}
-                </button>
+                <Button type="submit" variant="primary" block loading={busy} data-testid="sign-up-submit">
+                  Create account
+                </Button>
               </form>
-              <button type="button" className="mt-4 text-sm text-[var(--color-brand)] hover:underline" onClick={() => switchMode('password')}>
+              <Button variant="quiet" className="mt-4" onClick={() => switchMode('password')}>
                 I already have an account
-              </button>
+              </Button>
             </>
           ) : (
           <>
@@ -273,14 +272,9 @@ export function LoginPage() {
             </button>
           ))}
           {signUpOpen && (
-            <button
-              type="button"
-              data-testid="sign-up-toggle"
-              className="mt-3 text-sm text-[var(--color-brand)] hover:underline"
-              onClick={() => switchMode('signup')}
-            >
+            <Button variant="quiet" className="mt-3" data-testid="sign-up-toggle" onClick={() => switchMode('signup')}>
               Create an account
-            </button>
+            </Button>
           )}
           <div className="mt-4 border-t border-[var(--color-border)] pt-4">
             {!forgot ? (
@@ -299,7 +293,7 @@ export function LoginPage() {
             ) : (
               <form className="space-y-3" data-testid="forgot-form" onSubmit={onForgot}>
                 {delegatedMethods.length > 0 && (
-                  <p className="text-xs text-[var(--color-ink-muted)]" data-testid="forgot-delegated-hint">
+                  <p className="text-sm text-ink-muted" data-testid="forgot-delegated-hint">
                     {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
                   </p>
                 )}

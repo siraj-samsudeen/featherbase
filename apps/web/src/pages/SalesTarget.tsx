@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { buttonClasses } from '../components/ui'
 import { useNavigate } from '@tanstack/react-router'
 import { api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { Logo } from '../components/Logo'
@@ -258,7 +259,7 @@ export function SalesTargetPage() {
         <div className="flex items-center gap-2">
           {/* person-identities: a Team Leader reaches their sign-in methods
               (e.g. to link Google) from the report they land on. */}
-          <a href="/featherbase/admin/sign-in-methods" className="fc-btn" data-testid="sign-in-methods-link">
+          <a href="/featherbase/admin/sign-in-methods" className={buttonClasses()} data-testid="sign-in-methods-link">
             Sign-in methods
           </a>
           <button type="button" className="fc-btn" data-testid="logout" onClick={() => void logout()}>
