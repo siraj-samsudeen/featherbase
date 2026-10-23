@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
-import { fmtDate, fmtMoney, fmtNumber } from './inr'
+import { fmtCurrency, fmtDate, fmtNumber } from './inr'
 
 // SET-004: global display settings drive how Date and Currency/Float values
 // render across every list and form. Fetched once and cached; the Admin reads
@@ -21,10 +21,6 @@ export const DEFAULT_SETTINGS: Settings = {
   currency: 'INR',
   currency_precision: 2,
   float_precision: 2,
-}
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: '$', EUR: '€', GBP: '£', INR: '₹', JPY: '¥',
 }
 
 export function useSettings() {
@@ -57,9 +53,7 @@ export function formatCurrency(value: unknown, s: Settings): string {
   if (value == null || value === '') return ''
   const n = Number(value)
   if (!Number.isFinite(n)) return String(value)
-  const num = fmtMoney(n, s.currency_precision, s.currency)
-  const symbol = CURRENCY_SYMBOLS[s.currency] ?? ''
-  return `${symbol}${num}`
+  return fmtCurrency(n, s.currency_precision, s.currency)
 }
 
 // Column-type-aware display formatting used by list cells and read-only

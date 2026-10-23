@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* recipe() (components/ui/cx.ts) keeps the 16px text and 48px control height on
+   touch screens and moves a call site's size override under `pointer-fine:`.
+   Those class names are built at runtime, so the scanner never sees them: list
+   every size a call site can pass. test/pointer-fine-css.test.ts fails when
+   src/ uses a size that is missing here. */
+@source inline("pointer-fine:text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl,control}");
+@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,{1..24},0.5,1.5,2.5,3.5}");
+@source inline("pointer-fine:min-h-{[26px],[44px],[70vh]}");
+
 /* Shop Floor design tokens (#380, OpenSpec change adopt-shop-floor-design-system).
    Every colour has one job. Chrome is neutral with one action blue, so the
    meaning colours (negative, caution, positive, opportunity, missing) are free

@@ -82,16 +82,27 @@ export function fmtShowing(shown: number, total: number): string {
   return shown === total ? fmtCount(total) : `${fmtCount(shown)} of ${fmtCount(total)}`
 }
 
-// The grouping each currency's readers expect. Rupees always group the Indian
-// way; any other currency keeps its own locale's grouping.
-const CURRENCY_LOCALE: Record<string, string> = { INR: 'en-IN', USD: 'en-US', GBP: 'en-GB', EUR: 'de-DE', JPY: 'ja-JP' }
+// Where each currency's readers live. Rupees are always ₹ with Indian grouping;
+// any other currency is written as its own locale writes it (EUR: 1.234.567,50 €).
+const CURRENCY_LOCALE: Record<string, string> = { USD: 'en-US', GBP: 'en-GB', EUR: 'de-DE', JPY: 'ja-JP' }
 
-/** An amount at a fixed precision, grouped the way that currency's readers expect (no symbol). */
-export function fmtMoney(x: number, precision: number, currency: string): string {
-  return x.toLocaleString(CURRENCY_LOCALE[currency] ?? 'en-IN', {
-    minimumFractionDigits: precision,
-    maximumFractionDigits: precision,
-  })
+/**
+ * An amount with its currency, at the precision setting. The setting may round
+ * further, never past the currency's own minor unit (yen has none).
+ */
+export function fmtCurrency(x: number, precision: number, currency: string): string {
+  if (currency === 'INR') {
+    return `₹${x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })}`
+  }
+  try {
+    const locale = CURRENCY_LOCALE[currency] ?? 'en-US'
+    const own = new Intl.NumberFormat(locale, { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? precision
+    const digits = Math.min(precision, own)
+    return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(x)
+  } catch {
+    // Not an ISO 4217 code: show the amount with the code beside it.
+    return `${x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })} ${currency}`.trim()
+  }
 }
 
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
