@@ -204,7 +204,7 @@ secret: set it in the platform's variables, never in the repository.
 ### Checking it, and what a failure looks like
 
 ```sh
-pnpm --filter server cli mail:test you@jeyarama.com
+pnpm --filter server cli mail:test <your-address>
 # → mail:test: sent a test message via SMTP smtp-relay.gmail.com:587
 ```
 

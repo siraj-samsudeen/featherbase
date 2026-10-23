@@ -150,14 +150,14 @@ describe('#395: transport selection and options', () => {
   test('port 587 requires STARTTLS; credentials become AUTH', () => {
     const cfg = readSmtpConfig({
       SMTP_HOST: 'smtp-relay.gmail.com',
-      SMTP_USER: 'relay@jeyarama.com',
+      SMTP_USER: 'relay@example.test',
       SMTP_PASSWORD: 'secret',
       MAIL_FROM: FROM,
     })
     expect(cfg).toMatchObject({ host: 'smtp-relay.gmail.com', port: 587, from: FROM })
     const opts = smtpTransportOptions(cfg!)
     expect(opts).toMatchObject({ host: 'smtp-relay.gmail.com', port: 587, secure: false, requireTLS: true })
-    expect(opts.auth).toEqual({ user: 'relay@jeyarama.com', pass: 'secret' })
+    expect(opts.auth).toEqual({ user: 'relay@example.test', pass: 'secret' })
   })
 
   test('port 587 requires STARTTLS even without credentials', () => {
