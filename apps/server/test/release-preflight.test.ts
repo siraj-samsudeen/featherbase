@@ -124,7 +124,7 @@ describe('release preflight', () => {
 // #437: the access configuration a release must never ship with.
 describe('release preflight: access configuration', () => {
   const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'
-  const SIGNUP_OK = 'password sign-in does not create new people here'
+  const SIGNUP_OK = 'no sign-in method creates new people for anyone here'
   const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
 
   async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
@@ -155,10 +155,17 @@ describe('release preflight: access configuration', () => {
   test('(b) password sign-up outside development or test refuses; in test it passes', async () => {
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
     await sql`update sign_in_method set new_person = 'create' where kind = 'password'`
-    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/password sign-in method creates a new person/)
-    await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/password sign-in method creates a new person/)
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
+    await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
     expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
     expect(await preflightRelease({ environment: 'development' })).toContain(SIGNUP_OK)
+  })
+
+  test('(b) a Google method that creates anyone it admits refuses outside development or test', async () => {
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    await sql`update sign_in_method set new_person = 'create', allowed_email_domains = 'example.com' where kind = 'google'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/google sign-in method "google" creates a new person/)
+    expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
   })
 
   test('(c) any-address or consumer domains while creating people refuse', async () => {
@@ -215,6 +222,41 @@ it('a production-labelled database with test mode set refuses BEFORE migrating',
     expect(output).not.toMatch(/applied 0001/)
     const [ledger] = await db`select to_regclass('featherbase.migration') as m, to_regclass('public.migration') as p`
     expect(ledger).toEqual({ m: null, p: null })
+  } finally {
+    await db.end()
+  }
+}, 90_000)
+
+// #437 (a) before the schema move: a production-era database keeps its
+// platform tables in `public`, and preflight runs before 0094 moves them.
+it('a legacy everyone-reads-User grant in public refuses BEFORE migrating', async () => {
+  const name = `featherbase_preflight_${randomUUID().replaceAll('-', '')}`
+  await admin.unsafe(`create database "${name}"`)
+  created.push(name)
+  const url = new URL(config.databaseUrl)
+  url.pathname = `/${name}`
+  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+  try {
+    await db.unsafe(`create schema featherbase;
+      create table featherbase.internal_metadata (key text primary key, value text not null, updated_at timestamptz not null default now());
+      insert into featherbase.internal_metadata (key, value) values ('environment', 'test');
+      create table public.permission (row_id text primary key, ref_table text, role text, tier text default 'basic', can_read boolean default false, can_write boolean default false);
+      insert into public.permission (row_id, ref_table, role, can_read) values ('legacy-grant', 'User', 'All', true)`)
+    let output = ''
+    let failed = false
+    try {
+      execFileSync(process.execPath, [tsx, 'src/release.ts'], {
+        cwd: server, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '' },
+      })
+    } catch (error) {
+      failed = true
+      const e = error as { stdout?: string; stderr?: string }
+      output = `${e.stdout ?? ''}${e.stderr ?? ''}`
+    }
+    expect(failed).toBe(true)
+    expect(output).toMatch(/Permission legacy-grant grants role "All" on "User" \(read\)/)
+    expect(output).not.toMatch(/applied 0001/)
   } finally {
     await db.end()
   }

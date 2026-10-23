@@ -615,7 +615,6 @@ async function saveDocImpl(
     'insert',
   )
   assertRequiredChildren(meta, values, 'insert')
-  await assertAccessColumnsUnchanged(sql, meta, values, null, user, Boolean(opts.skipPermissions))
   // SLA: stamp response/resolution deadlines from the active SLA (if any)
   // before the row is written, so they are part of the insert itself.
   await applySla(meta, fieldValues)
@@ -661,6 +660,9 @@ async function saveDocImpl(
       // snapshotting template items into a new row, say) — re-pick from the
       // hooked row so what saves is what the chain left behind.
       const finalChildInputs = pickChildInputs(meta, row)
+      // #437: judged on the row the hooks and scripts leave behind, the one
+      // that is written — not on the payload.
+      await assertAccessColumnsUnchanged(stx, meta, row, null, user, Boolean(opts.skipPermissions))
       const dbRow = {
         ...columnValues(meta, row),
         [meta.row_key]: String(row[ROW_KEY]),
@@ -899,11 +901,6 @@ async function updateDoc(
         await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
         await assertUserPermissions(user, meta, existing as RowValues)
       }
-      // #437: neither a role grant nor a write-share opens access columns.
-      // Scalars as they will be written (tier-stripped), Sub-tables as sent.
-      const accessCheck: RowValues = { ...fieldValues }
-      for (const ci of pickChildInputs(meta, values)) accessCheck[ci.columnName] = ci.rows
-      await assertAccessColumnsUnchanged(stx, meta, accessCheck, existing as RowValues, user, trusted)
       const dbModified = (existing.updated_at as Date).getTime()
       const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
@@ -937,6 +934,10 @@ async function updateDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      // #437: neither a role grant nor a write-share opens access columns.
+      // Judged on the row the hooks and scripts leave behind — the one that
+      // is written — against the stored row.
+      await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),

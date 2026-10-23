@@ -4,12 +4,19 @@
 
 The tables that decide access — permissions, roles, role holdings, data
 scopes, shares, sign-in methods, identifier systems, installed apps, and the
-tables that decide whose sales targets a person sees — SHALL refuse every write
+tables that decide whose sales targets a person sees — and the tables that
+make the system act on others' rows (server scripts, workflows, assignment
+rules) SHALL refuse every write
 from anyone but a System Manager, whatever grants exist on them. Reading them
 SHALL stay governed by ordinary grants. A person's roles and whether their
 account is enabled SHALL likewise change only for a System Manager, through
 every way a row can be saved; values sent back unchanged SHALL NOT block an
-ordinary edit.
+ordinary edit. The check SHALL judge the row as it will be written, after
+every save hook and script has run. A workflow or assignment rule SHALL NOT
+target an access-control table or a person's roles or enabled flag, neither
+when it is saved nor when it acts. Deleting a person, which a delete grant
+allows, SHALL drop their roles with them; a person created afresh starts
+enabled with no roles.
 
 #### Scenario: A grant on the permission table does not let a user write it
 
@@ -23,6 +30,18 @@ ordinary edit.
   disable or enable an account
 - **THEN** the save is refused and the person is unchanged
 
+#### Scenario: A save script cannot slip a role in
+
+- **WHEN** a script that runs on every person save adds a role, and a user
+  allowed to edit people saves someone's name
+- **THEN** the save is refused
+
+#### Scenario: A workflow cannot switch accounts off
+
+- **WHEN** a System Manager saves a workflow whose state is a person's enabled
+  flag
+- **THEN** the save is refused
+
 #### Scenario: An ordinary edit still saves
 
 - **WHEN** that user edits a person's name and the form sends back the same
@@ -32,8 +51,10 @@ ordinary edit.
 ### Requirement: A release refuses an open access configuration
 
 A release SHALL stop before migrating when any permission row gives every
-signed-in user or a guest any access to people or to an access-control table,
-when password sign-in creates new people outside development or test, or when
+signed-in user or a guest any access to people or to an access-control table
+(wherever the database still keeps that table before migrating),
+when any sign-in method creates a new person for anyone it admits outside
+development or test, or when
 a sign-in method that creates people admits any address or a consumer email
 domain.
 

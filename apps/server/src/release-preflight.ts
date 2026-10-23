@@ -118,14 +118,18 @@ const CONSUMER_EMAIL_DOMAINS = new Set([
 const SIGN_UP_ENVIRONMENTS = ['development', 'test']
 const ACTION_FLAGS = ['read', 'write', 'create', 'delete', 'submit', 'cancel', 'amend'] as const
 
-async function columnsOf(name: string): Promise<Set<string> | null> {
-  const relation = platformRelation(name)
-  const [rel] = await sql`select to_regclass(${relation})::oid as oid`
-  if (!rel?.oid) return null
-  const cols = await sql`
-    select attname from pg_attribute
-    where attrelid = ${rel.oid} and attnum > 0 and not attisdropped`
-  return new Set(cols.map((c) => String(c.attname)))
+/** Where a platform table lives right now, and its columns: `featherbase`
+ *  after 0094, `public` before it — preflight runs before the migrations. */
+async function locate(name: string): Promise<{ relation: string; columns: Set<string> } | null> {
+  for (const relation of [platformRelation(name), `public.${name}`]) {
+    const [rel] = await sql`select to_regclass(${relation})::oid as oid`
+    if (!rel?.oid) continue
+    const cols = await sql`
+      select attname from pg_attribute
+      where attrelid = ${rel.oid} and attnum > 0 and not attisdropped`
+    return { relation, columns: new Set(cols.map((c) => String(c.attname))) }
+  }
+  return null
 }
 
 /** 5. #437: access configuration a release must never carry.
@@ -137,13 +141,14 @@ async function columnsOf(name: string): Promise<Set<string> | null> {
  *  A database before the tables or columns exist has nothing to check. */
 async function assertAccessConfiguration(environment: string): Promise<string[]> {
   const problems: string[] = []
-  const permission = await columnsOf('permission')
-  if (permission) {
+  const found = await locate('permission')
+  if (found) {
+    const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
     const rows = await sql`
       select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
-      from permission
-      where role in ('All', 'Guest') and ref_table in ${sql(['Person', ...SECURITY_TABLES])}
+      from ${sql(found.relation)}
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES])}
       order by role, ref_table, row_id`
     for (const r of rows) {
       const granted = flags.filter((a) => r[`can_${a}`] === true)
@@ -151,16 +156,19 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
         problems.push(`Permission ${String(r.row_id)} grants role "${String(r.role)}" on "${String(r.ref_table)}" (${granted.join(', ')}): give these Tables to named roles only, and delete the row`)
     }
   }
-  const methods = await columnsOf('sign_in_method')
-  if (methods?.has('new_person')) {
+  const method = await locate('sign_in_method')
+  const methods = method?.columns
+  if (method && methods?.has('new_person')) {
     const hasDomains = methods.has('allowed_email_domains')
     const rows = await sql`
       select row_id, kind, new_person, ${hasDomains ? sql`allowed_email_domains` : sql`null::text`} as domains
-      from sign_in_method order by row_id`
+      from ${sql(method.relation)} order by row_id`
     for (const r of rows) {
       const creates = String(r.new_person ?? 'refuse') !== 'refuse'
-      if (String(r.kind) === 'password' && String(r.new_person) === 'create' && !SIGN_UP_ENVIRONMENTS.includes(environment))
-        problems.push(`the password sign-in method creates a new person for anyone who signs up, on a "${environment}" server: set its new_person to refuse`)
+      // `create` ignores allowed_email_domains (sign-in.ts): password admits
+      // anyone who signs up, Google any Google account.
+      if (String(r.new_person) === 'create' && !SIGN_UP_ENVIRONMENTS.includes(environment))
+        problems.push(`the ${String(r.kind)} sign-in method "${String(r.row_id)}" creates a new person for anyone it admits, on a "${environment}" server: set its new_person to refuse${String(r.kind) === 'password' ? '' : ' or create_if_email_domain_allowed with company domains'}`)
       if (!creates) continue
       const open = String(r.domains ?? '').split(',').map((d) => d.trim().toLowerCase())
         .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
@@ -171,7 +179,7 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
   if (problems.length) throw new Error(`Access configuration is unsafe to release:\n  ${problems.join('\n  ')}`)
   return [
     'no Permission row grants All or Guest on Person or an access-control Table',
-    'password sign-in does not create new people here',
+    'no sign-in method creates new people for anyone here',
     'no sign-in method creates people from any address or a consumer email domain',
   ]
 }

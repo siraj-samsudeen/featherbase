@@ -384,24 +384,27 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  test('changed Tasker package upgrades from its exact shipped predecessor', async ({ admin }) => {
-    const predecessorTasker = resolve('../..', 'runtime-apps/fixtures/tasker-v2.1')
-    const currentTasker = resolve('../..', 'runtime-apps/tasker')
-    expect(await discoverPackages([predecessorTasker])).toEqual([])
-    await admin.post('/api/install_app', { name: 'tasker' })
-    expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])
-    await loadInstalledApps()
-    const everyoneReadsPerson = sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
-    expect(await everyoneReadsPerson).toHaveLength(1)
-    const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.3.0' })
-    // #437: 2.3.0 withdraws the predecessor's everyone-reads-Person grant.
-    expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
-    await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.3.0', planId: plan.planId })
-    await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.3.0' })
-    expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
-    expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(0)
-    const [app] = await sql`select perms from installed_app where name = 'tasker'`
-    expect(await sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`)
-      .toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
-  })
+  // #437: 2.3.0 withdraws the everyone-reads-Person grant; both shipped
+  // predecessors upgrade to it, and the image ships 2.2.0 beside it.
+  for (const predecessor of ['tasker-v2.1', 'tasker-v2.2'])
+    test(`changed Tasker package upgrades from its exact shipped predecessor (${predecessor})`, async ({ admin }) => {
+      const predecessorTasker = resolve('../..', 'runtime-apps/fixtures', predecessor)
+      const currentTasker = resolve('../..', 'runtime-apps/tasker')
+      expect(await discoverPackages([predecessorTasker])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])
+      await loadInstalledApps()
+      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(1)
+      const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.3.0' })
+      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
+      await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.3.0', planId: plan.planId })
+      await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.3.0' })
+      expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
+      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(0)
+      const [app] = await sql`select perms from installed_app where name = 'tasker'`
+      expect(await sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`)
+        .toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
+      // The withdrawal is on the record.
+      expect(await sql`select operation from activity_log where operation like 'app_grant_withdrawn tasker@2.3.0: All on Person%'`).toHaveLength(1)
+    })
 })

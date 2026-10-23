@@ -12,6 +12,7 @@ import { RESERVED_APP_ROOTS, appHref, type AppScopeResolver, type AppProductAuth
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import { sql, withTransaction } from './db'
+import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
 
@@ -299,7 +300,7 @@ export function previewAppUpgrade(name: string, version: string) {
   return appOperation(async () => (await upgradePlan(name, version)).plan)
 }
 
-export function upgradeApp(name: string, version: string, planId: string) {
+export function upgradeApp(name: string, version: string, planId: string, actor = 'Administrator') {
   return appOperation(async () => {
     const [done] = await sql`select * from installed_app where name = ${name}`
     if (done?.package_version === version && done.upgrade_plan === planId) {
@@ -318,8 +319,10 @@ export function upgradeApp(name: string, version: string, planId: string) {
             delete from permission
             where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role} and tier = ${p.tier ?? 'basic'}
             returning row_id`
-          for (const g of gone)
+          for (const g of gone) {
             await sql`update installed_app set perms = perms - ${String(g.row_id)} where name = ${name}`
+            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'}, ${String(g.row_id)})`.slice(0, 140))
+          }
         }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},

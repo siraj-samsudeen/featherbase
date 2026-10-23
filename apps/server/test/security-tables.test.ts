@@ -6,6 +6,8 @@ import { test, patchDoc } from './pg-test'
 import { createUserWithRole, expectApiError, grantRole, makePerson, makeTable, tableRef } from './fixtures'
 import { SECURITY_TABLES } from '../src/security-tables'
 import { saveDoc, deleteDoc } from '../src/document'
+import { evaluateAssignmentRules } from '../src/assignment-rules'
+import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
 const PERSON = tableRef('Person')
@@ -72,7 +74,7 @@ describe("#437: a Person's roles and enabled flag", () => {
     const editor = await personEditor(admin, createUser)
     const target = await makePerson({ full_name: 'Imported', username: 'imported.437' })
     for (const row of [{ username: 'imported.437', enabled: false }, { username: 'imported.437', roles: [{ role: 'System Manager' }] }]) {
-      await expectApiError(editor.post(`${PERSON.url}:import`, { key_column: 'username', rows: [row] }), { status: 403, message: /System Manager/ })
+      await expectApiError(editor.post(`${PERSON.url}:import`, { key_column: 'username', rows: [row] }), { status: 403, message: expect.stringMatching(/System Manager/) })
     }
     const after = await loaded(admin, target)
     expect(after.enabled).toBe(true)
@@ -118,7 +120,7 @@ const SCOPE_TABLES = ['Sales Target Assignment', 'Employee Section Map', 'Sectio
 
 describe('#437: the security tables refuse non-privileged writes, whatever Permission says', () => {
   test('the guarded set names every access-deciding table', () => {
-    for (const t of ['Permission', 'Role', 'Has Role', 'Data Scope', 'Share', 'Sign In Method', 'Identifier System', 'Installed App', ...SCOPE_TABLES])
+    for (const t of ['Permission', 'Role', 'Has Role', 'Data Scope', 'Share', 'Sign In Method', 'Identifier System', 'Installed App', 'Server Script', 'Workflow', 'Assignment Rule', ...SCOPE_TABLES])
       expect(SECURITY_TABLES.has(t), t).toBe(true)
   })
 
@@ -197,5 +199,79 @@ describe('#437: the security tables refuse non-privileged writes, whatever Permi
     await manager.post('/api/save_row', { table: 'Data Scope', row: { person: manager.user, allow_table: 'Person', for_value: manager.user } })
     await makeTable(admin, { name: 'Section Ownership', columns: ['store_code'] })
     await manager.post(tableRef('Section Ownership').url, { store_code: '1501' })
+  })
+})
+
+const FLOW = {
+  states: [{ state: 'true', target_status: 'draft' }, { state: 'false', target_status: 'draft' }],
+  transitions: [{ state: 'true', action: 'Disable', next_state: 'false', allowed: 'System Manager' }],
+}
+
+describe('#437: nothing that runs during a save, or on its own, opens access', () => {
+  test('a Document Event script that changes enabled or roles is judged on what it leaves behind', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const target = await makePerson({ full_name: 'Scripted' })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-enabled', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = false', enabled: true } })
+    let doc = await loaded(admin, target)
+    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 403 })
+    expect((await loaded(admin, target)).enabled).toBe(true)
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-enabled', updated_at: (await admin.get<{ updated_at: string }>(tableRef('Server Script').rowUrl('ss-437-enabled'))).updated_at, enabled: false } })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-roles', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.roles = [{ role: "System Manager" }]', enabled: true } })
+    doc = await loaded(admin, target)
+    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 403 })
+    await expectApiError(editor.post(PERSON.url, { full_name: 'Created' }), { status: 403 })
+    expect((await loaded(admin, target)).roles).toEqual([])
+    // The same script under a System Manager is their decision to make.
+    const manager = await createUser({ roles: ['System Manager'] })
+    await patchDoc(manager, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' })
+    expect((await loaded(admin, target)).roles.map((r) => r.role)).toEqual(['System Manager'])
+  })
+
+  test('a grant on Server Script, Workflow or Assignment Rule does not let a non-manager write them', async ({ admin, createUser }) => {
+    const user = await createUserWithRole(admin, createUser, { role: 'Automation Writer 437', table: ['Server Script', 'Workflow', 'Assignment Rule'], ...ALL_ACTIONS })
+    await expectApiError(user.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-x', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = true', enabled: true } }), { status: 403 })
+    await expectApiError(user.post('/api/save_row', { table: 'Workflow', row: { row_id: 'Wf 437 x', ref_table: 'Person', is_active: false } }), { status: 403 })
+    await expectApiError(user.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 437 x', ref_table: 'Person' } }), { status: 403 })
+  })
+
+  test('a Workflow may not drive an access column or a security Table', async ({ admin }) => {
+    for (const row of [
+      { row_id: 'Wf 437 enabled', ref_table: 'Person', state_field: 'enabled', is_active: false, ...FLOW },
+      { row_id: 'Wf 437 role', ref_table: 'Role', is_active: false, ...FLOW },
+    ])
+      await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row }), { status: 417, message: expect.stringMatching(/decides who can do what/) })
+  })
+
+  test('a Workflow saved before that rule cannot move an access column either', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const target = await makePerson({ full_name: 'Flowed' })
+    await sql`insert into workflow (row_id, ref_table, state_field, is_active) values ('Wf 437 legacy', 'Person', 'enabled', true)`
+    await sql`insert into workflow_transition (row_id, parent, parenttype, parentfield, state, action, next_state, allowed)
+      values ('wt437', 'Wf 437 legacy', 'Workflow', 'transitions', 'true', 'Disable', 'false', ${EDITOR})`
+    await expectApiError(
+      editor.post(`${PERSON.rowUrl(target)}:apply_workflow_action`, { action: 'Disable' }),
+      { status: 417, message: expect.stringMatching(/decides who can do what/) },
+    )
+    expect((await loaded(admin, target)).enabled).toBe(true)
+  })
+
+  test('an Assignment Rule may not stamp an access column or a security Table', async ({ admin }) => {
+    for (const row of [
+      { row_id: 'Ar 437 enabled', ref_table: 'Person', assign_to_field: 'enabled' },
+      { row_id: 'Ar 437 scope', ref_table: 'Data Scope', assign_to_field: 'person' },
+    ])
+      await expectApiError(admin.post('/api/save_row', { table: 'Assignment Rule', row }), { status: 417, message: expect.stringMatching(/decides who can do what/) })
+  })
+
+  test('an Assignment Rule saved before that rule does not act on access data', async ({ createUser }) => {
+    const owner = await createUser({ roles: [] })
+    const other = await createUser({ roles: [] })
+    const scope = await saveDoc('Data Scope', { person: owner.user, allow_table: 'Person', for_value: owner.user })
+    await sql`insert into assignment_rule (row_id, ref_table, assign_to_field, disabled) values ('Ar 437 legacy', 'Data Scope', 'person', false)`
+    await sql`insert into assignment_rule_user (row_id, parent, parenttype, parentfield, "user", position)
+      values ('aru437', 'Ar 437 legacy', 'Assignment Rule', 'users', ${other.user}, 1)`
+    await evaluateAssignmentRules('Data Scope', { ...scope })
+    const [after] = await sql`select person from data_scope where row_id = ${String(scope.row_id)}`
+    expect(after.person).toBe(owner.user)
   })
 })
