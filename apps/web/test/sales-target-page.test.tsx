@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { applySeedPack } from 'server/src/seed-packs'
+import { quoteRelation, tableRelation } from 'server/src/table-engine'
 import { test, expect, renderApp } from './pg-test'
 
 const saved = { ...process.env }
@@ -182,15 +183,32 @@ async function twoStoreReader(admin: { fetch: (path: string, init?: RequestInit)
   return reader
 }
 
-function recordFetches() {
+// With `signal` dropped, nothing aborts the page's requests when a test ends; `done()` waits for every
+// one still in flight, so none lands in the next test's sandbox.
+function recordFetches(onResponse?: (url: string) => Promise<void>) {
   const real = globalThis.fetch
   const urls: string[] = []
-  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+  const pending = new Set<Promise<unknown>>()
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
     const { signal: _signal, ...rest } = (init ?? {}) as RequestInit
     urls.push(String(input))
-    return real(input, rest)
+    const p = (async () => {
+      const res = await real(input, rest)
+      await onResponse?.(String(input))
+      return res
+    })()
+    pending.add(p)
+    void p.finally(() => pending.delete(p)).catch(() => {})
+    return p
   })
-  return { urls, spy, reportsFor: (store: string) => urls.filter((u) => u.includes('/api/sales_target/report') && u.includes(`store=${store}`)) }
+  const done = async () => {
+    for (let i = 0; i < 20 && pending.size; i++) {
+      await Promise.allSettled([...pending])
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    spy.mockRestore()
+  }
+  return { urls, spy: { mockRestore: done }, reportsFor: (store: string) => urls.filter((u) => u.includes('/api/sales_target/report') && u.includes(`store=${store}`)) }
 }
 
 test('a two-store person gets a store dropdown, opened on the default store', async ({ admin, createUser }) => {
@@ -206,7 +224,7 @@ test('a two-store person gets a store dropdown, opened on the default store', as
     await waitFor(() => expect(urls.some((u) => u.includes('/api/sales_target/embed_session?store=1501'))).toBe(true))
     expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
   } finally {
-    spy.mockRestore()
+    await spy.mockRestore()
   }
 })
 
@@ -223,7 +241,7 @@ test('switching stores reloads the report for that store and remembers the choic
     await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1515 — Kattakada'))
     expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBe('1515')
   } finally {
-    spy.mockRestore()
+    await spy.mockRestore()
   }
 })
 
@@ -237,7 +255,7 @@ test('a remembered store opens first', async ({ admin, createUser }) => {
     expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1515')
     expect(reportsFor('1501')).toHaveLength(0)
   } finally {
-    spy.mockRestore()
+    await spy.mockRestore()
   }
 })
 
@@ -252,7 +270,36 @@ test('a remembered store the person no longer has is ignored for the default', a
     expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1501')
     expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
   } finally {
-    spy.mockRestore()
+    await spy.mockRestore()
+  }
+})
+
+// A 403 after a store is chosen may mean that store is no longer theirs, not that the role went:
+// the page asks /me, falls back to the default store with a note, and forgets the stale choice.
+test('a store that is no longer theirs falls back to the default store with a note, not the no-access card', async ({ admin, createUser, db }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1515')
+  let first = true
+  const { urls, spy } = recordFetches(async (url) => {
+    // Right after the page learnt its stores, an administrator removes the 1515 assignment.
+    if (first && url.includes('/api/sales_target/me')) {
+      first = false
+      const rel = quoteRelation(await tableRelation('Sales Target Assignment'))
+      await (db as Sql).unsafe(`delete from ${rel} where employee = $1 and plant_code = '1515'`, [reader.user!])
+    }
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const note = await screen.findByTestId('store-notice')
+    expect(note).toHaveTextContent('1515 — Kattakada is no longer assigned to you')
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
+    expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
+    // One store left: no dropdown, and the report reloaded for the default store.
+    await waitFor(() => expect(urls.filter((u) => u.endsWith('/api/sales_target/report')).length).toBeGreaterThan(0))
+    expect(screen.queryByTestId('store-switcher')).not.toBeInTheDocument()
+    expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBeNull()
+  } finally {
+    await spy.mockRestore()
   }
 })
 

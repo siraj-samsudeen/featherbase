@@ -7,7 +7,8 @@ Some readers' sections span two stores — a Department Manager named on the ros
 ## What Changes
 
 - The reader's scope becomes one assignment per store. `GET /api/sales_target/me` lists every store the reader can open (`stores`: code, name, Sections, reasons) and names the default store.
-- `/me`, `/report` and `/embed_session` take an optional `store` parameter. It must be one of the reader's own stores; anything else is refused with 403. Without it, the default store is used.
+- `/report` and `/embed_session` take an optional `store` parameter. It must be one of the reader's own stores; anything else, or a repeated parameter, is refused with 403. Without it, or empty, the default store is used. `/me` takes no store.
+- The Access Log records the store each report opening was limited to.
 - Default store: the one with the most Sections; a tie goes to the lowest store code.
 - The report page shows a store dropdown when the reader has two or more stores; switching reloads the report and the live Dive for that store, and the choice is remembered per viewer on the device.
 - The `multiple_stores` refusal and its neutral card are removed.

@@ -454,7 +454,7 @@ export async function currentAssignments(user: string, period: Period = currentP
 
 /** #409: the store a reader opens on — the one with the most Sections; a tie goes to the lowest store code. */
 export function defaultStore(assignments: Assignment[]): Assignment | null {
-  // Sorted by store code, so keeping the first of equals is the lowest code.
+  // Relies on currentAssignments sorting by store code: keeping the first of equals is the lowest code.
   return assignments.reduce<Assignment | null>((best, a) => (!best || a.sections.length > best.sections.length ? a : best), null)
 }
 
@@ -473,6 +473,15 @@ export async function assignmentFor(
   const chosen = assignments.find((a) => a.plant_code === store)
   if (!chosen) throw new AppError('PermissionError', 'That store is not one of yours')
   return { assignments, chosen }
+}
+
+/**
+ * The `store` query parameter: absent or empty = no store chosen (the default). A repeated
+ * parameter names no one store and is refused like any store that is not the reader's.
+ */
+export function requestedStore(values: string[] | undefined): string | undefined {
+  if (values && values.length > 1) throw new AppError('PermissionError', 'That store is not one of yours')
+  return values?.[0] || undefined
 }
 
 /** The default store's assignment — what a reader who names no store is shown. */
@@ -579,7 +588,8 @@ salesTargetRoutes.get('/me', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const { assignments, chosen: a } = await assignmentFor(user.row_id, c.req.query('store'), period)
+  // No store parameter: /me is the default store's assignment plus every store the reader can open.
+  const { assignments, chosen: a } = await assignmentFor(user.row_id, undefined, period)
   const [person] = await sql`select username from person where row_id = ${user.row_id}`
   // #409: the stores the reader can switch between. A store's name is its assignment label, else
   // the active snapshot's name for it — lazily imported, as /report does.
@@ -610,7 +620,7 @@ salesTargetRoutes.post('/embed_session', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const { chosen: a } = await assignmentFor(user.row_id, c.req.query('store'), period)
+  const { chosen: a } = await assignmentFor(user.row_id, requestedStore(c.req.queries('store')), period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   const r = await createEmbedSession(initialStateFor(a, period))
   // A deployment with no Dive configured is not a failure — it is a deployment
@@ -640,7 +650,7 @@ salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const { chosen: a } = await assignmentFor(user.row_id, c.req.query('store'), period)
+  const { chosen: a } = await assignmentFor(user.row_id, requestedStore(c.req.queries('store')), period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   // Lazy, like reportFor: the dataset module imports currentPeriod from this file.
   const { reportFor } = await import('./sales-target-report')
@@ -656,6 +666,7 @@ salesTargetRoutes.get('/report', async (c) => {
     table: SALES_TARGET_DATASET,
     row_id: report.snapshot_id ?? undefined,
     method: report.source,
+    scope: `store=${a.plant_code}`,
   })
   return c.json(report)
 })

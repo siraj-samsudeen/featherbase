@@ -349,10 +349,10 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       expect(res.status).toBe(200)
       expect(((await res.json()) as { source: string }).source).toBe('live')
       const rows = await sql`
-        select "user", operation, ref_table, reference_name, method from access_log
+        select "user", operation, ref_table, reference_name, method, scope from access_log
         where "user" = ${await idOf('test_employee_1')} and operation = 'view_report'`
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null })
+      expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null, scope: 'store=1501' })
       // The viewer cannot read the log of their own reads.
       expect((await api.fetch('/api/table/Access%20Log', { headers: r.headers })).status).toBe(403)
       // Nor the snapshot registry — that is a System Manager's view.
@@ -478,7 +478,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(me.default_store).toBe('1501')
   })
 
-  test('the store parameter picks one of the person\'s own stores on /me, /report and /embed_session', async ({ admin, api }) => {
+  test('the store parameter picks one of the person\'s own stores on /report and /embed_session; /me always lists all and names the default', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
     await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
@@ -488,44 +488,60 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     _setSourceReader(async (text) => { reads.push(text); return [] })
     try {
       const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
-      const me = (await (await api.fetch('/api/sales_target/me?store=1515', { headers: r.headers })).json()) as { assignment: { plant_code: string; material_groups: string[] }; default_store: string }
-      expect(me.assignment.plant_code).toBe('1515')
-      expect(me.assignment.material_groups).toEqual(['010101001', '010101003'])
+      // /me takes no store: it is the default store's assignment plus every store, whatever the URL says.
+      const me = (await (await api.fetch('/api/sales_target/me?store=1515', { headers: r.headers })).json()) as { assignment: { plant_code: string }; default_store: string; stores: unknown[] }
+      expect(me.assignment.plant_code).toBe('1501')
       expect(me.default_store).toBe('1501')
+      expect(me.stores).toHaveLength(2)
 
       expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: r.headers })).status).toBe(200)
       expect((calls[0].body.initial_state as { plant_code: string; material_groups: string[] })).toMatchObject({ plant_code: '1515', material_groups: ['010101001', '010101003'] })
-      // Without the parameter, the default store.
+      // Without the parameter, or with it empty, the default store.
       await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
       expect((calls[1].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
+      expect((await api.fetch('/api/sales_target/embed_session?store=', { method: 'POST', headers: r.headers })).status).toBe(200)
+      expect((calls[2].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
 
       expect((await api.fetch('/api/sales_target/report?store=1515', { headers: r.headers })).status).toBe(200)
       const scoped = reads.find((t) => t.includes('hierarchy_code in'))!
       expect(scoped).toContain("b.plant_code = '1515'")
       expect(scoped).not.toContain("'1501'")
+      // The Access Log says which store was opened, so "who viewed which store" stays answerable.
+      const logged = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report'`
+      expect(logged.map((l) => l.scope)).toEqual(['store=1515'])
+      expect((await api.fetch('/api/sales_target/report?store=', { headers: r.headers })).status).toBe(200)
+      const both = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report' order by created_at`
+      expect(both.map((l) => l.scope).sort()).toEqual(['store=1501', 'store=1515'])
     } finally {
       _setSourceReader(null)
     }
   })
 
-  test('a store that is not the person\'s own is refused with 403 everywhere, and nothing is minted or read', async ({ admin, api }) => {
+  test('a store that is not the person\'s own is refused with 403, and nothing is minted or read', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
     await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
     const calls = stubUpstream()
-    const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
-    // 1999 is nobody's; 'abc' is not a store code; and a single-store person cannot reach the other store either.
-    for (const store of ['1999', 'abc']) {
-      expect((await api.fetch(`/api/sales_target/me?store=${store}`, { headers: r.headers })).status).toBe(403)
-      expect((await api.fetch(`/api/sales_target/report?store=${store}`, { headers: r.headers })).status).toBe(403)
-      expect((await api.fetch(`/api/sales_target/embed_session?store=${store}`, { method: 'POST', headers: r.headers })).status).toBe(403)
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    const reads: string[] = []
+    _setSourceReader(async (text) => { reads.push(text); return [] })
+    try {
+      const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+      // 1999 is nobody's; 'abc' is not a store code; a repeated parameter names no one store.
+      for (const query of ['store=1999', 'store=abc', 'store=1501&store=1515', 'store=1501&store=1501']) {
+        expect((await api.fetch(`/api/sales_target/report?${query}`, { headers: r.headers })).status).toBe(403)
+        expect((await api.fetch(`/api/sales_target/embed_session?${query}`, { method: 'POST', headers: r.headers })).status).toBe(403)
+      }
+      // A single-store person cannot reach the other store either.
+      const one = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: one.headers })).status).toBe(403)
+      expect((await api.fetch('/api/sales_target/report?store=1515', { headers: one.headers })).status).toBe(403)
+      expect(calls).toHaveLength(0)
+      expect(reads).toHaveLength(0)
+      expect(await sql`select 1 from access_log where operation = 'view_report'`).toHaveLength(0)
+    } finally {
+      _setSourceReader(null)
     }
-    const one = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
-    expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: one.headers })).status).toBe(403)
-    expect((await api.fetch('/api/sales_target/report?store=1515', { headers: one.headers })).status).toBe(403)
-    expect(calls).toHaveLength(0)
-    const logged = await sql`select 1 from access_log where operation = 'view_report'`
-    expect(logged).toHaveLength(0)
   })
 
   test('a single-store person is served exactly as before: one store, and it is the default', async ({ admin, api }) => {
@@ -536,7 +552,8 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(me.default_store).toBe('1501')
     expect((me.assignment as { plant_code: string }).plant_code).toBe('1501')
     // Naming their own store is the same as naming none.
-    expect((await api.fetch('/api/sales_target/me?store=1501', { headers: r.headers })).status).toBe(200)
+    stubUpstream()
+    expect((await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: r.headers })).status).toBe(200)
   })
 
   test('a store code that is not four digits is refused in plain words, with no id', async ({ admin, api }) => {

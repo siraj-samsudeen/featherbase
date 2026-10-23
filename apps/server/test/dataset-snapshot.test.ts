@@ -20,7 +20,7 @@ import {
   registerDataset,
 } from '../src/dataset-snapshot'
 import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/datasets/sales-target-mtd'
-import { reportFor } from '../src/sales-target-report'
+import { reportFor, snapshotStoreNames } from '../src/sales-target-report'
 import type { Assignment } from '../src/sales-target'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
@@ -69,6 +69,15 @@ describe('dataset definition', () => {
 })
 
 describe('snapshot lifecycle', () => {
+  // #409: a store switcher whose stores carry no assignment label names them from the active snapshot.
+  test('store names come from the active snapshot, and only for stores it holds', async () => {
+    expect(await snapshotStoreNames(['1501'])).toEqual({})
+    stub(sampleRows())
+    await buildSnapshot(SALES_TARGET_DATASET)
+    expect(await snapshotStoreNames(['1501', '9999'])).toEqual({ '1501': 'Attakulangara' })
+    expect(await snapshotStoreNames([])).toEqual({})
+  })
+
   test('a build activates and carries the source as-of', async () => {
     stub(sampleRows())
     const out = await buildSnapshot(SALES_TARGET_DATASET)
