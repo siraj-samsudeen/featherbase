@@ -66,4 +66,17 @@ describe('SET-002: password reset', () => {
     const [{ n }] = await sql`select count(*)::int as n from email_sink where mail_to = ${DISABLED}`
     expect(n).toBe(0)
   })
+  // #391 (Codex review on #397): a link consumed just before a break-glass
+  // shell reset, whose write lands after it, must not undo the reset. The
+  // write re-checks under the person's row lock that no shell reset happened
+  // after the link was issued.
+  test('a link issued before a shell reset cannot set the password', async ({ admin }) => {
+    await setup(admin)
+    const token = await requestPasswordReset(USER)
+    // The link predates the reset; in this sandbox now() is one instant.
+    await sql`update password_reset set created_at = now() - interval '1 minute' where token = ${token as string}`
+    await sql`update person set sessions_ended_at = now() where lower(email) = ${USER}`
+    await expect(resetPassword(token as string, 'linkpw45678')).rejects.toThrow('invalid or has expired')
+    await expect(login(USER, 'origpw123')).resolves.toHaveProperty('token')
+  })
 })

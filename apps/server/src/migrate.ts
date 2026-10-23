@@ -82,9 +82,10 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
 
 /** Migrations that apply as ONE transaction (person-resolution review A-M1):
  *  the person release is all-or-nothing, so a failure in 0102 cannot leave
- *  0101's re-id committed without it. Members must be adjacent in name order. */
+ *  0100's identities or 0101's re-id committed without it (#399: prod is at
+ *  0099, so 0100 is part of the release). Members must be adjacent in name order. */
 export const ONE_TRANSACTION: readonly (readonly string[])[] = [
-  ['0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
+  ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
 ]
 
 /** The pending files, batched: each alone, except the pending members of a
