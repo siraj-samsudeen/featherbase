@@ -17,3 +17,13 @@ export function assertNotSystemWritten(
       `${meta.name} is written only by the platform; its rows and columns cannot be ${action}`,
     )
 }
+
+// #432: configuration that acts on another Table (a Server Script, Metadata
+// Override, Workflow or Custom Field) may not name a system-written one —
+// each would let a person reshape or rewrite the audit trail from the side.
+export async function assertTargetNotSystemWritten(target: unknown, action: string): Promise<void> {
+  if (typeof target !== 'string' || !target) return
+  const { getMeta } = await import('./meta')
+  const meta = await getMeta(target).catch(() => null)
+  if (meta) assertNotSystemWritten(meta, action)
+}

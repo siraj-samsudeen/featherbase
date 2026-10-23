@@ -9,6 +9,9 @@
 - [x] 1.5 A grant on a marked table never lists it as creatable.
 - [x] 1.6 Completeness tests enumerate the write-effect actions, the document engine's exported writers and every state-changing HTTP route, so a new entry point fails until it is classified.
 
+- [x] 1.7 Review round 1: the trusted insert is a plain insert (no scripts, overrides, defaults or hooks); Server Scripts, Metadata Overrides, Workflows and Custom Fields (save and delete) refuse a system-written target; overrides never apply to one; a completeness test classifies every column that can point at a Table.
+- [x] 1.8 Deleting a Table keeps its system-written history; revert, batch delete and the wizard's history only read history written since the current Table was created.
+
 ## 2. Web
 
 - [x] 2.1 Add a failing component test: the Activity Log list shows no New, Import, Columns, Merge, Naming, Delete Table or row selection to the Administrator; its form opens read-only without Save, Delete or Rename; an ordinary platform list keeps New.

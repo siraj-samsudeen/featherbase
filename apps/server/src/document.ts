@@ -537,10 +537,31 @@ async function saveDocImpl(
 }
 
 // #432: the trusted path for the server's own writers into a system-written
-// Table (the import logger today). Insert-only and permission-free; it is
-// reached by importing it, never through any route, action or script.
-export function saveSystemRow(table: string, values: RowValues, actor: string) {
-  return appOperation(() => writeDoc(table, values, actor, 'insert', { skipPermissions: true }))
+// Table (the import logger today), reached by importing it, never through any
+// route, action or script. A plain insert of exactly the given columns: no
+// hooks, no Server Scripts, no defaults, no validation — nothing a person can
+// configure may rewrite, block or drop the record.
+export async function saveSystemRow(table: string, values: RowValues, actor: string): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (!meta.system_written)
+    throw new AppError('ValidationError', `${table} is not system-written; use saveDoc`)
+  const known = new Set(meta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type)).map((f) => f.column_name))
+  const unknown = Object.keys(values).filter((k) => !known.has(k) && k !== ROW_KEY)
+  if (unknown.length) throw new AppError('ValidationError', `Unknown ${table} columns: ${unknown.join(', ')}`)
+  const now = new Date()
+  const row: RowValues = {}
+  for (const [k, v] of Object.entries(values)) if (v !== undefined && k !== ROW_KEY) row[k] = v
+  const [saved] = await sql`insert into ${sql(await tableRelation(table))} ${sql({
+    ...row,
+    [meta.row_key]: String(values[ROW_KEY] ?? '') || hashRowId(),
+    created_by: actor,
+    updated_by: actor,
+    created_at: now,
+    updated_at: now,
+    status: 'draft',
+    position: 0,
+  } as unknown as Record<string, never>)} returning *`
+  return { table, ...(saved as RowValues) }
 }
 
 async function writeDoc(

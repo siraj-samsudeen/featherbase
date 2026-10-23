@@ -8,8 +8,8 @@ import { deleteTableIfExists } from './cleanup'
 // corrected / code-carrying file.
 //
 // Isolation: self-cleaning through table deletion (spec 0003) — pre-clean
-// via deleteTableIfExists, teardown deletes the Table (sweeping its Import
-// Log rows, DEL-R4). No skip path.
+// via deleteTableIfExists, teardown deletes the Table. Its Import Log rows
+// survive (#432: history outlives its Table). No skip path.
 
 const DT = 'Upsert Journey Zones'
 const DT2 = 'Upsert Journey Coded Zones'

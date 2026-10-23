@@ -589,6 +589,17 @@ interface RunEntry {
   reverted_at: string | null
 }
 
+// #432: import history outlives its Table, so a Table re-created under the
+// same name must not inherit a namesake's runs. Read only the Import Log
+// written since THIS Table was created.
+async function importLogFilters(table: string): Promise<unknown[]> {
+  const meta = await api.get<TableMeta>(`/api/table/${encodeURIComponent(table)}:meta`)
+  return [
+    ['ref_table', '=', table],
+    ['created_at', '>=', meta.created_at],
+  ]
+}
+
 function RunHistory({ table }: { table: string }) {
   const runs = useQuery({
     queryKey: ['iw-run-history', table],
@@ -608,7 +619,7 @@ function RunHistory({ table }: { table: string }) {
         `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
           '["run_id","file_name","inserted","updated","failed","reverted_at","created_at"]',
         )}&filters=${encodeURIComponent(
-          JSON.stringify([['ref_table', '=', table]]),
+          JSON.stringify(await importLogFilters(table)),
         )}&order_by=${encodeURIComponent('created_at desc')}&limit_page_length=40`,
       )
       const byRun = new Map<string, RunEntry>()
@@ -1152,7 +1163,7 @@ export function ImportWizard() {
         `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
           '["key_column","empty_cells"]',
         )}&filters=${encodeURIComponent(
-          JSON.stringify([['ref_table', '=', forTable]]),
+          JSON.stringify(await importLogFilters(forTable)),
         )}&order_by=${encodeURIComponent('created_at desc')}&limit_page_length=20`,
       )
       const last = logs.data.find((l) => l.key_column)

@@ -223,6 +223,9 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
     overrideTableExists = Boolean(row)
   }
   if (!overrideTableExists) return
+  // #432: a system-written Table's metadata is the platform's alone; an
+  // override (even one that pre-dates the flag) never reshapes it.
+  if (meta.system_written) return
   const overrides = await sql<{ column_name: string | null; property: string; value: string }[]>`
     select column_name, property, value from metadata_override where table_name = ${name}`
   for (const o of overrides) {

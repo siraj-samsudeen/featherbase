@@ -156,7 +156,7 @@ describe('DEL-R3: schema references block, and say who', () => {
 })
 
 describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
-  test('DEL-R4: live pointers (Permission, Import Log, home-page link) go; text testimony (Access Log) stays', async ({
+  test('DEL-R4: live pointers (Permission, home-page link) go; history (Import Log, #432) and text testimony (Access Log) stay', async ({
     admin,
   }) => {
     await makeTable(admin)
@@ -177,15 +177,16 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
       select count(*)::int as n from home_page_link where link_to = ${DT}`
     expect({ perms: perms.n, logs: logs.n, links: links.n }).toEqual({
       perms: 0,
-      logs: 0,
+      logs: 1,
       links: 0,
     })
-    // DEL-I1: nothing dangles anywhere a Reference → Table column exists.
+    // DEL-I1: nothing dangles anywhere a Reference → Table column exists,
+    // except the system-written history, which keeps naming the gone Table.
     const pointerCols = await sql<{ parent: string; column_name: string }[]>`
       select cd.parent, cd.column_name from column_def cd
       join table_def td on td.name = cd.parent
       where cd.column_type = 'Reference' and cd.reference_table = 'Table'
-        and td.kind <> 'settings' and td.data_source is null`
+        and td.kind <> 'settings' and td.data_source is null and not td.system_written`
     for (const p of pointerCols) {
       const physical = p.parent.toLowerCase().replace(/\s+/g, '_')
       const rows = await sql.unsafe(

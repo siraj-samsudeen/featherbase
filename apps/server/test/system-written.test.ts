@@ -199,6 +199,9 @@ describe('#432: the server still writes, and everyone still reads', () => {
   test('the job runner records the job and its execution', async () => {
     await loadJobs()
     const job = await enqueue('ping_job', {})
+    // now() is frozen at BEGIN inside the sandbox while run_at is wall-clock
+    // (same shim as jobs.test.ts): make the job due by the transaction clock.
+    await sql`update background_job set run_at = now() where row_id = ${job}`
     await drainJobs()
     const [bj] = await sql`select job_status from background_job where row_id = ${job}`
     expect(bj.job_status).toBe('done')
@@ -372,5 +375,114 @@ describe('#432: every write entry point is covered', () => {
       ),
     ].sort()
     expect(routes).toEqual(Object.keys(ROUTES).sort())
+  })
+})
+
+// Review round 1 (#441): writes triggered as side effects of other Tables.
+describe('#432: configurable automation never reaches a system-written table', () => {
+  async function importOne(admin: TestClient) {
+    await makeTable(admin, { name: 'Audit Side Target', columns: ['title'] })
+    await admin.post('/api/table/Audit%20Side%20Target:import', { rows: [{ title: 'one' }] })
+    return sql`select inserted, failed, error_summary from import_log where ref_table = 'Audit Side Target'`
+  }
+
+  // Rows written straight into the store stand for configuration that
+  // pre-dates the flag; the API now refuses to create them (below).
+  test('a Document Event script on the Import Log can neither rewrite nor drop the log', async ({ admin }) => {
+    await sql`insert into server_script ${sql({ row_id: 'forge-import-log', script_type: 'Document Event', ref_table: 'Import Log', event: 'before_save', script: 'doc.inserted = 999', enabled: true })}`
+    await sql`insert into server_script ${sql({ row_id: 'drop-import-log', script_type: 'Document Event', ref_table: 'Import Log', event: 'validate', script: 'throw new Error("drop it")', enabled: true })}`
+    const logs = await importOne(admin)
+    expect(logs.map((l) => Number(l.inserted))).toEqual([1])
+  })
+
+  test('a Metadata Override cannot block, default or hide an audit column', async ({ admin }) => {
+    await sql`insert into metadata_override ${sql({ row_id: 'mo-reqd', table_name: 'Import Log', column_name: 'file_name', property: 'reqd', value: '1' })}`
+    await sql`insert into metadata_override ${sql({ row_id: 'mo-default', table_name: 'Import Log', column_name: 'sheet_name', property: 'default_value', value: 'forged' })}`
+    await sql`insert into metadata_override ${sql({ row_id: 'mo-hidden', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' })}`
+    const logs = await importOne(admin)
+    expect(logs.map((l) => Number(l.inserted))).toEqual([1])
+    expect(await sql`select sheet_name from import_log where ref_table = 'Audit Side Target'`).toEqual([{ sheet_name: null }])
+    const meta = await admin.get<{ columns: { column_name: string; hidden: boolean }[] }>(`/api/table/${ENC}:meta`)
+    expect(meta.columns.find((c) => c.column_name === 'operation')?.hidden).toBe(false)
+  })
+
+  test('Server Scripts, Metadata Overrides, Workflows and Custom Fields cannot target an audit table', async ({ admin }) => {
+    await expectApiError(admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'forge', script_type: 'Document Event', ref_table: AL, event: 'validate', script: 'doc.x = 1', enabled: true } }), REFUSED)
+    await expectApiError(admin.post('/api/save_row', { table: 'Metadata Override', row: { row_id: 'mo-forge', table_name: AL, column_name: 'operation', property: 'hidden', value: '1' } }), REFUSED)
+    await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'forge-wf', ref_table: AL, is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
+    expect((await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${ENC}:meta`)).columns.map((c) => c.column_name)).not.toContain('workflow_state')
+  })
+
+  test('an existing Custom Field on an audit table cannot be deleted (it would drop a column)', async ({ admin }) => {
+    await sql`insert into custom_field ${sql({ row_id: 'Activity Log-legacy_note', dt: AL, column_name: 'legacy_note', column_type: 'Data' })}`
+    await expectApiError(admin.delete('/api/table/Custom%20Field/Activity%20Log-legacy_note'), REFUSED)
+    expect(await sql`select 1 from custom_field where row_id = 'Activity Log-legacy_note'`).toHaveLength(1)
+  })
+
+  test('deleting a Table keeps its history', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Doomed', columns: ['title'], track_changes: true })
+    const row = await admin.post<{ row_id: string; updated_at: string }>('/api/table/Audit%20Doomed', { title: 'a' })
+    await patchDoc(admin, `/api/table/Audit%20Doomed/${row.row_id}`, { title: 'b', updated_at: row.updated_at })
+    await admin.post('/api/table/Audit%20Doomed:import', { rows: [{ title: 'c' }] })
+    const [version] = await sql`select row_id from version where ref_table = 'Audit Doomed' limit 1`
+    const [log] = await sql`select row_id from import_log where ref_table = 'Audit Doomed'`
+    await admin.delete('/api/table_def/Audit%20Doomed')
+    expect(await admin.get(`/api/table/Version/${version.row_id}`)).toMatchObject({ ref_table: 'Audit Doomed' })
+    expect(await admin.get(`/api/table/Import%20Log/${log.row_id}`)).toMatchObject({ ref_table: 'Audit Doomed' })
+  })
+
+  test('history kept for a deleted Table never acts on a namesake created later', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Namesake', columns: ['title'] })
+    await admin.post('/api/table/Audit%20Namesake:import', {
+      rows: [{ title: 'old' }],
+      context: { batch_id: 'namesake-batch', run_id: 'namesake-run', table_created: true },
+    })
+    await admin.delete('/api/table_def/Audit%20Namesake')
+    // Re-created by hand, later, under the same name. (The test runs in one
+    // transaction, where now() never moves, so the later creation is stamped
+    // with the wall clock.)
+    await makeTable(admin, { name: 'Audit Namesake', columns: ['title'] })
+    await sql`update table_def set created_at = clock_timestamp() + interval '1 second' where name = 'Audit Namesake'`
+    const fresh = await admin.post<{ row_id: string }>('/api/table/Audit%20Namesake', { title: 'new' })
+    // The old batch does not claim the new Table, so deleting it leaves it be.
+    expect(await admin.post('/api/import/batches/namesake-batch/delete_tables', {})).toEqual({ deleted: [], refused: [] })
+    expect(await admin.get('/api/table/Audit%20Namesake:meta')).toMatchObject({ name: 'Audit Namesake' })
+    // The old run does not revert into the new Table.
+    await expectApiError(admin.post('/api/table/Audit%20Namesake:import-revert', { run_id: 'namesake-run' }), { status: 404 })
+    expect(await admin.get(`/api/table/Audit%20Namesake/${fresh.row_id}`)).toMatchObject({ title: 'new' })
+  })
+
+  // Every column anywhere that names a Table is a way for one Table's save to
+  // act on another. Each is classified: refused when it names an audit table,
+  // or why it can never write one.
+  const TARGETING: Record<string, string> = {
+    'Custom Field.dt': 'refused',
+    'Metadata Override.table_name': 'refused',
+    'Server Script.ref_table': 'refused',
+    'Workflow.ref_table': 'refused',
+    'Assignment Rule.ref_table': 'runs after a public save, which audit tables never get',
+    'Email Rule.ref_table': 'runs after a public save or submit, which audit tables never get',
+    'Service Level Agreement.ref_table': 'stamps a row during a public save, which audit tables never get',
+    'Webhook.webhook_table': 'fires after a public save, which audit tables never get; reads only',
+    'Web Form.ref_table': 'inserts through the guarded public save',
+    'Client Script.ref_table': 'runs in the browser on forms that are read-only here',
+    'Print Format.ref_table': 'reads only',
+    'Report.ref_table': 'reads only',
+    'Permission.ref_table': 'grants; a grant never makes an audit table writable',
+    'Data Scope.allow_table': 'narrows reads',
+    'Share.share_table': 'grants read on one row; never writable',
+    'Home Page Link.link_to': 'navigation',
+    'Comment.ref_table': 'lives beside the row',
+    'File.ref_table': 'lives beside the row',
+    'ToDo.ref_table': 'lives beside the row',
+    'Workflow Action.ref_table': 'workflow log; workflow steps are refused on audit tables',
+  }
+
+  test('every column that can point at a Table is classified', async () => {
+    const rows = await sql<{ ref: string }[]>`
+      select cd.parent || '.' || cd.column_name as ref from column_def cd
+      join table_def td on td.name = cd.parent
+      where cd.column_type = 'Reference' and cd.reference_table = 'Table' and not td.system_written`
+    expect(rows.map((r) => r.ref).sort()).toEqual(Object.keys(TARGETING).sort())
   })
 })

@@ -22,6 +22,11 @@ record (issue #432).
   leave history.
 - The screens drop every write control on those records and open them for
   reading only.
+- Configuration cannot reach those records from the side: no script,
+  metadata override, workflow or custom field may target them, and the
+  platform's own writes ignore any that pre-date this change.
+- Deleting a table keeps its history (change, import, email and notification
+  records), and that history never acts on a later table of the same name.
 - Work an administrator genuinely needs, such as retrying a failed job or
   queueing an email, stays a dedicated action rather than a general edit.
 
@@ -36,6 +41,7 @@ None.
 - `permissions-and-roles`: the System Manager's reach stops at records the
   platform alone writes; a new promise that those records cannot be forged or
   erased by anyone.
+- `table-deletion`: deleting a table keeps its history instead of sweeping it.
 
 ## Impact
 

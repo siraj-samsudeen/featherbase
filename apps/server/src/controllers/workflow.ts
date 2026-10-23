@@ -1,5 +1,6 @@
 import type { TableController } from '../controllers'
 import { ensureStateField, validateWorkflow } from '../workflow'
+import { assertTargetNotSystemWritten } from '../system-written'
 import type { WorkflowState, WorkflowTransition } from '../workflow'
 
 // WF-001: validate a workflow definition (no transitions to/from undefined
@@ -8,7 +9,9 @@ import type { WorkflowState, WorkflowTransition } from '../workflow'
 const controller: TableController = {
   table: 'Workflow',
   hooks: {
-    validate: ({ row }) => {
+    validate: async ({ row }) => {
+      // #432: activating would add a state column to the audit table.
+      await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       const states = (row.states as WorkflowState[] | undefined) ?? []
       const transitions = (row.transitions as WorkflowTransition[] | undefined) ?? []
       validateWorkflow(states, transitions)

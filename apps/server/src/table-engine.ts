@@ -617,7 +617,10 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
     join table_def td on td.name = cd.parent
     where cd.column_type = 'Reference' and cd.reference_table = 'Table'
       and cd.parent <> ${meta.name}
-      and td.kind <> 'settings' and td.data_source is null`
+      and td.kind <> 'settings' and td.data_source is null
+      -- #432: history survives its Table. Version, Import Log, Email Queue
+      -- and Notification Log rows keep naming a Table that is gone.
+      and not td.system_written`
 
   const physical = quoteRelation(await tableRelation(meta.name))
   const files = await sql.begin(async (tx) => {
