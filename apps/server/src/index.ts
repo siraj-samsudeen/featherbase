@@ -57,7 +57,7 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { adminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { staticAdminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
@@ -808,9 +808,8 @@ app.get('/api/activity_feed', async (c) => {
     return c.json({
       items: rows.map((r) => {
         const path = (r.path as string | null) ?? ''
-        const title = adminPageTitle(path)
+        const title = staticAdminPageTitle(path)
         const base = {
-          who: user,
           who_name: whoName,
           ...(me?.role ? { who_role: me.role } : {}),
           path,
@@ -822,9 +821,9 @@ app.get('/api/activity_feed', async (c) => {
         return {
           ...base,
           kind: r.kind as string,
-          label: (r.label as string | null) ?? (r.ref_key as string),
+          label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
           sub: (r.sub_label as string | null) ?? undefined,
-          ...(r.kind === 'list' ? { filtered: listKeyHasFilter(r.ref_key as string) } : {}),
+          ...(r.kind === 'list' ? { filtered: listKeyHasFilter((r.ref_key as string | null) ?? '') } : {}),
         }
       }),
     })
@@ -846,7 +845,6 @@ app.get('/api/activity_feed', async (c) => {
   ])
   const items = [
     ...versions.map((v) => ({
-      who: v.created_by as string,
       who_name: names.get(v.created_by as string)?.name ?? (v.created_by as string),
       who_role: names.get(v.created_by as string)?.role,
       kind: 'change',
@@ -856,11 +854,10 @@ app.get('/api/activity_feed', async (c) => {
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({
-      who: l.user as string,
       who_name: names.get(l.user as string)?.name ?? (l.user as string),
       who_role: names.get(l.user as string)?.role,
       kind: 'login',
-      label: (l.full_name as string | null) || (l.user as string),
+      label: '', // the row already names the person; a sign-in has no object
       sub: 'signed in',
       path: '',
       at: new Date(l.created_at as string).toISOString(),

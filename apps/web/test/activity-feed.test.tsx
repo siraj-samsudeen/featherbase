@@ -5,6 +5,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 import { sql } from 'server/src/db'
+import { logActivity } from 'server/src/audit'
 import { feedVerb, initials } from '../src/components/ActivityFeed'
 
 test('initials come from the display name, verbs from whether a filter exists', () => {
@@ -80,4 +81,22 @@ test('Team tab: name, then main role; nameless person falls back to the email lo
   expect(bareRow.textContent).toContain('JN')
   expect(whos.every((w) => !w?.startsWith('psn_'))).toBe(true)
   expect(feed.textContent).not.toContain('@x.com')
+})
+
+test('Team tab: a sign-in row shows the person once and never an opaque id', async ({ createUser }) => {
+  const mgr = await createUser({ roles: ['System Manager'], fullName: 'Login Lead' })
+  const bare = await createUser({ roles: [], email: 'quiet.person@x.com', fullName: '' })
+  await logActivity(mgr.user!, 'login', { full_name: 'Login Lead' })
+  await logActivity(bare.user!, 'login', { full_name: null })
+  await renderApp('/featherbase/admin', mgr)
+  const feed = await screen.findByTestId('activity-feed')
+  ;(await within(feed).findByTestId('feed-tab-team')).click()
+  await waitFor(() =>
+    expect(within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('signed in')).length).toBeGreaterThanOrEqual(2),
+  )
+  const logins = within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('signed in'))
+  for (const r of logins) expect(r.textContent).not.toContain('psn_')
+  for (const r of logins.filter((r) => r.textContent?.includes('Login Lead')))
+    expect(r.textContent!.match(/Login Lead/g)).toHaveLength(1)
+  expect(logins.some((r) => r.textContent?.includes('quiet.person'))).toBe(true)
 })

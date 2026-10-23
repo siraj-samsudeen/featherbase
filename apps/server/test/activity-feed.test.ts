@@ -20,7 +20,7 @@ describe('#101: GET /api/activity_feed', () => {
       '/api/activity_feed?scope=mine',
     )
     expect(feed.items.length).toBeGreaterThanOrEqual(2)
-    expect(feed.items[0]).toMatchObject({ kind: 'search', label: 'acme', who: 'Administrator' })
+    expect(feed.items[0]).toMatchObject({ kind: 'search', label: 'acme', who_name: 'Administrator' })
     expect(feed.items[1]).toMatchObject({ kind: 'row', label: 'A' })
   })
 
@@ -89,7 +89,9 @@ describe('#101: GET /api/activity_feed', () => {
       headers: { authorization: `Bearer ${token}` },
     })
     const mine = (await res.json()) as { items: Array<Record<string, unknown>> }
-    expect(mine.items[0]).toMatchObject({ who: person.row_id, who_name: 'Feed Tester' })
+    expect(mine.items[0]).toMatchObject({ who_name: 'Feed Tester' })
+    expect(mine.items[0]).not.toHaveProperty('who')
+    expect(JSON.stringify(mine)).not.toContain(person.row_id)
 
     // The team scope names the editor too, not their id.
     await admin.post('/api/table_def', {
@@ -109,7 +111,7 @@ describe('#101: GET /api/activity_feed', () => {
       '/api/activity_feed?scope=team',
     )
     const change = team.items.find((i) => i.kind === 'change' && i.label === 'named-row')
-    expect(change).toMatchObject({ who: 'Administrator', who_name: 'Administrator' })
+    expect(change).toMatchObject({ who_name: 'Administrator' })
   })
 
   test("a list open says whether a filter was actually applied", async ({ admin }) => {
@@ -121,14 +123,17 @@ describe('#101: GET /api/activity_feed', () => {
         { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue', at: now - 3000 },
         { kind: 'list', key: 'list:Task/kanban?', label: 'Task', sub: 'kanban', at: now - 2000 },
         { kind: 'list', key: 'list:Task?[]', label: 'Task', at: now - 1000 },
+        { kind: 'list', key: 'list:Task?[null]', label: 'Task', at: now - 500 },
+        { kind: 'list', key: 'list:Task?{bad', label: 'Task', at: now - 400 },
+        { kind: 'list', key: 'list:Task?null', label: 'Task', at: now - 300 },
       ],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>(
       '/api/activity_feed?scope=mine',
     )
     const lists = feed.items.filter((i) => i.kind === 'list')
-    // newest first: empty-array, kanban, filtered, plain
-    expect(lists.map((i) => i.filtered)).toEqual([false, false, true, false])
+    // newest first: ?null, {bad, [null], [], kanban, valid filter, plain
+    expect(lists.map((i) => i.filtered)).toEqual([false, false, false, false, false, true, false])
   })
 
   test('a fixed admin page shows its page title, not its route slug', async ({ admin }) => {
@@ -189,5 +194,20 @@ describe('#101: GET /api/activity_feed', () => {
     expect(b).toMatchObject({ who_name: 'jo.nameless' })
     expect(b).not.toHaveProperty('who_role', expect.anything())
     expect(JSON.stringify(team)).not.toContain('@x.com')
+  })
+
+  test('a sign-in row names no one twice and shows no opaque id', async ({ admin }) => {
+    const pid = (
+      await admin.post<{ row_id: string }>('/api/save_row', {
+        table: 'Person',
+        row: { email: 'login-nameless@x.com', enabled: true },
+      })
+    ).row_id
+    await logActivity(pid, 'login', { full_name: null })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    const login = team.items.find((i) => i.kind === 'login' && i.who_name === 'login-nameless')
+    expect(login).toBeTruthy()
+    expect(login!.label).toBe('')
+    expect(JSON.stringify(login)).not.toContain('psn_')
   })
 })

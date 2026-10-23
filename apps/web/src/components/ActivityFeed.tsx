@@ -7,8 +7,7 @@ import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
 
 interface FeedItem {
-  who: string
-  /** Display name (#440) — the UI never shows `who`, an opaque id. */
+  /** Display name (#440). The feed carries no person id, by design. */
   who_name: string
   /** Their main role, absent when they hold none. */
   who_role?: string

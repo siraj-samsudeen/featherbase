@@ -1,3 +1,5 @@
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_STATIC_PAGES, ADMIN_UNRECORDED_ROOTS } from 'shared'
+import { routeTree } from '../src/router'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   actionForLocation,
@@ -115,6 +117,38 @@ describe('actionForLocation', () => {
     expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/Customer/new', {})).toBeNull()
+    // #440: browsers and prototypes are not Tables named "source" / "prototype".
+    expect(actionForLocation('/featherbase/admin/source/Warehouse', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/prototype/connect-source', {})).toBeNull()
+  })
+
+  it('#440: a static admin page is remembered as a page under its title', () => {
+    expect(actionForLocation('/featherbase/admin/sign-in-methods', {})).toMatchObject({
+      kind: 'page',
+      key: 'page:sign-in-methods',
+      label: 'Sign-in methods',
+      path: '/featherbase/admin/sign-in-methods',
+    })
+  })
+
+  it('#440: every static admin page in the router is catalogued or deliberately unrecorded', () => {
+    const admin = (routeTree.children as unknown as Array<{ options: { path?: string }; children?: unknown }>).find(
+      (r) => r.options.path === '/featherbase/admin',
+    )!
+    const kids = Object.values(admin.children as object) as Array<{ options: { path?: string } }>
+    const roots = new Set(
+      kids
+        .map((k) => (k.options.path ?? '/').split('/')[0])
+        .filter((seg) => seg && !seg.startsWith('$')),
+    )
+    expect(roots.size).toBeGreaterThan(10) // positive control: the walk found the routes
+    const known = new Set<string>([
+      ...ADMIN_STATIC_PAGES.map((p) => p.slug),
+      ...ADMIN_UNRECORDED_ROOTS,
+      ...Object.keys(ADMIN_NAMED_PAGE_KINDS),
+      'map', // $table/$name relation map: a row-shaped page, recorded as a row
+    ])
+    expect([...roots].filter((r) => !known.has(r))).toEqual([])
   })
 })
 

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { adminPageTitle, parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 
@@ -68,33 +69,21 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
   return rows.length
 }
 
-// #440: the web recorder logs a fixed admin page (no Table behind it) as a
-// 'list' whose label is the route slug. The feed shows the page's own title.
-const ADMIN_PAGE_TITLES: Record<string, string> = {
-  imports: 'Imports',
-  'access-tokens': 'Access tokens',
-  'sign-in-methods': 'Sign-in methods',
-  'find-person': 'Find a person by identifier',
-  explore: 'Cross-filter workspace',
-}
-
-/** The page title when `path` is exactly a fixed admin page, else undefined. */
-export function adminPageTitle(path: string | null): string | undefined {
+// #440: before the recorder knew the static admin pages, it logged them as a
+// 'list' labelled with the route slug (kept 90 days). The feed titles those
+// old events from the shared catalog; new ones arrive already as pages.
+/** The page title when `path` is exactly a static admin page, else undefined. */
+export function staticAdminPageTitle(path: string | null): string | undefined {
   const m = /^\/featherbase\/admin\/([^/?#]+)\/?$/.exec(path ?? '')
-  return m ? ADMIN_PAGE_TITLES[m[1]] : undefined
+  return m ? adminPageTitle(m[1]) : undefined
 }
 
 /** Did this list open carry a filter? The recorder keys a list as
- *  `list:<Table>[/<mode>]?<filters JSON>`; an empty or `[]` suffix is none. */
+ *  `list:<Table>[/<mode>]?<filters JSON>`; the list page ignores a malformed
+ *  value, so the same parser decides here. */
 export function listKeyHasFilter(refKey: string): boolean {
   const q = refKey.indexOf('?')
-  if (q < 0) return false
-  try {
-    const filters: unknown = JSON.parse(refKey.slice(q + 1))
-    return Array.isArray(filters) && filters.length > 0
-  } catch {
-    return false
-  }
+  return q >= 0 && parseFilters(refKey.slice(q + 1)).length > 0
 }
 
 export interface WhoLabel {
@@ -105,7 +94,9 @@ export interface WhoLabel {
 }
 
 /** Display name + main role for person ids, in ONE query. Name falls back
- *  full name → local part of the email (never the address) → @username → id. */
+ *  full name → local part of the email (never the address) → @username → id.
+ *  The local part is a deliberate fallback; this feed is for System Managers
+ *  and the person themselves, who can already see the address. */
 export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
   const unique = [...new Set(ids)]
   const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: id }]))
