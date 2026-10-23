@@ -43,6 +43,7 @@ Everything comes from the environment; every variable has a dev default in
 | `SITE_URL` | **yes, behind a proxy** | this instance's absolute external URL (`https://app.example.com`) — password-reset links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
 
 Two settings already in the codebase matter specifically for hosted
 Postgres and must not regress: `db.ts` sets `prepare: false` (required by
@@ -184,6 +185,75 @@ missing socket information shares an `unknown` bucket, never a supplied header.
 IPv4-mapped IPv6 is normalized. Do not trust a public client network or assume
 `SITE_URL` enables IP-header trust. Supplied sessions/tokens do not bypass
 these public-route controls.
+
+## Email
+
+With `SMTP_HOST` unset, every outbound message (password resets, the
+System Manager test mail, queued and rule-driven email) lands in the Email
+Sink, the local mailbox; that is the default for development and the test
+suite. Set `SMTP_HOST` and the same messages leave through that SMTP server
+instead (#395).
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `SMTP_HOST` | `smtp-relay.gmail.com` | turns real delivery on; unset or blank keeps the Email Sink |
+| `SMTP_PORT` | `587` (default) | `587` = STARTTLS; `465` = implicit TLS. On every port but 465, STARTTLS is **required**: the server refuses to continue if the relay does not offer it. Certificates are always verified |
+| `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
+| `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
+| `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
+
+Production uses port 587. TLS is always required: there is no setting that
+lets mail or a credential leave unencrypted, and none that skips the
+certificate check.
+
+### Google Workspace SMTP relay (jeyarama.com)
+
+In the Admin console: **Apps → Google Workspace → Gmail → Routing → SMTP
+relay service → Configure**, then:
+
+- **Allowed senders:** Only addresses in my domains.
+- **Authentication:** Require SMTP Authentication (leave "Only accept mail
+  from the specified IP addresses" off unless the host has a fixed egress IP).
+- **Encryption:** Require TLS encryption.
+
+Then set `SMTP_HOST=smtp-relay.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`,
+`SMTP_PASSWORD` and `MAIL_FROM` on the service. The relay can take a few
+minutes, occasionally up to an hour, to accept a new configuration.
+
+The `SMTP_USER` account must have **2-Step Verification** turned on; only then
+can it create an **app password** (myaccount.google.com → Security → App
+passwords), and that app password is `SMTP_PASSWORD`. Treat it like any other
+secret: set it in the platform's variables, never in the repository.
+
+### Checking it, and what a failure looks like
+
+```sh
+pnpm --filter server cli mail:test <your-address>
+# → mail:test: sent a test message via SMTP smtp-relay.gmail.com:587
+```
+
+It exits 1 with `Mail delivery failed (<code> [<SMTP reply code>])` when the relay
+refuses (`EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
+TLS or network; `EENVELOPE` = a sender or recipient the relay rejected). A
+bad setting (unparseable `SMTP_PORT`, `SMTP_USER` without `SMTP_PASSWORD`, no
+`MAIL_FROM` and no Email Account) reports
+`Mail configuration invalid (ECONFIG): …`.
+
+A failure is never dropped silently. Each one writes one structured log line,
+`{"level":"error","event":"mail_delivery_failed","purpose":"…","code":"…","smtp_response_code":…}`,
+with no address, subject, body or credential in it:
+
+- **Password reset** (`purpose: password_reset`): the request does not wait
+  for the SMTP server, and the public route answers `{ ok: true }` either
+  way, so neither a failure nor its timing reveals whether the account
+  exists; the log line is the only trace.
+- **Queued email** (`purpose: queued_email`): a transient failure (a 4xx
+  reply, or the server unreachable or timing out) puts the Email Queue row
+  back to `queued` for the job's retry; a permanent one (a 5xx reply, bad
+  credentials, the job's last attempt) turns it `error`. Either way the row
+  carries the same safe message.
+- **Test mail** (Settings or `cli mail:test`): the error is returned to the
+  System Manager (HTTP 503).
 
 ## Container
 
