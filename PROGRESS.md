@@ -1,5 +1,29 @@
 # Progress Log
 
+## 2026-10-23 — Person screens after the person release: stale form, names not ids, readable dates (#413, #414, #415)
+
+Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release.
+
+- **#413** — `mirrorEmployeeCodeField` changed `person.employee_code` without moving `updated_at`. A Person form opened
+  before an identifier write still passed optimistic concurrency, so saving it (any unrelated change) wrote the stale
+  field back: record a code then save → the person lost their Target scope; end a code then save → they kept it. The
+  mirror now moves `updated_at`, so the stale save is a 409; the Identifiers panel also invalidates the Person row so
+  the form beside it reloads.
+- **#414** — the Person form heading and breadcrumb, the sidebar Recent/Frequent rows, the command-bar recents and the
+  Home resume tiles render `ShownName` (a `PrincipalName` for an opaque id). Rename is hidden for an opaque id (the
+  server always refused it). The Unlink confirmation names the person.
+- **#415** — identifier periods use `fmtDate` (`since 23-Oct-2026`); End and Unlink are `shrink-0` so they no longer
+  wrap one letter per line in the narrow card.
+
+**Verified:** server `test/employee-code-mirror.test.ts` (two new stale-form tests, red first: the stale save
+succeeded), plus `person*`, `people-resolve`, `identifier-systems`, `sales-target` — 112 passed on PG18. Web
+`identifiers-panel` and `person-rename` (new tests red first), design guards; full web suite 709 passed, 3 failing
+the same way on main (Tasker not built, Dive env). Browser (Playwright, 1280 px): recorded a code by hand, the form
+showed it at once, a later save kept it in the database; heading `Person: <name>`, no Rename, Recent shows the name.
+
+**Not fixed here:** #408 (the field can still be typed over on the form, and Person import writes it with no
+identifier — commented there).
+
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
 Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
