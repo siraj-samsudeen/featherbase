@@ -24,6 +24,25 @@ StyleHR-linked people get identical scope from the old code (field) and the new 
 **Next:** Phase 1a-ii (merge and undo). Matching on (firm, code) waits for the Store Sections maps to carry
 the firm.
 
+## 2026-10-23 — The privacy notice is instance configuration (#401)
+
+Featherbase is public, so an organisation's privacy wording does not belong in the repo (#393's PR #394 hard-coded
+it). System Settings gains `privacy_notice` (Long Text, Markdown; migration 0105). `GET /privacy` is public, sits
+ahead of the legacy-path redirect (which otherwise answers it with a 308), and renders the notice with `markdown-it`
+14.3.2 (`html: false`; its link check drops `javascript:`; image syntax renders as a link with its alt text, so no
+third-party pixel loads). The page has no script, a meta CSP with `script-src 'none'; img-src 'none'` (the global
+`secureHeaders` rewrites the response header after the handler), light and dark via `prefers-color-scheme`, a 16px
+phone gutter and `Cache-Control: public, max-age=300`. Blank or unset = a plain HTML 404 page; `/privacy/` 301s to
+`/privacy`. `cli settings:set <field> --stdin` writes one System Settings text field (Data, Text, Long Text; typed,
+layout and child-table columns refused — Codex P2) from the whole of stdin through `saveDoc`, and logs `settings_set <field>` to the Activity Log as `cli`; DEPLOY.md says where an instance's text lives (its
+own repo) and how to apply it. OpenSpec change `instance-privacy-notice` adds the requirement to
+`sign-in-and-accounts`.
+
+**Verified** on PostgreSQL 18: `test/privacy-notice.test.ts` (9) and the five new `test/cli.test.ts` cases failed
+first (308 instead of 404/200; unknown field; no such command), pass now; full server suite 1130 passed; the new
+and neighbouring files (26) also pass on PostgreSQL 17. Server and web typecheck clean; `pnpm check:specs` clean.
+Not rehearsed: piping the file through `railway ssh` (DEPLOY.md names the form as the fallback).
+
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
 Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
@@ -467,13 +486,13 @@ new test was run against the pre-fix code and failed there: roster derivation re
 
 Browser proof (local, Playwright, MotherDuck embed stubbed):
 
-- TL RR-3769 by password lands on the report: 2 Section subtotals, 90 rows, served from a
+- TL RR-0106 by password lands on the report: 2 Section subtotals, 90 rows, served from a
   snapshot in 88 ms. The embed starting state carries 90 groups, each with its Section,
   for 01–02-Oct, Dive version 3.
 - An unprovisioned Google address is refused.
 
 Locally, against the real ATK roster (64 TLs/DMs provisioned by the data-warehouse
-`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-3769 got 90 groups in
+`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-0106 got 90 groups in
 Home Décor and Stationery. The report showed ₹2,16,284.95 target and ₹91,802.52 actual for
 01–02-Oct, which matched a direct warehouse query to the paisa.
 
@@ -1220,8 +1239,8 @@ The deterministic prototype migration preserves rows, references, comments, priv
 focus and grants, and aborts collisions. Its regression covers the real Comment,
 Version, File and Share pointers rather than only the task rows. Read-only
 inspection found three tasks in the developer database, including TASK-00003,
-“Follow up with Deepak on the GoFrugal discrepancy discussed in the call with
-Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+a follow-up task about a GoFrugal discrepancy (names withheld), in TPROJ-0001
+“GoFrugal Data Quality”.
 That database was not migrated; migration tests and browser proof use disposable
 databases only. Starting normal init will run the migration and needs operator
 authorization for those existing developer rows.
@@ -1456,7 +1475,7 @@ each, sorted; maps alone serve an employee with no assignment row; maps and
 assignment naming different stores are refused with 417; without the Tables
 or a code nothing changes); full server suite 788 passed / 15 skipped / 1 failed (the pre-existing root-runs-chmod `sources-csv.test.ts` case, identical on base); `pnpm --filter web
 test` 133 passed. Next: on featherbase-dev, create the Custom Field and set
-`employee_code` on a test account to a mapped ATK employee (e.g. RR-11092,
+`employee_code` on a test account to a mapped ATK employee (e.g. RR-0103,
 Kurti) and watch the report widen; the maps' arrival in
 `bronze_featherbase.application` is the data-warehouse side's check.
 
@@ -3263,7 +3282,7 @@ The #127 email tier is now working end to end on
   correct client id, the exact registered https `redirect_uri` (SITE_URL
   path), `prompt=select_account`, and a PKCE S256 challenge; Google renders
   the "continue to Jeyarama Dashboards" page — no `redirect_uri_mismatch`.
-  The owner then completed a real `siraj@jeyarama.com` sign-in and landed
+  The owner then completed a real `@jeyarama.com` sign-in (his own account) and landed
   in `/admin`; the user row was auto-provisioned exactly per design:
   `social_login='google'`, enabled, no roles.
 - Filed on the way: #158 — the disabled-account refusal at the OAuth
@@ -10297,7 +10316,7 @@ For the data-warehouse #3783 user trial on featherbase-dev:
 
 - **#366 / #367 — delegated sign-in test mode** (OpenSpec `delegated-login-test-mode`).
   `DELEGATED_LOGIN_TEST_MODE=trust-any-password` (exact phrase, environment only) skips the
-  StyleHR check: a tester types a linked person's **employee code** (`RR-6761`), no password. The
+  StyleHR check: a tester types a linked person's **employee code** (`RR-0107`), no password. The
   account must still be linked, enabled and not privileged. The login page shows a notice and asks
   for an employee code. Leavers are kept out by a disabled account (the data-warehouse roster sync
   runs with `--disable-leavers`). Set on featherbase-dev only; prod has the code, not the switch.

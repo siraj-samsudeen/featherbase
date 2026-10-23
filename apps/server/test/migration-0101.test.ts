@@ -44,9 +44,9 @@ async function preSplitShape() {
 
   const people: [string, string | null, string][] = [
     // row_id, email, user_type
-    ['RR-7963', null, 'human'],
-    ['21654', null, 'human'],
-    ['siraj@jeyarama.com', 'siraj@jeyarama.com', 'human'],
+    ['RR-0101', null, 'human'],
+    ['30654', null, 'human'],
+    ['owner@jeyarama.com', 'owner@jeyarama.com', 'human'],
     [USR, null, 'human'],
     ['svc-bot', null, 'service'],
   ]
@@ -54,33 +54,33 @@ async function preSplitShape() {
     await sql`insert into person (row_id, email, full_name, enabled, user_type, api_rate_limit)
       values (${row_id}, ${email}, ${row_id === 'svc-bot' ? 'Installer Bot' : row_id}, true, ${user_type}, ${row_id === 'svc-bot' ? 7 : null})`
   // Roles, through the child table the generic save writes.
-  for (const [parent, role] of [['RR-7963', 'All'], ['svc-bot', 'System Manager']])
+  for (const [parent, role] of [['RR-0101', 'All'], ['svc-bot', 'System Manager']])
     await sql`insert into has_role (row_id, parent, parenttype, parentfield, role) values (${'hr-' + parent}, ${parent}, 'Person', 'roles', ${role})`
   // Tokens.
-  await sql`insert into access_token (id, label, owner, token_hash) values ('tok_bot', 'bot', 'svc-bot', ${'a'.repeat(64)}), ('tok_rr', 'rr', 'RR-7963', ${'b'.repeat(64)})`
+  await sql`insert into access_token (id, label, owner, token_hash) values ('tok_bot', 'bot', 'svc-bot', ${'a'.repeat(64)}), ('tok_rr', 'rr', 'RR-0101', ${'b'.repeat(64)})`
   // Data scope: a person row, a service-account row, and the conditional pair.
   await sql`insert into data_scope (row_id, "user", allow_table, for_value) values
-    ('ds-1', 'RR-7963', 'Store', 'ATK'),
+    ('ds-1', 'RR-0101', 'Store', 'ATK'),
     ('ds-2', 'svc-bot', 'Store', 'KNP'),
-    ('ds-3', 'siraj@jeyarama.com', 'Person', 'RR-7963'),
-    ('ds-4', 'siraj@jeyarama.com', 'Employee Code', 'RR-7963')`
+    ('ds-3', 'owner@jeyarama.com', 'Person', 'RR-0101'),
+    ('ds-4', 'owner@jeyarama.com', 'Employee Code', 'RR-0101')`
   await sql`insert into share (row_id, "user", share_table, share_name, read) values
     ('sh-1', 'svc-bot', 'Note', 'n-1', true),
-    ('sh-2', '21654', 'Person', '21654', true),
-    ('sh-3', '21654', 'Note', '21654', true)`
+    ('sh-2', '30654', 'Person', '30654', true),
+    ('sh-3', '30654', 'Note', '30654', true)`
   // History, settings, JSON and the code / free-text columns that merely CONTAIN old ids.
   await sql`insert into comment (row_id, created_by, updated_by, ref_table, ref_name, content) values
-    ('c-1', 'RR-7963', 'RR-7963', 'Person', '21654', 'RR-7963 asked 21654 about svc-bot')`
+    ('c-1', 'RR-0101', 'RR-0101', 'Person', '30654', 'RR-0101 asked 30654 about svc-bot')`
   await sql`insert into notification_log (row_id, for_user, subject, ref_table, ref_name, read) values
-    ('n-1', '21654', 'RR-7963 mentioned you', 'Comment', 'c-1', false)`
-  await sql`insert into activity_log (row_id, "user", operation) values ('a-1', 'RR-7963', 'login as RR-7963')`
-  await sql`insert into user_settings ("user", table_name, settings) values ('RR-7963', 'Note', '{"pin":"21654"}')`
+    ('n-1', '30654', 'RR-0101 mentioned you', 'Comment', 'c-1', false)`
+  await sql`insert into activity_log (row_id, "user", operation) values ('a-1', 'RR-0101', 'login as RR-0101')`
+  await sql`insert into user_settings ("user", table_name, settings) values ('RR-0101', 'Note', '{"pin":"30654"}')`
   await sql`insert into saved_view (row_id, created_by, updated_by, ref_table, label, filters) values
-    ('sv-1', 'RR-7963', 'RR-7963', 'ToDo', 'mine', ${sql.json([['allocated_to', '=', 'RR-7963'], ['description', 'like', '%RR-7963%'], ['description', '=', 'RR-7963']])})`
+    ('sv-1', 'RR-0101', 'RR-0101', 'ToDo', 'mine', ${sql.json([['allocated_to', '=', 'RR-0101'], ['description', 'like', '%RR-0101%'], ['description', '=', 'RR-0101']])})`
   // A JavaScript expression naming an old id: free text, listed, never edited.
-  await sql`insert into assignment_rule (row_id, ref_table, assign_condition) values ('ar-1', 'ToDo', 'doc.owner == "21654"')`
+  await sql`insert into assignment_rule (row_id, ref_table, assign_condition) values ('ar-1', 'ToDo', 'doc.owner == "30654"')`
   await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by) values
-    ('uid_rr', 'RR-7963', 'password', 'RR-7963', 'anisha', 'migration')
+    ('uid_rr', 'RR-0101', 'password', 'RR-0101', 'devi', 'migration')
     on conflict do nothing`
   await sql`insert into password_reset (token, "user", expires_at) values ('pr-1', ${USR}, now() + interval '1 hour')`
 }
@@ -119,17 +119,17 @@ describe('migration 0101: person-rename', () => {
 
   test('every person gets an opaque id; usr_ is converted; built-ins keep theirs; nothing registered keeps an old id', async () => {
     const { id, result } = await migrated()
-    expect(result.conditionsNamingOldIds).toEqual([{ rule: 'ar-1', ids: ['21654'] }])
-    expect(await sql`select assign_condition from assignment_rule where row_id = 'ar-1'`).toEqual([{ assign_condition: 'doc.owner == "21654"' }])
-    for (const old of ['RR-7963', '21654', 'siraj@jeyarama.com', USR]) expect(id(old)).toMatch(/^psn_[a-z2-7]{20}$/)
+    expect(result.conditionsNamingOldIds).toEqual([{ rule: 'ar-1', ids: ['30654'] }])
+    expect(await sql`select assign_condition from assignment_rule where row_id = 'ar-1'`).toEqual([{ assign_condition: 'doc.owner == "30654"' }])
+    for (const old of ['RR-0101', '30654', 'owner@jeyarama.com', USR]) expect(id(old)).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(result.personMap.map((m) => m.old_id)).not.toContain('Administrator')
     expect(await sql`select row_id from person where row_id in ('Administrator', 'Guest') order by row_id`).toHaveLength(2)
     expect(result.scan).toEqual([])
-    const rr = id('RR-7963')
-    const k = id('21654')
+    const rr = id('RR-0101')
+    const k = id('30654')
     // id columns follow
     expect(await sql`select person from access_token where id = 'tok_rr'`).toEqual([{ person: rr }])
-    expect(await sql`select person from has_role where row_id = 'hr-RR-7963'`).toEqual([{ person: rr }])
+    expect(await sql`select person from has_role where row_id = 'hr-RR-0101'`).toEqual([{ person: rr }])
     expect(await sql`select created_by from comment where row_id = 'c-1'`).toEqual([{ created_by: rr }])
     expect(await sql`select for_user from notification_log where row_id = 'n-1'`).toEqual([{ for_user: k }])
     expect(await sql`select "user" from activity_log where row_id = 'a-1'`).toEqual([{ user: rr }])
@@ -139,23 +139,23 @@ describe('migration 0101: person-rename', () => {
     // conditional ids follow only under Person
     expect(await sql`select for_value from data_scope where row_id in ('ds-3', 'ds-4') order by row_id`).toEqual([
       { for_value: rr },
-      { for_value: 'RR-7963' },
+      { for_value: 'RR-0101' },
     ])
     expect(await sql`select share_name from share where row_id in ('sh-2', 'sh-3') order by row_id`).toEqual([
       { share_name: k },
-      { share_name: '21654' },
+      { share_name: '30654' },
     ])
     expect(await sql`select ref_name from comment where row_id = 'c-1'`).toEqual([{ ref_name: k }])
     // JSON: leaves equal to an old id follow; a substring does not
     const [view] = await sql`select filters from saved_view where row_id = 'sv-1'`
     // Only a principal column's value follows; an exact old id under any
     // other column is left alone (review A-m3).
-    expect(view.filters).toEqual([['allocated_to', '=', rr], ['description', 'like', '%RR-7963%'], ['description', '=', 'RR-7963']])
+    expect(view.filters).toEqual([['allocated_to', '=', rr], ['description', 'like', '%RR-0101%'], ['description', '=', 'RR-0101']])
     // codes and free text keep the old values untouched
-    expect(await sql`select subject from sign_in_identity where id = 'uid_rr'`).toEqual([{ subject: 'RR-7963' }])
-    expect(await sql`select content from comment where row_id = 'c-1'`).toEqual([{ content: 'RR-7963 asked 21654 about svc-bot' }])
-    expect(await sql`select subject from notification_log where row_id = 'n-1'`).toEqual([{ subject: 'RR-7963 mentioned you' }])
-    expect(await sql`select operation from activity_log where row_id = 'a-1'`).toEqual([{ operation: 'login as RR-7963' }])
+    expect(await sql`select subject from sign_in_identity where id = 'uid_rr'`).toEqual([{ subject: 'RR-0101' }])
+    expect(await sql`select content from comment where row_id = 'c-1'`).toEqual([{ content: 'RR-0101 asked 30654 about svc-bot' }])
+    expect(await sql`select subject from notification_log where row_id = 'n-1'`).toEqual([{ subject: 'RR-0101 mentioned you' }])
+    expect(await sql`select operation from activity_log where row_id = 'a-1'`).toEqual([{ operation: 'login as RR-0101' }])
     // the map is written, and every principal FK still exists and holds
     expect(await sql`select count(*)::int as n from person_id_map`).toEqual([{ n: 5 }])
     const fks = await sql`select conname from pg_constraint where conname in
@@ -173,7 +173,7 @@ describe('migration 0101: person-rename', () => {
     await expect(
       sql.begin(async (tx) => {
         await tx`set constraints all deferred`
-        await tx`update person set row_id = 'psn_aaaaaaaaaaaaaaaaaaaa' where row_id = 'RR-7963'`
+        await tx`update person set row_id = 'psn_aaaaaaaaaaaaaaaaaaaa' where row_id = 'RR-0101'`
         await tx`set constraints all immediate`
       }),
     ).rejects.toThrow(/foreign key/)

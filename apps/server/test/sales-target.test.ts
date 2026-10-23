@@ -375,7 +375,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
           columns: columns.map((c) => ({ column_name: c, column_type: 'Data' })),
         })
     }
-    // Kurti section at ATK holds two material groups; RR-11092 owns the Kurti subcategory.
+    // Kurti section at ATK holds two material groups; RR-0103 owns the Kurti subcategory.
     for (const row of [
       { store_code: '1501', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' },
       { store_code: '1501', material_group: '010505002', mch_subcategory: 'Kurti Set', section_name: 'Kurti' },
@@ -383,8 +383,8 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     ])
       await admin.post('/api/save_row', { table: 'Section Merchandise Map', row })
     for (const row of [
-      { store_code: '1501', employee_code: 'RR-11092', subcategory: 'Kurti', section_name: 'Kurti' },
-      { store_code: '1501', employee_code: 'RR-11092', subcategory: 'Kurti Set', section_name: 'Kurti' },
+      { store_code: '1501', employee_code: 'RR-0103', subcategory: 'Kurti', section_name: 'Kurti' },
+      { store_code: '1501', employee_code: 'RR-0103', subcategory: 'Kurti Set', section_name: 'Kurti' },
       { store_code: '1515', employee_code: 'RR-90001', subcategory: 'Kurti', section_name: 'Kurti' },
     ])
       await admin.post('/api/save_row', { table: 'Employee Section Map', row })
@@ -403,7 +403,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   test('an employee code on the user widens the assignment to the material groups their Sections hold', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
-    await setEmployeeCode(admin, 'test_employee_2', 'RR-11092')
+    await setEmployeeCode(admin, 'test_employee_2', 'RR-0103')
     const r = await loginAs(api, 'test_employee_2', PASSWORDS.test_employee_2)
     const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
     expect(me.assignment).toEqual({
@@ -424,7 +424,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
       table: 'Person',
       row: { username: 'test_employee_5', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
     })
-    await setEmployeeCode(admin, 'test_employee_5', 'RR-11092')
+    await setEmployeeCode(admin, 'test_employee_5', 'RR-0103')
     await admin.post('/api/set_password', { user: await idOf('test_employee_5'), password: 'sandbox-pw-5' })
     const r = await loginAs(api, 'test_employee_5', 'sandbox-pw-5')
     const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
@@ -437,8 +437,8 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   test('maps and assignment naming different stores are refused loudly, never mixed', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
-    // test_employee_3 is assigned at 1515; RR-11092's Sections are at 1501.
-    await setEmployeeCode(admin, 'test_employee_3', 'RR-11092')
+    // test_employee_3 is assigned at 1515; RR-0103's Sections are at 1501.
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
     const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
     expect(res.status).toBe(417)
@@ -575,8 +575,8 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
         columns: ['store_code', 'employee_code', 'full_name', 'email'].map((c) => ({ column_name: c, column_type: 'Data' })),
       })
     for (const row of [
-      { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' },
-      { store_code: '1515', employee_code: 'RR-2193', full_name: 'Madasamy', email: 'sm.kat@jeyarama.com' },
+      { store_code: '1501', employee_code: 'RR-0104', full_name: 'A. Kumar', email: 'sm.atk@jeyarama.com' },
+      { store_code: '1515', employee_code: 'RR-0105', full_name: 'B. Raman', email: 'sm.kat@jeyarama.com' },
     ])
       await admin.post('/api/save_row', { table: 'Store Manager', row })
   }
@@ -586,7 +586,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await seedSectionMaps(admin)
     await seedRoster(admin, { dmColumn: true })
     await seedStoreManagers(admin)
-    await viewer(admin, 'sm_atk', 'RR-10104')
+    await viewer(admin, 'sm_atk', 'RR-0104')
     expect(await assignmentOf(api, 'sm_atk')).toEqual({
       plant_code: '1501', store_label: null,
       material_groups: ['010101001', '010101002', '010102003', '010505001', '010505002'],
@@ -601,7 +601,7 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
   test("a Store Manager's scope stops at their own store; without the Table nobody is a Store Manager", async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
-    await viewer(admin, 'sm_kat', 'RR-2193')
+    await viewer(admin, 'sm_kat', 'RR-0105')
     expect(await assignmentOf(api, 'sm_kat')).toBeNull()
     await seedStoreManagers(admin)
     const a = await assignmentOf(api, 'sm_kat')

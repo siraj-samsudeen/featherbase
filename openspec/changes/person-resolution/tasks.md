@@ -42,7 +42,7 @@ once they are archived. Auto-link is not in this change (D-b).
 - [ ] 4.5 `/api/health` (key status, group counts, chain length, job status), structured log events, Activity Log counters; scheduled re-scan (policy change + weekly), snooze expiry, erasure; **exit criterion:** the daily-loading check for "fingerprint key degraded" is live in data-warehouse (#4336). Verify `test/health.test.ts`, `test/jobs.test.ts`.
 - [ ] 4.6 Duplicates screen (configured columns, side by side, Merge / Not the same person / Later, header counts, Reopened filter). Verify `apps/web/test/duplicates.test.tsx`.
 - [ ] 4.7 Playwright `e2e/person-resolution.spec.ts`: set-up → group → merge → merged-away StyleHR login opens the survivor → undo → ended identity refused.
-- [ ] 4.8 DEPLOY.md (key + offline backup, erasure trade-off, sync contract pointer, fed-list cadence), follow-ups filed: data-warehouse#4336 (sync + resolve file + CDC registration + daily-loading checks), the bronze Aadhaar exposure, the lawyer review, the owner decision on direct StyleHR Aadhaar access.
+- [ ] 4.8 DEPLOY.md (key + offline backup, erasure trade-off, sync contract pointer, fed-list cadence), follow-ups filed: data-warehouse#4336 (sync + resolve file + CDC registration + daily-loading checks), the warehouse national-ID handling (private), the lawyer review, the owner decision on direct StyleHR Aadhaar access.
 
 ## Phase 2 — workforce, lanes and bulk, warehouse, period scoping, auto-link
 
