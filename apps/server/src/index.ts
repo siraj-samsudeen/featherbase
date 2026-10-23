@@ -70,6 +70,7 @@ import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
+import { privacyNoticeHtml } from './privacy-notice'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -602,6 +603,9 @@ app.use('/api/*', async (c, next) => {
     throw error
   }
 })
+
+// #393: public, ahead of the legacy redirect and app-root routing below.
+app.get('/privacy', c => c.html(privacyNoticeHtml))
 
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have
 // one canonical namespace. Runtime app roots and technical /api paths never
