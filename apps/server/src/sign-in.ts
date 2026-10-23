@@ -9,6 +9,7 @@ import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
 import { writeThroughIdentity } from './person-identifiers'
+import { alertNewArrival, isMockProvider } from './waiting-for-access'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
 import {
   KINDS,
@@ -117,7 +118,16 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
 }
 
 /** The method's rule for a person it does not know (design D4). */
-async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
+/** A new person's starting name: their display name, or the part of the
+ *  address before the @ — never the address itself (#429). An administrator
+ *  can correct it. */
+function starterName(v: VerifiedIdentity, email: string | null): string | null {
+  const shown = v.display_name?.trim() || ''
+  if (shown && !shown.includes('@')) return shown
+  return (shown || email || '').split('@')[0] || null
+}
+
+async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   const kind = KINDS[method.kind]
   let admitted = false
   let reason = 'rule is refuse'
@@ -134,7 +144,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
   }
   const email = v.email_verified ? normaliseEmail(v.email) : null
   try {
-    return await withTransaction(async () => {
+    const found = await withTransaction(async () => {
       const [taken] = await sql`
         select 1 from person
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
@@ -145,7 +155,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
       // the address is contact data, not the anchor.
       const created = await saveDoc(
         'Person',
-        { email, full_name: v.display_name || email || null, enabled: true, roles: [] },
+        { email, full_name: starterName(v, email), enabled: true, roles: [] },
         'Administrator',
         'insert',
       )
@@ -164,6 +174,10 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
       await auditIdentity(String(created.row_id), 'linked', String(created.row_id), method.key, id)
       return { user: String(created.row_id), identity: id }
     })
+    // #429: tell System Managers someone is waiting — never for a test-mode
+    // or mock-provider sign-in, which would mail real people. Never throws.
+    if (!opts.testMode && !isMockProvider(method)) await alertNewArrival(found.user, method)
+    return found
   } catch (err) {
     // Two first sign-ins with one subject: the loser signs in as the winner.
     if ((err as { code?: string })?.code === '23505') {
@@ -177,14 +191,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
 
 /** Resolve a verified outside identity to a person: linked subject, then a
  *  one-time invite, then the method's rule. Never by email match alone. */
-export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
+export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
   if (linked) return linked
   const claimed = await claimInvite(method, v)
   if (claimed) return claimed
   // A concurrent claim may have linked it a moment ago.
-  return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v)
+  return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v, opts)
 }
 
 /** The shared tail of every sign-in. `found` is the person a candidate-first
@@ -204,7 +218,7 @@ export async function completeSignIn(
     if (found) await disableLeaver(found.user, method.key)
     throw leftError(method)
   }
-  const person = found ?? (await resolveVerified(method, v))
+  const person = found ?? (await resolveVerified(method, v, { testMode: opts.testMode }))
   await assertEligible(method, person.user)
   if (person.identity)
     await touchIdentity(person.identity, {
