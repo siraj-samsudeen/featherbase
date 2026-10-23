@@ -11,7 +11,7 @@ import { sql } from '../src/db'
 import { currentAssignment, seedSalesTarget } from '../src/sales-target'
 import { applySeedPack } from '../src/seed-packs'
 import { configureDelegated } from './identity-fixtures'
-import { makePerson } from './fixtures'
+import { expectApiError, makePerson, patchDoc } from './fixtures'
 
 const savedToday = process.env.SALES_TARGET_TODAY
 beforeAll(() => { process.env.SALES_TARGET_TODAY = '2026-09-17' })
@@ -93,6 +93,38 @@ describe('the employee_code mirror (until task 2.1)', () => {
     const [rr2] = await sql`select id from person_identifier where person_id = ${p} and value = 'RR-2'`
     await admin.fetch(`/api/identifiers/${String(rr2.id)}`, { method: 'DELETE' })
     expect(await fieldOf(p)).toBeNull()
+  })
+
+  // #413: the Person form stays open beside the Identifiers panel. A save of
+  // that form after a code was recorded (or ended) must not write the stale
+  // field back — the mirror moves updated_at, so the stale save is refused.
+  test('a Person form loaded before a code was recorded cannot save the stale field back', async ({ admin }) => {
+    await setUp(admin)
+    const p = await makePerson({ full_name: 'Open Form' })
+    const loaded = await admin.get<{ updated_at: string; employee_code: string | null }>(`/api/table/Person/${p}`)
+    await admin.post(`/api/people/${p}/identifiers`, { system: CODE, value: 'RR-11092', note: 'Joiner, HR mail 23-Oct' })
+    expect(await fieldOf(p)).toBe('RR-11092')
+    await expectApiError(
+      patchDoc(admin, `/api/table/Person/${p}`, { language: 'en', employee_code: loaded.employee_code, updated_at: loaded.updated_at }),
+      { status: 409 },
+    )
+    expect(await fieldOf(p)).toBe('RR-11092')
+    expect(await groupsOf(p)).toEqual(['010505001', '010505002'])
+  })
+
+  test('a Person form loaded before a code was ended cannot write the ended code back', async ({ admin }) => {
+    await setUp(admin)
+    const p = await makePerson({ full_name: 'Open Form Leaver' })
+    const { identifier } = await admin.post<{ identifier: { id: string } }>(`/api/people/${p}/identifiers`, { system: CODE, value: 'RR-11092', note: 'as mailed' })
+    const loaded = await admin.get<{ updated_at: string; employee_code: string | null }>(`/api/table/Person/${p}`)
+    expect(loaded.employee_code).toBe('RR-11092')
+    await admin.fetch(`/api/identifiers/${identifier.id}`, { method: 'PATCH', body: JSON.stringify({ end: true, note: 'Wrong person; HR mail 23-Oct' }) })
+    await expectApiError(
+      patchDoc(admin, `/api/table/Person/${p}`, { language: 'en', employee_code: loaded.employee_code, updated_at: loaded.updated_at }),
+      { status: 409 },
+    )
+    expect(await fieldOf(p)).toBeNull()
+    expect(await groupsOf(p)).toEqual([])
   })
 })
 

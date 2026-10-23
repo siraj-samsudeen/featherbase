@@ -421,7 +421,11 @@ export async function mirrorEmployeeCodeField(person: string, db: Db = sql): Pro
     where person_id = ${person} and system = ${EMPLOYEE_CODE_SYSTEM} and upper_inf(valid)
     order by lower(valid) desc, recorded_at desc limit 1`
   const code = (current?.value as string | undefined) ?? null
-  await db`update person set employee_code = ${code} where row_id = ${person} and employee_code is distinct from ${code}`
+  // updated_at moves with the value (#413): a Person form opened before this
+  // write still carries the old stamp, so its save is refused as stale rather
+  // than writing the old code back over the mirror.
+  await db`update person set employee_code = ${code}, updated_at = clock_timestamp()
+    where row_id = ${person} and employee_code is distinct from ${code}`
 }
 
 /** Whose identifier this is — for the routes' Person read / Data Scope check
