@@ -62,3 +62,8 @@ export const config = {
   // empty means "derive it from the request", which is what a dev checkout does.
   siteUrl: (process.env.SITE_URL ?? '').trim().replace(/\/+$/, ''),
 }
+
+// The only environments where a link the server emails may be built from the
+// request's own origin when SITE_URL is unset (#430). Everywhere else SITE_URL
+// is required: release-preflight refuses without it.
+export const ORIGIN_FALLBACK_ENVIRONMENTS: readonly string[] = ['development', 'test']

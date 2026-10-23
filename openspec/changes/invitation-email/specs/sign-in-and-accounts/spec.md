@@ -21,6 +21,11 @@ already invited sends nothing.
 - **WHEN** an administrator invites an address and chooses not to send an email
 - **THEN** the invite is made and no email is sent
 
+#### Scenario: The address is already invited
+
+- **WHEN** an administrator invites an address that already has a pending invite
+- **THEN** no further email is sent
+
 ### Requirement: A failed invitation email is reported
 
 When the invitation email cannot be sent, the invite SHALL still be made, and
@@ -35,7 +40,19 @@ the administrator SHALL be told that the email did not go out.
 ### Requirement: Send an invitation again
 
 An administrator SHALL be able to send a pending invite's email again, but not
-within ten minutes of the last one.
+within ten minutes of the last one. Only an administrator who manages the
+system SHALL be able to do this, and a send that fails SHALL be reported as a
+failure.
+
+#### Scenario: Resend by someone who does not manage the system
+
+- **WHEN** a user who does not manage the system tries to send an invitation again
+- **THEN** they are refused and no email is sent
+
+#### Scenario: The resent email cannot be sent
+
+- **WHEN** an administrator sends an invitation again and the email cannot be sent
+- **THEN** they are told the service could not send it, and can try again at once
 
 #### Scenario: Resend too soon
 

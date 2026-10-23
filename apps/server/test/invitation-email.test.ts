@@ -10,11 +10,13 @@ import { sql } from '../src/db'
 import { makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
-import { _setInvitationDeliveryForTests } from '../src/invitation-email'
+import { _setInvitationDeliveryForTests, _setInvitationHooksForTests, composeInvitation } from '../src/invitation-email'
+import { config } from '../src/config'
+import { preflightRelease } from '../src/release-preflight'
 
 const enc = encodeURIComponent
 
-afterEach(() => _setInvitationDeliveryForTests(null))
+afterEach(() => _setInvitationHooksForTests(null))
 
 async function setting(field: string, value: string) {
   await sql`delete from single_value where table_name = 'System Settings' and field = ${field}`
@@ -196,5 +198,135 @@ describe('resending an invitation', () => {
     const claimed = await resend(admin, body.id)
     expect(claimed.status).toBe(417)
     expect(claimed.body.error.message).toMatch(/pending/i)
+  })
+})
+
+// Review of #439: the link never comes from a request outside development and
+// test; a failure before the send takes nothing; a hung send has a deadline.
+describe('hardening', () => {
+  async function resend(client: TestClient, identity: string) {
+    const res = await client.fetch(`/api/identities/${enc(identity)}/resend_invitation`, { method: 'POST' })
+    return { status: res.status, body: (await res.json()) as Record<string, any> }
+  }
+  async function withConfig<T>(change: Partial<{ siteUrl: string; environment: string }>, run: () => Promise<T>): Promise<T> {
+    const c = config as { siteUrl: string; environment: string }
+    const before = { siteUrl: c.siteUrl, environment: c.environment }
+    Object.assign(c, change)
+    try {
+      return await run()
+    } finally {
+      Object.assign(c, before)
+    }
+  }
+
+  test('outside development and test, no SITE_URL means no email, never a link from the request', async ({ createUser }) => {
+    const admin = await inviter(createUser)
+    const person = await makePerson({ full_name: 'Prod Person' })
+    await withConfig({ siteUrl: '', environment: 'production' }, async () => {
+      const res = await admin.fetch(`/api/people/${enc(person)}/identities`, {
+        method: 'POST',
+        headers: { host: 'attacker.example.net' },
+        body: JSON.stringify({ method: 'google', email: 'prod.person@example.com' }),
+      })
+      expect(res.status).toBe(201)
+      const body = (await res.json()) as Record<string, any>
+      expect(body.invitation_email).toEqual({ status: 'failed', error: expect.stringMatching(/SITE_URL/) })
+      expect(body.invitation_sent_at).toBeNull()
+      const again = await resend(admin, body.id)
+      expect(again.status).toBe(503)
+      expect(again.body.error.message).toMatch(/SITE_URL/)
+    })
+    expect(await mailsTo('prod.person@example.com')).toHaveLength(0)
+  })
+
+  test('the release preflight refuses a production server without SITE_URL', async () => {
+    await withConfig({ siteUrl: '' }, async () => {
+      const prev = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
+      process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'
+      try {
+        await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/SITE_URL is not set on a "production" server/)
+        await withConfig({ siteUrl: 'https://dash.example.com' }, async () => {
+          expect(await preflightRelease({ environment: 'production' })).toContain('SITE_URL set')
+        })
+      } finally {
+        if (prev === undefined) delete process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
+        else process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = prev
+      }
+    })
+  })
+
+  test('a failure before the send claims nothing, so a retry can send at once', async ({ createUser }) => {
+    const admin = await inviter(createUser)
+    const person = await makePerson({ full_name: 'Early Person' })
+    const { body } = await invite(admin, person, 'early.person@example.com', { send_invitation_email: false })
+    _setInvitationHooksForTests({ beforeClaim: async () => { throw new Error('settings unavailable') } })
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect((await resend(admin, body.id)).status).toBe(500)
+    } finally {
+      quiet.mockRestore()
+    }
+    const [row] = await sql`select invitation_sent_at from sign_in_identity where id = ${body.id}`
+    expect(row.invitation_sent_at).toBeNull()
+    _setInvitationHooksForTests(null)
+    expect((await resend(admin, body.id)).status).toBe(200)
+  })
+
+  test('a failed audit write after the email went out is logged, and the send is still reported as sent', async ({ createUser }) => {
+    _setInvitationHooksForTests({ audit: async () => { throw new Error('audit down') } })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const admin = await inviter(createUser)
+      const person = await makePerson({ full_name: 'Audit Person' })
+      const { body } = await invite(admin, person, 'audit.person@example.com')
+      expect(body.invitation_email).toEqual({ status: 'sent' })
+      expect(await mailsTo('audit.person@example.com')).toHaveLength(1)
+      expect(logged.mock.calls.map((c) => c.join(' ')).join('\n')).toContain('invitation_audit_failed')
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  test('a send that hangs past its deadline counts as failed and gives the window back', async ({ createUser }) => {
+    _setInvitationHooksForTests({ deliver: () => new Promise<void>(() => {}), deadlineMs: 50 })
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const admin = await inviter(createUser)
+      const person = await makePerson({ full_name: 'Hung Person' })
+      const { body } = await invite(admin, person, 'hung.person@example.com')
+      expect(body.invitation_email).toEqual({ status: 'failed', error: 'The invitation email was not sent (ETIMEDOUT)' })
+      expect(body.invitation_sent_at).toBeNull()
+    } finally {
+      quiet.mockRestore()
+    }
+  })
+
+  test('a line break in a configured name never reaches the subject as a new header line', () => {
+    const mail = composeInvitation({
+      address: 'x@example.com', inviter: 'Asha\r\nBcc: y@example.com', appName: 'Example\nDash',
+      intro: '', methodLabel: 'Google', link: 'https://dash.example.com/featherbase/login',
+    })
+    expect(mail.subject).toBe('Asha Bcc: y@example.com invited you to Example Dash')
+    expect(mail.subject).not.toMatch(/[\r\n]/)
+  })
+
+  test('two resends at once send one email', async ({ createUser }) => {
+    const admin = await inviter(createUser)
+    const person = await makePerson({ full_name: 'Race Person' })
+    const { body } = await invite(admin, person, 'race.person@example.com', { send_invitation_email: false })
+    const results = await Promise.all([resend(admin, body.id), resend(admin, body.id)])
+    expect(results.map((r) => r.status).sort()).toEqual([200, 429])
+    expect(await mailsTo('race.person@example.com')).toHaveLength(1)
+  })
+
+  test('an unknown invite is not found; an ended one cannot be resent', async ({ createUser }) => {
+    const admin = await inviter(createUser)
+    expect((await resend(admin, 'uid_does_not_exist')).status).toBe(404)
+    const person = await makePerson({ full_name: 'Ended Person' })
+    const { body } = await invite(admin, person, 'ended.person@example.com', { send_invitation_email: false })
+    await sql`update sign_in_identity set ended_at = now(), ended_reason = 'unlinked' where id = ${body.id}`
+    const ended = await resend(admin, body.id)
+    expect(ended.status).toBe(417)
+    expect(await mailsTo('ended.person@example.com')).toHaveLength(0)
   })
 })

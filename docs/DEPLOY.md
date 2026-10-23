@@ -40,7 +40,7 @@ Everything comes from the environment; every variable has a dev default in
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
-| `SITE_URL` | **yes, behind a proxy** | this instance's absolute external URL (`https://app.example.com`) — password-reset links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
+| `SITE_URL` | **yes, outside development and test** (the release preflight refuses without it, #430) | this instance's absolute external URL (`https://app.example.com`) — password-reset and invitation links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
 
@@ -541,11 +541,14 @@ repo:
 - **Introduction (optional):** System Settings `invitation_email_intro`, plain
   text, one paragraph or two on what the service is for. Set it in the form or
   `pnpm --filter server cli settings:set invitation_email_intro --stdin < intro.txt`.
-- **Link:** `SITE_URL` + `/featherbase/login`. Set `SITE_URL`: without it the
-  link is derived from the inviter's request.
+- **Link:** `SITE_URL` + `/featherbase/login`. Outside development and test,
+  `SITE_URL` is **required**: the release preflight refuses to start without
+  it, and no invitation is sent (the inviter is told why). A link is never
+  built from a request's Host header there.
 
 Mail goes through the instance's transport (the Email Sink until SMTP is
-configured). A failed send leaves the invite in place, tells the inviter, and
+configured). A send that has not finished in 20 seconds counts as failed; if
+the transport completes it later, a resend can deliver a second copy. A failed send leaves the invite in place, tells the inviter, and
 logs `mail_delivery_failed` with purpose `sign_in_invitation` and no address.
 
 ## Automation credentials (#131)

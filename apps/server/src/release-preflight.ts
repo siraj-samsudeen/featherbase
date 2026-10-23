@@ -5,7 +5,7 @@
 // one transaction (migrate.ts ONE_TRANSACTION), so any of them failing leaves
 // the database as it was.
 import { sql } from './db'
-import { config } from './config'
+import { config, ORIGIN_FALLBACK_ENVIRONMENTS } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { assertTestModeAllowed, delegatedTestMode, TEST_MODE_ENVIRONMENTS } from './delegated-login'
 import { pendingMigrations } from './migrate'
@@ -38,6 +38,14 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
       )
   }
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)
+
+  // 2b. Links the server emails (sign-in invitations, #430) must name the
+  //     instance from configuration, never from a request's Host header.
+  if (!config.siteUrl && !ORIGIN_FALLBACK_ENVIRONMENTS.includes(environment))
+    throw new Error(
+      `SITE_URL is not set on a "${environment}" server. Emailed links (sign-in invitations, password resets) need this instance's own address, which a request must not be able to steer. Set SITE_URL (https://…) first (docs/DEPLOY.md, "Configuration").`,
+    )
+  passed.push(config.siteUrl ? 'SITE_URL set' : `SITE_URL unset, allowed on a "${environment}" server`)
 
   // 3. 0102 creates btree_gist (person_identifier's history constraint).
   const pending = await pendingMigrations()
