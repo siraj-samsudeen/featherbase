@@ -9,6 +9,7 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { issueAccessToken, issueSession, resolveToken, setUserPassword, verifyPassword } from '../src/auth'
 import { createServiceAccount } from '../src/service-accounts'
+import { requestPasswordReset, resetPassword } from '../src/password-reset'
 
 // PLAT-004: the developer CLI runs real commands against the dev database.
 // We spawn it as a subprocess (its own connection) and assert the DB effects.
@@ -23,6 +24,7 @@ const DUP_USER = 'cli-dup-user@x.com'
 const NAME_USER = 'cli-name-only'
 const PW_USER = 'cli-pw-user'
 const PW_OTHER = 'cli-pw-other'
+const PW_EMAIL = 'cli-pw-link@x.com'
 const PW_SVC = 'svc-cli-pw-test'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
@@ -45,13 +47,14 @@ function cli(args: string[], input = ''): string {
 // person-rename: ids are minted, so the people are found by email/username
 // and the service account by its label.
 async function cleanup() {
-  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
+  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER, PW_EMAIL])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
   const services = await sql`select row_id from service_account where lower(label) in ${sql([SVC, PW_SVC])}`
   const ids = [...people, ...services].map((r) => String(r.row_id))
   if (ids.length) {
     await sql`delete from access_token where person in ${sql(ids)} or service_account in ${sql(ids)}`
     await sql`delete from has_role where parent in ${sql(ids)}`
-    await sql`delete from activity_log where "user" in ${sql(ids)}`
+    await sql`delete from password_reset where "user" in ${sql(ids)}`
+    for (const id of ids) await sql`delete from activity_log where operation = ${`password_set for ${id}`}`
     await sql`delete from person_identifier where person_id in ${sql(ids)}`
     await sql`delete from person where row_id in ${sql(ids)}`
     await sql`delete from service_account where row_id in ${sql(ids)}`
@@ -187,15 +190,16 @@ describe('PLAT-004: developer CLI', () => {
     const OLD = 'old-pw-391'
     const NEW = 'new-pw-391-secret'
 
-    async function makePerson(username = PW_USER) {
-      const p = await saveDoc('Person', { username, full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
+    async function makePerson(username = PW_USER, email?: string) {
+      const p = await saveDoc('Person', { username, ...(email ? { email } : {}), full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
       const id = String(p.row_id)
       await setUserPassword(id, OLD)
       return id
     }
     async function dropPerson(id: string) {
       await sql`delete from access_token where person = ${id}`
-      await sql`delete from activity_log where "user" = ${id}`
+      await sql`delete from password_reset where "user" = ${id}`
+      await sql`delete from activity_log where operation = ${`password_set for ${id}`}`
       await sql`delete from person where row_id = ${id}`
     }
     const hashOf = async (id: string) =>
@@ -241,11 +245,28 @@ describe('PLAT-004: developer CLI', () => {
         await expect(resolveToken(`Bearer ${otherToken}`)).resolves.toMatchObject({ row_id: other })
         await expect(resolveToken(`Bearer ${accessToken}`)).resolves.toMatchObject({ row_id: id })
 
-        const logs = await sql`select created_by, operation from activity_log where "user" = ${id}`
-        expect(logs).toContainEqual({ created_by: 'cli', operation: 'password_set' })
+        // The actor is `cli`; the person it was done to is in the operation.
+        const logs = await sql`select "user", created_by from activity_log where operation = ${`password_set for ${id}`}`
+        expect(logs).toEqual([{ user: 'cli', created_by: 'cli' }])
       } finally {
         await dropPerson(id)
         await dropPerson(other)
+      }
+    }, 60_000)
+
+    // Codex review on #397: an emailed link from before the break-glass reset
+    // must not be able to undo it.
+    it('revokes reset links issued before it', async () => {
+      const id = await makePerson(PW_USER, PW_EMAIL)
+      try {
+        const link = await requestPasswordReset(PW_EMAIL)
+        expect(link).toMatch(/^[0-9a-f]{48}$/)
+        cli(['set-password', id, '--stdin'], `${NEW}\n`)
+        expect(await sql`select 1 from password_reset where "user" = ${id}`).toHaveLength(0)
+        await expect(resetPassword(link as string, 'link-pw-391')).rejects.toThrow('invalid or has expired')
+        expect(verifyPassword(NEW, await hashOf(id))).toBe(true)
+      } finally {
+        await dropPerson(id)
       }
     }, 60_000)
 
@@ -285,7 +306,7 @@ describe('PLAT-004: developer CLI', () => {
         const { err } = attempt(['set-password', svc.row_id, '--stdin'], `${NEW}\n`)
         expect(err?.status).toBe(1)
         expect(err?.stderr).toContain('Service accounts have no password')
-        const logs = await sql`select 1 from activity_log where "user" = ${svc.row_id}`
+        const logs = await sql`select 1 from activity_log where operation = ${`password_set for ${svc.row_id}`}`
         expect(logs).toHaveLength(0)
       } finally {
         await sql`delete from service_account where row_id = ${svc.row_id}`

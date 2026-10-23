@@ -45,16 +45,20 @@ export async function setUserPassword(name: string, password: string, db: Sql | 
 }
 
 /** #391: the break-glass reset from an operator shell. The same write as
- *  every other route (so the same refusals); the new password and the end of
- *  every live session commit together, then the Activity Log records the
- *  actor `cli`. Access tokens are left alone: revoke them separately. */
+ *  every other route (so the same refusals). In one transaction it also ends
+ *  every live session of the person and revokes their outstanding reset
+ *  links; the Activity Log then records the actor `cli`. Access tokens are
+ *  left alone: revoke them separately. */
 export async function setPasswordFromShell(person: string, password: string) {
   await sql.begin(async (tx) => {
     const t = tx as unknown as TxSql
     await setUserPassword(person, password, t)
+    // resetPassword re-checks this cut-off under the same row lock, so a link
+    // already consumed but not yet written cannot land after it either.
     await t`update person set sessions_ended_at = now() where row_id = ${person}`
+    await t`delete from password_reset where "user" = ${person}`
   })
-  await logActivity(person, 'password_set', { actor: 'cli' })
+  await logActivity('cli', `password_set for ${person}`)
 }
 
 export type PrincipalKind = 'person' | 'service_account'

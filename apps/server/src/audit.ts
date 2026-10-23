@@ -20,16 +20,14 @@ async function tableExists(table: string, db: Sql | TxSql = sql): Promise<boolea
 export async function logActivity(
   user: string,
   operation: string,
-  extra: { full_name?: string | null; ip_address?: string | null; sign_in_method?: string | null; test_mode?: boolean; actor?: string } = {},
+  extra: { full_name?: string | null; ip_address?: string | null; sign_in_method?: string | null; test_mode?: boolean } = {},
 ): Promise<void> {
   if (!(await tableExists('activity_log'))) return
   const now = new Date()
-  // `actor` names who did it when that is not the person it is about (#391: `cli`).
-  const actor = extra.actor ?? user
   await sql`insert into activity_log ${sql({
     row_id: id(),
-    created_by: actor,
-    updated_by: actor,
+    created_by: user,
+    updated_by: user,
     created_at: now,
     updated_at: now,
     status: 'draft',

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { config } from './config'
-import { sql } from './db'
+import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { findPasswordAccount, setUserPassword } from './auth'
 import { deliverToSink } from './email'
@@ -65,16 +65,26 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // `for update` plus deleting every outstanding token for the user settles
   // concurrent clicks: the first to take the row lock consumes them all, and
   // the losers re-read under READ COMMITTED, find nothing, and are refused.
-  const user = await sql.begin(async (tx) => {
+  const link = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [row] = await stx`
-      select "user", expires_at from password_reset where token = ${token} for update`
+      select "user", expires_at, created_at from password_reset where token = ${token} for update`
     if (!row || new Date(row.expires_at as string).getTime() < Date.now())
       throw new AppError('ValidationError', 'This reset link is invalid or has expired')
 
     await stx`delete from password_reset where "user" = ${row.user as string}`
-    return row.user as string
+    return { user: row.user as string, issuedAt: new Date(row.created_at as string) }
   })
 
-  await setUserPassword(user, newPassword)
+  // #391: a break-glass shell reset revokes every outstanding link, but one
+  // consumed just before it could still write just after it. Under the
+  // person's row lock (the shell reset's write takes the same lock), refuse
+  // a link issued before the latest shell reset.
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as TxSql
+    const [person] = await stx`select sessions_ended_at from person where row_id = ${link.user} for update`
+    if (person?.sessions_ended_at && new Date(person.sessions_ended_at as string) > link.issuedAt)
+      throw new AppError('ValidationError', 'This reset link is invalid or has expired')
+    await setUserPassword(link.user, newPassword, stx)
+  })
 }

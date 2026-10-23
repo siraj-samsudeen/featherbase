@@ -89,8 +89,10 @@ operator shell — shell access is the authorization. The password is read from
 **stdin only** (an argument is refused: argv lands in shell history and the
 process list), must be at least 6 characters, and is never printed. It ends
 every live session of that person (sessions issued before the reset, to the
-second; access tokens are not sessions — see below) and writes an Activity Log entry
-(`password_set`, actor `cli`). Service accounts are refused; they use tokens.
+second; access tokens are not sessions — see below), revokes every reset
+link emailed to them before it, and writes an Activity Log entry (actor
+`cli`, operation `password_set for <person-id>`). Service accounts are
+refused; they use tokens.
 
 ```sh
 # Prompts without echo locally, then pipes the value through the SSH session.
