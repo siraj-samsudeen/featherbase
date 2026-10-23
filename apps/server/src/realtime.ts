@@ -2,6 +2,7 @@ import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
+import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -204,7 +205,7 @@ export async function recheckSessionSockets(): Promise<void> {
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
 // {unsubscribe:[...]}. The server answers a subscribe frame with
 // {channel:'system', event:'subscribed', payload:{channels:[...registered]}}.
-export const MAX_FRAME_BYTES = 16 * 1024
+export const MAX_FRAME_BYTES = REALTIME_MAX_FRAME_BYTES
 export const MAX_PENDING_FRAMES = 32
 
 export function attachRealtime(server: Server): void {
@@ -254,6 +255,7 @@ export function attachRealtime(server: Server): void {
 }
 
 async function authenticate(socket: WebSocket, cookie: string | undefined): Promise<Client | null> {
+  let client: Client | null = null
   try {
     // #173: the browser cannot set headers on a WebSocket, which is why this
     // was URL-borne. But the upgrade is an ordinary same-origin HTTP request,
@@ -261,7 +263,9 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     // socket URL lands in proxy logs like any other. A cross-site handshake
     // carries no SameSite=Lax cookie, so this closes that door too.
     const user = await resolveToken(credentialFromCookieHeader(cookie))
-    const client: Client = { socket, user, channels: new Set() }
+    // Closed while the token was being checked: never register it.
+    if (socket.readyState !== socket.OPEN) return null
+    client = { socket, user, channels: new Set() }
     clients.add(client)
     // #411: signed out while this upgrade was between its token check and
     // here — the sign-out's own sweep could not see it yet.
@@ -274,6 +278,9 @@ async function authenticate(socket: WebSocket, cookie: string | undefined): Prom
     socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
     return client
   } catch {
+    // A send to a socket that closed mid-authentication lands here too; the
+    // client must not stay registered for publish() to keep visiting.
+    if (client) clients.delete(client)
     socket.close(4001, 'unauthorized')
     return null
   }

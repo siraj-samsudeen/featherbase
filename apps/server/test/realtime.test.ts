@@ -14,6 +14,7 @@ import {
   type RealtimeEvent,
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
+import { realtimeFrames } from 'shared'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -201,4 +202,39 @@ describe('subscription acknowledgment', () => {
     })
     expect(code).toBe(1008)
   })
+  // Review of #444: a long-lived page re-sends every channel it watches on
+  // reconnect. Framed the way the client frames it, a set far beyond one
+  // frame's limit is accepted whole, with the socket left open.
+  test('a re-subscribe set larger than one frame is accepted in full', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+    const channels = Array.from({ length: 1500 }, (_, i) => `row:User:user-${String(i).padStart(5, '0')}`)
+    const frames = realtimeFrames('subscribe', channels)
+    expect(frames.length).toBeGreaterThan(2)
+    expect(frames.length).toBeLessThan(MAX_PENDING_FRAMES)
+    const acked = new Set<string>()
+    let closed: number | null = null
+    socket.on('message', (raw) => {
+      const f = JSON.parse(String(raw)) as RealtimeEvent
+      if (f.event === 'subscribed') for (const ch of (f.payload as { channels: string[] }).channels) acked.add(ch)
+    })
+    socket.on('close', (code) => (closed = code))
+    socket.on('open', () => frames.forEach((f) => socket.send(f)))
+    try {
+      const deadline = Date.now() + 10_000
+      while (acked.size < channels.length && closed === null) {
+        if (Date.now() > deadline) throw new Error(`only ${acked.size} of ${channels.length} channels acknowledged`)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      expect(closed).toBeNull()
+      expect(acked.size).toBe(channels.length)
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }, 20_000)
 })
