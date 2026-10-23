@@ -5,7 +5,7 @@
 // one transaction (migrate.ts ONE_TRANSACTION), so any of them failing leaves
 // the database as it was.
 import { sql } from './db'
-import { config, ORIGIN_FALLBACK_ENVIRONMENTS } from './config'
+import { config, environmentDeclared, ORIGIN_FALLBACK_ENVIRONMENTS } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { assertTestModeAllowed, delegatedTestMode, TEST_MODE_ENVIRONMENTS } from './delegated-login'
 import { pendingMigrations } from './migrate'
@@ -18,6 +18,13 @@ export interface PreflightOptions {
 /** Throws, naming the problem, if the release must not start. Returns one
  *  line per check that passed. */
 export async function preflightRelease(opts: PreflightOptions = {}): Promise<string[]> {
+  // 0. A release declares what it is. Unset, the environment defaults to
+  //    development, which would wave through every production-only check
+  //    below (SITE_URL among them). A local dev server never runs this.
+  if (!opts.environment && !environmentDeclared())
+    throw new Error(
+      'Neither FEATHERBASE_ENV nor NODE_ENV is set. A release must declare its environment (FEATHERBASE_ENV=production, staging, …) rather than default to development (docs/DEPLOY.md, "Configuration").',
+    )
   const environment = opts.environment ?? config.environment
   const passed: string[] = []
 

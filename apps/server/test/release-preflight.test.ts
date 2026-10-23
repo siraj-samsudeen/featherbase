@@ -38,6 +38,12 @@ describe('migration batches', () => {
 })
 
 describe('release preflight', () => {
+  test('a release that does not declare its environment refuses (#430)', async () => {
+    vi.stubEnv('FEATHERBASE_ENV', '')
+    vi.stubEnv('NODE_ENV', '')
+    await expect(preflightRelease()).rejects.toThrow(/Neither FEATHERBASE_ENV nor NODE_ENV is set/)
+  })
+
   test('test mode on a production server refuses', async () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
