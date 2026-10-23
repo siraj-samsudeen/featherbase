@@ -9,6 +9,7 @@ import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
 import { writeThroughIdentity } from './person-identifiers'
+import { alertNewArrival } from './waiting-for-access'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
 import {
   KINDS,
@@ -134,7 +135,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
   }
   const email = v.email_verified ? normaliseEmail(v.email) : null
   try {
-    return await withTransaction(async () => {
+    const found = await withTransaction(async () => {
       const [taken] = await sql`
         select 1 from person
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
@@ -164,6 +165,9 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
       await auditIdentity(String(created.row_id), 'linked', String(created.row_id), method.key, id)
       return { user: String(created.row_id), identity: id }
     })
+    // #429: tell System Managers someone is waiting. Never throws.
+    await alertNewArrival(found.user, method)
+    return found
   } catch (err) {
     // Two first sign-ins with one subject: the loser signs in as the winner.
     if ((err as { code?: string })?.code === '23505') {
