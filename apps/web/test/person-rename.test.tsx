@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 import { pickerFor } from '../src/lib/pickers'
 import { isOpaqueId, principalLabel } from '../src/lib/people'
+import { recordAction } from '../src/lib/recents'
 
 const anonymous = { user: null, token: null } as never
 
@@ -86,9 +87,11 @@ test('the Person list shows each person’s name in its first column', async ({ 
 
 test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
   const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author' })
-  const reader = await createUser({ email: 'no.person.read@example.com' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Hidden Row Reader' } })
+  const reader = await createUser({ email: 'no.person.read@example.com', roles: ['Hidden Row Reader'] })
   await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'All', can_read: true } })
+  // A grant of their own earns the Admin (#410); grants to the implicit All role alone do not.
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'Hidden Row Reader', can_read: true } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
   await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })
@@ -96,4 +99,54 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   const name = await screen.findByTestId('comment-author')
   await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
   expect(name.textContent).not.toContain(author.user!)
+})
+
+// #414: the Person form, its breadcrumb and the sidebar's Recent list name the
+// person; a Person's id is permanent, so Rename is not offered.
+test('a Person form is headed by the name, never the id, offers no Rename, and Recent remembers the name', async ({ admin, createUser }) => {
+  const asha = await createUser({ email: 'asha.form@example.com', fullName: 'Asha Form' })
+  localStorage.clear()
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(asha.user!)}`, admin)
+  const form = await screen.findByTestId('form-view')
+  const heading = within(form).getByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent('Person: Asha Form'))
+  expect(heading.textContent).not.toContain(asha.user!)
+  expect(within(form).getByTestId('breadcrumbs').textContent).not.toContain(asha.user!)
+  expect(within(form).queryByRole('button', { name: 'Rename' })).toBeNull()
+  const recent = await screen.findAllByTestId('sidebar-recent')
+  const row = recent.find((r) => r.textContent?.includes('Person'))!
+  await waitFor(() => expect(row).toHaveTextContent('Asha Form'))
+  expect(row.textContent).not.toContain(asha.user!)
+  expect(row.getAttribute('title') ?? '').not.toContain(asha.user!)
+})
+
+// #414 review (Codex P2): renaming the person on their form updates the name
+// the heading, breadcrumb and Recent read — it is cached per id.
+test('saving a new full name on the Person form shows the new name at once', async ({ admin, createUser }) => {
+  const p = await createUser({ email: 'renamed.form@example.com', fullName: 'Old Name' })
+  localStorage.clear()
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(p.user!)}`, admin)
+  const form = await screen.findByTestId('form-view')
+  const heading = within(form).getByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent('Person: Old Name'))
+  const field = form.querySelector('[data-field=full_name]') as HTMLInputElement
+  await userEvent.clear(field)
+  await userEvent.type(field, 'New Name')
+  await userEvent.click(within(form).getByTestId('form-save'))
+  await waitFor(() => expect(heading).toHaveTextContent('Person: New Name'))
+  expect(within(form).getByTestId('breadcrumbs')).toHaveTextContent('New Name')
+})
+
+// A remembered row with no table caption still shows the name, and its
+// tooltip never falls back to the id.
+test('a Recent row for a person with no caption shows the name and no id tooltip', async ({ admin, createUser }) => {
+  const p = await createUser({ email: 'nosub.recent@example.com', fullName: 'Nosub Person' })
+  localStorage.clear()
+  recordAction(admin.user!, { kind: 'row', key: `row:Person/${p.user!}`, label: p.user!, path: `/featherbase/admin/Person/${p.user!}` })
+  await renderApp('/featherbase/admin/all-tables', admin)
+  const rows = await screen.findAllByTestId('sidebar-recent')
+  const row = rows.find((r) => r.getAttribute('href')?.includes(p.user!))!
+  await waitFor(() => expect(row).toHaveTextContent('Nosub Person'))
+  expect(row.textContent).not.toContain(p.user!)
+  expect(row.getAttribute('title') ?? '').not.toContain(p.user!)
 })

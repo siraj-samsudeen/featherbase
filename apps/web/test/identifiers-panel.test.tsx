@@ -10,6 +10,7 @@ import { sql } from 'server/src/db'
 import { applySeedPack } from 'server/src/seed-packs'
 import { addIdentifier } from 'server/src/person-identifiers'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
+import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
@@ -23,14 +24,16 @@ test('a System Manager sees codes with their periods and the address; a roster v
   const panel = await screen.findByTestId('person-identifiers')
   const codes = await within(panel).findByTestId('identifier-group-stylehr-employee-code')
   expect(codes).toHaveTextContent('RR-0102')
-  expect(codes).toHaveTextContent('since 2026-03-03')
-  expect(codes).toHaveTextContent('2024-06-01 – 2026-03-03')
+  // #415: days read the Indian way, DD-Mon-YYYY, like the rest of the app.
+  expect(codes).toHaveTextContent('since 03-Mar-2026')
+  expect(codes).toHaveTextContent('01-Jun-2024 – 03-Mar-2026')
   expect(within(codes).queryByRole('button', { name: 'End' })).toBeNull()
   expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('tl.ids@example.com')
 })
 
-test('a person adds their own phone and sees it is not yet verified', async ({ createUser }) => {
-  const me = await createUser({ email: 'own.ids@example.com' })
+test('a person adds their own phone and sees it is not yet verified', async ({ admin, createUser }) => {
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+  const me = await createUser({ email: 'own.ids@example.com', roles: [VIEWER_ROLE] })
   // Their own page: Sign-in methods (account menu), not the Admin Person form.
   await renderApp('/featherbase/admin/sign-in-methods', me)
   const panel = await screen.findByTestId('person-identifiers')
@@ -76,6 +79,8 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   expect(codes).toHaveTextContent('not verified')
   // The address mirrors the person's own email: said in words.
   expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('the person’s email')
+  // #415: the End button keeps its label on one line in the narrow card.
+  expect(within(codes).getByRole('button', { name: 'End' })).toHaveClass('shrink-0')
 })
 
 test('a StyleHR sign-in still keyed by employee code says it is awaiting its record number', async ({ admin, createUser }) => {

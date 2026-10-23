@@ -4,6 +4,7 @@ import { ApiError, api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
 import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Select, TextInput } from './ui'
+import { principalLabel, usePrincipalNameState } from '../lib/people'
 
 // person-identities (#275, review B-M4): on a Person's form, a System Manager
 // sees how that person signs in — password, linked outside accounts, pending
@@ -32,6 +33,9 @@ interface MethodInfo {
 }
 
 export function PersonSignInMethods({ user }: { user: string }) {
+  // #414: the confirmation names the person, never their opaque id.
+  const named = usePrincipalNameState(user)
+  const who = principalLabel(user, named.name, named.loading)
   const isManager = useIsSystemManager()
   const qc = useQueryClient()
   const key = ['user-identities', user]
@@ -116,8 +120,9 @@ export function PersonSignInMethods({ user }: { user: string }) {
             </span>
             <Button
               variant="danger"
+              className="shrink-0"
               onClick={() => {
-                if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${user}?`)) unlink.mutate(i.id)
+                if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${who}?`)) unlink.mutate(i.id)
               }}
             >
               Unlink
