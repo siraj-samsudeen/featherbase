@@ -10,6 +10,7 @@ import { useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
+import { buttonClasses } from './ui'
 
 export type Filter = [string, string, unknown]
 
@@ -412,6 +413,11 @@ export function ListView({
             Report
           </Link>
           <ExploreSplitButton table={table} />
+          {table === 'Person' && (
+            <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">
+              Find by code
+            </Link>
+          )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
           {!isSourceReadOnly(meta.data) && (

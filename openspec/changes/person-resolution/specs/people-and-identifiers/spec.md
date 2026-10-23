@@ -32,6 +32,19 @@ is attached to that one record, and every way they sign in opens it.
 - **THEN** there is still one record, listing all three addresses, and each
   account opens it
 
+#### Scenario: A record that holds identifiers is not deleted
+
+- **WHEN** an administrator tries to delete a person who has identifiers
+  recorded
+- **THEN** the delete is refused with the advice to end the identifiers or
+  disable the person, and nothing is removed
+
+#### Scenario: A merged-away record names its survivor
+
+- **WHEN** someone opens a record that was merged into another
+- **THEN** the record says it was merged into that person by name, never by an
+  internal reference, and offers no changes
+
 ### Requirement: Identifier systems are set up once, with sensible defaults
 
 An administrator SHALL be able to define each kind of identifier Featherbase
@@ -284,12 +297,56 @@ reviewers, or the person themselves for their own contact details. A value fed
 by another system is corrected there, not in Featherbase. Every real change
 records who made it and when; saving a value unchanged records nothing.
 
+Until the HR roster feed has written its first code, the employee codes
+are frozen at what the upgrade carried over. Meanwhile a System Manager may
+record a joiner's code or end a wrong one by hand, always with a note saying
+why; such a value is marked not verified, still signs the person in during a
+trial, and a carried-over value is ended rather than erased. The hand path
+closes by itself once the feed writes. The HR record number is never entered
+by hand. When the feed starts, it reconciles each value recorded by hand:
+it adopts one that the roster confirms, and lists the rest for a System
+Manager, never ending one silently.
+Until the sales report reads codes from these values directly, each change
+to a person's current employee code also updates the code the report uses,
+at the same moment.
+
+A value that only mirrored a sign-in or the person's own email address is
+taken over when someone records the same value independently, so removing
+the sign-in or changing the address no longer ends it.
+
 #### Scenario: A code from the HR system
 
 - **WHEN** a System Manager tries to edit an employee code that the HR roster
   feeds
 - **THEN** they are told the code comes from the HR system and is corrected
   there
+
+#### Scenario: A joiner before the roster feed runs
+
+- **WHEN** HR mails a joiner's employee code and the roster feed has not yet
+  written any code
+- **THEN** a System Manager records it on the joiner's record with a note, it
+  shows as recorded by hand and not verified, and the joiner can sign in by it
+  during the trial
+
+#### Scenario: A wrong code before the roster feed runs
+
+- **WHEN** a carried-over employee code turns out to be wrong
+- **THEN** a System Manager ends it with a note and records the right one;
+  the wrong one stays as history and cannot be erased
+
+#### Scenario: A joiner's Sections follow their code
+
+- **WHEN** a System Manager records a joiner's employee code by hand, and
+  later moves a mistaken code from one person to another
+- **THEN** the joiner's sales report opens on their Sections at once, and
+  after the correction only the right person sees the Sections of that code
+
+#### Scenario: An address recorded by hand outlives the sign-in it mirrored
+
+- **WHEN** a System Manager records an address that a Google sign-in had
+  already written, and the sign-in is later removed
+- **THEN** the address stays current, because someone recorded it on purpose
 
 #### Scenario: A person updates their own phone
 

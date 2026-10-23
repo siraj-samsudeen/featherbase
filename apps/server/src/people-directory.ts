@@ -52,24 +52,30 @@ export interface PickedPerson {
 }
 
 /** The Person picker: search name, username, address and employee code
- *  (ignoring case); never offer a built-in account (nor, once records can
- *  be merged, a replaced one). The label reads "Full Name · @username" — or
- *  the address, or the code, when there is no username. Reads Person as the
- *  viewer (scopedWhere), so a person found is a person they may read. */
+ *  (ignoring case); never offer a built-in account or a replaced
+ *  (merged-away) one. The employee code is the person's CURRENT
+ *  employee-record identifier rows (person-resolution) — the rows the joiner
+ *  and correction procedures write — not the `employee_code` Custom Field.
+ *  The label reads "Full Name · @username" — or the address, or the code,
+ *  when there is no username. Reads Person as the viewer (scopedWhere), so a
+ *  person found is a person they may read. */
 export async function pickPeople(q: string, viewer: string, limit = 10): Promise<PickedPerson[]> {
   const { table, where, cols } = await scopedWhere('Person', viewer, [['built_in', '=', false]])
   // Only the columns this viewer may read are shown or searched.
-  const col = (c: string) => (cols.has(c) ? sql`${sql(c)}` : sql`null::text`)
+  const col = (c: string) => (cols.has(c) ? sql`p.${sql(c)}` : sql`null::text`)
   const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`
   const rows = await sql`
-    select row_id, ${col('full_name')} as full_name, ${col('username')} as username, ${col('email')} as email,
-      ${col('employee_code')} as code
-    from ${sql(table)}
-    where ${where}
-      ${cols.has('replaced_by') ? sql`and replaced_by is null` : sql``}
+    select p.row_id, ${col('full_name')} as full_name, ${col('username')} as username, ${col('email')} as email,
+      (select min(i.value) from person_identifier i join identifier_system s on s.row_id = i.system and s.kind = 'employee-record'
+       where i.person_id = p.row_id and upper_inf(i.valid)) as code
+    from ${sql(table)} p
+    where ${where} and p.replaced_by is null
       and (${q.trim() === ''}::boolean or ${col('full_name')} ilike ${like} or ${col('username')} ilike ${like}
-        or ${col('email')} ilike ${like} or ${col('employee_code')} ilike ${like})
-    order by lower(coalesce(${col('full_name')}, ${col('username')}, ${col('email')}, row_id))
+        or ${col('email')} ilike ${like}
+        or exists (
+          select 1 from person_identifier i join identifier_system s on s.row_id = i.system and s.kind = 'employee-record'
+          where i.person_id = p.row_id and upper_inf(i.valid) and i.value ilike ${like}))
+    order by lower(coalesce(${col('full_name')}, ${col('username')}, ${col('email')}, p.row_id))
     limit ${Math.min(Math.max(limit, 1), 50)}`
   return rows.map((r) => {
     const name = String(r.full_name ?? '').trim()

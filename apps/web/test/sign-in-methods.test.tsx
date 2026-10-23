@@ -40,7 +40,7 @@ test('on a Person form a System Manager links a service, invites Google and unli
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
-  await userEvent.type(within(link).getByLabelText('Employee code'), 'RR-4242')
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-4242')
   await userEvent.type(within(link).getByLabelText('Login ID at the service'), 'tl_panel')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   await waitFor(() => expect(panel).toHaveTextContent('RR-4242'))
@@ -53,7 +53,8 @@ test('on a Person form a System Manager links a service, invites Google and unli
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   const row = within(panel).getByText(/RR-4242/).closest('li') as HTMLElement
   await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
-  await waitFor(() => expect(panel).not.toHaveTextContent('RR-4242'))
+  // person-resolution D5: the link ends and stays on record as history.
+  await waitFor(() => expect(panel).toHaveTextContent(/RR-4242.*ended.*\(unlinked\)/))
   expect(confirm).toHaveBeenCalled()
   confirm.mockRestore()
 })
@@ -81,10 +82,10 @@ test('a refused link keeps the form; a link on a turned-off method is labelled',
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
-  await userEvent.type(within(link).getByLabelText('Employee code'), 'RR-5000')
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-5000')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('already linked')
-  expect(within(link).getByLabelText('Employee code')).toHaveValue('RR-5000')
+  expect(within(link).getByLabelText('Record number at the service')).toHaveValue('RR-5000')
 
 })
 

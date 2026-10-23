@@ -144,7 +144,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   identifier_system: { '*': code, label: text },
   person_identifier: {
     id: code, person_id: id, system: code, assigner: code, value: code, value_hint: code, record_identifier_id: code,
-    worker_type: code, source: code, recorded_by: id, note: text,
+    worker_type: code, source: code, recorded_by: id, edited_by: id, note: text,
   },
   person_identifier_fingerprint: { '*': code },
   person_match: { '*': code, decided_by: id, decision_note: text, reopen_reason: text },

@@ -36,15 +36,28 @@ record, and the same provider ID can later be linked afresh.
 An HR system sign-in SHALL be linked to the person by the HR system's own
 record number, which never changes, rather than by the employee code, which
 can change or be shared between companies. A link set up before this was so
-keeps working by its employee code until the roster supplies the record
-number, and is listed for the administrator meanwhile.
+keeps working by its employee code until its record number is supplied, and
+is listed for the administrator meanwhile. The upgrade itself reads no file:
+the record numbers are supplied afterwards, from the warehouse's list of
+employee codes and record numbers, by a step an administrator can run again
+without changing anything twice. A code the list does not name, names on two
+records, or names with a record already another person's, stays on its code
+and is listed.
 
 #### Scenario: A trial user before the roster catches up
 
-- **WHEN** the upgrade cannot yet find the HR record number for a Team
-  Leader's sign-in link
+- **WHEN** the upgrade has run but the record numbers have not yet been
+  supplied for a Team Leader's sign-in link
 - **THEN** the Team Leader signs in the next morning exactly as before, and the
-  link shows as awaiting its record number until the roster supplies it
+  link shows as awaiting its record number
+
+#### Scenario: The record numbers arrive after the upgrade
+
+- **WHEN** an administrator supplies the warehouse's list of codes and record
+  numbers after the upgrade, and supplies it again a day later
+- **THEN** each link the list names once moves to its record number and the
+  Team Leader still signs in; the second run changes nothing; a code on two
+  records stays on its code and is listed to be settled by hand
 
 ## MODIFIED Requirements
 
@@ -91,8 +104,9 @@ disabled, all their sessions end and every other way in refuses them.
 
 A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
-only on a development or test server: any other server refuses to start with
-it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
+only on a development, test or staging server — staging being a hosted trial
+instance that is a production server in every other respect: any other server
+refuses to start with it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
 person by typing the employee code on that person's record, in any mix of
 capitals, with no password. The code must belong to exactly one person, and
 that person must have a live, unended link to the service; who may sign in is
@@ -126,11 +140,17 @@ on where real users sign in.
   people's records
 - **THEN** sign-in is refused, and neither person is chosen
 
-#### Scenario: Only a development or test server accepts test mode
+#### Scenario: Only a development, test or staging server accepts test mode
 
 - **WHEN** the switch is set on a server that is not configured as
-  development or test
+  development, test or staging
 - **THEN** the server does not start, and says why
+
+#### Scenario: A hosted trial instance runs as staging
+
+- **WHEN** a hosted trial instance is configured as staging with the switch set
+- **THEN** it starts with test mode on, and it is otherwise treated as
+  production: the Administrator gets no default password
 
 #### Scenario: Anything but the exact switch value leaves it off
 

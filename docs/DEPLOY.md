@@ -494,53 +494,271 @@ survives. Codes (`employee_code`, `stylehr_username`, a sign-in `subject`) and
 free text (comment bodies, notification subjects, activity messages) are left
 alone. The map is kept in `person_id_map (old_id, new_id, kind)`.
 
+**What 0102 (person-resolution Phase 1a-i) does.** Adds the Identifier
+System Table (core rows `phone`, `email`), `person_identifier` with its
+history constraints, the reviewer and sync roles (`Data Quality Manager`,
+`Identity Sync`), `person.replaced_by`, ended sign-in identities
+(`ended_at`, `ended_reason`, `subject_kind`; uniqueness only among live
+ones), Sign In Method's `identifier_system`, and the core `people_review`
+setting. It needs the **`btree_gist`** extension (`create extension if not
+exists btree_gist`; Railway's Postgres 18.6 offers it). Where the StyleHR
+sign-in method exists (dev) it also:
+
+- applies the Jeyarama seed pack (`stylehr-employee-id`, Restricted-hidden;
+  `stylehr-employee-code`, scoped by firm) and links the StyleHR sign-in
+  method to the record numbers;
+- writes an employee-code row for every `employee_code` Custom Field value
+  (assigner `''`, adopted later by the sync) and an `email` row for every
+  address;
+- marks every live StyleHR sign-in as **keyed by its employee code**
+  (`subject_kind = 'employee-code'` — its subject today IS the code), and
+  prints **PARITY through test mode's own lookup**: each StyleHR sign-in that
+  works today, typed as its code, still finds the same person.
+
+**0102 reads no file.** Moving each StyleHR sign-in to its **StyleHR record
+number** is a separate step after the deploy, `cli people:resolve` (dev step 7).
+
+**The release cannot half-apply.** `release.ts` runs a **preflight before the
+first migration** (`src/release-preflight.ts`): the database's environment
+stamp matches `FEATHERBASE_ENV`; test mode is allowed for that environment
+**and** for the database's own label (a database labelled `production` never
+runs with test mode, even with the stamp check overridden); `btree_gist` is
+available and creatable when 0102 is pending. Any refusal stops the release
+before it has changed anything. Then **0101, 0101a and 0102 apply as one
+transaction** (`ONE_TRANSACTION` in `src/migrate.ts`): if any of them fails,
+none of them is applied.
+
+Test mode (`DELEGATED_LOGIN_TEST_MODE=trust-any-password`) now resolves a
+typed employee code through the people's **current employee-code rows** of
+the method's own code system (verified or not), refuses a code current on
+two people, and needs a live link to the service. **A server whose
+environment is not `development`, `test` or `staging` refuses to start with
+test mode set** ("DELEGATED_LOGIN_TEST_MODE is set on a "production" server
+…").
+
+**`staging` is the environment of a hosted trial instance**: it admits test
+mode and is production in every other respect. `development` is *not* safe
+on a public host — it gives a null Administrator hash the known password
+`admin` and silences the known-password warning. `FEATHERBASE_ENV` also
+names the environment the database is **stamped** with
+(`internal_metadata.environment`); the migrator refuses a database stamped
+for another environment, so changing the variable needs one re-stamp (dev step 1).
+Dev today has `FEATHERBASE_ENV=production`, `DELEGATED_LOGIN_TEST_MODE` set
+and a database stamped `production`: deployed as is, the release refuses at
+its preflight. Prod (no test mode) skips the re-stamp.
+
+**`cli boot-check`** (read-only) runs exactly: (1) the server's one start-up
+refusal — test mode outside `development`/`test`/`staging`; (2) the release
+preflight above against `DATABASE_URL`. It prints one line per check; any
+refusal is an error and a non-zero exit.
+
 **Consequences.** Every session ends (the JWT subject changes): everyone signs
 in once more; the sign-in page says the session ended. **Access tokens keep
 working** — the secret is unchanged; only the owner column is re-keyed.
 
-**Release order:**
+### Before the dev window
 
-1. 0100 is live (#371).
-2. Take a **fresh** dev snapshot (`pg_dump`), restore it into a local
-   Postgres 18 and rehearse:
-   `pnpm --filter server cli people:plan --rehearse <local-dsn> --map --columns --check-sign-in <a trial code>`
-   (run with `FEATHERBASE_ENV` set to the snapshot's stamped environment). It
-   applies every pending migration inside one transaction, prints the id map,
-   every text column with its class, the scan and the test-mode check, and
-   rolls back. Any unclassified column or scan hit stops here.
-3. CDC rehearsal against the same restored snapshot with 0101 applied
-   (data-warehouse#4336): the worker must drop `access.user`, snapshot
-   `access.person`, and reconcile row counts.
-4. Announce the maintenance window to the trial users: 30 minutes outside
+A. **Rehearse on a fresh snapshot, with the target's real variables.**
+   `pg_dump -Fc` dev, restore it into a local Postgres 18, and re-stamp the
+   copy `staging` exactly as step 1 will (`update internal_metadata set value
+   = 'staging' where key = 'environment'`). Export the target's
+   `FEATHERBASE_ENV` (`staging`), `DELEGATED_LOGIN_TEST_MODE`,
+   `ALLOW_MOCK_OAUTH` and `ADMIN_PASSWORD`-set-or-not exactly as the target
+   will have them, with only `DATABASE_URL` pointing at the copy; then:
+   1. `pnpm --filter server cli boot-check` — "the server will start" plus
+      four `release preflight` lines;
+   2. `pnpm --filter server cli people:plan --rehearse <local-dsn> --map --columns --check-sign-in <a trial code>`
+      — every pending migration in one rolled-back transaction: the id map,
+      every text column with its class, the scan, 0102's parity, the
+      test-mode check; any unclassified column or scan hit stops here;
+   3. `pnpm --filter server release` on the copy, then the step-5 counts, and
+      `pnpm --filter server cli people:resolve <stylehr_record_ids.csv> --dry-run`.
+B. Announce the maintenance window to the trial users: 30 minutes outside
    store hours (proposed 06:00–06:30 IST).
-5. Deploy (release runs 0101 + 0102).
-6. CDC registration change and the release tick (data-warehouse#4336):
-   remove `featherbase.user`, add `featherbase.person` (`access`); **deny**
-   `service_account`, `person_id_map` (and 0102's `sign_in_identity`,
-   `person_identifier_fingerprint`, `person_merge`); `has_role`, `data_scope`
-   and `share` keep flowing with their new `person` / `service_account`
-   columns. Repoint any warehouse model reading `access.user`,
-   `has_role.parent` or `data_scope.user` (none found on 22-Oct-2026;
-   #4336 re-checks at release).
-7. Post-deploy counts:
-   ```sql
-   select left(row_id, 4) as prefix, count(*) from person group by 1;    -- psn_ + 2 built-ins
-   select count(*) from service_account;
-   select count(person) as person_tokens, count(service_account) as service_tokens from access_token;
-   select count(*) from person_id_map;
-   ```
-   then `cli people:plan` (no `--rehearse`) on the live database: it re-scans
-   the recorded map and must report no old id; and a trial user signs in.
-8. The roster sync stays **frozen** until data-warehouse#4336 rebuilds it on
-   the identifier rows; the manual leaver procedure below is in force until
-   then.
 
-**Manual leaver procedure (until data-warehouse#4336).** The HR contact
-mails the leaver's employee code to a System Manager, who opens *Admin →
-Person*, finds the person by that code (the person's Identifiers, or the
-`employee_code` field until it is retired), and turns **Enabled** off. That
-ends every session and every way in at once (#371's rule); nothing is
-deleted. Record the code and the date in the reply.
+**No CDC step belongs in the dev window.** The only Featherbase CDC worker,
+`jeyarama-cdc-featherbase`, mirrors **prod**, not dev. Pausing it, switching
+its registration and verifying the warehouse all happen when the release is
+promoted to production (below).
+
+### In the dev window — in this order
+
+1. **Re-stamp `staging`.** Set `FEATHERBASE_ENV=staging` **and**
+   `DISABLE_DATABASE_ENVIRONMENT_CHECK=1`; redeploy the **current** dev
+   release (nothing pending) — the migrator skips the stamp check once and
+   re-stamps the database `staging`. Remove
+   `DISABLE_DATABASE_ENVIRONMENT_CHECK` (never leave it set). Check:
+   `/api/ping` answers `"environment":"staging"`; `select value from
+   internal_metadata where key = 'environment'` is `staging`; a trial sign-in
+   still works.
+2. **Snapshot — the rollback point.** After the re-stamp, so a restore comes
+   back already `staging`:
+   `pg_dump -Fc --no-owner "$DATABASE_URL" > featherbase-dev-pre-person-<YYYY-MM-DD>.dump`,
+   then `pg_restore -l` on the file must list `featherbase.user`. Keep it
+   until the release is signed off.
+3. **`cli boot-check`** in the dev service's own environment (its real
+   variables and `DATABASE_URL`):
+   `railway ssh -p <project> -e dev -s jeyarama-featherbase -- pnpm --filter server cli boot-check`.
+   Expect "the server will start", then
+   `database environment matches "staging"`, `test mode on, allowed here`,
+   `btree_gist available for 0102`, and the pending migrations (0101, 0101a,
+   0102). Any error: stop here; nothing has changed.
+4. **Deploy.** The release logs its `preflight:` lines, then
+   `applied 0101_person_rename.ts (one transaction: 0101…, 0101a…, 0102…)`.
+   Read: `scan: no old id survives in any registered column`;
+   `PARITY (test mode's own lookup): N StyleHR sign-ins work today; N still
+   find the same person by code`; `StyleHR sign-ins test mode would NOT find:
+   0`.
+5. **Post-deploy counts.** Expected values are from the rehearsal on the
+   22-Oct-2026 dev snapshot; a fresh snapshot differs only by people added
+   since, and the differences must agree with each other.
+   ```sql
+   select left(row_id, 4) as prefix, count(*) from person group by 1;   -- psn_ 275, Admi 1, Gues 1
+   select count(*) from service_account;                                -- 0
+   select count(person), count(service_account) from access_token;      -- 0, 0
+   select count(*) from person_id_map;                                  -- 275
+   select count(person), count(service_account) from has_role;          -- 276, 0
+   select system, count(*) filter (where upper_inf(valid)) as current, count(*) as total
+   from person_identifier group by 1;                                   -- stylehr-employee-code 271/271; email 11/11
+   select subject_kind, count(*) from sign_in_identity
+   where method = 'stylehr' and ended_at is null group by 1;            -- employee-code 271
+   select max(name), count(*) from migration;                           -- 0102_person_resolution.ts, 104
+   ```
+   Then `pnpm --filter server cli people:plan` (no `--rehearse`) on the live
+   database: it re-scans the recorded map and must report no old id.
+6. **Sign-in checks.** A trial user by their employee code (test mode) gets
+   in; the Administrator by password gets in; a tab left open from before
+   lands on the sign-in page saying the session ended.
+7. **Record numbers.** Take a second snapshot first (same command,
+   `…-pre-resolve-…dump`). Then
+   `pnpm --filter server cli people:resolve <stylehr_record_ids.csv> --dry-run`
+   (data-warehouse#4336's file: UTF-8, header
+   `employee_code,assigner,stylehr_record_id`); read the report; run it again
+   without `--dry-run`. It is one transaction; running it again moves
+   nothing. Rehearsal with a **synthetic** file over the 271 snapshot codes:
+   265 moved; 3 not in the file, 2 codes on two records, 1 record already
+   another person's — all 6 keep working by code and are listed; second run:
+   0 moved, 265 already moved; parity after it 271 / 271. Settle a listed one
+   by hand (its Person form) or in the next file.
+8. Close the window. After it, `pnpm --filter server cli seed-pack apply
+   jeyarama` is safe to run (idempotent). The roster sync stays **frozen**
+   until data-warehouse#4336 rebuilds it on the identifier rows; the manual
+   procedures below are in force until then.
+
+### If something goes wrong in the dev window
+
+- **Steps 3–4 refuse or fail** (boot-check error, preflight refusal, a failed
+  migration): nothing has changed — the preflight runs before any migration,
+  and 0101–0102 are one transaction. Confirm `select max(name) from migration`
+  is still `0100_person_identities.ts`, roll the service back to its previous
+  deployment, and fix before trying again.
+- **Released, but wrong** (counts disagree, sign-in fails): take the service
+  off the air, restore the step-2 snapshot —
+  `pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" featherbase-dev-pre-person-<date>.dump`
+  — check `select max(name) from migration` is `0100_person_identities.ts`
+  and the stamp is `staging`, roll the service back to its previous
+  deployment, and check a trial sign-in. Anything written between the deploy
+  and the restore is lost; the window is closed to users, so there should be
+  nothing.
+- **Step 7 wrong** (a file that named the wrong records): restore the
+  pre-resolve snapshot the same way; the release itself stays.
+
+### Promoting to production
+
+Prod deploys the **`production`** branch, and only with the owner's approval.
+Prod is platform-only: it has no test mode and no StyleHR sign-in method, so
+it skips the re-stamp, and 0102 writes no Jeyarama rows. This is where the
+CDC steps happen, because `jeyarama-cdc-featherbase` mirrors prod. The exact
+operator commands for the warehouse side are in **data-warehouse PR #4339**
+(draft, "DO NOT MERGE before…"):
+https://github.com/JeyaramaGroup/data-warehouse/pull/4339.
+
+**What the warehouse receives after the switch.** `person` replaces `user`,
+and **`identifier_system`** is mirrored (design D10). **`person_identifier`
+stays denied until Phase 2.** `sign_in_identity`, `person_id_map`,
+`service_account`, `person_identifier_fingerprint` and `person_merge` are
+denied. On `has_role`, `person` / `service_account` are **stored generated
+columns, which logical replication does not send**. Warehouse readers use
+`parent` + `parenttype`.
+
+1. **Rehearse** the CDC switch against a restored prod snapshot with 0101 and
+   0102 applied (#4339): the worker freezes `access."user"`, baselines
+   `access.person`, and reconciles row counts.
+2. **Pause** `jeyarama-cdc-featherbase`. Write down its current schedule
+   first, then set it to `0 5 29 2 *` (it fires only on 29 February), and
+   confirm no run is in progress.
+3. **Snapshot prod** (`pg_dump -Fc --no-owner`); this is the rollback point.
+   Then run `cli boot-check` in the prod service's environment: `environment
+   production; test mode off`, and the preflight lines.
+4. **Promote:** merge to `production` (owner-approved); the release runs the
+   preflight, then 0101 + 0101a + 0102 in one transaction.
+5. **Counts** on prod, as in dev step 5 (no StyleHR rows: `person_identifier`
+   holds only `email` rows), and `cli people:plan` on the live database
+   reports no old id.
+6. **Merge data-warehouse #4339** — only now — then run its `plan` and read
+   it.
+7. **Resume:** put back the schedule written down in step 2 and let one tick
+   run.
+8. **Verify:** `access.person` is baselined with as many rows as `select
+   count(*) from person`; `access.identifier_system` is present;
+   `person_identifier` and the denied tables are absent.
+9. **Resnapshot** `data_scope`, `share` and `has_role`, so their rows carry
+   the re-keyed ids.
+10. **Drop the frozen `access."user"`** once the warehouse reads `access.person`
+    (repoint any model still reading `access.user`, `has_role.person` or
+    `data_scope.user`; none was found on 22-Oct-2026).
+
+**If something goes wrong in production:** before step 6 (the registration
+is unchanged), restore the step-3 snapshot, roll the service back, put back
+the schedule and let the worker resume on the old registration. After
+step 6, restore the snapshot **and** revert #4339's registration change
+before the worker runs again; then run one tick and check `access."user"` is
+current again. If only a CDC tick fails, the release stays: pause the worker
+again, fix the registration, and re-run the tick.
+
+### Manual procedures while the roster sync is frozen (until data-warehouse#4336)
+
+Until the roster feed writes its first employee code, a **System Manager** may
+record or end an employee code by hand. Each such change needs a **note**, is
+marked **recorded by hand** and **not verified**, and is still accepted by test
+mode. A carried-over code is ended, never erased. The HR record number is never
+typed by hand except as a sign-in link's subject. The hand path closes by itself
+once the feed writes.
+
+**The `employee_code` mirror (temporary).** Sales-target scoping still reads
+the `employee_code` Custom Field. So every hand entry, end or correction of a
+StyleHR employee code, and every `people:resolve` move, copies the person's
+current code into that field in the same transaction. Ending the last current
+code clears it. A joiner therefore sees their Sections at once, and a
+corrected code moves the Sections to the right person. Task 2.1 (the
+sales-target scoping PR) moves scoping onto the identifier rows and removes
+this mirror.
+
+**Find a person by code:** *Admin → Person →* **Find by code**
+(`/featherbase/admin/find-person`). Choose *StyleHR employee code* and type the
+code exactly; an old code finds them too. Any Person picker also finds people
+by code.
+
+- **Leaver.** The HR contact mails the leaver's employee code. Find them,
+  open the record and turn **Enabled** off: that ends every session and every
+  way in at once (#371's rule), and deletes nothing. On the Identifiers panel,
+  **End** the code with a note ("Left 23-Oct, HR mail"). Record the code and
+  the date in the reply.
+- **Joiner.** HR mails the employee code, the StyleHR login ID and the
+  StyleHR record number. Find by code first — they may have worked here
+  before. If they are not found, *Admin → Person → New*: full name, plus email
+  if they have one. On the Identifiers panel add **StyleHR employee code**
+  with a note ("Joiner, HR mail 23-Oct"). Under Sign-in methods link
+  **StyleHR**: *Record number at the service* = the record number, *Login ID
+  at the service* = their StyleHR login. Give roles and Data Scope as for
+  their post. Their Sections follow the code at once (the `employee_code`
+  mirror above); check *Sales target* opens on their Sections.
+- **Correction** (a wrong code). On the person's Identifiers panel, **End** the
+  wrong code with a note saying why; then add the right one with a note. The
+  wrong one stays as history. If the wrong code belonged to someone else, add
+  it to them the same way. The mirror moves the Sections with the code: the
+  wrong holder stops seeing them, and the right one sees them. A code recorded by hand by mistake on the same
+  day can be removed instead.
 
 ## Smoke check
 

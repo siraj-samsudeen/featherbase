@@ -347,7 +347,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   const [user] = await sql`
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
       m.enabled as method_enabled, m.kind as method_kind,
-      i.person_id as identity_owner, i.subject as identity_subject
+      i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended
     from person u
     left join sign_in_method m on m.row_id = ${method}
     left join sign_in_identity i on i.id = ${identity}
@@ -357,7 +357,9 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     !user.enabled ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
-    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null))
+    // person-resolution D5: a session opened through an identity that has
+    // since ended (left, moved, unlinked) ends on its next request.
+    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))
   if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
   return {
     row_id: user.row_id as string,

@@ -42,6 +42,52 @@ day).
 - The import and table-builder e2e specs locally in IST: 41 of 42 passed. The one failure, `import-upsert-journey`
   UPS-J2, also fails locally on untouched `main` (`de6c151c`, twice), so it predates this change; CI passes it.
 
+## 2026-10-22 — A person keeps every identifier they have had (#275, person-resolution Phase 1a-i)
+
+OpenSpec change `person-resolution`, Phase 1a-i, migration 0102 (released
+together with 0101). **Identifier System** is a system Table: one namespace of
+values configured by its kind (employee record, external record, national ID,
+contact), which fills in every other setting (normalising, one holder at a
+time, one per person, editor, match), and by Sensitivity (Normal, Restricted,
+Restricted-hidden, Secret), which decides storage, display and tier together.
+Core ships `phone` and `email`; `cli seed-pack apply jeyarama` adds
+`stylehr-employee-id` (record numbers, hidden) and `stylehr-employee-code`
+(scoped by firm). `person_identifier` keeps every value a person has had with
+its half-open period, source and verification; one holder at a time is an
+exclusion constraint per assigner (btree_gist). Sign-in identities write
+through (a StyleHR record number, a Google address), the person's own email is
+an `email` row, and an identity now **ends** (left, moved, unlinked) instead of
+being deleted — an ended one never opens the account, and a move keeps who
+held it until when. Test mode resolves a typed code through current
+employee-code rows, refuses a code on two people, needs a live link, and the
+server refuses to boot with it outside development, test or staging (a hosted trial instance; dev must be switched to `FEATHERBASE_ENV=staging` and re-stamped before this release — DEPLOY.md). The dev backfill
+writes code and email rows and keeps every StyleHR sign-in working by its
+employee code; `cli people:resolve <csv>` moves them to record numbers after
+the deploy (idempotent, with a report). The release runs a preflight before
+the first migration and applies 0101–0102 as one transaction. Until the
+roster sync runs, a System Manager records or ends an employee code by hand
+with a note (Admin → Person → Find by code for the lookup). The Person form has an Identifiers panel (also
+on the person's own Sign-in methods page); the Identifier System form shows
+each setting's default with "Revert to default".
+
+**Verified:** server and web typecheck; server and web suites on local
+Postgres 18.6; `pnpm check:specs`, `lint:sql`. Rehearsal on the dev snapshot
+(0100 + 0101 + 0102, rolled back, then the real `release.ts` on a copy
+re-stamped `staging`, with the target's variables): 275 re-keyed, scan clean,
+271 code rows, 11 email rows, 271 sign-ins kept by code, parity through
+`testModeUser` 271/271. Then `people:resolve` with a SYNTHETIC file over the
+snapshot's codes: 265 moved, 6 listed (3 absent, 2 on two records, 1 record
+already held), second run 0 moved; parity after it 271/271.
+
+**Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
+and `stylehr_username` Custom Fields); then Phase 1a-ii (merge and undo).
+
+**Gotchas:** migrations run with no controllers loaded — Identifier System
+rows saved by a migration go through `saveIdentifierSystem` (seed-packs.ts),
+which fills the kind's defaults and stamps the derived columns. A person's
+delete removes only rows that mirror their own email or sign-ins; any other
+identifier blocks it (`on delete restrict`).
+
 ## 2026-10-22 — A Person, not a User; service accounts are their own principal; opaque ids (#275, person-rename)
 
 OpenSpec change `person-rename`, migration 0101. The human's record is now

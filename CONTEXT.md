@@ -81,14 +81,57 @@ A Permission flag restricting a grant to Rows the user created.
 _Avoid_: if_owner, owner-only
 
 **Data Scope**:
-A per-user restriction limiting which Rows a user may see, expressed against a
-Reference Column's value.
+A per-principal restriction limiting which Rows a person or a service account
+may see, expressed against a Reference Column's value.
 _Avoid_: User Permission, row-level filter, tenant scope
 
 **Share**:
-A one-off grant of a single Row to a specific user or role, outside the
-Permission matrix.
+A one-off grant of a single Row to a specific person or service account,
+outside the Permission matrix.
 _Avoid_: DocShare
+
+## People
+
+**Person**:
+One human's record — whether or not they ever use Featherbase. Its id is a
+permanent opaque reference Featherbase assigns (`psn_…`), never an address, a
+username or an employee code. Administrator and Guest are the two built-in
+persons and keep their ids.
+_Avoid_: User (for the record), account (when the human is meant)
+
+**Service Account**:
+An automation account: its own kind of principal, never a person. It has no
+password, no sign-in method and no email; it authenticates only by access
+token, and holds roles, Data Scope and Shares exactly as a person does.
+_Avoid_: bot user, service user
+
+**Principal**:
+Whoever a request acts as: a Person or a Service Account. Tokens, Data Scope,
+Shares and roles name a principal through a `person` / `service_account` pair,
+exactly one set.
+
+**Sign-in identity**:
+A way a person signs in through an outside provider (a Google account, an HR
+system login), keyed by the provider's permanent id. It *signs in*; it may
+end (left, moved, unlinked) and then never opens the account again.
+_Avoid_: identifier (for this)
+
+**Identifier**:
+A value a person has or had in some namespace — an employee code, an HR
+record number, a phone, an address — with the period it was valid and where it
+came from. It does *not* sign anyone in.
+_Avoid_: identity (for this), alias
+
+**Identifier System**:
+One namespace of identifier values, configured by its kind (employee record,
+external record, national ID, contact) and its Sensitivity (Normal,
+Restricted, Restricted-hidden, Secret).
+
+**Record number**:
+Another system's own permanent key for its record of a person — StyleHR's
+employee record id — as opposed to the employee code, which can change and is
+reused across firms.
+_Avoid_: employee id (ambiguous)
 
 ## Column types
 

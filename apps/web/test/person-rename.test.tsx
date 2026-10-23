@@ -17,8 +17,8 @@ test('the sign-in page says a session has ended when it was sent there by one', 
   window.history.replaceState({}, '', '/featherbase/login')
 })
 
-test('pickers: Person searches the people directory and never offers built-ins; Service Account shows its name', () => {
-  expect(pickerFor('Person')).toMatchObject({ peopleSearch: true, filters: [['built_in', '=', false]] })
+test('pickers: Person searches the people directory and never offers built-ins or replaced records; Service Account shows its name', () => {
+  expect(pickerFor('Person')).toMatchObject({ peopleSearch: true, filters: [['built_in', '=', false], ['replaced_by', '=', null]] })
   expect(pickerFor('Service Account')).toMatchObject({ searchField: 'label', labelField: 'label' })
   expect(pickerFor('Store')).toEqual({ searchField: 'row_id', labelField: null, filters: [] })
   expect(isOpaqueId('psn_abcdefghijklmnopqrst')).toBe(true)

@@ -129,9 +129,13 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
     const rr60 = await person('RR-60')
     const rr61 = await person('RR-61')
     const { id } = await admin.post<{ id: string }>(`/api/people/${rr60}/identities`, { method: 'stylehr', subject: 'RR-60' })
-    await admin.fetch(`/api/identities/${id}`, { method: 'PATCH', body: JSON.stringify({ person_id: rr61 }) })
-    await admin.fetch(`/api/identities/${id}`, { method: 'DELETE' })
-    const rows = await sql`select "user", created_by, operation from activity_log where operation like ${`%(${id})`} order by created_at`
+    // person-resolution D4/D5: a move ends the old link (kept as history) and
+    // the new holder's link carries on under its own id.
+    const moved = (await (await admin.fetch(`/api/identities/${id}`, { method: 'PATCH', body: JSON.stringify({ person_id: rr61 }) })).json()) as { id: string }
+    expect(moved.id).not.toBe(id)
+    await admin.fetch(`/api/identities/${moved.id}`, { method: 'DELETE' })
+    const rows = await sql`select "user", created_by, operation from activity_log
+      where operation like ${`%(${id})`} or operation like ${`%(${moved.id})`} order by created_at`
     expect(rows.map((r) => [r.user, r.created_by])).toEqual([
       ['Administrator', 'Administrator'],
       ['Administrator', 'Administrator'],
@@ -140,7 +144,11 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
     expect(rows.map((r) => r.operation)).toEqual([
       `identity_linked stylehr for ${rr60} (${id})`,
       `identity_moved stylehr for ${rr60} to ${rr61} (${id})`,
-      `identity_unlinked stylehr for ${rr61} (${id})`,
+      `identity_unlinked stylehr for ${rr61} (${moved.id})`,
+    ])
+    expect(await sql`select person_id, ended_reason from sign_in_identity where id in (${id}, ${moved.id}) order by linked_at`).toEqual([
+      { person_id: rr60, ended_reason: 'moved' },
+      { person_id: rr61, ended_reason: 'unlinked' },
     ])
   })
 

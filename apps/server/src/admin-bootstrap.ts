@@ -4,10 +4,12 @@ import { hashPassword, verifyPassword } from './auth'
 
 // Security supersession of migration 0006 (#130). Only explicit local
 // environments have a knowable default. Provisioning never rotates a hash.
-export async function bootstrapAdministrator() {
+// Only a developer's own machine or a test run has a knowable default;
+// `staging` (a hosted trial instance) is production here.
+export async function bootstrapAdministrator(env: string = environment) {
   const configured = process.env.ADMIN_PASSWORD
   const password = configured?.trim() ? configured
-    : ['development', 'test'].includes(environment) ? 'admin' : null
+    : ['development', 'test'].includes(env) ? 'admin' : null
   if (password === null) return
   // Migration 0006 runs this long before 0101 renamed `user` to `person`.
   const [renamed] = await sql`select to_regclass('featherbase.person') as r`

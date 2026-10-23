@@ -175,6 +175,7 @@ describe('#137 P2: a user Table cannot squat on the credential store', () => {
 // R2: separate tables), so the person is removed instead: the write then
 // finds no person and refuses.
 async function failPasswordWrites(person: string) {
+  await sql`delete from person_identifier where person_id = ${person}`
   await sql`delete from person where row_id = ${person}`
 }
 

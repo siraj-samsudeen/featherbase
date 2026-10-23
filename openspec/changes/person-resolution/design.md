@@ -233,6 +233,18 @@ The sync closes codes; the merge only moves rows.
   `subject_kind = 'employee-code'` (default `'record-id'`), stays live, and is
   listed by `people:plan` and on the Person form; the sync's `sign-ins:bulk`
   rewrites it later. Nothing is ended silently.
+  *Amended 23-Oct-2026 (review decision on #385):* **0102 reads no file.**
+  The release marks every live StyleHR sign-in `subject_kind =
+  'employee-code'` (its subject IS the code) and proves parity through test
+  mode's own lookup (`testModeUser`); the rewrite is the post-deploy,
+  idempotent **`cli people:resolve <csv> [--dry-run]`** — one transaction,
+  the ordinary write-through for the record-number row, `record_identifier_id`
+  set on the code row, and a report (moved / already moved / not in file /
+  colliding / record already another person's). `PEOPLE_RESOLVE_FILE` and
+  `people:plan --resolve` are gone. The release itself runs a preflight
+  (`release-preflight.ts`: environment stamp, test mode vs both the process
+  and the database label, btree_gist) before the first migration, and 0101,
+  0101a and 0102 apply as one transaction (`migrate.ts` `ONE_TRANSACTION`).
 - **Ended identities.** `ended_at`, `ended_reason` (`left` \| `moved` \|
   `unlinked`); subject and sign-in-name indexes partial `where ended_at is
   null`; `linkedBySubject`, `linkedUser`, `resolveToken` filter on it. An
@@ -256,6 +268,11 @@ The sync closes codes; the merge only moves rows.
   server refuses to boot with test mode set unless `config.environment`
   (`FEATHERBASE_ENV ?? NODE_ENV ?? 'development'`) is `development` or
   `test`.** This hardening ships in 1a-i (DECISION).
+  *Amended 23-Oct-2026 (build of 1a-i):* the hosted trial instance (dev)
+  must keep test mode, and `development` is not safe on a public host (it
+  gives a null Administrator hash the known default password). A third
+  value, **`staging`**, admits test mode and is production in every other
+  respect; dev runs as `staging` (DEPLOY.md gives the re-stamp).
 
 ### D6. Groups, review, merge, undo
 
@@ -376,6 +393,27 @@ config writes. **Identity Sync** (generic name): bulk identifiers and sign-ins
 on `source` systems, resolve; nothing else. Administrators override A-M5 and
 carry privileged roles.
 
+*Amended 23-Oct-2026 (review decision B-M6 on #385):* **the freeze.** Until a
+`source` system's feed has written its first row (`source = <system.source>`
+— derived, so the window closes by itself), a System Manager may add a value
+of a non-restricted `source` system by hand: `source = manual`, `verified =
+false`, **a note required**; end or correct one with a note; delete only a
+hand-recorded one. Test mode accepts an unverified code (it reads current
+rows). This keeps the joiner and correction procedures (`docs/DEPLOY.md`)
+running while the roster sync is frozen. Record numbers (Restricted, hidden)
+are never hand-entered. **Follow-up (Phase 1b, task 4.2):** when the sync
+starts, it reconciles every leftover `manual` row of a `source` system — it
+adopts the row when the roster holds the same value, and lists it for a
+System Manager otherwise. It never silently ends one.
+*Also amended 23-Oct-2026 (final review round on #385):* until task 2.1 moves
+sales-target scoping onto identifier rows, every write of a current
+`stylehr-employee-code` row (hand entry, end, correction, `people:resolve`)
+copies the person's current code into the `employee_code` Custom Field in
+the same transaction (`mirrorEmployeeCodeField`). Ending the last current
+code clears it. Task 2.1 removes the mirror. The Person picker searches
+current employee-record rows, not the Custom Field. `PATCH`/`DELETE /api/identifiers/:id` run the same
+Person read / Data Scope check as `POST`.
+
 ### D10. What the warehouse consumes; report scoping
 
 - Phase 1 population per D-a; prior codes from `existing_emp_code` meanwhile.
@@ -385,6 +423,12 @@ carry privileged roles.
 - CDC: `identifier_system`, `person_identifier`, `person_match`,
   `person_match_member` in `access`; **deny** `person_identifier_fingerprint`,
   `person_merge`, `sign_in_identity`, `service_account`, `person_id_map`.
+  *Amended 23-Oct-2026 (warehouse CDC review):* the one Featherbase CDC
+  worker mirrors **prod**, so the switch happens at the production promotion
+  (DEPLOY.md, data-warehouse#4339). `identifier_system` is mirrored;
+  **`person_identifier` stays denied until Phase 2**. `has_role.person` /
+  `service_account` are stored generated columns, which logical replication
+  does not send: readers use `parent` + `parenttype`.
 - Gold (Phase 2): `gold.hr.person`, `gold.hr.person_identifier` (Normal
   systems); period join as-of the fact date, half-open; within-person overlaps
   resolve to one canonical id; no match ⇒ most recent holder + `period_gap`.
@@ -419,8 +463,8 @@ access removed; only leavers (below) and explicit role changes do that.
   two current postings takes the firm of the most recent one; a tie is listed
   for manual resolution** (not a collision); `stylehr_record_id` is
   `silver_stylehr.employee.employee_key` (`employee_employee.id`). Delivered
-  as a file path given to the migration command (`cli people:plan --resolve
-  <path>`, DEPLOY.md). A dev person whose code matches **2+ rows** (the 28
+  as a file path given to **`cli people:resolve <path>` after the deploy**
+  (amended 23-Oct-2026: not to the migration; DEPLOY.md step 8). A dev person whose code matches **2+ rows** (the 28
   colliding codes) is **listed for manual resolution and keeps working by
   code**.
 - The bulk bodies below, from `silver_stylehr`. **Aadhaar travels as the
@@ -554,8 +598,9 @@ History with Undo and leftovers; search shows "→ survivor".
 - **1a-i (about a week; deploys with `person-rename` 0101 in one release):**
   Identifier System with generic rows + the seed pack (`stylehr-*`); Person
   Identifier with history (`record_identifier_id`, exclusion, btree_gist);
-  write-through; the dev data migration (code rows, subject rewrite from the
-  resolve file with unresolved and colliding codes kept working by code);
+  write-through; the dev data migration (code rows; every StyleHR sign-in
+  kept by code — the subject rewrite from the resolve file is the post-deploy
+  `cli people:resolve`, amended 23-Oct-2026);
   ended identities; **test-mode hardening** (ambiguous refused, live identity
   required, boot refused outside development/test); the Identifiers panel.
   The `employee_code` and `stylehr_username` Custom Fields stay.
@@ -628,7 +673,8 @@ boot refused); `sync-api.test.ts` (every result and error code, rehire vs
 correction, unchanged, adopt `''`, duplicate warning, leaver via closing,
 500-row cap, per-row transactions, refingerprint, sign-ins, resolve);
 `sales-target.test.ts` (several current codes, ambiguous ⇒ `no_assignment` +
-log); `migration-0102.test.ts` (dev fixture, resolve file, idempotent, plan
-parity, btree_gist). Web: panels, Duplicates, preview, History, banners.
+log); `migration-0102.test.ts` (dev fixture, idempotent, plan parity through
+test mode, btree_gist); `people-resolve.test.ts` (resolve file, idempotent,
+dry run); `release-preflight.test.ts`. Web: panels, Duplicates, preview, History, banners.
 E2E: set-up → group → merge → merged-away login opens survivor → undo → ended
 identity refused. Gates: typecheck, suites, `pnpm check:specs`, `git diff --check`.
