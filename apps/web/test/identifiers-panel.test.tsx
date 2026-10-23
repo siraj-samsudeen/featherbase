@@ -23,8 +23,9 @@ test('a System Manager sees codes with their periods and the address; a roster v
   const panel = await screen.findByTestId('person-identifiers')
   const codes = await within(panel).findByTestId('identifier-group-stylehr-employee-code')
   expect(codes).toHaveTextContent('RR-10353')
-  expect(codes).toHaveTextContent('since 2026-03-03')
-  expect(codes).toHaveTextContent('2024-06-01 – 2026-03-03')
+  // #415: days read the Indian way, DD-Mon-YYYY, like the rest of the app.
+  expect(codes).toHaveTextContent('since 03-Mar-2026')
+  expect(codes).toHaveTextContent('01-Jun-2024 – 03-Mar-2026')
   expect(within(codes).queryByRole('button', { name: 'End' })).toBeNull()
   expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('tl.ids@example.com')
 })
@@ -61,6 +62,8 @@ test('a merged-away record names its survivor (never its id) and offers no chang
 test('until the roster sync runs, a System Manager records a joiner’s code by hand with a note', async ({ admin, createUser }) => {
   await applySeedPack('jeyarama')
   await sql`delete from person_identifier where source = 'stylehr-roster-sync'`
+  // The Custom Field sales-target scoping reads; the mirror copies the code into it.
+  await admin.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'Person-employee_code', dt: 'Person', column_name: 'employee_code', label: 'Employee code (StyleHR)', column_type: 'Data' } })
   const joiner = await createUser({ email: 'joiner.ids@example.com', fullName: 'Joiner Jaya' })
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(joiner.user!)}`, admin)
   const panel = await screen.findByTestId('person-identifiers')
@@ -76,6 +79,11 @@ test('until the roster sync runs, a System Manager records a joiner’s code by 
   expect(codes).toHaveTextContent('not verified')
   // The address mirrors the person's own email: said in words.
   expect(within(panel).getByTestId('identifier-group-email')).toHaveTextContent('the person’s email')
+  // #413: the form beside the panel reloads the row the write moved, so its
+  // mirrored field shows the code and its next save is not stale.
+  await waitFor(() => expect(document.querySelector('[data-field=employee_code]')).toHaveValue('RR-30001'))
+  // #415: the End button keeps its label on one line in the narrow card.
+  expect(within(codes).getByRole('button', { name: 'End' })).toHaveClass('shrink-0')
 })
 
 test('a StyleHR sign-in still keyed by employee code says it is awaiting its record number', async ({ admin, createUser }) => {

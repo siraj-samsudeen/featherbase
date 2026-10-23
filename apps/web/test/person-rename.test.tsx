@@ -97,3 +97,22 @@ test('a name the viewer may not read is "Unnamed person", never a stuck "…" or
   await waitFor(() => expect(name).toHaveTextContent('Unnamed person'))
   expect(name.textContent).not.toContain(author.user!)
 })
+
+// #414: the Person form, its breadcrumb and the sidebar's Recent list name the
+// person; a Person's id is permanent, so Rename is not offered.
+test('a Person form is headed by the name, never the id, offers no Rename, and Recent remembers the name', async ({ admin, createUser }) => {
+  const asha = await createUser({ email: 'asha.form@example.com', fullName: 'Asha Form' })
+  localStorage.clear()
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(asha.user!)}`, admin)
+  const form = await screen.findByTestId('form-view')
+  const heading = within(form).getByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent('Person: Asha Form'))
+  expect(heading.textContent).not.toContain(asha.user!)
+  expect(within(form).getByTestId('breadcrumbs').textContent).not.toContain(asha.user!)
+  expect(within(form).queryByRole('button', { name: 'Rename' })).toBeNull()
+  const recent = await screen.findAllByTestId('sidebar-recent')
+  const row = recent.find((r) => r.textContent?.includes('Person'))!
+  await waitFor(() => expect(row).toHaveTextContent('Asha Form'))
+  expect(row.textContent).not.toContain(asha.user!)
+  expect(row.getAttribute('title') ?? '').not.toContain(asha.user!)
+})
