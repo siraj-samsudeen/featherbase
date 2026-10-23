@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buttonClasses } from '../components/ui'
 import { useNavigate } from '@tanstack/react-router'
-import { api, clearSession, getSessionUser, getToken } from '../lib/api'
+import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, getToken, signOut } from '../lib/api'
 import { Logo } from '../components/Logo'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
 import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
@@ -198,11 +198,16 @@ export function SalesTargetPage() {
   }, [user?.row_id])
 
   async function logout() {
-    // Drop this opening first so nothing still in flight can render after
-    // the account changes, then expire the cookie before local state goes.
+    // Expire the cookie and end the session before local state goes. #411: a
+    // sign-out the server could not complete is said, and the page stays.
+    if (!(await signOut())) {
+      window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
+    // Drop this opening so nothing still in flight renders after the account
+    // changes.
     openingSeq++
     abortRef.current?.abort()
-    await api.post('/api/logout', {}).catch(() => {})
     clearSession()
     await navigate({ to: '/featherbase/login' })
   }

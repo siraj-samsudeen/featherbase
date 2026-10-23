@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { credentialFromCookieHeader, resolveToken, type SessionUser } from './auth'
+import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
@@ -156,12 +156,59 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
   publish(`user:${user}`, event, payload)
 }
 
+// #411: sign-out ends that session's open sockets too. A socket authenticates
+// once, at the upgrade, so without this it would keep receiving events after
+// the token was revoked. Other sessions of the same person stay connected.
+//
+// Three paths, because sockets live on one instance and sign-out can land on
+// another:
+// - closeSessionSockets: the instance that handled the sign-out closes them at
+//   once, and remembers the id for a few minutes so a socket whose upgrade was
+//   already past its token check is closed the moment it registers;
+// - recheckSessionSockets: every instance asks the database about its open
+//   sockets every SOCKET_RECHECK_MS, so the rest converge. The same query
+//   also ends sockets whose token has expired, whose person was disabled or
+//   whose sessions were ended (#391), which were otherwise only checked at the upgrade.
+const RECENTLY_REVOKED_MS = 5 * 60_000
+export const SOCKET_RECHECK_MS = 60_000
+const recentlyRevoked = new Map<string, number>()
+
+function closeSignedOut(client: Client): void {
+  clients.delete(client)
+  client.socket.close(4001, 'signed out')
+}
+
+function revokedHere(sessionId: string | undefined): boolean {
+  if (!sessionId) return false
+  const at = recentlyRevoked.get(sessionId)
+  return at !== undefined && Date.now() - at < RECENTLY_REVOKED_MS
+}
+
+export function closeSessionSockets(sessionId: string): void {
+  const now = Date.now()
+  for (const [id, at] of recentlyRevoked) if (now - at >= RECENTLY_REVOKED_MS) recentlyRevoked.delete(id)
+  recentlyRevoked.set(sessionId, now)
+  for (const client of clients) if (client.user.sign_in?.session_id === sessionId) closeSignedOut(client)
+}
+
+export async function recheckSessionSockets(): Promise<void> {
+  const open = [...clients].filter((c) => c.user.sign_in?.session_id)
+  const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
+    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.issued_at ?? 0, expiresAt: c.user.sign_in!.expires_at,
+  }]))
+  const ended = await endedSessionIds([...sessions.values()])
+  for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)
+}
+
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
 // {unsubscribe:[...]}. The server answers a subscribe frame with
 // {channel:'system', event:'subscribed', payload:{channels:[...registered]}}.
 export function attachRealtime(server: Server): void {
   const wss = new WebSocketServer({ server, path: '/ws' })
+  const recheck = setInterval(() => void recheckSessionSockets().catch(() => {}), SOCKET_RECHECK_MS)
+  recheck.unref()
+  server.on('close', () => clearInterval(recheck))
   wss.on('connection', async (socket, req) => {
     try {
       // #173: the browser cannot set headers on a WebSocket, which is why this
@@ -172,6 +219,9 @@ export function attachRealtime(server: Server): void {
       const user = await resolveToken(credentialFromCookieHeader(req.headers.cookie))
       const client: Client = { socket, user, channels: new Set() }
       clients.add(client)
+      // #411: signed out while this upgrade was between its token check and
+      // here — the sign-out's own sweep could not see it yet.
+      if (revokedHere(user.sign_in?.session_id)) return closeSignedOut(client)
       // Personal channel is always subscribed.
       client.channels.add(`user:${user.row_id}`)
       socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))

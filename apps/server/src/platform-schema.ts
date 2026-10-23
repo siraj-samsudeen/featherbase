@@ -11,7 +11,7 @@ const PLATFORM_RELATIONS = new Set([
   'email_sink', 'file', 'has_role', 'home_page', 'home_page_link', 'home_page_role',
   'import_log', 'installed_app', 'internal_metadata', 'job_execution', 'letter_head',
   'metadata_override', 'migration', 'notification_log', 'password_reset', 'patch_log',
-  'permission', 'pre_auth_bucket', 'print_format', 'report', 'role',
+  'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role',
   'runtime_action_result',
   'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
   'service_level_agreement', 'share', 'sign_in_method', 'single_value', 'sla_priority', 'table_def',
