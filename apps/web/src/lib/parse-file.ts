@@ -115,9 +115,23 @@ function serialDay(day: number, date1904: boolean): string {
   return new Date(epoch + day * DAY_MS).toISOString().slice(0, 10)
 }
 
+/** The format's tokens only: drops quoted text, escaped characters (\x), spacing widths (_x) and fill characters (*x). */
+function literalFree(section: string): string {
+  let out = ''
+  for (let i = 0; i < section.length; i++) {
+    const c = section[i]
+    if (c === '"') {
+      const end = section.indexOf('"', i + 1)
+      i = end === -1 ? section.length : end
+    } else if (c === '\\' || c === '_' || c === '*') i++
+    else out += c
+  }
+  return out
+}
+
 /** Does a format section show a time? (hours, seconds, AM/PM; escaped characters, quoted text and [colour] tags ignored) */
 function formatShowsTime(section: string): boolean {
-  const bare = section.replace(/\\./g, '').replace(/"[^"]*"/g, '').replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
+  const bare = literalFree(section).replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
   return /[hs]|AM\/PM|A\/P/i.test(bare)
 }
 
@@ -144,7 +158,7 @@ function calendarDates(XLSX: typeof import('xlsx'), sheet: import('xlsx').WorkSh
     const section = formatSectionFor(String(cell.z), cell.v)
     if (!XLSX.SSF.is_date(section)) continue
     // [h], [m], [s] show elapsed time: a duration, not a date. Keep the number.
-    if (/\[(?:h+|m+|s+)\]/i.test(section.replace(/\\./g, '').replace(/"[^"]*"/g, ''))) continue
+    if (/\[(?:h+|m+|s+)\]/i.test(literalFree(section))) continue
     let day = Math.floor(cell.v)
     cell.t = 's'
     if (!formatShowsTime(section)) {

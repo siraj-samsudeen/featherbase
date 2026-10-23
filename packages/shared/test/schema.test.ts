@@ -251,6 +251,10 @@ describe('#387: an early-year Date keeps a four-digit year', () => {
 })
 
 describe('#387: a Date must be a real calendar day', () => {
+  it('refuses year zero, which PostgreSQL date has no room for', () => {
+    expect(tableSchemaToZod([col('due', 'Date')]).safeParse({ due: '0000-01-01' }).success).toBe(false)
+  })
+
   const schema = tableSchemaToZod([col('due', 'Date')])
   it.each(['1900-02-29', '2024-02-30', '2023-02-29', '2024-13-01'])('%s is refused before anything is written', (v) => {
     expect(schema.safeParse({ due: v }).success).toBe(false)

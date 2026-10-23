@@ -86,6 +86,16 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe('2024-10-21')
   })
 
+  test.each(['yyyy-mm-dd_h', 'yyyy-mm-dd*s'])('a spacing or fill character (%s) is not a time', async (fmt) => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, fmt]]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
+  test('an underscore inside quoted text does not swallow the closing quote', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd "x_" "h"']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21')
+  })
+
   test('a date-only cell never carries a hidden time into the next day', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.9999999943, 'yyyy-mm-dd']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21')

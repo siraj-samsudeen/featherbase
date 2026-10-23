@@ -62,10 +62,11 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
         z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
-          // A real calendar day (#387): Excel's fictitious 29-Feb-1900, 30-Feb or month 13 are refused here, so a
+          // A real calendar day (#387): Excel's fictitious 29-Feb-1900, 30-Feb, month 13 or year 0 are refused here, so a
           // dry run reports them instead of the database refusing the write.
           .refine((v) => {
             const [y, m, d] = v.split('-').map(Number)
+            if (y < 1) return false // PostgreSQL date has no year zero
             // setUTCFullYear, not Date.UTC: Date.UTC reads years 0-99 as 1900-1999.
             const date = new Date(0)
             date.setUTCFullYear(y, m - 1, d)
