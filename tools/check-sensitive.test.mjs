@@ -25,6 +25,8 @@ test('Indian mobile numbers are flagged with or without a prefix, but not inside
   assert.deepEqual(kinds(`call ${MOBILE}`), ['Indian mobile number'])
   assert.deepEqual(kinds(`call +91 91234 ${'5678'}0`), ['Indian mobile number'])
   assert.deepEqual(kinds(`call 0${MOBILE}`), ['Indian mobile number'])
+  assert.deepEqual(kinds(`call 91${MOBILE}`), ['Indian mobile number']) // unspaced country code
+  assert.deepEqual(kinds(`call +91${MOBILE}`), ['Indian mobile number'])
   assert.deepEqual(kinds('epoch 1700000000'), [])
   assert.deepEqual(kinds(`n 0.${MOBILE}`), [])
   assert.deepEqual(kinds(`n ${MOBILE}1234`), [])

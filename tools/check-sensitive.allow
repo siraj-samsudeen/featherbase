@@ -4,7 +4,8 @@
 
 # Aadhaar-like: the published Verhoeff worked example, used as a test fixture.
 234123412346
-# A synthetic +91 test phone whose 12 digits happen to pass Verhoeff.
+# A synthetic +91 test phone (person-identifiers.test.ts) whose 12 digits happen to
+# pass Verhoeff, so the Aadhaar rule (not the mobile rule) needs this entry.
 919847099999
 
 # Synthetic test mobile numbers.

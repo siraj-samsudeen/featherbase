@@ -3,12 +3,17 @@
  * CI check: this repository is public, so tracked files must not carry
  * personal data of real people (owner's rule, 23-Oct-2026).
  *
- * Flags, in every tracked text file:
+ * What it covers, in tracked TEXT files only:
  *   - Aadhaar-like numbers: 12 digits, first digit 2-9, optional 4-4-4
  *     spacing, AND a valid Verhoeff check digit (cuts false positives);
  *   - Indian mobile numbers: optional +91 / 91 / 0 prefix, then 10 digits
- *     starting 6-9, not part of a longer digit run or a decimal;
- *   - any email address at a client domain (CLIENT_DOMAINS).
+ *     starting 6-9, not part of a longer digit run, a decimal or a word;
+ *   - any email address at a client domain (CLIENT_DOMAINS — extend that
+ *     list to widen the guard's reach).
+ *
+ * What it does NOT cover — these rely on review: real names, employee codes,
+ * record numbers, statistics about people, security-exposure statements, and
+ * binary files (pdf, xlsx, docx, images, archives), which are skipped.
  *
  * Intentional synthetic values go in tools/check-sensitive.allow, one per
  * line (digits only for numbers, lower-case for emails, `#` comments).
@@ -51,7 +56,10 @@ export function verhoeffValid(digits) {
 }
 
 const AADHAAR = /(?<![\d.\w])([2-9]\d{3})([ -]?)(\d{4})\2(\d{4})(?![\d\w])/g
-const MOBILE = /(?<![\d.\w+])(?:\+91[ -]?|91[ -]|0)?([6-9]\d{4})[ -]?(\d{5})(?![\d\w])/g
+// The lookbehind is deliberate: a number glued to a word character, digit,
+// '.' or '+' (ids like `name_9876543210`, decimals, longer digit runs) is not
+// flagged — this trades a little recall for far fewer false positives.
+const MOBILE = /(?<![\d.\w+])(?:\+?91[ -]?|0)?([6-9]\d{4})[ -]?(\d{5})(?![\d\w])/g
 const domainAlt = CLIENT_DOMAINS.map((d) => d.replace(/\./g, '\\.')).join('|')
 const EMAIL = new RegExp(`[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\\.)*(?:${domainAlt})(?![A-Za-z0-9-]|\\.[A-Za-z0-9])`, 'gi')
 
@@ -87,7 +95,8 @@ export function loadAllow(file) {
 }
 
 function mask(v) {
-  return v.includes('@') ? v.replace(/^(.).*@/, '$1***@') : v.slice(0, 2) + '*'.repeat(Math.max(0, v.length - 4)) + v.slice(-2)
+  // Conservative: an email shows only its domain, a number only its last 2 digits.
+  return v.includes('@') ? '***@' + v.split('@').pop() : '*'.repeat(Math.max(0, v.length - 2)) + v.slice(-2)
 }
 
 function main() {
