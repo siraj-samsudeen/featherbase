@@ -61,7 +61,6 @@ interface ReportRow {
   gap: number | null
   achievement: number | null
   missingActual: boolean
-  missingTarget: boolean
   /** #4344: ₹0 target and ₹0 sales this period — hidden unless the reader asks for them. */
   noTargetNoSale?: boolean
 }
@@ -73,6 +72,7 @@ interface Report {
   data_through: string | null
   cutoff_early: boolean
   no_data_yet?: boolean
+  targets_unavailable?: boolean
   rows: ReportRow[]
   sections?: (Totals & { section: string | null })[]
   total: Totals
@@ -353,6 +353,12 @@ export function SalesTargetPage() {
                 />
                 Show groups with no target or sales ({pre.report.total.no_target_no_sale})
               </label>
+            )}
+            {pre.report.targets_unavailable && !pre.report.no_data_yet && (
+              <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-targets-unavailable">
+                Targets are not available right now, so sales are shown without them. A blank target is not a
+                target of zero.
+              </p>
             )}
             {pre.report.no_data_yet && (
               <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-no-data-yet">

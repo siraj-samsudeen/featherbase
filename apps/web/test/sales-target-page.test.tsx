@@ -283,7 +283,7 @@ test('groups with no target or sales are hidden until the reader asks for them',
       ['010101003', 'Store A', 'STA', null, 25.5, 1, 1], // sold, with no target
     ]
     if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts'], ['010101002', 'Trousers'], ['010101003', 'Belts']]
-    return [['2026-09-17']]
+    return [['2026-09-17', 2]] // the as-of day and the period's target rows
   })
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
   const { token } = (await login.json()) as { token: string }

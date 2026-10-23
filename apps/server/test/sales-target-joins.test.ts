@@ -39,10 +39,15 @@ const FIXTURE = `
     store_code varchar, business_date date, item_code_sap varchar, material_group varchar,
     sales_before_tax_net decimal(38,2));
   insert into gold.sales.sales_item_daily values
+    -- On 01-Sep the fact holds ₹70 of Shirts while the mart's target row says ₹60: a target day
+    -- keeps the MART's actual, so the store's targeted figures never move.
     ('1501', '2026-09-01', 'I1', '010101001', 40), ('1501', '2026-09-01', 'I2', '010101001', 20),
+    ('1501', '2026-09-01', 'I4', '010101001', 10),
     ('1501', '2026-09-02', 'I1', '010101001', 60),
     -- Belts: sold with no target; the code arrives without its leading zero, as the fact can carry it
     ('1501', '2026-09-02', 'I3', '10101003', 25.50),
+    -- a sale after the actuals cutoff (02-Sep) is not counted yet
+    ('1501', '2026-09-05', 'I3', '010101003', 500),
     -- another store's sale of Belts is not this reader's
     ('1515', '2026-09-01', 'I3', '010101003', 99);
 
@@ -67,7 +72,17 @@ afterAll(() => {
   if (savedToday === undefined) delete process.env.SALES_TARGET_TODAY
   else process.env.SALES_TARGET_TODAY = savedToday
 })
-const duckdb = () => _setSourceReader(async (text) => (await conn.runAndReadAll(text)).getRows() as unknown[][])
+const readerOn = (c: DuckDBConnection) => _setSourceReader(async (text) => (await c.runAndReadAll(text)).getRows() as unknown[][])
+const duckdb = () => readerOn(conn)
+
+/** A second warehouse: the same fixture, then `damage` applied to it. */
+async function warehouseWith(damage: string): Promise<{ c: DuckDBConnection; close: () => void }> {
+  const i = await DuckDBInstance.create(':memory:')
+  const c = await i.connect()
+  await c.run(FIXTURE)
+  await c.run(damage)
+  return { c, close: () => { c.closeSync(); i.closeSync() } }
+}
 afterEach(() => _setSourceReader(null))
 
 const READER: Assignment = {
@@ -90,7 +105,12 @@ async function bothPaths(): Promise<[Report, Report]> {
   duckdb()
   const live = await reportFor(READER)
   expect(live.source).toBe('live')
-  expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+  expect(live.targets_unavailable).toBe(false)
+  const built = await buildSnapshot(SALES_TARGET_DATASET)
+  expect(built.status).toBe('activated')
+  // The snapshot's size is its target rows to date: Shirts 2 + Trousers 2 + Ties 1. Not the
+  // 20-Sep row (past the cutoff), not the line-of-business row, not the sales-only days.
+  expect(built.rowCount).toBe(5)
   const snap = await reportFor(READER)
   expect(snap.source).toBe('snapshot')
   return [live, snap]
@@ -101,7 +121,7 @@ describe('every group in the reader\'s list (#4344)', () => {
     for (const r of await bothPaths()) {
       expect(byCode(r)['010101003']).toMatchObject({
         subcategory: 'Belts', target: 0, actual: 25.5, gap: 25.5, achievement: null,
-        missingActual: false, missingTarget: true, noTargetNoSale: false,
+        missingActual: false, noTargetNoSale: false,
       })
     }
   })
@@ -141,6 +161,56 @@ describe('every group in the reader\'s list (#4344)', () => {
         { section: 'Menswear', target: 300, actual: 120, no_target_no_sale: 0, n: 2 },
       ])
       expect(r.total).toMatchObject({ target: 300, actual: 145.5, no_target_no_sale: 2, missing: 0, n: 5 })
+    }
+  })
+})
+
+// Review of #445: sales-only rows make a candidate look non-empty even when the target mart came
+// back empty or half-built. Real sales against ₹0 targets, labelled fresh, must never be served.
+describe('an empty or partial target mart', () => {
+  test('a snapshot with no target rows is refused, and the last good one keeps serving', async () => {
+    duckdb()
+    const good = await buildSnapshot(SALES_TARGET_DATASET)
+    expect(good.status).toBe('activated')
+    const w = await warehouseWith('delete from marts.sales.target_vs_actual_daily')
+    try {
+      readerOn(w.c)
+      const bad = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(bad.status).toBe('refused')
+      expect(bad.reason).toMatch(/no target rows/)
+      expect((await reportFor(READER)).snapshot_id).toBe(good.snapshotId)
+    } finally {
+      w.close()
+    }
+  })
+
+  test('a snapshot that lost more than half its target rows is refused', async () => {
+    duckdb()
+    expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+    const w = await warehouseWith(`delete from marts.sales.target_vs_actual_daily where hierarchy_code <> '010101001'`)
+    try {
+      readerOn(w.c)
+      const bad = await buildSnapshot(SALES_TARGET_DATASET) // 2 target rows to date against 5
+      expect(bad.status).toBe('refused')
+      expect(bad.reason).toMatch(/>50% drop/)
+    } finally {
+      w.close()
+    }
+  })
+
+  test('a live read with no target rows says targets are unavailable and shows none as ₹0', async () => {
+    const w = await warehouseWith('delete from marts.sales.target_vs_actual_daily')
+    try {
+      readerOn(w.c)
+      const r = await reportFor(READER)
+      expect(r.source).toBe('live')
+      expect(r.targets_unavailable).toBe(true)
+      expect(r.rows.every((x) => x.target === null && x.gap === null && x.achievement === null)).toBe(true)
+      expect(r.rows.some((x) => x.noTargetNoSale)).toBe(false) // nothing is hidden on a guess
+      expect(r.total.target).toBeNull()
+      expect(byCode(r)['010101003'].actual).toBeGreaterThan(0) // sales still shown
+    } finally {
+      w.close()
     }
   })
 })

@@ -54,7 +54,8 @@ function stub(rows: unknown[][], asOf = '2026-09-17') {
   _setSourceReader(async (text: string) => {
     if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text))
       return [...new Set(rows.map((r) => String(r[3])))].map((code) => [code, `Sub ${code}`])
-    return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [[asOf]] : rows
+    // The as-of day, and the period's target-row count the live path checks.
+    return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [[asOf, rows.length]] : rows
   })
 }
 

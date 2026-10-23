@@ -26,7 +26,6 @@ export interface ReportRow {
   gap: number | null
   achievement: number | null
   missingActual: boolean
-  missingTarget: boolean
   /**
    * #4344: ₹0 target and ₹0 sales this period — a group the reader's map lists but the store
    * did not trade. Still in `rows` and in every total (it adds ₹0); the page hides it by default.
@@ -59,6 +58,12 @@ export interface Report {
    * because nothing sold. The page must say so instead of showing a column of dashes.
    */
   no_data_yet: boolean
+  /**
+   * The warehouse holds no material-group target row for this period (review of #445): an empty
+   * or half-built target mart. Sales are still shown, but every target is null — never a ₹0 that
+   * reads as "no target was set". A snapshot is never built in this state (`validate` refuses it).
+   */
+  targets_unavailable: boolean
   rows: ReportRow[]
   /** One subtotal per Section, in Section order, then unmapped groups last (section null). */
   sections: (Totals & { section: string | null })[]
@@ -93,14 +98,19 @@ interface Grouped {
  * shared by both delivery paths so a snapshot read and a live read cannot drift
  * into two different answers — the property `live_check.mjs` proves across hosts.
  */
-function shape(grouped: Grouped[], sectionOf: Record<string, string>, noDataYet: boolean): Pick<Report, 'rows' | 'sections' | 'total'> {
+function shape(
+  grouped: Grouped[],
+  sectionOf: Record<string, string>,
+  { noDataYet, targetsUnavailable }: { noDataYet: boolean; targetsUnavailable: boolean },
+): Pick<Report, 'rows' | 'sections' | 'total'> {
   const rows: ReportRow[] = grouped.map((g) => {
     // #4344: the day rows carry every sale, target or not. So once the period has data, a group
     // with no day row at all sold nothing and had no target: ₹0 on both sides, said as such.
     // Before the period has any data (no_data_yet) nothing is known, and it stays MISSING.
     const neither = g.days === 0 && !noDataYet
-    // A target is ₹0 where none was set; a sale with no target is still a sale.
-    const target = g.mtd_target ?? (noDataYet && g.days === 0 ? null : 0)
+    // A target is ₹0 where none was set; a sale with no target is still a sale. When the target
+    // side is unavailable nothing is known about any target, so none is shown.
+    const target = targetsUnavailable ? null : g.mtd_target ?? (noDataYet && g.days === 0 ? null : 0)
     // Day rows with no actual on any of them (a target row past the actuals cutoff) are MISSING,
     // never ₹0 — the two must not look alike.
     const actual = neither ? 0 : g.days_with_actual > 0 ? g.mtd_actual : null
@@ -116,7 +126,6 @@ function shape(grouped: Grouped[], sectionOf: Record<string, string>, noDataYet:
       gap,
       achievement,
       missingActual: actual == null,
-      missingTarget: g.mtd_target == null,
       noTargetNoSale: target === 0 && actual === 0,
     }
   })
@@ -199,7 +208,7 @@ async function storeOf(snapshotId: string, plant: string) {
 }
 
 /** Live fall-through: the dataset's own SQL, scoped to this reader, run at the source. */
-async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Grouped[]; asOf: string | null; store: { store_name: string | null; short_code: string | null } }> {
+async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Grouped[]; asOf: string | null; targetRows: number; store: { store_name: string | null; short_code: string | null } }> {
   const { _liveReader } = await import('./datasets/sales-target-mtd')
   const read = _liveReader()
   // DuckDB text, built here: refuse anything but the exact code shapes, whatever the caller checked.
@@ -221,8 +230,15 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
     order by b.hierarchy_code`
   const rows = await read(scoped)
   const names = new Map((await read(namesSql(a.material_groups))).map((r) => [String(r[0]), r[1] == null ? null : String(r[1])]))
-  const asOfRows = await read(`select max(actuals_as_of_date) from "marts"."sales"."target_vs_actual_daily"`)
+  // The as-of day, and whether the period has any material-group target at all — the live
+  // path's counterpart of the snapshot's `validate`. Not a number (an unexpected answer) counts as none.
+  const asOfRows = await read(`
+    select max(actuals_as_of_date),
+           count(*) filter (where hierarchy_level = 'material_group'
+                              and business_date between date '${period.period_start}' and date '${period.period_end}')
+    from "marts"."sales"."target_vs_actual_daily"`)
   const raw = asOfRows[0]?.[0] ?? null
+  const targetRows = Number(asOfRows[0]?.[1] ?? 0) || 0
   const asOf = raw == null ? null : raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10)
 
   // The live path returns only codes that HAVE rows; the reader's full selection
@@ -243,6 +259,7 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
   return {
     grouped,
     asOf,
+    targetRows,
     store: {
       store_name: first?.[1] == null ? null : String(first[1]),
       short_code: first?.[2] == null ? null : String(first[2]),
@@ -274,7 +291,11 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
       data_through: dataThrough,
       cutoff_early: dataThrough < period.period_end,
       no_data_yet: dataThrough < period.period_start,
-      ...shape(live.grouped, a.section_by_material_group ?? {}, dataThrough < period.period_start),
+      targets_unavailable: live.targetRows === 0,
+      ...shape(live.grouped, a.section_by_material_group ?? {}, {
+        noDataYet: dataThrough < period.period_start,
+        targetsUnavailable: live.targetRows === 0,
+      }),
     }
   }
 
@@ -293,6 +314,7 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
     data_through: dataThrough,
     cutoff_early: dataThrough < period.period_end,
     no_data_yet: dataThrough < period.period_start,
-    ...shape(grouped, a.section_by_material_group ?? {}, dataThrough < period.period_start),
+    targets_unavailable: false, // `validate` refuses a candidate with no target rows
+    ...shape(grouped, a.section_by_material_group ?? {}, { noDataYet: dataThrough < period.period_start, targetsUnavailable: false }),
   }
 }

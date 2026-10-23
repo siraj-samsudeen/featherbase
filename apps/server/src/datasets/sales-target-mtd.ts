@@ -194,9 +194,12 @@ registerDataset({
     const nameRows = [...byCode].map(([hierarchy_code, subcategory]) => ({ snapshot_id: snapshotId, hierarchy_code, subcategory }))
     for (let i = 0; i < nameRows.length; i += CHUNK)
       await sql`insert into sales_target_snapshot_name ${sql(nameRows.slice(i, i + CHUNK))}`
-    // The day rows are the snapshot's size: the names are a lookup beside them, and an
-    // empty or collapsed candidate must be judged on its figures, not on its dictionary.
-    return days.length
+    // The snapshot's size is its TARGET side: the day rows that carry a target. Sales-only rows
+    // and names are real, but a build whose target mart came back empty or half-built still has
+    // them, and would activate as fresh with every target read as ₹0 (review of #445). Counting
+    // targets lets `validate` refuse that candidate. It is also what row_count meant under
+    // revision 1, when every row was a target row, so the drop guard compares like with like.
+    return days.filter((r) => r[5] != null).length
   },
 
   // What the rows cost on disk, for the registry. pg_column_size over the rows
@@ -213,8 +216,13 @@ registerDataset({
   // successful query against a mart that has not been built yet. Activating it
   // would replace a working snapshot with a report that shows nothing and says
   // it is fresh, which is worse than serving yesterday's.
+  // `rowCount` is the candidate's target rows (see `load`). Zero target rows is refused even when
+  // the period has sales. A drop of more than half against the active snapshot is refused too:
+  // within one month the to-date target rows only grow, day by day, so losing half of them in one
+  // refresh means a partial upstream build, not a real change. 50% leaves room for a store or a
+  // Section's targets being withdrawn while still catching a mart rebuilt halfway.
   validate(rowCount: number, previous: SnapshotRecord | null) {
-    if (rowCount === 0) return 'candidate is empty'
+    if (rowCount === 0) return 'candidate is empty: no target rows for the period'
     if (previous?.row_count && rowCount < previous.row_count * 0.5)
       return `candidate has ${rowCount} rows against ${previous.row_count} in the active snapshot — refusing a >50% drop`
     return null
