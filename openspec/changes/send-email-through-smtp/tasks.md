@@ -7,7 +7,7 @@
 
 ## 2. Failure handling
 
-- [x] 2.1 Password reset logs `mail_delivery_failed` (no address, key, body or secret) and still answers ok; a queued email turns `error`; the test mail returns a 503 to the System Manager.
+- [x] 2.1 Password reset does not await the SMTP send and logs `mail_delivery_failed` (no address, key, body or secret); a queued email returns to `queued` on a transient failure (not on the last attempt) and turns `error` otherwise; configuration errors are `ECONFIG`; the test mail returns a 503 to the System Manager.
 
 ## 3. Operator surface
 

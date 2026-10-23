@@ -134,8 +134,12 @@ instead (#395).
 | `SMTP_HOST` | `smtp-relay.gmail.com` | turns real delivery on; unset or blank keeps the Email Sink |
 | `SMTP_PORT` | `587` (default) | `587` = STARTTLS, **required**: the server refuses to continue if the relay does not offer it. `465` = implicit TLS. On any other port STARTTLS is still required whenever `SMTP_USER` is set, so a password never crosses the wire unencrypted. Certificates are always verified |
 | `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
-| `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Spaces are ignored, so Google's grouped display can be pasted as-is |
-| `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains. Unset, the default Email Account's address is used |
+| `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
+| `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
+
+Production uses port 587, where STARTTLS is required. On any other port
+without `SMTP_USER`, TLS is only opportunistic (used if the server offers
+it), which is meant for a local relay or test server.
 
 ### Google Workspace SMTP relay (jeyarama.com)
 
@@ -165,17 +169,24 @@ pnpm --filter server cli mail:test you@jeyarama.com
 
 It exits 1 with `Mail delivery failed (<code> [<SMTP reply code>])` when the relay
 refuses (`EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
-TLS or network; `EENVELOPE` = a sender or recipient the relay rejected).
+TLS or network; `EENVELOPE` = a sender or recipient the relay rejected). A
+bad setting (unparseable `SMTP_PORT`, `SMTP_USER` without `SMTP_PASSWORD`, no
+`MAIL_FROM` and no Email Account) reports
+`Mail configuration invalid (ECONFIG): …`.
 
 A failure is never dropped silently. Each one writes one structured log line,
 `{"level":"error","event":"mail_delivery_failed","purpose":"…","code":"…","smtp_response_code":…}`,
 with no address, subject, body or credential in it:
 
-- **Password reset** (`purpose: password_reset`): the public route still
-  answers `{ ok: true }`, so a failure cannot reveal whether the account
+- **Password reset** (`purpose: password_reset`): the request does not wait
+  for the SMTP server, and the public route answers `{ ok: true }` either
+  way, so neither a failure nor its timing reveals whether the account
   exists; the log line is the only trace.
-- **Queued email** (`purpose: queued_email`): the Email Queue row turns
-  `error` with the same safe message.
+- **Queued email** (`purpose: queued_email`): a transient failure (a 4xx
+  reply, or the server unreachable or timing out) puts the Email Queue row
+  back to `queued` for the job's retry; a permanent one (a 5xx reply, bad
+  credentials, the job's last attempt) turns it `error`. Either way the row
+  carries the same safe message.
 - **Test mail** (Settings or `cli mail:test`): the error is returned to the
   System Manager (HTTP 503).
 

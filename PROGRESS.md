@@ -9,12 +9,14 @@ Workspace relay settings. STARTTLS is required on 587 and whenever a password wo
 verified. `MAIL_FROM` wins over Email Account addresses because the relay accepts only the domain's senders.
 
 A failed send becomes `MailDeliveryError` (a 503 `ServiceUnavailableError`) whose message carries only nodemailer's
-code and the SMTP reply code, and is logged as one JSON line (`event: mail_delivery_failed`, `purpose`, `code`) with no
-address, body or credential. Password reset swallows it after logging, so the public route still answers ok for
-every account; a queued email turns `error`; the test mail returns the error to the System Manager. New
-`cli mail:test <to>`.
+code and the SMTP reply code (`ECONFIG` for a bad setting), and is logged as one JSON line
+(`event: mail_delivery_failed`, `purpose`, `code`) with no address, body or credential. Password reset does not
+await the SMTP send (`deliverWithoutWaiting`; tests call `flushPendingMail`), so neither a failure nor the relay's
+latency tells an existing account from an unknown one. A queued email goes back to `queued` on a transient failure
+(4xx, unreachable, timeout) unless it is the job's last attempt, and turns `error` otherwise; the test mail returns
+the error to the System Manager. New `cli mail:test <to>`. nodemailer is pinned exactly (10.2.1).
 
-**Verified:** `apps/server/test/email-smtp.test.ts` (18) runs a real `smtp-server` on a local port: plain delivery,
+**Verified:** `apps/server/test/email-smtp.test.ts` (28) runs a real `smtp-server` on a local port: plain delivery,
 the queued job, password reset, STARTTLS + AUTH with a generated certificate, an untrusted certificate refused
 before AUTH, a server without STARTTLS refused before AUTH when credentials are set, failure logging, and the CLI.
 Not yet sent through the real Workspace relay (needs the app password on a deployed instance).

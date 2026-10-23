@@ -11,6 +11,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs } from '../src/jobs'
 import {
+  flushPendingMail,
   queueEmail,
   readSmtpConfig,
   sendTestEmail,
@@ -32,7 +33,9 @@ interface Received {
   user?: string
 }
 
-async function startSmtp(opts: Partial<SMTPServerOptions> = {}) {
+// `rcptCode` makes the server refuse every recipient with that SMTP reply
+// (451 = try again later, 550 = refused for good).
+async function startSmtp(opts: Partial<SMTPServerOptions> = {}, rcptCode?: number) {
   const received: Received[] = []
   const authAttempts: string[] = []
   const server = new SMTPServer({
@@ -43,6 +46,12 @@ async function startSmtp(opts: Partial<SMTPServerOptions> = {}) {
       authAttempts.push(auth.username ?? '')
       if (auth.username === 'relay-user' && auth.password === 'app-password-xyz') cb(null, { user: auth.username })
       else cb(new Error('Invalid credentials'))
+    },
+    onRcptTo(_address, _session, cb) {
+      if (!rcptCode) return cb()
+      const err = new Error(rcptCode >= 500 ? 'Mailbox unavailable' : 'Try again later') as Error & { responseCode: number }
+      err.responseCode = rcptCode
+      cb(err)
     },
     onData(stream, session, cb) {
       const chunks: Buffer[] = []
@@ -144,10 +153,40 @@ describe('#395: transport selection and options', () => {
     expect(opts).toMatchObject({ requireTLS: true })
   })
 
-  test('a non-numeric port is refused', () => {
+  test('a non-numeric port is a configuration error', () => {
     expect(() => readSmtpConfig({ SMTP_HOST: 'h', SMTP_PORT: 'abc' })).toThrow(/SMTP_PORT/)
+    expect(() => readSmtpConfig({ SMTP_HOST: 'h', SMTP_PORT: 'abc' })).toThrow(expect.objectContaining({ code: 'ECONFIG' }))
+  })
+
+  test('a user without a password is a configuration error', () => {
+    expect(() => readSmtpConfig({ SMTP_HOST: 'h', SMTP_USER: 'u', SMTP_PASSWORD: '' })).toThrow(
+      expect.objectContaining({ code: 'ECONFIG', message: expect.stringMatching(/SMTP_PASSWORD/) }),
+    )
+  })
+
+  test("Google's grouped app password loses its spaces; any other password is kept verbatim", () => {
+    const pw = (p: string) => readSmtpConfig({ SMTP_HOST: 'h', SMTP_USER: 'u', SMTP_PASSWORD: p })!.password
+    expect(pw('abcd EFGH ijkl mnop')).toBe('abcdEFGHijklmnop')
+    expect(pw(' pass word ')).toBe(' pass word ')
+    expect(pw('abcd efgh ijkl')).toBe('abcd efgh ijkl')
+  })
+
+  test('no MAIL_FROM and no sender is a configuration error', async () => {
+    const cfg = readSmtpConfig({ SMTP_HOST: '127.0.0.1', SMTP_PORT: '2525' })!
+    await expect(sendViaSmtp(cfg, { to: 'a@example.test', subject: 's', body: 'b' })).rejects.toMatchObject({
+      code: 'ECONFIG',
+    })
   })
 })
+
+// Sandbox clock shim (see email.test.ts): make jobs due by the transaction
+// clock, then drain.
+async function drainDue(limit?: number) {
+  await sql`
+    update background_job set run_at = now()
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+  return await drainJobs(limit)
+}
 
 describe('#395: delivery through a real SMTP server', () => {
   async function setupAccount() {
@@ -166,6 +205,43 @@ describe('#395: delivery through a real SMTP server', () => {
       expect(smtp.received[0].data).toContain('Subject: Test email from Featherbase')
       expect(smtp.received[0].data).toContain('From: Feather Dash <noreply@jeyarama.test>')
       expect(await sql`select 1 from email_sink`).toHaveLength(0)
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  test('when MAIL_FROM replaces a different sender, replies still go to that sender', async () => {
+    await setupAccount()
+    await sql`delete from email_account where row_id = 'Smtp Reply Account'`
+    await sql`
+      insert into email_account ${sql({
+        row_id: 'Smtp Reply Account',
+        created_by: 'Administrator',
+        updated_by: 'Administrator',
+        email_id: 'helpdesk@jeyarama.test',
+        is_default: true,
+      })}`
+    const smtp = await startSmtp()
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      await sendTestEmail('ops@example.test')
+      expect(smtp.received[0].from).toBe('noreply@jeyarama.test')
+      expect(smtp.received[0].data).toContain('Reply-To: helpdesk@jeyarama.test')
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  test('no Reply-To when the sender is MAIL_FROM itself', async () => {
+    await setupAccount()
+    const smtp = await startSmtp()
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      await queueEmail({ to: 'x@example.test', subject: 's', body: 'b', from: 'NOREPLY@jeyarama.test' })
+      await loadJobs()
+      await drainDue()
+      expect(smtp.received).toHaveLength(1)
+      expect(smtp.received[0].data).not.toContain('Reply-To:')
     } finally {
       await smtp.close()
     }
@@ -192,23 +268,74 @@ describe('#395: delivery through a real SMTP server', () => {
     }
   })
 
-  test('a failed queued email is marked error with no address in the error', async () => {
+  async function queueOne(to: string) {
     await loadJobs()
     await setupAccount()
+    return await queueEmail({ to, subject: 's', body: 'b' })
+  }
+  const statusOf = async (name: string) =>
+    (await sql`select send_status, error from email_queue where row_id = ${name}`)[0] as { send_status: string; error: string }
+
+  test('an unreachable server is transient: the row goes back to queued for the retry, with no address in the error', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(await closedPort()), MAIL_FROM: FROM })
-    const name = await queueEmail({ to: 'lost@example.test', subject: 's', body: 'b' })
-    await sql`
-      update background_job set run_at = now()
-      where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
-    await drainJobs()
-    const [row] = await sql`select send_status, error from email_queue where row_id = ${name}`
-    expect(row.send_status).toBe('error')
-    expect(String(row.error)).toMatch(/Mail delivery failed/)
-    expect(String(row.error)).not.toContain('lost@example.test')
+    const name = await queueOne('lost@example.test')
+    await drainDue(1) // one attempt; the job retries at once, so a full drain would use all three
+    const row = await statusOf(name)
+    expect(row.send_status).toBe('queued')
+    expect(row.error).toMatch(/Mail delivery failed/)
+    expect(row.error).not.toContain('lost@example.test')
+    const [job] = await sql`select job_status from background_job where method = 'send_email' and payload->>'queue' = ${name}`
+    expect(job.job_status).toBe('queued')
     const logged = errors.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
     expect(logged).toContain('mail_delivery_failed')
     expect(logged).not.toContain('lost@example.test')
+  })
+
+  test('a 4xx reply is transient and the retry delivers it', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const busy = await startSmtp({}, 451)
+    let name = ''
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(busy.port), MAIL_FROM: FROM })
+      name = await queueOne('later@example.test')
+      await drainDue(1)
+      expect(await statusOf(name)).toMatchObject({ send_status: 'queued', error: 'Mail delivery failed (EENVELOPE 451)' })
+    } finally {
+      await busy.close()
+    }
+    const ok = await startSmtp()
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(ok.port), MAIL_FROM: FROM })
+      await sql`update background_job set run_at = now() where method = 'send_email' and payload->>'queue' = ${name}`
+      await drainDue()
+      expect((await statusOf(name)).send_status).toBe('sent')
+      expect(ok.received).toHaveLength(1)
+    } finally {
+      await ok.close()
+    }
+  })
+
+  test('a 5xx reply is permanent: the row is marked error', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const smtp = await startSmtp({}, 550)
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      const name = await queueOne('gone@example.test')
+      await drainDue()
+      expect(await statusOf(name)).toMatchObject({ send_status: 'error', error: 'Mail delivery failed (EENVELOPE 550)' })
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  test("a transient failure on the job's last attempt is marked error, never left queued", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(await closedPort()), MAIL_FROM: FROM })
+    const name = await queueOne('last@example.test')
+    await sql`update background_job set max_attempts = 1 where method = 'send_email' and payload->>'queue' = ${name}`
+    await drainDue()
+    expect((await statusOf(name)).send_status).toBe('error')
   })
 
   test('with credentials set, a server that does not offer STARTTLS is refused before AUTH', async () => {
@@ -252,6 +379,7 @@ describe('#395: password reset over SMTP', () => {
     try {
       setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
       const token = await requestPasswordReset(USER)
+      await flushPendingMail()
       expect(smtp.received).toHaveLength(1)
       expect(smtp.received[0].to).toEqual([USER])
       expect(decoded(smtp.received[0].data)).toContain(`key=${token}`)
@@ -274,6 +402,7 @@ describe('#395: password reset over SMTP', () => {
     })
     const token = await requestPasswordReset(USER)
     expect(token).toMatch(/^[0-9a-f]{48}$/)
+    await flushPendingMail()
 
     expect(errors).toHaveBeenCalledTimes(1)
     const line = String(errors.mock.calls[0][0])
@@ -289,7 +418,39 @@ describe('#395: password reset over SMTP', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
     setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(await closedPort()), MAIL_FROM: FROM })
     await expect(api.post('/api/reset_password_request', { usr: USER })).resolves.toEqual({ ok: true })
+    await flushPendingMail()
     expect(errors).toHaveBeenCalledTimes(1)
+  })
+
+  test('the request does not wait for the SMTP server, so its timing says nothing about the account', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A server that accepts the connection and never says a word.
+    const sockets: import('node:net').Socket[] = []
+    const silent = createServer((sock) => sockets.push(sock))
+    await new Promise<void>((resolve) => silent.listen(0, '127.0.0.1', resolve))
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String((silent.address() as AddressInfo).port), MAIL_FROM: FROM })
+      const started = Date.now()
+      await requestPasswordReset(USER)
+      expect(Date.now() - started).toBeLessThan(2_000)
+    } finally {
+      for (const sock of sockets) sock.destroy()
+      await new Promise<void>((resolve) => silent.close(() => resolve()))
+      await flushPendingMail()
+    }
+  })
+
+  test('a configuration error is logged as ECONFIG and the request still succeeds', async ({ admin }) => {
+    await setup(admin)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: '2525', SMTP_USER: 'relay-user', MAIL_FROM: FROM })
+    await expect(requestPasswordReset(USER)).resolves.toMatch(/^[0-9a-f]{48}$/)
+    await flushPendingMail()
+    expect(errors).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(String(errors.mock.calls[0][0]))).toMatchObject({ code: 'ECONFIG', purpose: 'password_reset' })
   })
 })
 
