@@ -1,0 +1,57 @@
+{
+  "anchor": "2026-09-03",
+  "stores": [
+    { "code": "1515", "name": "Kattakada", "format": "Fashion Store" },
+    { "code": "1501", "name": "Attakulangara", "format": "Hypermarket" }
+  ],
+  "hierarchy": [
+    { "code": "100000001", "subcategory": "Silk Saree", "division": "Fashion", "subdivision": "Women", "category": "Saree" },
+    { "code": "100000002", "subcategory": "Silk Saree", "division": "Fashion", "subdivision": "Women", "category": "Saree" },
+    { "code": "100000003", "subcategory": "Kitchen Tools", "division": "Home", "subdivision": "Kitchen", "category": "Tools" },
+    { "code": "100000004", "subcategory": "Formal Shirts", "division": "Fashion", "subdivision": "Men", "category": "Shirts" }
+  ],
+  "daily": [
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000001", "targetValue": 30000, "actualValue": 27000, "targetQuantity": 30, "actualQuantity": 27 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000001", "targetValue": 30000, "actualValue": 33000, "targetQuantity": 30, "actualQuantity": 31 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000001", "targetValue": 40000, "actualValue": 30000, "targetQuantity": 40, "actualQuantity": 32 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000002", "targetValue": 10000, "actualValue": 12000, "targetQuantity": 10, "actualQuantity": 11 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000002", "targetValue": 15000, "actualValue": 18000, "targetQuantity": 15, "actualQuantity": 18 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000002", "targetValue": 25000, "actualValue": 30000, "targetQuantity": 25, "actualQuantity": 30 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000003", "targetValue": 5000, "actualValue": 4500, "targetQuantity": 50, "actualQuantity": 45 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000003", "targetValue": 5000, "actualValue": 5200, "targetQuantity": 50, "actualQuantity": 52 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000003", "targetValue": 5000, "actualValue": null, "targetQuantity": 50, "actualQuantity": null },
+    { "date": "2026-09-01", "storeCode": "1501", "code": "100000002", "targetValue": 20000, "actualValue": 22000, "targetQuantity": 20, "actualQuantity": 22 },
+    { "date": "2026-09-02", "storeCode": "1501", "code": "100000002", "targetValue": 20000, "actualValue": 18000, "targetQuantity": 20, "actualQuantity": 18 },
+    { "date": "2026-09-03", "storeCode": "1501", "code": "100000002", "targetValue": 20000, "actualValue": 20000, "targetQuantity": 20, "actualQuantity": 20 },
+    { "date": "2026-09-01", "storeCode": "1501", "code": "100000004", "targetValue": 40000, "actualValue": 30000, "targetQuantity": 40, "actualQuantity": 30 },
+    { "date": "2026-09-02", "storeCode": "1501", "code": "100000004", "targetValue": 40000, "actualValue": 42000, "targetQuantity": 40, "actualQuantity": 42 },
+    { "date": "2026-09-03", "storeCode": "1501", "code": "100000004", "targetValue": 40000, "actualValue": 48000, "targetQuantity": 40, "actualQuantity": 48 }
+  ],
+  "priceBands": [
+    { "subcategory": "Silk Saree", "storeFormat": "Fashion Store", "ord": 1, "label": "Below ₹1,000", "lo": 0, "hi": 1000 },
+    { "subcategory": "Silk Saree", "storeFormat": "Fashion Store", "ord": 2, "label": "₹1,000 and above", "lo": 1000, "hi": null },
+    { "subcategory": "Silk Saree", "storeFormat": "__ALL__", "ord": 1, "label": "Below ₹1,200", "lo": 0, "hi": 1200 },
+    { "subcategory": "Silk Saree", "storeFormat": "__ALL__", "ord": 2, "label": "₹1,200 and above", "lo": 1200, "hi": null }
+  ],
+  "items": [
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000001", "itemCode": "I-101", "itemName": "Silk Saree Blue", "actualValue": 18000, "actualQuantity": 18 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000001", "itemCode": "I-102", "itemName": "Silk Saree Gold", "actualValue": 9000, "actualQuantity": 9 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000001", "itemCode": "I-101", "itemName": "Silk Saree Blue", "actualValue": 18000, "actualQuantity": 18 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000001", "itemCode": "I-102", "itemName": "Silk Saree Gold", "actualValue": 15000, "actualQuantity": 13 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000001", "itemCode": "I-101", "itemName": "Silk Saree Blue", "actualValue": 18000, "actualQuantity": 26 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000001", "itemCode": "I-102", "itemName": "Silk Saree Gold", "actualValue": 12000, "actualQuantity": 6 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000002", "itemCode": "I-201", "itemName": "Silk Saree Classic", "actualValue": 12000, "actualQuantity": 11 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000002", "itemCode": "I-201", "itemName": "Silk Saree Classic", "actualValue": 18000, "actualQuantity": 18 },
+    { "date": "2026-09-03", "storeCode": "1515", "code": "100000002", "itemCode": "I-201", "itemName": "Silk Saree Classic", "actualValue": 30000, "actualQuantity": 30 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000003", "itemCode": "I-301", "itemName": "Steel Ladle", "actualValue": 2500, "actualQuantity": 25 },
+    { "date": "2026-09-01", "storeCode": "1515", "code": "100000003", "itemCode": "I-302", "itemName": "Knife Set", "actualValue": 2000, "actualQuantity": 20 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000003", "itemCode": "I-301", "itemName": "Steel Ladle", "actualValue": 3000, "actualQuantity": 30 },
+    { "date": "2026-09-02", "storeCode": "1515", "code": "100000003", "itemCode": "I-302", "itemName": "Knife Set", "actualValue": 2200, "actualQuantity": 22 },
+    { "date": "2026-09-01", "storeCode": "1501", "code": "100000002", "itemCode": "A-201", "itemName": "ATK Silk Saree", "actualValue": 22000, "actualQuantity": 22 },
+    { "date": "2026-09-02", "storeCode": "1501", "code": "100000002", "itemCode": "A-201", "itemName": "ATK Silk Saree", "actualValue": 18000, "actualQuantity": 18 },
+    { "date": "2026-09-03", "storeCode": "1501", "code": "100000002", "itemCode": "A-201", "itemName": "ATK Silk Saree", "actualValue": 20000, "actualQuantity": 20 },
+    { "date": "2026-09-01", "storeCode": "1501", "code": "100000004", "itemCode": "A-401", "itemName": "Formal Shirt White", "actualValue": 30000, "actualQuantity": 30 },
+    { "date": "2026-09-02", "storeCode": "1501", "code": "100000004", "itemCode": "A-401", "itemName": "Formal Shirt White", "actualValue": 42000, "actualQuantity": 42 },
+    { "date": "2026-09-03", "storeCode": "1501", "code": "100000004", "itemCode": "A-401", "itemName": "Formal Shirt White", "actualValue": 48000, "actualQuantity": 48 }
+  ]
+}

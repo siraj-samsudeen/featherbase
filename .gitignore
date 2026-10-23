@@ -1,5 +1,11 @@
 node_modules/
 dist/
+!runtime-apps/fixtures/feather-dash-v0.1.3/dist/
+!runtime-apps/fixtures/feather-dash-v0.1.3/dist/**
+!runtime-apps/fixtures/feather-dash-v0.2.1/dist/
+!runtime-apps/fixtures/feather-dash-v0.2.1/dist/**
+!runtime-apps/fixtures/tasker-v1-production/dist/
+!runtime-apps/fixtures/tasker-v1-production/dist/**
 .pgdata/
 *.log
 .env

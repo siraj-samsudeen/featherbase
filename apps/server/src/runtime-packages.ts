@@ -1,5 +1,4 @@
-import { readFile, readdir, realpath, stat } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
+import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
@@ -14,6 +13,7 @@ import { actionDeclaration, readDeclaration, validateOperationFacts, freezeJson,
 import { sql, withTransaction } from './db'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
+import { artifactDigest } from './artifact-digest'
 
 // Public v1 hook contract is structural: packages never import core classes.
 export interface PackageHookContext {
@@ -87,22 +87,6 @@ async function contained(root: string, name: string): Promise<string> {
   if (!rel || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))
     throw new Error('Package path escapes its declared root')
   return target
-}
-
-// Shipped files, never operator directory spelling, identify an artifact.
-async function artifactDigest(root: string) {
-  const hash = createHash('sha256')
-  async function walk(directory: string) {
-    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (['node_modules', '.git'].includes(entry.name)) continue
-      if (entry.isSymbolicLink()) refuse('Package artifact must not contain symbolic links')
-      const file = resolve(directory, entry.name)
-      if (entry.isDirectory()) await walk(file)
-      else hash.update(canonical([relative(root, file), (await readFile(file)).toString('base64')]))
-    }
-  }
-  await walk(root)
-  return hash.digest('hex')
 }
 
 async function verifyArtifact(pkg: RuntimePackage | undefined): Promise<RuntimePackage> {
