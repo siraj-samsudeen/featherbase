@@ -23,9 +23,9 @@ import { pickPeople, principalNames } from './people-directory'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
+import { EMBED_ORIGIN, VIEWER_ROLE, landingFor, salesTargetRoutes } from './sales-target'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -719,9 +719,19 @@ app.route('/api/sales_target', salesTargetRoutes)
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
   const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
+  const roles = await getRoles(user.row_id)
+  // #410: what the shell may draw. Computed here, from current roles and
+  // grants, never from role names the browser holds; display only — every
+  // route still enforces its own check. A System Manager's Tables come from the
+  // Table list itself, so none are sent here.
+  const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
+  const access = manage
+    ? { readable: [], creatable: [], ownGrant: true, any: true }
+    : await tableAccessFor(user.row_id, roles)
   return c.json({
     ...user,
-    roles: await getRoles(user.row_id),
+    roles,
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
     theme: (row?.theme as string) || 'light',
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',

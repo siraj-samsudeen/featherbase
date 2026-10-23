@@ -40,7 +40,7 @@ test.afterEach(async ({ request }) => {
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The mock-OAuth screen and its outcome are all testid-addressed, so the
 // flow lives in named steps; `session` carries the plain navigation.
-test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ session, page, request }) => {
+test('PLAT-006: Google OAuth (mock) creates a User and lands on the no-access page until given a role', async ({ session, page, request }) => {
   await setAllowedDomains(request, '*')
   // #150: every URL this flow puts in the address bar — and therefore in
   // history, in the Referer of anything the page fetches next, and in every
@@ -60,10 +60,12 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
     await page.getByTestId('mock-approve').click()
   })
 
-  // We land in the Admin, signed in as the new user.
-  await session.step('lands in the Admin, signed in as the new user', async ({ page }) => {
+  // A brand-new person has no role yet (#410): they are signed in and told so,
+  // with a way to sign out, rather than shown an empty Admin.
+  await session.step('signed in as the new user, told they have no access yet', async ({ page }) => {
     await page.waitForURL(/\/admin/)
-    await expect(page.getByTestId('session-user')).toBeVisible()
+    await expect(page.getByTestId('no-access')).toBeVisible()
+    await expect(page.getByTestId('logout')).toBeVisible()
   })
 
   // #150: the landing carried a one-time handoff code, never the session
