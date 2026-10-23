@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
+import { Button, Card, Notice, Select, TextInput } from './ui'
 
 // person-resolution D3/D12: every identifier a person has had — employee
 // codes, record numbers, phone, addresses — each with its period, where it
@@ -100,33 +101,34 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
   }
 
   return (
-    <section className="fc-card p-3" data-testid="person-identifiers">
-      <h3 className="mb-2 text-sm font-semibold text-[var(--color-ink)]">Identifiers</h3>
+    <Card className="p-3" data-testid="person-identifiers">
+      <h3 className="mb-2 text-sm font-semibold text-ink">Identifiers</h3>
       {replacedBy && (
-        <p className="mb-2 rounded bg-[var(--color-surface-muted,#f5f5f5)] px-2 py-1 text-xs text-[var(--color-ink)]" data-testid="replaced-banner">
+        <div className="mb-2" data-testid="replaced-banner">
+          <Notice>
           This record was merged into <PrincipalName id={replacedBy} />. Open that record to make changes.
-        </p>
+          </Notice>
+        </div>
       )}
-      {groups.size === 0 && <p className="text-xs text-[var(--color-ink-muted)]">None recorded.</p>}
+      {groups.size === 0 && <p className="text-sm text-ink-muted">None recorded.</p>}
       {[...groups].map(([label, rows]) => (
         <div key={label} className="mb-2" data-testid={`identifier-group-${rows[0].system}`}>
-          <div className="text-xs font-medium text-[var(--color-ink-muted)]">{label}</div>
+          <div className="text-sm font-medium text-ink-muted">{label}</div>
           <ul className="space-y-1 text-sm">
             {rows.map((i) => (
               <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`identifier-${i.id}`}>
                 <span className="min-w-0">
-                  <span className={i.current ? 'font-medium' : 'text-[var(--color-ink-muted)] line-through'}>{i.value}</span>
-                  {i.assigner && <span className="text-xs text-[var(--color-ink-muted)]"> · {i.assigner}</span>}
-                  <span className="block text-xs text-[var(--color-ink-muted)]">
+                  <span className={i.current ? 'font-medium' : 'text-ink-muted line-through'}>{i.value}</span>
+                  {i.assigner && <span className="text-sm text-ink-muted"> · {i.assigner}</span>}
+                  <span className="block text-sm text-ink-muted">
                     {period(i)} · {sourceLabel(i.source)}
                     {i.worker_type ? ` · ${i.worker_type}` : ''}
                     {i.verified ? '' : ' · not verified'}
                   </span>
                 </span>
                 {i.current && i.editable && !replacedBy && (
-                  <button
-                    type="button"
-                    className="text-xs text-[var(--color-danger)] hover:underline"
+                  <Button
+                    variant="danger"
                     onClick={() => {
                       if (!i.note_required) return end.mutate({ id: i.id })
                       // By hand while the roster sync is frozen: say why.
@@ -135,7 +137,7 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
                     }}
                   >
                     End
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}
@@ -144,30 +146,31 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
       ))}
       {!replacedBy && addable.length > 0 && (
         <form className="mt-2 space-y-2" onSubmit={onAdd} data-testid="add-identifier-form">
-          <select name="system" className="fc-input" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)}>
+          <Select name="system" aria-label="Identifier" value={system} onChange={(e) => setChosen(e.target.value)}>
             {addable.map((s) => (
               <option key={s.row_id} value={s.row_id}>{s.label}</option>
             ))}
-          </select>
-          <input name="value" className="fc-input" aria-label="Value" placeholder="Value" required />
+          </Select>
+          <TextInput name="value" aria-label="Value" placeholder="Value" required />
           {needsNote && (
-            <input
+            <TextInput
               name="note"
-              className="fc-input"
               aria-label="Note"
               placeholder="Why by hand? e.g. joiner, mailed by HR on 23-Oct"
               required
               data-testid="identifier-note"
             />
           )}
-          <button type="submit" className="fc-btn w-full justify-center">Add</button>
+          <Button type="submit" block>Add</Button>
         </form>
       )}
       {error && (
-        <p className="mt-2 text-xs text-[var(--color-danger)]" data-testid="identifier-error">
+        <div className="mt-2" data-testid="identifier-error">
+          <Notice tone="negative">
           {error}
-        </p>
+          </Notice>
+        </div>
       )}
-    </section>
+    </Card>
   )
 }

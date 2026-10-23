@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useIsSystemManager } from '../lib/session'
+import { Button, Card } from './ui'
 
 // person-resolution D2: on an Identifier System form, each Advanced setting
 // shows the default its kind gives it, with "Revert to default" where it
@@ -44,29 +45,29 @@ export function IdentifierSystemDefaults({ systemKey }: { systemKey: string }) {
   })
   if (!isManager || !data) return null
   return (
-    <section className="fc-card p-3" data-testid="identifier-system-defaults">
-      <h3 className="mb-1 text-sm font-semibold text-[var(--color-ink)]">Defaults for this kind</h3>
-      <p className="mb-2 text-xs text-[var(--color-ink-muted)]">Assurance: {data.assurance} (from the kind)</p>
+    <Card className="p-3" data-testid="identifier-system-defaults">
+      <h3 className="mb-1 text-sm font-semibold text-ink">Defaults for this kind</h3>
+      <p className="mb-2 text-sm text-ink-muted">Assurance: {data.assurance} (from the kind)</p>
       <ul className="space-y-1 text-sm">
         {Object.keys(LABELS).map((field) => (
           <li key={field} className="flex items-start justify-between gap-2" data-testid={`default-${field}`}>
             <span>
               <span className="font-medium">{LABELS[field]}</span>{' '}
-              <span className="text-xs text-[var(--color-ink-muted)]">default {shown(data.preset[field])}</span>
+              <span className="text-sm text-ink-muted">default {shown(data.preset[field])}</span>
               {data.forbidden
                 .filter((f) => f.field === field)
                 .map((f) => (
-                  <span key={f.reason} className="block text-xs text-[var(--color-ink-muted)]">{f.reason}</span>
+                  <span key={f.reason} className="block text-sm text-ink-muted">{f.reason}</span>
                 ))}
             </span>
             {data.differs.includes(field) && (
-              <button type="button" className="text-xs text-[var(--color-brand)] hover:underline" onClick={() => revert.mutate(field)}>
+              <Button variant="quiet" onClick={() => revert.mutate(field)}>
                 Revert to default
-              </button>
+              </Button>
             )}
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   )
 }

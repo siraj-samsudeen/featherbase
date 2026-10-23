@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
+import { Button, Notice, Select, TextInput } from '../components/ui'
 
 // person-resolution D3: find a person by an exact identifier — the employee
 // code HR mails for a joiner, a correction or a leaver (docs/DEPLOY.md). The
@@ -45,29 +46,33 @@ export function FindPerson() {
 
   return (
     <div className="mx-auto max-w-xl space-y-4 p-4" data-testid="find-person">
-      <h1 className="text-lg font-semibold text-[var(--color-ink)]">Find a person by identifier</h1>
-      <p className="text-sm text-[var(--color-ink-muted)]">
+      <h1 className="text-lg font-semibold text-ink">Find a person by identifier</h1>
+      <p className="text-sm text-ink-muted">
         Type the exact value — an employee code, a phone number, an address. Old values find the person too.
       </p>
       <form className="flex flex-wrap gap-2" onSubmit={onFind}>
-        <select className="fc-input" aria-label="Identifier" value={chosen ?? ''} onChange={(e) => setSystem(e.target.value)}>
+        <Select aria-label="Identifier" value={chosen ?? ''} onChange={(e) => setSystem(e.target.value)}>
           {options.map((s) => (
             <option key={s.row_id} value={s.row_id}>{s.label}</option>
           ))}
-        </select>
-        <input name="value" className="fc-input min-w-0 flex-1" aria-label="Value" placeholder="e.g. RR-10104" required />
-        <button type="submit" className="fc-btn-primary">Find</button>
+        </Select>
+        <TextInput name="value" className="min-w-0 flex-1" aria-label="Value" placeholder="e.g. RR-10104" required />
+        <Button type="submit" variant="primary">Find</Button>
       </form>
-      {error && <p className="text-sm text-[var(--color-danger)]" data-testid="find-person-error">{error}</p>}
-      {found && found.length === 0 && <p className="text-sm text-[var(--color-ink-muted)]" data-testid="find-person-none">Nobody you can see holds that value.</p>}
+      {error && (
+        <div data-testid="find-person-error">
+          <Notice tone="negative">{error}</Notice>
+        </div>
+      )}
+      {found && found.length === 0 && <p className="text-sm text-ink-muted" data-testid="find-person-none">Nobody you can see holds that value.</p>}
       {found && found.length > 0 && (
         <ul className="space-y-1" data-testid="find-person-results">
           {found.map((f) => (
             <li key={`${f.person_id}-${f.assigner}-${String(f.current)}`} className="text-sm">
-              <Link to="/featherbase/admin/$table/$name" params={{ table: 'Person', name: f.resolved_to }} search={{ prefill: undefined }} className="font-medium text-[var(--color-brand)] hover:underline">
+              <Link to="/featherbase/admin/$table/$name" params={{ table: 'Person', name: f.resolved_to }} search={{ prefill: undefined }} className="font-medium text-action hover:underline">
                 <PrincipalName id={f.resolved_to} />
               </Link>
-              <span className="text-xs text-[var(--color-ink-muted)]">
+              <span className="text-sm text-ink-muted">
                 {f.current ? ' · holds it now' : ' · held it before'}
                 {f.assigner ? ` · firm ${f.assigner}` : ''}
                 {f.replaced ? ' · found through a merged-away record' : ''}

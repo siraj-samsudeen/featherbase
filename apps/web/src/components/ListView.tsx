@@ -10,6 +10,7 @@ import { useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
+import { buttonClasses } from './ui'
 
 export type Filter = [string, string, unknown]
 
@@ -413,7 +414,7 @@ export function ListView({
           </Link>
           <ExploreSplitButton table={table} />
           {table === 'Person' && (
-            <Link to="/featherbase/admin/find-person" className="fc-btn" data-testid="open-find-person">
+            <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">
               Find by code
             </Link>
           )}
