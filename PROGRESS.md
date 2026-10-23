@@ -13,11 +13,11 @@ deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-s
 Review round: an expired session's sign-out still closes its sockets (signature checked, expiry
 not); a failed write answers 503 and the app says sign-out did not complete; a socket registering
 just after its sign-out is caught by a short in-memory list; every instance re-checks its sockets
-against `revoked_session` each minute, since sockets are per instance. The same one query also closes sockets of a
-disabled person or of sessions issued before `sessions_ended_at` (#391), which were only checked at
+against `revoked_session` each minute, since sockets are per instance. The same one query also closes sockets whose token
+expired, of a disabled person or of sessions issued before `sessions_ended_at` (#391), which were only checked at
 the upgrade before.
 
-Verification: `apps/server/test/sign-out.test.ts` 12/12 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
+Verification: `apps/server/test/sign-out.test.ts` 13/13 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
 except the four app-package files that fail identically on origin/main locally.
 Next: archive the OpenSpec change after merge.
 

@@ -167,8 +167,8 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
 //   already past its token check is closed the moment it registers;
 // - recheckSessionSockets: every instance asks the database about its open
 //   sockets every SOCKET_RECHECK_MS, so the rest converge. The same query
-//   also ends sockets whose person was disabled or whose sessions were ended
-//   (#391), which were otherwise only checked at the upgrade.
+//   also ends sockets whose token has expired, whose person was disabled or
+//   whose sessions were ended (#391), which were otherwise only checked at the upgrade.
 const RECENTLY_REVOKED_MS = 5 * 60_000
 export const SOCKET_RECHECK_MS = 60_000
 const recentlyRevoked = new Map<string, number>()
@@ -194,7 +194,7 @@ export function closeSessionSockets(sessionId: string): void {
 export async function recheckSessionSockets(): Promise<void> {
   const open = [...clients].filter((c) => c.user.sign_in?.session_id)
   const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
-    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.issued_at ?? 0,
+    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.issued_at ?? 0, expiresAt: c.user.sign_in!.expires_at,
   }]))
   const ended = await endedSessionIds([...sessions.values()])
   for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)

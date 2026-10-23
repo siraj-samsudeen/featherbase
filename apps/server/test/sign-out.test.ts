@@ -178,6 +178,23 @@ describe('#411: sign-out ends that session only', () => {
     })
   })
 
+  test('the periodic re-check closes a socket whose token has expired, though never signed out', async () => {
+    const id = await makePerson({})
+    const now = Math.floor(Date.now() / 1000)
+    // A token that expires in two seconds, and a normal one.
+    const brief = await sign({ sub: id, iat: now, exp: now + 2, jti: 'brief-session' }, process.env.JWT_SECRET ?? 'dev-secret-change-me')
+    const { token } = await issueSession(id)
+    await withRealtime(async (open) => {
+      const a = await open(brief)
+      const b = await open(token)
+      expect(a.socket.readyState).toBe(WebSocket.OPEN)
+      await new Promise((resolve) => setTimeout(resolve, 2_100))
+      await recheckSessionSockets()
+      expect(await a.closed).toBe(4001)
+      expect(b.socket.readyState).toBe(WebSocket.OPEN)
+    })
+  })
+
   test('a session token without a session id is refused (signed in before #411)', async ({ api }) => {
     const id = await makePerson({})
     const now = Math.floor(Date.now() / 1000)

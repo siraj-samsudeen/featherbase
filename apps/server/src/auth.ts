@@ -86,6 +86,8 @@ export interface SignInClaims {
   issued_at: number | null
   /** This session's unique id (`jti`, #411): what sign-out revokes. */
   session_id: string
+  /** Seconds since the epoch when this session's token expires. */
+  expires_at: number
 }
 
 export interface SessionOptions {
@@ -127,8 +129,8 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
   return { token, maxAgeSeconds, iat, jti }
 }
 
-function claimsOf(opts: SessionOptions, iat: number, jti: string): SignInClaims {
-  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, session_id: jti }
+function claimsOf(opts: SessionOptions, iat: number, jti: string, exp: number): SignInClaims {
+  return { expires_at: exp, method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, session_id: jti }
 }
 
 /** The one account a typed username-or-email names for password sign-in and
@@ -180,7 +182,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.jti) },
+    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.jti, session.iat + session.maxAgeSeconds) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -351,7 +353,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown; iat?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
   } catch {
@@ -408,6 +410,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       preview: payload.pv === true,
       issued_at: typeof payload.iat === 'number' ? payload.iat : null,
       session_id: jti,
+      expires_at: Number(payload.exp),
     },
   }
 }
@@ -447,19 +450,22 @@ export async function revokeSession(session: SessionToRevoke): Promise<void> {
 }
 
 /** #411: which of these open sessions have ended since they were checked —
- *  signed out (on any instance), the person disabled, or issued before the
+ *  expired, signed out (on any instance), the person disabled, or issued before the
  *  person's sessions were ended (#391; whole seconds, as resolveToken). One
  *  query for all of them. */
-export interface OpenSession { jti: string; person: string; issuedAt: number }
+export interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
 export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
   if (!sessions.length) return new Set()
   const rows = await sql`
     select s.jti
     from unnest(${sessions.map((x) => x.jti)}::text[], ${sessions.map((x) => x.person)}::text[],
-                ${sessions.map((x) => x.issuedAt)}::bigint[]) as s(jti, person, iat)
+                ${sessions.map((x) => x.issuedAt)}::bigint[], ${sessions.map((x) => x.expiresAt)}::bigint[]) as s(jti, person, iat, exp)
     left join person p on p.row_id = s.person
     left join revoked_session r on r.jti = s.jti
     where r.jti is not null or p.row_id is null or not p.enabled
+       -- statement_timestamp, not now(): now() is frozen at the start of an
+       -- enclosing transaction, which would keep an expired socket open.
+       or s.exp <= extract(epoch from statement_timestamp())
        or (p.sessions_ended_at is not null and s.iat < floor(extract(epoch from p.sessions_ended_at)))`
   return new Set(rows.map((r) => r.jti as string))
 }

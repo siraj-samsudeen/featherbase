@@ -132,8 +132,8 @@ on every instance. Signing out an already-expired session records nothing
 one instance: the instance that handled the sign-out closes that session's
 sockets at once, and every instance re-checks its open sockets against
 `revoked_session` once a minute, so a socket on another instance closes
-within about a minute. The same check closes sockets whose person was disabled or
-whose sessions were ended by the reset above. The person's other sessions are untouched; to end all
+within about a minute. The same check closes sockets whose token has expired, whose
+person was disabled, or whose sessions were ended by the reset above. The person's other sessions are untouched; to end all
 of them, use the reset above. Rows are pruned on each sign-out once the
 session they name has expired.
 
