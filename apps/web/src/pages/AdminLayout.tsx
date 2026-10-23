@@ -25,6 +25,7 @@ import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
+import { ShownName, isOpaqueId } from '../lib/people'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 
 interface SearchHit {
@@ -901,12 +902,12 @@ function SidebarRecentRow({
         onOpen(entry)
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
-      title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
+      title={isOpaqueId(entry.label) ? entry.sub : entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
     >
       <span className="block truncate text-sm text-[var(--color-ink)]">
         {frequent && <span className="mr-1 text-[var(--color-warn)]">★</span>}
-        {entry.label}
+        <ShownName id={entry.label} />
       </span>
       {entry.sub && (
         <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
@@ -941,7 +942,7 @@ function RecentRow({
         {RECENT_KIND_LABEL[entry.kind]}
       </span>
       <span className="min-w-0 flex-1 truncate">
-        {entry.label}
+        <ShownName id={entry.label} />
         {entry.sub && <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{entry.sub}</span>}
       </span>
       <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">{ago(last)}</span>

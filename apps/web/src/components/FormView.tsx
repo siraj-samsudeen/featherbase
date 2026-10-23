@@ -4,7 +4,7 @@ import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
-import { principalLabel, usePrincipalName } from '../lib/people'
+import { principalLabel, usePrincipalName, ShownName, isOpaqueId } from '../lib/people'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -260,6 +260,9 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      // #414: a person's name is cached per id for the heading, breadcrumb
+      // and Recent; a save may have changed it.
+      if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
       if (isNew) {
         navigate({
           to: '/featherbase/admin/$table/$name',
@@ -302,12 +305,12 @@ export function FormView({
           {table}
         </RouterLink>
         <span className="mx-1">/</span>
-        <span className="text-gray-700">{isNew ? 'New' : name}</span>
+        <span className="text-gray-700">{isNew ? 'New' : <ShownName id={name} />}</span>
       </nav>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">
-            {table}: {isNew ? 'New' : name}
+            {table}: {isNew ? 'New' : <ShownName id={name} />}
           </h1>
           <span className="text-xs text-gray-500" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
@@ -372,7 +375,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && (
+          {!isNew && !renaming && !boundSource && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
