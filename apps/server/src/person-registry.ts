@@ -62,6 +62,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
     user_image: code, theme: code, palette: code,
     // Codes, declared "not a person reference" (R3): left alone, never scanned.
+    // 0107 drops both columns; 0101 still runs before it on a dev database.
     employee_code: code, stylehr_username: code,
   },
   service_account: { row_id: id, label: text },
