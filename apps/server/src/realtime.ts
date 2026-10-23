@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { credentialFromCookieHeader, resolveToken, revokedSessionIds, type SessionUser } from './auth'
+import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
@@ -165,8 +165,10 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
 // - closeSessionSockets: the instance that handled the sign-out closes them at
 //   once, and remembers the id for a few minutes so a socket whose upgrade was
 //   already past its token check is closed the moment it registers;
-// - recheckSessionSockets: every instance asks the shared revocation table
-//   about its open sockets every SOCKET_RECHECK_MS, so the rest converge.
+// - recheckSessionSockets: every instance asks the database about its open
+//   sockets every SOCKET_RECHECK_MS, so the rest converge. The same query
+//   also ends sockets whose person was disabled or whose sessions were ended
+//   (#391), which were otherwise only checked at the upgrade.
 const RECENTLY_REVOKED_MS = 5 * 60_000
 export const SOCKET_RECHECK_MS = 60_000
 const recentlyRevoked = new Map<string, number>()
@@ -191,8 +193,11 @@ export function closeSessionSockets(sessionId: string): void {
 
 export async function recheckSessionSockets(): Promise<void> {
   const open = [...clients].filter((c) => c.user.sign_in?.session_id)
-  const revoked = await revokedSessionIds([...new Set(open.map((c) => c.user.sign_in!.session_id))])
-  for (const client of open) if (revoked.has(client.user.sign_in!.session_id)) closeSignedOut(client)
+  const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
+    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.issued_at ?? 0,
+  }]))
+  const ended = await endedSessionIds([...sessions.values()])
+  for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)
 }
 
 // Attach a WebSocket server to the shared HTTP server. Clients connect to

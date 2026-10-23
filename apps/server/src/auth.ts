@@ -446,10 +446,21 @@ export async function revokeSession(session: SessionToRevoke): Promise<void> {
   })
 }
 
-/** #411: which of these session ids have been signed out (on any instance). */
-export async function revokedSessionIds(ids: string[]): Promise<Set<string>> {
-  if (!ids.length) return new Set()
-  const rows = await sql`select jti from revoked_session where jti = any(${ids})`
+/** #411: which of these open sessions have ended since they were checked —
+ *  signed out (on any instance), the person disabled, or issued before the
+ *  person's sessions were ended (#391; whole seconds, as resolveToken). One
+ *  query for all of them. */
+export interface OpenSession { jti: string; person: string; issuedAt: number }
+export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
+  if (!sessions.length) return new Set()
+  const rows = await sql`
+    select s.jti
+    from unnest(${sessions.map((x) => x.jti)}::text[], ${sessions.map((x) => x.person)}::text[],
+                ${sessions.map((x) => x.issuedAt)}::bigint[]) as s(jti, person, iat)
+    left join person p on p.row_id = s.person
+    left join revoked_session r on r.jti = s.jti
+    where r.jti is not null or p.row_id is null or not p.enabled
+       or (p.sessions_ended_at is not null and s.iat < floor(extract(epoch from p.sessions_ended_at)))`
   return new Set(rows.map((r) => r.jti as string))
 }
 

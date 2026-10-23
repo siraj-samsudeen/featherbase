@@ -157,6 +157,27 @@ describe('#411: sign-out ends that session only', () => {
     })
   })
 
+  test('the periodic re-check also closes sockets of a disabled person, and of sessions ended by a reset', async () => {
+    const disabled = await makePerson({})
+    const reset = await makePerson({})
+    const bystander = await makePerson({})
+    const d = await issueSession(disabled)
+    const r = await issueSession(reset)
+    const k = await issueSession(bystander)
+    await withRealtime(async (open) => {
+      const [ds, rs, ks] = [await open(d.token), await open(r.token), await open(k.token)]
+      await sql`update person set enabled = false where row_id = ${disabled}`
+      // The reset (#391) ends sessions issued before it, to the whole second.
+      await sql`update person set sessions_ended_at = to_timestamp(${r.user.sign_in!.issued_at! + 1}) where row_id = ${reset}`
+      await sql`update person set sessions_ended_at = to_timestamp(${k.user.sign_in!.issued_at!}) where row_id = ${bystander}`
+      await recheckSessionSockets()
+      expect(await ds.closed).toBe(4001)
+      expect(await rs.closed).toBe(4001)
+      // Issued in the same second as its reset: survives, as resolveToken has it.
+      expect(ks.socket.readyState).toBe(WebSocket.OPEN)
+    })
+  })
+
   test('a session token without a session id is refused (signed in before #411)', async ({ api }) => {
     const id = await makePerson({})
     const now = Math.floor(Date.now() / 1000)
