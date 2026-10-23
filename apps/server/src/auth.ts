@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sign, verify } from 'hono/jwt'
-import { sql } from './db'
+import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { getSystemSettings } from './settings'
 import { logActivity } from './audit'
@@ -29,19 +29,36 @@ export function verifyPassword(password: string, stored: string): boolean {
 // refused service accounts, but password reset reaches this function directly,
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
-export async function setUserPassword(name: string, password: string) {
+export async function setUserPassword(name: string, password: string, db: Sql | TxSql = sql) {
   // person-rename: only a person has a password. A service account is not a
   // person, so it is refused here whichever route reached this write.
-  const [row] = await sql`select 1 from person where row_id = ${name}`
+  const [row] = await db`select 1 from person where row_id = ${name}`
   if (!row) {
-    const [service] = await sql`select 1 from service_account where row_id = ${name}`
+    const [service] = await db`select 1 from service_account where row_id = ${name}`
     if (service)
       throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
     throw new AppError('NotFoundError', `Person ${name} not found`)
   }
-  await sql`
+  await db`
     update person set password_hash = ${hashPassword(password)}
     where row_id = ${name}`
+}
+
+/** #391: the break-glass reset from an operator shell. The same write as
+ *  every other route (so the same refusals). In one transaction it also ends
+ *  every live session of the person and revokes their outstanding reset
+ *  links; the Activity Log then records the actor `cli`. Access tokens are
+ *  left alone: revoke them separately. */
+export async function setPasswordFromShell(person: string, password: string) {
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as TxSql
+    await setUserPassword(person, password, t)
+    // resetPassword re-checks this cut-off under the same row lock, so a link
+    // already consumed but not yet written cannot land after it either.
+    await t`update person set sessions_ended_at = now() where row_id = ${person}`
+    await t`delete from password_reset where "user" = ${person}`
+  })
+  await logActivity('cli', `password_set for ${person}`)
 }
 
 export type PrincipalKind = 'person' | 'service_account'
@@ -346,6 +363,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // unlinked or moved. Tokens from before the upgrade carry no m/idn.
   const [user] = await sql`
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
+      floor(extract(epoch from u.sessions_ended_at)) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
       i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended
     from person u
@@ -357,6 +375,10 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     !user.enabled ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
+    // #391: a session issued before the person's sessions were ended. Whole
+    // seconds, like `iat` (floor(now)): a sign-in in the same second as the
+    // reset survives — and so would an older one from that same second.
+    (user.sessions_ended_at != null && payload.iat < Number(user.sessions_ended_at)) ||
     // person-resolution D5: a session opened through an identity that has
     // since ended (left, moved, unlinked) ends on its next request.
     (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))

@@ -1,6 +1,6 @@
 # CI: unit/component suites and the Playwright e2e suite, in parallel jobs.
 #
-# Each job gets its own Postgres 17 service container. The service's
+# Each job gets its own Postgres service container (17; the preflight job, 18). The service's
 # POSTGRES_DB/POSTGRES_USER env replaces the role/database bootstrap that
 # init.sh performs on a developer machine (init.sh assumes brew or
 # pg_ctlcluster, neither of which applies here). Everything else the app
@@ -155,6 +155,52 @@ jobs:
           pnpm --filter server migrate
           pnpm --filter server patches
           APP_ACCESS_COMMIT_PROOF=1 pnpm --filter server test test/app-access-commit.test.ts
+
+  # Production runs PostgreSQL 18.6, where the release preflight has checks
+  # that only exist there (publish_generated_columns, #399). The full suite
+  # stays on 17 above; this job runs the release preflight on 18.
+  release-preflight-pg18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
+
+      - name: Migrate and patch database
+        run: |
+          pnpm --filter server migrate
+          pnpm --filter server patches
+
+      - name: Run the release preflight suite on PostgreSQL 18
+        run: pnpm --filter server test test/release-preflight.test.ts
 
   e2e:
     runs-on: ubuntu-latest
