@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import { issueSession, resolveToken, setUserPassword, verifyPassword } from '../src/auth'
+import { issueAccessToken, issueSession, resolveToken, setUserPassword, verifyPassword } from '../src/auth'
 import { createServiceAccount } from '../src/service-accounts'
 
 // PLAT-004: the developer CLI runs real commands against the dev database.
@@ -22,6 +22,7 @@ const SVC = 'svc-cli-test'
 const DUP_USER = 'cli-dup-user@x.com'
 const NAME_USER = 'cli-name-only'
 const PW_USER = 'cli-pw-user'
+const PW_OTHER = 'cli-pw-other'
 const PW_SVC = 'svc-cli-pw-test'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
@@ -44,7 +45,7 @@ function cli(args: string[], input = ''): string {
 // person-rename: ids are minted, so the people are found by email/username
 // and the service account by its label.
 async function cleanup() {
-  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER])} or lower(username) in ${sql([NAME_USER, PW_USER])}`
+  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
   const services = await sql`select row_id from service_account where lower(label) in ${sql([SVC, PW_SVC])}`
   const ids = [...people, ...services].map((r) => String(r.row_id))
   if (ids.length) {
@@ -186,18 +187,22 @@ describe('PLAT-004: developer CLI', () => {
     const OLD = 'old-pw-391'
     const NEW = 'new-pw-391-secret'
 
-    async function makePerson() {
-      const p = await saveDoc('Person', { username: PW_USER, full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
+    async function makePerson(username = PW_USER) {
+      const p = await saveDoc('Person', { username, full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
       const id = String(p.row_id)
       await setUserPassword(id, OLD)
       return id
     }
     async function dropPerson(id: string) {
+      await sql`delete from access_token where person = ${id}`
       await sql`delete from activity_log where "user" = ${id}`
       await sql`delete from person where row_id = ${id}`
     }
     const hashOf = async (id: string) =>
       String((await sql`select password_hash from person where row_id = ${id}`)[0].password_hash)
+    // Session cut-offs are whole seconds (src/auth.ts): step into the next
+    // second so a session issued just before the reset is strictly older.
+    const nextSecond = () => new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 50))
     const attempt = (args: string[], input = '') => {
       try {
         return { ok: cli(args, input) }
@@ -208,13 +213,18 @@ describe('PLAT-004: developer CLI', () => {
 
     it('sets the password from stdin, refuses the old one, ends sessions and logs the actor cli', async () => {
       const id = await makePerson()
+      const other = await makePerson(PW_OTHER)
       try {
         const before = await hashOf(id)
         const { token } = await issueSession(id)
+        const { token: otherToken } = await issueSession(other)
+        const accessToken = (await issueAccessToken(id, 'cli 391', null)).token
         await expect(resolveToken(`Bearer ${token}`)).resolves.toMatchObject({ row_id: id })
+        await nextSecond()
 
         const out = cli(['set-password', id, '--stdin'], `${NEW}\n`)
         expect(out).toContain(`password set for ${id}`)
+        expect(out).toContain(`cli list-tokens ${id}`)
         expect(out).not.toContain(NEW)
 
         const after = await hashOf(id)
@@ -223,10 +233,19 @@ describe('PLAT-004: developer CLI', () => {
         expect(verifyPassword(OLD, after)).toBe(false)
         await expect(resolveToken(`Bearer ${token}`)).rejects.toThrow('Invalid or expired session')
 
+        // Only the sessions issued before the reset, and only this person's:
+        // a sign-in right after it (same second) works, another person's
+        // session is untouched, and access tokens survive by design.
+        const fresh = (await issueSession(id)).token
+        await expect(resolveToken(`Bearer ${fresh}`)).resolves.toMatchObject({ row_id: id })
+        await expect(resolveToken(`Bearer ${otherToken}`)).resolves.toMatchObject({ row_id: other })
+        await expect(resolveToken(`Bearer ${accessToken}`)).resolves.toMatchObject({ row_id: id })
+
         const logs = await sql`select created_by, operation from activity_log where "user" = ${id}`
         expect(logs).toContainEqual({ created_by: 'cli', operation: 'password_set' })
       } finally {
         await dropPerson(id)
+        await dropPerson(other)
       }
     }, 60_000)
 

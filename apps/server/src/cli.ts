@@ -129,6 +129,8 @@ async function cmdSetPassword(argv: string[]) {
   if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
   await setPasswordFromShell(person, password)
   console.log(`password set for ${person}; their sessions are ended`)
+  // Access tokens are a separate credential and survive by design.
+  console.log(`access tokens still work — on a suspected compromise: cli list-tokens ${person}, then cli revoke-token <id>`)
 }
 
 /** Spawn the rehearsal as its own process, so --rehearse can point
