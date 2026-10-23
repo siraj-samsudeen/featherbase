@@ -75,14 +75,14 @@ test('a Store Manager is told they see the whole store as Store Manager', async 
     })
   for (const [table, row] of [
     ['Section Merchandise Map', { store_code: '1501', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' }],
-    ['Store Manager', { store_code: '1501', employee_code: 'RR-10104', full_name: 'Zainulabudeen K S', email: 'sm.atk@jeyarama.com' }],
+    ['Store Manager', { store_code: '1501', employee_code: 'RR-0104', full_name: 'A. Kumar', email: 'sm.atk@jeyarama.com' }],
   ] as const)
     await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table, row }) })
   // person-rename: the account's id is minted; find it by its username.
   const id = await personId(admin, 'test_employee_2')
   const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
   await admin.fetch(`/api/table/Person/${id}`, {
-    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
+    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-0104', updated_at: doc.updated_at }),
   })
 
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
@@ -111,13 +111,13 @@ test('more than three Sections are counted, not listed; a Store Manager reads "W
     })
   await admin.fetch('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-10104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
+    body: JSON.stringify({ table: 'Store Manager', row: { store_code: '1501', employee_code: 'RR-0104', full_name: 'Z', email: 'sm.atk@jeyarama.com' } }),
   })
   // person-rename: the account's id is minted; find it by its username.
   const id = await personId(admin, 'test_employee_2')
   const doc = (await (await admin.fetch(`/api/table/Person/${id}`)).json()) as { updated_at: string }
   await admin.fetch(`/api/table/Person/${id}`, {
-    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-10104', updated_at: doc.updated_at }),
+    method: 'PATCH', body: JSON.stringify({ employee_code: 'RR-0104', updated_at: doc.updated_at }),
   })
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_2', pwd: 'pw-2' }) })
   const { token } = (await login.json()) as { token: string }

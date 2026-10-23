@@ -4,6 +4,9 @@
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-person <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli set-password <person-id> --stdin
+//                                     break-glass reset (#391): the password is read from stdin, never argv;
+//                                     ends the person's sessions and logs the actor `cli`
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
@@ -15,6 +18,8 @@
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
+//   cli settings:set <field> --stdin set one System Settings text field to the whole of stdin, e.g.
+//                                     `cli settings:set privacy_notice --stdin < notice.md`
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -25,8 +30,10 @@ import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
-import { issueAccessToken, listAccessTokens, revokeAccessToken, setUserPassword } from './auth'
+import { issueAccessToken, listAccessTokens, revokeAccessToken, setPasswordFromShell, setUserPassword } from './auth'
+import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
+import { logActivity } from './audit'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
@@ -107,6 +114,26 @@ async function cmdCreatePerson(
   )
   await setUserPassword(String(created.row_id), password)
   console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}`)
+}
+
+// #391: argv lands in shell history and the process list, so a password is
+// taken from stdin only, and a second positional is refused unread.
+async function cmdSetPassword(argv: string[]) {
+  const positional = argv.filter((a) => !a.startsWith('--'))
+  if (positional.length > 1)
+    throw new Error('set-password never takes the password as an argument; pipe it in with --stdin')
+  const [person] = positional
+  if (!person || !argv.includes('--stdin')) throw new Error('usage: cli set-password <person-id> --stdin  (password piped on stdin)')
+  // A terminal would echo what is typed; ask for a pipe instead.
+  if (process.stdin.isTTY) throw new Error('set-password --stdin wants the password piped in, not typed')
+  // One trailing newline is the pipe's (`echo`, a heredoc), not the password's.
+  const password = (await readStdin()).replace(/\r?\n$/, '')
+  // The sign-up and reset minimum (index.ts, password-reset.ts).
+  if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  await setPasswordFromShell(person, password)
+  console.log(`password set for ${person}; their sessions are ended`)
+  // Access tokens are a separate credential and survive by design.
+  console.log(`access tokens still work — on a suspected compromise: cli list-tokens ${person}, then cli revoke-token <id>`)
 }
 
 /** Spawn the rehearsal as its own process, so --rehearse can point
@@ -228,6 +255,27 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+// stdin is text, taken unchanged: typed fields (Check, Int, Choice …) and
+// layout or child-table columns are set in the System Settings form instead.
+const TEXT_TYPES = new Set(['Data', 'Text', 'Long Text'])
+
+// #401: System Settings text fields only, through saveDoc (validation), and
+// recorded in the Activity Log with actor `cli`.
+// The value is the whole of stdin, unchanged, so a reviewed file applies as is.
+async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
+  const [field] = positional
+  if (!field || flags.stdin !== true || positional.length !== 1) throw new Error('usage: cli settings:set <field> --stdin')
+  const meta = await getMeta('System Settings')
+  const column = meta.columns.find((c) => c.column_name === field)
+  if (!column) throw new Error(`System Settings has no field ${field}`)
+  if (!TEXT_TYPES.has(column.column_type))
+    throw new Error(`System Settings field ${field} is ${column.column_type}; settings:set writes text fields only`)
+  const value = await readStdin()
+  await saveDoc('System Settings', { [field]: value }, 'Administrator')
+  await logActivity('cli', `settings_set ${field}`)
+  console.log(`System Settings ${field} set (${value.length} characters)`)
+}
+
 async function cmdConsole() {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
@@ -270,6 +318,9 @@ async function main() {
       break
     case 'create-person':
       await cmdCreatePerson(positional, flags)
+      break
+    case 'set-password':
+      await cmdSetPassword(rest)
       break
     case 'create-service-account':
       await cmdCreateServiceAccount(positional, flags)
@@ -317,6 +368,9 @@ async function main() {
       for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)
       break
     }
+    case 'settings:set':
+      await cmdSettingsSet(positional, flags)
+      break
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -329,7 +383,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|settings:set|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

@@ -142,22 +142,22 @@ verified from a primary source.
 
 ## 4. What Jeyarama's data says (StyleHR production mirror, 22-Oct-2026)
 
-| Measure | Value |
-|---|---|
-| Employee records | 30,559 |
-| Records with a prior code (`existing_emp_code`) | 6,803 |
-| Aadhaar rows / valid 12-digit / distinct numbers | 28,788 / 28,770 / 26,349 |
-| Aadhaar numbers held by 2+ records | **2,159** (4,580 records; max 17 records for one number) |
-| …of which the records differ in worker type | **665** (the agency → company conversion) |
-| Phone numbers shared by 2+ records | 2,774 (6,196 records) — a hint, never proof |
-| Records with phone / official email / date of birth | 27,814 / 657 / 30,526 |
-| Employee codes in the raw feed | mostly bare numbers and letter-prefixed numbers; `RR-` is added downstream in silver; 28 codes collide across firms (silver header) |
+The measured counts are kept out of this public repository; the owner holds
+them. In shape:
 
-Consequences: Aadhaar is the one strong key we have, and it already lives in
-StyleHR (and, in clear, in the warehouse's bronze mirror — flagged). Phone is
-a weak key. Name + date of birth is a fuzzy key for Phase 3. The StyleHR
-surrogate `id` is the only guaranteed-unique record key and should be an
-identifier system of its own.
+- Aadhaar numbers held by two or more employee records are common, and many
+  of those groups differ in worker type (the agency → company conversion).
+- Many records carry a prior code (`existing_emp_code`).
+- Phone numbers are shared by two or more records often enough that a phone is
+  a hint, never proof.
+- Employee codes in the raw feed are mostly bare numbers and letter-prefixed
+  numbers; `RR-` is added downstream in silver; a few codes collide across
+  firms (silver header).
+
+Consequences: Aadhaar is the one strong key we have. Phone is a weak key.
+Name + date of birth is a fuzzy key for Phase 3. The StyleHR surrogate `id` is
+the only guaranteed-unique record key and should be an identifier system of
+its own.
 
 ## Sources
 

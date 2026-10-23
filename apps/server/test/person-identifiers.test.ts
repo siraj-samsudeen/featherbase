@@ -14,8 +14,8 @@ const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 describe('normalising', () => {
   test('codes are upper-cased, addresses lower-cased, Indian mobiles canonical; national IDs need a valid check digit', () => {
-    expect(normaliseValue(' rr-10353 ', 'upper')).toBe('RR-10353')
-    expect(normaliseValue(' Siraj@Jeyarama.COM', 'lower')).toBe('siraj@jeyarama.com')
+    expect(normaliseValue(' rr-0102 ', 'upper')).toBe('RR-0102')
+    expect(normaliseValue(' Owner@Jeyarama.COM', 'lower')).toBe('owner@jeyarama.com')
     for (const typed of ['98470 12345', '+91 98470-12345', '098470 12345', '919847012345'])
       expect(normaliseValue(typed, 'indian-mobile')).toBe('+919847012345')
     expect(() => normaliseValue('12345', 'indian-mobile')).toThrow(/10 digits/)
@@ -39,14 +39,14 @@ describe('identifiers with history', () => {
   test('an agency code that became a company code: both kept, each with its period; two live employments are allowed', async () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'A. Kumar' })
-    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '7', value: '21654', valid_from: '2024-06-01', valid_to: '2026-03-03', worker_type: 'Agency' }, 'sync', ROSTER)
-    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '12', value: 'rr-10353', valid_from: '2026-03-03', worker_type: 'Regular' }, 'sync', ROSTER)
-    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '9', value: 'J11350', valid_from: '2026-04-01' }, 'sync', ROSTER)
+    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '7', value: '30654', valid_from: '2024-06-01', valid_to: '2026-03-03', worker_type: 'Agency' }, 'sync', ROSTER)
+    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '12', value: 'rr-0102', valid_from: '2026-03-03', worker_type: 'Regular' }, 'sync', ROSTER)
+    await addIdentifier(p, { system: 'stylehr-employee-code', assigner: '9', value: 'J0109', valid_from: '2026-04-01' }, 'sync', ROSTER)
     const rows = await listIdentifiers(p, 'Administrator')
     expect(rows.filter((r) => r.system === 'stylehr-employee-code').map((r) => [r.value, r.assigner, r.valid_from, r.valid_to, r.current, r.worker_type])).toEqual([
-      ['J11350', '9', '2026-04-01', null, true, null],
-      ['RR-10353', '12', '2026-03-03', null, true, 'Regular'],
-      ['21654', '7', '2024-06-01', '2026-03-03', false, 'Agency'],
+      ['J0109', '9', '2026-04-01', null, true, null],
+      ['RR-0102', '12', '2026-03-03', null, true, 'Regular'],
+      ['30654', '7', '2024-06-01', '2026-03-03', false, 'Agency'],
     ])
   })
 
@@ -100,8 +100,8 @@ describe('identifiers with history', () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Rec' })
     const other = await makePerson({ full_name: 'Other' })
-    const rec = await addIdentifier(p, { system: 'stylehr-employee-id', value: '48213' }, 'sync', ROSTER)
-    const theirs = await addIdentifier(other, { system: 'stylehr-employee-id', value: '31177' }, 'sync', ROSTER)
+    const rec = await addIdentifier(p, { system: 'stylehr-employee-id', value: '900001' }, 'sync', ROSTER)
+    const theirs = await addIdentifier(other, { system: 'stylehr-employee-id', value: '900002' }, 'sync', ROSTER)
     await expect(addIdentifier(p, { system: 'stylehr-employee-code', value: 'RR-1', record_identifier_id: rec.identifier.id }, 'sync', ROSTER)).resolves.toMatchObject({
       identifier: { record_identifier_id: rec.identifier.id },
     })
@@ -155,7 +155,7 @@ describe('who sees what', () => {
     await applySeedPack('jeyarama')
     const p = await makePerson({ full_name: 'Shown', email: 'shown@x.test' })
     await addIdentifier(p, { system: 'phone', value: '9847012345' }, 'Administrator')
-    await addIdentifier(p, { system: 'stylehr-employee-id', value: '48213' }, 'sync', ROSTER)
+    await addIdentifier(p, { system: 'stylehr-employee-id', value: '900001' }, 'sync', ROSTER)
     await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader' } })
     await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Reader', can_read: true } })
     const reader = await createUser({ email: 'reader@x.test', roles: ['Person Reader'] })
@@ -167,8 +167,8 @@ describe('who sees what', () => {
     const dqm = await createUser({ email: 'dqm@x.test', roles: ['Person Reader', 'Data Quality Manager'] })
     expect((await dqm.get<{ identifiers: { system: string }[] }>(`/api/people/${p}/identifiers`)).identifiers.map((i) => i.system).sort()).toEqual(['email', 'phone'])
     // Hidden values: searchable by exact value, by restricted readers only.
-    expect((await admin.get<{ people: { person_id: string }[] }>('/api/identifiers?system=stylehr-employee-id&value=48213')).people.map((x) => x.person_id)).toEqual([p])
-    await expect(reader.get('/api/identifiers?system=stylehr-employee-id&value=48213')).rejects.toMatchObject({ status: 403 })
+    expect((await admin.get<{ people: { person_id: string }[] }>('/api/identifiers?system=stylehr-employee-id&value=900001')).people.map((x) => x.person_id)).toEqual([p])
+    await expect(reader.get('/api/identifiers?system=stylehr-employee-id&value=900001')).rejects.toMatchObject({ status: 403 })
     expect((await reader.get<{ people: { person_id: string }[] }>('/api/identifiers?system=email&value=SHOWN@x.test')).people.map((x) => x.person_id)).toEqual([p])
   })
 })

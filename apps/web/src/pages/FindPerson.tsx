@@ -56,7 +56,7 @@ export function FindPerson() {
             <option key={s.row_id} value={s.row_id}>{s.label}</option>
           ))}
         </Select>
-        <TextInput name="value" className="min-w-0 flex-1" aria-label="Value" placeholder="e.g. RR-10104" required />
+        <TextInput name="value" className="min-w-0 flex-1" aria-label="Value" placeholder="e.g. RR-0104" required />
         <Button type="submit" variant="primary">Find</Button>
       </form>
       {error && (

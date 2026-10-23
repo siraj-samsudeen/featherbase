@@ -389,7 +389,7 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     const tl = await createUser({ email: 'tl.test@example.com' })
-    await link(tl.user!, 'ANISHA_1716708795')
+    await link(tl.user!, 'DEVI_1000000001')
     const calls = provider(() => Response.json({ error: 'would have refused' }))
 
     for (const [usr, pwd] of [[tl.user!, ''], [` ${tl.user!.toUpperCase()} `, 'anything at all']]) {
@@ -404,8 +404,8 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     const tl = await createUser({ email: 'tl.login@example.com' })
-    await link(tl.user!, 'ANISHA_1716708795')
-    expect((await signIn(api, 'ANISHA_1716708795', '')).status).toBe(401)
+    await link(tl.user!, 'DEVI_1000000001')
+    expect((await signIn(api, 'DEVI_1000000001', '')).status).toBe(401)
   })
 
   test('on: an account with no link, a disabled one and a System Manager are still refused', async ({ api, admin, createUser }) => {
