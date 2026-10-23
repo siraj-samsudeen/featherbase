@@ -121,6 +121,61 @@ describe('release preflight', () => {
   })
 })
 
+// #437: the access configuration a release must never ship with.
+describe('release preflight: access configuration', () => {
+  const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'
+  const SIGNUP_OK = 'password sign-in does not create new people here'
+  const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
+
+  async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
+    await sql`insert into permission ${sql({ row_id: `p437-${role}-${refTable}`.replaceAll(' ', '-'), ref_table: refTable, role, tier: 'basic', created_by: 'Administrator', updated_by: 'Administrator', ...flags })}`
+  }
+
+  test('a clean instance passes all three and says so', async () => {
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toEqual(expect.arrayContaining([ACCESS_OK, SIGNUP_OK, DOMAINS_OK]))
+  })
+
+  test('(a) All reading Person refuses, naming the row', async () => {
+    await grant('All', 'Person', { can_read: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Person" \(read\)/)
+  })
+
+  test('(a) Guest writing a security Table refuses', async () => {
+    await grant('Guest', 'Data Scope', { can_create: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) a grant with every action off, or to another role, passes', async () => {
+    await grant('All', 'Share', {})
+    await grant('Sales Target Viewer', 'Person', { can_read: true })
+    expect(await preflightRelease({ environment: 'test' })).toContain(ACCESS_OK)
+  })
+
+  test('(b) password sign-up outside development or test refuses; in test it passes', async () => {
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    await sql`update sign_in_method set new_person = 'create' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/password sign-in method creates a new person/)
+    await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/password sign-in method creates a new person/)
+    expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
+    expect(await preflightRelease({ environment: 'development' })).toContain(SIGNUP_OK)
+  })
+
+  test('(c) any-address or consumer domains while creating people refuse', async () => {
+    await sql`update sign_in_method set new_person = 'create_if_email_domain_allowed', allowed_email_domains = 'example.com, *' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/"password".*"\*"/)
+    await sql`update sign_in_method set allowed_email_domains = 'example.com,Gmail.com' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/"password".*"gmail\.com"/)
+  })
+
+  test('(c) a company domain while creating, or a consumer domain while refusing, passes', async () => {
+    await sql`update sign_in_method set new_person = 'create_if_email_domain_allowed', allowed_email_domains = 'example.com' where kind = 'password'`
+    expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+    await sql`update sign_in_method set new_person = 'refuse', allowed_email_domains = 'gmail.com,*' where kind = 'password'`
+    expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+  })
+})
+
 // End to end: the real release command against a fresh database labelled
 // production, with test mode set. It must stop before creating anything.
 const server = resolve(dirname(fileURLToPath(import.meta.url)), '..')

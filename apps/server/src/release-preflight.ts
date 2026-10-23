@@ -9,6 +9,8 @@ import { config } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { assertTestModeAllowed, delegatedTestMode, TEST_MODE_ENVIRONMENTS } from './delegated-login'
 import { pendingMigrations } from './migrate'
+import { SECURITY_TABLES } from './security-tables'
+import { platformRelation } from './platform-schema'
 
 export interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -53,6 +55,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
     passed.push('btree_gist available for 0102')
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
+  passed.push(...(await assertAccessConfiguration(environment)))
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -103,4 +106,72 @@ async function assertPublicationsPublishGeneratedColumns(pending: string[]): Pro
     )
   }
   return 'no publication blocks updates on a table with stored generated columns'
+}
+
+/** Addresses anyone can register: admitting them creates a person for any
+ *  member of the public. */
+const CONSUMER_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'yahoo.com', 'ymail.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com',
+  'gmx.com', 'mail.com', 'zoho.com', 'yandex.com', 'rediffmail.com',
+])
+const SIGN_UP_ENVIRONMENTS = ['development', 'test']
+const ACTION_FLAGS = ['read', 'write', 'create', 'delete', 'submit', 'cancel', 'amend'] as const
+
+async function columnsOf(name: string): Promise<Set<string> | null> {
+  const relation = platformRelation(name)
+  const [rel] = await sql`select to_regclass(${relation})::oid as oid`
+  if (!rel?.oid) return null
+  const cols = await sql`
+    select attname from pg_attribute
+    where attrelid = ${rel.oid} and attnum > 0 and not attisdropped`
+  return new Set(cols.map((c) => String(c.attname)))
+}
+
+/** 5. #437: access configuration a release must never carry.
+ *  (a) the implicit roles All (every signed-in principal) and Guest never
+ *      hold a grant on Person or on an access-control Table;
+ *  (b) password sign-in creates new people only in development or test;
+ *  (c) a method that creates people never admits any address (`*`) or a
+ *      consumer email domain.
+ *  A database before the tables or columns exist has nothing to check. */
+async function assertAccessConfiguration(environment: string): Promise<string[]> {
+  const problems: string[] = []
+  const permission = await columnsOf('permission')
+  if (permission) {
+    const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
+    const rows = await sql`
+      select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
+      from permission
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', ...SECURITY_TABLES])}
+      order by role, ref_table, row_id`
+    for (const r of rows) {
+      const granted = flags.filter((a) => r[`can_${a}`] === true)
+      if (granted.length)
+        problems.push(`Permission ${String(r.row_id)} grants role "${String(r.role)}" on "${String(r.ref_table)}" (${granted.join(', ')}): give these Tables to named roles only, and delete the row`)
+    }
+  }
+  const methods = await columnsOf('sign_in_method')
+  if (methods?.has('new_person')) {
+    const hasDomains = methods.has('allowed_email_domains')
+    const rows = await sql`
+      select row_id, kind, new_person, ${hasDomains ? sql`allowed_email_domains` : sql`null::text`} as domains
+      from sign_in_method order by row_id`
+    for (const r of rows) {
+      const creates = String(r.new_person ?? 'refuse') !== 'refuse'
+      if (String(r.kind) === 'password' && String(r.new_person) === 'create' && !SIGN_UP_ENVIRONMENTS.includes(environment))
+        problems.push(`the password sign-in method creates a new person for anyone who signs up, on a "${environment}" server: set its new_person to refuse`)
+      if (!creates) continue
+      const open = String(r.domains ?? '').split(',').map((d) => d.trim().toLowerCase())
+        .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
+      for (const d of open)
+        problems.push(`sign-in method "${String(r.row_id)}" creates new people from "${d}": list company domains only, or set its new_person to refuse`)
+    }
+  }
+  if (problems.length) throw new Error(`Access configuration is unsafe to release:\n  ${problems.join('\n  ')}`)
+  return [
+    'no Permission row grants All or Guest on Person or an access-control Table',
+    'password sign-in does not create new people here',
+    'no sign-in method creates people from any address or a consumer email domain',
+  ]
 }

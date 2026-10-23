@@ -16,6 +16,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workfl
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -365,6 +366,48 @@ function assertRequiredChildren(
     throw new AppError('ValidationError', `Invalid values for ${meta.name}`, errors)
 }
 
+// #437: the columns of an ordinary Table that grant access — a Sub-table of
+// a security Table (Person.roles -> Has Role) and a Person's enabled flag —
+// change only for a System Manager, whatever the writer's grant on the
+// parent. Unchanged values ride along, so a form that echoes them back still
+// saves. `existing` is null on insert, where any access-granting child row is
+// a change. `trusted` is the save's skipPermissions flag, which never counts
+// as privilege here.
+async function assertAccessColumnsUnchanged(
+  tx: typeof sql,
+  meta: TableMeta,
+  values: RowValues,
+  existing: RowValues | null,
+  user: string,
+  trusted: boolean,
+): Promise<void> {
+  const changed: string[] = []
+  for (const input of pickChildInputs(meta, values)) {
+    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (existing === null) {
+      if (input.rows.length) changed.push(input.columnName)
+      continue
+    }
+    const childMeta = await getMeta(input.childTable)
+    const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
+    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (r[f.column_name] == null ? '' : String(r[f.column_name]))))
+    const current = await tx`
+      select * from ${tx(await tableRelation(childMeta.name))}
+      where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
+        and parentfield = ${input.columnName}`
+    const before = current.map((r) => key(r as RowValues)).sort()
+    const after = input.rows.map((r) => key(applyDefaults(childMeta, { ...r }))).sort()
+    if (JSON.stringify(before) !== JSON.stringify(after)) changed.push(input.columnName)
+  }
+  if (meta.name === 'Person' && existing !== null && 'enabled' in values) {
+    const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true'
+    if (truthy(values.enabled) !== truthy(existing.enabled)) changed.push('enabled')
+  }
+  if (!changed.length) return
+  if (!trusted && (await isPrivileged(user))) return
+  throw securityRefusal(`a ${meta.name}'s ${changed.join(' or ')}`)
+}
+
 async function saveChildren(
   tx: typeof sql,
   parentMeta: TableMeta,
@@ -535,6 +578,7 @@ async function saveDocImpl(
       'ValidationError',
       `${table} rows are managed via /api/table`,
     )
+  await assertSecurityWriter(table, user, { trusted: opts.skipPermissions })
   if (isBound(meta)) return saveBoundDoc(meta, values, user, mode)
   if (meta.kind === 'settings') return saveSingle(table, values, user)
   if (meta.kind === 'sub_table')
@@ -549,7 +593,7 @@ async function saveDocImpl(
     if (exists) {
       if (mode === 'insert')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
-      return updateDoc(meta, String(values[ROW_KEY]), values, user)
+      return updateDoc(meta, String(values[ROW_KEY]), values, user, Boolean(opts.skipPermissions))
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
@@ -571,6 +615,7 @@ async function saveDocImpl(
     'insert',
   )
   assertRequiredChildren(meta, values, 'insert')
+  await assertAccessColumnsUnchanged(sql, meta, values, null, user, Boolean(opts.skipPermissions))
   // SLA: stamp response/resolution deadlines from the active SLA (if any)
   // before the row is written, so they are part of the insert itself.
   await applySla(meta, fieldValues)
@@ -800,6 +845,7 @@ async function updateDoc(
   name: string,
   values: RowValues,
   user: string,
+  trusted = false,
 ): Promise<RowValues> {
   const table = await tableRelation(meta.name)
   if (values.updated_at == null)
@@ -853,6 +899,11 @@ async function updateDoc(
         await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
         await assertUserPermissions(user, meta, existing as RowValues)
       }
+      // #437: neither a role grant nor a write-share opens access columns.
+      // Scalars as they will be written (tier-stripped), Sub-tables as sent.
+      const accessCheck: RowValues = { ...fieldValues }
+      for (const ci of pickChildInputs(meta, values)) accessCheck[ci.columnName] = ci.rows
+      await assertAccessColumnsUnchanged(stx, meta, accessCheck, existing as RowValues, user, trusted)
       const dbModified = (existing.updated_at as Date).getTime()
       const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
@@ -972,6 +1023,7 @@ async function setStatus(
   user: string,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const tbl = await tableRelation(table)
@@ -1043,6 +1095,7 @@ async function amendDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const source = await getDoc(table, name, user)
@@ -1085,6 +1138,7 @@ async function deleteDocImpl(
   opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
+  await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
@@ -1243,6 +1297,7 @@ async function renameDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   // person-identities: a User's id is the permanent person id (the warehouse
@@ -1396,6 +1451,7 @@ async function saveSingleImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')
   const writeTiers = await permittedTiers(user, table, 'write')
