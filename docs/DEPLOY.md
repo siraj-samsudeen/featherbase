@@ -82,6 +82,47 @@ Migration 0006 remains immutable history; the migration runner explicitly
 supersedes its unsafe password action on fresh chains. Migration 0083 and
 deliberate seed use the same null-only policy.
 
+### Locked out (#391)
+
+When no System Manager can sign in, reset a person's password from an
+operator shell — shell access is the authorization. The password is read from
+**stdin only** (an argument is refused: argv lands in shell history and the
+process list), must be at least 6 characters, and is never printed. It ends
+every live session of that person (sessions issued before the reset, to the
+second; access tokens are not sessions — see below), revokes every reset
+link emailed to them before it, and writes an Activity Log entry (actor
+`cli`, operation `password_set for <person-id>`). Service accounts are
+refused; they use tokens.
+
+```sh
+# Prompts without echo locally, then pipes the value through the SSH session.
+read -rs PW && printf '%s\n' "$PW" | \
+  railway ssh -p <project> -e <env> -s jeyarama-featherbase -- \
+  pnpm --filter server cli set-password Administrator --stdin; unset PW
+#   → password set for Administrator; their sessions are ended
+#   → access tokens still work — on a suspected compromise: cli list-tokens Administrator, then cli revoke-token <id>
+```
+
+The CLI refuses a terminal on stdin by design (a typed password would echo).
+If `railway ssh` allocates a TTY for the remote command, or does not forward
+stdin, open an interactive shell and pipe it there instead — the password
+never lands in shell history or on a command line:
+
+```sh
+railway ssh -p <project> -e <env> -s jeyarama-featherbase
+# then, on the remote shell:
+read -rs PW; printf '%s\n' "$PW" | pnpm --filter server cli set-password Administrator --stdin; unset PW
+```
+
+`<person-id>` is the Person's id (`Administrator`, or a `psn_…`). Sign in
+with the new password, then rotate it through the password UI if it passed
+through anything you do not trust.
+
+**Access tokens survive the reset by design** — they are a separate
+credential. If the account may be compromised, list and revoke them too:
+`pnpm --filter server cli list-tokens <person-id>`, then
+`pnpm --filter server cli revoke-token <token-id>`.
+
 ## Public-route abuse limits
 
 Password login (including delegated sign-in), Google OAuth initiation/callback,
