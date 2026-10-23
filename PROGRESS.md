@@ -1,5 +1,16 @@
 # Progress Log
 
+## 2026-10-23 — An import check names the refused column (#416)
+
+The import wizard's Check showed a bad row only as "Invalid values for <Table>". The server's dry run (and real run)
+already returns the per-column reasons as `fields`; `lib/import-run.ts` dropped them. `failureMessage` appends them:
+`row 4: Invalid values for Section Ownership — effective_from: must be a YYYY-MM-DD date`.
+
+**Verified:** `apps/web/test/import-failure-message.test.ts` (red first: no such export), `import-upsert-split`;
+browser check of a Section Ownership CSV whose date cell is `23-10-2026` shows the column and reason. Real Excel date
+cells import on the right day (the #387 fix holds). Open question left on the issue: should a Date column also accept
+the app's own display form `23-Oct-2026`?
+
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
 Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
