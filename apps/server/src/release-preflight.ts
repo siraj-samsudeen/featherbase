@@ -1,7 +1,7 @@
 // The release's preflight (person-resolution review A-M1): every refusal that
 // does not depend on the data runs BEFORE the first migration, so a release
 // that would stop part-way stops before it starts. The data-dependent checks
-// inside 0101 and 0102 are covered differently: those two (with 0101a) run as
+// inside 0100–0102 are covered differently: 0100, 0101, 0101a and 0102 run as
 // one transaction (migrate.ts ONE_TRANSACTION), so any of them failing leaves
 // the database as it was.
 import { sql } from './db'
@@ -52,6 +52,38 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
       throw new Error('0102 creates the btree_gist extension, but this role may not create extensions in this database. Create it as the owner first: create extension btree_gist;')
     passed.push('btree_gist available for 0102')
   }
+  passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
+}
+
+/** 4. On PostgreSQL 18, a published table whose replica identity is FULL and
+ *  that holds stored generated columns refuses EVERY update (42P10 "Replica
+ *  identity must not contain unpublished generated columns") unless the
+ *  publication publishes them. 0101 gives has_role two such columns, and the
+ *  warehouse CDC publishes has_role (#399), so refuse before migrating. */
+async function assertPublicationsPublishGeneratedColumns(pending: string[]): Promise<string> {
+  const [{ version }] = await sql`select current_setting('server_version_num')::int as version`
+  if (version < 180000) return 'publication generated-column check skipped (PostgreSQL before 18)'
+  const gainsGenerated = pending.includes('0101_person_rename.ts')
+  const blocking = await sql`
+    select pt.pubname, pt.schemaname, pt.tablename
+    from pg_publication_tables pt
+    join pg_publication p on p.pubname = pt.pubname
+    join pg_namespace n on n.nspname = pt.schemaname
+    join pg_class c on c.relnamespace = n.oid and c.relname = pt.tablename
+    where p.pubgencols <> 's' and c.relreplident = 'f'
+      and (exists (select 1 from pg_attribute a
+                   where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped and a.attgenerated = 's')
+           or (${gainsGenerated} and pt.schemaname = 'featherbase' and pt.tablename = 'has_role'))
+    order by 1, 2, 3`
+  if (blocking.length) {
+    const pubs = [...new Set(blocking.map((b) => String(b.pubname)))]
+    throw new Error(
+      `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${pubs
+        .map((name) => `  ALTER PUBLICATION ${/^[a-z_][a-z0-9_]*$/.test(name) ? name : `"${name.replaceAll('"', '""')}"`} SET (publish_generated_columns = stored);`)
+        .join('\n')}`,
+    )
+  }
+  return 'no publication blocks updates on a table with stored generated columns'
 }

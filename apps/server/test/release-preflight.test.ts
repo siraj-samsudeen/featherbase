@@ -1,6 +1,6 @@
-// The person release cannot half-apply (review A-M1): the refusals that do not
-// need the data run before the first migration, and 0101, 0101a and 0102 run
-// as one transaction.
+// The person release cannot half-apply (review A-M1, #399): the refusals that
+// do not need the data run before the first migration, and 0100, 0101, 0101a
+// and 0102 run as one transaction.
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
@@ -20,8 +20,7 @@ describe('migration batches', () => {
     expect(migrationBatches(['0099_delegated_login_settings.ts', '0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts', '0103_later.sql']))
       .toEqual([
         ['0099_delegated_login_settings.ts'],
-        ['0100_person_identities.ts'],
-        ['0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
+        ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
         ['0103_later.sql'],
       ])
     // A database that already ran 0101 converges with the rest of the group.
@@ -43,6 +42,24 @@ describe('release preflight', () => {
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
     await sql`update internal_metadata set value = 'production' where key = 'environment'`
     await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/this database is labelled "production"/)
+  })
+
+  // PostgreSQL 18 refuses every UPDATE on a published table whose replica
+  // identity is FULL and holds stored generated columns the publication does
+  // not publish (42P10). has_role carries two since 0101 (#399).
+  test('a publication that would block has_role updates refuses, naming the fix', async () => {
+    await sql.unsafe(`alter table featherbase.has_role replica identity full`)
+    await sql.unsafe(`create publication fb_test_blocking_pub for table featherbase.has_role with (publish_generated_columns = none)`)
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(
+      /publication "fb_test_blocking_pub".*featherbase\.has_role[\s\S]*ALTER PUBLICATION fb_test_blocking_pub SET \(publish_generated_columns = stored\)/,
+    )
+  })
+
+  test('a publication that publishes stored generated columns passes', async () => {
+    await sql.unsafe(`alter table featherbase.has_role replica identity full`)
+    await sql.unsafe(`create publication fb_test_stored_pub for table featherbase.has_role with (publish_generated_columns = stored)`)
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toContain('no publication blocks updates on a table with stored generated columns')
   })
 
   test('where test mode is allowed, every check passes and says so', async () => {

@@ -566,7 +566,7 @@ A. **Rehearse on a fresh snapshot, with the target's real variables.**
    `ALLOW_MOCK_OAUTH` and `ADMIN_PASSWORD`-set-or-not exactly as the target
    will have them, with only `DATABASE_URL` pointing at the copy; then:
    1. `pnpm --filter server cli boot-check` — "the server will start" plus
-      four `release preflight` lines;
+      five `release preflight` lines;
    2. `pnpm --filter server cli people:plan --rehearse <local-dsn> --map --columns --check-sign-in <a trial code>`
       — every pending migration in one rolled-back transaction: the id map,
       every text column with its class, the scan, 0102's parity, the
@@ -601,8 +601,9 @@ promoted to production (below).
    `railway ssh -p <project> -e dev -s jeyarama-featherbase -- pnpm --filter server cli boot-check`.
    Expect "the server will start", then
    `database environment matches "staging"`, `test mode on, allowed here`,
-   `btree_gist available for 0102`, and the pending migrations (0101, 0101a,
-   0102). Any error: stop here; nothing has changed.
+   `btree_gist available for 0102`, `no publication blocks updates on a
+   table with stored generated columns`, and the pending migrations (0101,
+   0101a, 0102). Any error: stop here; nothing has changed.
 4. **Deploy.** The release logs its `preflight:` lines, then
    `applied 0101_person_rename.ts (one transaction: 0101…, 0101a…, 0102…)`.
    Read: `scan: no old id survives in any registered column`;
@@ -649,8 +650,8 @@ promoted to production (below).
 
 - **Steps 3–4 refuse or fail** (boot-check error, preflight refusal, a failed
   migration): nothing has changed — the preflight runs before any migration,
-  and 0101–0102 are one transaction. Confirm `select max(name) from migration`
-  is still `0100_person_identities.ts`, roll the service back to its previous
+  and 0100–0102 are one transaction. Confirm `select max(name) from migration`
+  is still `0100_person_identities.ts` (dev's value; dev applied 0100 earlier), roll the service back to its previous
   deployment, and fix before trying again.
 - **Released, but wrong** (counts disagree, sign-in fails): take the service
   off the air, restore the step-2 snapshot —
@@ -681,37 +682,55 @@ denied. On `has_role`, `person` / `service_account` are **stored generated
 columns, which logical replication does not send**. Warehouse readers use
 `parent` + `parenttype`.
 
-1. **Rehearse** the CDC switch against a restored prod snapshot with 0101 and
-   0102 applied (#4339): the worker freezes `access."user"`, baselines
+1. **Rehearse** the CDC switch against a restored prod snapshot with 0100–0102
+   applied (#4339): the worker freezes `access."user"`, baselines
    `access.person`, and reconciles row counts.
 2. **Pause** `jeyarama-cdc-featherbase`. Write down its current schedule
    first, then set it to `0 5 29 2 *` (it fires only on 29 February), and
    confirm no run is in progress.
-3. **Snapshot prod** (`pg_dump -Fc --no-owner`); this is the rollback point.
+3. **Publication check.** The CDC publication covers `has_role`, which has
+   REPLICA IDENTITY FULL; 0101 gives it stored generated columns, and on
+   PostgreSQL 18 every UPDATE on it then fails (`42P10 … Replica identity must
+   not contain unpublished generated columns`) unless the publication
+   publishes them. Check `select pubname, pubgencols from pg_publication`:
+   every publication covering `has_role` must show `s`. If not, run
+   `ALTER PUBLICATION <name> SET (publish_generated_columns = stored)` (the
+   data-warehouse CDC change sets it for `featherbase_cdc_pub`). The release
+   preflight refuses otherwise, naming the publication and this command.
+4. **Snapshot prod** (`pg_dump -Fc --no-owner`); this is the rollback point.
    Then run `cli boot-check` in the prod service's environment: `environment
-   production; test mode off`, and the preflight lines.
-4. **Promote:** merge to `production` (owner-approved); the release runs the
-   preflight, then 0101 + 0101a + 0102 in one transaction.
-5. **Counts** on prod, as in dev step 5 (no StyleHR rows: `person_identifier`
+   production; test mode off`, and the preflight lines, including `no
+   publication blocks updates on a table with stored generated columns` and
+   the pending migrations 0100, 0101, 0101a, 0102.
+5. **Promote:** merge to `production` (owner-approved); the release runs the
+   preflight, then 0100 + 0101 + 0101a + 0102 in **one** transaction (prod is
+   at 0099 before the release, so 0100 is part of it, #399).
+6. **Counts** on prod, as in dev step 5 (no StyleHR rows: `person_identifier`
    holds only `email` rows), and `cli people:plan` on the live database
    reports no old id.
-6. **Merge data-warehouse #4339** — only now — then run its `plan` and read
+7. **Merge data-warehouse #4339** — only now — then run its `plan` and read
    it.
-7. **Resume:** put back the schedule written down in step 2 and let one tick
+8. **Resume:** put back the schedule written down in step 2 and let one tick
    run.
-8. **Verify:** `access.person` is baselined with as many rows as `select
+9. **Verify:** `access.person` is baselined with as many rows as `select
    count(*) from person`; `access.identifier_system` is present;
    `person_identifier` and the denied tables are absent.
-9. **Resnapshot** `data_scope`, `share` and `has_role`, so their rows carry
-   the re-keyed ids.
-10. **Drop the frozen `access."user"`** once the warehouse reads `access.person`
+10. **Resnapshot** `data_scope`, `share` and `has_role`, so their rows carry
+    the re-keyed ids.
+11. **Drop the frozen `access."user"`** once the warehouse reads `access.person`
     (repoint any model still reading `access.user`, `has_role.person` or
     `data_scope.user`; none was found on 22-Oct-2026).
 
-**If something goes wrong in production:** before step 6 (the registration
-is unchanged), restore the step-3 snapshot, roll the service back, put back
+**If something goes wrong in production:** prod's ledger ends at
+`0099_delegated_login_settings.ts` before the release, not 0100. If the
+preflight refuses or any of 0100–0102 fails, the whole group rolls back:
+confirm `select max(name) from migration` is still
+`0099_delegated_login_settings.ts` and roll the service back; there is
+nothing to restore. If the release committed but is wrong: before step 7 (the
+registration is unchanged), restore the step-4 snapshot (`max(name)` is then
+`0099_delegated_login_settings.ts` again), roll the service back, put back
 the schedule and let the worker resume on the old registration. After
-step 6, restore the snapshot **and** revert #4339's registration change
+step 7, restore the snapshot **and** revert #4339's registration change
 before the worker runs again; then run one tick and check `access."user"` is
 current again. If only a CDC tick fails, the release stays: pause the worker
 again, fix the registration, and re-run the tick.
