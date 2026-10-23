@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { DISPLAY_DEFAULTS } from 'shared'
 import { api } from './api'
 import { fmtCurrency, fmtDate, fmtNumber } from './inr'
 
@@ -15,13 +16,8 @@ export interface Settings {
   float_precision: number
 }
 
-export const DEFAULT_SETTINGS: Settings = {
-  app_name: 'Featherbase',
-  date_format: 'dd-mon-yyyy',
-  currency: 'INR',
-  currency_precision: 2,
-  float_precision: 2,
-}
+// The same defaults /api/settings falls back to (packages/shared display-settings).
+export const DEFAULT_SETTINGS: Settings = { ...DISPLAY_DEFAULTS }
 
 export function useSettings() {
   const q = useQuery({

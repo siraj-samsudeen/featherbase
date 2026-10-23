@@ -1,4 +1,5 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export { DISPLAY_DEFAULTS } from './display-settings'
 export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, appHref } from './app-routes'
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, type SignInMethodKind, type NewPersonRule } from './sign-in'

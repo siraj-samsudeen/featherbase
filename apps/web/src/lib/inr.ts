@@ -69,9 +69,12 @@ export function fmtCount(x: number | null | undefined, decimals = 0): string {
   return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
-/** A value exactly as stored: Indian grouping and every decimal it has, never rounded (ADR 750 evidence rule). */
+/**
+ * A value exactly as stored: Indian grouping and every significant digit it has,
+ * never rounded, however small (1e-21 stays 0.000000000000000000001). ADR 750 evidence rule.
+ */
 export function fmtAsStored(x: number): string {
-  return (x || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 20 })
+  return (x || 0).toLocaleString('en-IN', { maximumSignificantDigits: 21 })
 }
 
 /**

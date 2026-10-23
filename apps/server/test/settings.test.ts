@@ -1,4 +1,5 @@
 import { describe, expect } from 'vitest'
+import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from '../src/db'
 import { getSystemSettings } from '../src/settings'
 import { up as indianDisplayDefaults } from '../migrations/0103_indian_display_defaults'
@@ -25,6 +26,9 @@ describe('SET-004: system settings', () => {
     expect(s.currency_precision).toBe(2)
     expect(s.float_precision).toBe(2)
     expect(s.session_hours).toBe(8)
+    // The web's fallback uses the same shared defaults, so the two can never disagree.
+    const { app_name: _appName, ...display } = DISPLAY_DEFAULTS
+    expect(s).toMatchObject(display)
   })
 
   test('reflects stored overrides with typed numbers', async () => {

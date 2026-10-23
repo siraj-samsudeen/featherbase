@@ -3,11 +3,13 @@
 // grouping and dates as DD-Mon-YYYY (ADR 844). Another currency keeps its own
 // locale's grouping.
 import { expect, test } from 'vitest'
+import { DISPLAY_DEFAULTS } from 'shared'
 import { DEFAULT_SETTINGS, formatCurrency, formatDate, formatNumber, type Settings } from '../src/lib/settings'
 
 const with_ = (o: Partial<Settings>): Settings => ({ ...DEFAULT_SETTINGS, ...o })
 
-test('a clean install is rupees and DD-Mon-YYYY', () => {
+test('a clean install is rupees and DD-Mon-YYYY, from the one shared default', () => {
+  expect(DEFAULT_SETTINGS).toEqual(DISPLAY_DEFAULTS)
   expect(DEFAULT_SETTINGS.currency).toBe('INR')
   expect(DEFAULT_SETTINGS.date_format).toBe('dd-mon-yyyy')
 })

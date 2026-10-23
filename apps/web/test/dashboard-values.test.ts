@@ -9,6 +9,8 @@ test('a value as stored keeps every decimal, grouped the Indian way', () => {
   expect(fmtAsStored(1.2345)).toBe('1.2345')
   expect(fmtAsStored(1234567.891)).toBe('12,34,567.891')
   expect(fmtAsStored(1e-7)).toBe('0.0000001')
+  expect(fmtAsStored(1e-21)).toBe('0.000000000000000000001')
+  expect(fmtAsStored(-0.000123)).toBe('-0.000123')
   expect(fmtAsStored(-0)).toBe('0')
 })
 
