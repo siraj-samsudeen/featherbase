@@ -11,6 +11,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs } from '../src/jobs'
 import {
+  _setSmtpTestOverrides,
   flushPendingMail,
   queueEmail,
   readSmtpConfig,
@@ -24,6 +25,30 @@ import { requestPasswordReset } from '../src/password-reset'
 // server instead of the Email Sink. These tests run a real SMTP server
 // in-process on a random local port (smtp-server), so the socket, the
 // STARTTLS upgrade and the AUTH exchange are all exercised for real.
+
+// Every session must upgrade to TLS (#395), so the test server offers
+// STARTTLS with a throwaway self-signed certificate for 127.0.0.1. The
+// in-process sends trust it through a test-only override that is never read
+// from the environment; the CLI subprocess trusts it through Node's own
+// NODE_EXTRA_CA_CERTS.
+let certDir = ''
+let key = ''
+let cert = ''
+beforeAll(() => {
+  certDir = mkdtempSync(path.join(tmpdir(), 'fb-smtp-'))
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
+    '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
+    '-keyout', path.join(certDir, 'key.pem'), '-out', path.join(certDir, 'cert.pem'),
+  ], { stdio: 'ignore' })
+  key = readFileSync(path.join(certDir, 'key.pem'), 'utf8')
+  cert = readFileSync(path.join(certDir, 'cert.pem'), 'utf8')
+  _setSmtpTestOverrides({ tls: { ca: cert } })
+})
+afterAll(() => {
+  _setSmtpTestOverrides(null)
+  rmSync(certDir, { recursive: true, force: true })
+})
 
 interface Received {
   from: string
@@ -40,7 +65,8 @@ async function startSmtp(opts: Partial<SMTPServerOptions> = {}, rcptCode?: numbe
   const authAttempts: string[] = []
   const server = new SMTPServer({
     authOptional: true,
-    disabledCommands: ['STARTTLS'],
+    key,
+    cert,
     logger: false,
     onAuth(auth, _session, cb) {
       authAttempts.push(auth.username ?? '')
@@ -146,6 +172,16 @@ describe('#395: transport selection and options', () => {
     })
   })
 
+  test('every port but 465 requires STARTTLS, with or without credentials', () => {
+    expect(smtpTransportOptions(readSmtpConfig({ SMTP_HOST: 'h', SMTP_PORT: '2525' })!)).toMatchObject({
+      secure: false,
+      requireTLS: true,
+    })
+    expect(smtpTransportOptions(readSmtpConfig({ SMTP_HOST: 'h', SMTP_PORT: '25' })!)).toMatchObject({
+      requireTLS: true,
+    })
+  })
+
   test('a password is never sent without TLS, whatever the port', () => {
     const opts = smtpTransportOptions(
       readSmtpConfig({ SMTP_HOST: 'h', SMTP_PORT: '2525', SMTP_USER: 'u', SMTP_PASSWORD: 'p' })!,
@@ -201,7 +237,7 @@ describe('#395: delivery through a real SMTP server', () => {
       setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
       await sendTestEmail('ops@example.test')
       expect(smtp.received).toHaveLength(1)
-      expect(smtp.received[0]).toMatchObject({ from: 'noreply@jeyarama.test', to: ['ops@example.test'] })
+      expect(smtp.received[0]).toMatchObject({ from: 'noreply@jeyarama.test', to: ['ops@example.test'], secure: true })
       expect(smtp.received[0].data).toContain('Subject: Test email from Featherbase')
       expect(smtp.received[0].data).toContain('From: Feather Dash <noreply@jeyarama.test>')
       expect(await sql`select 1 from email_sink`).toHaveLength(0)
@@ -338,8 +374,19 @@ describe('#395: delivery through a real SMTP server', () => {
     expect((await statusOf(name)).send_status).toBe('error')
   })
 
+  test('without credentials, a server that does not offer STARTTLS is refused before any mail', async () => {
+    const smtp = await startSmtp({ disabledCommands: ['STARTTLS'] })
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      await expect(sendTestEmail('ops@example.test')).rejects.toMatchObject({ type: 'ServiceUnavailableError' })
+      expect(smtp.received).toHaveLength(0)
+    } finally {
+      await smtp.close()
+    }
+  })
+
   test('with credentials set, a server that does not offer STARTTLS is refused before AUTH', async () => {
-    const smtp = await startSmtp()
+    const smtp = await startSmtp({ disabledCommands: ['STARTTLS'] })
     try {
       setSmtpEnv({
         SMTP_HOST: '127.0.0.1',
@@ -454,26 +501,11 @@ describe('#395: password reset over SMTP', () => {
   })
 })
 
-// The STARTTLS upgrade with a verified certificate: a throwaway CA-less
-// self-signed cert for 127.0.0.1, trusted by passing it as the client's CA.
+// The STARTTLS upgrade with a verified certificate, without the suite-wide
+// trust override: the certificate is passed (or withheld) explicitly.
 describe('#395: STARTTLS + AUTH on a real socket', () => {
-  let dir = ''
-  let key = ''
-  let cert = ''
-  beforeAll(() => {
-    dir = mkdtempSync(path.join(tmpdir(), 'fb-smtp-'))
-    execFileSync('openssl', [
-      'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
-      '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1',
-      '-keyout', path.join(dir, 'key.pem'), '-out', path.join(dir, 'cert.pem'),
-    ], { stdio: 'ignore' })
-    key = readFileSync(path.join(dir, 'key.pem'), 'utf8')
-    cert = readFileSync(path.join(dir, 'cert.pem'), 'utf8')
-  })
-  afterAll(() => rmSync(dir, { recursive: true, force: true }))
-
   test('upgrades to TLS, authenticates and delivers', async () => {
-    const smtp = await startSmtp({ disabledCommands: [], authOptional: false, key, cert })
+    const smtp = await startSmtp({ authOptional: false })
     try {
       const cfg = readSmtpConfig({
         SMTP_HOST: '127.0.0.1',
@@ -491,7 +523,7 @@ describe('#395: STARTTLS + AUTH on a real socket', () => {
   })
 
   test('an untrusted certificate is refused', async () => {
-    const smtp = await startSmtp({ disabledCommands: [], authOptional: false, key, cert })
+    const smtp = await startSmtp({ authOptional: false })
     try {
       const cfg = readSmtpConfig({
         SMTP_HOST: '127.0.0.1',
@@ -520,7 +552,7 @@ describe('#395: cli mail:test', () => {
     promisify(execFile)(path.join(serverDir, 'node_modules', '.bin', 'tsx'), [path.join(serverDir, 'src', 'cli.ts'), ...args], {
       cwd: serverDir,
       timeout: 60_000,
-      env: { ...process.env, SMTP_USER: '', SMTP_PASSWORD: '', ...env },
+      env: { ...process.env, SMTP_USER: '', SMTP_PASSWORD: '', NODE_EXTRA_CA_CERTS: path.join(certDir, 'cert.pem'), ...env },
     })
 
   it('sends one test message through the configured SMTP server', async () => {

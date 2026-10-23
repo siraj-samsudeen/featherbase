@@ -75,6 +75,20 @@ export interface SmtpConfig {
   tls?: ConnectionOptions
 }
 
+// Test-only: merged into the environment's config by the send paths. There
+// is deliberately no environment variable for it, so a deployment cannot
+// loosen certificate checks.
+let testOverrides: Pick<SmtpConfig, 'tls'> | null = null
+export function _setSmtpTestOverrides(o: Pick<SmtpConfig, 'tls'> | null): void {
+  testOverrides = o
+}
+
+/** The environment's SMTP config, or null for the Email Sink. */
+function activeSmtpConfig(): SmtpConfig | null {
+  const cfg = readSmtpConfig()
+  return cfg && testOverrides ? { ...cfg, ...testOverrides } : cfg
+}
+
 // Read per send, not at import, so a changed environment needs no restart of
 // this module (and the tests can switch transports). Blank means unset.
 export function readSmtpConfig(env: Record<string, string | undefined> = process.env): SmtpConfig | null {
@@ -97,12 +111,10 @@ export function readSmtpConfig(env: Record<string, string | undefined> = process
 
 const GOOGLE_APP_PASSWORD = /^[a-z]{4}( [a-z]{4}){3}$/i
 
-// 465 is implicit TLS. Everywhere else the session starts in plain text and
-// STARTTLS is REQUIRED (nodemailer refuses to go on if the server does not
-// offer it) on 587, and whenever a password would be sent: credentials never
-// cross the wire unencrypted. Only an unauthenticated session on another port
-// (a local relay, the test server) may stay plain. The certificate is always
-// verified.
+// 465 is implicit TLS. On every other port the session starts in plain text
+// and STARTTLS is REQUIRED: nodemailer refuses to go on if the server does not
+// offer it, so no message and no credential ever crosses the wire unencrypted.
+// The certificate is always verified.
 export function smtpTransportOptions(cfg: SmtpConfig) {
   const secure = cfg.port === 465
   const auth = cfg.user ? { user: cfg.user, pass: cfg.password ?? '' } : undefined
@@ -110,7 +122,7 @@ export function smtpTransportOptions(cfg: SmtpConfig) {
     host: cfg.host,
     port: cfg.port,
     secure,
-    requireTLS: !secure && (cfg.port === 587 || auth !== undefined),
+    requireTLS: !secure,
     auth,
     tls: { minVersion: 'TLSv1.2' as const, ...cfg.tls },
     // A hung relay must not hold a request (a password reset) open for minutes.
@@ -215,7 +227,7 @@ export async function sendViaSmtp(cfg: SmtpConfig, msg: MailMessage): Promise<vo
  *  SMTP_HOST is set, otherwise the Email Sink. Throws MailDeliveryError when
  *  the SMTP server does not take it; each caller decides what that means. */
 export async function deliverEmail(msg: MailMessage): Promise<void> {
-  const smtp = readSmtpConfig()
+  const smtp = activeSmtpConfig()
   if (smtp) return await sendViaSmtp(smtp, { ...msg, from: msg.from ?? (await defaultSender()) })
   await deliverToSink(msg)
 }
@@ -231,7 +243,7 @@ const pendingMail = new Set<Promise<void>>()
 export async function deliverWithoutWaiting(msg: MailMessage, purpose: string): Promise<void> {
   let smtp: SmtpConfig | null
   try {
-    smtp = readSmtpConfig()
+    smtp = activeSmtpConfig()
   } catch (err) {
     logMailFailure(purpose, err)
     return
@@ -249,8 +261,7 @@ export async function deliverWithoutWaiting(msg: MailMessage, purpose: string): 
   pendingMail.add(sending)
 }
 
-/** Wait for every send started by deliverWithoutWaiting to settle (tests,
- *  and a graceful shutdown). */
+/** Wait for every send started by deliverWithoutWaiting to settle (tests). */
 export async function flushPendingMail(): Promise<void> {
   while (pendingMail.size) await Promise.all([...pendingMail])
 }

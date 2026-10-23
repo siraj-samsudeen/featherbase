@@ -132,14 +132,14 @@ instead (#395).
 | Variable | Example | Purpose |
 | --- | --- | --- |
 | `SMTP_HOST` | `smtp-relay.gmail.com` | turns real delivery on; unset or blank keeps the Email Sink |
-| `SMTP_PORT` | `587` (default) | `587` = STARTTLS, **required**: the server refuses to continue if the relay does not offer it. `465` = implicit TLS. On any other port STARTTLS is still required whenever `SMTP_USER` is set, so a password never crosses the wire unencrypted. Certificates are always verified |
+| `SMTP_PORT` | `587` (default) | `587` = STARTTLS; `465` = implicit TLS. On every port but 465, STARTTLS is **required**: the server refuses to continue if the relay does not offer it. Certificates are always verified |
 | `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
 | `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
 
-Production uses port 587, where STARTTLS is required. On any other port
-without `SMTP_USER`, TLS is only opportunistic (used if the server offers
-it), which is meant for a local relay or test server.
+Production uses port 587. TLS is always required: there is no setting that
+lets mail or a credential leave unencrypted, and none that skips the
+certificate check.
 
 ### Google Workspace SMTP relay (jeyarama.com)
 
