@@ -57,7 +57,7 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { adminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
@@ -803,15 +803,30 @@ app.get('/api/activity_feed', async (c) => {
       select kind, ref_key, label, sub_label, path, occurred_at
       from user_event where created_by = ${user}
       order by occurred_at desc limit ${limit}`
+    const me = (await whoLabels([user])).get(user)
+    const whoName = me?.name ?? user
     return c.json({
-      items: rows.map((r) => ({
-        who: user,
-        kind: r.kind as string,
-        label: (r.label as string | null) ?? (r.ref_key as string),
-        sub: (r.sub_label as string | null) ?? undefined,
-        path: (r.path as string | null) ?? '',
-        at: new Date(r.occurred_at as string).toISOString(),
-      })),
+      items: rows.map((r) => {
+        const path = (r.path as string | null) ?? ''
+        const title = adminPageTitle(path)
+        const base = {
+          who: user,
+          who_name: whoName,
+          ...(me?.role ? { who_role: me.role } : {}),
+          path,
+          at: new Date(r.occurred_at as string).toISOString(),
+        }
+        // #440: a fixed admin page is a page, titled — not a slug-named list.
+        if (title && (r.kind === 'list' || r.kind === 'page'))
+          return { ...base, kind: 'page', label: title }
+        return {
+          ...base,
+          kind: r.kind as string,
+          label: (r.label as string | null) ?? (r.ref_key as string),
+          sub: (r.sub_label as string | null) ?? undefined,
+          ...(r.kind === 'list' ? { filtered: listKeyHasFilter(r.ref_key as string) } : {}),
+        }
+      }),
     })
   }
 
@@ -825,9 +840,15 @@ app.get('/api/activity_feed', async (c) => {
     select "user", full_name, created_at
     from activity_log where operation = 'login'
     order by created_at desc limit ${limit}`
+  const names = await whoLabels([
+    ...versions.map((v) => v.created_by as string),
+    ...logins.map((l) => l.user as string),
+  ])
   const items = [
     ...versions.map((v) => ({
       who: v.created_by as string,
+      who_name: names.get(v.created_by as string)?.name ?? (v.created_by as string),
+      who_role: names.get(v.created_by as string)?.role,
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
@@ -836,6 +857,8 @@ app.get('/api/activity_feed', async (c) => {
     })),
     ...logins.map((l) => ({
       who: l.user as string,
+      who_name: names.get(l.user as string)?.name ?? (l.user as string),
+      who_role: names.get(l.user as string)?.role,
       kind: 'login',
       label: (l.full_name as string | null) || (l.user as string),
       sub: 'signed in',
