@@ -26,3 +26,30 @@ export function calendarDay(d: Date): string {
   if (!isLocalMidnight(d) && isUtcMidnight(d)) return d.toISOString().slice(0, 10)
   return localIso(d).slice(0, 10)
 }
+
+/**
+ * Is y-m-d a day PostgreSQL `date` can hold? Refuses 30-Feb, month 13, Excel's
+ * fictitious 29-Feb-1900, and year 0 (PostgreSQL has no year zero).
+ */
+export function isCalendarDay(y: number, m: number, d: number): boolean {
+  if (y < 1) return false
+  // setUTCFullYear, not Date.UTC: Date.UTC reads years 0-99 as 1900-1999.
+  const date = new Date(0)
+  date.setUTCFullYear(y, m - 1, d)
+  return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+}
+
+const WALL_TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)$/
+
+/**
+ * A date-time with no zone is the importer's wall clock: send the instant it
+ * names (toISOString), or the database would read it in the server's timezone
+ * and an IST noon would come back as 17:30. Zoned text, and text naming an
+ * impossible day (which validation then refuses), is returned unchanged.
+ */
+export function wallTimeToInstant(s: string): string {
+  const m = s.match(WALL_TIME)
+  if (!m || !isCalendarDay(Number(m[1]), Number(m[2]), Number(m[3]))) return s
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}`)
+  return Number.isNaN(d.getTime()) ? s : d.toISOString()
+}

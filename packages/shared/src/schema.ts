@@ -1,4 +1,4 @@
-import { calendarDay } from './dates'
+import { calendarDay, isCalendarDay } from './dates'
 import { z } from 'zod'
 
 // META-013: one zod schema generated from Table metadata, used by the
@@ -66,15 +66,16 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
           // dry run reports them instead of the database refusing the write.
           .refine((v) => {
             const [y, m, d] = v.split('-').map(Number)
-            if (y < 1) return false // PostgreSQL date has no year zero
-            // setUTCFullYear, not Date.UTC: Date.UTC reads years 0-99 as 1900-1999.
-            const date = new Date(0)
-            date.setUTCFullYear(y, m - 1, d)
-            return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
+            return isCalendarDay(y, m, d)
           }, 'is not a real calendar day'),
       )
     case 'Datetime':
-      return z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
+      // Date.parse rolls 30-Feb into March; PostgreSQL refuses it. Check the day first (#387).
+      return z.string().refine((v) => {
+        const day = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+        if (day && !isCalendarDay(Number(day[1]), Number(day[2]), Number(day[3]))) return false
+        return !Number.isNaN(Date.parse(v))
+      }, {
         message: 'must be a valid datetime',
       })
     case 'JSON':

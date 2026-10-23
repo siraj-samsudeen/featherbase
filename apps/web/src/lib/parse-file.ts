@@ -61,11 +61,11 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
 }
 
 /**
- * The section of an Excel number format that applies to a value, as Excel
- * picks it. Sections are `;`-separated (quoted text and a backslash-escaped `;` do not split). If any
- * section carries a condition such as `[<=45586]`, the first whose condition
- * holds wins and an unconditioned section is the fallback; otherwise the
- * sections are positive;negative;zero.
+ * The section of an Excel number format that applies to a value, as SheetJS
+ * renders it. Sections are `;`-separated (quoted text and a backslash-escaped `;` do not split).
+ * When the first or second section carries a condition such as `[<=45586]`,
+ * the first whose condition holds wins; otherwise the sections are
+ * positive;negative;zero.
  */
 function formatSectionFor(format: string, value: number): string {
   const sections: string[] = []
@@ -85,20 +85,28 @@ function formatSectionFor(format: string, value: number): string {
     } else current += ch
   }
   sections.push(current)
-  const CONDITION = /^\s*(?:\[[^\]]*\])*?\[(<=|>=|<>|<|>|=)(-?\d+(?:\.\d+)?)\]/
-  if (sections.some((s) => CONDITION.test(s))) {
-    for (const s of sections) {
-      const c = s.match(CONDITION)
-      if (!c) return s
-      const n = Number(c[2])
-      const holds = { '<=': value <= n, '>=': value >= n, '<>': value !== n, '<': value < n, '>': value > n, '=': value === n }[c[1]]
-      if (holds) return s
-    }
-    return sections[sections.length - 1]
+  // SheetJS's choose_fmt, which picks the section it renders: a trailing text
+  // (@) section never formats a number; a missing section falls back to the
+  // first. Only the first two sections' conditions count; when neither holds,
+  // the next section is the fallback.
+  const textLast = sections.length < 4 && sections[sections.length - 1].includes('@')
+  const s = textLast ? sections.slice(0, -1) : sections
+  if (!s.length) return 'General'
+  const [pos, neg = pos, third = pos] = s
+  const bySign = value > 0 ? pos : value < 0 ? neg : third
+  if (!/\[[=<>]/.test(pos) && !/\[[=<>]/.test(neg)) return bySign
+  const CONDITION = /\[(=|>=?|<[>=]?)(-?\d+(?:\.\d*)?)\]/
+  const holds = (c: RegExpMatchArray | null) => {
+    if (!c) return false
+    const n = Number(c[2])
+    const tests: Record<string, boolean> = { '=': value === n, '>': value > n, '>=': value >= n, '<': value < n, '<=': value <= n, '<>': value !== n }
+    return tests[c[1]] ?? false
   }
-  if (value < 0) return sections[1] ?? sections[0]
-  if (value === 0) return sections[2] ?? sections[0]
-  return sections[0]
+  const c1 = pos.match(CONDITION)
+  const c2 = neg.match(CONDITION)
+  if (holds(c1)) return pos
+  if (holds(c2)) return neg
+  return c1 && c2 ? third : neg
 }
 
 /**

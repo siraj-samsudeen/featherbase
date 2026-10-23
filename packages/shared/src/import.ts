@@ -1,4 +1,4 @@
-import { calendarDay, isLocalMidnight, isUtcMidnight, localIso } from './dates'
+import { calendarDay, isLocalMidnight, isUtcMidnight, localIso, wallTimeToInstant } from './dates'
 
 // IMP-001: infer a Table definition from tabular file data (CSV/Excel).
 // Pure functions shared by the web builder (live preview while the user
@@ -379,7 +379,7 @@ function coerceCell(v: unknown, columnType: string): unknown {
       return String(v).trim().slice(0, 10)
     case 'Datetime':
       if (v instanceof Date) return v.toISOString()
-      return String(v).trim()
+      return wallTimeToInstant(String(v).trim())
     case 'Int':
     case 'Float':
     case 'Currency':

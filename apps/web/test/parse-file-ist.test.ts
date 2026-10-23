@@ -64,6 +64,26 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe('2024-10-21')
   })
 
+  test('a conditioned second section is checked before the unconditioned first', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd;[>0]yyyy-mm-dd hh:mm']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
+  })
+
+  test.each([
+    ['2024-10-21T12:00:00', '2024-10-21T06:30:00.000Z'],
+    ['2024-10-21 12:00', '2024-10-21T06:30:00.000Z'],
+    ['2024-10-21T12:00:00+05:30', '2024-10-21T12:00:00+05:30'],
+    ['2024-10-21T06:30:00Z', '2024-10-21T06:30:00Z'],
+  ])('a Datetime %s goes on the wire as %s: a wall time is the importing clock', (cell, wire) => {
+    const rows = coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [[cell]])
+    expect(rows[0].values.when).toBe(wire)
+  })
+
+  test('an impossible wall day is kept as typed, so validation refuses it rather than rolling it to 1-Mar', () => {
+    const rows = coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [['1900-02-29T12:00:00']])
+    expect(rows[0].values.when).toBe('1900-02-29T12:00:00')
+  })
+
   test('a conditional format section is chosen by its condition, as Excel does', async () => {
     const fmt = '[<=45586]yyyy-mm-dd hh:mm;yyyy-mm-dd'
     // 45585.5 meets [<=45586] and shows a time; 45587.5 does not and shows only the day (as SheetJS renders them).
@@ -122,7 +142,7 @@ describe('Excel dates in IST (+05:30)', () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586 + 5.5 / 24, 'dd-mmm-yyyy hh:mm']]))
     expect(inferColumnType(sheet.rows.map((r) => r[0]))).toBe('Datetime')
     const rows = coerceRows([{ column_name: 'when', column_type: 'Datetime' }], sheet.rows)
-    expect(rows[0].values.when).toBe('2024-10-21T05:30:00')
+    expect(rows[0].values.when).toBe('2024-10-21T00:00:00.000Z')
   })
 
   test('a date-time cell at exactly midnight is still a date-time: the format says so', async () => {

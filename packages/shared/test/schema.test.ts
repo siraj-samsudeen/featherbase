@@ -250,6 +250,15 @@ describe('#387: an early-year Date keeps a four-digit year', () => {
   })
 })
 
+describe('#387: a Datetime must fall on a real calendar day', () => {
+  it.each(['2024-02-30T10:00:00', '1900-02-29T12:00:00', '0000-01-01T00:00:00Z'])('refuses %s', (v) => {
+    expect(tableSchemaToZod([col('when', 'Datetime')]).safeParse({ when: v }).success).toBe(false)
+  })
+  it('accepts a real instant', () => {
+    expect(tableSchemaToZod([col('when', 'Datetime')]).safeParse({ when: '2024-10-21T06:30:00.000Z' }).success).toBe(true)
+  })
+})
+
 describe('#387: a Date must be a real calendar day', () => {
   it('refuses year zero, which PostgreSQL date has no room for', () => {
     expect(tableSchemaToZod([col('due', 'Date')]).safeParse({ due: '0000-01-01' }).success).toBe(false)
