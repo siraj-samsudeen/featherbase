@@ -1,5 +1,47 @@
 # Progress Log
 
+## 2026-10-23 — Excel dates no longer import a day early in India (#387)
+
+Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
+the previous day: 21-Oct-2024 became `2024-10-20T18:29:50Z`. The import preview and the shared Date schema then
+stored that day via `toISOString().slice(0, 10)`. The Suppliers import on featherbase-dev on 12-Oct-2026 showed it.
+
+`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`). It picks the section
+SheetJS renders (a port of `choose_fmt`) and converts each date cell with no timezone anywhere:
+- the day comes from pure UTC arithmetic on the serial (`serialDay`). This handles the 1900 quirks (serial 0 is
+  31-Dec-1899, 60 is the fictitious 29-Feb-1900) and 1904-based workbooks. `SSF.parse_date_code` builds a local Date
+  and was wrong in Samoa;
+- a date-only format gives `YYYY-MM-DD` text, not a Date: some zones have no local midnight on a day;
+- a format that shows a time gives wall-clock text, `YYYY-MM-DDTHH:MM:SS[.mmm]`, even at 00:00. Its time is the
+  serial's day fraction in whole milliseconds, carrying into the next day, so 05:30 IST (exactly UTC midnight) is
+  never mistaken for a bare day;
+- a serial below 0 or past 31-Dec-9999, and an elapsed `[h]`/`[m]`/`[s]` duration, stays a number.
+
+`coerceRows` sends a Datetime with no zone through `wallTimeToInstant`, which reads it on the importing browser's
+clock; a bare day is local midnight and fractional seconds keep every digit. Before, it went to the server bare and PostgreSQL read an IST noon as UTC
+(17:30). This applies to CSV date-time text too, and that is a data-shape change. The Date and Datetime schemas
+share `isCalendarDay`, which refuses 30-Feb, Excel's 29-Feb-1900 and year 0 before the write.
+
+`packages/shared/src/dates.ts` is the one home for these helpers. OpenSpec change `fix-excel-date-shift-ist`, with no
+capability delta. Follow-ups: #389 (correct rows imported before this) and #390 (Datetime list cells show the UTC
+day).
+
+**Verified** under Node 22:
+- `apps/web/test/parse-file-ist.test.ts` (54): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. Beyond the
+  month, leap-day and year ends, it covers:
+  - São Paulo's missing midnight and Samoa's skipped day;
+  - the 1900 and 1904 systems, and their last days;
+  - out-of-range serials (`1e12`, `-1`);
+  - format section choice, including conditions;
+  - escaped, quoted, `_x` and `*x` characters;
+  - carries past the second and past midnight;
+  - date-only and wall-time Datetimes on the wire in IST and New York;
+  - a daylight-saving gap and an ambiguous time.
+- Web suite 699 passed; shared 154 passed at 100% line coverage; server import tests 88; web, shared and server
+  typecheck passed.
+- The import and table-builder e2e specs locally in IST: 41 of 42 passed. The one failure, `import-upsert-journey`
+  UPS-J2, also fails locally on untouched `main` (`de6c151c`, twice), so it predates this change; CI passes it.
+
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
 `DataList` renders one list in two shapes, chosen live from the screen width:

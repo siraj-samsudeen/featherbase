@@ -1,3 +1,5 @@
+import { calendarDay, isLocalMidnight, isUtcMidnight, localIso, wallTimeToInstant } from './dates'
+
 // IMP-001: infer a Table definition from tabular file data (CSV/Excel).
 // Pure functions shared by the web builder (live preview while the user
 // reviews the inferred schema) and exercised by the server test suite.
@@ -115,16 +117,6 @@ function isEmpty(v: unknown): boolean {
 // UTC-midnight Dates for date-only strings (e.g. CSV "2026-01-15"), so
 // midnight on either clock counts — checking local components alone
 // misreads UTC midnight as a time-of-day on any non-UTC machine.
-function isLocalMidnight(d: Date): boolean {
-  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0
-}
-
-function isUtcMidnight(d: Date): boolean {
-  return (
-    d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0
-  )
-}
-
 function dateOnly(d: Date): boolean {
   return isLocalMidnight(d) || isUtcMidnight(d)
 }
@@ -383,35 +375,21 @@ function coerceCell(v: unknown, columnType: string): unknown {
       return s === 'true' || s === 'yes' || s === 'y' || s === '1'
     }
     case 'Date':
-      if (v instanceof Date) return dateToYmd(v)
+      if (v instanceof Date) return calendarDay(v)
       return String(v).trim().slice(0, 10)
     case 'Datetime':
       if (v instanceof Date) return v.toISOString()
-      return String(v).trim()
+      return wallTimeToInstant(String(v).trim())
     case 'Int':
     case 'Float':
     case 'Currency':
       return typeof v === 'number' ? v : String(v).trim()
     default:
-      if (v instanceof Date) return toLocalIso(v)
+      if (v instanceof Date) return localIso(v)
       return typeof v === 'string' ? v : String(v)
   }
 }
 
-// A date-only value must keep its calendar day on every machine: read the
-// components off whichever clock says midnight (UTC-midnight Dates come
-// from date-only strings, local-midnight ones from xlsx date cells).
-function dateToYmd(d: Date): string {
-  if (!isLocalMidnight(d) && isUtcMidnight(d)) return d.toISOString().slice(0, 10)
-  return toLocalIso(d).slice(0, 10)
-}
-
-// SheetJS date cells are local-time JS Dates; toISOString would shift the
-// calendar day for anyone east of UTC, so format the local components.
-function toLocalIso(d: Date): string {
-  const pad = (n: number, w = 2) => String(n).padStart(w, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-}
 
 // #201 (issue #197): several sheets of the same shape become one Table, so
 // their headers have to be reconciled into one column set.
