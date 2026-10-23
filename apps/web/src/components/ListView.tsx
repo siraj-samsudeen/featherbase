@@ -6,7 +6,7 @@ import { recentActions, type RecentEntry } from '../lib/recents'
 import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
-import { useIsSystemManager } from '../lib/session'
+import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
@@ -82,6 +82,7 @@ export function ListView({
   const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
+  const caps = useCapabilities()
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
@@ -420,7 +421,7 @@ export function ListView({
           )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
-          {!isSourceReadOnly(meta.data) && (
+          {!isSourceReadOnly(meta.data) && (caps?.manage || caps?.creatable.includes(table)) && (
             <Link
               to="/featherbase/admin/import"
               search={{ table: table }}
@@ -433,7 +434,7 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {!meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
@@ -444,7 +445,7 @@ export function ListView({
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
-          {!meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/merge"
               params={{ table }}

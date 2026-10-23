@@ -9,7 +9,8 @@ export interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
   report: boolean // the Sales Target report
   table_access: boolean // holds any Table grant or shared row
-  tables: string[] // Tables the person can read
+  tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
+  creatable: string[] // Tables the person can add rows to
 }
 
 interface WhoAmI {
@@ -48,14 +49,21 @@ export function useIsSystemManager(): boolean {
 
 export type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
 
-/** Which layout the person gets (#410). */
-export function useShellKind(): ShellKind {
-  const q = useWhoAmI()
-  if (q.isError) return 'failed'
+/**
+ * Which layout the person gets (#410). Pure so the rule is testable: an error
+ * only blocks a shell that has no answer yet — a failed background refresh must
+ * not take away the Admin the person is already using.
+ */
+export function shellKindOf(q: { isError: boolean; data?: { capabilities?: Capabilities } }): ShellKind {
   const caps = q.data?.capabilities
-  if (!caps) return 'loading'
+  if (!caps) return q.isError ? 'failed' : 'loading'
   if (caps.manage || caps.table_access) return 'admin'
   return caps.report ? 'report-only' : 'no-access'
+}
+
+export function useShellKind(): ShellKind {
+  const q = useWhoAmI()
+  return shellKindOf({ isError: q.isError, data: q.data })
 }
 
 export function useCapabilities(): Capabilities | undefined {

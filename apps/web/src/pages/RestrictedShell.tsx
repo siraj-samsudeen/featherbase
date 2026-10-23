@@ -1,8 +1,9 @@
-import { Outlet, useNavigate } from '@tanstack/react-router'
+import { Navigate, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getSessionUser } from '../lib/api'
 import { Logo } from '../components/Logo'
-import { Button, Card, EmptyState, buttonClasses } from '../components/ui'
+import { Button, Card, EmptyState, Skeleton, buttonClasses } from '../components/ui'
+import { useCapabilities, useIsPreview } from '../lib/session'
 
 // #410: the shell shows only what the person can use. The server already
 // refuses everything else; this is the chrome. `useShellKind` reads the
@@ -38,18 +39,41 @@ function PersonName() {
   return <span data-testid="shell-person">{personName()}</span>
 }
 
-export function Waiting({ children }: { children: React.ReactNode }) {
+// A dev-preview deployment announces itself. The link is shareable and the
+// data is disposable; a visitor who does not know that may mistake it for the
+// real thing, or be surprised when it is reset.
+export function PreviewBanner() {
+  if (!useIsPreview()) return null
+  return (
+    <div
+      data-testid="preview-banner"
+      className="flex shrink-0 items-center justify-center gap-2 bg-caution-tint px-3 py-1 text-xs font-medium text-caution"
+    >
+      Preview deployment — data here is disposable and may be reset at any time.
+    </div>
+  )
+}
+
+export function Waiting({ label, children }: { label?: string; children?: React.ReactNode }) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-canvas p-4">
-      <p className="text-sm text-ink-muted">{children}</p>
+      {children ?? <Skeleton label={label ?? 'Loading'} className="w-full max-w-sm" />}
     </main>
   )
+}
+
+/** Wraps a management-only Admin page: anyone else is sent to the admin home. */
+export function ManageOnly({ children }: { children: React.ReactNode }) {
+  const caps = useCapabilities()
+  if (!caps) return null
+  return caps.manage ? <>{children}</> : <Navigate to="/featherbase/admin" replace />
 }
 
 export function ReportOnlyShell() {
   const signOut = useSignOut()
   return (
     <div className="flex min-h-screen flex-col bg-canvas" data-testid="report-only-shell">
+      <PreviewBanner />
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
         <div className="flex items-center gap-3">
           <Logo className="h-7 w-7 rounded-md" />
@@ -71,7 +95,9 @@ export function NoAccessPage() {
   const signOut = useSignOut()
   const name = personName()
   return (
-    <main className="flex min-h-screen items-center justify-center bg-canvas p-4">
+    <div className="flex min-h-screen flex-col bg-canvas">
+    <PreviewBanner />
+    <main className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-sm" data-testid="no-access">
         <EmptyState
           title="You don't have access to anything here yet"
@@ -84,5 +110,6 @@ export function NoAccessPage() {
         />
       </Card>
     </main>
+    </div>
   )
 }

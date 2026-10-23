@@ -105,9 +105,17 @@ the Sales Target report SHALL get a bare screen — the report, their name,
 their own sign-in methods and sign-out — with no administration menu, and
 without the page asking for anything they would be refused. Someone with no
 role of use at all SHALL get a plain page saying they have no access yet and
-to ask their administrator, with sign-out. Building tables, importing data and
-access tokens SHALL be offered only to System Managers, and a table list SHALL
-name only the tables the person can read.
+to ask their administrator, with sign-out; until they are given a role they
+cannot manage their own sign-in methods. Building tables and importing data
+SHALL be offered only to System Managers, as are changing a table's columns and
+merging tables; adding rows from a file is offered only where the person may
+create rows. Access tokens stay available to everyone in the administration,
+because they are self-service. A table list SHALL name only the tables the
+person can read. A grant given to everyone (the built-in All role, which apps
+use for their own tables) makes its table appear in lists but does not by itself
+open the administration to someone. Someone whose only access is a row shared
+with them SHALL be told how such rows reach them rather than shown an empty
+screen.
 
 #### Scenario: A report-only person never meets the administration menu
 
@@ -121,3 +129,9 @@ name only the tables the person can read.
 - **WHEN** someone with no roles of use signs in
 - **THEN** they see that they have no access yet, who to ask, and a way to
   sign out
+
+#### Scenario: A management address typed by someone else
+
+- **WHEN** someone who is not a System Manager types the address for building
+  a table, importing data, editing columns or merging
+- **THEN** they land on the administration home instead

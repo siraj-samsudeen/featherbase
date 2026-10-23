@@ -17,7 +17,7 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
-import { useCapabilities, useIsPreview, useShellKind, useShellTables } from '../lib/session'
+import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
@@ -25,7 +25,7 @@ import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
-import { NoAccessPage, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
+import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 
 interface SearchHit {
   table: string
@@ -58,27 +58,12 @@ connectEventSink({
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
-// A dev-preview deployment announces itself. The link is shareable and the
-// data is disposable; a visitor who does not know that may mistake it for the
-// real thing, or be surprised when it is reset.
-function PreviewBanner() {
-  if (!useIsPreview()) return null
-  return (
-    <div
-      data-testid="preview-banner"
-      className="flex shrink-0 items-center justify-center gap-2 bg-[var(--color-warn-tint)] px-3 py-1 text-xs font-medium text-[var(--color-warn)]"
-    >
-      Preview deployment — data here is disposable and may be reset at any time.
-    </div>
-  )
-}
-
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
 export function AdminLayout() {
   const kind = useShellKind()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  if (kind === 'loading') return <Waiting>Loading…</Waiting>
+  if (kind === 'loading') return <Waiting label="Checking your access" />
   if (kind === 'failed')
     return (
       <Waiting>
@@ -839,8 +824,7 @@ function AdminShell() {
             >
               All tables
             </Link>
-            {/* #131 / #410: automation credentials are issued by System Managers. */}
-            {canManage && (
+            {/* #131: automation credentials are self-service (the endpoint is owner-scoped), so the link shows for everyone in the Admin. */}
             <Link
               to="/featherbase/admin/access-tokens"
               data-testid="access-tokens-link"
@@ -852,7 +836,6 @@ function AdminShell() {
             >
               Access tokens
             </Link>
-            )}
             <Link
               to="/featherbase/admin/sign-in-methods"
               data-testid="sign-in-methods-link"
