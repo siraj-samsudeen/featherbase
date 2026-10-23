@@ -2,6 +2,7 @@ import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { credentialFromCookieHeader, endedSessionIds, resolveToken, type SessionUser } from './auth'
 import { getRoles, getScopeMap, hasPermission, isPrivileged } from './permissions'
+import { REALTIME_MAX_FRAME_BYTES } from 'shared'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -204,68 +205,119 @@ export async function recheckSessionSockets(): Promise<void> {
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
 // {unsubscribe:[...]}. The server answers a subscribe frame with
 // {channel:'system', event:'subscribed', payload:{channels:[...registered]}}.
+export const MAX_FRAME_BYTES = REALTIME_MAX_FRAME_BYTES
+export const MAX_PENDING_FRAMES = 32
+
 export function attachRealtime(server: Server): void {
-  const wss = new WebSocketServer({ server, path: '/ws' })
+  // A client only ever sends short subscribe/unsubscribe lists; anything this
+  // large is refused by `ws` itself (close 1009) before it is buffered.
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_FRAME_BYTES })
   const recheck = setInterval(() => void recheckSessionSockets().catch(() => {}), SOCKET_RECHECK_MS)
   recheck.unref()
   server.on('close', () => clearInterval(recheck))
-  wss.on('connection', async (socket, req) => {
-    try {
-      // #173: the browser cannot set headers on a WebSocket, which is why this
-      // was URL-borne. But the upgrade is an ordinary same-origin HTTP request,
-      // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
-      // socket URL lands in proxy logs like any other. A cross-site handshake
-      // carries no SameSite=Lax cookie, so this closes that door too.
-      const user = await resolveToken(credentialFromCookieHeader(req.headers.cookie))
-      const client: Client = { socket, user, channels: new Set() }
-      clients.add(client)
-      // #411: signed out while this upgrade was between its token check and
-      // here — the sign-out's own sweep could not see it yet.
-      if (revokedHere(user.sign_in?.session_id)) return closeSignedOut(client)
-      // Personal channel is always subscribed.
-      client.channels.add(`user:${user.row_id}`)
-      socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
-
-      socket.on('message', (raw) => {
-        void (async () => {
-          try {
-            const msg = JSON.parse(String(raw)) as {
-              subscribe?: string[]
-              unsubscribe?: string[]
-            }
-            const registered: string[] = []
-            for (const ch of msg.subscribe ?? []) {
-              // Authorize each subscription; silently drop unpermitted ones.
-              if (await canSubscribe(client.user, ch)) {
-                client.channels.add(ch)
-                registered.push(ch)
-              }
-            }
-            for (const ch of msg.unsubscribe ?? []) client.channels.delete(ch)
-            // #224: acknowledge what was actually registered. A subscribe
-            // frame is asynchronous — until the server has authorized and
-            // recorded the channel, an event published on it is missed — so
-            // without this the only way to know a subscription is live is to
-            // guess with a sleep. Unpermitted channels are absent from the
-            // ack rather than reported, keeping the existing "silently drop"
-            // behaviour; a client that ignores the frame is unaffected.
-            if (registered.length && socket.readyState === socket.OPEN)
-              socket.send(
-                JSON.stringify({
-                  channel: 'system',
-                  event: 'subscribed',
-                  payload: { channels: registered },
-                }),
-              )
-          } catch {
-            // ignore malformed frames
-          }
-        })()
+  wss.on('connection', (socket, req) => {
+    // #426: listeners are attached NOW, before authentication's database round
+    // trip. The browser sends its subscribe frame the moment the socket opens;
+    // `ws` drops a frame that arrives while no 'message' listener exists, and
+    // a dropped subscribe leaves the page subscribed to nothing, silently. So
+    // frames wait on the authentication and are then handled in arrival order.
+    let client: Client | null = null
+    let closed = false
+    const authenticated = authenticate(socket, req.headers.cookie).then((c) => {
+      if (c && closed) clients.delete(c)
+      return (client = c)
+    })
+    let frames: Promise<void> = authenticated.then(() => {})
+    // Frames queue only while authentication or an earlier frame's permission
+    // checks are pending — a handful in practice. A client that piles up more
+    // is misbehaving; it is closed rather than buffered without limit.
+    let pending = 0
+    socket.on('message', (raw) => {
+      if (++pending > MAX_PENDING_FRAMES) {
+        socket.close(1008, 'too many pending frames')
+        return
+      }
+      frames = frames.then(async () => {
+        try {
+          if (client && !closed) await handleFrame(client, String(raw))
+        } finally {
+          pending--
+        }
       })
-      socket.on('close', () => clients.delete(client))
-      socket.on('error', () => clients.delete(client))
-    } catch {
-      socket.close(4001, 'unauthorized')
+    })
+    const forget = () => {
+      closed = true
+      if (client) clients.delete(client)
     }
+    socket.on('close', forget)
+    socket.on('error', forget)
   })
+}
+
+async function authenticate(socket: WebSocket, cookie: string | undefined): Promise<Client | null> {
+  let client: Client | null = null
+  try {
+    // #173: the browser cannot set headers on a WebSocket, which is why this
+    // was URL-borne. But the upgrade is an ordinary same-origin HTTP request,
+    // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
+    // socket URL lands in proxy logs like any other. A cross-site handshake
+    // carries no SameSite=Lax cookie, so this closes that door too.
+    const user = await resolveToken(credentialFromCookieHeader(cookie))
+    // Closed while the token was being checked: never register it.
+    if (socket.readyState !== socket.OPEN) return null
+    client = { socket, user, channels: new Set() }
+    clients.add(client)
+    // #411: signed out while this upgrade was between its token check and
+    // here — the sign-out's own sweep could not see it yet.
+    if (revokedHere(user.sign_in?.session_id)) {
+      closeSignedOut(client)
+      return null
+    }
+    // Personal channel is always subscribed.
+    client.channels.add(`user:${user.row_id}`)
+    socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
+    return client
+  } catch {
+    // A send to a socket that closed mid-authentication lands here too; the
+    // client must not stay registered for publish() to keep visiting.
+    if (client) clients.delete(client)
+    socket.close(4001, 'unauthorized')
+    return null
+  }
+}
+
+async function handleFrame(client: Client, raw: string): Promise<void> {
+  const { socket } = client
+  try {
+    const msg = JSON.parse(raw) as {
+      subscribe?: string[]
+      unsubscribe?: string[]
+    }
+    const registered: string[] = []
+    for (const ch of msg.subscribe ?? []) {
+      // Authorize each subscription; silently drop unpermitted ones.
+      if (await canSubscribe(client.user, ch)) {
+        client.channels.add(ch)
+        registered.push(ch)
+      }
+    }
+    for (const ch of msg.unsubscribe ?? []) client.channels.delete(ch)
+    // #224: acknowledge what was actually registered. A subscribe
+    // frame is asynchronous — until the server has authorized and
+    // recorded the channel, an event published on it is missed — so
+    // without this the only way to know a subscription is live is to
+    // guess with a sleep. Unpermitted channels are absent from the
+    // ack rather than reported, keeping the existing "silently drop"
+    // behaviour; a client that ignores the frame is unaffected.
+    if (registered.length && socket.readyState === socket.OPEN)
+      socket.send(
+        JSON.stringify({
+          channel: 'system',
+          event: 'subscribed',
+          payload: { channels: registered },
+        }),
+      )
+  } catch {
+    // ignore malformed frames
+  }
 }

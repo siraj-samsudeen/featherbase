@@ -1,5 +1,44 @@
 # Progress Log
 
+> **Frozen 23-Oct-2026 — not updated any more.** Work is recorded in pull requests, their issues and
+> OpenSpec changes; decisions in `docs/adr/`. This file is kept as history. Do not add entries.
+
+## 2026-10-23 — An import check names the refused column (#416)
+
+The import wizard's Check showed a bad row only as "Invalid values for <Table>". The server's dry run (and real run)
+already returns the per-column reasons as `fields`; `lib/import-run.ts` dropped them. `failureMessage` appends them:
+`row 4: Invalid values for Section Ownership — effective_from: must be a YYYY-MM-DD date`.
+
+**Verified:** `apps/web/test/import-failure-message.test.ts` (red first: no such export), `import-upsert-split`;
+browser check of a Section Ownership CSV whose date cell is `23-10-2026` shows the column and reason. Real Excel date
+cells import on the right day (the #387 fix holds). Open question left on the issue: should a Date column also accept
+the app's own display form `23-Oct-2026`? (Filed as its own follow-up.)
+
+Review follow-ups: the message names the column by the file's own header (the wizard passes `columnLabel`), a
+`sendImportRun` test with a mocked server answer fails if the `fields` mapping is reverted, and OpenSpec change
+`import-check-names-column` adds the scenario to `spreadsheet-import`.
+
+## 2026-10-23 — Real email through an SMTP server (#395)
+
+`apps/server/src/email.ts` now sends through SMTP (nodemailer) when `SMTP_HOST` is set, and still delivers to the
+Email Sink when it is unset, so development and the test suite are unchanged. Configuration is `SMTP_HOST`,
+`SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM`; docs/DEPLOY.md "Email" has the Google
+Workspace relay settings. TLS is always required (STARTTLS on every port but 465, where it is implicit) and
+certificates are verified; tests trust their throwaway certificate through a test-only override, never an env var. `MAIL_FROM` wins over Email Account addresses because the relay accepts only the domain's senders.
+
+A failed send becomes `MailDeliveryError` (a 503 `ServiceUnavailableError`) whose message carries only nodemailer's
+code and the SMTP reply code (`ECONFIG` for a bad setting), and is logged as one JSON line
+(`event: mail_delivery_failed`, `purpose`, `code`) with no address, body or credential. Password reset does not
+await the SMTP send (`deliverWithoutWaiting`; tests call `flushPendingMail`), so neither a failure nor the relay's
+latency tells an existing account from an unknown one. A queued email goes back to `queued` on a transient failure
+(4xx, unreachable, timeout) unless it is the job's last attempt, and turns `error` otherwise; the test mail returns
+the error to the System Manager. New `cli mail:test <to>`. nodemailer is pinned exactly (10.2.1).
+
+**Verified:** `apps/server/test/email-smtp.test.ts` (30) runs a real `smtp-server` on a local port: plain delivery,
+the queued job, password reset, STARTTLS + AUTH with a generated certificate, an untrusted certificate refused
+before AUTH, a server without STARTTLS refused before AUTH when credentials are set, failure logging, and the CLI.
+Not yet sent through the real Workspace relay (needs the app password on a deployed instance).
+
 ## 2026-10-23 — Person screens after the person release: names not ids, readable identifier dates (#414, #415)
 
 Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release. (#413, a stale Person

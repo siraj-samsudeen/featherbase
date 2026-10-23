@@ -23,6 +23,7 @@ import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
+import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 import { ShownName, isOpaqueId } from '../lib/people'
@@ -32,6 +33,7 @@ interface SearchHit {
   table: string
   row_id: string
   title: string
+  kind_label?: string
 }
 
 const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
@@ -561,7 +563,7 @@ function AdminShell() {
                   {h.title !== h.row_id && (
                     <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">row in {h.table}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{searchHitKind(h)}</span>
                 </button>
               ))}
             </div>
