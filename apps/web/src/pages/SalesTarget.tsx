@@ -62,6 +62,8 @@ interface ReportRow {
   achievement: number | null
   missingActual: boolean
   missingTarget: boolean
+  /** #4344: ₹0 target and ₹0 sales this period — hidden unless the reader asks for them. */
+  noTargetNoSale?: boolean
 }
 interface Report {
   source: 'snapshot' | 'live'
@@ -81,6 +83,7 @@ interface Totals {
   gap: number | null
   achievement: number | null
   missing: number
+  no_target_no_sale?: number
   n: number
 }
 type Pre =
@@ -110,6 +113,13 @@ function sectionGroups(report: Report): { section: string | null; titled: boolea
   }))
 }
 
+// #4344: a Section map lists every group a Section could sell — Food Court lists all of them —
+// while a store trades a few. Groups with ₹0 target and ₹0 sales are hidden by default; they add
+// ₹0, so every subtotal reads the same either way. Only the count of rows shown changes.
+function shownCount(t: Totals, showAll: boolean): number {
+  return showAll ? t.n : t.n - (t.no_target_no_sale ?? 0)
+}
+
 function QuickTable({ collapsed, refreshedAt, children }: {
   collapsed: boolean
   refreshedAt: string | null
@@ -137,6 +147,7 @@ export function SalesTargetPage() {
   const [me, setMe] = useState<Me | null>(null)
   const [embed, setEmbed] = useState<Embed>({ kind: 'loading' })
   const [pre, setPre] = useState<Pre>({ kind: 'loading' })
+  const [showNoTargetNoSale, setShowNoTargetNoSale] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -332,6 +343,17 @@ export function SalesTargetPage() {
                 </span>
               </p>
             </div>
+            {(pre.report.total.no_target_no_sale ?? 0) > 0 && (
+              <label className="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-ink-muted)]">
+                <input
+                  type="checkbox"
+                  data-testid="show-no-target-no-sale"
+                  checked={showNoTargetNoSale}
+                  onChange={(e) => setShowNoTargetNoSale(e.target.checked)}
+                />
+                Show groups with no target or sales ({pre.report.total.no_target_no_sale})
+              </label>
+            )}
             {pre.report.no_data_yet && (
               <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-no-data-yet">
                 No sales recorded for this month yet — the warehouse has data through {fmtDay(pre.report.source_as_of)}.
@@ -356,7 +378,12 @@ export function SalesTargetPage() {
                   {g.titled && (
                     <tr className="border-t-2 border-[var(--color-border)] bg-[var(--color-canvas)] font-semibold" data-testid="snapshot-section-total">
                       <td className="px-4 py-2 text-[var(--color-ink)]" colSpan={2}>
-                        {g.section ?? 'Not mapped to a Section'} · {g.total.n} subcategor{g.total.n === 1 ? 'y' : 'ies'}
+                        {g.section ?? 'Not mapped to a Section'} · {shownCount(g.total, showNoTargetNoSale)} subcategor{shownCount(g.total, showNoTargetNoSale) === 1 ? 'y' : 'ies'}
+                        {!showNoTargetNoSale && (g.total.no_target_no_sale ?? 0) > 0 && (
+                          <span className="font-normal text-[var(--color-ink-muted)]" data-testid="snapshot-section-hidden">
+                            {' '}· {g.total.no_target_no_sale} with no target or sales hidden
+                          </span>
+                        )}
                         {g.total.missing > 0 && (
                           <span className="font-normal text-[var(--color-ink-muted)]" data-testid="snapshot-section-missing">
                             {' '}· {g.total.missing} without actuals
@@ -371,8 +398,8 @@ export function SalesTargetPage() {
                       <td className="px-4 py-2 text-right tabular-nums">{fmtPct(g.total.achievement)}</td>
                     </tr>
                   )}
-                  {g.rows.map((r) => (
-                    <tr key={r.code} className="border-t border-[var(--color-border)]" data-testid="snapshot-row" data-code={r.code}>
+                  {g.rows.filter((r) => showNoTargetNoSale || !r.noTargetNoSale).map((r) => (
+                    <tr key={r.code} className={`border-t border-[var(--color-border)] ${r.noTargetNoSale ? 'text-[var(--color-ink-muted)]' : ''}`} data-testid="snapshot-row" data-code={r.code}>
                       <td className="px-4 py-2 text-[var(--color-ink)]">{r.subcategory}</td>
                       <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">{r.code}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.target)}</td>
@@ -388,7 +415,7 @@ export function SalesTargetPage() {
               <tfoot>
                 <tr className="border-t-2 border-[var(--color-border)] font-semibold" data-testid="snapshot-total">
                   <td className="px-4 py-2" colSpan={2}>
-                    Total · {pre.report.total.n} subcategor{pre.report.total.n === 1 ? 'y' : 'ies'}
+                    Total · {shownCount(pre.report.total, showNoTargetNoSale)} subcategor{shownCount(pre.report.total, showNoTargetNoSale) === 1 ? 'y' : 'ies'}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.target)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.actual)}</td>

@@ -1,6 +1,6 @@
 import { sql } from './db'
 import { activeSnapshot, recordMiss } from './dataset-snapshot'
-import { SALES_TARGET_DATASET, definitionSql } from './datasets/sales-target-mtd'
+import { SALES_TARGET_DATASET, definitionSql, namesSql } from './datasets/sales-target-mtd'
 import { MATERIAL_GROUP, PLANT_CODE, currentPeriod, type Assignment, type Period } from './sales-target'
 
 // The read path. Personalisation is applied HERE, as a predicate over the
@@ -27,6 +27,11 @@ export interface ReportRow {
   achievement: number | null
   missingActual: boolean
   missingTarget: boolean
+  /**
+   * #4344: ₹0 target and ₹0 sales this period — a group the reader's map lists but the store
+   * did not trade. Still in `rows` and in every total (it adds ₹0); the page hides it by default.
+   */
+  noTargetNoSale: boolean
 }
 
 export interface Report {
@@ -66,6 +71,8 @@ export interface Totals {
   gap: number | null
   achievement: number | null
   missing: number
+  /** Rows classed `noTargetNoSale` among the `n`. */
+  no_target_no_sale: number
   n: number
 }
 
@@ -77,6 +84,8 @@ interface Grouped {
   mtd_target: number | null
   mtd_actual: number | null
   days_with_actual: number
+  /** Day rows of any kind — a target day or a sale day. Zero: the group neither had a target nor sold. */
+  days: number
 }
 
 /**
@@ -84,12 +93,17 @@ interface Grouped {
  * shared by both delivery paths so a snapshot read and a live read cannot drift
  * into two different answers — the property `live_check.mjs` proves across hosts.
  */
-function shape(grouped: Grouped[], sectionOf: Record<string, string>): Pick<Report, 'rows' | 'sections' | 'total'> {
+function shape(grouped: Grouped[], sectionOf: Record<string, string>, noDataYet: boolean): Pick<Report, 'rows' | 'sections' | 'total'> {
   const rows: ReportRow[] = grouped.map((g) => {
-    const target = g.mtd_target
-    // No observed day means MISSING, never ₹0 — a store that has not traded a
-    // subcategory yet must not read as one that traded and sold nothing.
-    const actual = g.days_with_actual > 0 ? g.mtd_actual : null
+    // #4344: the day rows carry every sale, target or not. So once the period has data, a group
+    // with no day row at all sold nothing and had no target: ₹0 on both sides, said as such.
+    // Before the period has any data (no_data_yet) nothing is known, and it stays MISSING.
+    const neither = g.days === 0 && !noDataYet
+    // A target is ₹0 where none was set; a sale with no target is still a sale.
+    const target = g.mtd_target ?? (noDataYet && g.days === 0 ? null : 0)
+    // Day rows with no actual on any of them (a target row past the actuals cutoff) are MISSING,
+    // never ₹0 — the two must not look alike.
+    const actual = neither ? 0 : g.days_with_actual > 0 ? g.mtd_actual : null
     const gap = target != null && actual != null ? round2(actual - target) : null
     const achievement =
       target != null && target !== 0 && actual != null ? (100 * actual) / target : null
@@ -102,7 +116,8 @@ function shape(grouped: Grouped[], sectionOf: Record<string, string>): Pick<Repo
       gap,
       achievement,
       missingActual: actual == null,
-      missingTarget: target == null,
+      missingTarget: g.mtd_target == null,
+      noTargetNoSale: target === 0 && actual === 0,
     }
   })
 
@@ -125,7 +140,15 @@ function totalOf(rows: ReportRow[]): Totals {
   const actual = withActual.length ? round2(withActual.reduce((a, r) => a + (r.actual as number), 0)) : null
   const gap = target != null && actual != null ? round2(actual - target) : null
   const achievement = target != null && target !== 0 && actual != null ? (100 * actual) / target : null
-  return { target, actual, gap, achievement, missing: rows.filter((r) => r.missingActual).length, n: rows.length }
+  return {
+    target,
+    actual,
+    gap,
+    achievement,
+    missing: rows.filter((r) => r.missingActual).length,
+    no_target_no_sale: rows.filter((r) => r.noTargetNoSale).length,
+    n: rows.length,
+  }
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))
@@ -136,14 +159,19 @@ const iso = (v: unknown): string | null =>
 
 async function fromSnapshot(a: Assignment, snapshotId: string): Promise<Grouped[]> {
   // `unnest` + LEFT JOIN, exactly as the Dive does it: a selected code with no
-  // rows still appears, rather than vanishing from the reader's list.
+  // rows still appears, rather than vanishing from the reader's list. The name
+  // comes from the hierarchy (#4344), never from a target row.
   const rows = await sql`
     select c.code,
-           max(r.subcategory)             as subcategory,
+           max(n.subcategory)             as subcategory,
            sum(r.target_before_tax)       as mtd_target,
            sum(r.actual_before_tax)       as mtd_actual,
-           count(r.actual_before_tax)     as days_with_actual
+           count(r.actual_before_tax)     as days_with_actual,
+           count(r.business_date)         as days
     from unnest(${a.material_groups}::text[]) as c(code)
+    left join sales_target_snapshot_name n
+      on n.snapshot_id = ${snapshotId}
+     and n.hierarchy_code = c.code
     left join sales_target_snapshot_row r
       on r.snapshot_id = ${snapshotId}
      and r.plant_code = ${a.plant_code}
@@ -156,6 +184,7 @@ async function fromSnapshot(a: Assignment, snapshotId: string): Promise<Grouped[
     mtd_target: num(r.mtd_target),
     mtd_actual: num(r.mtd_actual),
     days_with_actual: Number(r.days_with_actual ?? 0),
+    days: Number(r.days ?? 0),
   }))
 }
 
@@ -180,17 +209,18 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
   const scoped = `
     with base as (${definitionSql(period.period_start, period.period_end)})
     select b.hierarchy_code,
-           any_value(b.subcategory)        as subcategory,
            any_value(b.store_name)         as store_name,
            any_value(b.short_code)         as short_code,
            sum(b.target_daily_before_tax)  as mtd_target,
            sum(b.actual_before_tax)        as mtd_actual,
-           count(b.actual_before_tax)      as days_with_actual
+           count(b.actual_before_tax)      as days_with_actual,
+           count(*)                        as days
     from base b
     where b.plant_code = '${a.plant_code}' and b.hierarchy_code in (${codes})
     group by b.hierarchy_code
     order by b.hierarchy_code`
   const rows = await read(scoped)
+  const names = new Map((await read(namesSql(a.material_groups))).map((r) => [String(r[0]), r[1] == null ? null : String(r[1])]))
   const asOfRows = await read(`select max(actuals_as_of_date) from "marts"."sales"."target_vs_actual_daily"`)
   const raw = asOfRows[0]?.[0] ?? null
   const asOf = raw == null ? null : raw instanceof Date ? raw.toISOString().slice(0, 10) : String(raw).slice(0, 10)
@@ -202,10 +232,11 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
     const r = byCode.get(code)
     return {
       code,
-      subcategory: r?.[1] == null ? null : String(r[1]),
-      mtd_target: num(r?.[4]),
-      mtd_actual: num(r?.[5]),
-      days_with_actual: Number(r?.[6] ?? 0),
+      subcategory: names.get(code) ?? null,
+      mtd_target: num(r?.[3]),
+      mtd_actual: num(r?.[4]),
+      days_with_actual: Number(r?.[5] ?? 0),
+      days: Number(r?.[6] ?? 0),
     }
   })
   const first = rows[0]
@@ -213,8 +244,8 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
     grouped,
     asOf,
     store: {
-      store_name: first?.[2] == null ? null : String(first[2]),
-      short_code: first?.[3] == null ? null : String(first[3]),
+      store_name: first?.[1] == null ? null : String(first[1]),
+      short_code: first?.[2] == null ? null : String(first[2]),
     },
   }
 }
@@ -243,7 +274,7 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
       data_through: dataThrough,
       cutoff_early: dataThrough < period.period_end,
       no_data_yet: dataThrough < period.period_start,
-      ...shape(live.grouped, a.section_by_material_group ?? {}),
+      ...shape(live.grouped, a.section_by_material_group ?? {}, dataThrough < period.period_start),
     }
   }
 
@@ -262,6 +293,6 @@ export async function reportFor(a: Assignment, period: Period = currentPeriod())
     data_through: dataThrough,
     cutoff_early: dataThrough < period.period_end,
     no_data_yet: dataThrough < period.period_start,
-    ...shape(grouped, a.section_by_material_group ?? {}),
+    ...shape(grouped, a.section_by_material_group ?? {}, dataThrough < period.period_start),
   }
 }

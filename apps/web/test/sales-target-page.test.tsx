@@ -268,3 +268,39 @@ test('a person with no viewer role gets a neutral header, not "Opening your repo
   await screen.findByText("You don't have access to this report")
   expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
 })
+
+// data-warehouse #4344: a group with ₹0 target and ₹0 sales is hidden by default, behind a toggle
+// that names how many there are; a group that sold without a target shows by its hierarchy name.
+test('groups with no target or sales are hidden until the reader asks for them', async ({ admin, api }) => {
+  await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
+    { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101002', '010101003'] },
+  ])
+  delete process.env.DIVE_ID
+  // The live path (no snapshot yet): the scoped day query, the hierarchy names, the as-of day.
+  _setSourceReader(async (text: string) => {
+    if (/with base as/.test(text)) return [
+      ['010101001', 'Store A', 'STA', 100, 60, 1, 1],
+      ['010101003', 'Store A', 'STA', null, 25.5, 1, 1], // sold, with no target
+    ]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts'], ['010101002', 'Trousers'], ['010101003', 'Belts']]
+    return [['2026-09-17']]
+  })
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+
+  const toggle = await screen.findByTestId('show-no-target-no-sale')
+  expect(toggle.closest('label')).toHaveTextContent('Show groups with no target or sales (1)')
+  expect(toggle).not.toBeChecked()
+  const codes = () => screen.getAllByTestId('snapshot-row').map((r) => r.getAttribute('data-code'))
+  expect(codes()).toEqual(['010101001', '010101003'])
+  expect(screen.getAllByTestId('snapshot-row')[1]).toHaveTextContent('Belts')
+  expect(screen.getAllByTestId('snapshot-row')[1]).not.toHaveTextContent('name not in hierarchy')
+  expect(screen.getByTestId('snapshot-total')).toHaveTextContent('Total · 2 subcategories')
+
+  await userEvent.click(toggle)
+  expect(codes()).toEqual(['010101001', '010101002', '010101003'])
+  expect(screen.getAllByTestId('snapshot-row')[1]).toHaveTextContent('Trousers')
+  // The hidden group adds ₹0, so the total's figures do not move — only the count of rows shown.
+  expect(screen.getByTestId('snapshot-total')).toHaveTextContent('Total · 3 subcategories')
+})

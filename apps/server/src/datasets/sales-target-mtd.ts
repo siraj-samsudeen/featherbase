@@ -3,7 +3,8 @@ import { registerDataset, type SnapshotRecord } from '../dataset-snapshot'
 import { currentPeriod } from '../sales-target'
 
 // The sales-target dataset: `experiments/issue_3755/shared/dive.tsx`'s rows query
-// with its personalisation predicate removed.
+// with its personalisation predicate removed, widened by #4344 to every sale (not
+// only those of groups with a target) and to the hierarchy's name for every group.
 //
 // The Dive scopes with `plant_code = '<store>'` and `hierarchy_code in (<codes>)`.
 // Dropping exactly those two, and keeping everything else, yields the superset
@@ -26,6 +27,15 @@ export const SALES_TARGET_DATASET = 'sales_target_mtd'
  * The definition, as SQL. Exported so a test can assert the personalisation
  * predicate is absent — the property the whole design rests on, which a comment
  * cannot enforce.
+ *
+ * One row per store x material group x day: every material-group TARGET row of
+ * the mart, FULL-joined to every SALE of the same store x group x day (#4344).
+ * The mart has rows only where a target exists (#3224), so reading it alone
+ * dropped what a group with no target sold. A target row keeps the mart's own
+ * actual, so a store's actuals for its targeted groups do not move; a sale with
+ * no target row carries a null target. The sale side is the mart's own leaf —
+ * `gold.sales.sales_item_daily`, store x lpad(material_group, 9) x day, before
+ * tax and net of returns — so the two sides reconcile.
  */
 export function definitionSql(periodStart: string, periodEnd: string): string {
   return `
@@ -34,28 +44,54 @@ export function definitionSql(periodStart: string, periodEnd: string): string {
                    coalesce(max(actuals_as_of_date), date '${periodEnd}')) as effective_end
       from "marts"."sales"."target_vs_actual_daily"
     ),
-    names as (
-      select material_group_code, any_value(subcategory) as subcategory
-      from "gold"."masters"."merchandise_hierarchy" group by 1
-    ),
     stores as (
       select store_code, any_value(store_name) as store_name, any_value(short_code) as short_code
       from "gold"."masters"."store" group by 1
+    ),
+    targets as (
+      select t.plant_code, t.hierarchy_code, t.business_date,
+             t.target_daily_before_tax, t.actual_before_tax
+      from "marts"."sales"."target_vs_actual_daily" t
+      cross join cutoff c
+      where t.hierarchy_level = 'material_group'
+        and t.business_date between date '${periodStart}' and c.effective_end
+    ),
+    sales as (
+      select s.store_code as plant_code, lpad(s.material_group, 9, '0') as hierarchy_code, s.business_date,
+             sum(s.sales_before_tax_net) as actual_before_tax
+      from "gold"."sales"."sales_item_daily" s
+      cross join cutoff c
+      where s.material_group is not null
+        and s.business_date between date '${periodStart}' and c.effective_end
+      group by 1, 2, 3
     )
-    select t.plant_code,
+    select coalesce(t.plant_code, s.plant_code)         as plant_code,
            st.store_name,
            st.short_code,
-           t.hierarchy_code,
-           n.subcategory,
-           t.business_date,
+           coalesce(t.hierarchy_code, s.hierarchy_code) as hierarchy_code,
+           coalesce(t.business_date, s.business_date)   as business_date,
            t.target_daily_before_tax,
-           t.actual_before_tax
-    from "marts"."sales"."target_vs_actual_daily" t
-    cross join cutoff c
-    left join names  n  on n.material_group_code = t.hierarchy_code
-    left join stores st on st.store_code = t.plant_code
-    where t.hierarchy_level = 'material_group'
-      and t.business_date between date '${periodStart}' and c.effective_end`
+           case when t.plant_code is not null then t.actual_before_tax else s.actual_before_tax end
+                                                         as actual_before_tax
+    from targets t
+    full join sales s
+      on s.plant_code = t.plant_code and s.hierarchy_code = t.hierarchy_code and s.business_date = t.business_date
+    left join stores st on st.store_code = coalesce(t.plant_code, s.plant_code)`
+}
+
+/**
+ * Every material group's name, from the merchandise hierarchy and nowhere else
+ * (#4344). Kept apart from the day rows because a reader's list carries groups
+ * that neither had a target nor sold this month, and those have no day row to
+ * carry a name.
+ */
+export function namesSql(codes?: string[]): string {
+  const only = codes ? `and material_group_code in (${codes.map((c) => `'${c}'`).join(', ')})` : ''
+  return `
+    select material_group_code, any_value(subcategory) as subcategory
+    from "gold"."masters"."merchandise_hierarchy"
+    where material_group_code is not null ${only}
+    group by 1`
 }
 
 const AS_OF_SQL = `select max(actuals_as_of_date) as as_of from "marts"."sales"."target_vs_actual_daily"`
@@ -99,10 +135,12 @@ export function _liveReader(): SourceReader {
 }
 
 const CHUNK = 5000
+const DAY = 'day'
+const NAME = 'name'
 
 // Bump when definitionSql changes. Part of snapshot identity, so a
 // redefinition can never silently serve rows cut to the old shape.
-const DEFINITION_REVISION = '1'
+const DEFINITION_REVISION = '2'
 
 registerDataset({
   name: SALES_TARGET_DATASET,
@@ -129,34 +167,45 @@ registerDataset({
     // than build an empty candidate and have it refused as a suspected upstream failure.
     if (sourceAsOf && sourceAsOf < period.period_start)
       throw new Error(`no actuals yet for the period starting ${period.period_start}: the warehouse has data through ${sourceAsOf}`)
-    const rows = await read(definitionSql(period.period_start, period.period_end))
-    return { rows, sourceAsOf }
+    const days = await read(definitionSql(period.period_start, period.period_end))
+    const names = await read(namesSql())
+    // One snapshot, two kinds of row, tagged so `load` can route them: a day row and a name.
+    return { rows: [...days.map((r) => [DAY, ...r]), ...names.map((r) => [NAME, ...r])], sourceAsOf }
   },
 
-  async load(snapshotId, rows) {
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const batch = rows.slice(i, i + CHUNK).map((r) => ({
+  async load(snapshotId, tagged) {
+    const days = tagged.filter((r) => r[0] === DAY).map((r) => r.slice(1))
+    const names = tagged.filter((r) => r[0] === NAME).map((r) => r.slice(1))
+    for (let i = 0; i < days.length; i += CHUNK) {
+      const batch = days.slice(i, i + CHUNK).map((r) => ({
         snapshot_id: snapshotId,
         plant_code: r[0] == null ? '' : String(r[0]),
         store_name: r[1] == null ? null : String(r[1]),
         short_code: r[2] == null ? null : String(r[2]),
         hierarchy_code: r[3] == null ? '' : String(r[3]),
-        subcategory: r[4] == null ? null : String(r[4]),
-        business_date: r[5] instanceof Date ? r[5].toISOString().slice(0, 10) : String(r[5]).slice(0, 10),
-        target_before_tax: r[6] == null ? null : Number(r[6]),
-        actual_before_tax: r[7] == null ? null : Number(r[7]),
+        business_date: r[4] instanceof Date ? r[4].toISOString().slice(0, 10) : String(r[4]).slice(0, 10),
+        target_before_tax: r[5] == null ? null : Number(r[5]),
+        actual_before_tax: r[6] == null ? null : Number(r[6]),
       }))
       await sql`insert into sales_target_snapshot_row ${sql(batch)}`
     }
-    return rows.length
+    const byCode = new Map<string, string | null>()
+    for (const r of names) if (r[0] != null) byCode.set(String(r[0]), r[1] == null ? null : String(r[1]))
+    const nameRows = [...byCode].map(([hierarchy_code, subcategory]) => ({ snapshot_id: snapshotId, hierarchy_code, subcategory }))
+    for (let i = 0; i < nameRows.length; i += CHUNK)
+      await sql`insert into sales_target_snapshot_name ${sql(nameRows.slice(i, i + CHUNK))}`
+    // The day rows are the snapshot's size: the names are a lookup beside them, and an
+    // empty or collapsed candidate must be judged on its figures, not on its dictionary.
+    return days.length
   },
 
   // What the rows cost on disk, for the registry. pg_column_size over the rows
   // rather than the relation's size: several snapshots share the table.
   async sizeOf(snapshotId) {
     const [r] = await sql`
-      select coalesce(sum(pg_column_size(t)), 0)::bigint as bytes
-      from sales_target_snapshot_row t where snapshot_id = ${snapshotId}`
+      select (select coalesce(sum(pg_column_size(t)), 0) from sales_target_snapshot_row t where snapshot_id = ${snapshotId})
+           + (select coalesce(sum(pg_column_size(n)), 0) from sales_target_snapshot_name n where snapshot_id = ${snapshotId})
+             as bytes`
     return Number(r.bytes)
   },
 

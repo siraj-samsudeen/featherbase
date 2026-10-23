@@ -1,0 +1,7 @@
+# Tasks
+
+- [x] 1.1 Failing tests first. `apps/server/test/sales-target-joins.test.ts` runs the dataset SQL against an in-memory DuckDB fixture, on both the live and the snapshot path: a group that sold with no target shows its hierarchy name and actuals against a ₹0 target; a group with neither a target nor a sale (or a ₹0 target and no sale) is classed "no target, no sale"; targeted groups keep the mart's figures; Section totals are the sum of their rows and add up to the total. Red on main, green after.
+- [x] 1.2 The dataset full-joins material-group target rows to `gold.sales.sales_item_daily` sales by store × group × day, and stores the hierarchy names in `sales_target_snapshot_name` (migration 0110). Definition revision 2.
+- [x] 1.3 The report reads names from the snapshot's names (live: from the hierarchy), classes no-target-no-sale rows, and counts them per Section.
+- [x] 1.4 The page hides those rows by default behind "Show groups with no target or sales (N)"; RTL case in `apps/web/test/sales-target-page.test.tsx`.
+- [x] 1.5 Parity on the 23-Oct-2026 dev section map against the warehouse, before and after, reported on data-warehouse#4344 (not in this public repo).
