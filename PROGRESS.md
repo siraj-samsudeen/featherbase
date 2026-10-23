@@ -1,5 +1,8 @@
 # Progress Log
 
+> **Frozen 23-Oct-2026 — not updated any more.** Work is recorded in pull requests, their issues and
+> OpenSpec changes; decisions in `docs/adr/`. This file is kept as history. Do not add entries.
+
 ## 2026-10-23 — Person screens after the person release: names not ids, readable identifier dates (#414, #415)
 
 Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release. (#413, a stale Person
