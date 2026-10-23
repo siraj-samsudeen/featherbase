@@ -214,6 +214,26 @@ export function autoMapColumns(
   })
 }
 
+// #408: headers that were Person fields until migration 0107 and now live
+// elsewhere. Importing into Person never maps them — not even onto a Custom
+// Field someone re-created under that name, which nothing reads — and the
+// wizard says where the data goes instead.
+const RETIRED_COLUMNS: Record<string, Record<string, string>> = {
+  Person: {
+    employee_code: 'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+    stylehr_username: 'stylehr_username is no longer a Person field — link StyleHR under the person’s Sign-in methods',
+  },
+}
+
+export function retiredColumnNotice(table: string, header: string): string | null {
+  return RETIRED_COLUMNS[table]?.[sanitizeColumnName(header)] ?? null
+}
+
+/** autoMapColumns for an import into `table`: a retired header maps to nothing. */
+export function autoMapImportColumns(table: string, headers: string[], targets: MappingTarget[]): (string | null)[] {
+  return autoMapColumns(headers, targets).map((m, i) => (retiredColumnNotice(table, headers[i]) ? null : m))
+}
+
 // IMP-009/IMP-012: how well a file's headers fit an existing Table, in BOTH
 // directions. `score` = fraction of the sheet's headers that map (does my
 // data fit?); `coverage` = fraction of the Table's columns that get mapped

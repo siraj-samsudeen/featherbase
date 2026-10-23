@@ -9,14 +9,20 @@ field was a copy of the person's current `stylehr-employee-code` row, but an ord
 Sales-target scoping (`currentEmployeeCodes` in `src/sales-target.ts`) now reads the person's **current**
 (`upper_inf(valid)`) `stylehr-employee-code` identifier rows, every one of them: two payrolls give the union
 of both codes' Sections. The Store Sections maps carry the code but not the firm, so a code current on two
-people scopes neither of them for that code and logs a structured `sales_target_ambiguous_employee_code`
-warning (people and row ids, never the code). Map codes compare trimmed and upper-cased, as identifier values
+people blocks each of them entirely (`no_assignment`, no partial scope from their other codes or explicit
+rows — design D10) and logs a structured `sales_target_ambiguous_employee_code` warning (people and row ids,
+never the code); DEPLOY.md's leaver procedure now says to END the code so the next holder is not blocked. Map codes compare trimmed and upper-cased, as identifier values
 are stored. Migration **0107** drops the `employee_code` and `stylehr_username` Custom Fields (records,
 column_def rows, columns); the sales-target seed no longer creates one; the temporary
-`mirrorEmployeeCodeField` and its five call sites are gone. OpenSpec person-resolution task 2.1.
+`mirrorEmployeeCodeField` and its five call sites are gone. A Person import whose file has an
+`employee_code` / `stylehr_username` column refuses that column with a pointer to the Identifiers panel or
+`people:resolve` (`retiredColumnNotice` / `autoMapImportColumns` in `packages/shared/src/import.ts`), never
+maps it — not even onto a re-created, inert Custom Field — and never offers to create it. OpenSpec
+person-resolution task 2.1.
 
 **Verified:** server and web typecheck; `check:specs`; `lint:sql`; the full server suite on Postgres 18.
-New tests: one code, several codes, an ended code, an ambiguous code (no_assignment + alert), and the #408
+New tests: one code, several codes, an ended code, an ambiguous code (whole person no_assignment + alert,
+unblocked once the other holder's code ends), the import refusal (shared + wizard render), and the #408
 repro (saving a Person with another code moves nothing). Parity on the 23-Oct dev snapshot: all 271
 StyleHR-linked people get identical scope from the old code (field) and the new code (rows) — 267 scoped,
 3 refused as before, 1 with no scope.

@@ -261,10 +261,12 @@ async function columnExists(table: string, column: string): Promise<boolean> {
  * `stylehr-employee-code` identifier rows — every one of them, so a person on
  * two payrolls gets the union of both codes' Sections. The Store Sections maps
  * carry the code but not the firm, and a code can be current on two people in
- * two firms; such a code is withheld (no Sections from it) and raised as a
- * structured alert naming rows, never the code. Period-valid codes: Phase 2.
+ * two firms. If ANY of the person's codes is, the person is `ambiguous` and gets
+ * no assignment at all until the other holder's code is ended; each read raises
+ * a structured alert naming people and rows, never the code. Period-valid
+ * codes: Phase 2.
  */
-async function currentEmployeeCodes(user: string): Promise<string[]> {
+async function currentEmployeeCodes(user: string): Promise<{ codes: string[]; ambiguous: boolean }> {
   const rows = await sql`
     select mine.value, array_agg(distinct held.person_id order by held.person_id) as holders,
            array_agg(distinct held.id order by held.id) as identifier_ids
@@ -275,19 +277,22 @@ async function currentEmployeeCodes(user: string): Promise<string[]> {
       and mine.value is not null and mine.value <> ''
     group by mine.value`
   const codes: string[] = []
+  let ambiguous = false
   for (const r of rows) {
     const holders = r.holders as string[]
-    if (holders.length === 1) { codes.push(String(r.value)); continue }
+    codes.push(String(r.value))
+    if (holders.length === 1) continue
+    ambiguous = true
     console.warn(JSON.stringify({
       event: 'sales_target_ambiguous_employee_code',
       person: user,
       holders: holders.length,
       holder_ids: holders,
       identifier_ids: r.identifier_ids,
-      outcome: 'code withheld from scope',
+      outcome: 'no_assignment',
     }))
   }
-  return codes
+  return { codes, ambiguous }
 }
 
 interface Derived {
@@ -310,10 +315,8 @@ interface Derived {
  * Section Ownership speaks the roster's Section names; Section Name Alias maps them onto the
  * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
  */
-async function derivedFromSections(user: string, today: string): Promise<Derived[]> {
-  if (!(await relationExists('section_merchandise_map'))) return []
-  const codes = await currentEmployeeCodes(user)
-  if (!codes.length) return []
+async function derivedFromSections(codes: string[], today: string): Promise<Derived[]> {
+  if (!codes.length || !(await relationExists('section_merchandise_map'))) return []
   const merch = sql(platformRelation('section_merchandise_map'))
   const out: Derived[] = []
 
@@ -410,12 +413,15 @@ async function sectionsOf(plant: string, groups: string[]): Promise<Record<strin
  * conflict between the two sources is refused loudly rather than mixing stores.
  */
 export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
+  // D10: a code we cannot attribute to one person blocks the whole reader — no partial scope.
+  const { codes, ambiguous } = await currentEmployeeCodes(user)
+  if (ambiguous) return null
   const explicit = await sql`
     select plant_code, store_label, material_group
     from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
     where employee = ${user}
     order by material_group`
-  const derived = await derivedFromSections(user, period.period_end)
+  const derived = await derivedFromSections(codes, period.period_end)
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)

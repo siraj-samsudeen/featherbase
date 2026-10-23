@@ -7,6 +7,8 @@ export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, Ru
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization } from './app-access'
 export {
   autoMapColumns,
+  autoMapImportColumns,
+  retiredColumnNotice,
   coerceRows,
   inferChoices,
   inferColumnType,

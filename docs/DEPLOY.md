@@ -695,7 +695,10 @@ promoted to production (below).
    from person_identifier group by 1;                                   -- stylehr-employee-code 271/271; email 11/11
    select subject_kind, count(*) from sign_in_identity
    where method = 'stylehr' and ended_at is null group by 1;            -- employee-code 271
-   select max(name), count(*) from migration;                           -- 0102_person_resolution.ts, 104
+   select max(name), count(*) from migration;                           -- 0107_drop_person_code_custom_fields.sql, 107
+   -- (count = the files in apps/server/migrations at the deployed commit; 108 once #418's 0106 is on main)
+   select count(*) from information_schema.columns where table_schema = 'featherbase'
+     and table_name = 'person' and column_name in ('employee_code', 'stylehr_username'); -- 0
    ```
    Then `pnpm --filter server cli people:plan` (no `--rehearse`) on the live
    database: it re-scans the recorded map and must report no old id.
@@ -721,10 +724,19 @@ promoted to production (below).
 ### If something goes wrong in the dev window
 
 - **Steps 3–4 refuse or fail** (boot-check error, preflight refusal, a failed
-  migration): nothing has changed — the preflight runs before any migration,
-  and 0100–0102 are one transaction. Confirm `select max(name) from migration`
-  is still `0100_person_identities.ts` (dev's value; dev applied 0100 earlier), roll the service back to its previous
-  deployment, and fix before trying again.
+  migration in the 0100–0102 group): nothing has changed — the preflight runs
+  before any migration, and 0100–0102 are one transaction. Confirm `select
+  max(name) from migration` is still `0100_person_identities.ts` (dev's value;
+  dev applied 0100 earlier), roll the service back to its previous deployment,
+  and fix before trying again.
+- **A later migration fails** (0104, 0105 or 0107): each runs in **its own
+  transaction after the 0100–0102 group has committed**, so the database is
+  NOT unchanged — `max(name)` shows the last one applied. Treat it as
+  "released, but wrong" below: restore the step-2 snapshot. 0107 (#408) drops
+  `person.employee_code` and `person.stylehr_username`; it fails if a
+  publication's column list on `person` names either column, so no CDC
+  publication column list may name them (check `select * from
+  pg_publication_tables where tablename = 'person'` before the release).
 - **Released, but wrong** (counts disagree, sign-in fails): take the service
   off the air, restore the step-2 snapshot —
   `pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" featherbase-dev-pre-person-<date>.dump`
@@ -800,7 +812,11 @@ columns, which logical replication does not send**. Warehouse readers use
 preflight refuses or any of 0100–0102 fails, the whole group rolls back:
 confirm `select max(name) from migration` is still
 `0099_delegated_login_settings.ts` and roll the service back; there is
-nothing to restore. If the release committed but is wrong: before step 7 (the
+nothing to restore. 0104, 0105 and 0107 each commit on their own after the
+group: if one of them fails, the group and any earlier ones stay applied —
+restore the step-4 snapshot as below. (On prod 0107 drops nothing — the
+columns never existed there — but a publication column list on `person` must
+still not name them.) If the release committed but is wrong: before step 7 (the
 registration is unchanged), restore the step-4 snapshot (`max(name)` is then
 `0099_delegated_login_settings.ts` again), roll the service back, put back
 the schedule and let the worker resume on the old registration. After
@@ -825,11 +841,18 @@ once the feed writes.
 person's **current StyleHR employee-code rows** (every one of them: two
 payrolls give both codes' Sections). A hand entry, end or correction moves the
 Sections at once. A code current on **two people** (two firms) scopes neither
-of them for that code; the server logs a `sales_target_ambiguous_employee_code`
-warning naming the people and rows (never the code) — fix the holders on the
-Identifiers panel. Migration **0107** removed the old `employee_code` and
+of them **at all** (`no_assignment`, even for their other codes and their
+explicit assignment rows); the server logs a `sales_target_ambiguous_employee_code`
+warning naming the people and rows (never the code) — end the code on the
+person who no longer holds it, on the Identifiers panel. Migration **0107** removed the old `employee_code` and
 `stylehr_username` Custom Fields from Person (a no-op where they never existed,
 such as prod); the warehouse mirror of `person` sees the two columns disappear.
+A Custom Field named `employee_code` created on Person afterwards is **inert**:
+nothing reads it, scoping included. **Importing people:** a Person file with an
+`employee_code` (or `stylehr_username`) column is refused for that column — the
+import wizard says "employee_code is no longer a Person field — add codes on the
+Identifiers panel or with people:resolve", cannot map or tick it, and never
+offers to create the field.
 
 **Find a person by code:** *Admin → Person →* **Find by code**
 (`/featherbase/admin/find-person`). Choose *StyleHR employee code* and type the
@@ -839,8 +862,10 @@ by code.
 - **Leaver.** The HR contact mails the leaver's employee code. Find them,
   open the record and turn **Enabled** off: that ends every session and every
   way in at once (#371's rule), and deletes nothing. On the Identifiers panel,
-  **End** the code with a note ("Left 23-Oct, HR mail"). Record the code and
-  the date in the reply.
+  **End** the code with a note ("Left 23-Oct, HR mail") — always: a code left
+  current on the leaver blocks the sales-target report of whoever is given
+  that code next (a code current on two people scopes neither). Record the
+  code and the date in the reply.
 - **Joiner.** HR mails the employee code, the StyleHR login ID and the
   StyleHR record number. Find by code first — they may have worked here
   before. If they are not found, *Admin → Person → New*: full name, plus email

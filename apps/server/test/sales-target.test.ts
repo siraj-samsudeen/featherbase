@@ -791,7 +791,7 @@ describe('#408 the scope follows the person\'s current employee-code identifier 
     expect((await scopeOf(api, 'moved_on'))?.material_groups).toEqual(['010505001'])
   })
 
-  test('a code current on two people (two firms) scopes neither: no_assignment, and a structured alert', async ({ admin, api }) => {
+  test('a code current on two people (two firms) scopes neither person at all: no_assignment, and a structured alert', async ({ admin, api }) => {
     await seed(admin); await maps(admin); await reader(admin, 'firm_a'); await reader(admin, 'firm_b')
     await codeRow('firm_a', 'RR-0101', { assigner: '12' })
     await codeRow('firm_b', 'RR-0101', { assigner: '7' })
@@ -808,9 +808,17 @@ describe('#408 the scope follows the person\'s current employee-code identifier 
     } finally {
       warn.mockRestore()
     }
-    // Only the ambiguous code is withheld: firm_a's other, unshared code still scopes them.
+    // D10: ANY ambiguous current code blocks the whole person — an unshared second code does not
+    // reopen a partial scope, and neither does an explicit assignment row.
     await codeRow('firm_a', 'RR-0202', { assigner: '12' })
-    expect((await scopeOf(api, 'firm_a'))?.material_groups).toEqual(['010101002'])
+    await admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: await idOf('firm_a'), plant_code: '1501', store_label: 'ATK', material_group: '010909001' } })
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(await scopeOf(api, 'firm_a')).toBeNull()
+    expect(await embed(api, 'firm_a')).toEqual({ no_assignment: true })
+    vi.restoreAllMocks()
+    // Ending the other holder's code (the leaver procedure) unblocks both of firm_a's codes.
+    await sql`update person_identifier set valid = daterange(lower(valid), '2026-01-01', '[)') where person_id = ${await idOf('firm_b')}`
+    expect((await scopeOf(api, 'firm_a'))?.material_groups).toEqual(['010101002', '010505001', '010909001'])
   })
 
   test('#408 repro: editing the Person cannot move a scope — there is no employee_code field to type over', async ({ admin, api }) => {
