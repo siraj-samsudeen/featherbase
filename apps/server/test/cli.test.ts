@@ -187,6 +187,7 @@ describe('#401: cli settings:set', () => {
     original = (row?.value as string | undefined) ?? null
   })
   afterAll(async () => {
+    await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set %'`
     await sql`delete from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
     if (original !== null)
       await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'privacy_notice', value: original })}`
@@ -207,6 +208,27 @@ describe('#401: cli settings:set', () => {
     expect(stdout).toContain('privacy_notice')
     const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
     expect(row.value).toBe(notice)
+    // Audited like other administrative changes: actor `cli`.
+    const [log] = await sql`select "user", operation from activity_log
+      where "user" = 'cli' and operation = 'settings_set privacy_notice' order by created_at desc limit 1`
+    expect(log).toEqual({ user: 'cli', operation: 'settings_set privacy_notice' })
+  }, 60_000)
+
+  it('refuses a layout or child-table field', async () => {
+    const [layout] = await sql`select column_name from column_def
+      where parent = 'System Settings' and column_type in ('Section Break', 'Column Break', 'Tab Break', 'Sub-table', 'Table') limit 1`
+    // System Settings has none today; any such column type must still be refused.
+    const name = (layout?.column_name as string | undefined) ?? 'cli_test_section'
+    if (!layout)
+      await sql`insert into column_def ${sql({ parent: 'System Settings', position: 999, column_name: name, label: null, column_type: 'Section Break',
+        reqd: false, unique: false, default_value: null, read_only: false, hidden: false, in_list_view: false, tier: 'basic' })}`
+    try {
+      const f = failure(['settings:set', name, '--stdin'], 'x')
+      expect(f?.status).toBe(1)
+      expect(f?.stderr).toContain(`System Settings field ${name} holds no value`)
+    } finally {
+      if (!layout) await sql`delete from column_def where parent = 'System Settings' and column_name = ${name}`
+    }
   }, 60_000)
 
   it('refuses a field System Settings does not have', async () => {

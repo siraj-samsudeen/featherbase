@@ -1,20 +1,24 @@
 // #401: GET /privacy renders the instance's configured notice (System Settings
 // `privacy_notice`, markdown). Raw HTML in the markdown is escaped, not
-// rendered, and markdown-it refuses javascript:/vbscript:/data: links; the
-// page carries no script and a CSP that forbids one (a meta tag: the global
-// secureHeaders middleware rewrites the response header after the handler).
+// rendered, and markdown-it refuses javascript:/vbscript: links. Images never
+// load (a privacy page must not fetch third-party pixels): image syntax renders
+// as a link carrying its alt text. The page carries no script and a CSP that
+// forbids scripts and images (a meta tag: the global secureHeaders middleware
+// rewrites the response header after the handler).
 import MarkdownIt from 'markdown-it'
 import { sql } from './db'
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false })
+markdown.renderer.rules.image = (tokens, idx) => {
+  const token = tokens[idx]
+  const src = token.attrGet('src') ?? ''
+  const alt = markdown.utils.escapeHtml(token.content || src)
+  return /^(https?|mailto):/i.test(src) ? `<a href="${markdown.utils.escapeHtml(src)}">${alt}</a>` : alt
+}
 
-const CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src https:; script-src 'none'; base-uri 'none'; form-action 'none'"
+const CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; script-src 'none'; base-uri 'none'; form-action 'none'"
 
-/** The rendered page, or null when no notice is configured. */
-export async function privacyNoticePage(): Promise<string | null> {
-  const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
-  const source = (row?.value as string | null | undefined) ?? ''
-  if (!source.trim()) return null
+function page(content: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -35,14 +39,21 @@ export async function privacyNoticePage(): Promise<string | null> {
   th { background: var(--head) }
   blockquote { margin: 1rem 0; padding: 0 1rem; border-left: 3px solid var(--rule); color: var(--muted) }
   code { font-size: .95em }
-  img { max-width: 100% }
   a { color: inherit }
 </style>
 </head>
 <body>
 <main>
-${markdown.render(source)}</main>
+${content}</main>
 </body>
 </html>
 `
+}
+
+/** The page to serve: the rendered notice, or a plain 404 page when none is configured. */
+export async function privacyNoticePage(): Promise<{ status: 200 | 404; html: string }> {
+  const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+  const source = (row?.value as string | null | undefined) ?? ''
+  if (!source.trim()) return { status: 404, html: page('<p>No privacy notice is published here.</p>\n') }
+  return { status: 200, html: page(markdown.render(source)) }
 }

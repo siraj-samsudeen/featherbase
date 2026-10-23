@@ -21,16 +21,37 @@ describe('#401 privacy notice from System Settings', () => {
     expect(col?.column_type).toBe('Long Text')
   })
 
-  test('GET /privacy is 404 when no notice is configured', async ({ api }) => {
+  test('GET /privacy is a plain HTML 404 page when no notice is configured', async ({ api }) => {
     await setNotice(null)
     const res = await api.fetch('/privacy', { redirect: 'manual' })
     expect(res.status).toBe(404)
+    expect(res.headers.get('content-type')).toMatch(/^text\/html/)
+    const body = await res.text()
+    expect(body).toContain('<title>Privacy notice</title>')
+    expect(body).toContain('No privacy notice is published here.')
+    expect(body).toContain('prefers-color-scheme: dark')
+    expect(body.toLowerCase()).not.toContain('<script')
+  })
+
+  test('GET /privacy/ redirects permanently to /privacy', async ({ api }) => {
+    const res = await api.fetch('/privacy/', { redirect: 'manual' })
+    expect(res.status).toBe(301)
+    expect(new URL(res.headers.get('location')!, 'http://x').pathname).toBe('/privacy')
+  })
+
+  test('markdown images never load: shown as a link with their alt text, and the CSP forbids images', async ({ api }) => {
+    await setNotice('Example Org privacy notice\n\n![tracking pixel](https://tracker.example.com/p.gif)')
+    const body = await (await api.fetch('/privacy', { redirect: 'manual' })).text()
+    expect(body.toLowerCase()).not.toContain('<img')
+    expect(body).toContain('<a href="https://tracker.example.com/p.gif">tracking pixel</a>')
+    expect(body).toMatch(/<meta http-equiv="Content-Security-Policy" content="[^"]*img-src 'none'/)
   })
 
   test('GET /privacy is 404 when the notice is only whitespace', async ({ api }) => {
     await setNotice('  \n ')
     const res = await api.fetch('/privacy', { redirect: 'manual' })
     expect(res.status).toBe(404)
+    expect(await res.text()).toContain('No privacy notice is published here.')
   })
 
   test('GET /privacy renders the configured markdown as a public HTML page', async ({ api }) => {
@@ -38,6 +59,7 @@ describe('#401 privacy notice from System Settings', () => {
     const res = await api.fetch('/privacy', { redirect: 'manual' })
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/^text\/html/)
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300')
     const body = await res.text()
     expect(body).toContain('<title>Privacy notice</title>')
     expect(body).toContain('<h1>Example Org privacy notice</h1>')

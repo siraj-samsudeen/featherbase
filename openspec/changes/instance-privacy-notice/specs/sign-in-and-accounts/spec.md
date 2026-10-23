@@ -8,7 +8,8 @@ An administrator SHALL be able to set the instance's own privacy notice, and
 anyone SHALL be able to read it on a public page without signing in. Until a
 notice is set, the page SHALL not exist. Formatting in the notice, such as
 headings, lists and links, SHALL show as formatting; anything that could run
-in the reader's browser SHALL be shown as plain text or dropped.
+in the reader's browser SHALL be shown as plain text or dropped, and the page
+SHALL load nothing from elsewhere, so an image in the notice shows as a link.
 
 #### Scenario: Read the notice before signing in
 

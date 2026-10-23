@@ -440,13 +440,15 @@ cannot change access, but they can read everything that person can.
 instance's own privacy notice — Google's consent screen links to it. The
 wording is **instance configuration, not code**: this repository is public and
 never carries an organisation's notice. Until one is set, `/privacy` answers
-404.
+a plain 404 page ("No privacy notice is published here."). Responses are
+cacheable for five minutes, so a change can take that long to show.
 
 - **Where the text lives:** in the organisation's own repository, as a
   reviewed Markdown file. Changes to it go through that repository's review
   and approval, not this one.
 - **Where it is stored:** the System Settings field `privacy_notice`
   (Markdown). Raw HTML in it is shown as text, never rendered; links work.
+  Images never load: image syntax shows as a link with its alt text.
 - **How to apply it:** from the reviewed file, on the target instance:
 
   ```bash
@@ -454,6 +456,9 @@ never carries an organisation's notice. Until one is set, `/privacy` answers
   # e.g. on Railway:
   railway ssh -p <project> -e <env> -s <service> -- pnpm --filter server cli settings:set privacy_notice --stdin < privacy-notice.md
   ```
+
+  The CLI accepts only System Settings data fields and records
+  `settings_set <field>` in the Activity Log with actor `cli`.
 
   Not yet rehearsed over `railway ssh` (#401): if the file does not reach the
   remote command, a System Manager pastes it into the System Settings form

@@ -29,6 +29,7 @@ import { getList } from './query'
 import { getMeta } from './meta'
 import { issueAccessToken, listAccessTokens, revokeAccessToken, setUserPassword } from './auth'
 import { createServiceAccount } from './service-accounts'
+import { logActivity } from './audit'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
@@ -230,15 +231,22 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
-// #401: System Settings fields only, through saveDoc (validation, history).
+// Layout and child-table columns carry no value of their own.
+const NO_VALUE_TYPES = new Set(['Section Break', 'Column Break', 'Tab Break', 'Sub-table', 'Table'])
+
+// #401: System Settings data fields only, through saveDoc (validation), and
+// recorded in the Activity Log with actor `cli`.
 // The value is the whole of stdin, unchanged, so a reviewed file applies as is.
 async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
   const [field] = positional
   if (!field || flags.stdin !== true || positional.length !== 1) throw new Error('usage: cli settings:set <field> --stdin')
   const meta = await getMeta('System Settings')
-  if (!meta.columns.some((c) => c.column_name === field)) throw new Error(`System Settings has no field ${field}`)
+  const column = meta.columns.find((c) => c.column_name === field)
+  if (!column) throw new Error(`System Settings has no field ${field}`)
+  if (NO_VALUE_TYPES.has(column.column_type)) throw new Error(`System Settings field ${field} holds no value (${column.column_type})`)
   const value = await readStdin()
   await saveDoc('System Settings', { [field]: value }, 'Administrator')
+  await logActivity('cli', `settings_set ${field}`)
   console.log(`System Settings ${field} set (${value.length} characters)`)
 }
 

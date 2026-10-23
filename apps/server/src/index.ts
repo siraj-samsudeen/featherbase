@@ -615,9 +615,11 @@ app.use('/api/*', async (c, next) => {
 // #401: public (Google's consent screen fetches it anonymously), ahead of the
 // legacy redirect below, which would otherwise answer /privacy with a 308.
 app.get('/privacy', async (c) => {
-  const page = await privacyNoticePage()
-  return page ? c.html(page) : c.notFound()
+  const { status, html } = await privacyNoticePage()
+  c.header('Cache-Control', 'public, max-age=300')
+  return c.html(html, status)
 })
+app.get('/privacy/', (c) => c.redirect('/privacy', 301))
 
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have
 // one canonical namespace. Runtime app roots and technical /api paths never
