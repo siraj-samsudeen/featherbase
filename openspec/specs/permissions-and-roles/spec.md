@@ -96,3 +96,28 @@ list.
 - **WHEN** a user without a read grant opens a table's list
 - **THEN** they see a message explaining they can't read it, not an empty
   list
+
+### Requirement: The screen shows only what a person can use
+
+After signing in, a person SHALL see only the tools they can use, decided by
+the server from their current roles and grants. Someone whose only access is
+the Sales Target report SHALL get a bare screen — the report, their name,
+their own sign-in methods and sign-out — with no administration menu, and
+without the page asking for anything they would be refused. Someone with no
+role of use at all SHALL get a plain page saying they have no access yet and
+to ask their administrator, with sign-out. Building tables, importing data and
+access tokens SHALL be offered only to System Managers, and a table list SHALL
+name only the tables the person can read.
+
+#### Scenario: A report-only person never meets the administration menu
+
+- **WHEN** someone holding only the Sales Target Viewer role opens an
+  administration address
+- **THEN** they are taken to their report, and no administration menu or
+  refused request appears
+
+#### Scenario: A person with no access is told so
+
+- **WHEN** someone with no roles of use signs in
+- **THEN** they see that they have no access yet, who to ask, and a way to
+  sign out

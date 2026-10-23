@@ -121,6 +121,26 @@ export async function assertPermission(
     )
 }
 
+/**
+ * What Tables a principal can use at all, for drawing the shell (#410): the
+ * Tables they can read, and whether they hold any Table grant or shared row.
+ * Display only — every request is still checked by its own route.
+ */
+export async function tableAccessFor(
+  principal: string,
+): Promise<{ readable: string[]; any: boolean }> {
+  const roles = await getRoles(principal)
+  const rows = await sql`
+    select ref_table, can_read, owner_app from permission
+    where tier = 'basic' and role in ${sql(roles)}
+      and (can_read or can_write or can_create or can_delete or can_submit or can_cancel or can_amend)`
+  const active = rows.filter((r) => r.owner_app == null || activeApps.has(String(r.owner_app)))
+  const readable = [...new Set(active.filter((r) => r.can_read).map((r) => r.ref_table as string))].sort()
+  const [shared] = await sql`
+    select 1 from share where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
+  return { readable, any: active.length > 0 || Boolean(shared) }
+}
+
 /** Administrator, or a principal of either kind holding System Manager. */
 export async function isPrivileged(principal: string): Promise<boolean> {
   if (principal === 'Administrator') return true
