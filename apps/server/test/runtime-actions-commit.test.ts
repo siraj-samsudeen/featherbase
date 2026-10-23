@@ -45,7 +45,7 @@ prove('real commits: both sides of core-link/reference deletion races; effects o
         saveDoc('Comment', { ref_table: 'actionproof.work', ref_name: first, content: 'Retain this exact discussion' }, 'Administrator', 'insert'),
         saveDoc('ActionProof Ref', { source: first }, 'Administrator', 'insert'),
         saveDoc('File', { ref_table: 'actionproof.work', ref_name: first, file_name: 'invoice-83.txt' }, 'Administrator', 'insert'),
-        saveDoc('Share', { share_table: 'actionproof.work', share_name: first, user: 'Administrator', read: true }, 'Administrator', 'insert'),
+        saveDoc('Share', { share_table: 'actionproof.work', share_name: first, person: 'Administrator', read: true }, 'Administrator', 'insert'),
       ].map(promise => promise.then(value => ({ ok: true, value }), error => ({ ok: false, error })))
       let deletion: Promise<any> | undefined
       let writing: Promise<any>[] = []

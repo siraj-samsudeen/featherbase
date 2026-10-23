@@ -26,7 +26,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scop
   await admin.post('/api/install_app', { name: 'scopeproof' })
   const user = await createUser({ email: 'scoped@example.test', roles })
   for (const code of ['A', 'B', 'C']) await admin.post('/api/save_row', { table: 'scopeproof.store', row: { row_id: code, label: `${code} private label` } })
-  for (const code of stores) await admin.post('/api/save_row', { table: 'Data Scope', row: { user: user.user, allow_table: 'scopeproof.store', for_value: code } })
+  for (const code of stores) await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'scopeproof.store', for_value: code } })
   const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
   const module = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
   Object.assign(module.calls, { handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
@@ -264,7 +264,7 @@ describe('fresh app roles and store access', () => {
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
     await expect(user.get(read + 'object/access')).rejects.toMatchObject({ status: 403 })
     await expect(user.get(read + 'stores/access?user=Administrator')).rejects.toMatchObject({ status: 403 })
-    await sql`delete from data_scope where "user" = ${user.user}`
+    await sql`delete from data_scope where person = ${user.user}`
     expect(await user.get(read + 'stores/access')).toEqual({ storeCodes: [] })
     await expect(user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).rejects.toMatchObject({ status: 403 })
     await sql`delete from has_role where parent = ${user.user}`
@@ -279,7 +279,7 @@ describe('fresh app roles and store access', () => {
     await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: false })
     await expect(user.get(read + 'stores/access')).rejects.toMatchObject({ status: 403 })
     await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: true })
-    await sql`update "user" set enabled = false where row_id = ${user.user}`
+    await sql`update person set enabled = false where row_id = ${user.user}`
     await expect(user.get(read + 'stores/access')).rejects.toMatchObject({ status: 401 })
     expect(module.calls.handler).toBe(0)
   })
@@ -291,7 +291,7 @@ describe('fresh app roles and store access', () => {
     for (const payload of [{ id: 'draft', storeCodes: ['A'] }, { id: 'draft' }, { id: 'absent', storeCodes: ['A'] }])
       await expect(user.post(read + 'object', { payload })).rejects.toMatchObject({ status: 403 })
     expect(module.calls.handler).toBe(0)
-    await admin.post('/api/save_row', { table: 'Data Scope', row: { user: user.user, allow_table: 'scopeproof.store', for_value: 'B' } })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: user.user, allow_table: 'scopeproof.store', for_value: 'B' } })
     await expect(user.post(read + 'object', { payload: { id: 'draft', storeCodes: ['A'], mutateClaim: true } })).rejects.toMatchObject({ status: 403 })
     await expect(user.post(read + 'object', { payload: { id: 'draft', line: 'line', storeCodes: ['A', 'B'] } })).rejects.toMatchObject({ status: 403 })
     expect(module.calls.handler).toBe(0)
@@ -309,7 +309,7 @@ describe('fresh app roles and store access', () => {
     expect(await sql`select * from scopeproof.object where row_id = 'draft'`).toEqual([])
     const before = { ...module.calls }
     expect(await user.post(action + 'discard', { idempotencyKey: 'receipt', payload: { ...payload, storeCodes: ['A', 'B'] } })).toEqual(result)
-    await sql`delete from data_scope where "user" = ${user.user} and for_value = 'B'`
+    await sql`delete from data_scope where person = ${user.user} and for_value = 'B'`
     await expect(user.post(action + 'discard', { idempotencyKey: 'receipt', payload })).rejects.toMatchObject({ status: 403 })
     await expect(user.post(action + 'discard', { idempotencyKey: 'receipt', payload: { ...payload, storeCodes: ['A'] } })).rejects.toMatchObject({ status: 409 })
     expect(module.calls).toEqual(before)
@@ -343,7 +343,7 @@ describe('fresh app roles and store access', () => {
       create view featherbase.runtime_action_result as select caller, app, action, idempotency_key, payload,
         "authorization", pg_temp.forbidden_result(result) as result from featherbase.protected_receipts`)
     await expect(withTransaction(async () => { await sql`select result from runtime_action_result` })).rejects.toThrow('Protected result was read')
-    await sql`delete from data_scope where "user" = ${user.user} and for_value = 'B'`
+    await sql`delete from data_scope where person = ${user.user} and for_value = 'B'`
     await expect(user.post(action + 'discard', request)).rejects.toMatchObject({ status: 403 })
     await sql`update featherbase.protected_receipts set "authorization" = '{"version":99}'`
     await expect(user.post(action + 'discard', request)).rejects.toMatchObject({ status: 403 })

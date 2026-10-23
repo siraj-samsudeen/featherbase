@@ -56,11 +56,11 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'team' is refused without System Manager", async ({ admin, api }) => {
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: 'feed-user@x.com', email: 'feed-user@x.com', enabled: true },
+    const person = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'feed-user@x.com', enabled: true },
     })
-    const { token } = await issueSession('feed-user@x.com')
+    const { token } = await issueSession(person.row_id)
     const res = await api.fetch('/api/activity_feed?scope=team', {
       headers: { authorization: `Bearer ${token}` },
     })

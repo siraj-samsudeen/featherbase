@@ -33,14 +33,14 @@ test('says how a Google link went', async ({ createUser }) => {
   expect(await screen.findByTestId('link-outcome')).toHaveTextContent('belongs to another account')
 })
 
-// Review B-M4: a System Manager manages anyone's sign-in methods from the User form.
-test('on a User form a System Manager links a service, invites Google and unlinks', async ({ admin, createUser }) => {
+// Review B-M4: a System Manager manages anyone's sign-in methods from the Person form.
+test('on a Person form a System Manager links a service, invites Google and unlinks', async ({ admin, createUser }) => {
   await configureDelegated()
   const tl = await createUser({ email: 'tl.panel@example.com' })
-  await renderApp(`/featherbase/admin/User/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
-  await userEvent.type(within(link).getByLabelText('Employee code'), 'RR-4242')
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-4242')
   await userEvent.type(within(link).getByLabelText('Login ID at the service'), 'tl_panel')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   await waitFor(() => expect(panel).toHaveTextContent('RR-4242'))
@@ -53,14 +53,15 @@ test('on a User form a System Manager links a service, invites Google and unlink
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   const row = within(panel).getByText(/RR-4242/).closest('li') as HTMLElement
   await userEvent.click(within(row).getByRole('button', { name: 'Unlink' }))
-  await waitFor(() => expect(panel).not.toHaveTextContent('RR-4242'))
+  // person-resolution D5: the link ends and stays on record as history.
+  await waitFor(() => expect(panel).toHaveTextContent(/RR-4242.*ended.*\(unlinked\)/))
   expect(confirm).toHaveBeenCalled()
   confirm.mockRestore()
 })
 
-test('a person without the System Manager role sees no admin panel on a User form', async ({ createUser }) => {
+test('a person without the System Manager role sees no admin panel on a Person form', async ({ createUser }) => {
   const plain = await createUser({ email: 'plain.panel@example.com' })
-  await renderApp(`/featherbase/admin/User/${encodeURIComponent(plain.user!)}`, plain)
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(plain.user!)}`, plain)
   await screen.findByTestId('session-user')
   expect(screen.queryByTestId('user-sign-in-methods')).not.toBeInTheDocument()
 })
@@ -78,23 +79,23 @@ test('a refused link keeps the form; a link on a turned-off method is labelled',
   const taken = await createUser({ email: 'tl.taken@example.com' })
   await linkDelegated(taken.user!, 'tl_taken', { subject: 'RR-5000' })
   const tl = await createUser({ email: 'tl.form@example.com' })
-  await renderApp(`/featherbase/admin/User/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   const link = await within(panel).findByTestId('link-delegated-form')
-  await userEvent.type(within(link).getByLabelText('Employee code'), 'RR-5000')
+  await userEvent.type(within(link).getByLabelText('Record number at the service'), 'RR-5000')
   await userEvent.click(within(link).getByRole('button', { name: 'Link' }))
   expect(await within(panel).findByTestId('user-method-error')).toHaveTextContent('already linked')
-  expect(within(link).getByLabelText('Employee code')).toHaveValue('RR-5000')
+  expect(within(link).getByLabelText('Record number at the service')).toHaveValue('RR-5000')
 
 })
 
-test('a link on a turned-off method is still named on the User form', async ({ admin, createUser }) => {
+test('a link on a turned-off method is still named on the Person form', async ({ admin, createUser }) => {
   await configureDelegated()
   const tl = await createUser({ email: 'tl.off@example.com' })
   await linkDelegated(tl.user!, 'tl_off')
   const { sql } = await import('server/src/db')
   await sql`update sign_in_method set enabled = false where row_id = 'stylehr'`
-  await renderApp(`/featherbase/admin/User/${encodeURIComponent(tl.user!)}`, admin)
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(tl.user!)}`, admin)
   const panel = await screen.findByTestId('user-sign-in-methods')
   await waitFor(() => expect(panel).toHaveTextContent('StyleHR (turned off)'))
 })

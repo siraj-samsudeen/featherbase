@@ -3,7 +3,7 @@ import type { AppAuthorizationContext, AppFactDeclaration, AppOperationDeclarati
 import { sql, withTransaction } from './db'
 import { appOperation, assertAppAvailable } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
-import { assertPermission, getRoles, getUserPermissionMap } from './permissions'
+import { assertPermission, getRoles, getScopeMap } from './permissions'
 import { getMeta } from './meta'
 import { tableRelation, type TableDef } from './table-engine'
 import { AppError } from './errors'
@@ -104,7 +104,8 @@ interface AccessRequest {
 
 async function currentAccess(request: AccessRequest, declaration: AppOperationDeclaration): Promise<Set<string>> {
   const { user, app, entryTable, kind } = request
-  const [enabled] = await sql`select enabled from "user" where row_id = ${user}`
+  const [enabled] = await sql`select enabled from person where row_id = ${user}
+    union all select enabled from service_account where row_id = ${user}`
   if (!user || user === 'Guest' || !enabled?.enabled) refuseAppAccess('user')
   await assertAppAvailable(`${app}.__access`, true)
   await assertPermission(user, entryTable, 'read')
@@ -114,7 +115,7 @@ async function currentAccess(request: AccessRequest, declaration: AppOperationDe
   if (dimension.owner_app !== app || dimension.system || dimension.data_source || dimension.kind !== 'table') refuseAppAccess('configuration')
   const roles = await getRoles(user)
   if (!(kind === 'action' ? policy.actionRoles : policy.readRoles).some(role => roles.includes(role))) refuseAppAccess('role')
-  return (await getUserPermissionMap(user)).get(policy.storeTable) ?? new Set()
+  return (await getScopeMap(user)).get(policy.storeTable) ?? new Set()
 }
 function subset(requested: readonly string[], allowed: Set<string>) {
   if (requested.some(code => !allowed.has(code))) refuseAppAccess()

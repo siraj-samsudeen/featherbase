@@ -119,7 +119,7 @@ describe('WF-004: pending-approval notifications', () => {
   // their user id.
   test('an approver without an email is skipped', async ({ admin, createUser }) => {
     await setup(admin, createUser)
-    await saveDoc('User', { row_id: 'RR-wf-noemail', enabled: true, roles: [{ role: APPROVER_ROLE }] }, 'Administrator')
+    await saveDoc('Person', { full_name: 'RR-wf-noemail', enabled: true, roles: [{ role: APPROVER_ROLE }] }, 'Administrator', 'insert')
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-2', title: 'No-mail approver' })
     await admin.post(`/api/table/${encodeURIComponent(DT)}/wf-notify-2:apply_workflow_action`, { action: 'Submit' })
     const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-2'`

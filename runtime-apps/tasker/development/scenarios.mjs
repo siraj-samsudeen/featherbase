@@ -1,7 +1,9 @@
 export const TASKER_SCENARIOS = {
   users: [
-    { row_id: 'asha.local@example.test', email: 'asha.local@example.test', full_name: 'Asha Local', enabled: true },
-    { row_id: 'dev.local@example.test', email: 'dev.local@example.test', full_name: 'Dev Local', enabled: true },
+    // person-rename: a person's id is minted; the seed finds people by email
+    // and tasks name them by email, mapped to the minted id when seeded.
+    { email: 'asha.local@example.test', full_name: 'Asha Local', enabled: true },
+    { email: 'dev.local@example.test', full_name: 'Dev Local', enabled: true },
   ],
   projects: [
     { row_id: 'DEV-TASKER-PROJECT-STOCK-REVIEW', project_name: 'September stock review' },

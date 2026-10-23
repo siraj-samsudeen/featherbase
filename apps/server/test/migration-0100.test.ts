@@ -6,9 +6,43 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 import { formatPlan, migratePersonIdentities, planPersonIdentities } from '../src/person-identities-migration'
 
+// 0101 (person-rename) renamed `user` → `person` and `user_identity` →
+// `sign_in_identity`, moved service accounts out and minted opaque ids. 0100
+// runs before all of that, so the pre-0101 names are put back first (inside
+// the same rolled-back transaction) and 0100 is proven against the shape it
+// actually ran on. The chain 0100 → 0101 on real data is proven by
+// `cli people:plan --rehearse` against a dev snapshot.
+async function pre0101Shape() {
+  await sql.unsafe(`alter table featherbase.person drop constraint if exists person_id_namespace`)
+  await sql.unsafe(`alter table featherbase.person rename to "user"`)
+  // 0101 renamed the 0100 indexes; give them back their 0100 names.
+  await sql.unsafe(`alter index featherbase.person_email_lower_uq rename to user_email_lower_uq`)
+  await sql.unsafe(`alter index featherbase.person_username_lower_uq rename to user_username_lower_uq`)
+  await sql.unsafe(`alter table featherbase."user" add column if not exists user_type varchar(140) not null default 'human'`)
+  await sql.unsafe(`alter table featherbase.sign_in_identity rename to user_identity`)
+  await sql.unsafe(`alter table featherbase.user_identity rename column person_id to user_id`)
+  await sql.unsafe(`
+    create or replace function featherbase.fc_cancel_email_invites() returns trigger
+    language plpgsql set search_path = pg_catalog as $$
+    begin
+      if lower(trim(coalesce(old.email, ''))) is distinct from lower(trim(coalesce(new.email, ''))) then
+        delete from featherbase.user_identity where user_id = new.row_id and subject is null;
+      end if;
+      return new;
+    end $$`)
+  const [person] = await sql`select * from table_def where name = 'Person'`
+  await sql`insert into table_def ${sql({ ...(person as Record<string, unknown>), name: 'User' } as unknown as Record<string, never>)}`
+  await sql`update column_def set parent = 'User' where parent = 'Person'`
+  await sql`update custom_field set dt = 'User' where dt = 'Person'`
+  await sql`delete from table_def where name = 'Person'`
+  invalidateMeta()
+}
+
 async function preUpgradeShape() {
+  await pre0101Shape()
   await sql`delete from user_identity`
   await sql`delete from sign_in_method where kind = 'delegated_password' or row_id = 'google'`
   await sql`update "user" set email = 'admin@example.com' where row_id = 'Administrator'`

@@ -108,7 +108,7 @@ describe('global search permissions', () => {
     })
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: region.name, for_value: 'gs-region-scope-east' },
+      row: { person: user.user, allow_table: region.name, for_value: 'gs-region-scope-east' },
     })
 
     const regionResults = (await search(user, 'gs-region-scope')).results.filter(
@@ -195,7 +195,7 @@ describe('global search permissions', () => {
       row: {
         share_table: table.name,
         share_name: 'gs-direct-share-hidden',
-        user: alice.user,
+        person: alice.user,
         read: true,
       },
     })

@@ -37,7 +37,7 @@ async function setup(
   // Restrict the user to Company A
   await admin.post('/api/save_row', {
     table: 'Data Scope',
-    row: { user: user.user, allow_table: COMPANY, for_value: 'Company A' },
+    row: { person: user.user, allow_table: COMPANY, for_value: 'Company A' },
   })
   return { user, company, project }
 }

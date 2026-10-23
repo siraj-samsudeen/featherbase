@@ -81,10 +81,12 @@ describe('the key is compared as a credential', () => {
 describe('the /preview route', () => {
   sandboxTest('preview sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
     const email = 'preview-session@example.com'
+    const id = 'psn_previewsessionaaaaaa' // person-rename: ids are minted psn_ ids, never addresses
     await sql`
-      insert into "user" (row_id, email, full_name, enabled, user_type)
-      values (${email}, ${email}, 'Preview Session Visitor', true, 'website')`
+      insert into person (row_id, email, full_name, enabled)
+      values (${id}, ${email}, 'Preview Session Visitor', true)`
     configure(GOOD_KEY, email)
+    void id
     for (const hours of [1, 720]) {
       await setSessionHours(hours)
       const before = Math.floor(Date.now() / 1000)
@@ -120,10 +122,13 @@ describe('the /preview route', () => {
 
   test('the right key signs in the named user without the token in the URL', async () => {
     const email = 'preview-signin@example.com'
-    await sql`delete from "user" where email = ${email}`
+    const id = 'psn_previewsigninaaaaaaa' // person-rename: ids are minted psn_ ids, never addresses
+    await sql`delete from person where email = ${email}`
     await sql`
-      insert into "user" (row_id, email, full_name, enabled, user_type)
-      values (${email}, ${email}, 'Preview Visitor', true, 'website')`
+      insert into person (row_id, email, full_name, enabled)
+      values (${id}, ${email}, 'Preview Visitor', true)`
+    // person-rename: the link is configured by email (or username); the
+    // session goes to that person's minted id.
     configure(GOOD_KEY, email)
 
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
@@ -136,23 +141,49 @@ describe('the /preview route', () => {
     // The browser is bound to the handoff by the sid cookie set here.
     expect(res.headers.get('set-cookie') ?? '').toMatch(/sid=/)
 
-    await sql`delete from "user" where email = ${email}`
+    await sql`delete from person where email = ${email}`
   })
 
   test('a configured user who cannot sign in does not yield a session', async () => {
     // A disabled account is still refused by issueSession — the preview link
     // is a shortcut past the password, not past the account's own state.
     const email = 'preview-disabled@example.com'
-    await sql`delete from "user" where email = ${email}`
+    const id = 'psn_previewdisabledaaaaa' // person-rename: ids are minted psn_ ids, never addresses
+    await sql`delete from person where email = ${email}`
     await sql`
-      insert into "user" (row_id, email, full_name, enabled, user_type)
-      values (${email}, ${email}, 'Disabled Visitor', false, 'website')`
-    configure(GOOD_KEY, email)
+      insert into person (row_id, email, full_name, enabled)
+      values (${id}, ${email}, 'Disabled Visitor', false)`
+    configure(GOOD_KEY, id)
 
     const res = await app.request(`/preview?key=${GOOD_KEY}`)
     expect(res.status).toBeGreaterThanOrEqual(400)
     expect(res.headers.get('set-cookie') ?? '').not.toMatch(/sid=/)
 
-    await sql`delete from "user" where email = ${email}`
+    await sql`delete from person where email = ${email}`
+  })
+})
+
+describe('the preview seed (person-rename)', () => {
+  sandboxTest('creates the preview person by email with a minted id and System Manager, converges on a re-run, and /preview signs them in', async ({ api }) => {
+    const { ensurePreviewPerson } = await import('../src/preview-person')
+    const { getRoles } = await import('../src/permissions')
+    const email = 'preview-seed@example.com'
+    const id = await ensurePreviewPerson(email, 'Preview Visitor', () => {})
+    expect(id).toMatch(/^psn_[a-z2-7]{20}$/)
+    expect(await getRoles(id)).toContain('System Manager')
+    expect(await ensurePreviewPerson(email.toUpperCase(), 'Preview Visitor', () => {})).toBe(id)
+    expect(await sql`select count(*)::int as n from person where lower(email) = ${email}`).toEqual([{ n: 1 }])
+    configure(GOOD_KEY, email)
+    const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
+    expect(res.status).toBe(302)
+  })
+
+  sandboxTest('a username works too; a name that matches nobody is a 404', async ({ api }) => {
+    const { ensurePreviewPerson } = await import('../src/preview-person')
+    await ensurePreviewPerson('preview.visitor', 'Preview Visitor', () => {})
+    configure(GOOD_KEY, 'Preview.Visitor')
+    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(302)
+    configure(GOOD_KEY, 'nobody@example.com')
+    expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(404)
   })
 })

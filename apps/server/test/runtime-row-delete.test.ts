@@ -35,11 +35,11 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   const files = []
   for (const file_name of ['invoice-17.txt', 'photo-43.png'])
     files.push(await save('File', { file_name, ref_table: 'actionproof.work', ref_name: 'linked' }))
-  const share = await save('Share', { share_table: 'actionproof.work', share_name: 'linked', user: 'Administrator', read: true })
+  const share = await save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator', read: true })
   await save('File', { file_name: 'unattached.txt' })
   await save('File', { file_name: 'table.txt', ref_table: 'actionproof.work' })
   await save('File', { file_name: 'other.txt', ref_table: 'actionproof.destination', ref_name: 'bare' })
-  await save('Share', { share_table: 'actionproof.destination', share_name: 'bare', user: 'Administrator' })
+  await save('Share', { share_table: 'actionproof.destination', share_name: 'bare', person: 'Administrator' })
   const request = { idempotencyKey: 'links', payload: { source: 'linked', updatedAt: source.updated_at, explain: true } }
   const path = '/api/app_actions/actionproof/discard'
   const result = await admin.post(path, request)
@@ -61,5 +61,5 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   expect(await sql`select share_name from share where row_id = ${share.row_id}`).toEqual([{ share_name: 'linked' }])
   await admin.post('/api/set_app_enabled', { name: 'actionproof', enabled: false })
   await expect(save('File', { file_name: 'disabled', ref_table: 'actionproof.work', ref_name: 'linked' })).rejects.toMatchObject({ status: 403 })
-  await expect(save('Share', { share_table: 'actionproof.work', share_name: 'linked', user: 'Administrator' })).rejects.toMatchObject({ status: 403 })
+  await expect(save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator' })).rejects.toMatchObject({ status: 403 })
 })

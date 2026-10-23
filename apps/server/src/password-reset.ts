@@ -22,9 +22,9 @@ const SITE_URL = config.siteUrl || 'http://localhost:5173'
 // Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
   const user = await findPasswordAccount(usr)
-  // #137: a service account has no password to reset. Fall through the same
-  // silent `null` as an unknown user so this cannot be used to enumerate them.
-  if (!user || !user.enabled || user.user_type === 'service' || !user.email || !user.password_hash) return null
+  // #137: only a person has a password to reset; a service account is not a
+  // person, so it is never found here — the same silent `null` as an unknown user.
+  if (!user || !user.enabled || !user.email || !user.password_hash) return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
@@ -51,7 +51,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // #137, burn-on-use: the link is consumed the moment it is used, in its own
   // committed transaction, BEFORE the password write is attempted. A write
   // that then fails — as it does for a principal that became
-  // `user_type = 'service'` between the request and the click — does not give
+  // a service account between the request and the click — does not give
   // the link back.
   //
   // The tempting alternative is to make the write and the consumption atomic,

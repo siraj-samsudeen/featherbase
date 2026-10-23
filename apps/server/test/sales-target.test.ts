@@ -77,6 +77,14 @@ async function seed(admin: TestClient) {
   return seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, ASSIGNMENTS)
 }
 
+// person-rename: the seeded viewers have minted ids (`psn_…`); tests know
+// them by username.
+async function idOf(username: string): Promise<string> {
+  const [row] = await sql`select row_id from person where username = ${username}`
+  if (!row) throw new Error(`no person with username ${username}`)
+  return String(row.row_id)
+}
+
 async function loginAs(api: TestClient, usr: string, pwd: string) {
   const res = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr, pwd }) })
   const body = (await res.json()) as { token?: string; landing?: string; user?: { row_id: string } }
@@ -99,7 +107,7 @@ describe('#3755 sales-target host: accounts and login', () => {
     expect(rows.data).toHaveLength(8)
     expect(new Set(rows.data.map((r) => r.store_subcategory)).size).toBe(8)
     // person-identities: the seeded viewers carry no invented email.
-    const emails = await sql`select email from "user" where row_id like 'test_employee_%'`
+    const emails = await sql`select email from person where username like 'test_employee_%'`
     expect(emails.map((r) => r.email)).toEqual([null, null, null, null])
   })
 
@@ -108,7 +116,7 @@ describe('#3755 sales-target host: accounts and login', () => {
     for (const [usr, pwd] of Object.entries(PASSWORDS)) {
       const r = await loginAs(api, usr, pwd)
       expect(r.status).toBe(200)
-      expect(r.body.user?.row_id).toBe(usr)
+      expect(r.body.user?.row_id).toBe(await idOf(usr))
       expect(r.body.landing).toBe('/featherbase/sales-target')
       const me = await (await api.fetch('/api/whoami', { headers: r.headers })).json() as { roles: string[] }
       expect(me.roles).toEqual(['All', VIEWER_ROLE])
@@ -139,7 +147,7 @@ describe('#3755 sales-target host: accounts and login', () => {
     await seed(admin)
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
     expect((await api.fetch(TABLE_URL, { headers: r.headers })).status).toBe(403)
-    expect((await api.fetch('/api/table/User', { headers: r.headers })).status).toBe(403)
+    expect((await api.fetch('/api/table/Person', { headers: r.headers })).status).toBe(403)
   })
 
   // #279: a session token alone is not authorization — the role can be
@@ -160,7 +168,7 @@ describe('#3755 sales-target host: accounts and login', () => {
     const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
     // Sanity: the token works before revocation.
     expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(200)
-    await sql`delete from has_role where parent = 'test_employee_1' and role = ${VIEWER_ROLE}`
+    await sql`delete from has_role where parent = ${await idOf('test_employee_1')} and role = ${VIEWER_ROLE}`
     expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(403)
     expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(403)
     expect((await api.fetch('/api/sales_target/report', { headers: r.headers })).status).toBe(403)
@@ -336,7 +344,7 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       expect(((await res.json()) as { source: string }).source).toBe('live')
       const rows = await sql`
         select "user", operation, ref_table, reference_name, method from access_log
-        where "user" = 'test_employee_1' and operation = 'view_report'`
+        where "user" = ${await idOf('test_employee_1')} and operation = 'view_report'`
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null })
       // The viewer cannot read the log of their own reads.
@@ -380,9 +388,10 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
       await admin.post('/api/save_row', { table: 'Employee Section Map', row })
   }
 
-  async function setEmployeeCode(admin: TestClient, user: string, code: string) {
-    const doc = await admin.get<{ updated_at: string }>(`/api/table/User/${user}`)
-    await patchDoc(admin, `/api/table/User/${user}`, { employee_code: code, updated_at: doc.updated_at })
+  async function setEmployeeCode(admin: TestClient, username: string, code: string) {
+    const user = await idOf(username)
+    const doc = await admin.get<{ updated_at: string }>(`/api/table/Person/${user}`)
+    await patchDoc(admin, `/api/table/Person/${user}`, { employee_code: code, updated_at: doc.updated_at })
   }
 
   test('an employee code on the user widens the assignment to the material groups their Sections hold', async ({ admin, api }) => {
@@ -406,11 +415,11 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     await seed(admin)
     await seedSectionMaps(admin)
     await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: 'test_employee_5', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
+      table: 'Person',
+      row: { username: 'test_employee_5', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
     })
     await setEmployeeCode(admin, 'test_employee_5', 'RR-11092')
-    await admin.post('/api/set_password', { user: 'test_employee_5', password: 'sandbox-pw-5' })
+    await admin.post('/api/set_password', { user: await idOf('test_employee_5'), password: 'sandbox-pw-5' })
     const r = await loginAs(api, 'test_employee_5', 'sandbox-pw-5')
     const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
     expect(me.assignment).toEqual({
@@ -474,11 +483,11 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
 
   async function viewer(admin: TestClient, user: string, code: string) {
     await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: user, full_name: user, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+      table: 'Person',
+      row: { username: user, full_name: user, enabled: true, roles: [{ role: VIEWER_ROLE }] },
     })
     await setEmployeeCode(admin, user, code)
-    await admin.post('/api/set_password', { user, password: `pw-${user}` })
+    await admin.post('/api/set_password', { user: await idOf(user), password: `pw-${user}` })
   }
 
   async function assignmentOf(api: TestClient, user: string) {
@@ -713,13 +722,13 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
     await expect(
       admin.post('/api/save_row', {
         table: ASSIGNMENT_TABLE,
-        row: { employee: 'test_employee_2', plant_code: '1501', material_group: '010101003' },
+        row: { employee: await idOf('test_employee_2'), plant_code: '1501', material_group: '010101003' },
       }),
     ).rejects.toMatchObject({ status: 417, fields: { store_subcategory: expect.stringMatching(/unique/) } })
     // The same subcategory in the OTHER store is a different pair and fine.
     const other = await admin.post<{ store_subcategory: string }>('/api/save_row', {
       table: ASSIGNMENT_TABLE,
-      row: { employee: 'test_employee_2', plant_code: '1599', material_group: '010101003' },
+      row: { employee: await idOf('test_employee_2'), plant_code: '1599', material_group: '010101003' },
     })
     expect(other.store_subcategory).toBe('1599/010101003')
   })
@@ -727,10 +736,10 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
   test('codes are exact strings: a three-digit store or an eight-digit subcategory is refused', async ({ admin }) => {
     await seed(admin)
     await expect(
-      admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: 'test_employee_1', plant_code: '150', material_group: '010101009' } }),
+      admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: await idOf('test_employee_1'), plant_code: '150', material_group: '010101009' } }),
     ).rejects.toMatchObject({ status: 417, fields: { plant_code: expect.stringMatching(/four digits/) } })
     await expect(
-      admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: 'test_employee_1', plant_code: '1501', material_group: '10101009' } }),
+      admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: await idOf('test_employee_1'), plant_code: '1501', material_group: '10101009' } }),
     ).rejects.toMatchObject({ status: 417, fields: { material_group: expect.stringMatching(/nine digits/) } })
   })
 
@@ -752,7 +761,7 @@ describe('#3755 sales-target host: assignment integrity and transfer', () => {
       const current = await admin.get<{ updated_at: string }>(`${TABLE_URL}/${row.row_id}`)
       await admin.post('/api/save_row', {
         table: ASSIGNMENT_TABLE,
-        row: { row_id: row.row_id, updated_at: current.updated_at, employee: to },
+        row: { row_id: row.row_id, updated_at: current.updated_at, employee: await idOf(to) },
       })
     }
 

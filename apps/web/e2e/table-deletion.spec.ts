@@ -51,7 +51,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
   // Metadata gating: a system table's list view renders the same manager
   // row WITHOUT the deletion affordance (DEL-R3's system refusal, at the UI).
   await session
-    .visit('/admin/User')
+    .visit('/admin/Person')
     .assertHas('[data-testid="open-naming"]')
     .refuteHas('[data-testid="delete-table"]')
 

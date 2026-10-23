@@ -10,6 +10,10 @@ import {
 
 const DT = 'Rt DT'
 const OTHER_USER = 'rt-user@x.com'
+// person-rename: ids are minted (`psn_…`); the person signs in by email and is
+// mentioned by username. The id is read back after creation.
+const OTHER_USERNAME = 'rt.user'
+let OTHER_ID = ''
 const OTHER_PWD = 'rtpw12345'
 
 test.beforeAll(async ({ request }) => {
@@ -20,16 +24,18 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // A second real user for the mention/notification test.
-  await request.post('/api/save_row', {
+  const made = await request.post('/api/save_row', {
     headers,
-    data: { table: 'User', row: { row_id: OTHER_USER, email: OTHER_USER, full_name: 'RT User' } },
+    data: { table: 'Person', row: { email: OTHER_USER, username: OTHER_USERNAME, full_name: 'RT User' } },
   })
-  const sp = await request.post('/api/set_password', { headers, data: { user: OTHER_USER, password: OTHER_PWD } })
+  if (made.status() !== 201) throw new Error(`create person: ${made.status()} ${await made.text()}`)
+  OTHER_ID = ((await made.json()) as { row_id: string }).row_id
+  const sp = await request.post('/api/set_password', { headers, data: { user: OTHER_ID, password: OTHER_PWD } })
   if (sp.status() !== 200) throw new Error(`set_password: ${sp.status()}`)
   // Clear rt-user's notifications so the unread badge starts empty each run.
   const notifs = (await (
     await request.get(
-      `/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_USER]]))}&limit_page_length=200`,
+      `/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_ID]]))}&limit_page_length=200`,
       { headers },
     )
   ).json()) as { data: { row_id: string }[] }
@@ -137,7 +143,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
 
   // B sits in the Admin; wait for its personal channel to be live.
   await sessionB.visit('/admin').assertHas('[data-testid="session-user"]')
-  await sessionB.step('wait for the realtime subscription to the personal channel', () => waitForRealtime(b, `user:${OTHER_USER}`))
+  await sessionB.step('wait for the realtime subscription to the personal channel', () => waitForRealtime(b, `user:${OTHER_ID}`))
   const startCount = await b.getByTestId('unread-count').count() // 0 badge if none
 
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))
@@ -150,7 +156,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   await sessionA.step('post a comment mentioning the other user', async ({ page }) => {
     // Trailing space closes the @mention autocomplete so it doesn't overlay
     // the submit button.
-    await page.getByTestId('comment-input').fill(`ping @${OTHER_USER} `)
+    await page.getByTestId('comment-input').fill(`ping @${OTHER_USERNAME} `)
     await expect(page.getByTestId('mention-list')).toHaveCount(0)
     await page.getByTestId('comment-submit').click()
   })

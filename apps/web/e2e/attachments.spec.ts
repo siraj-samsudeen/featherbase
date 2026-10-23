@@ -11,7 +11,7 @@ async function cleanup(request: APIRequestContext) {
   const auth = bearer(token)
   const filters = encodeURIComponent(
     JSON.stringify([
-      ['ref_table', '=', 'User'],
+      ['ref_table', '=', 'Person'],
       ['ref_name', '=', 'Guest'],
     ]),
   )
@@ -29,7 +29,7 @@ test('FILE-002: attach two files, both listed, delete one cleans up storage', as
   session,
 }) => {
   await session
-    .visit('/admin/User/Guest')
+    .visit('/admin/Person/Guest')
     .assertHas('[data-testid="attachments-panel"]')
     .assertHas('[data-testid="attachments-panel"]', { text: 'No attachments' })
 

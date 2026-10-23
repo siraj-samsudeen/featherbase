@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -20,8 +21,8 @@ import {
   assertPermission,
   checkUserPermissions,
   filterReadFields,
-  getUserPermissionMap,
-  isBypassUser,
+  getScopeMap,
+  isPrivileged,
   isSharedWith,
   permittedTiers,
   stripUnwritableFields,
@@ -87,10 +88,21 @@ async function resolveRowId(
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
+  const rule = meta.id_pattern || 'hash'
+  // person-rename R1: an opaque id is assigned, never chosen — a caller (a
+  // form, an API client, an import) may not supply one. Checked before the
+  // amendment path, so `amended_from` cannot smuggle one in: an amendment of
+  // an opaque-id row simply gets a fresh opaque id.
+  if (rule.startsWith('opaque:')) {
+    if (values.amended_from == null && String(values[ROW_KEY] ?? '').trim())
+      throw new AppError('ValidationError', `${meta.name} ids are assigned by Featherbase; leave the id blank`, {
+        [ROW_KEY]: 'assigned automatically',
+      })
+    return opaqueId(rule.slice('opaque:'.length))
+  }
   // DOC-008: amended rows carry a pre-derived ROWID-n.
   if (values.amended_from != null && values[ROW_KEY])
     return String(values[ROW_KEY])
-  const rule = meta.id_pattern || 'hash'
   // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
@@ -194,9 +206,9 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     const prefix = `${tableName(meta.name)}_`
     // An expression index names an expression, not a column, in its detail
     // (`lower(email::text)`): map the case-insensitive email rule by name.
-    const fields = e.constraint_name === 'user_email_lower_uq'
+    const fields = e.constraint_name === 'person_email_lower_uq'
       ? ['email']
-      : e.constraint_name === 'user_username_lower_uq'
+      : e.constraint_name === 'person_username_lower_uq'
       ? ['username']
       : detailCols
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
@@ -268,8 +280,8 @@ export async function assertUserPermissions(
   meta: TableMeta,
   row: RowValues,
 ) {
-  if (await isBypassUser(user)) return
-  const map = await getUserPermissionMap(user)
+  if (await isPrivileged(user)) return
+  const map = await getScopeMap(user)
   if (!map.size) return
   const linkFields = meta.columns
     .filter((f) => f.column_type === 'Reference')
@@ -1235,8 +1247,10 @@ async function renameDocImpl(
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   // person-identities: a User's id is the permanent person id (the warehouse
   // person_id); change the name or username instead. A trigger backs this up.
-  if (meta.name === 'User')
-    throw new AppError('ValidationError', 'A person\'s id is permanent and cannot be renamed; change their name or username instead')
+  // person-rename R1: an opaque id (a person's, a service account's) is
+  // permanent — never renamed.
+  if ((meta.id_pattern ?? '').startsWith('opaque:'))
+    throw new AppError('ValidationError', `A ${meta.name}'s id is permanent and cannot be renamed; change its name instead`)
   if (isBound(meta))
     throw new AppError(
       'ValidationError',

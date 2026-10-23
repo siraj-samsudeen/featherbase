@@ -80,7 +80,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/install_app', { name: 'other' })
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'secret', quantity: 37 } })
     await admin.post('/api/save_row', { table: 'Report', row: {
-      row_id: 'Raw app data', ref_table: 'User', report_type: 'Query Report',
+      row_id: 'Raw app data', ref_table: 'Person', report_type: 'Query Report',
       query: "select query_to_xml('select * from other.task', true, false, set_config('role', 'none', true))",
     } })
     for (const enabled of [true, false]) {
@@ -155,7 +155,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
     await expect(member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).rejects.toMatchObject({ status: 403 })
     await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
-    await expect(member.get('/api/table/User')).rejects.toMatchObject({ status: 403 })
+    await expect(member.get('/api/table/Person')).rejects.toMatchObject({ status: 403 })
     expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } })).toMatchObject({ quantity: '23', validation_runs: '2' })
     await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: true })
     expect(await member.get('/api/table/Comment')).toMatchObject({ data: [] })
@@ -171,8 +171,8 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const file = resolve(other, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
-        { table: 'User', role: 'All', can_read: true },
-        { table: 'User', role: 'All', tier: 'restricted', can_read: true },
+        { table: 'Person', role: 'All', can_read: true },
+        { table: 'Person', role: 'All', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
@@ -183,7 +183,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       // owner. The migration must recover both independent declarations.
       const [adopted] = await sql`
         delete from permission
-        where owner_app = 'other' and ref_table = 'User' and tier = 'basic'
+        where owner_app = 'other' and ref_table = 'Person' and tier = 'basic'
         returning row_id`
       await sql`
         update installed_app set perms = perms - ${String(adopted.row_id)}
@@ -192,7 +192,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
       expect(await sql`
         select owner_app, tier from permission
-        where ref_table = 'User' and owner_app in ('tasker', 'other')
+        where ref_table = 'Person' and owner_app in ('tasker', 'other')
         order by owner_app, tier`
       ).toEqual([
         { owner_app: 'other', tier: 'basic' },
@@ -200,18 +200,18 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { owner_app: 'tasker', tier: 'basic' },
       ])
       const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
-      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic', 'restricted']))
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic']))
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
       await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
-      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic', 'restricted']))
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      await expect(member.get('/api/table/User')).rejects.toMatchObject({ status: 403 })
+      await expect(member.get('/api/table/Person')).rejects.toMatchObject({ status: 403 })
     } finally {
       await rm(other, { recursive: true, force: true })
     }

@@ -37,16 +37,18 @@ export const test = createPgTest(
     },
     mintToken: async (user) => (await issueSession(user)).token,
     insertUser: async ({ email, fullName, roles }) => {
+      // person-rename: a person's id is minted (`psn_…`); the address is
+      // contact data. Tests use the returned id (`client.user`).
       const doc = await saveDoc(
-        'User',
+        'Person',
         {
-          row_id: email,
           email,
           full_name: fullName ?? email.split('@')[0],
           enabled: true,
           roles: roles.map((role) => ({ role })),
         },
         'Administrator',
+        'insert',
       )
       return String(doc.row_id)
     },

@@ -34,7 +34,7 @@ const helpdesk: AppManifest = {
           choices: 'Low\nMedium\nHigh\nUrgent', default_value: 'Medium',
         },
         { column_name: 'raised_by', label: 'Raised By (email)', column_type: 'Data' },
-        { column_name: 'agent', label: 'Agent', column_type: 'Reference', reference_table: 'User', in_list_view: true },
+        { column_name: 'agent', label: 'Agent', column_type: 'Reference', reference_table: 'Person', in_list_view: true },
         { column_name: 'resolution_details', label: 'Resolution Details', column_type: 'Text' },
         { column_name: 'response_by', label: 'Response By', column_type: 'Datetime', read_only: true },
         { column_name: 'resolution_by', label: 'Resolution By', column_type: 'Datetime', read_only: true },

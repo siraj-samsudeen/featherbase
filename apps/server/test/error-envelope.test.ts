@@ -44,7 +44,7 @@ describe('API-006: consistent error envelope', () => {
   })
 
   test('404 NotFoundError for a missing document and Table', async ({ admin }) => {
-    for (const path of ['/api/table/User/no-such-user', '/api/table/NoSuchDT/x']) {
+    for (const path of ['/api/table/Person/no-such-user', '/api/table/NoSuchDT/x']) {
       const res = await admin.fetch(path)
       expect(res.status).toBe(404)
       expect((await envelope(res)).type).toBe('NotFoundError')
@@ -55,7 +55,7 @@ describe('API-006: consistent error envelope', () => {
     admin,
   }) => {
     for (const qs of ['limit_start=abc', 'limit_page_length=xyz', 'limit_start=Infinity']) {
-      const res = await admin.fetch(`/api/table/User?${qs}`)
+      const res = await admin.fetch(`/api/table/Person?${qs}`)
       expect(res.status).toBe(400)
       expect((await envelope(res)).type).toBe('BadRequestError')
     }
@@ -73,17 +73,18 @@ describe('API-006: consistent error envelope', () => {
   test('417 ValidationError with per-field messages', async ({ admin }) => {
     const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'User', row: {} }),
+      body: JSON.stringify({ table: 'Person', row: { username: 'Not A Slug' } }),
     })
     expect(res.status).toBe(417)
     const err = await envelope(res)
     expect(err.type).toBe('ValidationError')
-    // person-identities: email is optional now; the User's id is still required.
-    expect(err.fields).toMatchObject({ row_id: expect.any(String) })
+    // person-rename: a Person's id is minted, so an empty row is valid; a
+    // malformed username is the per-field refusal.
+    expect(err.fields).toMatchObject({ username: expect.any(String) })
   })
 
   test('409 ConflictError on duplicate insert', async ({ admin }) => {
-    const res = await admin.fetch('/api/table/User', {
+    const res = await admin.fetch('/api/table/Person', {
       method: 'POST',
       body: JSON.stringify({ row_id: 'Administrator', email: 'admin@example.com' }),
     })
@@ -99,10 +100,10 @@ describe('API-006: consistent error envelope', () => {
     const email = `envelope-probe-${Math.random().toString(36).slice(2, 8)}@x.com`
     const mk = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'User', row: { row_id: email, email } }),
+      body: JSON.stringify({ table: 'Person', row: { email } }),
     })
     expect(mk.status).toBe(201)
-    await setUserPassword(email, 'probe-pw-12345')
+    await setUserPassword(((await mk.json()) as { row_id: string }).row_id, 'probe-pw-12345')
     const login = await api.fetch('/api/login', {
       method: 'POST',
       body: JSON.stringify({ usr: email, pwd: 'probe-pw-12345' }),

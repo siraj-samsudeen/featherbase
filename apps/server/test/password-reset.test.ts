@@ -12,14 +12,15 @@ const USER = 'pwreset-srv@x.com'
 const DISABLED = 'pwreset-disabled@x.com'
 
 async function save(admin: TestClient, row: Record<string, unknown>) {
-  await admin.post('/api/save_row', { table: 'User', row })
+  return ((await admin.post('/api/save_row', { table: 'Person', row })) as { row_id: string }).row_id
 }
 
-// Each test creates its accounts inside its own sandbox transaction.
+// Each test creates its accounts inside its own sandbox transaction. Ids are
+// minted (person-rename); the accounts are found by their email.
 async function setup(admin: TestClient) {
-  await save(admin, { row_id: USER, email: USER, full_name: 'Reset Me', enabled: true })
-  await admin.post('/api/set_password', { user: USER, password: 'origpw123' })
-  await save(admin, { row_id: DISABLED, email: DISABLED, full_name: 'No Login', enabled: false })
+  const id = await save(admin, { email: USER, full_name: 'Reset Me', enabled: true })
+  await admin.post('/api/set_password', { user: id, password: 'origpw123' })
+  await save(admin, { email: DISABLED, full_name: 'No Login', enabled: false })
 }
 
 describe('SET-002: password reset', () => {

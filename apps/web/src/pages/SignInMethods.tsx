@@ -1,5 +1,6 @@
+import { PersonIdentifiers } from '../components/PersonIdentifiers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api } from '../lib/api'
+import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Notice, buttonClasses } from '../components/ui'
 
@@ -42,6 +43,7 @@ const when = (iso: string | null) => (iso ? fmtInstantIST(iso) : 'never')
 
 export function SignInMethods() {
   const qc = useQueryClient()
+  const me = getSessionUser()?.row_id
   const { data, error } = useQuery({
     queryKey: ['me', 'sign_in_methods'],
     queryFn: () => api.get<MyMethods>('/api/me/sign_in_methods'),
@@ -108,6 +110,9 @@ export function SignInMethods() {
           Link a Google account
         </a>
       )}
+      {/* person-resolution D9: a person keeps their own contact details here
+          (unverified until the roster confirms them). */}
+      {me && <PersonIdentifiers person={me} />}
     </div>
   )
 }

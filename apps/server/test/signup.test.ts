@@ -24,9 +24,9 @@ describe('sign up with a username and password', () => {
     expect(res.status).toBe(201)
     const body = (await res.json()) as { token: string; user: { row_id: string; email: string | null } }
     // The id is opaque and permanent; the username is how the person signs in.
-    expect(body.user.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+    expect(body.user.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(body.user).toMatchObject({ email: null, full_name: 'meena' })
-    const [row] = await sql`select username from "user" where row_id = ${body.user.row_id}`
+    const [row] = await sql`select username from person where row_id = ${body.user.row_id}`
     expect(row.username).toBe('meena')
     expect(res.headers.getSetCookie().some((c) => c.startsWith('sid='))).toBe(true)
     const roles = await sql`select role from has_role where parent = ${body.user.row_id}`

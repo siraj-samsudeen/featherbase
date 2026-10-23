@@ -13,19 +13,20 @@ const BUDGET = 3
 
 // Each test creates the budgeted user inside its own sandbox transaction.
 // The harness clears rate-limit windows + budget caches after every test.
+// person-rename: the id is minted; the budget is keyed by it.
+let id = ''
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_row', {
-    table: 'User',
+  id = ((await admin.post('/api/save_row', {
+    table: 'Person',
     row: {
-      row_id: USER,
       email: USER,
       enabled: true,
       api_rate_limit: BUDGET,
       roles: [{ role: 'System Manager' }],
     },
-  })
-  await setUserPassword(USER, PWD)
-  resetRateLimit(USER)
+  })) as { row_id: string }).row_id
+  await setUserPassword(id, PWD)
+  resetRateLimit(id)
 }
 
 async function token(api: TestClient): Promise<string> {
@@ -40,7 +41,7 @@ async function token(api: TestClient): Promise<string> {
 describe('API-007: rate limiting', () => {
   test('allows requests up to the budget, then 429s with Retry-After', async ({ admin, api }) => {
     await setup(admin)
-    resetRateLimit(USER)
+    resetRateLimit(id)
     const auth = { authorization: `Bearer ${await token(api)}` }
 
     for (let i = 0; i < BUDGET; i++) {
@@ -76,7 +77,7 @@ describe('API-007: rate limiting', () => {
     api,
   }) => {
     await setup(admin)
-    resetRateLimit(USER)
+    resetRateLimit(id)
     const auth = { authorization: `Bearer ${await token(api)}` }
 
     for (let i = 0; i < BUDGET; i++) {

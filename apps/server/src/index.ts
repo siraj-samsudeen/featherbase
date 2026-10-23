@@ -14,12 +14,15 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
-import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
+import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
+import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { resolvePreviewPerson } from './preview-person'
+import { pickPeople, principalNames } from './people-directory'
+import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
-import { USERNAME_RE, getIdentity, newPersonId, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
+import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -249,13 +252,14 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     throw new AppError('ValidationError', 'Choose a username of 3–64 lowercase letters, digits, dots, dashes or underscores', { username: 'invalid' })
   if (password.length < MIN_PASSWORD_LENGTH)
     throw new AppError('ValidationError', `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, { password: 'too short' })
-  const [taken] = await sql`select 1 from "user" where lower(row_id) = ${username} or lower(username) = ${username} or lower(email) = ${username}`
+  const [taken] = await sql`select 1 from person where lower(row_id) = ${username} or lower(username) = ${username} or lower(email) = ${username}`
   if (taken) throw new AppError('ConflictError', 'That username is taken')
-  // The person's id is opaque and permanent; the username is how they sign in.
-  const personId = newPersonId()
-  await withTransaction(async () => {
-    await saveDoc('User', { row_id: personId, username, full_name: username, enabled: true, roles: [] }, 'Administrator')
-    await setUserPassword(personId, password)
+  // The person's id is opaque and permanent (minted `psn_…`); the username is
+  // how they sign in.
+  const personId = await withTransaction(async () => {
+    const created = await saveDoc('Person', { username, full_name: username, enabled: true, roles: [] }, 'Administrator', 'insert')
+    await setUserPassword(String(created.row_id), password)
+    return String(created.row_id)
   })
   // The same tail as every other sign-in (sign-in.ts).
   const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
@@ -375,7 +379,7 @@ app.on(
   async (c, next) => {
     const path = c.req.param('path') as string
     const user = methodAllowsGuest(path)
-      ? { row_id: 'Guest', email: null, full_name: 'Guest' }
+      ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
     await next()
@@ -568,8 +572,12 @@ app.post('/api/oauth/session', async (c) => {
 app.get('/preview', async (c) => {
   const config = previewLogin()
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
+  // person-rename: PREVIEW_LOGIN_USER is an email or username; the session
+  // is issued to that person's minted id.
+  const person = await resolvePreviewPerson(config.user)
+  if (!person) return c.notFound()
   // Marked, so the click-through cannot add lasting access (review B-M2).
-  const issued = await issueSession(config.user, { preview: true })
+  const issued = await issueSession(person, { preview: true })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
@@ -679,7 +687,7 @@ app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, palette, language from "user" where row_id = ${user.row_id}`
+  const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
   return c.json({
     ...user,
     roles: await getRoles(user.row_id),
@@ -804,7 +812,7 @@ app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
   if (theme !== 'light' && theme !== 'dark')
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update "user" set theme = ${theme} where row_id = ${who(c)}`
+  await sql`update person set theme = ${theme} where row_id = ${who(c)}`
   return c.json({ ok: true, theme })
 })
 
@@ -814,7 +822,7 @@ app.post('/api/set_palette', async (c) => {
   const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
   if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
     throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
-  await sql`update "user" set palette = ${palette!} where row_id = ${who(c)}`
+  await sql`update person set palette = ${palette!} where row_id = ${who(c)}`
   return c.json({ ok: true, palette })
 })
 
@@ -823,7 +831,7 @@ app.post('/api/set_language', async (c) => {
   const { language } = (await c.req.json().catch(() => ({}))) as { language?: string }
   if (!language || !/^[a-z]{2}(-[a-z]{2})?$/i.test(language))
     throw new AppError('ValidationError', 'Expected a language code like "en" or "fr"')
-  await sql`update "user" set language = ${language} where row_id = ${who(c)}`
+  await sql`update person set language = ${language} where row_id = ${who(c)}`
   return c.json({ ok: true, language })
 })
 
@@ -858,31 +866,40 @@ app.post('/api/set_password', async (c) => {
   else {
     // Adding a password where there was none is adding a way in: it needs a
     // recent sign-in, like linking (review minor 4). Changing one does not.
-    const [mine] = await sql`select password_hash is not null as has from "user" where row_id = ${target}`
+    const [mine] = await sql`select password_hash is not null as has from person where row_id = ${target}`
     if (!mine?.has) assertFreshForLinking(c.get('user'))
   }
-  // #131: a service account must never become password-login-able.
-  const [targetRow] = await sql`select user_type from "user" where row_id = ${target}`
-  if (targetRow?.user_type === 'service')
-    throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
+  // #131: a service account must never become password-login-able; the write
+  // itself refuses anything that is not a person.
   await setUserPassword(target, password)
   return c.json({ ok: true })
 })
 
 // person-identities D6: linked sign-ins. System Managers manage anyone's;
 // a person sees and removes their own and links Google by proving it.
-app.get('/api/users/:id/identities', async (c) => {
+app.get('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   const user = c.req.param('id')
-  const [row] = await sql`select (password_hash is not null) as has_password from "user" where row_id = ${user}`
-  if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
+  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${user}`
+  if (!row) throw new AppError('NotFoundError', `Person ${user} not found`)
   // Every method row, turned off or not, so an identity on a disabled method
-  // still shows its name on the User form.
+  // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
-  return c.json({ identities: await listIdentities(user), has_password: row.has_password === true, methods })
+  return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
-app.post('/api/users/:id/identities', async (c) => {
+// person-rename: ids are opaque, so screens ask for names (batch), and the
+// Person picker searches what people know someone by.
+app.post('/api/people/names', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { ids?: unknown }
+  return c.json({ names: await principalNames(body.ids, who(c)) })
+})
+
+app.get('/api/people/pick', async (c) => {
+  return c.json({ people: await pickPeople(c.req.query('q') ?? '', who(c), Number(c.req.query('limit') ?? 10)) })
+})
+
+app.post('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   assertCanChangeAccess(c.get('user'))
   const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
@@ -896,11 +913,65 @@ app.post('/api/users/:id/identities', async (c) => {
   return c.json(identity, created ? 201 : 200)
 })
 
+// person-resolution D3/D9: a person's identifiers. Reads follow the display
+// rule (restricted values only to restricted readers, hidden ones never in a
+// panel); writes follow each system's `edited_by`. Errors never echo a value.
+app.get('/api/people/:id/identifiers', async (c) => {
+  const person = c.req.param('id')
+  if (person !== who(c)) await getDoc('Person', person, who(c))
+  return c.json({ identifiers: await listIdentifiers(person, who(c)), addable: await addableSystems(person, who(c)) })
+})
+
+app.post('/api/people/:id/identifiers', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const person = c.req.param('id')
+  if (person !== who(c)) await getDoc('Person', person, who(c))
+  const body = (await c.req.json().catch(() => ({}))) as AddInput
+  const { result, identifier } = await addIdentifier(person, body, who(c))
+  return c.json({ result, identifier }, result === 'created' ? 201 : 200)
+})
+
+// Changing or removing a value needs the same read of its person as adding one:
+// the Person permission and Data Scope (review on #385).
+async function assertReadsIdentifierPerson(id: string, viewer: string) {
+  const person = await identifierPerson(id)
+  if (person !== viewer) await getDoc('Person', person, viewer)
+}
+
+app.patch('/api/identifiers/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
+  const body = (await c.req.json().catch(() => ({}))) as Parameters<typeof updateIdentifier>[1]
+  return c.json(await updateIdentifier(c.req.param('id'), body, who(c)))
+})
+
+app.delete('/api/identifiers/:id', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  await assertReadsIdentifierPerson(c.req.param('id'), who(c))
+  await deleteIdentifier(c.req.param('id'), who(c))
+  return c.json({ ok: true })
+})
+
+// person-resolution D2: the Identifier System form's Advanced settings, each
+// with its preset, which differ, and which options are refused and why.
+app.get('/api/identifier_systems/:key/defaults', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await systemDefaults(c.req.param('key')))
+})
+
+// Find people by an exact value (D3): `?system=<key>&value=<typed>`.
+app.get('/api/identifiers', async (c) => {
+  const system = c.req.query('system')
+  const value = c.req.query('value')
+  if (!system || !value) throw new AppError('ValidationError', 'Expected ?system=&value=', { system: 'required', value: 'required' })
+  return c.json({ people: await findByIdentifier(system, value, who(c)) })
+})
+
 app.patch('/api/identities/:identityId', async (c) => {
   await assertSystemManager(who(c))
   assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as { sign_in_name?: string | null; user_id?: string }
-  return c.json(await updateIdentity(c.req.param('identityId'), { sign_in_name: body.sign_in_name, user_id: body.user_id }, who(c)))
+  const body = (await c.req.json().catch(() => ({}))) as { sign_in_name?: string | null; person_id?: string }
+  return c.json(await updateIdentity(c.req.param('identityId'), { sign_in_name: body.sign_in_name, person_id: body.person_id }, who(c)))
 })
 
 app.delete('/api/identities/:identityId', async (c) => {
@@ -913,7 +984,7 @@ app.delete('/api/identities/:identityId', async (c) => {
 
 app.get('/api/me/sign_in_methods', async (c) => {
   const me = c.get('user')
-  const [row] = await sql`select (password_hash is not null) as has_password from "user" where row_id = ${me.row_id}`
+  const [row] = await sql`select (password_hash is not null) as has_password from person where row_id = ${me.row_id}`
   const methods = (await listSignInMethods()).filter((m) => m.enabled)
   return c.json({
     identities: (await listIdentities(me.row_id)).map(({ id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, last_used_at }) => ({
@@ -989,10 +1060,11 @@ app.delete('/api/access_tokens/:id', async (c) => {
 // #131: service accounts — System Manager territory end to end.
 app.post('/api/service_accounts', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { row_id?: string; roles?: string[] }
-  if (typeof body.row_id !== 'string') throw new AppError('ValidationError', 'Expected { row_id }')
+  // person-rename: the id is minted (`svc_…`); the caller names the account.
+  const body = (await c.req.json().catch(() => ({}))) as { label?: string; roles?: string[] }
+  if (typeof body.label !== 'string') throw new AppError('ValidationError', 'Expected { label }', { label: 'required' })
   const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : []
-  return c.json(await createServiceAccount(body.row_id, roles, who(c)), 201)
+  return c.json(await createServiceAccount(body.label, roles, who(c)), 201)
 })
 
 app.get('/api/service_accounts', async (c) => {
@@ -1005,6 +1077,16 @@ app.patch('/api/service_accounts/:name', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean }
   if (typeof body.enabled !== 'boolean') throw new AppError('ValidationError', 'Expected { enabled }')
   return c.json(await setServiceAccountEnabled(c.req.param('name'), body.enabled, who(c)))
+})
+
+// person-rename R2: a service account's roles change only here, never
+// through the generic row path. The list replaces the current one.
+app.post('/api/service_accounts/:id/roles', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => ({}))) as { roles?: unknown }
+  if (!Array.isArray(body.roles) || body.roles.some((r) => typeof r !== 'string'))
+    throw new AppError('ValidationError', 'Expected { roles: [...] }', { roles: 'a list of role names' })
+  return c.json(await setServiceAccountRoles(c.req.param('id'), body.roles as string[], who(c)))
 })
 
 // #74: `system` marks tables created by the migration chain. It is set only
@@ -1508,8 +1590,9 @@ app.post('/api/assign', async (c) => {
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
-  const [target] = await sql`select row_id from "user" where row_id = ${assign_to}`
-  if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
+  // Assignments go to people; a service account is not offered (person-rename).
+  const [target] = await sql`select row_id from person where row_id = ${assign_to}`
+  if (!target) throw new AppError('NotFoundError', `Person ${assign_to} not found`)
 
   const todo = await createAssignment(table, name, assign_to, who(c), description)
   return c.json({ todo }, 201)
@@ -1843,6 +1926,8 @@ if (webDist && existsSync(webDist)) {
 }
 
 if (process.env.NODE_ENV !== 'test') {
+  // Refuse to boot a non-development server with test mode set (D5).
+  assertTestModeAllowed()
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })

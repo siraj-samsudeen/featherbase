@@ -8,12 +8,17 @@ import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
 import { diagnoseAdminBootstrap } from './admin-bootstrap'
+import { preflightRelease } from './release-preflight'
 
 try {
   await sql.begin(async (tx) => {
     // The transaction exists only to hold the lock for the whole run; the
     // migrations and patches manage their own transactions on the pool.
     await tx`select pg_advisory_xact_lock(hashtext('featherbase-release'))`
+    // Every refusal that does not need the data, before the first migration
+    // (the server's own boot refusals included): a release that would stop
+    // part-way stops before it starts.
+    for (const line of await preflightRelease()) console.log(`preflight: ${line}`)
     await runMigrations()
     const newly = await runPatches(patches)
     for (const n of newly) console.log(`applied patch ${n}`)

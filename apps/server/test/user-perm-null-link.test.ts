@@ -10,19 +10,20 @@ import { sql } from '../src/db'
 
 const DT = 'Upn Ticket'
 const ROLE = 'Upn Agent'
-const CUST_A = 'upn-cust-a@x.com'
-const CUST_B = 'upn-cust-b@x.com'
+// Person ids live in the `psn_` namespace (person-rename).
+const CUST_A = 'psn_upncusta'
+const CUST_B = 'psn_upncustb'
 
 async function setup(admin: TestClient) {
   for (const u of [CUST_A, CUST_B])
-    await sql`insert into "user" ${sql({
-      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+    await sql`insert into person ${sql({
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: `${u.slice(4)}@x.com`, enabled: true,
     })}`
   await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'subject', column_type: 'Data' },
-      { column_name: 'customer', column_type: 'Reference', reference_table: 'User' },
+      { column_name: 'customer', column_type: 'Reference', reference_table: 'Person' },
     ],
   })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
@@ -48,7 +49,7 @@ describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
     // Restrict the agent to customer A (User values).
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: agent.user, allow_table: 'User', for_value: CUST_A },
+      row: { person: agent.user, allow_table: 'Person', for_value: CUST_A },
     })
     const body = await agent.get<{ data: { subject: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(

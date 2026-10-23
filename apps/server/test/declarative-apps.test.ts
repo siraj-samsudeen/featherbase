@@ -53,7 +53,7 @@ describe('PLAT-005: declarative app install over the API', () => {
         body: JSON.stringify({ title: 'declared' }),
       })
       expect(ins.status).toBe(201)
-      expect((await user.fetch('/api/table/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/Person')).status).toBe(403)
 
       // Uninstall over the API tears down Tables, roles and grants.
       const un = await admin.fetch('/api/uninstall_app', {

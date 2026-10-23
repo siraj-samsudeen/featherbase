@@ -106,7 +106,7 @@ function TaskerIcon({ name }: { name: TaskerIconName }) {
 }
 
 export function peopleWithTaskResponsibility(
-  listed: { row_id: string }[],
+  listed: { row_id: string; full_name?: string | null }[],
   tasks: Pick<Task, 'assigned_to'>[],
   currentUser: string,
 ) {
@@ -166,9 +166,10 @@ export function TaskManagementPage() {
   const users = useQuery({
     queryKey: ['task-management', 'users'],
     queryFn: () =>
-      listResource<{ row_id: string }>('User', {
-        fields: ['row_id'],
-        order_by: 'row_id asc',
+      // Person ids are opaque (`psn_…`): list and show names.
+      listResource<{ row_id: string; full_name?: string | null }>('Person', {
+        fields: ['row_id', 'full_name'],
+        order_by: 'full_name asc',
         limit_page_length: 200,
       }),
   })
@@ -1319,7 +1320,7 @@ function Empty({ text }: { text: string }) {
 
 function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
   tasks: Task[]
-  users: { row_id: string }[]
+  users: { row_id: string; full_name?: string | null }[]
   projects: Project[]
   focusSet: Set<string>
   me: string
@@ -1382,9 +1383,9 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         </div>
         <div className="tasker-task-metadata">
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
-          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
+          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.full_name || user.row_id}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
+            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.full_name || user.row_id}</option>)}</select>
             {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
           </div>
         </div>

@@ -121,6 +121,10 @@ export function LoginPage() {
     setMode(next)
   }
 
+  // person-rename: after an upgrade every session ends once; say so plainly
+  // instead of showing an unexplained sign-in page.
+  const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
+
   const errorLine = error && (
     <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
       {error}
@@ -137,6 +141,11 @@ export function LoginPage() {
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>
         </div>
+        {sessionEnded && (
+          <p className="mb-3 text-center text-sm text-[var(--color-ink-muted)]" data-testid="session-ended">
+            Your session has ended. Please sign in again.
+          </p>
+        )}
         <div className="fc-card p-6">
           {mode === 'delegated' && delegatedLabel ? (
             <>

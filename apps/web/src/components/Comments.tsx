@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 
 interface CommentRow {
@@ -19,6 +20,8 @@ export function Comments({ table, name }: { table: string; name: string }) {
   const [error, setError] = useState<string | null>(null)
   const [posting, setPosting] = useState(false)
   const [mention, setMention] = useState<{ q: string; at: number } | null>(null)
+  // A name-only mention that several people share notifies nobody; say so.
+  const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const comments = useQuery({
@@ -35,14 +38,18 @@ export function Comments({ table, name }: { table: string; name: string }) {
       }),
   })
 
-  // @mention candidates from the user list, filtered by the token being typed.
+  // @mention candidates from the people list, filtered by the token being
+  // typed. person-rename: ids are opaque, so a mention names the person —
+  // `@username`, or `@[Full Name]` for someone without one (the server
+  // resolves both; never a row id). Built-in accounts are not offered.
   const users = useQuery({
     queryKey: ['mention-users'],
     enabled: mention !== null,
     queryFn: () =>
-      listResource<{ row_id: string; full_name: string | null }>('User', {
-        fields: ['row_id', 'full_name'],
-        order_by: 'row_id asc',
+      listResource<{ row_id: string; full_name: string | null; username: string | null }>('Person', {
+        fields: ['row_id', 'full_name', 'username'],
+        filters: [['built_in', '=', false], ['replaced_by', '=', null]],
+        order_by: 'full_name asc',
         limit_page_length: 500,
       }),
   })
@@ -52,7 +59,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
     // Staff ids are employee codes (person-identities), so the name is shown
     // and searched too; the mention itself stays the id.
     return (users.data?.data ?? [])
-      .filter((u) => u.row_id.toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
+      // A person with neither a username nor a name cannot be mentioned:
+      // a mention never carries a row id.
+      .filter((u) => Boolean(u.username || u.full_name?.trim()))
+      .filter((u) => (u.username ?? '').toLowerCase().includes(q) || (u.full_name ?? '').toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
 
@@ -68,6 +78,14 @@ export function Comments({ table, name }: { table: string; name: string }) {
 
   function applyMention(user: string) {
     if (!mention) return
+    const fold = (n: string | null) => (n ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+    const named = user.startsWith('[') ? fold(user.slice(1, -1)) : null
+    const twins = named ? (users.data?.data ?? []).filter((u) => fold(u.full_name) === named).length : 0
+    setMentionWarning(
+      twins > 1
+        ? `${twins} people are named ${user.slice(1, -1)}, so this mention will notify nobody. Ask them to set a username, or mention them by it.`
+        : null,
+    )
     const before = draft.slice(0, mention.at)
     const after = draft.slice(mention.at + mention.q.length + 1)
     const next = `${before}@${user} ${after}`
@@ -95,12 +113,11 @@ export function Comments({ table, name }: { table: string; name: string }) {
     }
   }
 
-  const initials = (u: string) =>
-    u.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('')
-
   // Render @mentions as highlighted spans.
   function renderContent(text: string) {
-    const parts = text.split(/(@[\w.@-]+)/g)
+    // `@username` or `@[Full Name]` (person-rename: never a row id).
+    // A mention starts a word: `name@gmail.com` is an address, not a mention.
+    const parts = text.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g)
     return parts.map((p, i) =>
       p.startsWith('@') ? (
         <span key={i} className="font-medium text-[var(--color-brand)]">
@@ -124,12 +141,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
         )}
         {comments.data?.data.map((c) => (
           <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white">
-              {initials(c.created_by)}
-            </span>
+            <AuthorInitials id={c.created_by} />
             <div className="min-w-0 flex-1">
               <div className="text-xs text-[var(--color-ink-muted)]">
-                <span className="font-medium text-[var(--color-ink)]">{c.created_by}</span>{' '}
+                <span className="font-medium text-[var(--color-ink)]" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
                 <span data-testid="comment-time">{new Date(c.created_at).toLocaleString()}</span>
               </div>
               <div className="whitespace-pre-wrap break-words text-sm text-[var(--color-ink)]" data-testid="comment-content">
@@ -155,11 +170,11 @@ export function Comments({ table, name }: { table: string; name: string }) {
             {candidates.map((u) => (
               <button
                 key={u.row_id}
-                onClick={() => applyMention(u.row_id)}
+                onClick={() => applyMention(mentionToken(u))}
                 data-testid="mention-option"
                 className="block w-full px-3 py-1 text-left text-sm hover:bg-[var(--color-brand-tint)]"
               >
-                {u.full_name && u.full_name !== u.row_id ? `${u.full_name} · ${u.row_id}` : u.row_id}
+                {u.full_name && u.username ? `${u.full_name} · @${u.username}` : u.full_name || u.username}
               </button>
             ))}
           </div>
@@ -171,6 +186,11 @@ export function Comments({ table, name }: { table: string; name: string }) {
         </p>
       )}
       <div className="mt-2 flex justify-end">
+        {mentionWarning && (
+          <p className="mb-1 text-xs text-[var(--color-warning,#b45309)]" data-testid="mention-warning" role="status">
+            {mentionWarning}
+          </p>
+        )}
         <button
           onClick={post}
           disabled={posting || !draft.trim()}
@@ -181,5 +201,26 @@ export function Comments({ table, name }: { table: string; name: string }) {
         </button>
       </div>
     </div>
+  )
+}
+
+/** What a mention of this person looks like in the comment text. */
+export function mentionToken(u: { full_name: string | null; username: string | null }): string {
+  return u.username ? u.username : `[${(u.full_name ?? '').trim()}]`
+}
+
+const initialsOf = (name: string) =>
+  name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
+
+/** The author's initials — from their name, never from an opaque id. */
+function AuthorInitials({ id }: { id: string }) {
+  const name = usePrincipalName(id)
+  return (
+    <span
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white"
+      data-testid="comment-initials"
+    >
+      {name ? initialsOf(name) : isOpaqueId(id) ? '·' : initialsOf(id)}
+    </span>
   )
 }

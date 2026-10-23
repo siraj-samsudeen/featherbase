@@ -1,0 +1,29 @@
+{
+  "pack": "jeyarama",
+  "description": "Jeyarama's identifier systems (person-resolution D2). Phase 1b adds aadhaar with Secret storage.",
+  "identifier_systems": [
+    {
+      "row_id": "stylehr-employee-id",
+      "label": "StyleHR record number",
+      "kind": "external-record",
+      "source": "stylehr-roster-sync",
+      "match": "Off",
+      "sensitivity": "Restricted, hidden"
+    },
+    {
+      "row_id": "stylehr-employee-code",
+      "label": "StyleHR employee code",
+      "kind": "employee-record",
+      "source": "stylehr-roster-sync",
+      "match": "Off",
+      "sensitivity": "Normal"
+    }
+  ],
+  "sign_in_methods": {
+    "stylehr": { "identifier_system": "stylehr-employee-id" }
+  },
+  "people_review": {
+    "compare_columns": ["full_name", "stylehr-employee-code", "worker_type_from_roster", "roles", "data_scope", "sign_in_methods", "last_sign_in"],
+    "survivor_rule": "most-recent-employment"
+  }
+}

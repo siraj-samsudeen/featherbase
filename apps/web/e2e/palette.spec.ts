@@ -113,10 +113,12 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   const headers = { Authorization: `Bearer ${token}` }
   const created = await request.post('/api/save_row', {
     headers,
-    data: { table: 'User', row: { row_id: USER_B, email: USER_B, full_name: 'Palette E2E', enabled: true } },
+    data: { table: 'Person', row: { email: USER_B, full_name: 'Palette E2E', enabled: true } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
-  await request.post('/api/set_password', { headers, data: { user: USER_B, password: 'palettepw123' } })
+  // person-rename: the id is minted; B signs in by email.
+  const idB = ((await created.json()) as { row_id: string }).row_id
+  await request.post('/api/set_password', { headers, data: { user: idB, password: 'palettepw123' } })
 
   // A (Administrator) picks Ivory; wait for it to persist server-side.
   await session.step('A (Administrator) picks Ivory', async ({ page }) => {

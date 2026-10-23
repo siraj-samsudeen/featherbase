@@ -16,8 +16,8 @@ async function addCustomField(admin: TestClient) {
   await admin.post('/api/save_row', {
     table: 'Custom Field',
     row: {
-      row_id: `User-${FIELD}`,
-      dt: 'User',
+      row_id: `Person-${FIELD}`,
+      dt: 'Person',
       column_name: FIELD,
       label: 'Custom Tag',
       column_type: 'Data',
@@ -27,15 +27,15 @@ async function addCustomField(admin: TestClient) {
 }
 
 async function setVip(admin: TestClient) {
-  const adminDoc = await admin.get<{ updated_at: string }>('/api/table/User/Administrator')
-  await patchDoc(admin, '/api/table/User/Administrator', {
+  const adminDoc = await admin.get<{ updated_at: string }>('/api/table/Person/Administrator')
+  await patchDoc(admin, '/api/table/Person/Administrator', {
     [FIELD]: 'vip',
     updated_at: adminDoc.updated_at,
   })
 }
 
 describe('CUST-001: custom fields', () => {
-  test('adds a field to User that appears in meta and round-trips through the API', async ({
+  test('adds a field to Person that appears in meta and round-trips through the API', async ({
     admin,
   }) => {
     const res = await admin.fetch('/api/save_row', {
@@ -43,8 +43,8 @@ describe('CUST-001: custom fields', () => {
       body: JSON.stringify({
         table: 'Custom Field',
         row: {
-          row_id: `User-${FIELD}`,
-          dt: 'User',
+          row_id: `Person-${FIELD}`,
+          dt: 'Person',
           column_name: FIELD,
           label: 'Custom Tag',
           column_type: 'Data',
@@ -54,20 +54,20 @@ describe('CUST-001: custom fields', () => {
     })
     expect(res.status).toBe(201)
 
-    const meta = await getMeta('User')
+    const meta = await getMeta('Person')
     const f = meta.columns.find((x) => x.column_name === FIELD)
     expect(f).toMatchObject({ column_name: FIELD, label: 'Custom Tag', column_type: 'Data' })
     expect((f as { custom?: boolean }).custom).toBe(true)
 
     // Writable + readable via the generic API.
-    const adminDoc = await admin.get<{ updated_at: string }>('/api/table/User/Administrator')
-    const upd = await admin.fetch('/api/table/User/Administrator', {
+    const adminDoc = await admin.get<{ updated_at: string }>('/api/table/Person/Administrator')
+    const upd = await admin.fetch('/api/table/Person/Administrator', {
       method: 'PATCH',
       body: JSON.stringify({ [FIELD]: 'vip', updated_at: adminDoc.updated_at }),
     })
     expect(upd.status).toBe(200)
     const read = await admin.get<Record<string, unknown>>(
-      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['row_id', FIELD]))}`,
+      `/api/table/Person/Administrator?fields=${encodeURIComponent(JSON.stringify(['row_id', FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -80,20 +80,20 @@ describe('CUST-001: custom fields', () => {
     const [rec] = await sql`select 1 from custom_field where column_name = ${FIELD}`
     expect(rec).toEqual({ '?column?': 1 })
 
-    // Simulate a re-seed that rewrote User's base column_defs, dropping the
+    // Simulate a re-seed that rewrote Person's base column_defs, dropping the
     // custom one — the column/value stay.
-    await sql`delete from column_def where parent = 'User' and column_name = ${FIELD}`
-    invalidateMeta('User')
-    expect((await getMeta('User')).columns.some((f) => f.column_name === FIELD)).toBe(false)
+    await sql`delete from column_def where parent = 'Person' and column_name = ${FIELD}`
+    invalidateMeta('Person')
+    expect((await getMeta('Person')).columns.some((f) => f.column_name === FIELD)).toBe(false)
 
     // Re-apply (runs at boot) restores it.
     await reapplyCustomFields()
-    const meta = await getMeta('User')
+    const meta = await getMeta('Person')
     expect(meta.columns.some((f) => f.column_name === FIELD)).toBe(true)
 
     // Value was never lost (column untouched).
     const read = await admin.get<Record<string, unknown>>(
-      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify([FIELD]))}`,
+      `/api/table/Person/Administrator?fields=${encodeURIComponent(JSON.stringify([FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -104,11 +104,11 @@ describe('CUST-001: custom fields', () => {
     await addCustomField(admin)
     await setVip(admin)
 
-    await admin.delete(`/api/table/Custom%20Field/User-${FIELD}`)
-    invalidateMeta('User')
-    expect((await getMeta('User')).columns.some((f) => f.column_name === FIELD)).toBe(false)
+    await admin.delete(`/api/table/Custom%20Field/Person-${FIELD}`)
+    invalidateMeta('Person')
+    expect((await getMeta('Person')).columns.some((f) => f.column_name === FIELD)).toBe(false)
     // Column still present with data (non-destructive).
-    const [row] = await sql.unsafe(`select ${FIELD} from "user" where row_id = 'Administrator'`)
+    const [row] = await sql.unsafe(`select ${FIELD} from person where row_id = 'Administrator'`)
     expect(row[FIELD]).toBe('vip')
   })
 })

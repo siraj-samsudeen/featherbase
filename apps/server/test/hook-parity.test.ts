@@ -144,7 +144,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
 
   test('override_whitelisted_methods swaps an RPC handler and restores it on uninstall', async () => {
     const APP = `hookp-override-${Date.now()}`
-    const guest = { row_id: 'Guest', email: 'guest@x', full_name: 'Guest' }
+    const guest = { row_id: 'Guest', kind: 'person' as const, email: 'guest@x', full_name: 'Guest' }
     registerApp({
       name: APP,
       override_whitelisted_methods: { public_info: () => 'overridden by app' },

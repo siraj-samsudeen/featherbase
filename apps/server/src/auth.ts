@@ -30,19 +30,27 @@ export function verifyPassword(password: string, stored: string): boolean {
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
 export async function setUserPassword(name: string, password: string) {
-  const [row] = await sql`select user_type from "user" where row_id = ${name}`
-  if (row?.user_type === 'service')
-    throw new AppError(
-      'ValidationError',
-      'Service accounts have no password — issue an access token instead',
-    )
+  // person-rename: only a person has a password. A service account is not a
+  // person, so it is refused here whichever route reached this write.
+  const [row] = await sql`select 1 from person where row_id = ${name}`
+  if (!row) {
+    const [service] = await sql`select 1 from service_account where row_id = ${name}`
+    if (service)
+      throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
+    throw new AppError('NotFoundError', `Person ${name} not found`)
+  }
   await sql`
-    update "user" set password_hash = ${hashPassword(password)}
+    update person set password_hash = ${hashPassword(password)}
     where row_id = ${name}`
 }
 
+export type PrincipalKind = 'person' | 'service_account'
+
 export interface SessionUser {
+  /** The principal id: a person (`psn_…`, or a built-in) or a service account (`svc_…`). */
   row_id: string
+  /** Which kind of principal this session is (person-rename R2). */
+  kind: PrincipalKind
   /** Optional contact data (person-identities): null for people without one. */
   email: string | null
   full_name: string | null
@@ -109,11 +117,11 @@ export async function findPasswordAccount(typed: string) {
   // A username is the id for older accounts and `username` for people who
   // signed up (their id is opaque); either beats an email.
   const rows = await sql`
-    select row_id, email, full_name, enabled, password_hash, user_type,
+    select row_id, email, full_name, enabled, password_hash,
       case when row_id = ${typed} then 0
            when lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed})) then 1
            else 2 end as rank
-    from "user"
+    from person
     where row_id = ${typed} or lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed}))
       or lower(email) = lower(trim(${typed}))
     order by rank
@@ -139,8 +147,8 @@ export function burnPasswordCheck(pwd: string): void {
 // method and identity so the session remembers how it was opened.
 export async function issueSession(userName: string, opts: SessionOptions = {}): Promise<IssuedSession> {
   const [user] = await sql`
-    select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
-  if (!user || !user.enabled || user.user_type === 'service')
+    select row_id, email, full_name, enabled from person where row_id = ${userName}`
+  if (!user || !user.enabled)
     throw new AppError('AuthenticationError', 'User cannot sign in')
   const session = await issueSessionToken(user.row_id as string, opts)
   await logActivity(user.row_id as string, 'login', {
@@ -150,7 +158,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
+    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -169,16 +177,31 @@ function hashToken(token: string): string {
 export interface AccessTokenRow {
   id: string
   label: string
+  /** The principal the token authenticates as: a person or a service account. */
   owner: string
+  owner_kind: PrincipalKind
   created_at: string
   expires_at: string | null
   last_used_at: string | null
   revoked_at: string | null
   /** Only present on list results — see listAccessTokens. */
   owner_enabled?: boolean
+  /** The owner's name, for screens (never show the opaque id). List results only. */
+  owner_name?: string | null
 }
 
-const tokenFields = () => sql`id, label, owner, created_at, expires_at, last_used_at, revoked_at`
+const tokenFields = () => sql`id, label, coalesce(person, service_account) as owner,
+  case when person is not null then 'person' else 'service_account' end as owner_kind,
+  created_at, expires_at, last_used_at, revoked_at`
+
+/** A principal id → its kind and enabled flag; null when it names nobody. */
+export async function findPrincipal(id: string): Promise<{ row_id: string; kind: PrincipalKind; enabled: boolean } | null> {
+  const [row] = await sql`
+    select row_id, 'person' as kind, enabled from person where row_id = ${id}
+    union all
+    select row_id, 'service_account' as kind, enabled from service_account where row_id = ${id}`
+  return row ? { row_id: String(row.row_id), kind: row.kind as PrincipalKind, enabled: row.enabled === true } : null
+}
 
 export async function issueAccessToken(
   owner: string,
@@ -188,13 +211,14 @@ export async function issueAccessToken(
   if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
   if (expiresAt && !(expiresAt.getTime() > Date.now()))
     throw new AppError('ValidationError', 'expires_at must be in the future')
-  const [user] = await sql`select row_id, enabled from "user" where row_id = ${owner}`
-  if (!user) throw new AppError('NotFoundError', `User ${owner} not found`)
-  if (!user.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
+  const principal = await findPrincipal(owner)
+  if (!principal) throw new AppError('NotFoundError', `Account ${owner} not found`)
+  if (!principal.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
   const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
   const [row] = await sql`
-    insert into access_token (id, label, owner, token_hash, expires_at)
-    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()}, ${owner},
+    insert into access_token (id, label, person, service_account, token_hash, expires_at)
+    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()},
+            ${principal.kind === 'person' ? owner : null}, ${principal.kind === 'service_account' ? owner : null},
             ${hashToken(token)}, ${expiresAt ?? null})
     returning ${tokenFields()}`
   return { token, ...(row as unknown as AccessTokenRow) }
@@ -211,17 +235,17 @@ export async function issueAccessToken(
 // as `owner_enabled: false`, which is the truth: such a token authenticates
 // nobody, and it stays listed and revocable.
 export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]> {
-  const rows = owner
-    ? await sql`
-        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.row_id = t.owner
-        where t.owner = ${owner} order by t.created_at desc`
-    : await sql`
-        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.row_id = t.owner
-        order by t.created_at desc`
+  const rows = await sql`
+    select t.id, t.label, coalesce(t.person, t.service_account) as owner,
+           case when t.person is not null then 'person' else 'service_account' end as owner_kind,
+           t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
+           coalesce(p.enabled, s.enabled, false) as owner_enabled,
+           coalesce(nullif(trim(p.full_name), ''), '@' || nullif(p.username, ''), nullif(p.email, ''), s.label) as owner_name
+    from access_token t
+    left join person p on p.row_id = t.person
+    left join service_account s on s.row_id = t.service_account
+    ${owner ? sql`where t.person = ${owner} or t.service_account = ${owner}` : sql``}
+    order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }
 
@@ -247,16 +271,21 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     where token_hash = ${hashToken(token)}
       and revoked_at is null
       and (expires_at is null or expires_at > now())
-    returning owner`
+    returning person, service_account`
   if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
-  const [user] = await sql`
-    select row_id, email, full_name, enabled from "user" where row_id = ${hit.owner}`
-  if (!user || !user.enabled)
+  // Whichever column is set (person-rename R2); a disabled owner of either
+  // kind is refused.
+  const [owner] = hit.person
+    ? await sql`select row_id, email, full_name, enabled, 'person' as kind from person where row_id = ${hit.person as string}`
+    : await sql`select row_id, null::text as email, label as full_name, enabled, 'service_account' as kind
+        from service_account where row_id = ${hit.service_account as string}`
+  if (!owner || !owner.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
-    row_id: user.row_id as string,
-    email: (user.email as string | null) ?? null,
-    full_name: user.full_name as string | null,
+    row_id: owner.row_id as string,
+    kind: owner.kind as PrincipalKind,
+    email: (owner.email as string | null) ?? null,
+    full_name: owner.full_name as string | null,
   }
 }
 
@@ -318,20 +347,23 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   const [user] = await sql`
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
       m.enabled as method_enabled, m.kind as method_kind,
-      i.user_id as identity_owner, i.subject as identity_subject
-    from "user" u
+      i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended
+    from person u
     left join sign_in_method m on m.row_id = ${method}
-    left join user_identity i on i.id = ${identity}
+    left join sign_in_identity i on i.id = ${identity}
     where u.row_id = ${String(payload.sub)}`
   const ended =
     !user ||
     !user.enabled ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
-    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null))
+    // person-resolution D5: a session opened through an identity that has
+    // since ended (left, moved, unlinked) ends on its next request.
+    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))
   if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
   return {
     row_id: user.row_id as string,
+    kind: 'person',
     email: (user.email as string | null) ?? null,
     full_name: user.full_name as string | null,
     sign_in: {

@@ -11,7 +11,10 @@ import { invalidateMeta } from '../src/meta'
 // public. These focused behavior tests run after 0094, so adapt only that
 // historical physical/function vocabulary to the converged layout. The exact
 // unmodified cf88a7b -> 0094 path is exercised by the migration proof.
+// 0101 (person-rename) later renamed the User Table to Person, so the manifest
+// 0090 writes names the Table by its current name here.
 const onConvergedStorage = (body: string) => body
+  .replaceAll('{"table":"User"', '{"table":"Person"')
   .replaceAll('public.%I', 'featherbase.%I')
   .replaceAll("'public'", "'featherbase'")
   .replaceAll('using (fc_has_read(', 'using (featherbase.fc_has_read(')
@@ -52,15 +55,15 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
     file_name: 'transition-note.txt', ref_table: 'Team Task', ref_name: task.row_id,
   } })
   const share = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Share', row: {
-    share_table: 'Team Task', share_name: task.row_id, user: member.user, read: true,
+    share_table: 'Team Task', share_name: task.row_id, person: member.user, read: true,
   } })
   await member.put('/api/user_settings/Task%20Management%20Focus', { task_ids: [task.row_id] })
   // Recreate the old shared-grant adoption case: another runtime app owns the
-  // one User grant and Task Management has no ledger entry or stored manifest.
+  // one Person grant and Task Management has no ledger entry or stored manifest.
   const [sharedUserGrant] = await sql`
     select p.row_id from permission p join installed_app app on p.row_id in (
       select jsonb_array_elements_text(app.perms)
-    ) where app.name = 'task-management' and p.ref_table = 'User'`
+    ) where app.name = 'task-management' and p.ref_table = 'Person'`
   await sql`
     update installed_app set perms = perms - ${String(sharedUserGrant.row_id)}
     where name = 'task-management'`
@@ -68,7 +71,7 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
     insert into installed_app (name, perms, manifest, runtime_package)
     values (
       'other', ${sql.json([String(sharedUserGrant.row_id)])},
-      ${sql.json({ permissions: [{ table: 'User', role: 'All', can_read: true }] })}, true
+      ${sql.json({ permissions: [{ table: 'Person', role: 'All', can_read: true }] })}, true
     )`
   const migration = onConvergedStorage(await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8'))
   await runTransition(migration)
@@ -81,7 +84,7 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
     where row_id in (select jsonb_array_elements_text(perms) from installed_app where name = 'tasker')`
   ).toEqual([{ owner_app: 'tasker' }])
   expect(await sql`
-    select owner_app from permission where ref_table = 'User' and owner_app in ('other', 'tasker')
+    select owner_app from permission where ref_table = 'Person' and owner_app in ('other', 'tasker')
     order by owner_app`
   ).toEqual([{ owner_app: 'other' }, { owner_app: 'tasker' }])
   invalidateMeta()
