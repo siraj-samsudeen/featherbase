@@ -21,6 +21,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
+import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -928,6 +929,19 @@ app.get('/api/people/:id/identities', async (c) => {
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+})
+
+// #429: people who signed in but hold no role yet. System Manager only; the
+// list carries an address's domain, never the address.
+app.get('/api/people/waiting_for_access', async (c) => {
+  await assertSystemManager(who(c))
+  const people = await listWaitingForAccess()
+  return c.json({ people, count: people.length })
+})
+
+app.get('/api/people/waiting_for_access/count', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ count: await countWaitingForAccess() })
 })
 
 // person-rename: ids are opaque, so screens ask for names (batch), and the

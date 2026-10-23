@@ -14,7 +14,7 @@ const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 export const MIN_PASSWORD_LENGTH = 6
 // One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
 // never be told two different things about where this instance lives.
-const SITE_URL = config.siteUrl || 'http://localhost:5173'
+export const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
 // Never reveal whether an account exists; only a real, enabled user with both
 // an email and a password gets a mail (person-identities): resetting never
