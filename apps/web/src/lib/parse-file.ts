@@ -62,7 +62,7 @@ function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
 
 /**
  * The section of an Excel number format that applies to a value, as SheetJS
- * renders it. Sections are `;`-separated (quoted text and a backslash-escaped `;` do not split).
+ * renders it. Sections are `;`-separated; a `;` in quoted text or after `\`, `_` or `*` does not split.
  * When the first or second section carries a condition such as `[<=45586]`,
  * the first whose condition holds wins; otherwise the sections are
  * positive;negative;zero.
@@ -73,8 +73,8 @@ function formatSectionFor(format: string, value: number): string {
   let quoted = false
   for (let i = 0; i < format.length; i++) {
     const ch = format[i]
-    if (ch === '\\' && i + 1 < format.length) {
-      // A backslash escapes the next character, including a ";".
+    if (!quoted && (ch === '\\' || ch === '_' || ch === '*') && i + 1 < format.length) {
+      // An escape (\x), spacing width (_x) or fill (*x) owns the next character, even a ";".
       current += ch + format[++i]
       continue
     }

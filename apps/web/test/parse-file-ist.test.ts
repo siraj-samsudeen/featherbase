@@ -111,6 +111,11 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows.map((r) => r[0])).toEqual(['9999-12-31', 2957004])
   })
 
+  test.each(['yyyy-mm-dd_;hh:mm;hh:mm', 'yyyy-mm-dd*;hh:mm;hh:mm'])('a ; after _ or * is not a section break (%s)', async (fmt) => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.5, fmt]]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
+  })
+
   test('a conditioned second section is checked before the unconditioned first', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd;[>0]yyyy-mm-dd hh:mm']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
