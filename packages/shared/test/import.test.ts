@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 import {
   applyColumnCombines,
   autoMapColumns,
+  autoMapImportColumns,
+  retiredColumnNotice,
   coerceRows,
   combineOverlap,
   COMBINE_JOIN_SEPARATOR,
@@ -599,5 +601,25 @@ describe('applyColumnCombines', () => {
     const def = inferTableDef('T', columns.map((c) => c.label), rows)
     expect(def.columns).toHaveLength(1)
     expect(def.columns[0].column_name).toBe('store')
+  })
+})
+
+describe('#408 retired Person columns', () => {
+  const targets = [
+    { column_name: 'full_name', label: 'Full Name' },
+    // A Custom Field someone re-created after 0107: inert, never a mapping target.
+    { column_name: 'employee_code', label: 'Employee code (StyleHR)' },
+  ]
+  test('employee_code and stylehr_username on Person carry a notice; other Tables and headers do not', () => {
+    expect(retiredColumnNotice('Person', 'Employee Code')).toBe(
+      'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+    )
+    expect(retiredColumnNotice('Person', 'stylehr_username')).toMatch(/^stylehr_username is no longer a Person field/)
+    expect(retiredColumnNotice('Person', 'Full Name')).toBeNull()
+    expect(retiredColumnNotice('Store Manager', 'employee_code')).toBeNull()
+  })
+  test('a retired header never maps on Person, even onto a re-created column; elsewhere it maps as usual', () => {
+    expect(autoMapImportColumns('Person', ['Full Name', 'employee_code'], targets)).toEqual(['full_name', null])
+    expect(autoMapImportColumns('Store Manager', ['Full Name', 'employee_code'], targets)).toEqual(['full_name', 'employee_code'])
   })
 })
