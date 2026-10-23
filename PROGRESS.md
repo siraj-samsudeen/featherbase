@@ -1,5 +1,8 @@
 # Progress Log
 
+> **Frozen 23-Oct-2026 — not updated any more.** Work is recorded in pull requests, their issues and
+> OpenSpec changes; decisions in `docs/adr/`. This file is kept as history. Do not add entries.
+
 ## 2026-10-23 — An import check names the refused column (#416)
 
 The import wizard's Check showed a bad row only as "Invalid values for <Table>". The server's dry run (and real run)
