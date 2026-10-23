@@ -17,7 +17,7 @@ Section Ownership is versioned per Section by `effective_from`. A Section's curr
 
 Roster Section names differ from merchandise Section names. Section Name Alias can map one roster Section to several merchandise Sections (Home Décor & Stationery is Home Décor plus Stationery), so every alias row counts, as does the roster name itself.
 
-One store per reader stays the rule. A conflict across sources is refused rather than mixed.
+One store per reader stays the rule. A conflict across sources is refused rather than mixed. (Superseded 23-Oct-2026 by change `sales-target-store-switcher`, #409: a reader may have several stores and reads one at a time.)
 
 ## Period
 

@@ -145,6 +145,8 @@ test('three Sections or fewer are named outright, with nothing to expand', async
   await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
   await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
   expect(screen.queryByTestId('identity-sections')).not.toBeInTheDocument()
+  // #409: one store, nothing to switch.
+  expect(screen.queryByTestId('store-switcher')).not.toBeInTheDocument()
 })
 
 // A person who has no username is shown by name; the opaque id is never put on the screen (#405).
@@ -167,26 +169,95 @@ test('a person with no viewer role is told plainly, with no API wording and no i
   expect(note).not.toHaveTextContent('session could not be created')
 })
 
-// #404: a two-store account gets the server's sentence in a neutral card, not the red developer frame.
-test('a person set up for two stores sees the server\'s sentence, not "Report unavailable"', async ({ admin, createUser }) => {
+// #409: a person whose sections span two stores reads one store at a time and switches with a dropdown.
+// The page's own fetches are recorded (signal dropped — the jsdom AbortSignal is not Node fetch's, #417).
+async function twoStoreReader(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, createUser: (o: { email: string; roles: string[] }) => Promise<{ user?: string }>) {
   await viewer(admin)
   const reader = await createUser({ email: 'two.stores@example.com', roles: ['Sales Target Viewer'] })
-  for (const [plant, group] of [['1501', '010101003'], ['1515', '010101002']])
+  for (const [plant, label, group] of [['1501', 'ATK', '010101003'], ['1515', 'Kattakada', '010101002']])
     await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: reader.user, plant_code: plant, store_label: 'S', material_group: group } }),
+      body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: reader.user, plant_code: plant, store_label: label, material_group: group } }),
     })
-  await renderApp('/featherbase/sales-target', reader)
-  const note = await screen.findByTestId('embed-refused')
-  expect(note).toHaveTextContent('more than one store (1501, 1515)')
-  expect(note).toHaveTextContent('Ask your administrator')
-  expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
-  expect(screen.queryByText(/This is not a sales figure/)).not.toBeInTheDocument()
-  expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
+  return reader
+}
+
+function recordFetches() {
+  const real = globalThis.fetch
+  const urls: string[] = []
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const { signal: _signal, ...rest } = (init ?? {}) as RequestInit
+    urls.push(String(input))
+    return real(input, rest)
+  })
+  return { urls, spy, reportsFor: (store: string) => urls.filter((u) => u.includes('/api/sales_target/report') && u.includes(`store=${store}`)) }
+}
+
+test('a two-store person gets a store dropdown, opened on the default store', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  const { urls, spy } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const picker = (await screen.findByTestId('store-switcher')) as HTMLSelectElement
+    expect([...picker.options].map((o) => o.textContent)).toEqual(['1501 — ATK', '1515 — Kattakada'])
+    // Neither store has a Section: the tie goes to the lowest store code.
+    expect(picker.value).toBe('1501')
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
+    await waitFor(() => expect(urls.some((u) => u.includes('/api/sales_target/embed_session?store=1501'))).toBe(true))
+    expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
 })
 
-// Only the two-store refusal gets the neutral card; any other validation failure keeps the generic "unavailable" frame.
-test('another validation refusal keeps the generic frame, not the neutral card', async ({ admin, createUser }) => {
+test('switching stores reloads the report for that store and remembers the choice', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  const { urls, spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const picker = await screen.findByTestId('store-switcher')
+    await waitFor(() => expect(reportsFor('1501')).toHaveLength(1))
+    await userEvent.selectOptions(picker, '1515')
+    await waitFor(() => expect(reportsFor('1515')).toHaveLength(1))
+    await waitFor(() => expect(urls.some((u) => u.includes('/api/sales_target/embed_session?store=1515'))).toBe(true))
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1515 — Kattakada'))
+    expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBe('1515')
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+test('a remembered store opens first', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1515')
+  const { spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    await waitFor(() => expect(reportsFor('1515')).toHaveLength(1))
+    expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1515')
+    expect(reportsFor('1501')).toHaveLength(0)
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+test('a remembered store the person no longer has is ignored for the default', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1999')
+  const { spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    await waitFor(() => expect(reportsFor('1501')).toHaveLength(1))
+    expect(reportsFor('1999')).toHaveLength(0)
+    expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1501')
+    expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+// A validation refusal of /me is a failure the page cannot explain: the generic "unavailable" frame.
+test('a validation refusal of the identity call keeps the generic frame', async ({ admin, createUser }) => {
   await viewer(admin)
   const reader = await createUser({ email: 'other.refusal@example.com', roles: ['Sales Target Viewer'] })
   const real = globalThis.fetch
@@ -198,7 +269,6 @@ test('another validation refusal keeps the generic frame, not the neutral card',
   try {
     await renderApp('/featherbase/sales-target', reader)
     await screen.findByText('Report unavailable')
-    expect(screen.queryByTestId('embed-refused')).not.toBeInTheDocument()
   } finally {
     spy.mockRestore()
   }
