@@ -156,6 +156,17 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
   publish(`user:${user}`, event, payload)
 }
 
+// #411: sign-out ends that session's open sockets too. A socket authenticates
+// once, at the upgrade, so without this it would keep receiving events after
+// the token was revoked. Other sessions of the same person stay connected.
+export function closeSessionSockets(sessionId: string): void {
+  for (const client of clients) {
+    if (client.user.sign_in?.session_id !== sessionId) continue
+    clients.delete(client)
+    client.socket.close(4001, 'signed out')
+  }
+}
+
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
 // {unsubscribe:[...]}. The server answers a subscribe frame with

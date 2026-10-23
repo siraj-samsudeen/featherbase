@@ -110,6 +110,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   pre_auth_bucket: { '*': code },
   print_format: { ref_table: code, template: text, letter_head: code },
   report: { ref_table: code, config: text, report_type: code, query: text, report_script: code },
+  revoked_session: { jti: code, person_id: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
   sales_target_snapshot_row: { '*': code },

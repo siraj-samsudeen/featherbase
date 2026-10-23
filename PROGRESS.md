@@ -1,5 +1,20 @@
 # Progress Log
 
+## 2026-10-23 — Signing out ends that session, not just the cookie (#411)
+
+Sessions are signed tokens, and sign-out only cleared the `sid` cookie, so a copied token kept
+working for its whole lifetime (eight hours by default). Every session now carries a unique id
+(`jti`); `POST /api/logout` records it in `revoked_session` (migration 0106) for both the bearer
+header and the cookie, and closes that session's realtime sockets. `resolveToken` refuses a
+recorded id in the same query that already checks the person (a primary-key join). Only that
+session ends — the person's other sessions keep working; access tokens are untouched. Rows are
+pruned on each sign-out once their session has expired. A token without an id is refused, so the
+deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-session`.
+
+Verification: `apps/server/test/sign-out.test.ts` 6/6 (red first), server suite otherwise green
+except the four app-package files that fail identically on origin/main locally.
+Next: archive the OpenSpec change after merge.
+
 ## 2026-10-23 — Excel dates no longer import a day early in India (#387)
 
 Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on

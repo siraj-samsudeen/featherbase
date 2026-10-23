@@ -12,7 +12,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
@@ -48,7 +48,7 @@ import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, syncScheduledJobs } from './jobs'
-import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
+import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
@@ -274,8 +274,18 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // a live credential and any token-less request after logout re-authenticates
 // as the departed user (found via #101: a post-logout whoami refetch answered
 // as the previous user and poisoned the cache for the next account).
-app.post('/api/logout', (c) => {
+//
+// #411: it also revokes the session it was called with — the bearer header
+// and the sid cookie, should they differ — so the same token is refused
+// afterwards on every path, and closes that session's realtime sockets.
+app.post('/api/logout', async (c) => {
+  const sid = getCookie(c, 'sid')
   deleteCookie(c, 'sid', { path: '/' })
+  const credentials = new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])
+  for (const credential of credentials) {
+    const revoked = await revokeSession(credential)
+    if (revoked) closeSessionSockets(revoked)
+  }
   return c.json({ ok: true })
 })
 

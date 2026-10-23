@@ -123,6 +123,21 @@ credential. If the account may be compromised, list and revoke them too:
 `pnpm --filter server cli list-tokens <person-id>`, then
 `pnpm --filter server cli revoke-token <token-id>`.
 
+### Sign-out ends that session (#411)
+
+Every session carries a unique id. Signing out records it in
+`revoked_session` (migration 0106), and that session is refused from then on —
+on every request and on its live-update socket, which is closed. The person's
+other sessions are untouched; to end all of them, use the reset above. Rows
+are pruned on each sign-out once the session they name has expired, so the
+table holds only sessions that could still be presented.
+
+**Deploying it signs everyone out once.** A session opened before this
+release carries no id and is refused, so every user — the store staff on
+the trial included — must sign in again after the deploy. There is no
+grace window (no-backward-compatibility rule). Access tokens are not sessions
+and keep working.
+
 ## Public-route abuse limits
 
 Password login (including delegated sign-in), Google OAuth initiation/callback,
