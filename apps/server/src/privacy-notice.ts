@@ -1,7 +1,9 @@
-// #393: the privacy notice RB approved on 22-Oct-2026, served verbatim at
-// /privacy for Google's consent screen. Every statement must stay true of the
-// running system — change the wording only with a fresh approval, and revise
-// it when identifiers such as Aadhaar or phone start being held (person-resolution 1b).
+// #393: the privacy notice RB approved on 22-Oct-2026, corrected 23-Oct to
+// match what the system does (Google account ID; no sign-in IP is recorded;
+// leavers are disabled by hand until the roster sync), served at /privacy.
+// Every statement must stay true of the running system — change the wording
+// only with a fresh approval, and revise it when identifiers such as Aadhaar
+// or phone start being held (person-resolution 1b).
 export const privacyNoticeHtml = `<!doctype html>
 <html lang="en">
 <head>
@@ -33,9 +35,9 @@ export const privacyNoticeHtml = `<!doctype html>
 <tr><th>Information</th><th>Why</th></tr>
 <tr><td>Your name and employee code</td><td>to identify you and show you your own work</td></tr>
 <tr><td>Your StyleHR user ID</td><td>to let you sign in with your StyleHR details</td></tr>
-<tr><td>Your work email address (if you sign in with Google)</td><td>to identify you; Google shares only your name and email with us</td></tr>
+<tr><td>Your work email address and Google account ID (if you sign in with Google)</td><td>to identify you; Google shares only your name, email address and account ID with us</td></tr>
 <tr><td>Your store, sections and role (e.g. Team Leader, Store Manager)</td><td>to show you the reports and records that belong to you</td></tr>
-<tr><td>A record of each sign-in: time and network (IP) address</td><td>security and troubleshooting</td></tr>
+<tr><td>A record of each sign-in: time and sign-in method</td><td>security and troubleshooting</td></tr>
 </table>
 
 <h2>What we do not hold</h2>
@@ -62,7 +64,7 @@ export const privacyNoticeHtml = `<!doctype html>
 </ul>
 
 <h2>When access ends</h2>
-<p>Your access follows the company's HR records. Once HR marks you as having left in StyleHR, you can no longer sign in to Feather Dash. Google sign-in ends when your company Google account is closed.</p>
+<p>Your access follows the company's HR records. When you leave the company, your Feather Dash account is disabled, which ends every way of signing in, including Google. Sign-in with your StyleHR details also stops as soon as HR marks you as having left in StyleHR, and Google sign-in stops when your company Google account is closed.</p>
 
 <h2>Questions or corrections</h2>
 <p>If something about you is wrong, or you have a question about your information, contact <b><a href="mailto:siraj@jeyarama.com">siraj@jeyarama.com</a></b> or your HR team.</p>
