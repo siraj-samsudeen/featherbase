@@ -109,7 +109,7 @@ describe('a person links Google themselves', () => {
     const secret = process.env.JWT_SECRET ?? 'dev-secret-change-me'
     const now = Math.floor(Date.now() / 1000)
     const noIat = await sign({ sub: stale, exp: now + 3600 }, secret)
-    const old = await sign({ sub: stale, iat: now - 3600, exp: now + 3600, m: 'password' }, secret)
+    const old = await sign({ sub: stale, iat: now - 3600, exp: now + 3600, jti: 'stale-session', m: 'password' }, secret)
     await admin.post('/api/set_password', { user: stale, password: 'stale-pw-1' })
     // Minted before the upgrade: ended at deploy, it opens nothing.
     expect((await as(api, noIat)('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(401)
