@@ -121,6 +121,11 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-21T12:00:00.500', '2024-10-21'])
   })
 
+  test('the Chinese/Japanese meridiem 上午/下午 shows a time, as AM/PM does', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.75, 'yyyy-mm-dd 上午/下午']]))
+    expect(sheet.rows[0][0]).toBe('2024-10-21T18:00:00')
+  })
+
   test('a conditioned second section is checked before the unconditioned first', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd;[>0]yyyy-mm-dd hh:mm']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
