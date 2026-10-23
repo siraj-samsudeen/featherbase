@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
+import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_HOME_DESTINATION } from 'shared'
-import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, listResource, signOut } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -17,7 +17,7 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
-import { useIsPreview } from '../lib/session'
+import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
@@ -26,6 +26,7 @@ import { useI18n } from '../lib/i18n'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 import { ShownName, isOpaqueId } from '../lib/people'
+import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 
 interface SearchHit {
   table: string
@@ -58,22 +59,28 @@ connectEventSink({
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
-// A dev-preview deployment announces itself. The link is shareable and the
-// data is disposable; a visitor who does not know that may mistake it for the
-// real thing, or be surprised when it is reset.
-function PreviewBanner() {
-  if (!useIsPreview()) return null
-  return (
-    <div
-      data-testid="preview-banner"
-      className="flex shrink-0 items-center justify-center gap-2 bg-[var(--color-warn-tint)] px-3 py-1 text-xs font-medium text-[var(--color-warn)]"
-    >
-      Preview deployment — data here is disposable and may be reset at any time.
-    </div>
-  )
+// #410: pick the layout from the server-computed capabilities BEFORE mounting
+// the Admin shell, so a person who cannot use it never fires its API calls.
+export function AdminLayout() {
+  const kind = useShellKind()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  if (kind === 'loading') return <Waiting label="Checking your access" />
+  if (kind === 'failed')
+    return (
+      <Waiting>
+        We could not check what you have access to. <button type="button" className="underline" onClick={() => window.location.reload()}>Try again</button>
+      </Waiting>
+    )
+  if (kind === 'no-access') return <NoAccessPage />
+  if (kind === 'report-only') {
+    // The one Admin page a report reader keeps is their own sign-in methods.
+    if (pathname.replace(/\/$/, '') !== SIGN_IN_METHODS_PATH) return <Navigate to={REPORT_PATH} replace />
+    return <ReportOnlyShell />
+  }
+  return <AdminShell />
 }
 
-export function AdminLayout() {
+function AdminShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -158,16 +165,9 @@ export function AdminLayout() {
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
 
-  const tables = useQuery({
-    queryKey: ['tables'],
-    queryFn: () =>
-      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
-        filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system'],
-        order_by: 'row_id asc',
-        limit_page_length: 200,
-      }),
-  })
+  const tables = useShellTables()
+  const caps = useCapabilities()
+  const canManage = caps?.manage === true
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -252,8 +252,12 @@ export function AdminLayout() {
     // Invalidate the sid cookie BEFORE dropping local state: while it lives,
     // any token-less request fired in the logout gap re-authenticates as the
     // departing user and re-poisons the cache for the next account in this
-    // tab (#101 review).
-    await api.post('/api/logout', {}).catch(() => {})
+    // tab (#101 review). #411: if the server could not end the session, say
+    // so and stay signed in rather than pretend it ended.
+    if (!(await signOut())) {
+      window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
     clearSession()
     delete document.documentElement.dataset.palette
     delete document.documentElement.dataset.theme
@@ -338,7 +342,7 @@ export function AdminLayout() {
       return
     }
     recordSearch(q)
-    const dtHit = tables.data?.data.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
+    const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
       navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
@@ -364,7 +368,7 @@ export function AdminLayout() {
   // keeps the alphabetical order within each group).
   const suggestions =
     search.trim().length > 0
-      ? (tables.data?.data ?? [])
+      ? (tables ?? [])
           .filter((d) => d.row_id.toLowerCase().includes(search.trim().toLowerCase()))
           .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
@@ -372,7 +376,7 @@ export function AdminLayout() {
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) },
+    ...(canManage ? [{ id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) }] : []),
     { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
     { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
   ]
@@ -728,6 +732,7 @@ export function AdminLayout() {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
+          {canManage && (
           <div className="px-3 pt-4">
             <Link
               to="/featherbase/admin/new-table"
@@ -754,6 +759,7 @@ export function AdminLayout() {
               Past imports
             </Link>
           </div>
+          )}
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
@@ -823,8 +829,7 @@ export function AdminLayout() {
             >
               All tables
             </Link>
-            {/* #131: automation credentials — tokens are self-service, so the
-                link shows for everyone, not just System Managers. */}
+            {/* #131: automation credentials are self-service (the endpoint is owner-scoped), so the link shows for everyone in the Admin. */}
             <Link
               to="/featherbase/admin/access-tokens"
               data-testid="access-tokens-link"

@@ -34,7 +34,7 @@ export const PENDING_SWEEP: Record<string, number> = {
   'src/index.css': 161,
   'src/lib/settings.ts': 1,
   'src/pages/AccessTokens.tsx': 40,
-  'src/pages/AdminLayout.tsx': 75,
+  'src/pages/AdminLayout.tsx': 73,
   'src/pages/AllTables.tsx': 10,
   'src/pages/ColumnEditor.tsx': 33,
   'src/pages/Explore.tsx': 24,

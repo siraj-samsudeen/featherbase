@@ -17,6 +17,27 @@ name; a Recent row with no caption shows the name and no id tooltip) and `identi
 `shrink-0`), design guards. Browser (Playwright, 1280 px): heading `Person: <name>`, no Rename, Recent shows names,
 End/Unlink on one line.
 
+## 2026-10-23 — Signing out ends that session, not just the cookie (#411)
+
+Sessions are signed tokens, and sign-out only cleared the `sid` cookie, so a copied token kept
+working for its whole lifetime (eight hours by default). Every session now carries a unique id
+(`jti`); `POST /api/logout` records it in `revoked_session` (migration 0106) for both the bearer
+header and the cookie, and closes that session's realtime sockets. `resolveToken` refuses a
+recorded id in the same query that already checks the person (a primary-key join). Only that
+session ends — the person's other sessions keep working; access tokens are untouched. Rows are
+pruned on each sign-out once their session has expired. A token without an id is refused, so the
+deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-session`.
+Review round: an expired session's sign-out still closes its sockets (signature checked, expiry
+not); a failed write answers 503 and the app says sign-out did not complete; a socket registering
+just after its sign-out is caught by a short in-memory list; every instance re-checks its sockets
+against `revoked_session` each minute, since sockets are per instance. The same one query also closes sockets whose token
+expired, of a disabled person or of sessions issued before `sessions_ended_at` (#391), which were only checked at
+the upgrade before.
+
+Verification: `apps/server/test/sign-out.test.ts` 13/13 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
+except the four app-package files that fail identically on origin/main locally.
+Next: archive the OpenSpec change after merge.
+
 ## 2026-10-23 — Sales-target scope comes from identifier rows; the Person code fields are gone (#408)
 
 A tester typed another person's code into Person's free-text **Employee code (StyleHR)** field and the
@@ -3938,7 +3959,6 @@ The pin survives the refactor rather than passing vacuously.
 `bg-blue-50` literals outside the error UI — all pre-dating this change and
 out of this branch's scope.
 
-
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
 Third item of the production-readiness push. Each sheet card now carries a
@@ -5882,7 +5902,6 @@ Next: worth a guard so this class of bug can't return — either a test assertin
 no `column_def.choices` contains a literal backslash-n after migration, or a
 lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
 sites are fixed, but nothing stops a sixth.
-
 
 ## 2026-07-31 — fix #94: the e2e specs address column rows by marker, not position
 

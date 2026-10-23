@@ -65,7 +65,7 @@ describe('sessions that cannot vouch for the person (A-M1, B-M2)', () => {
 
   test('adding a first password needs a recent sign-in; changing one does not', async ({ api, admin }) => {
     const fp = await person('fresh.person')
-    const old = await sign({ sub: fp, iat: now() - 3600, exp: now() + 3600 }, SECRET)
+    const old = await sign({ sub: fp, iat: now() - 3600, exp: now() + 3600, jti: 'old-session' }, SECRET)
     const body = JSON.stringify({ password: 'first-pw-123' })
     expect((await as(api, old)('/api/set_password', { method: 'POST', body })).status).toBe(401)
     const fresh = (await issueSession(fp)).token

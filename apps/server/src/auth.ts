@@ -84,6 +84,10 @@ export interface SignInClaims {
   preview: boolean
   /** Seconds since the epoch; null for a token minted before the upgrade. */
   issued_at: number | null
+  /** This session's unique id (`jti`, #411): what sign-out revokes. */
+  session_id: string
+  /** Seconds since the epoch when this session's token expires. */
+  expires_at: number
 }
 
 export interface SessionOptions {
@@ -99,19 +103,22 @@ export interface IssuedSession {
   maxAgeSeconds: number
 }
 
-async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number }> {
+async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number; jti: string }> {
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const maxAgeSeconds = hours * 3600
   const iat = Math.floor(Date.now() / 1000)
+  // #411: a unique id per session, so sign-out can revoke exactly this one.
+  const jti = randomBytes(16).toString('base64url')
   // m = sign-in method, idn = linked identity, tm = test mode (design D8).
   const token = await sign(
     {
       sub: userName,
       iat,
       exp: iat + maxAgeSeconds,
+      jti,
       ...(opts.method ? { m: opts.method } : {}),
       ...(opts.identity ? { idn: opts.identity } : {}),
       ...(opts.testMode ? { tm: true } : {}),
@@ -119,11 +126,11 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
     },
     JWT_SECRET,
   )
-  return { token, maxAgeSeconds, iat }
+  return { token, maxAgeSeconds, iat, jti }
 }
 
-function claimsOf(opts: SessionOptions, iat: number): SignInClaims {
-  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat }
+function claimsOf(opts: SessionOptions, iat: number, jti: string, exp: number): SignInClaims {
+  return { expires_at: exp, method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, session_id: jti }
 }
 
 /** The one account a typed username-or-email names for password sign-in and
@@ -175,7 +182,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
+    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.jti, session.iat + session.maxAgeSeconds) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -346,7 +353,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown; iat?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
   } catch {
@@ -355,6 +362,10 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // A token minted before person-identities carries no `iat`: such sessions
   // were ended at the upgrade (no compatibility window — Siraj, 22-Oct-2026).
   if (typeof payload.iat !== 'number') throw new AppError('AuthenticationError', 'Invalid or expired session')
+  // #411: nor does one minted before sessions carried an id — it could never
+  // be signed out, so it ended at that upgrade too.
+  if (typeof payload.jti !== 'string' || !payload.jti) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  const jti = payload.jti
   const method = typeof payload.m === 'string' ? payload.m : null
   const identity = typeof payload.idn === 'string' ? payload.idn : null
   // One query (design D8): the person, the method the session came through,
@@ -365,14 +376,18 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
       floor(extract(epoch from u.sessions_ended_at)) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
-      i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended
+      i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended,
+      (r.jti is not null) as signed_out
     from person u
     left join sign_in_method m on m.row_id = ${method}
     left join sign_in_identity i on i.id = ${identity}
+    left join revoked_session r on r.jti = ${jti}
     where u.row_id = ${String(payload.sub)}`
   const ended =
     !user ||
     !user.enabled ||
+    // #411: this session was signed out (a primary-key lookup).
+    user.signed_out ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
     // #391: a session issued before the person's sessions were ended. Whole
@@ -394,8 +409,65 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       test_mode: payload.tm === true,
       preview: payload.pv === true,
       issued_at: typeof payload.iat === 'number' ? payload.iat : null,
+      session_id: jti,
+      expires_at: Number(payload.exp),
     },
   }
+}
+
+/** #411: the session a credential names, for sign-out. The signature must
+ *  hold but expiry is NOT checked: signing out an expired session still has
+ *  to end it (its sockets may be open). Access tokens and anything not
+ *  correctly signed name no session and return null. */
+export interface SessionToRevoke { jti: string; person: string; expiresAt: number }
+export async function sessionToRevoke(authorization?: string): Promise<SessionToRevoke | null> {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (!token || token.startsWith(TOKEN_PREFIX)) return null
+  let payload: { sub?: unknown; jti?: unknown; exp?: unknown }
+  try {
+    payload = (await verify(token, JWT_SECRET, { alg: 'HS256', exp: false })) as typeof payload
+  } catch {
+    return null
+  }
+  if (typeof payload.jti !== 'string' || !payload.jti || typeof payload.exp !== 'number') return null
+  return { jti: payload.jti, person: String(payload.sub), expiresAt: payload.exp }
+}
+
+/** #411: record a signed-out session so resolveToken refuses it. Only that
+ *  session; the person's others keep working. An already-expired session
+ *  needs no row (expiry refuses it). Rows past their session's expiry are
+ *  pruned in the same transaction, so the table holds only sessions that
+ *  could still be presented. Throws when the write fails — the caller must
+ *  not report sign-out as complete. */
+export async function revokeSession(session: SessionToRevoke): Promise<void> {
+  await sql.begin(async (t) => {
+    await t`delete from revoked_session where expires_at < now()`
+    if (session.expiresAt <= Math.floor(Date.now() / 1000)) return
+    await t`insert into revoked_session (jti, person_id, expires_at)
+      values (${session.jti}, ${session.person}, to_timestamp(${session.expiresAt}))
+      on conflict (jti) do nothing`
+  })
+}
+
+/** #411: which of these open sessions have ended since they were checked —
+ *  expired, signed out (on any instance), the person disabled, or issued before the
+ *  person's sessions were ended (#391; whole seconds, as resolveToken). One
+ *  query for all of them. */
+export interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
+export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
+  if (!sessions.length) return new Set()
+  const rows = await sql`
+    select s.jti
+    from unnest(${sessions.map((x) => x.jti)}::text[], ${sessions.map((x) => x.person)}::text[],
+                ${sessions.map((x) => x.issuedAt)}::bigint[], ${sessions.map((x) => x.expiresAt)}::bigint[]) as s(jti, person, iat, exp)
+    left join person p on p.row_id = s.person
+    left join revoked_session r on r.jti = s.jti
+    where r.jti is not null or p.row_id is null or not p.enabled
+       -- statement_timestamp, not now(): now() is frozen at the start of an
+       -- enclosing transaction, which would keep an expired socket open.
+       or s.exp <= extract(epoch from statement_timestamp())
+       or (p.sessions_ended_at is not null and s.iat < floor(extract(epoch from p.sessions_ended_at)))`
+  return new Set(rows.map((r) => r.jti as string))
 }
 
 /** Linking another sign-in method needs a recent sign-in (design D6): a

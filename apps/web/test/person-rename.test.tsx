@@ -87,9 +87,11 @@ test('the Person list shows each person’s name in its first column', async ({ 
 
 test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
   const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author' })
-  const reader = await createUser({ email: 'no.person.read@example.com' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Hidden Row Reader' } })
+  const reader = await createUser({ email: 'no.person.read@example.com', roles: ['Hidden Row Reader'] })
   await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
-  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'All', can_read: true } })
+  // A grant of their own earns the Admin (#410); grants to the implicit All role alone do not.
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Hidden Row', role: 'Hidden Row Reader', can_read: true } })
   await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Comment', role: 'All', can_read: true, can_create: true, can_write: true } })
   const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Hidden Row', row: { title: 'x' } })
   await author.post('/api/save_row', { table: 'Comment', row: { ref_table: 'Hidden Row', ref_name: doc.row_id, content: 'hello' } })

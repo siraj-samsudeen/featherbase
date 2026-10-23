@@ -4,11 +4,19 @@ import { vi } from 'vitest'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures'
+import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
+
+// A Team Leader holds the Sales Target Viewer role (#410): their Admin is the
+// bare shell, and sign-in methods is the one page in it.
+async function viewerRole(admin: Parameters<typeof renderApp>[1]) {
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+  return [VIEWER_ROLE]
+}
 
 test('lists the password and a linked service; the last one cannot be removed', async ({ admin, createUser }) => {
   await configureDelegated()
-  const tl = await createUser({ email: 'tl.methods@example.com' })
+  const tl = await createUser({ email: 'tl.methods@example.com', roles: await viewerRole(admin) })
   await admin.post('/api/set_password', { user: tl.user, password: 'methods-pw-1' })
   const identity = await linkDelegated(tl.user!, 'tl_methods')
 
@@ -26,8 +34,8 @@ test('lists the password and a linked service; the last one cannot be removed', 
   expect(screen.getByTestId(`method-${identity}`)).toBeInTheDocument()
 })
 
-test('says how a Google link went', async ({ createUser }) => {
-  const person = await createUser({ email: 'linked.person@example.com' })
+test('says how a Google link went', async ({ admin, createUser }) => {
+  const person = await createUser({ email: 'linked.person@example.com', roles: await viewerRole(admin) })
   window.history.replaceState(null, '', '/featherbase/admin/sign-in-methods?link=taken')
   await renderApp('/featherbase/admin/sign-in-methods?link=taken', person)
   expect(await screen.findByTestId('link-outcome')).toHaveTextContent('belongs to another account')
@@ -59,8 +67,11 @@ test('on a Person form a System Manager links a service, invites Google and unli
   confirm.mockRestore()
 })
 
-test('a person without the System Manager role sees no admin panel on a Person form', async ({ createUser }) => {
-  const plain = await createUser({ email: 'plain.panel@example.com' })
+test('a person without the System Manager role sees no admin panel on a Person form', async ({ admin, createUser }) => {
+  // Holds a read grant on Person, so the Admin opens for them (#410) - without the System Manager role.
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Reader' } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Reader', can_read: true } })
+  const plain = await createUser({ email: 'plain.panel@example.com', roles: ['Person Reader'] })
   await renderApp(`/featherbase/admin/Person/${encodeURIComponent(plain.user!)}`, plain)
   await screen.findByTestId('session-user')
   expect(screen.queryByTestId('user-sign-in-methods')).not.toBeInTheDocument()

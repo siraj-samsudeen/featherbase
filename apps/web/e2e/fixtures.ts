@@ -68,6 +68,31 @@ export async function adminAuth(request: APIRequestContext): Promise<{ Authoriza
 }
 
 /** Install a runtime app if needed and return headers pinned to active app versions. */
+/**
+ * A role that opens the Admin to a person (#410): a read grant of their own on
+ * Person. A role-less person lands on the no-access page, so a spec that needs
+ * its test user inside the Admin gives them this role. Idempotent.
+ */
+export const ADMIN_READER_ROLE = 'E2E Admin Reader'
+export async function ensureAdminReaderRole(request: APIRequestContext): Promise<string> {
+  const headers = await adminAuth(request)
+  const role = await request.get(`/api/table/Role/${encodeURIComponent(ADMIN_READER_ROLE)}`, { headers })
+  if (role.status() !== 200) {
+    const made = await request.post('/api/save_row', { headers, data: { table: 'Role', row: { row_id: ADMIN_READER_ROLE } } })
+    if (made.status() !== 201) throw new Error(`create role: ${made.status()} ${await made.text()}`)
+  }
+  const filters = encodeURIComponent(JSON.stringify([['role', '=', ADMIN_READER_ROLE]]))
+  const grants = (await (await request.get(`/api/table/Permission?filters=${filters}`, { headers })).json()) as { data: unknown[] }
+  if (!grants.data.length) {
+    const made = await request.post('/api/save_row', {
+      headers,
+      data: { table: 'Permission', row: { ref_table: 'Person', role: ADMIN_READER_ROLE, can_read: true } },
+    })
+    if (made.status() !== 201) throw new Error(`create grant: ${made.status()} ${await made.text()}`)
+  }
+  return ADMIN_READER_ROLE
+}
+
 export async function ensureRuntimeApp(
   request: APIRequestContext,
   name: string,
