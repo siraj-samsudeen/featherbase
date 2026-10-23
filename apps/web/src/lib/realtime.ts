@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { realtimeFrames } from 'shared'
 import { getToken } from './api'
 
 // RT-001/002/003: a single shared WebSocket to the server. Views subscribe
@@ -12,10 +13,13 @@ export interface RealtimeEvent {
 
 type Handler = (e: RealtimeEvent) => void
 
-class RealtimeClient {
+export class RealtimeClient {
   private socket: WebSocket | null = null
   private handlers = new Set<Handler>()
-  private channels = new Set<string>()
+  // Channel -> how many live subscriptions want it. A channel leaves when its
+  // last subscriber does, so a long-lived page re-sends only what it still
+  // watches on reconnect, not every row it ever opened.
+  private channels = new Map<string, number>()
   // Channels the server has acknowledged registering. `channels` is what we
   // have *asked* for; this is what is actually live.
   private live = new Set<string>()
@@ -40,7 +44,7 @@ class RealtimeClient {
     const socket = new WebSocket(`${proto}://${location.host}/ws`)
     this.socket = socket
     socket.onopen = () => {
-      if (this.channels.size) socket.send(JSON.stringify({ subscribe: [...this.channels] }))
+      this.send('subscribe', [...this.channels.keys()])
     }
     socket.onmessage = (ev) => {
       try {
@@ -75,19 +79,45 @@ class RealtimeClient {
     if (!this.socket || this.socket.readyState > 1) this.connect()
   }
 
+  // Frames stay under the server's size limit however many channels there
+  // are: one oversized frame is refused, and a refused re-subscribe would be
+  // retried identically on every reconnect (#444 review).
+  private send(op: 'subscribe' | 'unsubscribe', channels: string[]) {
+    const socket = this.socket
+    if (!channels.length || socket?.readyState !== WebSocket.OPEN) return
+    for (const frame of realtimeFrames(op, channels)) socket.send(frame)
+  }
+
   subscribe(channels: string[], handler: Handler): () => void {
     this.handlers.add(handler)
+    const mine = [...new Set(channels)]
     const added: string[] = []
-    for (const ch of channels)
-      if (!this.channels.has(ch)) {
-        this.channels.add(ch)
-        added.push(ch)
-      }
+    for (const ch of mine) {
+      const count = this.channels.get(ch) ?? 0
+      this.channels.set(ch, count + 1)
+      if (count === 0) added.push(ch)
+    }
     this.ensure()
-    if (added.length && this.socket?.readyState === WebSocket.OPEN)
-      this.socket.send(JSON.stringify({ subscribe: added }))
+    this.send('subscribe', added)
+    let active = true
     return () => {
+      if (!active) return
+      active = false
       this.handlers.delete(handler)
+      const removed: string[] = []
+      for (const ch of mine) {
+        const count = (this.channels.get(ch) ?? 1) - 1
+        if (count > 0) this.channels.set(ch, count)
+        else {
+          this.channels.delete(ch)
+          this.live.delete(ch)
+          removed.push(ch)
+        }
+      }
+      if (removed.length) {
+        this.mirrorLiveChannels()
+        this.send('unsubscribe', removed)
+      }
     }
   }
 }

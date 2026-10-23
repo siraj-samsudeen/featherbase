@@ -134,7 +134,14 @@ let slugCache: Map<string, string[]> | null = null
 // targeted invalidate still clears all of it).
 let backlinksCache: Map<string, Backlink[]> | null = null
 
+// Bumped by every invalidation. A load that awaits the database and sees the
+// generation move before it finishes read a definition the invalidation has
+// just superseded (or, under a rolled-back transaction, one that never
+// existed), so it returns its result without caching it (#426).
+let generation = 0
+
 export function invalidateMeta(name?: string) {
+  generation++
   if (name) cache.delete(name)
   else cache.clear()
   slugCache = null
@@ -153,6 +160,7 @@ export interface Backlink {
 
 export async function getBacklinks(target: string): Promise<Backlink[]> {
   if (!backlinksCache) {
+    const loadedAt = generation
     const targets = await sql<
       { parent: string; column_name: string; reference_table: string; kind: string }[]
     >`
@@ -191,6 +199,7 @@ export async function getBacklinks(target: string): Promise<Backlink[]> {
     }
     for (const list of map.values())
       list.sort((a, b) => a.table.localeCompare(b.table) || a.column.localeCompare(b.column))
+    if (generation !== loadedAt) return map.get(target) ?? []
     backlinksCache = map
   }
   return backlinksCache.get(target) ?? []
@@ -249,7 +258,9 @@ export async function resolveTableName(input: string): Promise<string> {
   if (cache.has(input)) return input
   const [exact] = await sql`select 1 from table_def where name = ${input}`
   if (exact) return input
-  if (!slugCache) {
+  let slugs = slugCache
+  if (!slugs) {
+    const loadedAt = generation
     const rows = await sql`select name from table_def`
     const map = new Map<string, string[]>()
     for (const r of rows) {
@@ -258,9 +269,10 @@ export async function resolveTableName(input: string): Promise<string> {
       if (names) names.push(r.name as string)
       else map.set(slug, [r.name as string])
     }
-    slugCache = map
+    slugs = map
+    if (generation === loadedAt) slugCache = map
   }
-  const matches = slugCache.get(slugify(input)) ?? []
+  const matches = slugs.get(slugify(input)) ?? []
   if (matches.length > 1)
     throw new AppError(
       'ConflictError',
@@ -276,6 +288,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
     metaCacheStats.hits++
     return cached
   }
+  const loadedAt = generation
   const [dt] = await sql`select * from table_def where name = ${name}`
   if (!dt) {
     // DEL-R9 (docs/specs/0003-table-deletion.md): a deleted Table's
@@ -323,6 +336,6 @@ export async function getMeta(name: string): Promise<TableMeta> {
   await applyMetadataOverrides(name, meta)
 
   metaCacheStats.loads++
-  cache.set(name, meta)
+  if (generation === loadedAt) cache.set(name, meta)
   return meta
 }
