@@ -6,7 +6,8 @@ Signing out is supposed to end the session, but today it only clears the browser
 
 ## What Changes
 
-- Signing out ends that session everywhere it is used: ordinary requests and live updates both stop accepting it at once.
+- Signing out ends that session everywhere it is used: ordinary requests refuse it at once, and its live updates stop at once on the server that handled the sign-out and within about a minute on any other.
+- If the sign-out cannot be recorded, the user is told it did not complete instead of being shown the sign-in page as if it had.
 - Only the session being signed out ends. The same person stays signed in on their other phones and browsers.
 - Integration access tokens are unaffected.
 - Sessions opened before this change cannot be signed out this way, so they end when it is deployed and everyone signs in once more.

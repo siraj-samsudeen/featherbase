@@ -10,10 +10,15 @@ recorded id in the same query that already checks the person (a primary-key join
 session ends — the person's other sessions keep working; access tokens are untouched. Rows are
 pruned on each sign-out once their session has expired. A token without an id is refused, so the
 deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-session`.
+Review round: an expired session's sign-out still closes its sockets (signature checked, expiry
+not); a failed write answers 503 and the app says sign-out did not complete; a socket registering
+just after its sign-out is caught by a short in-memory list; every instance re-checks its sockets
+against `revoked_session` each minute, since sockets are per instance.
 
-Verification: `apps/server/test/sign-out.test.ts` 6/6 (red first), server suite otherwise green
+Verification: `apps/server/test/sign-out.test.ts` 11/11 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
 except the four app-package files that fail identically on origin/main locally.
 Next: archive the OpenSpec change after merge.
+
 ## 2026-10-23 — The privacy notice is instance configuration (#401)
 
 Featherbase is public, so an organisation's privacy wording does not belong in the repo (#393's PR #394 hard-coded

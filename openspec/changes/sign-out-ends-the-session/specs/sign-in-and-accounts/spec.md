@@ -14,7 +14,12 @@ Signing out SHALL end that session immediately, everywhere it is used, even if t
 #### Scenario: A copy of the signed-out session stops working
 
 - **WHEN** someone kept a copy of a user's session and the user signs out
-- **THEN** the copy is refused from then on, and its live updates stop
+- **THEN** the copy is refused from then on, and its live updates stop within about a minute
+
+#### Scenario: Sign-out that could not finish is said
+
+- **WHEN** a user signs out but the system cannot record it
+- **THEN** the user is told sign-out did not complete and stays signed in to try again
 
 #### Scenario: Other devices stay signed in
 

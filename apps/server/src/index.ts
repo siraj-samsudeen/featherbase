@@ -12,7 +12,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
@@ -276,17 +276,28 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // as the departed user (found via #101: a post-logout whoami refetch answered
 // as the previous user and poisoned the cache for the next account).
 //
-// #411: it also revokes the session it was called with — the bearer header
-// and the sid cookie, should they differ — so the same token is refused
-// afterwards on every path, and closes that session's realtime sockets.
+// #411: it also ends the session(s) it was called with — the bearer header
+// and the sid cookie, which can name different sessions. Expired ones too:
+// their realtime sockets are closed regardless. Each revocation stands alone,
+// and if any write fails the answer is a 503 — the cookie is still cleared,
+// but the caller must not be told the session ended when it did not.
 app.post('/api/logout', async (c) => {
   const sid = getCookie(c, 'sid')
   deleteCookie(c, 'sid', { path: '/' })
-  const credentials = new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])
-  for (const credential of credentials) {
-    const revoked = await revokeSession(credential)
-    if (revoked) closeSessionSockets(revoked)
+  let incomplete = false
+  for (const credential of new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])) {
+    const session = await sessionToRevoke(credential)
+    if (!session) continue
+    closeSessionSockets(session.jti)
+    try {
+      await revokeSession(session)
+    } catch (err) {
+      console.error('sign-out: revoking a session failed', err)
+      incomplete = true
+    }
   }
+  if (incomplete)
+    return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
   return c.json({ ok: true })
 })
 

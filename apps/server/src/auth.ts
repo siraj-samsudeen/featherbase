@@ -412,30 +412,45 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   }
 }
 
-/** #411: sign-out. Revokes the session a credential carries — only that one;
- *  the person's other sessions keep working. Anything that is not a live,
- *  correctly signed session token (an access token, garbage, an expired
- *  token) has nothing to revoke and returns null. Expired revocations are
- *  pruned in the same transaction, so the table holds only sessions that
- *  could still be presented. Returns the revoked session id. */
-export async function revokeSession(authorization?: string): Promise<string | null> {
+/** #411: the session a credential names, for sign-out. The signature must
+ *  hold but expiry is NOT checked: signing out an expired session still has
+ *  to end it (its sockets may be open). Access tokens and anything not
+ *  correctly signed name no session and return null. */
+export interface SessionToRevoke { jti: string; person: string; expiresAt: number }
+export async function sessionToRevoke(authorization?: string): Promise<SessionToRevoke | null> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token || token.startsWith(TOKEN_PREFIX)) return null
   let payload: { sub?: unknown; jti?: unknown; exp?: unknown }
   try {
-    payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
+    payload = (await verify(token, JWT_SECRET, { alg: 'HS256', exp: false })) as typeof payload
   } catch {
     return null
   }
   if (typeof payload.jti !== 'string' || !payload.jti || typeof payload.exp !== 'number') return null
-  const jti = payload.jti
+  return { jti: payload.jti, person: String(payload.sub), expiresAt: payload.exp }
+}
+
+/** #411: record a signed-out session so resolveToken refuses it. Only that
+ *  session; the person's others keep working. An already-expired session
+ *  needs no row (expiry refuses it). Rows past their session's expiry are
+ *  pruned in the same transaction, so the table holds only sessions that
+ *  could still be presented. Throws when the write fails — the caller must
+ *  not report sign-out as complete. */
+export async function revokeSession(session: SessionToRevoke): Promise<void> {
   await sql.begin(async (t) => {
     await t`delete from revoked_session where expires_at < now()`
+    if (session.expiresAt <= Math.floor(Date.now() / 1000)) return
     await t`insert into revoked_session (jti, person_id, expires_at)
-      values (${jti}, ${String(payload.sub)}, to_timestamp(${payload.exp as number}))
+      values (${session.jti}, ${session.person}, to_timestamp(${session.expiresAt}))
       on conflict (jti) do nothing`
   })
-  return jti
+}
+
+/** #411: which of these session ids have been signed out (on any instance). */
+export async function revokedSessionIds(ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set()
+  const rows = await sql`select jti from revoked_session where jti = any(${ids})`
+  return new Set(rows.map((r) => r.jti as string))
 }
 
 /** Linking another sign-in method needs a recent sign-in (design D6): a

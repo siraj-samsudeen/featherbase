@@ -1,12 +1,12 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { sign } from 'hono/jwt'
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import WebSocket from 'ws'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueAccessToken, issueSession } from '../src/auth'
-import { attachRealtime } from '../src/realtime'
+import { attachRealtime, closeSessionSockets, recheckSessionSockets } from '../src/realtime'
 import { makePerson } from './fixtures'
 
 // #411: signing out ends THAT session — the same token is refused afterwards
@@ -84,6 +84,76 @@ describe('#411: sign-out ends that session only', () => {
       expect(b.socket.readyState).toBe(WebSocket.OPEN)
       const again = await open(signedOut)
       expect(await again.closed).toBe(4001)
+    })
+  })
+
+  test('bearer header and cookie naming different sessions: sign-out ends both, and only those', async ({ api }) => {
+    const id = await makePerson({})
+    const [header, cookie, other] = await Promise.all([1, 2, 3].map(async () => (await issueSession(id)).token))
+    const res = await logout(api, { headers: { authorization: `Bearer ${header}`, cookie: `sid=${cookie}` } })
+    expect(res.status).toBe(200)
+    expect(await whoami(api, header)).toBe(401)
+    expect(await whoami(api, cookie)).toBe(401)
+    expect(await whoami(api, other)).toBe(200)
+  })
+
+  test('signing out an expired session still closes its open socket, and stores nothing', async ({ api }) => {
+    const id = await makePerson({})
+    const { token } = await issueSession(id)
+    await withRealtime(async (open) => {
+      const s = await open(token)
+      expect(s.socket.readyState).toBe(WebSocket.OPEN)
+      // Nine hours on: the token is past its eight-hour expiry.
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() + 9 * 3600_000 })
+      try {
+        expect((await logout(api, bearer(token))).status).toBe(200)
+      } finally {
+        vi.useRealTimers()
+      }
+      expect(await s.closed).toBe(4001)
+    })
+    expect(await sql`select 1 from revoked_session`).toHaveLength(0)
+  })
+
+  test('a failed revocation is not reported as a sign-out: 503, cookie still cleared, socket still closed', async ({ api }) => {
+    const id = await makePerson({})
+    const { token } = await issueSession(id)
+    await sql`alter table revoked_session add constraint t411_refuse_all check (false) not valid`
+    await withRealtime(async (open) => {
+      const s = await open(token)
+      const res = await logout(api, { headers: { cookie: `sid=${token}` } })
+      expect(res.status).toBe(503)
+      expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ServiceUnavailableError')
+      expect((res.headers.get('set-cookie') ?? '').toLowerCase()).toContain('max-age=0')
+      expect(await s.closed).toBe(4001)
+    })
+  })
+
+  test('a socket that registers just after its session was signed out on this instance is closed at once', async () => {
+    const id = await makePerson({})
+    const issued = await issueSession(id)
+    await withRealtime(async (open) => {
+      // The sign-out swept this instance before the socket registered, and its
+      // row is not visible to the upgrade's token check (no row at all here).
+      closeSessionSockets(issued.user.sign_in!.session_id)
+      expect(await (await open(issued.token)).closed).toBe(4001)
+    })
+  })
+
+  test('a socket signed out on another instance is closed by the periodic re-check; others stay open', async () => {
+    const id = await makePerson({})
+    const gone = await issueSession(id)
+    const kept = await issueSession(id)
+    await withRealtime(async (open) => {
+      const a = await open(gone.token)
+      const b = await open(kept.token)
+      // Another instance handled the sign-out: only the shared row exists here.
+      await sql`insert into revoked_session (jti, person_id, expires_at)
+        values (${gone.user.sign_in!.session_id}, ${id}, now() + interval '1 hour')`
+      expect(a.socket.readyState).toBe(WebSocket.OPEN)
+      await recheckSessionSockets()
+      expect(await a.closed).toBe(4001)
+      expect(b.socket.readyState).toBe(WebSocket.OPEN)
     })
   })
 
