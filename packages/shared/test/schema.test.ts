@@ -226,3 +226,49 @@ describe('zodFieldErrors', () => {
     expect(zodFieldErrors(error)).toEqual({ _: 'root problem' })
   })
 })
+
+describe('#387: a Date value keeps its calendar day east of UTC', () => {
+  it('a local-midnight Date in IST validates as that day, not the day before', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'Asia/Kolkata'
+    try {
+      const schema = tableSchemaToZod([col('due', 'Date')])
+      const parsed = schema.parse({ due: new Date(2024, 9, 21) })
+      expect(parsed.due).toBe('2024-10-21')
+    } finally {
+      if (tz === undefined) delete process.env.TZ
+      else process.env.TZ = tz
+    }
+  })
+})
+
+describe('#387: an early-year Date keeps a four-digit year', () => {
+  it('a local-midnight Date in year 99 validates as 0099-12-31', () => {
+    const d = new Date(2000, 11, 31)
+    d.setFullYear(99)
+    expect(tableSchemaToZod([col('due', 'Date')]).parse({ due: d }).due).toBe('0099-12-31')
+  })
+})
+
+describe('#387: a Datetime must fall on a real calendar day', () => {
+  it.each(['2024-02-30T10:00:00', '1900-02-29T12:00:00', '0000-01-01T00:00:00Z'])('refuses %s', (v) => {
+    expect(tableSchemaToZod([col('when', 'Datetime')]).safeParse({ when: v }).success).toBe(false)
+  })
+  it('accepts a real instant', () => {
+    expect(tableSchemaToZod([col('when', 'Datetime')]).safeParse({ when: '2024-10-21T06:30:00.000Z' }).success).toBe(true)
+  })
+})
+
+describe('#387: a Date must be a real calendar day', () => {
+  it('refuses year zero, which PostgreSQL date has no room for', () => {
+    expect(tableSchemaToZod([col('due', 'Date')]).safeParse({ due: '0000-01-01' }).success).toBe(false)
+  })
+
+  const schema = tableSchemaToZod([col('due', 'Date')])
+  it.each(['1900-02-29', '2024-02-30', '2023-02-29', '2024-13-01'])('%s is refused before anything is written', (v) => {
+    expect(schema.safeParse({ due: v }).success).toBe(false)
+  })
+  it.each(['2024-02-29', '2000-02-29', '1900-02-28', '0001-01-01', '0099-12-31'])('%s is accepted', (v) => {
+    expect(schema.safeParse({ due: v }).success).toBe(true)
+  })
+})
