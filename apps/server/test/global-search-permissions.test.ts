@@ -205,3 +205,31 @@ describe('global search permissions', () => {
     expect(results.filter((hit) => hit.table === table.name)).toEqual([])
   })
 })
+
+describe('global search ranking (#431)', () => {
+  test('registry rows (Table definitions) rank after ordinary records', async ({ admin }) => {
+    const table = await makeTable(admin, {
+      name: 'Zz Rank Widget',
+      id_pattern: 'prompt',
+      columns: ['label'],
+    })
+    await admin.post(table.url, { row_id: 'Zz Rank Widget Row', label: 'x' })
+
+    const { results } = await search(admin, 'zz rank widget')
+    const ordinary = results.findIndex((h) => h.table === table.name)
+    const registry = results.findIndex((h) => h.table === 'Table')
+    expect(ordinary).toBeGreaterThanOrEqual(0)
+    expect(registry).toBeGreaterThanOrEqual(0)
+    expect(ordinary).toBeLessThan(registry)
+  })
+})
+
+describe('global search labels (#431)', () => {
+  test('a Table definition row carries the label "Table definition"', async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'Zz Label Widget', id_pattern: 'prompt', columns: ['label'] })
+    const { results } = await search(admin, table.name)
+    expect(results.find((h) => h.table === 'Table' && h.row_id === table.name)).toMatchObject({
+      kind_label: 'Table definition',
+    })
+  })
+})
