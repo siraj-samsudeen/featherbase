@@ -94,10 +94,7 @@ export function fmtShowing(shown: number, total: number): string {
 // any other currency is written as its own locale writes it (EUR: 1.234.567,50 €).
 const CURRENCY_LOCALE: Record<string, string> = { USD: 'en-US', GBP: 'en-GB', EUR: 'de-DE', JPY: 'ja-JP' }
 
-/**
- * An amount with its currency, at the precision setting. The setting may round
- * further, never past the currency's own minor unit (yen has none).
- */
+/** An amount with its currency, at exactly the configured precision (System Settings currency_precision). */
 export function fmtCurrency(x: number, precision: number, currency: string): string {
   if (currency === 'INR') {
     // The sign leads the symbol (-₹1,234.00, as fmtExact); round first so -0.001 is ₹0.00.
@@ -107,9 +104,7 @@ export function fmtCurrency(x: number, precision: number, currency: string): str
   }
   try {
     const locale = CURRENCY_LOCALE[currency] ?? 'en-US'
-    const own = new Intl.NumberFormat(locale, { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? precision
-    const digits = Math.min(precision, own)
-    return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(x)
+    return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: precision, maximumFractionDigits: precision }).format(x)
   } catch {
     // Not an ISO 4217 code: show the amount with the code beside it.
     return `${x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })} ${currency}`.trim()

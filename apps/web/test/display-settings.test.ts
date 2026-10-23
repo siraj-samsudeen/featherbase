@@ -38,7 +38,7 @@ test('another currency is written the way its own readers write it', () => {
   expect(formatCurrency(1234567.5, with_({ currency: 'USD' }))).toBe('$1,234,567.50')
   expect(formatCurrency(1234567.5, with_({ currency: 'GBP' }))).toBe('£1,234,567.50')
   expect(formatCurrency(1234567.5, with_({ currency: 'EUR' }))).toBe('1.234.567,50\u00a0€')
-  expect(formatCurrency(1234567.5, with_({ currency: 'JPY' }))).toBe('￥1,234,568')
+  expect(formatCurrency(1234567.5, with_({ currency: 'JPY', currency_precision: 0 }))).toBe('￥1,234,568')
 })
 
 test('a negative amount puts its sign before the currency symbol', () => {
@@ -52,9 +52,10 @@ test('a code that is not ISO 4217 still shows the amount, with the code beside i
   expect(formatCurrency(1234567.5, with_({ currency: 'RUPEE' }))).toBe('12,34,567.50 RUPEE')
 })
 
-test('the precision setting can round further but never adds a minor unit the currency lacks', () => {
+test('the precision setting applies to every currency, as configured', () => {
   expect(formatCurrency(1234567.5, with_({ currency: 'USD', currency_precision: 0 }))).toBe('$1,234,568')
-  expect(formatCurrency(1234567.5, with_({ currency: 'JPY', currency_precision: 3 }))).toBe('￥1,234,568')
+  expect(formatCurrency(1234567.5, with_({ currency: 'USD', currency_precision: 3 }))).toBe('$1,234,567.500')
+  expect(formatCurrency(1234567.5, with_({ currency: 'JPY', currency_precision: 2 }))).toBe('￥1,234,567.50')
   expect(formatCurrency(1234567.5, with_({ currency: 'INR', currency_precision: 3 }))).toBe('₹12,34,567.500')
 })
 
