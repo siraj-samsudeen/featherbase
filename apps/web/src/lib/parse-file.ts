@@ -137,10 +137,10 @@ function literalFree(section: string): string {
   return out
 }
 
-/** Does a format section show a time? (hours, seconds, AM/PM; escaped characters, quoted text and [colour] tags ignored) */
+/** Does a format section show a time? (hours, seconds, fractional seconds `.0`, AM/PM; escaped characters, quoted text and [colour] tags ignored) */
 function formatShowsTime(section: string): boolean {
   const bare = literalFree(section).replace(/\[(?!h|m|s)[^\]]*\]/gi, '')
-  return /[hs]|AM\/PM|A\/P/i.test(bare)
+  return /[hs]|AM\/PM|A\/P|\.0/i.test(bare)
 }
 
 /** 31-Dec-9999, the last day Excel can show, in each date system. */

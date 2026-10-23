@@ -116,6 +116,11 @@ describe('Excel dates in IST (+05:30)', () => {
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
   })
 
+  test('a fractional-second format (.000) shows a time, so the cell stays a date-time', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586.500005787, 'yyyy-mm-dd .000'], [45586.5, 'dd.mm.yyyy']]))
+    expect(sheet.rows.map((r) => r[0])).toEqual(['2024-10-21T12:00:00.500', '2024-10-21'])
+  })
+
   test('a conditioned second section is checked before the unconditioned first', async () => {
     const [sheet] = await parseWorkbook(workbookFile([[45586.5, 'yyyy-mm-dd;[>0]yyyy-mm-dd hh:mm']]))
     expect(sheet.rows[0][0]).toBe('2024-10-21T12:00:00')
