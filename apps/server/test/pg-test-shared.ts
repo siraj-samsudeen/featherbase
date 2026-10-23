@@ -21,11 +21,22 @@ import { issueSession } from '../src/auth'
 import { saveDoc } from '../src/document'
 import { createPgTest } from 'feather-testing-postgres'
 
+// Whether a test's sandbox transaction is open right now. Outside one, the
+// app's `sql` is the real pool and every write COMMITS — so the web binding's
+// fetch bridge refuses requests that arrive then (#426).
+let sandboxOpen = false
+export function isSandboxOpen(): boolean {
+  return sandboxOpen
+}
+
 export const test = createPgTest(
   {
     app,
     sql,
-    setDelegate: _setSqlDelegate,
+    setDelegate: (tx) => {
+      sandboxOpen = tx !== null
+      _setSqlDelegate(tx as Parameters<typeof _setSqlDelegate>[0])
+    },
     // A test may create/alter Tables inside its transaction; after rollback
     // the per-process meta cache would describe tables that no longer exist,
     // and a Data Source row created in the rolled-back tx may still be

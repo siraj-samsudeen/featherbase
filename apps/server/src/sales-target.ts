@@ -425,12 +425,19 @@ export async function currentAssignment(user: string, period: Period = currentPe
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
-    throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].sort().join(', ')}`)
+    // Addresses the signed-in person (second person, "Your account"): this is the one reader's own refusal, shown to them verbatim by the page.
+    // Written for the reader (#404): the report shows one store at a time. No person id — it is opaque and means nothing to them.
+    throw new AppError(
+      'ValidationError',
+      `Your account is set up for more than one store (${[...plants].sort().join(', ')}), and this report shows one store at a time. Ask your administrator to check which store you belong to.`,
+      // The page shows exactly this refusal's sentence and no other (matched on the code).
+      { code: 'multiple_stores' },
+    )
   const plant = [...plants][0]
   // The maps are edited by the store, and the live read and the Dive both put these codes into
   // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
   // cell is dropped and logged rather than allowed to break, or rewrite, anyone's report.
-  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `${user} maps to a store code that is not four digits: ${JSON.stringify(plant)}`)
+  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `Your account maps to a store code that is not four digits (${JSON.stringify(plant)}). Ask your administrator to correct it.`)
   const all = [...new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])]
   const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
   if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)
@@ -551,9 +558,10 @@ salesTargetRoutes.get('/me', async (c) => {
   const [person] = await sql`select username from person where row_id = ${user.row_id}`
   const username = (person?.username as string | null | undefined) ?? null
   return c.json({
-    // person-rename: the id is opaque (`psn_…`); the reader is shown by username.
-    username: username ?? user.row_id,
-    display_name: user.full_name ?? username ?? user.row_id,
+    // person-rename: the id is opaque (`psn_…`) and never shown. Most people have no username
+    // (StyleHR sign-ins carry none); the page shows them by display_name (#405).
+    username,
+    display_name: user.full_name?.trim() || username || user.email || 'You',
     assignment: a,
     ...period,
     embed_origin: EMBED_ORIGIN,

@@ -1673,8 +1673,8 @@ app.delete('/api/tags/:table/:name/:tag', async (c) => {
   return c.json({ ok: true })
 })
 
-// EML-001: send a test email from the configured account (delivered to the
-// dev sink). EML-002: queue an email for background delivery.
+// EML-001: send a test email from the configured account (through SMTP when
+// SMTP_HOST is set, otherwise the Email Sink). EML-002: queue an email for background delivery.
 app.post('/api/send_test_email', async (c) => {
   await assertSystemManager(who(c))
   const { to } = (await c.req.json()) as { to?: string }
