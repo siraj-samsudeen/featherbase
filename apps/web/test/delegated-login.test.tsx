@@ -41,7 +41,7 @@ test('no connected service, no second way in', async () => {
   vi.unstubAllEnvs()
 })
 
-test('a linked Team Leader signs in with their StyleHR ID and lands in the Admin', async ({ createUser }) => {
+test('a linked Team Leader signs in with their StyleHR ID', async ({ createUser }) => {
   await connectStyleHR()
   const tl = await createUser({ email: 'tl.web@example.com' })
   await linkDelegated(tl.user!, 'tl_web_1')
@@ -51,7 +51,7 @@ test('a linked Team Leader signs in with their StyleHR ID and lands in the Admin
   expect(await screen.findByTestId('delegated-login-toggle')).toHaveTextContent('Sign in with StyleHR')
   await submitDelegated('tl_web_1', 'hr-password')
 
-  await screen.findByTestId('session-user')
+  await screen.findByTestId('no-access') // no role yet (#410)
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
   expect(localStorage.getItem('fc_token')).toBeTruthy()
 })
@@ -103,7 +103,7 @@ test('test mode: a notice, no password field, and an employee code alone signs i
     await userEvent.type(screen.getByLabelText('Employee code'), tl.user!)
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
 
-    await screen.findByTestId('session-user')
+    await screen.findByTestId('no-access') // no role yet (#410)
     expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
   } finally {
     vi.unstubAllEnvs()

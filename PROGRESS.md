@@ -1,5 +1,56 @@
 # Progress Log
 
+## 2026-10-23 — Signing out ends that session, not just the cookie (#411)
+
+Sessions are signed tokens, and sign-out only cleared the `sid` cookie, so a copied token kept
+working for its whole lifetime (eight hours by default). Every session now carries a unique id
+(`jti`); `POST /api/logout` records it in `revoked_session` (migration 0106) for both the bearer
+header and the cookie, and closes that session's realtime sockets. `resolveToken` refuses a
+recorded id in the same query that already checks the person (a primary-key join). Only that
+session ends — the person's other sessions keep working; access tokens are untouched. Rows are
+pruned on each sign-out once their session has expired. A token without an id is refused, so the
+deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-session`.
+Review round: an expired session's sign-out still closes its sockets (signature checked, expiry
+not); a failed write answers 503 and the app says sign-out did not complete; a socket registering
+just after its sign-out is caught by a short in-memory list; every instance re-checks its sockets
+against `revoked_session` each minute, since sockets are per instance. The same one query also closes sockets whose token
+expired, of a disabled person or of sessions issued before `sessions_ended_at` (#391), which were only checked at
+the upgrade before.
+
+Verification: `apps/server/test/sign-out.test.ts` 13/13 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
+except the four app-package files that fail identically on origin/main locally.
+Next: archive the OpenSpec change after merge.
+
+## 2026-10-23 — Sales-target scope comes from identifier rows; the Person code fields are gone (#408)
+
+A tester typed another person's code into Person's free-text **Employee code (StyleHR)** field and the
+report moved to that person's Team Lead scope, with no identifier history and no one-holder check. That
+field was a copy of the person's current `stylehr-employee-code` row, but an ordinary editable one.
+
+Sales-target scoping (`currentEmployeeCodes` in `src/sales-target.ts`) now reads the person's **current**
+(`upper_inf(valid)`) `stylehr-employee-code` identifier rows, every one of them: two payrolls give the union
+of both codes' Sections. The Store Sections maps carry the code but not the firm, so a code current on two
+people blocks each of them entirely (`no_assignment`, no partial scope from their other codes or explicit
+rows — design D10) and logs a structured `sales_target_ambiguous_employee_code` warning (people and row ids,
+never the code); DEPLOY.md's leaver procedure now says to END the code so the next holder is not blocked. Map codes compare trimmed and upper-cased, as identifier values
+are stored. Migration **0107** drops the `employee_code` and `stylehr_username` Custom Fields (records,
+column_def rows, columns); the sales-target seed no longer creates one; the temporary
+`mirrorEmployeeCodeField` and its five call sites are gone. A Person import whose file has an
+`employee_code` / `stylehr_username` column refuses that column with a pointer to the Identifiers panel or
+`people:resolve` (`retiredColumnNotice` / `autoMapImportColumns` in `packages/shared/src/import.ts`), never
+maps it — not even onto a re-created, inert Custom Field — and never offers to create it. OpenSpec
+person-resolution task 2.1.
+
+**Verified:** server and web typecheck; `check:specs`; `lint:sql`; the full server suite on Postgres 18.
+New tests: one code, several codes, an ended code, an ambiguous code (whole person no_assignment + alert,
+unblocked once the other holder's code ends), the import refusal (shared + wizard render), and the #408
+repro (saving a Person with another code moves nothing). Parity on the 23-Oct dev snapshot: all 271
+StyleHR-linked people get identical scope from the old code (field) and the new code (rows) — 267 scoped,
+3 refused as before, 1 with no scope.
+
+**Next:** Phase 1a-ii (merge and undo). Matching on (firm, code) waits for the Store Sections maps to carry
+the firm.
+
 ## 2026-10-23 — The privacy notice is instance configuration (#401)
 
 Featherbase is public, so an organisation's privacy wording does not belong in the repo (#393's PR #394 hard-coded
@@ -99,7 +150,7 @@ snapshot's codes: 265 moved, 6 listed (3 absent, 2 on two records, 1 record
 already held), second run 0 moved; parity after it 271/271.
 
 **Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
-and `stylehr_username` Custom Fields); then Phase 1a-ii (merge and undo).
+and `stylehr_username` Custom Fields — done 23-Oct, #408); then Phase 1a-ii (merge and undo).
 
 **Gotchas:** migrations run with no controllers loaded — Identifier System
 rows saved by a migration go through `saveIdentifierSystem` (seed-packs.ts),

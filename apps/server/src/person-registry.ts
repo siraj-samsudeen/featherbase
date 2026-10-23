@@ -62,6 +62,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
     user_image: code, theme: code, palette: code,
     // Codes, declared "not a person reference" (R3): left alone, never scanned.
+    // 0107 drops both columns; 0101 still runs before it on a dev database.
     employee_code: code, stylehr_username: code,
   },
   service_account: { row_id: id, label: text },
@@ -110,6 +111,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   pre_auth_bucket: { '*': code },
   print_format: { ref_table: code, template: text, letter_head: code },
   report: { ref_table: code, config: text, report_type: code, query: text, report_script: code },
+  revoked_session: { jti: code, person_id: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
   sales_target_snapshot_row: { '*': code },
