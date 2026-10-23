@@ -146,7 +146,6 @@ describe('actionForLocation', () => {
       ...ADMIN_STATIC_PAGES.map((p) => p.slug),
       ...ADMIN_UNRECORDED_ROOTS,
       ...Object.keys(ADMIN_NAMED_PAGE_KINDS),
-      'map', // $table/$name relation map: a row-shaped page, recorded as a row
     ])
     expect([...roots].filter((r) => !known.has(r))).toEqual([])
   })

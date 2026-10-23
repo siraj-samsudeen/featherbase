@@ -210,4 +210,35 @@ describe('#101: GET /api/activity_feed', () => {
     expect(login!.label).toBe('')
     expect(JSON.stringify(login)).not.toContain('psn_')
   })
+
+  test('an edit made with a service-account token shows its label, never the svc_ id', async ({ admin, api }) => {
+    const svc = await admin.post<{ row_id: string }>('/api/service_accounts', {
+      label: 'svc-nightly-importer',
+      roles: ['System Manager'],
+    })
+    const { token } = await admin.post<{ token: string }>('/api/access_tokens', {
+      label: 'feed token',
+      owner: svc.row_id,
+    })
+    await admin.post('/api/table_def', {
+      name: 'Feed Svc DT',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+    })
+    const asSvc = async (row: Record<string, unknown>) => {
+      const res = await api.fetch('/api/save_row', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ table: 'Feed Svc DT', row }),
+      })
+      expect(res.ok).toBe(true)
+      return (await res.json()) as { updated_at: string }
+    }
+    const created = await asSvc({ row_id: 'svc-row', title: 'v1' })
+    await asSvc({ row_id: 'svc-row', title: 'v2', updated_at: created.updated_at })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    const change = team.items.find((i) => i.kind === 'change' && i.label === 'svc-row')
+    expect(change).toMatchObject({ who_name: 'svc-nightly-importer', who_role: 'Service account' })
+    expect(String(change!.who_name)).not.toContain('svc_')
+  })
 })

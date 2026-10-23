@@ -93,7 +93,7 @@ export interface WhoLabel {
   role?: string
 }
 
-/** Display name + main role for person ids, in ONE query. Name falls back
+/** Display name + main role for person and service-account ids, in ONE query. Name falls back
  *  full name → local part of the email (never the address) → @username → id.
  *  The local part is a deliberate fallback; this feed is for System Managers
  *  and the person themselves, who can already see the address. */
@@ -109,7 +109,10 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
              where r.parent = p.row_id and r.parenttype = 'Person'
                and r.role not in ('All', 'Guest')
              order by (r.role = 'System Manager') desc, r.role limit 1) as role
-    from person p where p.row_id in ${sql(unique)}`
+    from person p where p.row_id in ${sql(unique)}
+    union all
+    select s.row_id, s.label as name, 'Service account' as role
+    from service_account s where s.row_id in ${sql(unique)}`
   for (const r of rows)
     labels.set(r.row_id as string, {
       name: (r.name as string | null) ?? (r.row_id as string),
