@@ -100,7 +100,10 @@ const CURRENCY_LOCALE: Record<string, string> = { USD: 'en-US', GBP: 'en-GB', EU
  */
 export function fmtCurrency(x: number, precision: number, currency: string): string {
   if (currency === 'INR') {
-    return `₹${x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })}`
+    // The sign leads the symbol (-₹1,234.00, as fmtExact); round first so -0.001 is ₹0.00.
+    const rounded = Number(x.toFixed(precision))
+    const digits = Math.abs(rounded).toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })
+    return `${rounded < 0 ? '-' : ''}₹${digits}`
   }
   try {
     const locale = CURRENCY_LOCALE[currency] ?? 'en-US'
