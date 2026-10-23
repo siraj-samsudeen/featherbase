@@ -45,6 +45,8 @@ type Embed =
   | { kind: 'no-assignment' }
   | { kind: 'not-configured' }
   | { kind: 'no-access' }
+  // The server refused this person's report with a sentence written for them (e.g. two stores); shown verbatim.
+  | { kind: 'refused'; message: string }
   | { kind: 'error'; message: string }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
@@ -160,7 +162,8 @@ export function SalesTargetPage() {
             const body = (await res.json().catch(() => ({}))) as Report & { no_assignment?: boolean }
             const ms = performance.now() - t0
             if (!current()) return
-            if (body.no_assignment) setPre({ kind: 'no-assignment' })
+            if (res.status === 403) setPre({ kind: 'error', message: 'no access' }) // hidden: the embed call shows the no-access card
+            else if (body.no_assignment) setPre({ kind: 'no-assignment' })
             else if (res.ok) setPre({ kind: 'ready', report: body, ms })
             else setPre({ kind: 'error', message: `HTTP ${res.status}` })
           } catch (err) {
@@ -186,7 +189,9 @@ export function SalesTargetPage() {
           window.location.href = '/featherbase/login'
           return
         }
-        if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
+        // Role taken away mid-session: the same plain card as at the start (#404).
+        if (res.status === 403) setEmbed({ kind: 'no-access' })
+        else if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
         else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
           setEmbed({ kind: 'frame', src: `${identity.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
@@ -195,6 +200,7 @@ export function SalesTargetPage() {
         if (!current()) return
         // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
+        else if (err instanceof ApiError && err.type === 'ValidationError') setEmbed({ kind: 'refused', message: err.message })
         else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
       }
     })()
@@ -252,7 +258,7 @@ export function SalesTargetPage() {
                   {period}
                 </>
               ) : (
-                'Opening your report…'
+                embed.kind === 'loading' ? 'Opening your report…' : 'Sales target report'
               )}
             </div>
             <p className="text-xs text-[var(--color-ink-muted)]" data-testid="identity-sub">
@@ -281,7 +287,7 @@ export function SalesTargetPage() {
           disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
           live report is not there — not configured, failed, or still opening. */}
       {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
-      {me && (
+      {me && embed.kind !== 'no-access' && embed.kind !== 'refused' && (
       <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
@@ -427,6 +433,9 @@ export function SalesTargetPage() {
                   Ask your manager or administrator to give you access.
                 </p>
               </>
+            )}
+            {embed.kind === 'refused' && (
+              <p className="text-[var(--color-ink)]" data-testid="embed-refused">{embed.message}</p>
             )}
             {embed.kind === 'not-configured' && (
               // Quiet, not red: this deployment simply has no live Dive. The numbers

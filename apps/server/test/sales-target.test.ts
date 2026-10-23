@@ -445,6 +445,15 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(message).toMatch(/administrator/i)
   })
 
+  test('display_name never falls back to the opaque id: full name, then username, then email', async ({ admin, createUser }) => {
+    await seed(admin)
+    const nobody = await createUser({ email: 'no.fullname.me@example.com', roles: [VIEWER_ROLE] })
+    await sql`update person set full_name = null where row_id = ${nobody.user!}`
+    const me = await nobody.get<{ display_name: string }>('/api/sales_target/me')
+    expect(me.display_name).toBe('no.fullname.me@example.com')
+    expect(me.display_name).not.toMatch(/psn_/)
+  })
+
   // #405: a person with no username (every StyleHR person) is not shown as their opaque id.
   test('the identity route reports no username for a person who has none, never the opaque id', async ({ admin, createUser }) => {
     await seed(admin)

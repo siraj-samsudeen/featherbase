@@ -161,3 +161,40 @@ test('a person with no viewer role is told plainly, with no API wording and no i
   expect(note).not.toHaveTextContent('Requires the')
   expect(note).not.toHaveTextContent('session could not be created')
 })
+
+// #404: a two-store account gets the server's sentence in a neutral card, not the red developer frame.
+test('a person set up for two stores sees the server\'s sentence, not "Report unavailable"', async ({ admin }) => {
+  await viewer(admin)
+  const id = await personId(admin, 'test_employee_1')
+  await admin.fetch('/api/save_row', {
+    method: 'POST',
+    body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: id, plant_code: '1515', store_label: 'K', material_group: '010101001' } }),
+  })
+  const login = await (await admin.fetch('/api/set_password', { method: 'POST', body: JSON.stringify({ user: id, password: 'pw-1' }) })).text()
+  void login
+  const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await res.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: id } as never)
+  const note = await screen.findByTestId('embed-refused')
+  expect(note).toHaveTextContent('more than one store (1501, 1515)')
+  expect(note).toHaveTextContent('Ask your administrator')
+  expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
+  expect(screen.queryByText(/This is not a sales figure/)).not.toBeInTheDocument()
+  expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
+})
+
+test('a person with no full name is shown by email, never by id, in the header', async ({ admin, createUser, db }) => {
+  await viewer(admin)
+  const nobody = await createUser({ email: 'no.fullname@example.com', roles: ['Sales Target Viewer'] })
+  await (db as { unsafe: (q: string) => Promise<unknown> }).unsafe(`update person set full_name = null where row_id = '${nobody.user}'`)
+  await renderApp('/featherbase/sales-target', nobody)
+  await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('no.fullname@example.com'))
+  expect(screen.getByTestId('identity')).not.toHaveTextContent('psn_')
+})
+
+test('a person with no viewer role gets a neutral header, not "Opening your report"', async ({ createUser }) => {
+  const outsider = await createUser({ email: 'outsider.header@example.com' })
+  await renderApp('/featherbase/sales-target', outsider)
+  await screen.findByText("You don't have access to this report")
+  expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
+})

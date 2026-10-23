@@ -144,27 +144,39 @@ test('if the sign-in options cannot be read, Google is still offered', async () 
 })
 
 // Nothing typed is a mistake the page names itself, not the API's validation text (#406).
-test('submitting no employee code says what to enter and sends nothing', async ({ createUser }) => {
+test('submitting no employee code says what to enter and sends nothing', async () => {
   vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
   try {
     await connectStyleHR()
     const asked = vi.fn(() => Response.json({}))
     providerAnswers(asked)
+    const requests = vi.spyOn(globalThis, 'fetch')
     await renderApp('/featherbase/login', anonymous)
     await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+    requests.mockClear()
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
     expect(await screen.findByText('Enter your employee code.')).toBeInTheDocument()
     expect(screen.queryByText(/Expected \{/)).not.toBeInTheDocument()
+    expect(requests.mock.calls.filter(([u]) => String(u).includes('/api/login'))).toEqual([])
     expect(asked).not.toHaveBeenCalled()
+    requests.mockRestore()
   } finally {
     vi.unstubAllEnvs()
   }
 })
 
-test('submitting no StyleHR ID or no password says what to enter', async () => {
+test('an ID without a password says what to enter and sends nothing', async () => {
   await connectStyleHR()
+  const asked = vi.fn(() => Response.json({}))
+  providerAnswers(asked)
+  const requests = vi.spyOn(globalThis, 'fetch')
   await renderApp('/featherbase/login', anonymous)
   await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  await userEvent.type(screen.getByLabelText('StyleHR ID'), 'someone')
+  requests.mockClear()
   await userEvent.click(screen.getByTestId('delegated-login-submit'))
   expect(await screen.findByText('Enter your StyleHR ID and password.')).toBeInTheDocument()
+  expect(requests.mock.calls.filter(([u]) => String(u).includes('/api/login'))).toEqual([])
+  expect(asked).not.toHaveBeenCalled()
+  requests.mockRestore()
 })

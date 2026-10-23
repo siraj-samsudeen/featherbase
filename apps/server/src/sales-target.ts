@@ -411,6 +411,7 @@ export async function currentAssignment(user: string, period: Period = currentPe
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
+    // Addresses the signed-in person (second person, "Your account"): this is the one reader's own refusal, shown to them verbatim by the page.
     // Written for the reader (#404): the report shows one store at a time. No person id — it is opaque and means nothing to them.
     throw new AppError(
       'ValidationError',
@@ -544,7 +545,7 @@ salesTargetRoutes.get('/me', async (c) => {
     // person-rename: the id is opaque (`psn_…`) and never shown. Most people have no username
     // (StyleHR sign-ins carry none); the page shows them by display_name (#405).
     username,
-    display_name: user.full_name ?? username ?? user.row_id,
+    display_name: user.full_name?.trim() || username || user.email || 'You',
     assignment: a,
     ...period,
     embed_origin: EMBED_ORIGIN,
