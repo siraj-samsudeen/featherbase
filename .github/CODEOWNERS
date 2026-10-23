@@ -1,0 +1,3 @@
+# The public-repo personal-data guard: loosening it needs the owner's review.
+/tools/check-sensitive.allow @siraj-samsudeen
+/tools/check-sensitive.mjs @siraj-samsudeen

@@ -105,7 +105,7 @@ export function Gallery() {
         <Section title="Fields">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Employee code" hint="As printed on your ID card">
-              <TextInput placeholder="RR-6761" autoCapitalize="characters" />
+              <TextInput placeholder="RR-0107" autoCapitalize="characters" />
             </Field>
             <Field label="Password">
               <PasswordInput placeholder="StyleHR password" />

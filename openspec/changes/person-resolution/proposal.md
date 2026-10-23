@@ -2,23 +2,21 @@
 
 ## Why
 
-One real person shows up in several places under several names. Zain, the
-Store Manager of ATK, has a StyleHR login and a Google account. RB, the CEO,
+One real person shows up in several places under several names. The
+Store Manager of ATK has a StyleHR login and a Google account. The CEO
 has Google accounts on several group domains. A sales assistant who started
-through an agency has a bare number for an employee code (`21654`); when the
+through an agency has a bare number for an employee code (`30654`); when the
 company hires them directly they get a new record and a new code
-(`RR-10353`). Each system is right about its own record, and nobody can say
+(`RR-0102`). Each system is right about its own record, and nobody can say
 "this is one person" — reports count them twice, access is granted twice, and
 a leaver's history splits across records.
 
 The data says this is the normal case, not the exception (StyleHR production,
-mirrored in the warehouse, 22-Oct-2026): 30,559 employee records carry 28,770
-valid Aadhaar numbers, of which only 26,349 are distinct. **2,159 Aadhaar
-numbers are held by two or more employee records — 4,580 records in all, one
-number by 17 records — and 665 of those groups span a change of worker type,
-the agency-to-company conversion.** 6,803 records carry a prior employee code.
-Phone numbers are a weaker clue: 2,774 numbers are shared by 6,196 records, so
-a phone can suggest a match but must never decide one.
+mirrored in the warehouse, 22-Oct-2026): a material share of Aadhaar numbers
+are held by two or more employee records, many of those groups span a change
+of worker type (the agency-to-company conversion), and many records carry a
+prior employee code. Phone numbers are a weaker clue — numbers are shared
+across records too, so a phone can suggest a match but must never decide one.
 
 Change `person-identities` (PR #371) gives one account several ways to sign
 in. It says nothing about identifiers that do not sign in (an old employee
@@ -100,7 +98,7 @@ easy to configure, "exactly like Tableau".
 - Outside the repo: the data-warehouse roster sync is rewritten against the
   sync API (prior codes, phone, Aadhaar for fingerprinting, leavers per
   person; data-warehouse#4336); the CDC registration declares and denies the
-  new tables; `gold.hr` gains a person dimension in Phase 2. **The warehouse's
-  bronze copy of StyleHR already holds 28,770 full Aadhaar numbers in clear**;
-  that exposure predates this change and is flagged to the owner (design D8).
+  new tables; `gold.hr` gains a person dimension in Phase 2. How the warehouse
+  itself holds national IDs is outside this change and is tracked privately
+  with the owner (design D8).
 - `research.md` in this change records the sources behind each decision.
