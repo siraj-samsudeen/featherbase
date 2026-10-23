@@ -204,8 +204,13 @@ export async function recheckSessionSockets(): Promise<void> {
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
 // {unsubscribe:[...]}. The server answers a subscribe frame with
 // {channel:'system', event:'subscribed', payload:{channels:[...registered]}}.
+export const MAX_FRAME_BYTES = 16 * 1024
+export const MAX_PENDING_FRAMES = 32
+
 export function attachRealtime(server: Server): void {
-  const wss = new WebSocketServer({ server, path: '/ws' })
+  // A client only ever sends short subscribe/unsubscribe lists; anything this
+  // large is refused by `ws` itself (close 1009) before it is buffered.
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: MAX_FRAME_BYTES })
   const recheck = setInterval(() => void recheckSessionSockets().catch(() => {}), SOCKET_RECHECK_MS)
   recheck.unref()
   server.on('close', () => clearInterval(recheck))
@@ -222,9 +227,21 @@ export function attachRealtime(server: Server): void {
       return (client = c)
     })
     let frames: Promise<void> = authenticated.then(() => {})
+    // Frames queue only while authentication or an earlier frame's permission
+    // checks are pending — a handful in practice. A client that piles up more
+    // is misbehaving; it is closed rather than buffered without limit.
+    let pending = 0
     socket.on('message', (raw) => {
+      if (++pending > MAX_PENDING_FRAMES) {
+        socket.close(1008, 'too many pending frames')
+        return
+      }
       frames = frames.then(async () => {
-        if (client) await handleFrame(client, String(raw))
+        try {
+          if (client && !closed) await handleFrame(client, String(raw))
+        } finally {
+          pending--
+        }
       })
     })
     const forget = () => {

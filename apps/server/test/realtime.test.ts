@@ -4,6 +4,8 @@ import { describe, expect } from 'vitest'
 import WebSocket from 'ws'
 import { test } from './pg-test'
 import {
+  MAX_FRAME_BYTES,
+  MAX_PENDING_FRAMES,
   attachRealtime,
   canSubscribe,
   onEvent,
@@ -160,5 +162,43 @@ describe('subscription acknowledgment', () => {
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
+  })
+  // Codex P1 on #444: frames wait for authentication, so the wait must be
+  // bounded — neither one huge frame nor a flood of small ones is buffered.
+  async function closeCodeAfter(token: string, send: (socket: WebSocket) => void): Promise<number> {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${token}` } })
+    socket.on('error', () => {})
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('socket was not closed')), 5_000)
+        socket.on('close', (code) => {
+          clearTimeout(timer)
+          resolve(code)
+        })
+        socket.on('open', () => send(socket))
+      })
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }
+
+  test('a frame larger than any subscribe list is refused, not buffered', async ({ admin }) => {
+    const code = await closeCodeAfter(admin.token!, (socket) =>
+      socket.send(JSON.stringify({ subscribe: ['x'.repeat(MAX_FRAME_BYTES)] })),
+    )
+    expect(code).toBe(1009)
+  })
+
+  test('a client that floods frames while they are queued is closed', async ({ admin }) => {
+    const code = await closeCodeAfter(admin.token!, (socket) => {
+      for (let i = 0; i <= MAX_PENDING_FRAMES * 3; i++) socket.send(JSON.stringify({ subscribe: ['list:User'] }))
+    })
+    expect(code).toBe(1008)
   })
 })
