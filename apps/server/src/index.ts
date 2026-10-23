@@ -12,7 +12,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
 import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
@@ -23,9 +23,9 @@ import { pickPeople, principalNames } from './people-directory'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
-import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
+import { EMBED_ORIGIN, VIEWER_ROLE, landingFor, salesTargetRoutes } from './sales-target'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -48,7 +48,7 @@ import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker, syncScheduledJobs } from './jobs'
-import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
+import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
@@ -275,8 +275,29 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // a live credential and any token-less request after logout re-authenticates
 // as the departed user (found via #101: a post-logout whoami refetch answered
 // as the previous user and poisoned the cache for the next account).
-app.post('/api/logout', (c) => {
+//
+// #411: it also ends the session(s) it was called with — the bearer header
+// and the sid cookie, which can name different sessions. Expired ones too:
+// their realtime sockets are closed regardless. Each revocation stands alone,
+// and if any write fails the answer is a 503 — the cookie is still cleared,
+// but the caller must not be told the session ended when it did not.
+app.post('/api/logout', async (c) => {
+  const sid = getCookie(c, 'sid')
   deleteCookie(c, 'sid', { path: '/' })
+  let incomplete = false
+  for (const credential of new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])) {
+    const session = await sessionToRevoke(credential)
+    if (!session) continue
+    closeSessionSockets(session.jti)
+    try {
+      await revokeSession(session)
+    } catch (err) {
+      console.error('sign-out: revoking a session failed', err)
+      incomplete = true
+    }
+  }
+  if (incomplete)
+    return c.json({ error: { type: 'ServiceUnavailableError', message: 'Sign-out did not complete. Try again.' } }, 503)
   return c.json({ ok: true })
 })
 
@@ -698,9 +719,19 @@ app.route('/api/sales_target', salesTargetRoutes)
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
   const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
+  const roles = await getRoles(user.row_id)
+  // #410: what the shell may draw. Computed here, from current roles and
+  // grants, never from role names the browser holds; display only — every
+  // route still enforces its own check. A System Manager's Tables come from the
+  // Table list itself, so none are sent here.
+  const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
+  const access = manage
+    ? { readable: [], creatable: [], ownGrant: true, any: true }
+    : await tableAccessFor(user.row_id, roles)
   return c.json({
     ...user,
-    roles: await getRoles(user.row_id),
+    roles,
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
     theme: (row?.theme as string) || 'light',
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',

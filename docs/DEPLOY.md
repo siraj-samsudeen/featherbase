@@ -124,6 +124,30 @@ credential. If the account may be compromised, list and revoke them too:
 `pnpm --filter server cli list-tokens <person-id>`, then
 `pnpm --filter server cli revoke-token <token-id>`.
 
+### Sign-out ends that session (#411)
+
+Every session carries a unique id. Signing out records it in
+`revoked_session` (migration 0106), and that session is refused from then on
+on every instance. Signing out an already-expired session records nothing
+(expiry refuses it) but still closes its sockets. Realtime sockets live on
+one instance: the instance that handled the sign-out closes that session's
+sockets at once, and every instance re-checks its open sockets against
+`revoked_session` once a minute, so a socket on another instance closes
+within about a minute. The same check closes sockets whose token has expired, whose
+person was disabled, or whose sessions were ended by the reset above. The person's other sessions are untouched; to end all
+of them, use the reset above. Rows are pruned on each sign-out once the
+session they name has expired.
+
+If the revocation cannot be written, sign-out answers 503 (the cookie is
+still cleared) and the app tells the user sign-out did not complete and
+keeps them signed in to retry.
+
+**Deploying it signs everyone out once.** A session opened before this
+release carries no id and is refused, so every user — the store staff on
+the trial included — must sign in again after the deploy. There is no
+grace window (no-backward-compatibility rule). Access tokens are not sessions
+and keep working.
+
 ## Public-route abuse limits
 
 Password login (including delegated sign-in), Google OAuth initiation/callback,
@@ -765,11 +789,14 @@ promoted to production (below).
    from person_identifier group by 1;                                   -- stylehr-employee-code 271/271; email 11/11
    select subject_kind, count(*) from sign_in_identity
    where method = 'stylehr' and ended_at is null group by 1;            -- employee-code 271
-   select max(name), count(*) from migration;                           -- 0107_drop_person_code_custom_fields.sql, 107
-   -- (count = the files in apps/server/migrations at the deployed commit; 108 once #418's 0106 is on main)
+   select max(name), count(*) from migration;                           -- see below
    select count(*) from information_schema.columns where table_schema = 'featherbase'
      and table_name = 'person' and column_name in ('employee_code', 'stylehr_username'); -- 0
    ```
+   The migration row must match the release, not a fixed number: `max(name)` is
+   the newest file in `apps/server/migrations` and `count(*)` is the number of
+   files there (`ls apps/server/migrations | wc -l`) — with #408 and #411 on
+   main that is `0107_drop_person_code_custom_fields.sql`, 108.
    Then `pnpm --filter server cli people:plan` (no `--rehearse`) on the live
    database: it re-scans the recorded map and must report no old id.
 6. **Sign-in checks.** A trial user by their employee code (test mode) gets

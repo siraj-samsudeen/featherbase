@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, adminToken, loginAs, type APIRequestContext } from './fixtures'
+import { anonymousTest as test, expect, adminToken, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
 
 async function serverPalette(request: APIRequestContext): Promise<string> {
   const token = await adminToken(request)
@@ -111,9 +111,11 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   const USER_B = 'palette-e2e@x.com'
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
+  // A role of use, or B lands on the no-access page (#410).
+  const role = await ensureAdminReaderRole(request)
   const created = await request.post('/api/save_row', {
     headers,
-    data: { table: 'Person', row: { email: USER_B, full_name: 'Palette E2E', enabled: true } },
+    data: { table: 'Person', row: { email: USER_B, full_name: 'Palette E2E', enabled: true, roles: [{ role }] } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
   // person-rename: the id is minted; B signs in by email.

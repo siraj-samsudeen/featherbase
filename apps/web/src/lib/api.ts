@@ -107,6 +107,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T
 }
 
+// #411: sign-out ends this session on the server. If the server could not
+// confirm it (a 5xx or no answer), the session may still work: the caller
+// says so and keeps the user signed in so they can try again.
+export const SIGN_OUT_INCOMPLETE = 'Sign-out did not complete. Check your connection and try again.'
+export async function signOut(): Promise<boolean> {
+  try {
+    await api.post('/api/logout', {})
+    return true
+  } catch {
+    return false
+  }
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>

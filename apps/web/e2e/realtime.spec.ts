@@ -4,6 +4,7 @@ import {
   expect,
   ADMIN_PWD,
   adminAuth,
+  ensureAdminReaderRole,
   loginAs,
   waitForRealtime,
 } from './fixtures'
@@ -26,7 +27,7 @@ test.beforeAll(async ({ request }) => {
   // A second real user for the mention/notification test.
   const made = await request.post('/api/save_row', {
     headers,
-    data: { table: 'Person', row: { email: OTHER_USER, username: OTHER_USERNAME, full_name: 'RT User' } },
+    data: { table: 'Person', row: { email: OTHER_USER, username: OTHER_USERNAME, full_name: 'RT User', roles: [{ role: await ensureAdminReaderRole(request) }] } },
   })
   if (made.status() !== 201) throw new Error(`create person: ${made.status()} ${await made.text()}`)
   OTHER_ID = ((await made.json()) as { row_id: string }).row_id

@@ -121,6 +121,43 @@ export async function assertPermission(
     )
 }
 
+/**
+ * What Tables a principal can use, for drawing the shell (#410): the Tables
+ * they can read or create in, and whether they hold any Table grant of their
+ * own or a shared row. Display only — every request is still checked by its own
+ * route. Sub-tables and dropped Tables never count (same filter as
+ * /api/navigable_tables). Grants to the implicit built-in `All` role (they come
+ * from runtime apps) make a Table listable but do not by themselves earn the
+ * Admin shell.
+ */
+export async function tableAccessFor(
+  principal: string,
+  roles: string[],
+): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
+  const rows = await sql`
+    select p.ref_table, p.role, p.can_read, p.can_create, p.owner_app,
+      (p.can_read or p.can_write or p.can_create or p.can_delete
+        or p.can_submit or p.can_cancel or p.can_amend) as any_action
+    from permission p
+    join table_def d on d.name = p.ref_table and d.kind = 'table'
+    where p.tier = 'basic' and p.role in ${sql(roles)}`
+  const active = rows.filter(
+    (r) => r.any_action && (r.owner_app == null || activeApps.has(String(r.owner_app))),
+  )
+  const names = (pick: (r: (typeof active)[number]) => boolean) =>
+    [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
+  const [shared] = await sql`
+    select 1 from share
+    where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
+  const ownGrant = active.some((r) => r.role !== 'All')
+  return {
+    readable: names((r) => r.can_read),
+    creatable: names((r) => r.can_create),
+    ownGrant,
+    any: ownGrant || Boolean(shared),
+  }
+}
+
 /** Administrator, or a principal of either kind holding System Manager. */
 export async function isPrivileged(principal: string): Promise<boolean> {
   if (principal === 'Administrator') return true

@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { anonymousTest as test, expect, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
 
 // person-identities (#275): a person signed in with a password links a Google
 // account from Sign-in methods, then signs in with that Google account after
@@ -20,7 +20,9 @@ async function reset(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => {
   await reset(request)
   const headers = await adminAuth(request)
-  const made = await request.post('/api/save_row', { headers, data: { table: 'Person', row: { username: USER, full_name: 'Login Methods', enabled: true, roles: [] } } })
+  // A role of use, or the person lands on the no-access page (#410).
+  const role = await ensureAdminReaderRole(request)
+  const made = await request.post('/api/save_row', { headers, data: { table: 'Person', row: { username: USER, full_name: 'Login Methods', enabled: true, roles: [{ role }] } } })
   if (made.status() !== 201) throw new Error(`create user: ${made.status()}`)
   USER_ID = ((await made.json()) as { row_id: string }).row_id
   await request.post('/api/set_password', { headers, data: { user: USER_ID, password: PW } })

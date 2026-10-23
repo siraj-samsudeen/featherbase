@@ -23,7 +23,7 @@ test('open: a visitor picks a username and a password and is signed in', async (
   await userEvent.type(screen.getByLabelText('Username'), 'meena.k')
   await userEvent.type(screen.getByLabelText('Password'), 'meena-pw-1')
   await userEvent.click(screen.getByTestId('sign-up-submit'))
-  await screen.findByTestId('session-user')
+  await screen.findByTestId('no-access') // no role yet (#410)
   expect(JSON.parse(localStorage.getItem('fc_user')!)).toMatchObject({ email: null, full_name: 'meena.k' })
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toMatch(/^psn_[a-z2-7]{20}$/)
 })

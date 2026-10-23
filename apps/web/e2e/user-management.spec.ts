@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { anonymousTest as test, expect, adminAuth, ensureAdminReaderRole, type APIRequestContext } from './fixtures'
 
 const USER = 'set2-e2e-user@x.com'
 // person-rename: the person's id is minted (`psn_…`); they sign in by email.
@@ -31,9 +31,11 @@ test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
+  // A role of use, or the person lands on the no-access page (#410).
+  const role = await ensureAdminReaderRole(request)
   const created = await request.post('/api/save_row', {
     headers,
-    data: { table: 'Person', row: { email: USER, full_name: 'Set2 E2E', enabled: true } },
+    data: { table: 'Person', row: { email: USER, full_name: 'Set2 E2E', enabled: true, roles: [{ role }] } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
   USER_ID = ((await created.json()) as { row_id: string }).row_id
