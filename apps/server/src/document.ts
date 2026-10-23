@@ -548,16 +548,16 @@ export async function saveSystemRow(table: string, values: RowValues, actor: str
   const known = new Set(meta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type)).map((f) => f.column_name))
   const unknown = Object.keys(values).filter((k) => !known.has(k) && k !== ROW_KEY)
   if (unknown.length) throw new AppError('ValidationError', `Unknown ${table} columns: ${unknown.join(', ')}`)
-  const now = new Date()
   const row: RowValues = {}
   for (const [k, v] of Object.entries(values)) if (v !== undefined && k !== ROW_KEY) row[k] = v
+  // created_at/updated_at are left to the column default, now(): history is
+  // dated by the database clock, the same clock that dates its Table, so a
+  // skewed app clock can never make a record look older than its Table.
   const [saved] = await sql`insert into ${sql(await tableRelation(table))} ${sql({
     ...row,
     [meta.row_key]: String(values[ROW_KEY] ?? '') || hashRowId(),
     created_by: actor,
     updated_by: actor,
-    created_at: now,
-    updated_at: now,
     status: 'draft',
     position: 0,
   } as unknown as Record<string, never>)} returning *`
@@ -987,13 +987,17 @@ async function recordVersion(
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
-  const now = new Date()
+  // #432: dated by the database's wall clock, like its Table, so a skewed
+  // app clock never misdates history. clock_timestamp(), not now(): the
+  // import's revert trail ties a version to its run by comparing against a
+  // run start read from the same clock.
+  const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
   await tx`insert into version ${tx({
     [ROW_KEY]: hashRowId(),
     created_by: user,
     updated_by: user,
-    created_at: now,
-    updated_at: now,
+    created_at: at,
+    updated_at: at,
     status: 'draft',
     position: 0,
     ref_table: meta.name,

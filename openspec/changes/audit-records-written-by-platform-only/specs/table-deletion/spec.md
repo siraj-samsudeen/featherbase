@@ -27,5 +27,13 @@ created under the same name.
 #### Scenario: A new table with an old name starts clean
 
 - **WHEN** the user re-creates a deleted table under the same name
-- **THEN** the old table's imports cannot be reverted into it, and deleting
-  the old import's tables leaves the new table alone
+- **THEN** its rows show none of the old table's change history, the old
+  table's imports cannot be reverted into it, and deleting the old import's
+  tables leaves the new table alone
+
+#### Scenario: An email waiting on a deleted table is not sent
+
+- **WHEN** an email about a row was waiting to be sent and its table is
+  deleted before it goes
+- **THEN** the email fails, saying the table was deleted, and never shows a
+  row of a new table with the same name

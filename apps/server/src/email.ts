@@ -132,6 +132,15 @@ registerJob('send_email', async (payload) => {
     const attachments: Attachment[] = [...(opts.files ?? [])]
 
     if ((opts.render || opts.attach_pdf) && refTable && refName) {
+      // #432: the queued row outlives its Table. If that Table was deleted (or
+      // re-created under the same name) after queueing, never render the row
+      // that now answers to the name.
+      // Compared in SQL: a JS Date drops the microseconds both stamps carry.
+      const [current] = await sql`
+        select 1 from table_def td join email_queue q on q.ref_table = td.name
+        where q.row_id = ${queueName} and td.created_at <= q.created_at`
+      if (!current)
+        throw new Error(`${refTable} was deleted after this email was queued; it was not sent`)
       const refRow = await getDoc(refTable, refName)
       // EML-005: render subject/body templates against the row.
       if (opts.render) {

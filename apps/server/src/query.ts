@@ -193,6 +193,16 @@ export async function scopedWhere(
       }
     }
   }
+  // #432: history outlives its Table, but never attaches to a namesake
+  // created later. On a system-written Table, a row naming a Table is listed
+  // only if that name has not been re-created since the row was written.
+  // (Both dates come from the database clock.)
+  if (meta.system_written)
+    for (const f of meta.columns)
+      if (f.column_type === 'Reference' && f.reference_table === 'Table')
+        extraConds.push(sql`created_at >= coalesce(
+          (select td.created_at from table_def td where td.name = ${sql(f.column_name)}),
+          '-infinity'::timestamptz)`)
   // SQL fragments are thenables in the postgres client — awaiting one would
   // EXECUTE it. Async compilation therefore passes fragments boxed in
   // { frag } so `await` only ever resolves the box, never the fragment.

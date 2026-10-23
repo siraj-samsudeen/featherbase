@@ -319,7 +319,8 @@ registerCollectionAction('import', {
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
-    const runStart = new Date()
+    // The database's wall clock — the one that dates the version rows (#432).
+    const [{ runStart }] = await sql<{ runStart: Date }[]>`select clock_timestamp() as "runStart"`
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })

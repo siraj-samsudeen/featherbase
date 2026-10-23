@@ -3,16 +3,17 @@
 // rows through the generic API, bulk paths or structure changes; only the
 // server's own writers (sign-in logging, the job runner, the import logger,
 // the version trail) put rows there. Reads are unchanged.
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { app } from '../src/index'
 import * as documentModule from '../src/document'
-import { listActions } from '../src/actions'
+import { getCollectionAction, listActions } from '../src/actions'
 import { logActivity } from '../src/audit'
 import { setUserPassword } from '../src/auth'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
+import { queueEmail } from '../src/email'
 import { expectApiError, grantRole, makeTable, patchDoc } from './fixtures'
 
 const AL = 'Activity Log'
@@ -484,5 +485,64 @@ describe('#432: configurable automation never reaches a system-written table', (
       join table_def td on td.name = cd.parent
       where cd.column_type = 'Reference' and cd.reference_table = 'Table' and not td.system_written`
     expect(rows.map((r) => r.ref).sort()).toEqual(Object.keys(TARGETING).sort())
+  })
+})
+
+// Review round 2 (#441): history is dated by the database clock, and history
+// kept for a deleted Table never attaches to a namesake created later.
+describe('#432: kept history and the database clock', () => {
+  // The later namesake is stamped by the wall clock: inside the sandbox
+  // transaction now() never moves.
+  async function recreateLater(admin: TestClient, name: string) {
+    await makeTable(admin, { name, columns: ['title'], id_pattern: 'prompt', track_changes: true })
+    await sql`update table_def set created_at = clock_timestamp() + interval '1 second' where name = ${name}`
+  }
+
+  test('an import stays revertible when the app clock runs behind the database', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Skew', columns: ['title'] })
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(Date.now() - 60 * 60 * 1000)
+    // Called in-process: a skewed clock would also expire the HTTP session.
+    try {
+      await getCollectionAction('import')!.handler({
+        table: 'Audit Skew',
+        args: { rows: [{ title: 'one' }], context: { run_id: 'skew-run' } },
+        user: { row_id: 'Administrator' } as never,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(await admin.post('/api/table/Audit%20Skew:import-revert', { run_id: 'skew-run' })).toMatchObject({ deleted: 1 })
+  })
+
+  test("a re-created Table's row does not inherit the deleted Table's change history", async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit Reborn', columns: ['title'], id_pattern: 'prompt', track_changes: true })
+    const old = await admin.post<{ updated_at: string }>('/api/table/Audit%20Reborn', { row_id: 'R-1', title: 'old a' })
+    await patchDoc(admin, '/api/table/Audit%20Reborn/R-1', { title: 'old b', updated_at: old.updated_at })
+    const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', 'Audit Reborn'], ['ref_name', '=', 'R-1']]))
+    const history = () => admin.get<{ data: unknown[] }>(`/api/table/Version?filters=${filters}`)
+    expect((await history()).data).toHaveLength(1)
+    await admin.delete('/api/table_def/Audit%20Reborn')
+    // Kept, and still listed, while no namesake exists.
+    expect((await history()).data).toHaveLength(1)
+    await recreateLater(admin, 'Audit Reborn')
+    await admin.post('/api/table/Audit%20Reborn', { row_id: 'R-1', title: 'new' })
+    expect((await history()).data).toHaveLength(0)
+  })
+
+  test('an email queued for a deleted Table fails rather than render its namesake', async ({ admin }) => {
+    await loadJobs()
+    await makeTable(admin, { name: 'Audit Mail', columns: ['title'], id_pattern: 'prompt' })
+    await admin.post('/api/table/Audit%20Mail', { row_id: 'M-1', title: 'old secret' })
+    const queued = await queueEmail({ to: 'audit@example.test', subject: 'About {{ doc.title }}', body: '{{ doc.title }}', ref_table: 'Audit Mail', reference_name: 'M-1', render: true })
+    await admin.delete('/api/table_def/Audit%20Mail')
+    await makeTable(admin, { name: 'Audit Mail', columns: ['title'], id_pattern: 'prompt' })
+    await sql`update table_def set created_at = clock_timestamp() + interval '1 second' where name = 'Audit Mail'`
+    await admin.post('/api/table/Audit%20Mail', { row_id: 'M-1', title: 'new private' })
+    await sql`update background_job set run_at = now() where job_status = 'queued'`
+    await drainJobs().catch(() => {})
+    const [row] = await sql`select send_status, error from email_queue where row_id = ${queued}`
+    expect(row).toMatchObject({ send_status: 'error', error: expect.stringMatching(/Audit Mail was deleted/) })
+    expect(await sql`select 1 from email_sink where subject like '%new private%'`).toHaveLength(0)
   })
 })

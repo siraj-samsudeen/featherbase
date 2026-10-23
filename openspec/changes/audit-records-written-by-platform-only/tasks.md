@@ -12,6 +12,8 @@
 - [x] 1.7 Review round 1: the trusted insert is a plain insert (no scripts, overrides, defaults or hooks); Server Scripts, Metadata Overrides, Workflows and Custom Fields (save and delete) refuse a system-written target; overrides never apply to one; a completeness test classifies every column that can point at a Table.
 - [x] 1.8 Deleting a Table keeps its system-written history; revert, batch delete and the wizard's history only read history written since the current Table was created.
 
+- [x] 1.9 Review round 2: history is dated by the database clock (Import Log, Version and the import run start); lists of system-written history hide rows written before a same-name Table was re-created; a queued email whose Table was deleted after queueing fails with a clear reason.
+
 ## 2. Web
 
 - [x] 2.1 Add a failing component test: the Activity Log list shows no New, Import, Columns, Merge, Naming, Delete Table or row selection to the Administrator; its form opens read-only without Save, Delete or Rename; an ordinary platform list keeps New.
