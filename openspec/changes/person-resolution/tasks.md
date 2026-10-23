@@ -23,7 +23,7 @@ once they are archived. Auto-link is not in this change (D-b).
 
 ## Sales-target scoping — separate PR after 1a-i
 
-- [x] 2.1 (also delete the temporary `mirrorEmployeeCodeField` mirror and its call sites) `sales-target.ts` scoping on current identifier rows — (assigner, code) or record number, several codes, ambiguous ⇒ `no_assignment` + structured log — **and** drop the `employee_code`/`stylehr_username` Custom Fields in the same PR (migration `0106`, #408). Verify `test/sales-target.test.ts`, `test/employee-code-scope.test.ts`, `test/migration-0106.test.ts`.
+- [x] 2.1 (also delete the temporary `mirrorEmployeeCodeField` mirror and its call sites) `sales-target.ts` scoping on current identifier rows — (assigner, code) or record number, several codes, ambiguous ⇒ `no_assignment` + structured log — **and** drop the `employee_code`/`stylehr_username` Custom Fields in the same PR (migration `0107`, #408). Verify `test/sales-target.test.ts`, `test/employee-code-scope.test.ts`, `test/migration-0107.test.ts`.
 
 ## Phase 1a-ii — manual merge and undo
 

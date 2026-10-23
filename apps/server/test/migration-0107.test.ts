@@ -1,4 +1,4 @@
-// Migration 0106 (#408, person-resolution task 2.1): the `employee_code` and
+// Migration 0107 (#408, person-resolution task 2.1): the `employee_code` and
 // `stylehr_username` Custom Fields on Person are dropped — their Custom Field
 // records, their column_def rows and the columns. Sales-target scoping reads
 // the person's current employee-code identifier rows instead.
@@ -10,7 +10,7 @@ import { applyCustomField } from '../src/custom-fields'
 import { invalidateMeta } from '../src/meta'
 import { makePerson } from './fixtures'
 
-const MIGRATION = readFileSync(new URL('../migrations/0106_drop_person_code_custom_fields.sql', import.meta.url), 'utf8')
+const MIGRATION = readFileSync(new URL('../migrations/0107_drop_person_code_custom_fields.sql', import.meta.url), 'utf8')
 const FIELDS = ['employee_code', 'stylehr_username']
 
 async function personColumns(): Promise<string[]> {
@@ -18,7 +18,7 @@ async function personColumns(): Promise<string[]> {
   return rows.map((r) => String(r.column_name))
 }
 
-describe('0106: the Person code Custom Fields are gone', () => {
+describe('0107: the Person code Custom Fields are gone', () => {
   test('drops the records, the column_def rows and the columns; every other Person field stays', async ({ admin }) => {
     for (const column_name of FIELDS) {
       await sql`insert into custom_field (row_id, dt, column_name, label, column_type) values (${`Person-${column_name}`}, 'Person', ${column_name}, ${column_name}, 'Data')`

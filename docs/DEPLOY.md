@@ -435,7 +435,7 @@ out takes StyleHR's value: `id_field` / `password_field` (request body names,
 `left_date_keys`, `inactive_flags`, `left_status_keys`, `left_words`. Another HR
 system with a different request or answer shape is a new row with its own
 `settings`, not code. Sign-in never reads the old `stylehr_username` Custom Field; migration
-0106 drops it (#408).
+0107 drops it (#408).
 
 **Deploying the upgrade (#275) — mandatory runbook:**
 
@@ -796,7 +796,7 @@ payrolls give both codes' Sections). A hand entry, end or correction moves the
 Sections at once. A code current on **two people** (two firms) scopes neither
 of them for that code; the server logs a `sales_target_ambiguous_employee_code`
 warning naming the people and rows (never the code) — fix the holders on the
-Identifiers panel. Migration **0106** removed the old `employee_code` and
+Identifiers panel. Migration **0107** removed the old `employee_code` and
 `stylehr_username` Custom Fields from Person (a no-op where they never existed,
 such as prod); the warehouse mirror of `person` sees the two columns disappear.
 

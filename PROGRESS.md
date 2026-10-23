@@ -11,7 +11,7 @@ Sales-target scoping (`currentEmployeeCodes` in `src/sales-target.ts`) now reads
 of both codes' Sections. The Store Sections maps carry the code but not the firm, so a code current on two
 people scopes neither of them for that code and logs a structured `sales_target_ambiguous_employee_code`
 warning (people and row ids, never the code). Map codes compare trimmed and upper-cased, as identifier values
-are stored. Migration **0106** drops the `employee_code` and `stylehr_username` Custom Fields (records,
+are stored. Migration **0107** drops the `employee_code` and `stylehr_username` Custom Fields (records,
 column_def rows, columns); the sales-target seed no longer creates one; the temporary
 `mirrorEmployeeCodeField` and its five call sites are gone. OpenSpec person-resolution task 2.1.
 
