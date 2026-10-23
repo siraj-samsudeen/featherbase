@@ -1,5 +1,51 @@
 # Progress Log
 
+## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
+
+`DataList` renders one list in two shapes, chosen live from the screen width:
+- below 40rem, a card per row: the `title` and `status` columns lead, `meta` follows in one line, `value` columns
+  become labelled figures and `hidden` ones are left off. Everything inside a card wraps, so a long SKU, URL, status
+  or label never widens the page. Measured in a browser at 320 and 375 px.
+- above 40rem, a captioned table in a keyboard-scrollable named region, with `<th scope="row">` first cells and
+  right-aligned tabular numbers.
+
+Row text uses `text-control`, 16 px on touch. Loading is a Skeleton and a failure is an alert with a Try again slot.
+The empty state is required (the same `EmptyDescriptor` as `EmptyState`), so a failed load can never read as an empty
+list and an empty one always offers the way forward.
+
+`Headline` is the answer-first block: the period, the conclusion coloured by meaning, the supporting figures and an
+optional progress `meter`:
+- the meter's scale stretches past 100%, and its marker and fill sit on that scale;
+- `aria-valuenow` is clamped at 0, while `aria-valuetext` keeps the signed `fmtPct` value;
+- the track has a 3:1 edge.
+
+`achievementTone` holds the sales-target legend bands (<90 negative, 90–<100 caution, ≥100 positive, none missing),
+judged on the one-decimal value the page shows.
+
+`lib/inr.ts` gains `fmtINR` and `fmtCount`:
+- `fmtINR` is the readable ADR 750 ladder (`₹850`, `₹45,600`, `₹1.21 L`, `₹1.74 Cr`, `₹1,23,456.79 Cr`; `signed`
+  for gaps). It rounds before choosing lakh or crore.
+- `fmtCount` rounds first, uses Indian grouping and never shows -0.
+
+Siraj ruled on 22-Oct that the sales-target summary and rows are the readable regime; `fmtExact` stays for amounts
+that foot or are paid.
+
+Review (independent reviewer and Codex) found no blockers. Every item above that goes beyond the first cut came from
+it: crore grouping, -0, tone on the shown value, meter scale and clamp, track edge, keyboard region, row headers,
+touch text, retry, the required empty state, auto-layout coverage and card wrapping. Each was fixed test-first, and
+the auto-layout tests fail with the reviewer's mutation applied.
+
+**Verified** at the PR head, under Node 22:
+- `pnpm --filter web exec vitest run test/data-display.test.tsx`: 43 passed.
+- `pnpm --filter web test`: 645 passed. `pnpm --filter web typecheck` passed.
+- `pnpm --filter web build` passed.
+- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
+- Gallery screenshots of the Headline and DataList at 375 px (cards) and 1280 px (table), light and dark, plus the
+  long-values card at 320 and 375 px.
+
+**Next:** stage 2, moving every screen not owned by #371 onto the primitives and final tokens (opened for review,
+merged together with stage 3 once #371 lands).
+
 ## 2026-10-22 — Design system stage 1b: the shared components (#380)
 
 `apps/web/src/components/ui/` holds the primitives every screen will build from:

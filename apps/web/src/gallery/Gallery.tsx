@@ -2,8 +2,11 @@ import { useState, type ReactNode } from 'react'
 import {
   Button,
   buttonClasses,
+  achievementTone,
   Card,
+  DataList,
   EmptyState,
+  Headline,
   Field,
   Notice,
   PasswordInput,
@@ -14,7 +17,9 @@ import {
   TextInput,
   ToastProvider,
   useToast,
+  type DataColumn,
 } from '../components/ui'
+import { fmtCount, fmtINR, fmtPct } from '../lib/inr'
 import { ExternalLink, Moon, Plus, Sun } from '../components/ui/icons'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -37,6 +42,33 @@ function ToastDemo() {
     </div>
   )
 }
+
+// Sample figures only (invented); store codes are real.
+interface Line {
+  name: string
+  target: number
+  sales: number
+}
+const LINES: Line[] = [
+  { name: 'Men Casual Shirt', target: 1_62_000, sales: 1_21_000 },
+  { name: 'Men T Shirt', target: 93_000, sales: 58_000 },
+  { name: 'Men Formal Shirt', target: 1_38_000, sales: 1_42_000 },
+]
+const pct = (l: Line) => (l.sales / l.target) * 100
+const LINE_COLUMNS: DataColumn<Line>[] = [
+  { key: 'name', header: 'Subcategory', cell: (l) => l.name, phone: 'title' },
+  {
+    key: 'ach',
+    header: 'Achievement',
+    align: 'end',
+    phone: 'status',
+    cell: (l) => <StatusPill tone={achievementTone(pct(l))}>{fmtPct(Math.round(pct(l) * 10) / 10)}</StatusPill>,
+  },
+  { key: 'target', header: 'Target', align: 'end', cell: (l) => fmtINR(l.target) },
+  { key: 'sales', header: 'Sales', align: 'end', cell: (l) => fmtINR(l.sales) },
+  { key: 'gap', header: 'Gap', align: 'end', cell: (l) => fmtINR(l.sales - l.target, { signed: true }) },
+  { key: 'qty', header: 'Pieces', align: 'end', phone: 'hidden', cell: (l) => fmtCount(Math.round(l.sales / 450)) },
+]
 
 export function Gallery() {
   const [dark, setDark] = useState(document.documentElement.dataset.theme === 'dark')
@@ -120,6 +152,45 @@ export function Gallery() {
           <Card className="p-4">
             <Skeleton label="Loading your numbers" lines={4} />
           </Card>
+        </Section>
+
+        <Section title="Report headline">
+          <Headline
+            label="Month to date · 01-Oct-2026 to 21-Oct-2026"
+            conclusion={`${fmtINR(72_000)} behind`}
+            tone={achievementTone(81.7)}
+            detail={`81.7% of target: ${fmtINR(3_21_000)} sold of ${fmtINR(3_93_000)}`}
+            progress={{ value: 81.7, marker: 90, label: 'Achievement' }}
+          />
+        </Section>
+
+        <Section title="List (a table when wide, cards on a phone)">
+          <DataList
+            caption="Where the gap is"
+            rows={LINES}
+            columns={LINE_COLUMNS}
+            rowKey={(l) => l.name}
+            empty={{ title: 'No targets this month', body: 'Targets appear here once they are set for your Sections.' }}
+          />
+          <DataList
+            caption="Long values wrap inside a phone card"
+            rows={[{ name: 'SKU-0123456789012345678901234567890123456789-SAREE-KANCHIPURAM', target: 1_62_000, sales: 1_21_000 }]}
+            columns={[
+              ...LINE_COLUMNS.slice(0, 1),
+              { key: 'status', header: 'Status', phone: 'status', cell: () => <StatusPill tone="caution">Awaiting second-level approval from the regional office</StatusPill> },
+              { key: 'meta', header: 'Reference', phone: 'meta', cell: () => 'https://example.invalid/a/very/long/reference/path/without/any/spaces/at/all' },
+              { key: 'v', header: 'AVeryLongMetadataDerivedColumnHeaderWithoutSpaces', cell: (l) => fmtINR(l.sales) },
+            ]}
+            rowKey={(l) => l.name}
+            empty={{ title: 'Nothing to show', body: 'This example always has one row.' }}
+          />
+          <DataList
+            caption="Checklist runs"
+            rows={[] as Line[]}
+            columns={LINE_COLUMNS}
+            rowKey={(l) => l.name}
+            empty={{ title: 'No checklists yet', body: 'Runs you start appear here.', action: <Button variant="primary">Start a checklist</Button> }}
+          />
         </Section>
 
         <Section title="Toasts">
