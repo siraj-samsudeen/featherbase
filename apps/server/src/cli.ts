@@ -15,6 +15,8 @@
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
+//   cli settings:set <field> --stdin set one System Settings field to the whole of stdin, e.g.
+//                                     `cli settings:set privacy_notice --stdin < notice.md`
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -228,6 +230,18 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+// #401: System Settings fields only, through saveDoc (validation, history).
+// The value is the whole of stdin, unchanged, so a reviewed file applies as is.
+async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
+  const [field] = positional
+  if (!field || flags.stdin !== true || positional.length !== 1) throw new Error('usage: cli settings:set <field> --stdin')
+  const meta = await getMeta('System Settings')
+  if (!meta.columns.some((c) => c.column_name === field)) throw new Error(`System Settings has no field ${field}`)
+  const value = await readStdin()
+  await saveDoc('System Settings', { [field]: value }, 'Administrator')
+  console.log(`System Settings ${field} set (${value.length} characters)`)
+}
+
 async function cmdConsole() {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
@@ -317,6 +331,9 @@ async function main() {
       for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)
       break
     }
+    case 'settings:set':
+      await cmdSettingsSet(positional, flags)
+      break
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -329,7 +346,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|settings:set|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

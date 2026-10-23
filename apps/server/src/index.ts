@@ -73,6 +73,7 @@ import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
+import { privacyNoticePage } from './privacy-notice'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -609,6 +610,13 @@ app.use('/api/*', async (c, next) => {
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
     throw error
   }
+})
+
+// #401: public (Google's consent screen fetches it anonymously), ahead of the
+// legacy redirect below, which would otherwise answer /privacy with a 308.
+app.get('/privacy', async (c) => {
+  const page = await privacyNoticePage()
+  return page ? c.html(page) : c.notFound()
 })
 
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have

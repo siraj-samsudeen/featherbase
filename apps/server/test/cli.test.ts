@@ -176,3 +176,48 @@ describe('PLAT-004: developer CLI', () => {
     expect(stdout).toContain('NAME=Administrator')
   }, 60_000)
 })
+
+// #401: an operator applies the instance's privacy notice from a reviewed file
+// (`cli settings:set privacy_notice --stdin < notice.md`). Only System
+// Settings fields; the value is the whole of stdin, unchanged.
+describe('#401: cli settings:set', () => {
+  let original: string | null = null
+  beforeAll(async () => {
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    original = (row?.value as string | undefined) ?? null
+  })
+  afterAll(async () => {
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    if (original !== null)
+      await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'privacy_notice', value: original })}`
+  })
+
+  function failure(args: string[], input = '') {
+    try {
+      cli(args, input)
+      return null
+    } catch (err) {
+      return err as { status?: number; stderr?: string }
+    }
+  }
+
+  it('sets a System Settings field to the whole of stdin', async () => {
+    const notice = '# Example Org privacy notice\n\nWe hold your **name**.\n'
+    const stdout = cli(['settings:set', 'privacy_notice', '--stdin'], notice)
+    expect(stdout).toContain('privacy_notice')
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    expect(row.value).toBe(notice)
+  }, 60_000)
+
+  it('refuses a field System Settings does not have', async () => {
+    const f = failure(['settings:set', 'no_such_field', '--stdin'], 'x')
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('System Settings has no field no_such_field')
+  }, 60_000)
+
+  it('refuses without --stdin', async () => {
+    const f = failure(['settings:set', 'privacy_notice', 'inline value'])
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('usage: cli settings:set <field> --stdin')
+  }, 60_000)
+})
