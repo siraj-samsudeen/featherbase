@@ -21,10 +21,10 @@ What is still missing: identifiers that do not sign in; a record of two
 account records being one person; the time dimension; a review list; merge and
 unmerge; what a merge may do to access.
 
-Jeyarama's data (research §4): 2,159 Aadhaar numbers held by 2+ StyleHR
-records, 665 spanning an agency → company conversion; 6,803 prior codes in
-`existing_emp_code`; phones shared 2,774 times; 28 employee codes collide
-across firms, so the StyleHR surrogate record number is the only unique record
+Jeyarama's data (research §4): Aadhaar numbers held by 2+ StyleHR records are
+common, many spanning an agency → company conversion; prior codes are common in
+`existing_emp_code`; phones are shared across records; some employee codes
+collide across firms, so the StyleHR surrogate record number is the only unique record
 key. Dev: ~280 persons, ~40 daily StyleHR sign-ins (the trial; they must keep
 signing in). Prod: empty.
 
@@ -36,7 +36,7 @@ faster.**
 
 - **D-a. Population.** Phase 1 covers people who **sign in or hold a role**
   (~300, a queue of tens). The whole workforce (~30k) is Phase 2. Until then
-  the warehouse resolves `21654 → RR-10353` from StyleHR's `existing_emp_code`.
+  the warehouse resolves `30654 → RR-0102` from StyleHR's `existing_emp_code`.
 - **D-b. Auto-link is out of this change** (D7).
 - **D-c. #371 merges with only M1.** `ended_at` and the leaver rule land here.
 - **Round 2, structure:** `person-rename` (0101) carries C1–C3 and the
@@ -202,10 +202,10 @@ value is discarded. Errors never echo a value. An unchanged write logs nothing.
 
 The sync closes codes; the merge only moves rows.
 
-- **Conversion** (agency → company, different firm): the sync closes `21654`
-  (`valid_to` = StyleHR termination), writes `RR-10353` and its Aadhaar; the
+- **Conversion** (agency → company, different firm): the sync closes `30654`
+  (`valid_to` = StyleHR termination), writes `RR-0102` and its Aadhaar; the
   fingerprint matches → strong group; merge moves rows. Last February's report
-  still finds `21654`.
+  still finds `30654`.
 - **Same-firm conversion or rehire**: a new StyleHR record in the **same
   firm** (new record number, new or reused code). Liveness is judged per
   record (D5), so the old record's `left` never disables a person whose new
@@ -304,7 +304,7 @@ the configured `people_review` columns and survivor rule; Merge / Not the same
 person (note) / Later; header counts; Reopened filter.
 
 **Merge** (`POST /api/people/merge`, `preview=1` first; also "Merge into…" on
-any Person form — `match_id` nullable, so RB's accounts merge by hand):
+any Person form — `match_id` nullable, so the CEO's accounts merge by hand):
 
 1. Actor: reviewer (`Data Quality Manager`) or System Manager; **never a
    party**; never a `built_in` record; the picker excludes replaced and
@@ -380,8 +380,8 @@ keyed fingerprint as personal data**, so retention applies; an erased
 fingerprint is **unknown**, not different (D6.3); errors never echo values.
 Why keyed, why Featherbase holds the key, the legal basis and the UNCERTAIN
 points for a lawyer: research §3. **Owner decisions:** direct StyleHR read
-access to the Aadhaar table for the sync; the clear-text Aadhaar in
-`bronze_stylehr` (28,770 rows) to be masked or dropped.
+access to the Aadhaar table for the sync; how the warehouse's own copies are
+handled is tracked privately with the owner.
 
 ### D9. Who may change what; roles
 
@@ -455,8 +455,8 @@ access removed; only leavers (below) and explicit role changes do that.
 - **`stylehr_record_ids.csv`** for the one-time subject rewrite (D5) — UTF-8,
   comma-separated, header row, columns `employee_code,assigner,stylehr_record_id`:
   `employee_code` is **the same form the old roster sync wrote as Featherbase
-  `row_id` and as the `employee_code` Custom Field** — `RR-7963`, `21654`,
-  `J11350` — i.e. `silver_stylehr.employee.employee_code` including any
+  `row_id` and as the `employee_code` Custom Field** — `RR-0101`, `30654`,
+  `J0109` — i.e. `silver_stylehr.employee.employee_code` including any
   prefix silver adds (from `employee_employee.employee_id`); `assigner` is the
   **StyleHR company**, `firm_firm.id` of the employee's store × firm posting
   (`employee_employeestoresandfirms`), carried as text — **an employee with
@@ -464,8 +464,8 @@ access removed; only leavers (below) and explicit role changes do that.
   for manual resolution** (not a collision); `stylehr_record_id` is
   `silver_stylehr.employee.employee_key` (`employee_employee.id`). Delivered
   as a file path given to **`cli people:resolve <path>` after the deploy**
-  (amended 23-Oct-2026: not to the migration; DEPLOY.md step 8). A dev person whose code matches **2+ rows** (the 28
-  colliding codes) is **listed for manual resolution and keeps working by
+  (amended 23-Oct-2026: not to the migration; DEPLOY.md step 8). A dev person whose code matches **2+ rows** (the colliding
+  codes) is **listed for manual resolution and keeps working by
   code**.
 - The bulk bodies below, from `silver_stylehr`. **Aadhaar travels as the
   `value` of a row whose `system` is `aadhaar`** — no other field — and only
@@ -481,19 +481,19 @@ as stored: a spell that ended on 02-Mar-2026 has `valid_to: "2026-03-03"`.
 ```json
 { "mode": "upsert", "create_missing": true,
   "rows": [
-    { "person": { "system": "stylehr-employee-id", "value": "48213" },
+    { "person": { "system": "stylehr-employee-id", "value": "900001" },
       "person_fields": { "full_name": "A. Kumar", "email": null },
-      "system": "stylehr-employee-id", "value": "48213" },
-    { "person": { "system": "stylehr-employee-id", "value": "48213" },
-      "system": "stylehr-employee-code", "assigner": "12", "value": "RR-10353",
+      "system": "stylehr-employee-id", "value": "900001" },
+    { "person": { "system": "stylehr-employee-id", "value": "900001" },
+      "system": "stylehr-employee-code", "assigner": "12", "value": "RR-0102",
       "worker_type": "Regular", "valid_from": "2026-03-03" },
-    { "person": { "system": "stylehr-employee-id", "value": "31177" },
+    { "person": { "system": "stylehr-employee-id", "value": "900002" },
       "person_fields": { "full_name": "A. Kumar" },
-      "system": "stylehr-employee-id", "value": "31177" },
-    { "person": { "system": "stylehr-employee-id", "value": "31177" },
-      "system": "stylehr-employee-code", "assigner": "7", "value": "21654",
+      "system": "stylehr-employee-id", "value": "900002" },
+    { "person": { "system": "stylehr-employee-id", "value": "900002" },
+      "system": "stylehr-employee-code", "assigner": "7", "value": "30654",
       "worker_type": "Agency", "valid_from": "2024-06-01", "valid_to": "2026-03-03" },
-    { "person": { "system": "stylehr-employee-id", "value": "48213" },
+    { "person": { "system": "stylehr-employee-id", "value": "900001" },
       "system": "aadhaar", "value": "<12 digits>" } ] }
 ```
 

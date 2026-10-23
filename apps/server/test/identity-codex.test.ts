@@ -91,14 +91,14 @@ describe('Codex P2: one list of sign-in method kinds', () => {
 
 describe('usernames on the generic save path', () => {
   test('a username must be a lowercase slug and must not equal anyone else\'s id, username or email', async ({ admin }) => {
-    const asha = await makePerson({ email: 'asha@jeyarama.com', username: 'asha' })
+    const asha = await makePerson({ email: 'person.a@jeyarama.com', username: 'asha' })
     const save = (row: Record<string, unknown>) => admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'Person', row }) })
     expect((await save({ username: 'not a slug!', enabled: true })).status).toBe(417)
     expect((await save({ username: 'ASHA', enabled: true })).status).toBe(417) // folds to asha: taken
     expect((await save({ username: asha, enabled: true })).status).toBe(417) // someone's id
-    expect((await save({ username: 'asha@jeyarama.com', enabled: true })).status).toBe(417) // someone's email
+    expect((await save({ username: 'person.a@jeyarama.com', enabled: true })).status).toBe(417) // someone's email
     // person-rename: an id is never typed — any chosen id is refused, an address included.
-    const typed = await admin.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ row_id: 'asha@jeyarama.com', enabled: true }) })
+    const typed = await admin.fetch('/api/table/Person', { method: 'POST', body: JSON.stringify({ row_id: 'person.a@jeyarama.com', enabled: true }) })
     expect(typed.status).toBe(417)
     expect((await save({ username: 'meera', enabled: true })).status).toBe(201)
   })
