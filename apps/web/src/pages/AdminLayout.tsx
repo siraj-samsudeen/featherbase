@@ -384,6 +384,8 @@ function AdminShell() {
           .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
       : []
+  // #432: a Table whose rows only the platform writes is never offered as "New".
+  const creatableSuggestions = suggestions.filter((d) => !d.system_written)
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
@@ -538,10 +540,10 @@ function AdminShell() {
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
-              {suggestions.length > 0 && (
+              {creatableSuggestions.length > 0 && (
                 <h2 data-testid="awesomebar-create-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Create rows</h2>
               )}
-              {suggestions.slice(0, 2).map((d) => (
+              {creatableSuggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
                   to="/featherbase/admin/$table/$name"

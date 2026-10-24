@@ -1,5 +1,6 @@
 import type { TableController } from '../controllers'
 import { ensureStateField, validateWorkflow } from '../workflow'
+import { assertTargetNotSystemWritten } from '../system-written'
 import type { WorkflowState, WorkflowTransition } from '../workflow'
 import { assertNotAccessTarget } from '../security-tables'
 
@@ -9,7 +10,9 @@ import { assertNotAccessTarget } from '../security-tables'
 const controller: TableController = {
   table: 'Workflow',
   hooks: {
-    validate: ({ row }) => {
+    validate: async ({ row }) => {
+      // #432: activating would add a state column to the audit table.
+      await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       // #437: a transition writes its state field directly, as whoever acts.
       if (typeof row.ref_table === 'string' && row.ref_table)
         assertNotAccessTarget(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
@@ -18,6 +21,9 @@ const controller: TableController = {
       validateWorkflow(states, transitions)
     },
     after_save: async ({ row, tx }) => {
+      // #432: checked again on the final row — a before_save Server Script
+      // runs after validate and may have changed ref_table.
+      await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       if (row.is_active && typeof row.ref_table === 'string') {
         // Binding an existing column (state_field) is validated here — saving
         // a workflow that names a nonexistent column fails; a blank

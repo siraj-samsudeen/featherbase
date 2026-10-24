@@ -1,10 +1,14 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
+import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
-import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation } from './platform-schema'
+import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
+import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+
+export { tableName }
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
 // #132: `name` left this list when the primary key became `row_id`, so a user
@@ -64,7 +68,7 @@ const optionalString = z
 const columnSchema = z.object({
   column_name: z
     .string()
-    .regex(/^[a-z][a-z0-9_]{0,63}$/, 'column_name must be snake_case'),
+    .regex(COLUMN_NAME_RE, 'column_name must be snake_case'),
   label: optionalString,
   column_type: z.enum(COLUMN_TYPE_VALUES),
   // Type-specific target, replacing the old overloaded "options" key:
@@ -148,6 +152,7 @@ export function validateIdPattern(pattern: string, columnNames: string[]): void 
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
+  assertNotSystemWritten(meta, 'renamed or changed')
   validateIdPattern(pattern, meta.columns.map((c) => c.column_name))
   await sql`update table_def set id_pattern = ${pattern}, updated_at = ${new Date()}
             where name = ${name}`
@@ -192,20 +197,6 @@ function validateDef(def: TableDef) {
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
 }
 
-// Table and Column describe themselves, but "table"/"column" are reserved
-// SQL keywords — their physical storage is table_def/column_def (chosen at
-// bootstrap specifically to dodge that collision) rather than the naive
-// lowercased name every other Table gets.
-const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
-  table: 'table_def',
-  column: 'column_def',
-}
-
-export function tableName(table: string): string {
-  const naive = table.toLowerCase().replace(/\s+/g, '_')
-  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
-}
-
 // Existing core Tables keep their bootstrap mapping. Qualified identities must
 // have persisted storage metadata; never infer their location from spelling.
 export async function tableRelation(name: string): Promise<string> {
@@ -217,7 +208,7 @@ export async function tableRelation(name: string): Promise<string> {
 }
 
 export function quoteRelation(relation: string): string {
-  return relation.split('.').map((part) => `"${part.replaceAll('"', '""')}"`).join('.')
+  return relation.split('.').map(quoteIdent).join('.')
 }
 
 // META-003: generate the CREATE TABLE statement for a Table definition.
@@ -245,10 +236,10 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
   for (const f of def.columns) {
     const type = pgType(f.column_type)
     if (!type) continue
-    cols.push(`"${f.column_name}" ${type}`)
+    cols.push(`${quoteIdent(f.column_name)} ${type}`)
     if (f.unique)
       constraints.push(
-        `constraint "${tableName(def.name)}_${f.column_name}_uq" unique ("${f.column_name}")`,
+        `constraint ${quoteIdent(`${tableName(def.name)}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
       )
   }
   return `create table ${quoteRelation(relation)} (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
@@ -288,6 +279,7 @@ export async function updateTable(
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
+  assertNotSystemWritten(existing, 'changed')
   const parsed = tableDefSchema.safeParse({ ...(input as object), name })
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -380,10 +372,10 @@ export async function updateTable(
         })}`
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound)
-          await tx.unsafe(`alter table ${relation} add column if not exists "${f.column_name}" ${type}`)
+          await tx.unsafe(`alter table ${relation} add column if not exists ${quoteIdent(f.column_name)} ${type}`)
         if (f.unique && type && !isBound)
           await tx.unsafe(
-            `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+            `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
           )
       } else {
         await tx`update column_def set ${tx(row)}
@@ -392,11 +384,11 @@ export async function updateTable(
         if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
           if (f.unique)
             await tx.unsafe(
-              `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+              `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
             )
           else
             await tx.unsafe(
-              `alter table ${relation} drop constraint if exists "${table}_${f.column_name}_uq"`,
+              `alter table ${relation} drop constraint if exists ${quoteIdent(`${table}_${f.column_name}_uq`)}`,
             )
         }
       }
@@ -407,7 +399,7 @@ export async function updateTable(
       await tx`delete from column_def where parent = ${name} and column_name = ${column_name}`
       const type = pgType(old.column_type)
       if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
-        await tx.unsafe(`alter table ${relation} drop column if exists "${column_name}"`)
+        await tx.unsafe(`alter table ${relation} drop column if exists ${quoteIdent(column_name)}`)
       // without drop_columns the column (and its data) is retained
     }
   })
@@ -456,21 +448,35 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
   // created it. A hand-written literal rots silently every time a raw table
   // is added (the first draft of this guard covered 3 of ~10), and this asks
   // the database the same question the DDL would — just early enough to
-  // answer with a real error instead of a Postgres one. Settings Tables are
-  // exempt because they generate no DDL; their values live in single_value.
+  // answer with a real error instead of a Postgres one.
+  //
+  // #432: every kind is checked, Settings Tables included. A Settings Table
+  // creates no storage of its own, but tableRelation() still resolves its
+  // name, so a Settings Table spelled like a platform relation would reach
+  // that relation's rows.
   const physical = tableName(def.name)
-  if (def.kind !== 'settings') {
-    const [clash] = await sql`
-      select 1 from information_schema.tables
-      where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
-             and table_name = ${qualified ? def.name.split('.')[1] : physical})
-         or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
-             and table_schema = 'public' and table_name = 'site')`
-    if (clash)
-      throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
-        name: `"${physical}" is reserved for platform storage`,
-      })
-  }
+  const relation = qualified ? `${ownerApp}.${def.name.split('.')[1]}` : platformRelation(physical)
+  const [clash] = await sql`
+    select 1 from information_schema.tables
+    where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
+           and table_name = ${qualified ? def.name.split('.')[1] : physical})
+       or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
+           and table_schema = 'public' and table_name = 'site')`
+  if (clash)
+    throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
+      name: `"${physical}" is reserved for platform storage`,
+    })
+  // #432: names match case-sensitively but storage does not ("Activity Log"
+  // and "activity log" are one relation), and a Settings Table or a bound
+  // Table owns no physical table for the check above to find. No two Tables
+  // may resolve to the same relation.
+  const owners = await sql<{ name: string; physical_schema?: string | null; physical_relation?: string | null }[]>`
+    select * from table_def`
+  const owner = owners.find((o) => resolvedRelation(o) === relation)
+  if (owner)
+    throw new AppError('ConflictError', `Table ${def.name} would share storage with ${owner.name}`, {
+      name: `"${physical}" already belongs to ${owner.name}`,
+    })
 
   // EDS-3 (review finding 10): a binding written by hand (POST /api/table_def)
   // is checked against the live source — it must exist, be allowlisted, and
@@ -568,7 +574,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       await tx.unsafe(ddl)
       if (def.kind === 'sub_table')
         await tx.unsafe(
-          `create index "${tableName(def.name)}_parent_idx" on ${quoteRelation(relation)} ("parent", "position")`,
+          `create index ${quoteIdent(`${tableName(def.name)}_parent_idx`)} on ${quoteRelation(relation)} ("parent", "position")`,
         )
       await applyRls(tx, def, relation)
     }
@@ -581,6 +587,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
 // definition, columns, physical table, and every live pointer at it.
 export async function deleteTable(name: string, user = 'Administrator'): Promise<void> {
   const meta = await getMeta(name)
+  assertNotSystemWritten(meta, 'deleted')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
@@ -609,7 +616,10 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
     join table_def td on td.name = cd.parent
     where cd.column_type = 'Reference' and cd.reference_table = 'Table'
       and cd.parent <> ${meta.name}
-      and td.kind <> 'settings' and td.data_source is null`
+      and td.kind <> 'settings' and td.data_source is null
+      -- #432: history survives its Table. Version, Import Log, Email Queue
+      -- and Notification Log rows keep naming a Table that is gone.
+      and not td.system_written`
 
   const physical = quoteRelation(await tableRelation(meta.name))
   const files = await sql.begin(async (tx) => {
@@ -677,6 +687,7 @@ export async function renameColumn(
   user = 'Administrator',
 ): Promise<TableMeta> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'renamed or changed')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
   // BV1: a bound Table's storage belongs to the source. Renaming its column
@@ -696,7 +707,7 @@ export async function renameColumn(
 
   const target = to.trim()
   if (target === from) return meta
-  if (!/^[a-z][a-z0-9_]{0,63}$/.test(target))
+  if (!COLUMN_NAME_RE.test(target))
     throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
   if ((STANDARD_COLUMNS as readonly string[]).includes(target))
     throw new AppError('ValidationError', `${target} is a standard column name`)
@@ -709,7 +720,7 @@ export async function renameColumn(
 
   await sql.begin(async (tx) => {
     if (hasStorage)
-      await tx.unsafe(`alter table ${relation} rename column "${from}" to "${target}"`)
+      await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
     // A Sub-table's children name their column on every row, in
@@ -729,7 +740,7 @@ export async function renameColumn(
     // find it. Rename it to match.
     if (column.unique && hasStorage)
       await tx.unsafe(
-        `alter table ${relation} rename constraint "${physical}_${from}_uq" to "${physical}_${target}_uq"`,
+        `alter table ${relation} rename constraint ${quoteIdent(`${physical}_${from}_uq`)} to ${quoteIdent(`${physical}_${target}_uq`)}`,
       )
     // The two places this Table names its own column. Left stale, the id
     // pattern would stop resolving and the list would lose its title.

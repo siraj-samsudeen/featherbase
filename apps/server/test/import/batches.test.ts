@@ -261,11 +261,12 @@ describe('#207: deleting what one import created', () => {
       run_id: 'twice',
     })
     await admin.post(`/api/import/batches/${batch}/delete_tables`, {})
-    // The log rows went with the Table (DEL-R4 sweeps live pointers), so the
-    // batch is simply gone — a 404, not a crash.
-    await expect(admin.post(`/api/import/batches/${batch}/delete_tables`, {})).rejects.toMatchObject(
-      { status: 404 },
-    )
+    // #432: import history survives its Table, so the batch is still there,
+    // its Table reads as gone, and a second delete has nothing left to do.
+    expect(await admin.post(`/api/import/batches/${batch}/delete_tables`, {})).toEqual({
+      deleted: [],
+      refused: [],
+    })
   })
 
   test('a non-System-Manager cannot delete a batch of Tables', async ({ admin, createUser }) => {

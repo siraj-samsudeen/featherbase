@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
+import { resolvedRelation } from './platform-schema'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -99,6 +100,9 @@ export interface TableMeta {
   // #74: true for platform tables created by the migration chain. The Admin
   // sidebar groups (never hides) these; POST/PUT /api/table_def reject it.
   system: boolean
+  // #432: rows are written by the server's own code alone; every public write
+  // path refuses the Table for every principal (system-written.ts).
+  system_written?: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes
   // dispatch through sources/ (see sources/dispatch.ts).
@@ -229,6 +233,9 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
     overrideTableExists = Boolean(row)
   }
   if (!overrideTableExists) return
+  // #432: a system-written Table's metadata is the platform's alone; an
+  // override (even one that pre-dates the flag) never reshapes it.
+  if (meta.system_written) return
   const overrides = await sql<{ column_name: string | null; property: string; value: string }[]>`
     select column_name, property, value from metadata_override where table_name = ${name}`
   for (const o of overrides) {
@@ -315,6 +322,17 @@ export async function getMeta(name: string): Promise<TableMeta> {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
     row_key: physicalRowKey(name),
     columns,
+  }
+
+  // #432: system-written belongs to the storage, not to the definition's own
+  // flag — any Table that resolves to a system-written Table's relation is
+  // system-written too, whatever its kind or letter case. (The column exists
+  // from 0109 on; earlier migrations load meta without it.)
+  if ('system_written' in dt && !meta.system_written) {
+    const relation = resolvedRelation(dt as { name: string })
+    const owners = await sql<{ name: string; physical_schema: string | null; physical_relation: string | null }[]>`
+      select name, physical_schema, physical_relation from table_def where system_written`
+    if (owners.some((o) => resolvedRelation(o) === relation)) meta.system_written = true
   }
 
   // EDS-7/EDS-13: surface the bound source's access mode and engine on the

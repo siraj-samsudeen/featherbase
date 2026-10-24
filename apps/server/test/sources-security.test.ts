@@ -8,18 +8,18 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
-import { config } from '../src/config'
+import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { invalidateSources } from '../src/sources/registry'
 
 const EXT_URL_ENV = 'SEC_FIXTURE_URL'
-process.env[EXT_URL_ENV] = config.databaseUrl
+process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
 
 let cli: ReturnType<typeof postgres>
 
 beforeAll(async () => {
-  cli = postgres(config.databaseUrl, { max: 2 })
+  cli = postgres(EXTERNAL_DATABASE_URL, { max: 2 })
   await cli.unsafe(`drop schema if exists sec_fixture cascade`)
   await cli.unsafe(`drop schema if exists sec_archive cascade`)
   await cli.unsafe(`create schema sec_fixture`)

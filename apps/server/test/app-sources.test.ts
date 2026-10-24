@@ -9,17 +9,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import { test } from './pg-test'
-import { config } from '../src/config'
+import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 
 const ENV_VAR = 'APPSRC_FIXTURE_URL'
-process.env[ENV_VAR] = config.databaseUrl
+process.env[ENV_VAR] = EXTERNAL_DATABASE_URL
 
 let cli: ReturnType<typeof postgres>
 
 beforeAll(async () => {
-  cli = postgres(config.databaseUrl, { max: 2 })
+  cli = postgres(EXTERNAL_DATABASE_URL, { max: 2 })
   await cli.unsafe(`drop schema if exists appsrc cascade`)
   await cli.unsafe(`create schema appsrc`)
   await cli.unsafe(`
