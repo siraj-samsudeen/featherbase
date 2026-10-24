@@ -14,7 +14,7 @@ The project was developed under the working name `frappe-clone` and became
 Featherbase in July 2026. That name now survives only where it is a dated
 record of the past, and every one of those is deliberate — do not sweep them:
 
-- dated `PROGRESS.md` entries, and the generated
+- dated `PROGRESS.md` entries (the log is frozen since 23-Oct-2026), and the generated
   `docs/archive/harness-2026/site/*.html` dumps of them;
 - `docs/adr/0006-stack-react-hono-postgres.md`, which records the working name
   as part of the decision it documents;
@@ -61,8 +61,9 @@ the calculus changes.
 Here that means: `openspec/specs/` carries the behavior judgment and acceptance
 criteria; the OpenSpec section below defines how behavior changes go through it;
 `docs/TESTING.md` is the single living doc for how the suites are built and
-run; `PROGRESS.md` and `docs/adr/` are the append-only history — what happened,
-and what was decided and why.
+run; `docs/adr/` is the append-only record of what was decided and why, and what
+happened lives in the pull requests, their issues and the OpenSpec changes.
+`PROGRESS.md` is a frozen historical log (retired 23-Oct-2026) — do not add to it.
 
 The anti-pattern this retires: **a document that describes another artifact
 at a distance will drift**, and nothing catches it. Statuses, inventories
@@ -108,7 +109,7 @@ belongs, dated.
   server-side PDF printing
 - `apps/web` — React 19 + Vite + TypeScript, TanStack Router + TanStack Query,
   Tailwind v4. There is **no** shadcn/ui and **no** react-hook-form — UI is
-  built from the shared `.fc-*` component classes described in `PROGRESS.md`
+  built from the shared components of the Shop Floor design system (below)
 - `packages/shared` — types and contracts used by both sides
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
@@ -173,7 +174,7 @@ once per run, outside any sandbox transaction. It complements
 
 ## Session protocol
 
-1. **Orient.** Read `PROGRESS.md` (newest entry first), `git log --oneline -20`,
+1. **Orient.** Read the issue you are picking up (and its OpenSpec change, if any), `git log --oneline -20`,
    the open issues labelled `ready-for-agent` (`gh issue list --label
    ready-for-agent`), and `openspec/specs/`. Do not re-derive decisions already
    recorded in `docs/adr/`.
@@ -182,16 +183,15 @@ once per run, outside any sandbox transaction. It complements
    writing new code. If the app is broken, fixing it IS the session's task.
 3. **Pick ONE piece of work.** Take direction from the `ready-for-agent`
    issues, `openspec/specs/` and active `openspec/changes/`,
-   `docs/design/execution-plan.md` (milestones M1–M5), and the "next" note at
-   the end of the latest `PROGRESS.md` entry. Do not start a second thread of
+   and `docs/design/execution-plan.md` (milestones M1–M5). Do not start a second thread of
    work in the same session.
 4. **Implement it fully.** Small, complete, working — not broad and half-done.
 5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
    the running server, and the browser via Playwright for UI. Unit tests alone
    do not count.
-6. **Update state.** Only after verification: append a dated entry to
-   `PROGRESS.md` (what was done, how it was verified, what to pick up next, any
-   gotchas), and commit. Leave the working tree clean.
+6. **Update state.** Only after verification: record what was done, how it was
+   verified, what to pick up next and any gotchas in the pull request body (and a
+   comment on the issue), and commit. Leave the working tree clean.
 7. **Hand off.** Tell the owner how to try it: the URL and login, which data to
    look at, a few things worth trying, and any known gaps.
 
@@ -211,7 +211,7 @@ command, that is the first finding.
   command someone else can run says so. Record the command, not the verdict.
 - Never leave the app in a non-booting state at the end of a session. If you run
   out of time mid-change, revert or stash to the last working state and record
-  where you stopped in `PROGRESS.md`.
+  where you stopped in the pull request or issue.
 - Commit at every stable point, not just at session end.
 - Keep `./init.sh` working at all times; if setup steps change, update it in the
   same commit.

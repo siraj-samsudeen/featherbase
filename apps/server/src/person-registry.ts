@@ -67,7 +67,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   },
   service_account: { row_id: id, label: text },
   person_id_map: { '*': code },
-  access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code },
+  access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
   assignment_rule: { ref_table: code, description: text, assign_condition: text, assign_to_field: code, last_user: id },

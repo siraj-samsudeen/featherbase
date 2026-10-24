@@ -207,6 +207,17 @@ async function storeOf(snapshotId: string, plant: string) {
   }
 }
 
+/** #409: the active snapshot's name for each store, for a store switcher whose stores carry no label. */
+export async function snapshotStoreNames(plants: string[]): Promise<Record<string, string>> {
+  const snap = plants.length ? await activeSnapshot(SALES_TARGET_DATASET) : null
+  if (!snap) return {}
+  const rows = await sql`
+    select plant_code, min(store_name) as store_name from sales_target_snapshot_row
+    where snapshot_id = ${snap.row_id} and plant_code = any(${plants}::text[]) and store_name is not null
+    group by plant_code`
+  return Object.fromEntries(rows.map((r) => [String(r.plant_code), String(r.store_name)]))
+}
+
 /** Live fall-through: the dataset's own SQL, scoped to this reader, run at the source. */
 async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Grouped[]; asOf: string | null; targetRows: number; store: { store_name: string | null; short_code: string | null } }> {
   const { _liveReader } = await import('./datasets/sales-target-mtd')

@@ -20,6 +20,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
+import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -929,6 +930,19 @@ app.get('/api/people/:id/identities', async (c) => {
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
+// #429: people who signed in but hold no role yet. System Manager only; the
+// list carries an address's domain, never the address.
+app.get('/api/people/waiting_for_access', async (c) => {
+  await assertSystemManager(who(c))
+  const people = await listWaitingForAccess()
+  return c.json({ people, count: people.length })
+})
+
+app.get('/api/people/waiting_for_access/count', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ count: await countWaitingForAccess() })
+})
+
 // person-rename: ids are opaque, so screens ask for names (batch), and the
 // Person picker searches what people know someone by.
 app.post('/api/people/names', async (c) => {
@@ -1673,8 +1687,8 @@ app.delete('/api/tags/:table/:name/:tag', async (c) => {
   return c.json({ ok: true })
 })
 
-// EML-001: send a test email from the configured account (delivered to the
-// dev sink). EML-002: queue an email for background delivery.
+// EML-001: send a test email from the configured account (through SMTP when
+// SMTP_HOST is set, otherwise the Email Sink). EML-002: queue an email for background delivery.
 app.post('/api/send_test_email', async (c) => {
   await assertSystemManager(who(c))
   const { to } = (await c.req.json()) as { to?: string }

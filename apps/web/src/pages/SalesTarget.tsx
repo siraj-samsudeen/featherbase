@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { buttonClasses } from '../components/ui'
+import { Notice, Select, buttonClasses } from '../components/ui'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, getToken, signOut } from '../lib/api'
 import { Logo } from '../components/Logo'
@@ -11,23 +11,47 @@ import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '.
 // owns: the identity chrome (who, which store, which period), one fresh
 // embed-session request per opening, honest empty/error states that can never
 // read as zero sales, and sign-out. The server decides the assignment and the
-// embed origin; the browser chooses nothing.
+// embed origin. #409: a reader with several stores picks one of the stores the
+// server listed; the server checks the pick against their own stores again.
 
 interface Me {
   /** null for a person who has none — StyleHR people sign in by ID and have no username. */
   username: string | null
   display_name: string
-  assignment: {
-    plant_code: string
-    store_label: string | null
-    material_groups: string[]
-    sections?: string[]
-    scope_basis?: ScopeBasis[]
-  } | null
+  /** #409: every store the reader can open, one at a time; one entry for most readers. */
+  stores: StoreScope[]
+  default_store: string | null
   period_start: string
   period_end: string
   embed_origin: string
 }
+
+interface StoreScope {
+  plant_code: string
+  store_name: string | null
+  sections: string[]
+  scope_basis: ScopeBasis[]
+}
+
+// The last store a reader chose, per viewer on this device. A convenience only: unreadable storage,
+// or a store the server no longer lists for them, falls back to the server's default.
+const storeKey = (viewer: string | undefined) => `featherbase.sales-target.store.${viewer ?? ''}`
+function rememberedStore(viewer: string | undefined): string | null {
+  try {
+    return localStorage.getItem(storeKey(viewer))
+  } catch {
+    return null
+  }
+}
+function rememberStore(viewer: string | undefined, store: string | null) {
+  try {
+    if (store) localStorage.setItem(storeKey(viewer), store)
+    else localStorage.removeItem(storeKey(viewer))
+  } catch {
+    /* storage blocked: the choice lasts this visit only */
+  }
+}
+const storeTitle = (s: StoreScope) => (s.store_name ? `${s.plant_code} — ${s.store_name}` : s.plant_code)
 
 // Why the reader sees these rows, in the store's own words — leadership first.
 // Exhaustive: a basis the server adds without a label here is a type error, not a silent omission.
@@ -45,8 +69,6 @@ type Embed =
   | { kind: 'no-assignment' }
   | { kind: 'not-configured' }
   | { kind: 'no-access' }
-  // The server refused this person's report with a sentence written for them (e.g. two stores); shown verbatim.
-  | { kind: 'refused'; message: string }
   | { kind: 'error'; message: string }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
@@ -150,6 +172,11 @@ export function SalesTargetPage() {
   const [showNoTargetNoSale, setShowNoTargetNoSale] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
+  const [store, setStore] = useState<string | null>(null)
+  // Said once when a store the reader had open is no longer theirs and the report fell back (#409).
+  const [storeNotice, setStoreNotice] = useState<string | null>(null)
+
+  // Who the reader is and which stores they have — once per account.
   useEffect(() => {
     const seq = ++openingSeq
     const controller = new AbortController()
@@ -159,21 +186,70 @@ export function SalesTargetPage() {
       try {
         const identity = await api.get<Me>('/api/sales_target/me')
         if (!current()) return
+        const remembered = rememberedStore(user?.row_id)
+        setStore(identity.stores.some((s) => s.plant_code === remembered) ? remembered : identity.default_store)
         setMe(identity)
+      } catch (err) {
+        if (!current()) return
+        // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
+        if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
+        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+      }
+    })()
+    return () => controller.abort()
+  }, [user?.row_id])
 
+  // One opening per store: the cached table and a fresh embed session, for the store on show.
+  useEffect(() => {
+    if (!me) return
+    const seq = ++openingSeq
+    const controller = new AbortController()
+    abortRef.current = controller
+    const current = () => seq === openingSeq && !controller.signal.aborted
+    setPre({ kind: 'loading' })
+    setEmbed({ kind: 'loading' })
+    // Named only when there is a choice to make; the server re-checks it against the reader's own stores.
+    const query = store && me.stores.length > 1 ? `?store=${encodeURIComponent(store)}` : ''
+    // A 403 means the role was taken away OR the store named is no longer theirs. Ask /me which:
+    // only /me itself refusing is "no access"; a store that dropped off the list falls back to
+    // the default store with a note. Once per opening, though both calls may answer 403.
+    let forbidden = false
+    const onForbidden = async () => {
+      if (forbidden) return
+      forbidden = true
+      try {
+        const fresh = await api.get<Me>('/api/sales_target/me')
+        if (!current()) return
+        const lost = query && store ? me.stores.find((s) => s.plant_code === store) : undefined
+        if (lost && !fresh.stores.some((s) => s.plant_code === lost.plant_code)) {
+          rememberStore(user?.row_id, null)
+          setStoreNotice(`${storeTitle(lost)} is no longer assigned to you, so your report opened on your default store.`)
+          setStore(fresh.default_store)
+          setMe(fresh)
+          return
+        }
+        setEmbed({ kind: 'error', message: 'HTTP 403' })
+      } catch (err) {
+        if (!current()) return
+        if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
+        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+      }
+    }
+    ;(async () => {
+      try {
         // Deliberately NOT awaited before the embed call: the snapshot read is
         // the fast path and must not queue behind a session mint.
         void (async () => {
           const t0 = performance.now()
           try {
-            const res = await fetch('/api/sales_target/report', {
+            const res = await fetch(`/api/sales_target/report${query}`, {
               headers: { authorization: `Bearer ${getToken() ?? ''}` },
               signal: controller.signal,
             })
             const body = (await res.json().catch(() => ({}))) as Report & { no_assignment?: boolean }
             const ms = performance.now() - t0
             if (!current()) return
-            if (res.status === 403) setEmbed({ kind: 'no-access' }) // role taken away: the plain card, never a red "Numbers unavailable"
+            if (res.status === 403) void onForbidden() // never a red "Numbers unavailable"
             else if (body.no_assignment) setPre({ kind: 'no-assignment' })
             else if (res.ok) setPre({ kind: 'ready', report: body, ms })
             else setPre({ kind: 'error', message: `HTTP ${res.status}` })
@@ -183,7 +259,7 @@ export function SalesTargetPage() {
           }
         })()
 
-        const res = await fetch('/api/sales_target/embed_session', {
+        const res = await fetch(`/api/sales_target/embed_session${query}`, {
           method: 'POST',
           headers: { authorization: `Bearer ${getToken() ?? ''}` },
           signal: controller.signal,
@@ -200,23 +276,26 @@ export function SalesTargetPage() {
           window.location.href = '/featherbase/login'
           return
         }
-        // Role taken away mid-session: the same plain card as at the start (#404).
-        if (res.status === 403) setEmbed({ kind: 'no-access' })
+        // Role taken away mid-session (the same plain card as at the start, #404), or the store is no longer theirs.
+        if (res.status === 403) void onForbidden()
         else if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
         else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
-          setEmbed({ kind: 'frame', src: `${identity.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
+          setEmbed({ kind: 'frame', src: `${me.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
         else setEmbed({ kind: 'error', message: body.error?.message ?? `HTTP ${res.status}` })
       } catch (err) {
         if (!current()) return
-        // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
-        if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else if (err instanceof ApiError && err.fields?.code === 'multiple_stores') setEmbed({ kind: 'refused', message: err.message })
-        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
       }
     })()
     return () => controller.abort()
-  }, [user?.row_id])
+  }, [me, store])
+
+  function switchStore(next: string) {
+    rememberStore(user?.row_id, next)
+    setStoreNotice(null)
+    setStore(next)
+  }
 
   async function logout() {
     // Expire the cookie and end the session before local state goes. #411: a
@@ -235,17 +314,16 @@ export function SalesTargetPage() {
 
   // #3783: when the assignment was derived from the Store Sections maps, name the Sections —
   // that is the fact the store maintains, and what a reader recognises.
-  const sections = me?.assignment?.sections ?? []
-  const storeName = me?.assignment
-    ? me.assignment.store_label ? `${me.assignment.plant_code} — ${me.assignment.store_label}` : me.assignment.plant_code
-    : 'no store assigned'
+  const scope = me?.stores.find((s) => s.plant_code === store) ?? null
+  const sections = scope?.sections ?? []
+  const storeName = scope ? storeTitle(scope) : 'no store assigned'
   // Up to three Sections are named; more are counted, with the list one tap or key press away (a
   // native disclosure, so phones and keyboards reach it) — a Store Manager runs every Section,
   // and 57 names bury the figures (#3783).
-  const wholeStore = me?.assignment?.scope_basis?.includes('store_manager') ?? false
+  const wholeStore = scope?.scope_basis.includes('store_manager') ?? false
   const sectionLabel = sections.length <= 3 ? sections.join(' · ') : `${wholeStore ? 'Whole store · ' : ''}${sections.length} Sections`
   const period = me ? `${fmtDate(me.period_start)} to ${fmtDate(me.period_end)}` : ''
-  const basis = me?.assignment?.scope_basis ?? []
+  const basis = scope?.scope_basis ?? []
   const basisLine = SCOPE_BASES.filter((b) => basis.includes(b)).map((b) => BASIS_LABEL[b]).join(' · ')
 
   return (
@@ -254,7 +332,8 @@ export function SalesTargetPage() {
         <div className="flex items-center gap-3">
           <Logo className="h-7 w-7 rounded-md" />
           <div>
-            <div className="text-sm font-semibold text-[var(--color-ink)]" data-testid="identity">
+            {/* Polite live region: a store switch is announced, not only repainted. */}
+            <div className="text-sm font-semibold text-[var(--color-ink)]" data-testid="identity" aria-live="polite">
               {me ? (
                 <>
                   {me.display_name} · {storeName}
@@ -282,7 +361,23 @@ export function SalesTargetPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* #409: a reader with several stores reads one at a time; the choice is theirs to switch. */}
+          {me && me.stores.length > 1 && store && (
+            <Select
+              aria-label="Store"
+              data-testid="store-switcher"
+              className="w-auto"
+              value={store}
+              onChange={(e) => switchStore(e.target.value)}
+            >
+              {me.stores.map((s) => (
+                <option key={s.plant_code} value={s.plant_code}>
+                  {storeTitle(s)}
+                </option>
+              ))}
+            </Select>
+          )}
           {/* person-identities: a Team Leader reaches their sign-in methods
               (e.g. to link Google) from the report they land on. */}
           <a href="/featherbase/admin/sign-in-methods" className={buttonClasses()} data-testid="sign-in-methods-link">
@@ -295,6 +390,11 @@ export function SalesTargetPage() {
       </header>
 
       <main className="flex flex-1 flex-col p-3">
+      {storeNotice && (
+        <div className="mb-3" data-testid="store-notice">
+          <Notice>{storeNotice}</Notice>
+        </div>
+      )}
       {/* Pre-generated read, above the live Dive. Same numbers, served from the
           dataset snapshot; it paints while the embed session is still being minted. */}
       {/* One report, not two: when the live Dive is on the page it IS the report, and the cached
@@ -303,7 +403,7 @@ export function SalesTargetPage() {
           disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
           live report is not there — not configured, failed, or still opening. */}
       {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
-      {me && embed.kind !== 'no-access' && embed.kind !== 'refused' && (
+      {me && embed.kind !== 'no-access' && (
       <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
@@ -471,9 +571,6 @@ export function SalesTargetPage() {
                   Ask your manager or administrator to give you access.
                 </p>
               </>
-            )}
-            {embed.kind === 'refused' && (
-              <p className="text-[var(--color-ink)]" data-testid="embed-refused">{embed.message}</p>
             )}
             {embed.kind === 'not-configured' && (
               // Quiet, not red: this deployment simply has no live Dive. The numbers
