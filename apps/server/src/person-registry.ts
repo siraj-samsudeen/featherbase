@@ -115,6 +115,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   revoked_session: { jti: code, person_id: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
+  sales_target_snapshot_name: { '*': code },
   sales_target_snapshot_row: { '*': code },
   saved_view: { ref_table: code, label: text, filters: filters('ref_table') },
   scheduled_job: { '*': code, description: text },
