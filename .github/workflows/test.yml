@@ -1,22 +1,52 @@
-# CI: unit/component suites and the Playwright e2e suite, in parallel jobs.
+# CI: static checks, the unit/component suites and the Playwright e2e suite,
+# in parallel jobs.
 #
-# Each job gets its own Postgres service container (17; the preflight job, 18). The service's
-# POSTGRES_DB/POSTGRES_USER env replaces the role/database bootstrap that
-# init.sh performs on a developer machine (init.sh assumes brew or
-# pg_ctlcluster, neither of which applies here). Everything else the app
-# needs in the database is created by `pnpm --filter server migrate` +
-# `patches`, exactly as init.sh runs them; the RLS suite creates its own
-# login role for the run. The e2e specs seed their own documents.
+# Each job that touches a database gets its own Postgres service container
+# (17; the preflight job, 18). The service's POSTGRES_DB/POSTGRES_USER env
+# replaces the role/database bootstrap that init.sh performs on a developer
+# machine (init.sh assumes brew or pg_ctlcluster, neither of which applies
+# here). Everything else the app needs in the database is created by
+# `pnpm --filter server migrate` + `patches`, exactly as init.sh runs them;
+# the RLS suite creates its own login role for the run. The e2e specs seed
+# their own documents.
+#
+# Shape of the PR gate (measured 24-Oct-2026 before this layout: `unit` took
+# ~11 min because the server suite (~6 min) and the web suite (~2.7 min) ran
+# back to back in one job; e2e took ~6.5 min beside it):
+#
+#   checks ─────────────┐
+#   unit-server 1/3 ────┤
+#   unit-server 2/3 ────┼──> unit   (merges server coverage, enforces the
+#   unit-server 3/3 ────┤            thresholds, fails if anything above did)
+#   unit-web ───────────┘
+#   release-preflight-pg18
+#   changes ──> e2e     (PRs: only when the web/e2e surface changed, or the
+#                        PR carries the `run-e2e` label; main: always)
+#
+# The three names `unit`, `e2e` and `release-preflight-pg18` are what merge
+# automation waits on — keep them stable. A skipped `e2e` reports the
+# `skipped` conclusion, which GitHub treats as passing for a required check,
+# so a server-only PR is never left waiting on it.
 name: test
 
 on:
   pull_request:
+    # `labeled` so that adding `run-e2e` to a PR re-runs CI with e2e. A
+    # re-run of an older run would not see the label: it replays that run's
+    # original event payload.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches: [main]
+  workflow_dispatch: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A new push to a PR supersedes the old run. On main every commit is a
+  # deploy (prod auto-deploys from main), so every commit gets its own full
+  # run, e2e included. A shared group would not guarantee that even without
+  # cancel-in-progress: GitHub keeps one PENDING run per group, so a third
+  # quick merge would replace the second's queued run. Hence the run id.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Matches the default in apps/server/src/config.ts and init.sh.
@@ -29,9 +59,111 @@ env:
   ALLOW_MOCK_OAUTH: '1'
 
 jobs:
-  unit:
+  # Decides whether e2e runs. On a PR it runs when the change reaches what
+  # the browser suite exercises beyond the server suite: the web app and its
+  # specs (apps/web/**, which holds e2e/ and playwright.config.ts), shared
+  # contracts, runtime apps, dependencies, or this workflow. A server-only
+  # change is covered by the server suite (1,300+ API tests against a real
+  # database) and the web component suite, which runs the server in-process;
+  # the full e2e still runs on the merge to main. Label a PR `run-e2e` to
+  # force it — e.g. a server change to a route the UI depends on.
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    outputs:
+      e2e: ${{ steps.decide.outputs.e2e }}
+    steps:
+      # A PR checks out its merge commit, whose first parent is the base
+      # branch tip — so HEAD^1..HEAD is exactly what merging would change.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether e2e runs
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          FORCE: ${{ contains(github.event.pull_request.labels.*.name, 'run-e2e') }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            reason="$EVENT runs everything"; e2e=true
+          elif [ "$FORCE" = true ]; then
+            reason="PR carries the run-e2e label"; e2e=true
+          else
+            matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
+              '^(apps/web/|packages/|runtime-apps/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
+            if [ -n "$matched" ]; then
+              reason="PR touches the e2e surface: $(echo "$matched" | head -5 | tr '\n' ' ')"; e2e=true
+            else
+              reason="PR does not touch the e2e surface; it runs on merge to main"; e2e=false
+            fi
+          fi
+          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+          echo "e2e: $e2e — $reason" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Everything that needs no database: spec/catalog/guard validations and
+  # both typechecks.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input: pnpm/action-setup reads the `packageManager`
+      # field from package.json, so the CI pnpm always matches the repo.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The repository-pinned OpenSpec validates both main capabilities and
+      # active changes strictly.
+      - name: Validate behavior specifications
+        run: pnpm check:specs
+
+      - name: Validate capability catalog
+        run: pnpm check:capabilities
+
+      - name: Validate E2E suite uses DSL fixtures
+        run: pnpm check:e2e-dsl
+
+      # This repository is public. Covers tracked text files only: Aadhaar-like
+      # numbers (Verhoeff-valid), Indian mobile numbers and client-domain
+      # emails. It does NOT catch names, employee codes, statistics or binary
+      # files (pdf/xlsx/docx/images) — those rely on review. Synthetic values
+      # are listed in tools/check-sensitive.allow.
+      - name: Check for personal data in tracked files
+        run: pnpm check:sensitive
+
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
+
+      - name: Typecheck server
+        run: pnpm --filter server typecheck
+
+      - name: Typecheck web
+        run: pnpm --filter web typecheck
+
+  # The server suite, split by file across three runners. Each shard has its
+  # own Postgres and MySQL, so the reasons the suite runs files one at a time
+  # (one shared database, one `background_job` queue) do not cross shards.
+  #
+  # Coverage thresholds are zeroed HERE because a shard only sees its share
+  # of the files and would fail the floor on partial coverage. Each shard
+  # writes a Vitest blob report carrying its raw coverage; the `unit` job
+  # merges them and enforces the real thresholds from vitest.config.ts.
+  unit-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       # sources-mysql.test.ts runs only when this is set (checkouts without a
       # MySQL skip it); CI provides one so the mysql driver is exercised.
@@ -82,8 +214,6 @@ jobs:
           # a hand-maintained approximation of its schema.
           fetch-depth: 0
 
-      # No `version` input: pnpm/action-setup reads the `packageManager`
-      # field from package.json, so the CI pnpm always matches the repo.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -93,25 +223,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # The repository-pinned OpenSpec validates both main capabilities and
-      # active changes strictly.
-      - name: Validate behavior specifications
-        run: pnpm check:specs
-
-      - name: Validate capability catalog
-        run: pnpm check:capabilities
-
-      - name: Validate E2E suite uses DSL fixtures
-        run: pnpm check:e2e-dsl
-
-      # This repository is public. Covers tracked text files only: Aadhaar-like
-      # numbers (Verhoeff-valid), Indian mobile numbers and client-domain
-      # emails. It does NOT catch names, employee codes, statistics or binary
-      # files (pdf/xlsx/docx/images) — those rely on review. Synthetic values
-      # are listed in tools/check-sensitive.allow.
-      - name: Check for personal data in tracked files
-        run: pnpm check:sensitive
 
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
@@ -123,39 +234,136 @@ jobs:
       - name: Install Chromium for server-side PDF tests
         run: pnpm --filter server exec playwright install --with-deps chromium
 
-      - name: Typecheck server
-        run: pnpm --filter server typecheck
-
-      - name: Typecheck web
-        run: pnpm --filter web typecheck
-
       - name: Migrate and patch database
         run: |
           pnpm --filter server migrate
           pnpm --filter server patches
 
-      # Both vitest suites (server API tests, web component tests) run the
-      # server in-process against the service database. Their configs pin
-      # fileParallelism: false and a shared globalSetup that empties
-      # tab_background_job — do not parallelize around them here.
-      #
-      # `test:coverage` REPLACES the plain `pnpm -r test` rather than being
-      # added beside it: instrumenting the suites once costs about 15% of wall
-      # clock (measured back to back — server 133s→153s, web 18s→22s, shared
-      # under a second either way), where running them twice would cost 100%.
-      # Each config carries a `coverage.thresholds` floor that only ever rises
-      # (#226); Vitest exits non-zero when a suite falls below its floor, so a
-      # coverage regression fails this job exactly like a failing test does.
-      - name: Run unit and component suites with coverage
-        run: pnpm -r test:coverage
+      # The suite's config pins fileParallelism: false and a shared
+      # globalSetup that empties tab_background_job — do not parallelize
+      # around them within a shard.
+      - name: Run server suite shard ${{ matrix.shard }}/3 with coverage
+        run: >-
+          pnpm --filter server exec vitest run --coverage
+          --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
+          --coverage.thresholds.functions=0 --coverage.thresholds.branches=0
+          --shard=${{ matrix.shard }}/3
+          --reporter=default --reporter=blob
+
+      # upload-artifact skips dot-directories unless told otherwise.
+      - name: Upload shard report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-blob-${{ matrix.shard }}
+          path: apps/server/.vitest-reports/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Prove app authorization across real commit and lock waits
+        if: matrix.shard == 1
         run: |
           createdb --maintenance-db="$DATABASE_URL" featherbase_issue279_access_commit_e2e
           export DATABASE_URL="${DATABASE_URL%/*}/featherbase_issue279_access_commit_e2e"
           pnpm --filter server migrate
           pnpm --filter server patches
           APP_ACCESS_COMMIT_PROOF=1 pnpm --filter server test test/app-access-commit.test.ts
+
+  # The web component suite (it runs the server in-process against its own
+  # database) and the shared package, each against its own coverage floor.
+  unit-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
+
+      - name: Migrate and patch database
+        run: |
+          pnpm --filter server migrate
+          pnpm --filter server patches
+
+      # `test:coverage` REPLACES the plain `test` rather than being added
+      # beside it: instrumenting a suite once costs about 15% of wall clock
+      # (measured back to back — web 18s→22s, shared under a second either
+      # way), where running it twice would cost 100%. Each config carries a
+      # `coverage.thresholds` floor that only ever rises (#226); Vitest exits
+      # non-zero when a suite falls below its floor, so a coverage regression
+      # fails this job exactly like a failing test does.
+      - name: Run shared and web suites with coverage
+        run: |
+          pnpm --filter shared test:coverage
+          pnpm --filter web test:coverage
+
+  # The verdict for the unit layer, under the name merge automation waits
+  # on. Merging needs no database: Vitest replays the shards' results and
+  # coverage from their blob reports without running globalSetup.
+  unit:
+    needs: [checks, unit-server, unit-web]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fail if a check or suite failed
+        if: >-
+          needs.checks.result != 'success' ||
+          needs.unit-server.result != 'success' ||
+          needs.unit-web.result != 'success'
+        run: |
+          echo "checks=${{ needs.checks.result }} unit-server=${{ needs.unit-server.result }} unit-web=${{ needs.unit-web.result }}"
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: server-blob-*
+          path: apps/server/.vitest-reports
+          merge-multiple: true
+
+      # Fails below the server's coverage.thresholds, exactly as the
+      # unsharded `test:coverage` did.
+      - name: Merge server shards and enforce coverage thresholds
+        run: pnpm --filter server exec vitest run --merge-reports --coverage
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
   # that only exist there (publish_generated_columns, #399). The full suite
@@ -203,7 +411,11 @@ jobs:
       - name: Run the release preflight suite on PostgreSQL 18
         run: pnpm --filter server test test/release-preflight.test.ts
 
+  # Fails closed: if `changes` itself failed, e2e runs rather than reporting
+  # a passing `skipped`.
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
