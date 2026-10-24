@@ -27,8 +27,8 @@ go and which address to use (#430).
 
 ## Impact
 
-- New System Settings field `invitation_email_intro` (migration 0108) and a
-  `invitation_sent_at` column on sign-in identities (migration 0109).
+- New System Settings field `invitation_email_intro` (migration 0111) and a
+  `invitation_sent_at` column on sign-in identities (migration 0112).
 - The invite endpoint accepts `send_invitation_email` and reports
   `invitation_email`; new `POST /api/identities/:id/resend_invitation`.
 - The Person form's sign-in methods panel gains the checkbox, a resend action
