@@ -451,7 +451,7 @@ export function SalesTargetPage() {
                   checked={showNoTargetNoSale}
                   onChange={(e) => setShowNoTargetNoSale(e.target.checked)}
                 />
-                Show groups with no target or sales ({pre.report.total.no_target_no_sale})
+                Show subcategories with no target or sales ({pre.report.total.no_target_no_sale})
               </label>
             )}
             {pre.report.targets_unavailable && !pre.report.no_data_yet && (
