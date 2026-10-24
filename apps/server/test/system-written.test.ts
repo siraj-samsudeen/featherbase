@@ -337,6 +337,7 @@ describe('#432: every write entry point is covered', () => {
     'DELETE /api/identifiers/:id': 'person identifiers',
     'PATCH /api/identities/:identityId': 'person identities',
     'DELETE /api/identities/:identityId': 'person identities',
+    'POST /api/identities/:id/resend_invitation': 'person identities — sends the invitation email again (#430)',
     'DELETE /api/me/identities/:identityId': 'person identities',
     'DELETE /api/me/password': 'credentials',
     'POST /api/access_tokens': 'credentials',
