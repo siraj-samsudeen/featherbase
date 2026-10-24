@@ -37,3 +37,4 @@ export {
   type TableMatchQuality,
 } from './import'
 export { SCOPE_BASES, type ScopeBasis } from './sales-target'
+export { REALTIME_MAX_FRAME_BYTES, realtimeFrames } from './realtime'
