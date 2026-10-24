@@ -278,7 +278,9 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
         true as current, '' as assigner, true as pending_invite
       from sign_in_identity s join person p on p.row_id = s.person_id
       where s.subject is null and s.ended_at is null and s.pending_email = ${value}`
-    const held = new Set(rows.map((r) => String(r.person_id)))
+    // Only a current holder hides the invite: a former holder re-invited at
+    // the same address is still waiting to sign in.
+    const held = new Set(rows.filter((r) => r.current === true).map((r) => String(r.person_id)))
     rows.push(...invites.filter((r) => !held.has(String(r.person_id))))
   }
   // Only people this viewer may read: the Person permission and Data Scope

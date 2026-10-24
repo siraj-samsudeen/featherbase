@@ -205,6 +205,11 @@ describe('search respects who may read people (Codex review on #385)', () => {
     const both = await makePerson({ full_name: 'Both Bala', email: 'both.bala@x.test' })
     await inviteGoogleRaw(both, 'both.bala@x.test')
     expect((await admin.get<{ people: { person_id: string; pending_invite: boolean }[] }>('/api/identifiers?system=email&value=both.bala@x.test')).people.map((x) => [x.person_id, x.pending_invite])).toEqual([[both, false]])
+    // A former holder re-invited at that address still shows the invite.
+    const former = await makePerson({ full_name: 'Former Fathima' })
+    await addIdentifier(former, { system: 'email', value: 'former.f@x.test', valid_from: '2024-01-01', valid_to: '2025-01-01' }, 'Administrator')
+    await inviteGoogleRaw(former, 'former.f@x.test')
+    expect((await admin.get<{ people: { person_id: string; current: boolean; pending_invite: boolean }[] }>('/api/identifiers?system=email&value=former.f@x.test')).people.map((x) => [x.person_id, x.current, x.pending_invite])).toEqual([[former, false, false], [former, true, true]])
   })
 })
 
