@@ -219,8 +219,10 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     const res = await nobody.fetch('/api/sales_target/embed_session', { method: 'POST' })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ no_assignment: true })
-    const me = await nobody.get<{ assignment: unknown }>('/api/sales_target/me')
+    const me = await nobody.get<{ assignment: unknown; stores: unknown; default_store: unknown }>('/api/sales_target/me')
     expect(me.assignment).toBeNull()
+    expect(me.stores).toEqual([])
+    expect(me.default_store).toBeNull()
     expect(calls).toEqual([])
   })
 
@@ -235,6 +237,8 @@ describe('#3755 sales-target host: embed session from the current assignment', (
         plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'],
         sections: [], section_by_material_group: {}, scope_basis: ['assignment'],
       },
+      stores: [{ plant_code: '1501', store_name: 'ATK', sections: [], scope_basis: ['assignment'] }],
+      default_store: '1501',
       period_start: '2026-09-01',
       period_end: '2026-09-17',
       embed_origin: 'https://embed-motherduck.com',
@@ -345,10 +349,10 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       expect(res.status).toBe(200)
       expect(((await res.json()) as { source: string }).source).toBe('live')
       const rows = await sql`
-        select "user", operation, ref_table, reference_name, method from access_log
+        select "user", operation, ref_table, reference_name, method, scope from access_log
         where "user" = ${await idOf('test_employee_1')} and operation = 'view_report'`
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null })
+      expect(rows[0]).toMatchObject({ ref_table: 'sales_target_mtd', method: 'live', reference_name: null, scope: 'store=1501' })
       // The viewer cannot read the log of their own reads.
       expect((await api.fetch('/api/table/Access%20Log', { headers: r.headers })).status).toBe(403)
       // Nor the snapshot registry — that is a System Manager's view.
@@ -434,33 +438,127 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     })
   })
 
-  test('maps and assignment naming different stores are refused loudly, never mixed', async ({ admin, api }) => {
+  // #409: a person whose scope spans two stores reads one store at a time and switches between them.
+  // test_employee_3 is assigned at 1515 (no Section map there); RR-0103's Kurti Sections are at 1501.
+  test('a two-store person is served both stores; the default is the store with the most Sections', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
-    // test_employee_3 is assigned at 1515; RR-0103's Sections are at 1501.
     await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
     const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
     const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    expect(res.status).toBe(417)
-    const message = ((await res.json()) as { error: { message: string } }).error.message
-    expect(message).toContain('more than one store')
-    // #404: the refusal is written for the person, with the stores and who to ask — never an opaque id.
-    expect(message).not.toMatch(/psn_/)
-    expect(message).toContain('1501')
-    expect(message).toContain('1515')
-    expect(message).toMatch(/administrator/i)
+    expect(res.status).toBe(200)
+    const me = (await res.json()) as { stores: unknown; default_store: string; assignment: { plant_code: string; material_groups: string[] } }
+    expect(me.stores).toEqual([
+      { plant_code: '1501', store_name: null, sections: ['Kurti'], scope_basis: ['section_staff'] },
+      { plant_code: '1515', store_name: 'Kattakada', sections: [], scope_basis: ['assignment'] },
+    ])
+    // 1501 holds one Section, 1515 none: the default is 1501, and /me's assignment is that store's alone — never mixed.
+    expect(me.default_store).toBe('1501')
+    expect(me.assignment.plant_code).toBe('1501')
+    expect(me.assignment.material_groups).toEqual(['010505001', '010505002'])
   })
 
-  test('both refusals address the reader, name no id, and only the two-store one carries its own code', async ({ admin, api }) => {
+  test('more Sections outrank a lower store code; an equal count falls to the lowest store code', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    // test_employee_1 is assigned at 1501 (unmapped groups, no Section); RR-90001 works Kurti at 1515.
+    await setEmployeeCode(admin, 'test_employee_1', 'RR-90001')
+    let r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+    let me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { default_store: string; stores: { plant_code: string }[] }
+    expect(me.stores.map((s) => s.plant_code)).toEqual(['1501', '1515'])
+    expect(me.default_store).toBe('1515')
+
+    // An administrator assigns test_employee_4 a second store by an explicit row: a second store, not a broken report.
+    await admin.post('/api/save_row', { table: ASSIGNMENT_TABLE, row: { employee: await idOf('test_employee_4'), plant_code: '1501', store_label: 'ATK', material_group: '010909001' } })
+    r = await loginAs(api, 'test_employee_4', PASSWORDS.test_employee_4)
+    const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
+    expect(res.status).toBe(200)
+    me = (await res.json()) as typeof me
+    expect(me.stores.map((s) => s.plant_code)).toEqual(['1501', '1515'])
+    expect(me.default_store).toBe('1501')
+  })
+
+  test('the store parameter picks one of the person\'s own stores on /report and /embed_session; /me always lists all and names the default', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)
     await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
-    const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
-    const twoRes = await api.fetch('/api/sales_target/me', { headers: r.headers })
-    const two = (await twoRes.json()) as { error: { message: string; fields?: { code?: string } } }
-    expect(two.error.fields).toEqual({ code: 'multiple_stores' })
+    const calls = stubUpstream()
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    const reads: string[] = []
+    _setSourceReader(async (text) => { reads.push(text); return [] })
+    try {
+      const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+      // /me takes no store: it is the default store's assignment plus every store, whatever the URL says.
+      const me = (await (await api.fetch('/api/sales_target/me?store=1515', { headers: r.headers })).json()) as { assignment: { plant_code: string }; default_store: string; stores: unknown[] }
+      expect(me.assignment.plant_code).toBe('1501')
+      expect(me.default_store).toBe('1501')
+      expect(me.stores).toHaveLength(2)
 
-    // A store code that is not four digits: the same plain refusal, with no id and no stores code.
+      expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: r.headers })).status).toBe(200)
+      expect((calls[0].body.initial_state as { plant_code: string; material_groups: string[] })).toMatchObject({ plant_code: '1515', material_groups: ['010101001', '010101003'] })
+      // Without the parameter, or with it empty, the default store.
+      await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
+      expect((calls[1].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
+      expect((await api.fetch('/api/sales_target/embed_session?store=', { method: 'POST', headers: r.headers })).status).toBe(200)
+      expect((calls[2].body.initial_state as { plant_code: string }).plant_code).toBe('1501')
+
+      expect((await api.fetch('/api/sales_target/report?store=1515', { headers: r.headers })).status).toBe(200)
+      const scoped = reads.find((t) => t.includes('hierarchy_code in'))!
+      expect(scoped).toContain("b.plant_code = '1515'")
+      expect(scoped).not.toContain("'1501'")
+      // The Access Log says which store was opened, so "who viewed which store" stays answerable.
+      const logged = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report'`
+      expect(logged.map((l) => l.scope)).toEqual(['store=1515'])
+      expect((await api.fetch('/api/sales_target/report?store=', { headers: r.headers })).status).toBe(200)
+      const both = await sql`select scope from access_log where "user" = ${await idOf('test_employee_3')} and operation = 'view_report' order by created_at`
+      expect(both.map((l) => l.scope).sort()).toEqual(['store=1501', 'store=1515'])
+    } finally {
+      _setSourceReader(null)
+    }
+  })
+
+  test('a store that is not the person\'s own is refused with 403, and nothing is minted or read', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
+    const calls = stubUpstream()
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    const reads: string[] = []
+    _setSourceReader(async (text) => { reads.push(text); return [] })
+    try {
+      const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+      // 1999 is nobody's; 'abc' is not a store code; a repeated parameter names no one store.
+      for (const query of ['store=1999', 'store=abc', 'store=1501&store=1515', 'store=1501&store=1501']) {
+        expect((await api.fetch(`/api/sales_target/report?${query}`, { headers: r.headers })).status).toBe(403)
+        expect((await api.fetch(`/api/sales_target/embed_session?${query}`, { method: 'POST', headers: r.headers })).status).toBe(403)
+      }
+      // A single-store person cannot reach the other store either.
+      const one = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      expect((await api.fetch('/api/sales_target/embed_session?store=1515', { method: 'POST', headers: one.headers })).status).toBe(403)
+      expect((await api.fetch('/api/sales_target/report?store=1515', { headers: one.headers })).status).toBe(403)
+      expect(calls).toHaveLength(0)
+      expect(reads).toHaveLength(0)
+      expect(await sql`select 1 from access_log where operation = 'view_report'`).toHaveLength(0)
+    } finally {
+      _setSourceReader(null)
+    }
+  })
+
+  test('a single-store person is served exactly as before: one store, and it is the default', async ({ admin, api }) => {
+    await seed(admin)
+    const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+    const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as Record<string, unknown>
+    expect(me.stores).toEqual([{ plant_code: '1501', store_name: 'ATK', sections: [], scope_basis: ['assignment'] }])
+    expect(me.default_store).toBe('1501')
+    expect((me.assignment as { plant_code: string }).plant_code).toBe('1501')
+    // Naming their own store is the same as naming none.
+    stubUpstream()
+    expect((await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: r.headers })).status).toBe(200)
+  })
+
+  test('a store code that is not four digits is refused in plain words, with no id', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
     await admin.post('/api/save_row', { table: 'Section Merchandise Map', row: { store_code: '15O1', material_group: '010505009', mch_subcategory: 'Kurti Z', section_name: 'Kurti' } })
     await admin.post('/api/save_row', { table: 'Employee Section Map', row: { store_code: '15O1', employee_code: 'RR-11093', subcategory: 'Kurti Z', section_name: 'Kurti' } })
     await admin.post('/api/save_row', { table: 'Person', row: { username: 'bad_store_person', full_name: 'Bad Store', enabled: true, roles: [{ role: VIEWER_ROLE }] } })
@@ -848,6 +946,9 @@ describe('#408 the scope follows the person\'s current employee-code identifier 
     try {
       expect(await scopeOf(api, 'firm_a')).toBeNull()
       expect(await embed(api, 'firm_b')).toEqual({ no_assignment: true })
+      // #409: blocked means no store at all — naming one is refused, not a way back in.
+      const fa = await loginAs(api, 'firm_a', 'pw-firm_a')
+      expect((await api.fetch('/api/sales_target/embed_session?store=1501', { method: 'POST', headers: fa.headers })).status).toBe(403)
       const alerts = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('sales_target_ambiguous_employee_code'))
       expect(alerts.length).toBeGreaterThan(0)
       const alert = JSON.parse(alerts[0]) as Record<string, unknown>
