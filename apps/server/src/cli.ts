@@ -407,8 +407,10 @@ async function main() {
       }
       const { assertDatabaseEnvironment } = await import('./db-environment')
       await assertDatabaseEnvironment()
+      // A bare --accept parses as `true`; Number(true) is 1, so demand digits.
+      if (flags.accept !== undefined && !(typeof flags.accept === 'string' && /^[1-9]\d*$/.test(flags.accept)))
+        throw new Error('--accept takes the number of people the dry run reported')
       const accept = flags.accept === undefined ? undefined : Number(flags.accept)
-      if (accept !== undefined && !(Number.isInteger(accept) && accept > 0)) throw new Error('--accept takes the number of people the dry run reported')
       const run = await runLeaverCheck({ acceptCount: accept })
       console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
       console.log(`leaver check: summary sent to ${run.emailed} System Manager(s)`)
