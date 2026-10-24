@@ -12,6 +12,7 @@ import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
+import { adminPageTitle } from 'shared'
 import { PrincipalName } from '../lib/people'
 import { buttonClasses, cardClasses, pillClasses } from '../components/ui'
 import { fmtCount, fmtInstantIST } from '../lib/inr'
@@ -211,7 +212,7 @@ export function ImportBatches() {
 
   return (
     <div data-testid="import-batches" className="max-w-4xl">
-      <h1 className="mb-1 text-xl font-semibold text-ink">Imports</h1>
+      <h1 className="mb-1 text-xl font-semibold text-ink">{adminPageTitle('imports')}</h1>
       <p className="mb-4 text-xs text-ink-muted">
         Every file you have imported, and what each one did.{' '}
         <Link

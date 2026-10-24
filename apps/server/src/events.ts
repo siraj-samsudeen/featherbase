@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { adminPageTitle, parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 
@@ -66,6 +67,58 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
     delete from user_event
     where occurred_at < now() - make_interval(days => ${RETENTION_DAYS})`
   return rows.length
+}
+
+// #440: before the recorder knew the static admin pages, it logged them as a
+// 'list' labelled with the route slug (kept 90 days). The feed titles those
+// old events from the shared catalog; new ones arrive already as pages.
+/** The page title when `path` is exactly a static admin page, else undefined. */
+export function staticAdminPageTitle(path: string | null): string | undefined {
+  const m = /^\/featherbase\/admin\/([^/?#]+)\/?$/.exec(path ?? '')
+  return m ? adminPageTitle(m[1]) : undefined
+}
+
+/** Did this list open carry a filter? The recorder keys a list as
+ *  `list:<Table>[/<mode>]?<filters JSON>`; the list page ignores a malformed
+ *  value, so the same parser decides here. */
+export function listKeyHasFilter(refKey: string): boolean {
+  const q = refKey.indexOf('?')
+  return q >= 0 && parseFilters(refKey.slice(q + 1)).length > 0
+}
+
+export interface WhoLabel {
+  name: string
+  /** Main role: System Manager if held, else the first other role by name.
+   *  Absent for someone holding no role beyond the implicit All/Guest. */
+  role?: string
+}
+
+/** Display name + main role for person and service-account ids, in ONE query. Name falls back
+ *  full name → local part of the email (never the address) → @username → id.
+ *  The local part is a deliberate fallback; this feed is for System Managers
+ *  and the person themselves, who can already see the address. */
+export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
+  const unique = [...new Set(ids)]
+  const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: id }]))
+  if (unique.length === 0) return labels
+  const rows = await sql`
+    select p.row_id,
+           coalesce(nullif(trim(p.full_name), ''), nullif(split_part(p.email, '@', 1), ''),
+                    '@' || nullif(p.username, '')) as name,
+           (select r.role from has_role r
+             where r.parent = p.row_id and r.parenttype = 'Person'
+               and r.role not in ('All', 'Guest')
+             order by (r.role = 'System Manager') desc, r.role limit 1) as role
+    from person p where p.row_id in ${sql(unique)}
+    union all
+    select s.row_id, s.label as name, 'Service account' as role
+    from service_account s where s.row_id in ${sql(unique)}`
+  for (const r of rows)
+    labels.set(r.row_id as string, {
+      name: (r.name as string | null) ?? (r.row_id as string),
+      ...(r.role ? { role: r.role as string } : {}),
+    })
+  return labels
 }
 
 export interface EventSummaryEntry {

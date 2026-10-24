@@ -5,6 +5,8 @@ import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
+import { assertNotSystemWritten } from './system-written'
+import { assertNotAccessTarget, assertSecurityWriter } from './security-tables'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -127,6 +129,8 @@ export async function ensureStateField(
   field = 'workflow_state',
 ): Promise<void> {
   const meta = await getMeta(table)
+  // #432: the one place a workflow adds a column, so it gates whatever the caller.
+  assertNotSystemWritten(meta, 'put under a workflow')
   if (meta.columns.some((f) => f.column_name === field)) return
   if (field !== 'workflow_state')
     throw new AppError(
@@ -185,9 +189,15 @@ export async function applyWorkflowAction(
   action: string,
   user: string,
 ): Promise<Record<string, unknown>> {
+  // #432/#437: a workflow step writes the row directly, so both gates apply here too.
+  assertNotSystemWritten(await getMeta(table), 'changed')
+  await assertSecurityWriter(table, user)
   const wf = await getActiveWorkflow(table)
   if (!wf) throw new AppError('ValidationError', `No active workflow for ${table}`)
   const field = stateField(wf)
+  // #437: also checked when the Workflow is saved; a row saved before that
+  // rule existed must not act either.
+  assertNotAccessTarget(table, field, 'A workflow')
   await ensureStateField(table, sql, field)
 
   const row = await getDoc(table, name, user)

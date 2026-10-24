@@ -13,6 +13,8 @@ export interface Connection {
   via: string | null
   count: number
   filters: Filter[]
+  // #432: rows of that Table are written by the platform alone.
+  system_written?: boolean
 }
 
 export interface Backlink {

@@ -9,19 +9,19 @@
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import { test, patchDoc } from './pg-test'
-import { config } from '../src/config'
+import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
 import type { ReflectionCandidate } from '../src/sources/reflect'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
-process.env[EXT_URL_ENV] = config.databaseUrl
+process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
 
 // Direct, unsandboxed client that plays the CLI owning the foreign schema.
 let cli: ReturnType<typeof postgres>
 
 beforeAll(async () => {
-  cli = postgres(config.databaseUrl, { max: 2 })
+  cli = postgres(EXTERNAL_DATABASE_URL, { max: 2 })
   await cli.unsafe(`drop schema if exists ext_fixture cascade`)
   await cli.unsafe(`create schema ext_fixture`)
   await cli.unsafe(`create table ext_fixture.business (code integer primary key, name text);

@@ -9,8 +9,8 @@ describe('platform SQL relation mapping', () => {
         to_regclass('public.table_def') is null as no_legacy_core,
         to_regclass('public.site') is not null as site_registry,
         to_regclass('featherbase.site') is null as no_core_site,
-        has_schema_privilege('app_client', 'featherbase', 'usage') as client_usage,
-        not has_schema_privilege('app_client', 'featherbase', 'create') as no_client_create`
+        has_schema_privilege('public', 'featherbase', 'usage') as client_usage,
+        not has_schema_privilege('public', 'featherbase', 'create') as no_client_create`
     expect(shape).toEqual({
       core: true,
       no_legacy_core: true,

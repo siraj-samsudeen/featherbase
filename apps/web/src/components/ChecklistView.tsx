@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, getToken, listResource } from '../lib/api'
-import { isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
 
@@ -143,7 +143,7 @@ function useChecklistShape(meta: TableMeta | undefined): {
         progressCol: meta.columns.find(
           (f) => f.column_name === 'progress' && f.column_type === 'Data',
         )?.column_name,
-        readOnly: isSourceReadOnly(meta),
+        readOnly: isRowsReadOnly(meta),
       },
     }
   }

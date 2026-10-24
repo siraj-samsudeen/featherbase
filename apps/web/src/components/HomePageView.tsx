@@ -15,7 +15,7 @@ function routeFor(s: HomePageShortcut): string {
     case 'dashboard':
       return `/featherbase/admin/dashboard/${encodeURIComponent(to)}`
     case 'report':
-      return `/featherbase/admin/query-report/${encodeURIComponent(to)}`
+      return `/featherbase/admin/Report/${encodeURIComponent(to)}`
     case 'url':
       return to
     case 'table':

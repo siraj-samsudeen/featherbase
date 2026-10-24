@@ -3,6 +3,8 @@
 // feeding the awesomebar's recents groups. Client-side only by design; the
 // server-side `user_event` log is a later phase of the same issue.
 
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle } from 'shared'
+
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
 export interface RecentAction {
@@ -234,17 +236,10 @@ export function describeFilters(filtersJson: string | undefined): string | undef
   }
 }
 
-// Admin sub-routes whose first segment is a fixed page, not a Table name.
-// 'home' is the landing surface every session passes through — remembering
-// it would pin a useless entry to the top of Recent.
-const RESERVED = new Set([
-  'new-table', 'import', 'jobs', 'all-tables', 'naming', 'permissions', 'home',
-])
-const PAGE_KINDS: Record<string, string> = {
-  'query-report': 'Report',
-  'script-report': 'Report',
-  dashboard: 'Dashboard',
-}
+// Admin first segments that are not Tables come from the shared catalog
+// (packages/shared/src/app-routes.ts): titled static pages are remembered as
+// pages; the unrecorded roots (home, builders, browsers) are not remembered.
+const UNRECORDED = new Set<string>(ADMIN_UNRECORDED_ROOTS)
 
 /**
  * Map an admin location to the action it represents, or null for locations
@@ -259,7 +254,11 @@ export function actionForLocation(
   const segs = m[1].split('/').map((s) => decodeURIComponent(s)).filter(Boolean)
   if (segs.length === 0) return null
 
-  const pageKind = PAGE_KINDS[segs[0]]
+  const staticTitle = segs.length === 1 ? adminPageTitle(segs[0]) : undefined
+  if (staticTitle)
+    return { kind: 'page', key: `page:${segs[0]}`, label: staticTitle, path: pathname }
+
+  const pageKind = ADMIN_NAMED_PAGE_KINDS[segs[0]]
   if (pageKind && segs[1]) {
     const name = segs[1]
     return {
@@ -270,7 +269,7 @@ export function actionForLocation(
       path: pathname,
     }
   }
-  if (RESERVED.has(segs[0]) || pageKind) return null
+  if (UNRECORDED.has(segs[0]) || pageKind) return null
 
   const table = segs[0]
   const filtersJson = typeof search.filters === 'string' ? search.filters : undefined

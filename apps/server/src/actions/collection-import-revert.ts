@@ -125,7 +125,10 @@ registerCollectionAction('import-revert', {
     const importLog = platformRelation(tableName('Import Log'))
     const parts = await sql`
       select row_id, touched from ${sql(importLog)}
-      where ref_table = ${table} and run_id = ${runId}`
+      where ref_table = ${table} and run_id = ${runId}
+        -- #432: history outlives its Table; a namesake's runs never revert
+        -- rows of the Table re-created under the same name.
+        and created_at >= (select created_at from table_def where name = ${table})`
     if (!parts.length)
       throw new AppError('NotFoundError', `No import run ${runId} on ${table}`)
     const recorded: TouchedRow[] = parts.flatMap((p) =>
