@@ -25,6 +25,11 @@
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
+//   cli leavers:check [--apply [--accept <n>]]
+//                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
+//                                     dry run that changes nothing and prints counts only; --apply acts on
+//                                     it; --accept <n> lifts the size limit for exactly n people (a large but
+//                                     genuine batch), never a stale feed
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
@@ -406,11 +411,30 @@ async function main() {
       console.log(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
+    case 'leavers:check': {
+      const { formatLeaverPlan, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
+      if (!rest.includes('--apply')) {
+        if (flags.accept !== undefined) throw new Error('--accept only means something with --apply')
+        console.log(formatLeaverPlan(await planLeaverCheck()))
+        console.log('leaver check: dry run; nothing was changed')
+        break
+      }
+      // A bare --accept parses as `true`; Number(true) is 1, so demand digits.
+      if (flags.accept !== undefined && !(typeof flags.accept === 'string' && /^[1-9]\d*$/.test(flags.accept)))
+        throw new Error('--accept takes the number of people the dry run reported')
+      const accept = flags.accept === undefined ? undefined : Number(flags.accept)
+      const { assertDatabaseEnvironment } = await import('./db-environment')
+      await assertDatabaseEnvironment()
+      const run = await runLeaverCheck({ acceptCount: accept })
+      console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
+      console.log(`leaver check: summary sent to ${run.emailed} System Manager(s)`)
+      break
+    }
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|settings:set|mail:test|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|mail:test|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()
