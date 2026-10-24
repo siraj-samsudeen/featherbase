@@ -5,17 +5,14 @@
 A dashboard is a saved page of number cards and charts computed from live
 data. A home page is a saved page of grouped links people land on. Both are
 built the same way as any other Table's rows, and both only ever show what
-the viewer could otherwise see — except a chart that follows a query report,
-which shows that report's results to anyone who can open it.
+the viewer could otherwise see.
 
 ## Requirements
 
 ### Requirement: A dashboard's numbers and charts stay live
 
 Opening a dashboard SHALL compute each card's count and each chart's values
-fresh from current data, scoped to what the viewer could otherwise read,
-except a chart that follows a query report, which shows that report's
-results to anyone who can open it.
+fresh from current data, scoped to what the viewer could otherwise read.
 
 #### Scenario: A restricted viewer's card
 

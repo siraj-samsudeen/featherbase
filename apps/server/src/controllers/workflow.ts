@@ -1,6 +1,7 @@
 import type { TableController } from '../controllers'
 import { ensureStateField, validateWorkflow } from '../workflow'
 import type { WorkflowState, WorkflowTransition } from '../workflow'
+import { assertNotAccessTarget } from '../security-tables'
 
 // WF-001: validate a workflow definition (no transitions to/from undefined
 // states) and, once active, ensure the target Table has a workflow_state
@@ -9,6 +10,9 @@ const controller: TableController = {
   table: 'Workflow',
   hooks: {
     validate: ({ row }) => {
+      // #437: a transition writes its state field directly, as whoever acts.
+      if (typeof row.ref_table === 'string' && row.ref_table)
+        assertNotAccessTarget(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
       const states = (row.states as WorkflowState[] | undefined) ?? []
       const transitions = (row.transitions as WorkflowTransition[] | undefined) ?? []
       validateWorkflow(states, transitions)

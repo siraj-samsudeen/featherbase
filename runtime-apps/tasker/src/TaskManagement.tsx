@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
+import { listVisiblePeople, PEOPLE_LIMITED_NOTICE, type PersonOption } from './people'
 import { Markdown } from './Markdown'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
@@ -166,12 +167,13 @@ export function TaskManagementPage() {
   const users = useQuery({
     queryKey: ['task-management', 'users'],
     queryFn: () =>
-      // Person ids are opaque (`psn_…`): list and show names.
-      listResource<{ row_id: string; full_name?: string | null }>('Person', {
+      // Person ids are opaque (`psn_…`): list and show names. A user without
+      // Person read gets a limited list, not an error (#437).
+      listVisiblePeople(() => listResource<PersonOption>('Person', {
         fields: ['row_id', 'full_name'],
         order_by: 'full_name asc',
         limit_page_length: 200,
-      }),
+      })),
   })
   const focus = useQuery({
     queryKey: ['task-management', 'focus'],
@@ -233,7 +235,7 @@ export function TaskManagementPage() {
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
   const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'
-  const people = peopleWithTaskResponsibility(users.data?.data ?? [], allTasks, me)
+  const people = peopleWithTaskResponsibility(users.data?.people ?? [], allTasks, me)
   const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
   const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
   const activeTogetherTasks = allTasks.filter((task) => !['Done', 'Cancelled'].includes(task.task_state))
@@ -598,6 +600,7 @@ export function TaskManagementPage() {
       )}
       {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/featherbase/admin">Back to Featherbase</a></p>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {users.data?.limited && <p role="status" className="mb-4 rounded-md px-3 py-2 text-sm text-[var(--color-ink-muted)]">{PEOPLE_LIMITED_NOTICE}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
