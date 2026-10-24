@@ -8,9 +8,12 @@
 // server row the choice is stored on, and a fresh load reading it back.
 
 import { screen, waitFor } from '@testing-library/react'
-import { afterEach, vi } from 'vitest'
+import { afterEach, describe, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
-import { followDevice } from '../src/lib/theme'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { applyTheme, followDevice, THEME_MIRROR_PREFIX } from '../src/lib/theme'
+import { clearSession, getSessionUser, setSession } from '../src/lib/api'
 
 // applyTheme writes to the ONE jsdom document every test shares, and RTL's
 // cleanup does not touch documentElement — so reset it, or a later test
@@ -124,4 +127,59 @@ test('signed out, the page follows the device', () => {
   deviceSetTo(false)
   followDevice()
   expect(document.documentElement.dataset.theme).toBe('light')
+})
+
+test('every sign-out follows the device, so the next person on a shared phone never inherits a choice', () => {
+  deviceSetTo(false)
+  setSession('t', { row_id: 'Shared Phone A', email: null, full_name: null })
+  applyTheme('dark')
+  expect(document.documentElement.dataset.theme).toBe('dark')
+  // RestrictedShell, SalesTarget, Portal, AdminLayout and the 401 handler all sign out through clearSession.
+  clearSession()
+  expect(document.documentElement.dataset.theme).toBe('light')
+})
+
+test('a stale mirror is corrected when whoami answers: light cached, device stored, dark phone', async ({ admin }) => {
+  deviceSetTo(true)
+  // Before any React: the mirror still says light (written before 0109 moved
+  // the default to device), so the head script and lib/theme paint light.
+  const { row_id } = (await admin.get('/api/whoami')) as { row_id: string }
+  localStorage.setItem(`${THEME_MIRROR_PREFIX}${row_id}`, 'light')
+  document.documentElement.dataset.theme = 'light'
+  const { queryClient } = await renderApp('/featherbase/admin', admin)
+  await waitFor(() => expect(queryClient.getQueryData(['whoami'])).toMatchObject({ theme: 'device' }))
+  await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+  expect(localStorage.getItem(`${THEME_MIRROR_PREFIX}${getSessionUser()!.row_id}`)).toBe('device')
+})
+
+describe('index.html paints before the first frame, with the same rule as lib/theme', () => {
+  const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8')
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html)![1]
+  const run = () => new Function(script)()
+
+  test('declares both colour schemes and reads the mirror key lib/theme writes', () => {
+    expect(html).toContain('<meta name="color-scheme" content="light dark" />')
+    expect(script).toContain(`'${THEME_MIRROR_PREFIX}'`)
+    expect(script).toContain("'fc_user'")
+  })
+
+  test.for([
+    ['signed out, dark device', null, true, 'dark'],
+    ['signed out, light device', null, false, 'light'],
+    ['mirror light on a dark device', 'light', true, 'light'],
+    ['mirror dark on a light device', 'dark', false, 'dark'],
+    ['mirror device on a dark device', 'device', true, 'dark'],
+  ] as const)('%s → %s', ([, mirror, dark, painted]) => {
+    deviceSetTo(dark)
+    clearSession()
+    if (mirror) {
+      setSession('t', { row_id: 'Head Script', email: null, full_name: null })
+      localStorage.setItem(`${THEME_MIRROR_PREFIX}Head Script`, mirror)
+    }
+    document.documentElement.removeAttribute('data-theme')
+    run()
+    expect(document.documentElement.dataset.theme).toBe(painted)
+    localStorage.removeItem(`${THEME_MIRROR_PREFIX}Head Script`)
+    clearSession()
+  })
 })

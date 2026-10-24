@@ -56,12 +56,12 @@ export function ResetPasswordPage() {
           ) : (
             <form className="space-y-4" data-testid="reset-form" onSubmit={onSubmit}>
               <div>
-                <label className={labelClasses()}>New password</label>
-                <input type="password" name="password" autoComplete="new-password" className={inputClasses()} data-testid="reset-password" />
+                <label className={labelClasses()} htmlFor="reset-password">New password</label>
+                <input id="reset-password" type="password" name="password" autoComplete="new-password" className={inputClasses()} data-testid="reset-password" />
               </div>
               <div>
-                <label className={labelClasses()}>Confirm password</label>
-                <input type="password" name="confirm" autoComplete="new-password" className={inputClasses()} data-testid="reset-confirm" />
+                <label className={labelClasses()} htmlFor="reset-confirm">Confirm password</label>
+                <input id="reset-confirm" type="password" name="confirm" autoComplete="new-password" className={inputClasses()} data-testid="reset-confirm" />
               </div>
               {error && (
                 <p className="text-sm text-negative" data-testid="reset-error">

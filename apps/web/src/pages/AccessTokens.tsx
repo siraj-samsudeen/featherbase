@@ -221,7 +221,7 @@ export function AccessTokens() {
       {/* Issue dialog */}
       {issueFor !== null && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
           onClick={() => !issue.isPending && setIssueFor(null)}
           onKeyDown={(e) => e.key === 'Escape' && !issue.isPending && setIssueFor(null)}
         >
@@ -297,7 +297,7 @@ export function AccessTokens() {
 
       {/* Show-once secret */}
       {issued && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40">
           <div
             role="dialog"
             aria-modal="true"

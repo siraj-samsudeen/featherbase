@@ -1,18 +1,18 @@
 import { getSessionUser } from './api'
 import { useAppearancePreference } from './appearance-preference'
+import { THEMES, followDevice, paintTheme, paintedChoice, type Theme } from './theme-paint'
 
 // UI-024 / #380: the theme is light, dark, or whatever the device is set to.
 // The choice is stored on the person (server); localStorage mirrors it so it
 // applies before whoami resolves, under a per-person key so two accounts on
 // one browser never see each other's choice (PR #92 review). Signed out there
-// is no choice, so the page follows the device. `data-theme` on the root is
-// always the painted result, light or dark; index.css reads only that.
+// is no choice, so the page follows the device (clearSession calls
+// followDevice). Painting itself lives in theme-paint.ts.
 
-export const THEMES = ['light', 'dark', 'device'] as const
-export type Theme = (typeof THEMES)[number]
+export { THEMES, followDevice, type Theme }
 export const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', device: 'Same as device' }
-
-const DARK_QUERY = '(prefers-color-scheme: dark)'
+/** The per-person mirror key; index.html's head script reads the same key. */
+export const THEME_MIRROR_PREFIX = 'fc_theme:'
 
 function isTheme(value: unknown): value is Theme {
   return THEMES.includes(value as Theme)
@@ -20,37 +20,12 @@ function isTheme(value: unknown): value is Theme {
 
 function storageKey(): string | null {
   const user = getSessionUser()
-  return user ? `fc_theme:${user.row_id}` : null
-}
-
-function deviceIsDark(): boolean {
-  return typeof window.matchMedia === 'function' && window.matchMedia(DARK_QUERY).matches
-}
-
-let choice: Theme = 'device'
-let watched: MediaQueryList | null = null
-
-function paint() {
-  document.documentElement.dataset.theme = choice === 'device' ? (deviceIsDark() ? 'dark' : 'light') : choice
-  watchDevice()
-}
-
-// Repaint when the device flips between light and dark (an evening switch, a
-// phone's automatic mode) while the choice is "same as device".
-function onDeviceChange() {
-  if (choice === 'device') document.documentElement.dataset.theme = deviceIsDark() ? 'dark' : 'light'
-}
-function watchDevice() {
-  if (typeof window.matchMedia !== 'function') return
-  watched?.removeEventListener('change', onDeviceChange)
-  watched = window.matchMedia(DARK_QUERY)
-  watched.addEventListener('change', onDeviceChange)
+  return user ? `${THEME_MIRROR_PREFIX}${user.row_id}` : null
 }
 
 /** Apply a person's choice and remember it on this browser for them. */
 export function applyTheme(theme: Theme) {
-  choice = theme
-  paint()
+  paintTheme(theme)
   try {
     const key = storageKey()
     if (key) localStorage.setItem(key, theme)
@@ -59,23 +34,17 @@ export function applyTheme(theme: Theme) {
   }
 }
 
-/** Signed out: follow the device, and remember nothing. */
-export function followDevice() {
-  choice = 'device'
-  paint()
-}
-
 // Before React renders: the signed-in person's last choice, or the device.
+// whoami then repaints from the server value (a stale mirror is corrected).
 try {
   const key = storageKey()
   const saved = key ? localStorage.getItem(key) : null
-  choice = isTheme(saved) ? saved : 'device'
+  paintTheme(isTheme(saved) ? saved : 'device')
 } catch {
-  choice = 'device'
+  paintTheme('device')
 }
-paint()
 
 export function useTheme(): { theme: Theme; set: (t: Theme) => void } {
-  const { value: theme, set } = useAppearancePreference('theme', choice, isTheme, applyTheme)
+  const { value: theme, set } = useAppearancePreference('theme', paintedChoice(), isTheme, applyTheme)
   return { theme, set }
 }

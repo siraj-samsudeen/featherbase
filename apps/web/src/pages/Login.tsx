@@ -308,8 +308,8 @@ export function LoginPage() {
                     {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
                   </p>
                 )}
-                <label className={labelClasses()}>Email or username</label>
-                <input type="text" name="usr" className={inputClasses()} data-testid="forgot-usr" />
+                <label className={labelClasses()} htmlFor="forgot-usr">Email or username</label>
+                <input id="forgot-usr" type="text" name="usr" autoComplete="username" className={inputClasses()} data-testid="forgot-usr" />
                 <button type="submit" className={buttonClasses({ className: 'w-full justify-center py-2' })} data-testid="forgot-submit">
                   Send reset link
                 </button>

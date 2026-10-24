@@ -227,6 +227,9 @@ const RULES: Record<string, Rule> = {
   // A toggle whose chosen state is shown only by its colour (usable-on-any-device).
   'state by colour alone': stateByColourAlone,
   'retired class': count(/(?<![\w-])fc-(?:card|input|btn-primary|btn|label|pill)(?![\w-])/g),
+  // The scrim token is solid black; a backdrop must dim the page, not hide it,
+  // so bg-scrim always carries an opacity (bg-scrim/40 for a dialog).
+  'opaque scrim': count(/(?<![\w-])bg-scrim(?![\w/-])/g),
 }
 // The one home of Indian number and date formatting may call Intl itself.
 const RULE_EXEMPT: Record<string, string[]> = {
@@ -261,6 +264,7 @@ describe('each rule catches what it is for and nothing else', () => {
       ['text-action', 'bg-negative-tint', 'border-border-control', 'text-ink-subtle', 'border-border'],
     ],
     ['retired class', ['fc-btn', 'fc-btn-primary', 'fc-card'], ['buttonClasses()', 'fc-btnx', 'my-fc-card']],
+    ['opaque scrim', ['bg-scrim', 'fixed inset-0 bg-scrim px-4', 'md:bg-scrim'], ['bg-scrim/40', 'bg-scrim/30 md:hidden', 'text-on-scrim', 'bg-scrimmer']],
     [
       'state by colour alone',
       [

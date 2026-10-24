@@ -472,7 +472,7 @@ export function FormView({
           right — so a confirmation reads the same wherever it appears. */}
       {confirmingDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
           onClick={() => !deleteBusy && setConfirmingDelete(false)}
           onKeyDown={(e) => e.key === 'Escape' && !deleteBusy && setConfirmingDelete(false)}
         >

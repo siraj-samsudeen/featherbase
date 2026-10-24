@@ -20,7 +20,7 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
-import { THEMES, THEME_LABEL, followDevice, useTheme } from '../lib/theme'
+import { THEMES, THEME_LABEL, useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
@@ -260,7 +260,6 @@ function AdminShell() {
       return
     }
     clearSession()
-    followDevice()
     // Leave the admin screen BEFORE dropping the cache: clearing while the
     // layout's queries are still mounted makes every observer refetch
     // token-less — 401s that api.ts answers with a hard redirect. Once
@@ -676,7 +675,7 @@ function AdminShell() {
         {/* UI-025: on mobile, a backdrop closes the drawer. */}
         {sidebarOpen && (
           <div
-            className="absolute inset-0 z-20 bg-scrim md:hidden"
+            className="absolute inset-0 z-20 bg-scrim/30 md:hidden"
             data-testid="sidebar-backdrop"
             onClick={() => setSidebarOpen(false)}
           />
@@ -972,7 +971,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-scrim px-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-scrim/40 px-4"
       data-testid="change-password-modal"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
