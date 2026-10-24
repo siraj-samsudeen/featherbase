@@ -291,6 +291,37 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     expect((await loaded(admin, target)).roles.map((r) => r.role)).toEqual(['System Manager'])
   })
 
+  test('a script that leaves enabled as a non-boolean is refused, whoever saves', async ({ admin, createUser }) => {
+    // The driver writes anything but `true` as false: "true" or 1 would look
+    // unchanged and still disable the person.
+    const editor = await personEditor(admin, createUser)
+    const manager = await createUser({ roles: ['System Manager'] })
+    const target = await makePerson({ full_name: 'Typed' })
+    for (const value of ['"true"', '1', '"false"', 'null']) {
+      const id = `ss-437-type-${value.replace(/\W/g, '')}`
+      await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: id, script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: `doc.enabled = ${value}`, enabled: true } })
+      for (const writer of [editor, manager]) {
+        const doc = await loaded(admin, target)
+        await expectApiError(patchDoc(writer, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed' }), { status: 417 })
+        expect((await loaded(admin, target)).enabled).toBe(true)
+      }
+      await expectApiError(editor.post(PERSON.url, { full_name: 'Created' }), { status: 417 })
+      await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: id, updated_at: (await admin.get<{ updated_at: string }>(tableRef('Server Script').rowUrl(id))).updated_at, enabled: false } })
+    }
+    // A real boolean left unchanged still saves.
+    const doc = await loaded(admin, target)
+    await patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed', enabled: true })
+  })
+
+  test('a script that retypes a role row is not taken as unchanged', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const target = await makePerson({ full_name: 'Role typed', roles: [{ role: EDITOR }] })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-role-type', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.roles = (doc.roles || []).map((r) => ({ row_id: r.row_id, role: [r.role] }))', enabled: true } })
+    const doc = await loaded(admin, target)
+    await expectApiError(patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, full_name: 'Renamed', roles: doc.roles }), { status: 403 })
+    expect((await loaded(admin, target)).roles.map((r) => r.role)).toEqual([EDITOR])
+  })
+
   test('a grant on Server Script, Workflow or Assignment Rule does not let a non-manager write them', async ({ admin, createUser }) => {
     const user = await createUserWithRole(admin, createUser, { role: 'Automation Writer 437', table: ['Server Script', 'Workflow', 'Assignment Rule'], ...ALL_ACTIONS })
     await expectApiError(user.post('/api/save_row', { table: 'Server Script', row: { row_id: 'ss-437-x', script_type: 'Document Event', ref_table: 'Person', event: 'before_save', script: 'doc.enabled = true', enabled: true } }), { status: 403 })

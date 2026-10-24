@@ -181,6 +181,31 @@ describe('release preflight: access configuration', () => {
     await sql`update sign_in_method set new_person = 'refuse', allowed_email_domains = 'gmail.com,*' where kind = 'password'`
     expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
   })
+
+  // Before 0100 there is no Sign In Method to read, but 0100 copies the
+  // legacy allowed_login_domains into a Google method that creates people.
+  describe('before 0100', () => {
+    async function pending0100(domains: string) {
+      vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+      await sql`delete from migration where name = '0100_person_identities.ts'`
+      await sql`delete from single_value where table_name = 'System Settings' and field = 'allowed_login_domains'`
+      await sql`insert into single_value (table_name, field, value) values ('System Settings', 'allowed_login_domains', ${domains})`
+    }
+
+    test('a legacy any-address or consumer domain refuses outside development or test', async () => {
+      await pending0100('example.com, *')
+      await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/allowed_login_domains holds "\*"/)
+      await pending0100('example.com,Gmail.com')
+      await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/allowed_login_domains holds "gmail.com"/)
+    })
+
+    test('company domains pass, and so does test', async () => {
+      await pending0100('example.com')
+      expect(await preflightRelease({ environment: 'production' })).toContain(DOMAINS_OK)
+      await pending0100('*')
+      expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+    })
+  })
 })
 
 // End to end: the real release command against a fresh database labelled

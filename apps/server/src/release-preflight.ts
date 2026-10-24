@@ -55,7 +55,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
     passed.push('btree_gist available for 0102')
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
-  passed.push(...(await assertAccessConfiguration(environment)))
+  passed.push(...(await assertAccessConfiguration(environment, pending)))
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -138,8 +138,12 @@ async function locate(name: string): Promise<{ relation: string; columns: Set<st
  *  (b) password sign-in creates new people only in development or test;
  *  (c) a method that creates people never admits any address (`*`) or a
  *      consumer email domain.
- *  A database before the tables or columns exist has nothing to check. */
-async function assertAccessConfiguration(environment: string): Promise<string[]> {
+ *  Before 0100 there is no Sign In Method yet, but 0100 will create a Google
+ *  method that creates people from the legacy `allowed_login_domains`
+ *  setting, so (c) is applied to that setting instead (outside development
+ *  and test). Otherwise a database before the tables or columns exist has
+ *  nothing to check. */
+async function assertAccessConfiguration(environment: string, pending: string[] = []): Promise<string[]> {
   const problems: string[] = []
   const found = await locate('permission')
   if (found) {
@@ -174,6 +178,18 @@ async function assertAccessConfiguration(environment: string): Promise<string[]>
         .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
       for (const d of open)
         problems.push(`sign-in method "${String(r.row_id)}" creates new people from "${d}": list company domains only, or set its new_person to refuse`)
+    }
+  }
+  if (pending.includes('0100_person_identities.ts') && !SIGN_UP_ENVIRONMENTS.includes(environment)) {
+    const settings = await locate('single_value')
+    if (settings) {
+      const [legacy] = await sql`
+        select value from ${sql(settings.relation)}
+        where table_name = 'System Settings' and field = 'allowed_login_domains'`
+      const open = String(legacy?.value ?? '').split(',').map((d) => d.trim().toLowerCase())
+        .filter((d) => d === '*' || CONSUMER_EMAIL_DOMAINS.has(d))
+      for (const d of open)
+        problems.push(`the System Settings allowed_login_domains holds "${d}", and 0100 copies it into a Google sign-in method that creates new people: list company domains only, or clear the setting, before releasing`)
     }
   }
   if (problems.length) throw new Error(`Access configuration is unsafe to release:\n  ${problems.join('\n  ')}`)

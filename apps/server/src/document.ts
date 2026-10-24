@@ -411,23 +411,45 @@ async function assertAccessColumnsUnchanged(
     // names a stored row updates that row, any other row is an insert, and a
     // stored row the payload does not name is deleted. Unchanged means every
     // stored row is named once with its values as stored, and nothing else.
-    const stored = new Map(current.map((r) => [String(r[childMeta.row_key]), key(r as RowValues)]))
+    // Values are compared as saveChildren will write them (the same
+    // defaulting and validation), over the stored row, so a value that only
+    // looks the same before validation cannot pass. A row that fails
+    // validation counts as a change.
+    const stored = new Map(current.map((r) => [String(r[childMeta.row_key]), r as RowValues]))
     const named = new Set<string>()
     const same = input.rows.every((r) => {
       const id = r[ROW_KEY] == null ? null : String(r[ROW_KEY])
       if (id === null || !stored.has(id) || named.has(id)) return false
       named.add(id)
-      return stored.get(id) === key(applyDefaults(childMeta, { ...r }))
+      let written: RowValues
+      try {
+        written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update') }
+      } catch (err) {
+        if (err instanceof AppError) return false
+        throw err
+      }
+      return key(stored.get(id)!) === key(written)
     })
     if (!same || named.size !== stored.size) changed.push(input.columnName)
   }
-  if (meta.name === 'Person' && existing !== null && 'enabled' in values) {
-    const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true'
-    if (truthy(values.enabled) !== truthy(existing.enabled)) changed.push('enabled')
+  if (meta.name === 'Person' && 'enabled' in values) {
+    // Judged as the database will store it. The driver writes any value that
+    // is not `true` as false, so a script's "true" or 1 would read as
+    // unchanged here and still disable the person. Only a real boolean, or
+    // the stored value left as it is, may be written.
+    const stored = existing === null ? undefined : existing.enabled
+    if (values.enabled !== stored && typeof values.enabled !== 'boolean')
+      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { enabled: 'must be true or false' })
+    if (existing !== null && values.enabled !== stored) changed.push('enabled')
   }
   if (!changed.length) return
   if (!trusted && (await isPrivileged(user))) return
   throw securityRefusal(`a ${meta.name}'s ${changed.join(' or ')}`)
+}
+
+// The column values saveChildren writes for one payload row.
+function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update'): RowValues {
+  return validateValues(childMeta, applyDefaults(childMeta, pickFieldValues(childMeta, row)), mode)
 }
 
 async function saveChildren(
@@ -453,11 +475,7 @@ async function saveChildren(
     const isExisting = rowId != null && existingIds.has(String(rowId))
     let fieldValues: RowValues
     try {
-      fieldValues = validateValues(
-        childMeta,
-        applyDefaults(childMeta, pickFieldValues(childMeta, row)),
-        isExisting ? 'update' : 'insert',
-      )
+      fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert')
     } catch (err) {
       if (err instanceof AppError && err.fields)
         for (const [k, v] of Object.entries(err.fields))
