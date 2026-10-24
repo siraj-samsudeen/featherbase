@@ -24,4 +24,4 @@ None.
 
 ## Impact
 
-New `leaver-check.ts`, job `disable_leavers`, migration 0113 (its Scheduled Job row, off), CLI `leavers:check`. The MotherDuck reader the sales-target dataset used moves to a shared module. Reads `gold.hr.employee`, `gold.hr.employee_exit` and `gold.hr.attendance` with the server's existing `MOTHERDUCK_TOKEN`; no new credential.
+New `leaver-check.ts`, job `disable_leavers`, migration 0119 (its Scheduled Job row, off), CLI `leavers:check`. The MotherDuck reader the sales-target dataset used moves to a shared module. Reads `gold.hr.employee`, `gold.hr.employee_exit` and `gold.hr.attendance` with the server's existing `MOTHERDUCK_TOKEN`; no new credential.
