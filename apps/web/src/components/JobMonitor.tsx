@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
+import { buttonClasses, cardClasses } from './ui'
 
 // JOB-004: monitor background jobs and retry failed ones from the Admin UI.
 
@@ -15,10 +16,10 @@ interface Job {
 }
 
 const STATUS_STYLE: Record<string, string> = {
-  done: 'text-[var(--color-good)]',
-  failed: 'text-[var(--color-danger)]',
-  running: 'text-[var(--color-brand)]',
-  queued: 'text-[var(--color-ink-muted)]',
+  done: 'text-positive',
+  failed: 'text-negative',
+  running: 'text-action',
+  queued: 'text-ink-muted',
 }
 
 export function JobMonitor() {
@@ -65,21 +66,21 @@ export function JobMonitor() {
   return (
     <div data-testid="job-monitor" className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Background Jobs</h1>
-        <button className="fc-btn" data-testid="run-demo-job" onClick={() => void runDemo()}>
+        <h1 className="text-lg font-semibold text-ink">Background Jobs</h1>
+        <button className={buttonClasses()} data-testid="run-demo-job" onClick={() => void runDemo()}>
           Run demo job
         </button>
       </div>
 
       {progress && (
-        <div className="fc-card p-4" data-testid="demo-progress">
-          <div className="mb-1 flex justify-between text-xs text-[var(--color-ink-muted)]">
+        <div className={cardClasses('p-4')} data-testid="demo-progress">
+          <div className="mb-1 flex justify-between text-xs text-ink-muted">
             <span>{progress.message ?? 'Working…'}</span>
             <span data-testid="demo-progress-percent">{progress.percent}%</span>
           </div>
-          <div className="h-2 w-full rounded bg-[var(--color-subtle)]">
+          <div className="h-2 w-full rounded bg-subtle">
             <div
-              className="h-2 rounded bg-[var(--color-brand)] transition-all"
+              className="h-2 rounded bg-action transition-all"
               style={{ width: `${progress.percent}%` }}
               data-testid="demo-progress-bar"
             />
@@ -87,10 +88,10 @@ export function JobMonitor() {
         </div>
       )}
 
-      <div className="fc-card overflow-x-auto">
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-ink-muted)]">
+            <tr className="border-b border-border text-left text-ink-muted">
               <th className="px-3 py-2 font-medium">Method</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium">Attempts</th>
@@ -100,19 +101,19 @@ export function JobMonitor() {
           </thead>
           <tbody data-testid="job-rows">
             {rows.map((j) => (
-              <tr key={j.row_id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`job-${j.row_id}`}>
-                <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{j.method}</td>
+              <tr key={j.row_id} className="border-b border-border last:border-0" data-testid={`job-${j.row_id}`}>
+                <td className="px-3 py-2 font-medium text-ink">{j.method}</td>
                 <td className={`px-3 py-2 ${STATUS_STYLE[j.job_status] ?? ''}`} data-testid={`job-status-${j.row_id}`}>
                   {j.job_status}
                 </td>
-                <td className="px-3 py-2 text-[var(--color-ink-muted)]">{String(j.attempts)}</td>
-                <td className="max-w-xs truncate px-3 py-2 text-xs text-[var(--color-ink-faint)]" title={j.error ?? ''}>
+                <td className="px-3 py-2 text-ink-muted">{String(j.attempts)}</td>
+                <td className="max-w-xs truncate px-3 py-2 text-xs text-ink-subtle" title={j.error ?? ''}>
                   {j.error ?? '—'}
                 </td>
                 <td className="px-3 py-2 text-right">
                   {j.job_status === 'failed' && (
                     <button
-                      className="fc-btn"
+                      className={buttonClasses()}
                       data-testid={`retry-${j.row_id}`}
                       disabled={busy === j.row_id}
                       onClick={() => void retry(j.row_id)}
@@ -125,7 +126,7 @@ export function JobMonitor() {
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td colSpan={5} className="px-3 py-8 text-center text-ink-subtle">
                   No jobs
                 </td>
               </tr>

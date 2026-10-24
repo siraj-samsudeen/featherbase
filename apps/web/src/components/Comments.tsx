@@ -187,7 +187,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
       )}
       <div className="mt-2 flex justify-end">
         {mentionWarning && (
-          <p className="mb-1 text-xs text-[var(--color-warning,#b45309)]" data-testid="mention-warning" role="status">
+          <p className="mb-1 text-xs text-caution" data-testid="mention-warning" role="status">
             {mentionWarning}
           </p>
         )}

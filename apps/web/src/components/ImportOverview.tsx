@@ -1,4 +1,6 @@
 import { countDataRows, type ParsedSheet } from '../lib/parse-file'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 // #199/#200 (issue #197): the step before any column work. A 17-sheet
 // workbook used to open straight onto 17 full column grids; this answers
@@ -55,7 +57,7 @@ function SheetRow({
 }) {
   return (
     <label
-      className="flex cursor-pointer items-start gap-2 border-t border-[var(--color-border)] px-3 py-2 hover:bg-[var(--color-subtle)]"
+      className="flex cursor-pointer items-start gap-2 border-t border-border px-3 py-2 hover:bg-subtle"
       data-testid={`iw-ov-row-${index}`}
     >
       <input
@@ -63,21 +65,21 @@ function SheetRow({
         checked={on}
         onChange={(e) => onToggle(e.target.checked)}
         data-testid={`iw-ov-sheet-${index}`}
-        className="mt-1 shrink-0 accent-[var(--color-brand)]"
+        className="mt-1 shrink-0 accent-action"
       />
       <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-[var(--color-ink)]">
+        <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
           {sheet.sheetName}
           {sheet.visibility !== 'visible' && (
-            <span className="fc-pill border border-[var(--color-border-strong)] bg-[var(--color-subtle)] text-[var(--color-ink-muted)]">
+            <span className={pillClasses('border border-border-control bg-subtle text-ink-muted')}>
               {sheet.visibility === 'very-hidden' ? 'very hidden' : 'hidden'}
             </span>
           )}
-          <span className="text-xs font-normal text-[var(--color-ink-muted)] tabular-nums">
-            {countDataRows(sheet.rows).toLocaleString()} rows · {sheet.headers.length} columns
+          <span className="text-xs font-normal text-ink-muted tabular-nums">
+            {fmtCount(countDataRows(sheet.rows))} rows · {sheet.headers.length} columns
           </span>
         </span>
-        <span className="mt-0.5 block truncate text-xs text-[var(--color-ink-faint)]">
+        <span className="mt-0.5 block truncate text-xs text-ink-subtle">
           {shapeHint(sheet.headers)}
         </span>
       </span>
@@ -116,12 +118,12 @@ function Section({
 
   return (
     <details open={defaultOpen} data-testid={`iw-ov-section-${kind}`}>
-      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-3 py-2 hover:bg-[var(--color-subtle)]">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-3 py-2 hover:bg-subtle">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
           {label} ({entries.length})
         </span>
-        <span className="text-xs text-[var(--color-ink-muted)] tabular-nums">
-          {rows.toLocaleString()} rows
+        <span className="text-xs text-ink-muted tabular-nums">
+          {fmtCount(rows)} rows
         </span>
         <button
           type="button"
@@ -133,13 +135,13 @@ function Section({
             setGroup(!allOn)
           }}
           data-testid={`iw-ov-all-${kind}`}
-          className="fc-btn ml-auto py-0.5 text-xs"
+          className={buttonClasses({ className: 'ml-auto py-0.5 text-xs' })}
         >
           {allOn ? 'Clear all' : 'Select all'}
         </button>
       </summary>
       {kind === 'hidden' && (
-        <p className="px-3 pb-1 text-xs text-[var(--color-ink-faint)]">
+        <p className="px-3 pb-1 text-xs text-ink-subtle">
           These were hidden in the workbook.
         </p>
       )}
@@ -182,9 +184,9 @@ export function ImportOverview({
   )
 
   return (
-    <div className="fc-card" data-testid="iw-overview">
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] px-3 py-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--color-ink)]">
+    <div className={cardClasses()} data-testid="iw-overview">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-3 py-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-ink">
           <input
             type="checkbox"
             checked={chosen === sheets.length && sheets.length > 0}
@@ -195,12 +197,12 @@ export function ImportOverview({
             }}
             onChange={(e) => onSelect(sheets.map(() => e.target.checked))}
             data-testid="iw-ov-master"
-            className="accent-[var(--color-brand)]"
+            className="accent-action"
           />
           Select all
         </label>
         <span
-          className="ml-auto text-xs text-[var(--color-ink-muted)] tabular-nums"
+          className="ml-auto text-xs text-ink-muted tabular-nums"
           data-testid="iw-ov-count"
         >
           {chosen} of {sheets.length} sheets selected
@@ -229,21 +231,21 @@ export function ImportOverview({
 
       {/* The action bar follows the list down: a 17-row list must not put its
           own controls below the fold. */}
-      <div className="sticky bottom-0 rounded-b-[var(--radius-card)] border-t border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[0_-6px_16px_rgba(25,39,52,0.09)]">
+      <div className="sticky bottom-0 rounded-b-[var(--radius-card)] border-t border-border-control bg-surface shadow-[0_-6px_16px_color-mix(in_srgb,var(--color-scrim)_9%,transparent)]">
         {/* #201: the merge is a choice made out loud, not a control to hunt
             for. It appears the moment anything is ticked, and asks the only
             question left: one Table each, or one Table for all of them? */}
         {chosen > 0 && (
-          <div className="border-b border-[var(--color-border)] px-3 py-3" data-testid="iw-ov-decide">
-            <div className="mb-2 text-sm font-semibold text-[var(--color-ink)]">
+          <div className="border-b border-border px-3 py-3" data-testid="iw-ov-decide">
+            <div className="mb-2 text-sm font-semibold text-ink">
               {chosen} sheet{chosen === 1 ? '' : 's'} selected — how should{' '}
               {chosen === 1 ? 'it be' : 'they be'} imported?
             </div>
             <label
               className={`mb-2 flex cursor-pointer items-start gap-2 rounded-[var(--radius-control)] border p-2 ${
                 mode === 'separate' || chosen < 2
-                  ? 'border-[var(--color-brand)] ring-2 ring-[var(--color-brand)]/20'
-                  : 'border-[var(--color-border-strong)]'
+                  ? 'border-action ring-2 ring-action/20'
+                  : 'border-border-control'
               }`}
             >
               <input
@@ -252,13 +254,13 @@ export function ImportOverview({
                 checked={mode === 'separate' || chosen < 2}
                 onChange={() => onMode('separate')}
                 data-testid="iw-ov-mode-separate"
-                className="mt-1 accent-[var(--color-brand)]"
+                className="mt-1 accent-action"
               />
               <span>
-                <span className="block text-sm font-medium text-[var(--color-ink)]">
+                <span className="block text-sm font-medium text-ink">
                   As {chosen} separate Table{chosen === 1 ? '' : 's'}
                 </span>
-                <span className="block text-xs text-[var(--color-ink-muted)]">
+                <span className="block text-xs text-ink-muted">
                   One Table per sheet, named after the sheet.
                 </span>
               </span>
@@ -266,8 +268,8 @@ export function ImportOverview({
             <label
               className={`flex cursor-pointer items-start gap-2 rounded-[var(--radius-control)] border p-2 ${
                 mode === 'merge' && chosen >= 2
-                  ? 'border-[var(--color-brand)] ring-2 ring-[var(--color-brand)]/20'
-                  : 'border-[var(--color-border-strong)]'
+                  ? 'border-action ring-2 ring-action/20'
+                  : 'border-border-control'
               } ${chosen < 2 ? 'opacity-50' : ''}`}
             >
               <input
@@ -277,25 +279,25 @@ export function ImportOverview({
                 disabled={chosen < 2}
                 onChange={() => onMode('merge')}
                 data-testid="iw-ov-mode-merge"
-                className="mt-1 accent-[var(--color-brand)]"
+                className="mt-1 accent-action"
               />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium text-[var(--color-ink)]">
+                <span className="block text-sm font-medium text-ink">
                   Merged into one Table
                 </span>
-                <span className="block text-xs text-[var(--color-ink-muted)]">
+                <span className="block text-xs text-ink-muted">
                   {chosen < 2
                     ? 'Select two or more sheets to merge them.'
-                    : `All ${chosenRows.toLocaleString()} rows go into a single Table. Columns are matched by name, ignoring case, spaces and punctuation.`}
+                    : `All ${fmtCount(chosenRows)} rows go into a single Table. Columns are matched by name, ignoring case, spaces and punctuation.`}
                 </span>
                 {mode === 'merge' && chosen >= 2 && (
                   <span className="mt-2 flex flex-wrap items-center gap-2">
-                    <span className="fc-label m-0">Table name</span>
+                    <span className={labelClasses('m-0')}>Table name</span>
                     <input
                       value={mergeName}
                       onChange={(e) => onMergeName(e.target.value)}
                       data-testid="iw-ov-merge-name"
-                      className="fc-input w-56 py-1"
+                      className={inputClasses('w-56 py-1')}
                     />
                   </span>
                 )}
@@ -304,13 +306,13 @@ export function ImportOverview({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-2 text-xs text-[var(--color-ink-muted)] tabular-nums">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-subtle px-3 py-2 text-xs text-ink-muted tabular-nums">
           <span data-testid="iw-ov-tally">
-            <strong className="text-[var(--color-ink)]">{chosen}</strong> selected ·{' '}
-            <strong className="text-[var(--color-ink)]">{chosenRows.toLocaleString()}</strong> rows
+            <strong className="text-ink">{chosen}</strong> selected ·{' '}
+            <strong className="text-ink">{fmtCount(chosenRows)}</strong> rows
             will be imported ·{' '}
-            <strong className="text-[var(--color-ink)]">{sheets.length - chosen}</strong> left out ·{' '}
-            <strong className="text-[var(--color-ink)]">
+            <strong className="text-ink">{sheets.length - chosen}</strong> left out ·{' '}
+            <strong className="text-ink">
               {mode === 'merge' && chosen >= 2 ? 1 : chosen}
             </strong>{' '}
             {mode === 'merge' && chosen >= 2 ? 'Table' : `Table${chosen === 1 ? '' : 's'}`}
@@ -321,16 +323,16 @@ export function ImportOverview({
             type="button"
             onClick={onContinue}
             data-testid="iw-ov-continue"
-            className="fc-btn-primary"
+            className={buttonClasses({ variant: 'primary' })}
           >
             Continue to columns →
           </button>
           {refused ? (
-            <span className="text-sm text-[var(--color-danger)]" data-testid="iw-ov-refusal">
+            <span className="text-sm text-negative" data-testid="iw-ov-refusal">
               Pick at least one sheet to import.
             </span>
           ) : (
-            <span className="text-xs text-[var(--color-ink-muted)]">
+            <span className="text-xs text-ink-muted">
               {chosen === 0
                 ? `Nothing from ${fileName} is selected yet.`
                 : 'Sheets you leave unselected are not imported.'}

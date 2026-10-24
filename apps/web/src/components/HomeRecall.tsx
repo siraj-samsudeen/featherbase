@@ -4,6 +4,7 @@ import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser } from '../lib/api'
 import { ago, recentActions, type RecentEntry } from '../lib/recents'
 import { ShownName } from '../lib/people'
+import { buttonClasses, cardClasses } from './ui'
 
 // #101 Phase 5: the Home Page's first job becomes resuming. ResumeStrip
 // offers the last row / list / search as one-click tiles (instant, straight
@@ -65,7 +66,7 @@ export function ResumeStrip() {
   if (tiles.length === 0) return null
   return (
     <div data-testid="resume-strip">
-      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
         Continue where you left off
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -75,15 +76,15 @@ export function ResumeStrip() {
             type="button"
             onClick={t.open}
             data-testid={t.testid}
-            className="fc-card p-3 text-left transition hover:border-[var(--color-brand)]"
+            className={cardClasses('p-3 text-left transition hover:border-action')}
           >
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {t.head}
             </div>
-            <div className="mt-0.5 truncate text-sm font-medium text-[var(--color-ink)]">
+            <div className="mt-0.5 truncate text-sm font-medium text-ink">
               <ShownName id={t.entry.label} />
             </div>
-            <div className="mt-0.5 truncate text-xs text-[var(--color-ink-muted)]">
+            <div className="mt-0.5 truncate text-xs text-ink-muted">
               {t.entry.sub ? `${t.entry.sub} · ` : ''}
               {ago(t.entry.visits[t.entry.visits.length - 1] ?? 0)}
             </div>
@@ -113,7 +114,7 @@ export function RoutineCard() {
   if (workspace.length > 0)
     return (
       <div className="flex flex-wrap items-center gap-2" data-testid="workspace-chips">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+        <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
           📌 My workspace
         </span>
         {workspace.map((t) => (
@@ -123,7 +124,7 @@ export function RoutineCard() {
             onClick={() => router.history.push(t.path)}
             data-testid="workspace-chip"
             title={t.sub}
-            className="max-w-72 truncate rounded-full bg-[var(--color-brand-tint)] px-3 py-1 text-xs font-medium text-[var(--color-brand)] hover:opacity-80"
+            className="max-w-72 truncate rounded-full bg-action-tint px-3 py-1 text-xs font-medium text-action hover:opacity-80"
           >
             <ShownName id={t.label} />
             {t.sub ? <span className="ml-1 opacity-70">· {t.sub}</span> : null}
@@ -144,14 +145,14 @@ export function RoutineCard() {
 
   return (
     <div
-      className="fc-card border-l-2 border-l-[var(--color-brand)] p-4"
+      className={cardClasses('border-l-2 border-l-action p-4')}
       data-testid="routine-card"
     >
-      <p className="text-sm font-semibold text-[var(--color-ink)]">Looks like a routine</p>
-      <p className="mt-0.5 text-sm text-[var(--color-ink-muted)]">
+      <p className="text-sm font-semibold text-ink">Looks like a routine</p>
+      <p className="mt-0.5 text-sm text-ink-muted">
         You open these on most days:{' '}
         {targets.map((t, i) => (
-          <span key={t.key} className="font-medium text-[var(--color-ink)]">
+          <span key={t.key} className="font-medium text-ink">
             {i > 0 ? ', ' : ''}
             <ShownName id={t.label} />
             {t.sub ? ` (${t.sub})` : ''}
@@ -162,7 +163,7 @@ export function RoutineCard() {
       <div className="mt-2.5 flex gap-2">
         <button
           type="button"
-          className="fc-btn-primary"
+          className={buttonClasses({ variant: 'primary' })}
           data-testid="routine-pin"
           onClick={() => {
             try {
@@ -177,7 +178,7 @@ export function RoutineCard() {
         </button>
         <button
           type="button"
-          className="fc-btn"
+          className={buttonClasses()}
           data-testid="routine-dismiss"
           onClick={() => {
             try {

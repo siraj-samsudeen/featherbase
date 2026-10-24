@@ -6,6 +6,8 @@ import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { adminPageTitle } from 'shared'
 import { usePeek } from '../components/Peek'
+import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '../components/ui'
+import { fmtCount, fmtShowing } from '../lib/inr'
 
 type Row = Record<string, unknown>
 type Filter = [string, string, unknown]
@@ -131,23 +133,23 @@ export function ExploreView({
 
   return (
     <div data-testid="explore-view">
-      <div className="mb-1 text-xs text-[var(--color-ink-faint)]">Explore</div>
-      <h1 className="text-xl font-semibold text-[var(--color-ink)]">{adminPageTitle('explore')}</h1>
-      <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--color-ink-muted)]">
+      <div className="mb-1 text-xs text-ink-subtle">Explore</div>
+      <h1 className="text-xl font-semibold text-ink">{adminPageTitle('explore')}</h1>
+      <p className="mb-4 mt-1 max-w-2xl text-sm text-ink-muted">
         Chain tables along their references, then click rows — each selection filters every pane
         downstream. With nothing selected, a pane follows the whole upstream set. Click a selected
         row again to release it.
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+          <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
             Start from
           </span>
           <select
             value={root ?? ''}
             onChange={(e) => changeRoot(e.target.value)}
             data-testid="explore-root"
-            className="fc-input w-56"
+            className={inputClasses('w-56')}
           >
             <option value="">Pick a table…</option>
             {(tables.data?.tables ?? []).map((t) => (
@@ -227,7 +229,7 @@ export function ExploreView({
         )}
       </div>
       {!root && (
-        <p className="mt-6 text-sm text-[var(--color-ink-faint)]" data-testid="explore-empty">
+        <p className="mt-6 text-sm text-ink-subtle" data-testid="explore-empty">
           Pick a starting table to build a chain — e.g. Supplier → Purchase Order → PO Line, or
           Item → Purchase Order · via PO Line.
         </p>
@@ -263,7 +265,7 @@ function StepPicker({
   const { options } = useStepOptions(table)
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+      <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         {label}
       </span>
       <select
@@ -273,7 +275,7 @@ function StepPicker({
           onChange(hit ? hit.step : null)
         }}
         data-testid={testid}
-        className="fc-input w-56"
+        className={inputClasses('w-56')}
       >
         <option value="">—</option>
         {options.map((o) => (
@@ -299,14 +301,14 @@ function Chips({
           [...g.names].map((n) => (
             <span
               key={`${g.label}:${n}`}
-              className="fc-pill gap-1 bg-[var(--color-brand-tint)] text-[var(--color-brand)]"
+              className={pillClasses('gap-1 bg-action-tint text-action')}
               data-testid="explore-chip"
             >
               {g.label}: {n}
               <button
                 aria-label={`Release ${n}`}
                 onClick={() => g.clear(n)}
-                className="hover:opacity-70"
+                className={touchTargetClasses('hover:opacity-70')}
               >
                 ×
               </button>
@@ -314,7 +316,7 @@ function Chips({
           )),
         )
       ) : (
-        <span className="text-xs text-[var(--color-ink-faint)]">
+        <span className="text-xs text-ink-subtle">
           No selection — panes follow the whole upstream set. Click rows to narrow.
         </span>
       )}
@@ -379,19 +381,19 @@ function Pane({
       ),
   })
   if (meta.isLoading || list.isLoading)
-    return <div className="fc-card p-4 text-sm text-[var(--color-ink-faint)]">Loading…</div>
+    return <div className={cardClasses('p-4 text-sm text-ink-subtle')}>Loading…</div>
   if (meta.isError || list.isError)
-    return <div className="fc-card p-4 text-sm text-[var(--color-danger)]">Cannot load {table}</div>
+    return <div className={cardClasses('p-4 text-sm text-negative')}>Cannot load {table}</div>
 
   const rows = list.data!.data
   const total = list.data!.total
 
   return (
-    <div className="fc-card overflow-hidden" data-testid={testid}>
-      <div className="flex items-baseline gap-2 border-b border-[var(--color-border)] px-3 py-2">
-        <span className="text-sm font-semibold text-[var(--color-ink)]">{table}</span>
-        <span className="text-[11px] text-[var(--color-ink-faint)]" data-testid={`${testid}-count`}>
-          {rows.length === total ? total : `${rows.length} of ${total}`}
+    <div className={cardClasses('overflow-hidden')} data-testid={testid}>
+      <div className="flex items-baseline gap-2 border-b border-border px-3 py-2">
+        <span className="text-sm font-semibold text-ink">{table}</span>
+        <span className="text-xs text-ink-subtle" data-testid={`${testid}-count`}>
+          {fmtShowing(rows.length, total)}
         </span>
       </div>
       <div className="max-h-[420px] overflow-y-auto">
@@ -411,13 +413,13 @@ function Pane({
           />
         ))}
         {!rows.length && (
-          <p className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]">No rows</p>
+          <p className="px-3 py-6 text-center text-sm text-ink-subtle">No rows</p>
         )}
       </div>
-      <div className="flex justify-between border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1.5 text-xs text-[var(--color-ink-muted)]">
+      <div className="flex justify-between border-t border-border bg-subtle px-3 py-1.5 text-xs text-ink-muted">
         <span>
-          {total} row{total === 1 ? '' : 's'}
-          {rows.length < total ? ` · showing ${rows.length}` : ''}
+          {fmtCount(total)} row{total === 1 ? '' : 's'}
+          {rows.length < total ? ` · showing ${fmtCount(rows.length)}` : ''}
         </span>
         {numericCol && agg.data?.sum != null && (
           <span data-testid={`${testid}-sum`}>
@@ -453,14 +455,14 @@ function PaneRow({
       onKeyDown={(e) => e.key === 'Enter' && onToggle()}
       data-testid="explore-row"
       data-selected={selected || undefined}
-      className={`group block w-full cursor-pointer border-b border-l-[3px] border-b-[var(--color-border)] px-3 py-1.5 text-left last:border-b-0 ${
+      className={`group block w-full cursor-pointer border-b border-l-[3px] border-b-border px-3 py-1.5 text-left last:border-b-0 ${
         selected
-          ? 'border-l-[var(--color-brand)] bg-[var(--color-brand-tint)]'
-          : 'border-l-transparent hover:bg-[var(--color-subtle)]'
+          ? 'border-l-action bg-action-tint'
+          : 'border-l-transparent hover:bg-subtle'
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-medium text-[var(--color-ink)]">
+        <span className="truncate text-sm font-medium text-ink">
           {formatValue(first.column_type, row[first.column_name], settings) || String(row.row_id)}
         </span>
         {onPeek && (
@@ -470,14 +472,14 @@ function PaneRow({
               onPeek()
             }}
             title="Peek"
-            className="invisible text-[var(--color-ink-faint)] hover:text-[var(--color-brand)] group-hover:visible"
+            className="invisible text-ink-subtle hover:text-action group-hover:visible"
           >
             ◎
           </button>
         )}
       </div>
       {rest.length > 0 && (
-        <div className="flex flex-wrap gap-x-3 text-xs text-[var(--color-ink-muted)]">
+        <div className="flex flex-wrap gap-x-3 text-xs text-ink-muted">
           {rest.slice(0, 3).map((c) => (
             <span key={c.column_name} className="truncate">
               {formatValue(c.column_type, row[c.column_name], settings) || '—'}

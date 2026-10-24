@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react'
 import { inferColumnType } from 'shared'
 import { slugify } from '../lib/column-rules'
+import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 
 export interface PastedColumn {
   label: string
@@ -48,16 +49,16 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
       <button
         data-testid="dt-paste-open"
         onClick={() => setOpen(true)}
-        className="mb-3 text-xs text-[var(--color-ink-muted)] underline decoration-[var(--color-border-strong)] underline-offset-2 hover:text-[var(--color-brand)]"
+        className="mb-3 text-xs text-ink-muted underline decoration-border-control underline-offset-2 hover:text-action"
       >
         Or paste the columns as a list — like a spreadsheet header row
       </button>
     )
 
   return (
-    <div className="fc-card mb-4 p-4" data-testid="dt-paste">
+    <div className={cardClasses('mb-4 p-4')} data-testid="dt-paste">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
           Columns from a list
         </span>
         <button
@@ -66,7 +67,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
             setOpen(false)
             setText('')
           }}
-          className="rounded px-1.5 text-sm text-[var(--color-ink-faint)] transition hover:bg-[var(--color-subtle)]"
+          className="rounded px-1.5 text-sm text-ink-subtle transition hover:bg-subtle"
         >
           ✕
         </button>
@@ -85,10 +86,10 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
         rows={4}
         data-testid="dt-paste-text"
         placeholder={SAMPLE}
-        className="fc-input font-mono text-sm"
+        className={inputClasses('font-mono text-sm')}
         autoFocus
       />
-      <p className="mt-1 flex items-center gap-2 text-xs text-[var(--color-ink-faint)]">
+      <p className="mt-1 flex items-center gap-2 text-xs text-ink-subtle">
         <span>
           First line: the column names. Optional further lines: sample data, used to guess each type.
         </span>
@@ -96,7 +97,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
           <button
             data-testid="dt-paste-clear"
             onClick={() => setText('')}
-            className="shrink-0 font-medium text-[var(--color-ink-muted)] underline hover:text-[var(--color-brand)]"
+            className="shrink-0 font-medium text-ink-muted underline hover:text-action"
           >
             Clear
           </button>
@@ -104,7 +105,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
           <button
             data-testid="dt-paste-sample"
             onClick={() => setText(SAMPLE)}
-            className="shrink-0 font-medium text-[var(--color-ink-muted)] underline hover:text-[var(--color-brand)]"
+            className="shrink-0 font-medium text-ink-muted underline hover:text-action"
           >
             Try a sample (or press Tab)
           </button>
@@ -113,7 +114,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
       {preview.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {preview.map((p, i) => (
-            <span key={i} className="fc-pill border border-[var(--color-border-strong)] text-[var(--color-ink-muted)]">
+            <span key={i} className={pillClasses('border border-border-control text-ink-muted')}>
               {p.label}&ensp;·&ensp;{p.column_type}
             </span>
           ))}
@@ -127,7 +128,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
           setText('')
         }}
         disabled={!preview.length}
-        className="fc-btn mt-3"
+        className={buttonClasses({ className: 'mt-3' })}
       >
         Add these columns →
       </button>

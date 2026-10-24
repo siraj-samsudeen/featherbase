@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
+import { buttonClasses } from './ui'
+import { fmtMonthYear } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -43,10 +45,10 @@ export function CalendarView({ table }: { table: string }) {
       }),
   })
 
-  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   if (!field)
     return (
-      <p className="text-sm text-[var(--color-ink-muted)]" data-testid="calendar-no-date">
+      <p className="text-sm text-ink-muted" data-testid="calendar-no-date">
         This Table has no Date column.
       </p>
     )
@@ -94,30 +96,30 @@ export function CalendarView({ table }: { table: string }) {
     if (to) void moveEvent(ev.row_id, ev.from, to)
   }
 
-  const monthLabel = view.toLocaleString('en-US', { month: 'long', year: 'numeric' })
+  const monthLabel = fmtMonthYear(view)
   const shiftMonth = (delta: number) => setView(new Date(view.getFullYear(), view.getMonth() + delta, 1))
 
   return (
     <div data-testid="calendar-view" onPointerUp={onPointerUp}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Calendar</h1>
+          <h1 className="text-xl font-semibold text-ink">{table} — Calendar</h1>
           <div className="flex items-center gap-1">
-            <button onClick={() => shiftMonth(-1)} className="fc-btn" data-testid="cal-prev">‹</button>
+            <button onClick={() => shiftMonth(-1)} className={buttonClasses()} data-testid="cal-prev">‹</button>
             <span className="min-w-40 text-center text-sm font-medium" data-testid="cal-month">{monthLabel}</span>
-            <button onClick={() => shiftMonth(1)} className="fc-btn" data-testid="cal-next">›</button>
+            <button onClick={() => shiftMonth(1)} className={buttonClasses()} data-testid="cal-next">›</button>
           </div>
         </div>
-        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
+        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()} data-testid="cal-to-list">
           List view
         </RouterLink>
       </div>
 
-      {error && <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="calendar-error">{error}</p>}
+      {error && <p className="mb-3 text-sm text-negative" data-testid="calendar-error">{error}</p>}
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-border)]">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-          <div key={d} className="bg-[var(--color-subtle)] px-2 py-1 text-center text-xs font-medium text-[var(--color-ink-muted)]">
+          <div key={d} className="bg-subtle px-2 py-1 text-center text-xs font-medium text-ink-muted">
             {d}
           </div>
         ))}
@@ -129,9 +131,9 @@ export function CalendarView({ table }: { table: string }) {
               key={key}
               data-date={key}
               data-testid={`cal-cell-${key}`}
-              className={`min-h-24 bg-[var(--color-surface)] p-1 ${inMonth ? '' : 'opacity-50'}`}
+              className={`min-h-24 bg-surface p-1 ${inMonth ? '' : 'opacity-50'}`}
             >
-              <div className="mb-1 text-right text-xs text-[var(--color-ink-faint)]">{d.getDate()}</div>
+              <div className="mb-1 text-right text-xs text-ink-subtle">{d.getDate()}</div>
               <div className="flex flex-col gap-1">
                 {(byDate.get(key) ?? []).map((row) => (
                   <div
@@ -139,7 +141,7 @@ export function CalendarView({ table }: { table: string }) {
                     data-testid="cal-event"
                     data-event={String(row.row_id)}
                     onPointerDown={() => setDragging({ row_id: String(row.row_id), from: key })}
-                    className={`cursor-grab truncate rounded bg-[var(--color-brand-tint)] px-1 py-0.5 text-xs text-[var(--color-brand)] ${
+                    className={`cursor-grab truncate rounded bg-action-tint px-1 py-0.5 text-xs text-action ${
                       dragging?.row_id === row.row_id ? 'opacity-50' : ''
                     }`}
                   >

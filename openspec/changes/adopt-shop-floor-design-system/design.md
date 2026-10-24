@@ -31,6 +31,12 @@ headline and the staff tab bar are separate page-adoption changes after this one
   loads nothing and renders Malayalam and Tamil natively.
 - **Amounts:** `fmtINR` (lakh/crore ladder) for "how big" summaries, `fmtExact` for amounts that foot or get paid,
   `fmtCount` for counts, `fmtDate` for days, per ADR 750 / ADR 844 of the data warehouse.
+- **Display defaults (Siraj, 22-Oct-2026: Jeyarama is an Indian business, clean start).** A clean install shows
+  rupees; rupees group the Indian way and any other currency keeps its own locale's grouping. Dates have one display
+  form, DD-Mon-YYYY (ADR 844); ISO stays machine-facing, and the US and numeric display options are removed. Migration
+  0103 moves an install that had chosen a retired format.
+- **Touch sizes hold whatever a screen asks for.** A screen may make a control smaller under a mouse, but on a touch
+  screen the 16 px control text and 48 px height stay; the recipe applies the screen's smaller size as `pointer-fine:`.
 - **Guards.** A contrast test reads `index.css` and checks every text pair (≥4.5:1) and control edge (≥3:1) in light
   and dark. A rules test fails on raw Tailwind palette classes, literal hex colours, text under 12 px, browser-locale
   formatting and old token names. Until the last stage it carries an explicit list of files still waiting for the

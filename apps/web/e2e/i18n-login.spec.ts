@@ -71,11 +71,10 @@ test('I18N-002: stored language applied on login + configured date format', asyn
     await expect(page.getByTestId('language-select')).toHaveValue('fr')
   })
 
-  // The date renders THROUGH the System-Settings formatter (one of the
-  // configured orders of 9 March 2026) — never the raw ISO string. Which order
-  // is active depends on the shared global, so accept any valid one.
+  // The date renders THROUGH the System-Settings formatter — DD-Mon-YYYY, the
+  // one display form (#380) — never the raw ISO string.
   await session.visit(`/admin/${encodeURIComponent(DT)}`)
   await session.step('the due date cell renders through the date formatter', async ({ page }) => {
-    await expect(page.getByTestId('cell-due').first()).toHaveText(/^(2026-03-09|09-03-2026|03-09-2026)$/)
+    await expect(page.getByTestId('cell-due').first()).toHaveText('09-Mar-2026')
   })
 })

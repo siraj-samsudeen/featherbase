@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import type { WebFormColumn, WebFormConfig } from 'shared'
 import { api, ApiError } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 // WEB-002: a public, session-less form. Fetches its column config and creates
 // a row on submit; server validation errors surface inline.
@@ -16,7 +17,7 @@ function Column({
   onChange: (v: string) => void
 }) {
   const testid = `wf-field-${def.column_name}`
-  const common = { id: testid, 'data-testid': testid, className: 'fc-input', value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
+  const common = { id: testid, 'data-testid': testid, className: inputClasses(), value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
   if (def.column_type === 'Long Text' || def.column_type === 'Text') return <textarea rows={4} {...common} />
   if (def.column_type === 'Choice')
     return (
@@ -86,37 +87,37 @@ export function WebFormPage() {
   if (loadError)
     return (
       <div className="mx-auto mt-16 max-w-lg px-4" data-testid="web-form-error">
-        <div className="fc-card p-6 text-sm text-red-600">{loadError}</div>
+        <div className={cardClasses('p-6 text-sm text-negative')}>{loadError}</div>
       </div>
     )
-  if (!config) return <div className="p-8 text-center text-[var(--color-ink-faint)]">Loading…</div>
+  if (!config) return <div className="p-8 text-center text-ink-subtle">Loading…</div>
 
   return (
     <div className="mx-auto mt-16 max-w-lg px-4" data-testid="web-form">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]" data-testid="web-form-title">
+      <h1 className="mb-4 text-xl font-semibold text-ink" data-testid="web-form-title">
         {config.title}
       </h1>
       {done ? (
-        <div className="fc-card p-6 text-sm text-green-700" data-testid="web-form-success">
+        <div className={cardClasses('p-6 text-sm text-positive')} data-testid="web-form-success">
           {done}
         </div>
       ) : (
-        <form className="fc-card space-y-4 p-6" data-testid="web-form-form" onSubmit={submit}>
+        <form className={cardClasses('space-y-4 p-6')} data-testid="web-form-form" onSubmit={submit}>
           {config.columns.map((c) => (
             <div key={c.column_name}>
-              <label htmlFor={`wf-field-${c.column_name}`} className="fc-label">
+              <label htmlFor={`wf-field-${c.column_name}`} className={labelClasses()}>
                 {c.label}
-                {c.reqd && <span aria-hidden="true" className="text-red-500"> *</span>}
+                {c.reqd && <span aria-hidden="true" className="text-negative"> *</span>}
               </label>
               <Column def={c} value={values[c.column_name] ?? ''} onChange={(v) => setValues((s) => ({ ...s, [c.column_name]: v }))} />
             </div>
           ))}
           {error && (
-            <p className="text-sm text-red-600" data-testid="web-form-submit-error">
+            <p className="text-sm text-negative" data-testid="web-form-submit-error">
               {error}
             </p>
           )}
-          <button type="submit" disabled={busy} className="fc-btn-primary w-full justify-center py-2" data-testid="web-form-submit">
+          <button type="submit" disabled={busy} className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })} data-testid="web-form-submit">
             {busy ? 'Submitting…' : 'Submit'}
           </button>
         </form>
