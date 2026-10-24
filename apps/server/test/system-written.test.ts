@@ -351,7 +351,6 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/report_chart': 'read',
     'POST /api/pin_chart_to_dashboard': 'dashboards',
     'POST /api/permissions/:table': 'grants; a grant never makes an audit table writable',
-    'POST /api/run_query_report': 'read',
     'POST /api/tenancy/sites': 'tenancy',
     'POST /api/tenancy/user': 'tenancy',
     'POST /api/app_actions/:app/:action': 'app actions refuse system tables',

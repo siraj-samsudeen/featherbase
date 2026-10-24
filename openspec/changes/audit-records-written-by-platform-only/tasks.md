@@ -3,7 +3,7 @@
 ## 1. Server
 
 - [x] 1.1 Add failing tests: Administrator, System Manager and a System Manager access token are refused on insert, update, delete (one and bulk), rename, import (dry run included), import revert, and every column change on Activity Log; every marked table refuses create, update and delete before any existence check.
-- [x] 1.2 Migration 0109: add the marker to Table metadata (selectable, read-only, never settable through the table definition API) and set it on the twelve platform-written tables.
+- [x] 1.2 Migration 0113: add the marker to Table metadata (selectable, read-only, never settable through the table definition API) and set it on the twelve platform-written tables.
 - [x] 1.3 Refuse a marked table at the head of every public write path (save, delete, rename, submit, cancel, amend, settings save, workflow step, every write-effect row and collection action, schema update, naming, column rename, table delete, custom field), ahead of the privileged bypass.
 - [x] 1.4 Move the import logger to an internal trusted save that no route reaches; keep sign-in logging, the job runner, email queue and version history on their direct writers.
 - [x] 1.5 A grant on a marked table never lists it as creatable.

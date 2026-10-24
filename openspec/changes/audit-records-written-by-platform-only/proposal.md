@@ -51,7 +51,7 @@ None.
 
 ## Impact
 
-One migration (0109) adds the marker to Table metadata and sets it on the
+One migration (0113) adds the marker to Table metadata and sets it on the
 twelve platform records. The server's save, delete, rename, submit, import,
 row-action and column-change paths refuse a marked table before any
 permission check. The import logger moves to a dedicated internal save path.
