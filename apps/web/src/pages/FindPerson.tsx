@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { PrincipalName } from '../lib/people'
+import { adminPageTitle } from 'shared'
 import { Button, Notice, Select, TextInput } from '../components/ui'
 
 // person-resolution D3: find a person by an exact identifier — the employee
@@ -46,7 +47,7 @@ export function FindPerson() {
 
   return (
     <div className="mx-auto max-w-xl space-y-4 p-4" data-testid="find-person">
-      <h1 className="text-lg font-semibold text-ink">Find a person by identifier</h1>
+      <h1 className="text-lg font-semibold text-ink">{adminPageTitle('find-person')}</h1>
       <p className="text-sm text-ink-muted">
         Type the exact value — an employee code, a phone number, an address. Old values find the person too.
       </p>

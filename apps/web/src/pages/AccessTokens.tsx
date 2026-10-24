@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
+import { adminPageTitle } from 'shared'
 import { useIsSystemManager } from '../lib/session'
 
 // #131: automation credentials in one place — named access tokens (show-once
@@ -141,7 +142,7 @@ export function AccessTokens() {
     <div data-testid="access-tokens" className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--color-ink)]">Access tokens</h1>
+          <h1 className="text-lg font-semibold text-[var(--color-ink)]">{adminPageTitle('access-tokens')}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">
             Bearer credentials for the API. The secret is shown once, at creation.
           </p>

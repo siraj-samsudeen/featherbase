@@ -32,3 +32,12 @@ test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
   for (const path of ['/', '/@vite/client', '/favicon.ico', '/123task/'])
     expect(app.test(path)).toBe(false)
 })
+
+import { ADMIN_STATIC_PAGES, adminPageTitle } from '../src/index'
+
+test('every static admin page has a unique slug and a title', () => {
+  const slugs = ADMIN_STATIC_PAGES.map((p) => p.slug)
+  expect(new Set(slugs).size).toBe(slugs.length)
+  expect(adminPageTitle('sign-in-methods')).toBe('Sign-in methods')
+  expect(adminPageTitle('nope')).toBeUndefined()
+})

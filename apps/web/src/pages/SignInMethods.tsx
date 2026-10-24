@@ -2,6 +2,7 @@ import { PersonIdentifiers } from '../components/PersonIdentifiers'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
+import { adminPageTitle } from 'shared'
 import { Button, Card, Notice, buttonClasses } from '../components/ui'
 
 // person-identities (#275): the ways the signed-in person can get in — their
@@ -59,7 +60,7 @@ export function SignInMethods() {
 
   return (
     <div className="space-y-4" data-testid="sign-in-methods">
-      <h1 className="text-lg font-semibold text-ink">Sign-in methods</h1>
+      <h1 className="text-lg font-semibold text-ink">{adminPageTitle('sign-in-methods')}</h1>
       {outcome && (
         <div data-testid="link-outcome">
           <Notice tone={outcome.tone}>{outcome.text}</Notice>
