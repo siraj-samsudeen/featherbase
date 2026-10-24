@@ -17,7 +17,7 @@ async function usersWithEmail(request: APIRequestContext): Promise<{ row_id: str
   const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))
   const fields = encodeURIComponent(JSON.stringify(['row_id', 'enabled']))
-  return ((await (await request.get(`/api/table/User?filters=${filters}&fields=${fields}`, { headers })).json()) as {
+  return ((await (await request.get(`/api/table/Person?filters=${filters}&fields=${fields}`, { headers })).json()) as {
     data: { row_id: string; enabled: boolean }[]
   }).data
 }
@@ -28,8 +28,7 @@ test.beforeEach(async ({ request }) => {
   await setAllowedDomains(request, '')
   const headers = await adminAuth(request)
   for (const u of await usersWithEmail(request))
-    await request.delete(`/api/table/User/${encodeURIComponent(u.row_id)}`, { headers })
-  await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
+    await request.delete(`/api/table/Person/${encodeURIComponent(u.row_id)}`, { headers })
 })
 
 test.afterEach(async ({ request }) => {
@@ -41,7 +40,7 @@ test.afterEach(async ({ request }) => {
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The mock-OAuth screen and its outcome are all testid-addressed, so the
 // flow lives in named steps; `session` carries the plain navigation.
-test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ session, page, request }) => {
+test('PLAT-006: Google OAuth (mock) creates a User and lands on the no-access page until given a role', async ({ session, page, request }) => {
   await setAllowedDomains(request, '*')
   // #150: every URL this flow puts in the address bar — and therefore in
   // history, in the Referer of anything the page fetches next, and in every
@@ -61,10 +60,12 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
     await page.getByTestId('mock-approve').click()
   })
 
-  // We land in the Admin, signed in as the new user.
-  await session.step('lands in the Admin, signed in as the new user', async ({ page }) => {
+  // A brand-new person has no role yet (#410): they are signed in and told so,
+  // with a way to sign out, rather than shown an empty Admin.
+  await session.step('signed in as the new user, told they have no access yet', async ({ page }) => {
     await page.waitForURL(/\/admin/)
-    await expect(page.getByTestId('session-user')).toBeVisible()
+    await expect(page.getByTestId('no-access')).toBeVisible()
+    await expect(page.getByTestId('logout')).toBeVisible()
   })
 
   // #150: the landing carried a one-time handoff code, never the session
@@ -79,10 +80,10 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   // Its id is opaque and permanent, never the address.
   const headers = await adminAuth(page.request)
   const [doc] = await usersWithEmail(page.request)
-  expect(doc.row_id).toMatch(/^usr_[0-9a-f]{20}$/)
+  expect(doc.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
   expect(doc.enabled).toBe(true)
   const links = (await (
-    await page.request.get(`/api/users/${encodeURIComponent(doc.row_id)}/identities`, { headers })
+    await page.request.get(`/api/people/${encodeURIComponent(doc.row_id)}/identities`, { headers })
   ).json()) as { identities: { method: string; subject: string | null }[] }
   expect(links.identities).toEqual([expect.objectContaining({ method: 'google', subject: EMAIL })])
 })
@@ -92,25 +93,35 @@ test('PLAT-006: an invited Google address links the existing User (no duplicate)
   // matching email alone never links). It is created enabled on purpose:
   // since #137 a disabled account is refused, never re-enabled by signing in.
   const headers = await adminAuth(request)
-  await request.post('/api/save_row', {
+  // Its own address, so it never depends on deleting the person the first
+  // test's Google sign-in created. person-rename: the id is minted (`psn_…`),
+  // never the address.
+  const INVITED = 'oauth.e2e.invited@gmail.com'
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', INVITED]]))
+  const prior = (await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const p of prior.data) await request.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { headers })
+  const made = await request.post('/api/save_row', {
     headers,
-    data: { table: 'User', row: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },
+    data: { table: 'Person', row: { email: INVITED, full_name: 'Existing', enabled: true, roles: [] } },
   })
-  await request.post(`/api/users/${encodeURIComponent(EMAIL)}/identities`, { headers, data: { method: 'google', email: EMAIL } })
+  if (made.status() !== 201) throw new Error(`create person: ${made.status()} ${await made.text()}`)
+  const existingId = ((await made.json()) as { row_id: string }).row_id
+  await request.post(`/api/people/${encodeURIComponent(existingId)}/identities`, { headers, data: { method: 'google', email: INVITED } })
 
   await session.visit('/login')
   await session.step('sign in through the mock OAuth flow', async ({ page }) => {
     await page.getByTestId('google-login').click()
-    await page.getByTestId('mock-email').fill(EMAIL)
+    await page.getByTestId('mock-email').fill(INVITED)
     await page.getByTestId('mock-approve').click()
     await page.waitForURL(/\/admin/)
   })
 
   // Exactly one User with that email.
   const listed = (await (
-    await request.get(`/api/table/User?filters=${encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))}`, { headers })
+    await request.get(`/api/table/Person?filters=${encodeURIComponent(JSON.stringify([['email', '=', INVITED]]))}`, { headers })
   ).json()) as { data: { row_id: string }[] }
   expect(listed.data.length).toBe(1)
+  expect(listed.data[0].row_id).toBe(existingId)
 })
 
 test('PLAT-006: a tampered OAuth state is rejected', async ({ request }) => {

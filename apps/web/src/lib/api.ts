@@ -89,7 +89,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // the logout transition, #101 review).
     if (!path.endsWith('/api/login') && !path.endsWith('/api/login/delegated') && window.location.pathname !== '/featherbase/login') {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
-      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}`
+      // A session that existed and was refused has ended (a disabled account,
+      // an upgrade that re-keyed every account): the sign-in page says so.
+      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}${token ? '&ended=1' : ''}`
     }
   }
   const body = (await res.json().catch(() => ({}))) as {
@@ -103,6 +105,19 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       body.error?.fields,
     )
   return body as T
+}
+
+// #411: sign-out ends this session on the server. If the server could not
+// confirm it (a 5xx or no answer), the session may still work: the caller
+// says so and keeps the user signed in so they can try again.
+export const SIGN_OUT_INCOMPLETE = 'Sign-out did not complete. Check your connection and try again.'
+export async function signOut(): Promise<boolean> {
+  try {
+    await api.post('/api/logout', {})
+    return true
+  } catch {
+    return false
+  }
 }
 
 export const api = {

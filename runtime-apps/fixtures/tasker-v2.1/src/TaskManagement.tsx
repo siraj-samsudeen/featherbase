@@ -162,7 +162,7 @@ export function TaskManagementPage() {
   const users = useQuery({
     queryKey: ['task-management', 'users'],
     queryFn: () =>
-      listResource<{ row_id: string }>('User', {
+      listResource<{ row_id: string }>('Person', {
         fields: ['row_id'],
         order_by: 'row_id asc',
         limit_page_length: 200,

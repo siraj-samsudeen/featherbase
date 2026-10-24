@@ -54,8 +54,14 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     }
     return request(`/api/table/${encodeURIComponent(table)}`, { method: 'POST', body: row })
   }
-  for (const user of TASKER_SCENARIOS.users)
-    await ensure('User', 'row_id', user.row_id, user, { email: user.email })
+  // person-rename: people are found by email and get minted psn_ ids; a
+  // scenario names a person by email.
+  const people = new Map()
+  for (const user of TASKER_SCENARIOS.users) {
+    const person = await ensure('Person', 'email', user.email, user, { full_name: user.full_name })
+    people.set(user.email, person.row_id)
+  }
+  const personId = (value) => (value && people.has(value) ? people.get(value) : value)
   const projects = new Map()
   for (const scenario of TASKER_SCENARIOS.projects) {
     const project = await ensure('tasker.project', 'row_id', scenario.row_id, scenario, { project_name: scenario.project_name })
@@ -66,6 +72,8 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     const { explanation, comments = [], project, ...values } = scenario
     const task = await ensure('tasker.task', 'row_id', scenario.row_id, {
       ...values,
+      ...(values.assigned_to ? { assigned_to: personId(values.assigned_to) } : {}),
+      ...(values.personal_tasks_owner ? { personal_tasks_owner: personId(values.personal_tasks_owner) } : {}),
       ...(project ? { project: projects.get(project) } : {}),
     }, { task_title: scenario.task_title })
     tasks.set(scenario.row_id, task.row_id)

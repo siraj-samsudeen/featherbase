@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures'
+import { test, expect, adminAuth } from './fixtures'
 
 const SVC = 'svc-e2e-spec'
 
@@ -18,17 +18,26 @@ test('#131: service account + token lifecycle through the Admin screen', async (
     await page.getByTestId('sa-role-System Manager').check()
     await page.getByTestId('sa-create').click()
   })
+  // person-rename: the account's id is minted (`svc_…`); SVC is its name.
+  const idOf = async () => {
+    const listed = (await (await request.get('/api/service_accounts', { headers: await adminAuth(request) })).json()) as {
+      service_accounts: { row_id: string; label: string }[]
+    }
+    return listed.service_accounts.find((a) => a.label === SVC)?.row_id ?? ''
+  }
+  await expect.poll(idOf).toMatch(/^svc_[a-z2-7]{20}$/)
+  const id = await idOf()
   await session
-    .assertHas(`[data-testid="sa-${SVC}"]`)
-    .assertHas(`[data-testid="sa-${SVC}"]`, { text: 'System Manager' })
+    .assertHas(`[data-testid="sa-${id}"]`, { text: SVC })
+    .assertHas(`[data-testid="sa-${id}"]`, { text: 'System Manager' })
 
   let secret = ''
   await session.step(
     'issue a token from its row and reveal the secret via the show-once modal',
     async ({ page }) => {
-      await page.getByTestId(`sa-issue-${SVC}`).click()
+      await page.getByTestId(`sa-issue-${id}`).click()
       await expect(page.getByTestId('issue-dialog')).toBeVisible()
-      await expect(page.getByTestId('token-owner')).toHaveValue(SVC)
+      await expect(page.getByTestId('token-owner')).toHaveValue(id)
       await page.getByTestId('token-label').fill('e2e spec token')
       await page.getByTestId('issue-confirm').click()
       await expect(page.getByTestId('secret-dialog')).toBeVisible()
@@ -43,7 +52,7 @@ test('#131: service account + token lifecycle through the Admin screen', async (
     headers: { Authorization: `Bearer ${secret}` },
   })
   expect(who.status()).toBe(200)
-  expect(((await who.json()) as { row_id: string }).row_id).toBe(SVC)
+  expect(((await who.json()) as { row_id: string }).row_id).toBe(id)
 
   await session.step('the token row is listed as active with its label; revoke it', async ({ page }) => {
     const row = page.locator('[data-testid^="token-tok_"]', { hasText: 'e2e spec token' }).first()

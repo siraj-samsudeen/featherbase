@@ -12,47 +12,12 @@
 // role the import wizard's whole new-Table path (the file overview, merge
 // groups, everything Part A added) refuses, and the preview would show a
 // permission wall rather than the feature.
-import { randomBytes } from 'node:crypto'
 import { sql } from '../src/db'
-import { saveDoc } from '../src/document'
-import { setUserPassword } from '../src/auth'
 import { createTable } from '../src/table-engine'
 import { previewLogin } from '../src/preview'
+import { ensurePreviewPerson } from '../src/preview-person'
 
 const FULL_NAME = process.env.PREVIEW_USER_NAME?.trim() || 'Preview Visitor'
-
-async function ensureUser(email: string): Promise<void> {
-  const [existing] = await sql`
-    select row_id, enabled from "user"
-    where lower(row_id) = lower(${email}) or lower(email) = lower(${email})`
-
-  if (existing) {
-    // Converge rather than recreate: a re-deploy must not reset a session or
-    // strip a role someone added by hand while looking at the preview.
-    await sql`update "user" set enabled = true where row_id = ${existing.row_id as string}`
-    console.log(`preview user ${existing.row_id as string} already exists — left in place`)
-    return
-  }
-
-  await saveDoc(
-    'User',
-    {
-      row_id: email,
-      email,
-      full_name: FULL_NAME,
-      enabled: true,
-      roles: [{ role: 'System Manager' }, { role: 'All' }],
-    },
-    'Administrator',
-  )
-
-  // The preview signs in through /preview, so no human ever types this. Give
-  // it a random one anyway: an account with no password at all is a different
-  // and worse thing to leave lying around, and login() already refuses a
-  // password-less account.
-  await setUserPassword(email, randomBytes(24).toString('base64url'))
-  console.log(`created preview user ${email} (System Manager, not Administrator)`)
-}
 
 // A Table the import wizard can be pointed at, so "import into an existing
 // Table" is reachable on a fresh preview without building one first.
@@ -93,7 +58,7 @@ async function main() {
     console.log('preview sign-in is not configured here — nothing to seed')
     return
   }
-  await ensureUser(config.user)
+  await ensurePreviewPerson(config.user, FULL_NAME)
   await ensureDemoTable()
   console.log('preview seed complete')
 }

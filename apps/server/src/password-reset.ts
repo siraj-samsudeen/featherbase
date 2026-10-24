@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
 import { config } from './config'
-import { sql } from './db'
+import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { findPasswordAccount, setUserPassword } from './auth'
-import { deliverToSink } from './email'
+import { deliverWithoutWaiting } from './email'
 
 // SET-002: password reset via an emailed link. A request mints a single-use,
-// time-limited token and mails a reset link to the user (the dev sink). The
+// time-limited token and mails a reset link to the user. The
 // reset endpoint consumes the token and sets the new password.
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -14,7 +14,7 @@ const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 export const MIN_PASSWORD_LENGTH = 6
 // One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
 // never be told two different things about where this instance lives.
-const SITE_URL = config.siteUrl || 'http://localhost:5173'
+export const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
 // Never reveal whether an account exists; only a real, enabled user with both
 // an email and a password gets a mail (person-identities): resetting never
@@ -22,9 +22,9 @@ const SITE_URL = config.siteUrl || 'http://localhost:5173'
 // Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
   const user = await findPasswordAccount(usr)
-  // #137: a service account has no password to reset. Fall through the same
-  // silent `null` as an unknown user so this cannot be used to enumerate them.
-  if (!user || !user.enabled || user.user_type === 'service' || !user.email || !user.password_hash) return null
+  // #137: only a person has a password to reset; a service account is not a
+  // person, so it is never found here — the same silent `null` as an unknown user.
+  if (!user || !user.enabled || !user.email || !user.password_hash) return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
@@ -35,11 +35,18 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
   })}`
 
   const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
-  await deliverToSink({
-    to: user.email as string,
-    subject: 'Reset your password',
-    body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
-  })
+  // The caller is anonymous and the route answers ok either way, so neither a
+  // failed send nor the time an SMTP server takes may tell an existing account
+  // from an unknown one (#395): the send is not awaited, and a failure is
+  // logged without the address.
+  await deliverWithoutWaiting(
+    {
+      to: user.email as string,
+      subject: 'Reset your password',
+      body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
+    },
+    'password_reset',
+  )
   return token
 }
 
@@ -51,7 +58,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // #137, burn-on-use: the link is consumed the moment it is used, in its own
   // committed transaction, BEFORE the password write is attempted. A write
   // that then fails — as it does for a principal that became
-  // `user_type = 'service'` between the request and the click — does not give
+  // a service account between the request and the click — does not give
   // the link back.
   //
   // The tempting alternative is to make the write and the consumption atomic,
@@ -65,16 +72,26 @@ export async function resetPassword(token: string, newPassword: string): Promise
   // `for update` plus deleting every outstanding token for the user settles
   // concurrent clicks: the first to take the row lock consumes them all, and
   // the losers re-read under READ COMMITTED, find nothing, and are refused.
-  const user = await sql.begin(async (tx) => {
+  const link = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [row] = await stx`
-      select "user", expires_at from password_reset where token = ${token} for update`
+      select "user", expires_at, created_at from password_reset where token = ${token} for update`
     if (!row || new Date(row.expires_at as string).getTime() < Date.now())
       throw new AppError('ValidationError', 'This reset link is invalid or has expired')
 
     await stx`delete from password_reset where "user" = ${row.user as string}`
-    return row.user as string
+    return { user: row.user as string, issuedAt: new Date(row.created_at as string) }
   })
 
-  await setUserPassword(user, newPassword)
+  // #391: a break-glass shell reset revokes every outstanding link, but one
+  // consumed just before it could still write just after it. Under the
+  // person's row lock (the shell reset's write takes the same lock), refuse
+  // a link issued before the latest shell reset.
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as TxSql
+    const [person] = await stx`select sessions_ended_at from person where row_id = ${link.user} for update`
+    if (person?.sessions_ended_at && new Date(person.sessions_ended_at as string) > link.issuedAt)
+      throw new AppError('ValidationError', 'This reset link is invalid or has expired')
+    await setUserPassword(link.user, newPassword, stx)
+  })
 }

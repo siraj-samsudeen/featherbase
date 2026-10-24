@@ -41,7 +41,7 @@ test('no connected service, no second way in', async () => {
   vi.unstubAllEnvs()
 })
 
-test('a linked Team Leader signs in with their StyleHR ID and lands in the Admin', async ({ createUser }) => {
+test('a linked Team Leader signs in with their StyleHR ID', async ({ createUser }) => {
   await connectStyleHR()
   const tl = await createUser({ email: 'tl.web@example.com' })
   await linkDelegated(tl.user!, 'tl_web_1')
@@ -51,7 +51,7 @@ test('a linked Team Leader signs in with their StyleHR ID and lands in the Admin
   expect(await screen.findByTestId('delegated-login-toggle')).toHaveTextContent('Sign in with StyleHR')
   await submitDelegated('tl_web_1', 'hr-password')
 
-  await screen.findByTestId('session-user')
+  await screen.findByTestId('no-access') // no role yet (#410)
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
   expect(localStorage.getItem('fc_token')).toBeTruthy()
 })
@@ -103,7 +103,7 @@ test('test mode: a notice, no password field, and an employee code alone signs i
     await userEvent.type(screen.getByLabelText('Employee code'), tl.user!)
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
 
-    await screen.findByTestId('session-user')
+    await screen.findByTestId('no-access') // no role yet (#410)
     expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
   } finally {
     vi.unstubAllEnvs()
@@ -141,4 +141,42 @@ test('if the sign-in options cannot be read, Google is still offered', async () 
   } finally {
     spy.mockRestore()
   }
+})
+
+// Nothing typed is a mistake the page names itself, not the API's validation text (#406).
+test('submitting no employee code says what to enter and sends nothing', async () => {
+  vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+  try {
+    await connectStyleHR()
+    const asked = vi.fn(() => Response.json({}))
+    providerAnswers(asked)
+    const requests = vi.spyOn(globalThis, 'fetch')
+    await renderApp('/featherbase/login', anonymous)
+    await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+    requests.mockClear()
+    await userEvent.click(screen.getByTestId('delegated-login-submit'))
+    expect(await screen.findByText('Enter your employee code.')).toBeInTheDocument()
+    expect(screen.queryByText(/Expected \{/)).not.toBeInTheDocument()
+    expect(requests.mock.calls.filter(([u]) => String(u).includes('/api/login'))).toEqual([])
+    expect(asked).not.toHaveBeenCalled()
+    requests.mockRestore()
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
+
+test('an ID without a password says what to enter and sends nothing', async () => {
+  await connectStyleHR()
+  const asked = vi.fn(() => Response.json({}))
+  providerAnswers(asked)
+  const requests = vi.spyOn(globalThis, 'fetch')
+  await renderApp('/featherbase/login', anonymous)
+  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  await userEvent.type(screen.getByLabelText('StyleHR ID'), 'someone')
+  requests.mockClear()
+  await userEvent.click(screen.getByTestId('delegated-login-submit'))
+  expect(await screen.findByText('Enter your StyleHR ID and password.')).toBeInTheDocument()
+  expect(requests.mock.calls.filter(([u]) => String(u).includes('/api/login'))).toEqual([])
+  expect(asked).not.toHaveBeenCalled()
+  requests.mockRestore()
 })

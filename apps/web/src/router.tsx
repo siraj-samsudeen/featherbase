@@ -12,6 +12,9 @@ import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
+import { ManageOnly } from './pages/RestrictedShell'
+import { EmptyState } from './components/ui'
+import { useCapabilities } from './lib/session'
 import { getToken, landingPath } from './lib/api'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
@@ -28,6 +31,8 @@ import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
+import { FindPerson } from './pages/FindPerson'
+import { WaitingForAccess } from './pages/WaitingForAccess'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -228,11 +233,24 @@ const adminIndexRoute = createRoute({
 function AdminIndexPage() {
   const navigate = adminIndexRoute.useNavigate()
   const pages = useHomePages()
+  const caps = useCapabilities()
   const first = pages.data?.pages[0]
+  // #410: nothing opened to them by Table — only rows others shared, reached by
+  // the link they were sent. An empty Home Page would be the same dead end.
+  const sharedOnly = Boolean(caps && !caps.manage && !caps.own_grant)
   useEffect(() => {
-    if (first) void navigate({ to: '/featherbase/admin/home/$name', params: { name: first.row_id }, replace: true })
-  }, [first, navigate])
-  if (!pages.data) return null
+    if (first && caps && !sharedOnly) void navigate({ to: '/featherbase/admin/home/$name', params: { name: first.row_id }, replace: true })
+  }, [first, caps, sharedOnly, navigate])
+  if (!pages.data || !caps) return null
+  if (sharedOnly)
+    return (
+      <div data-testid="shared-only">
+        <EmptyState
+          title="Nothing is open to you here yet"
+          body="Rows shared with you open from the link you were sent. Ask your administrator if you expected to see tables here."
+        />
+      </div>
+    )
   if (first) return null
   return (
     <p className="text-sm text-gray-500" data-testid="admin-index-empty">
@@ -251,7 +269,7 @@ const newTableRoute = createRoute({
   path: 'new-table',
   component: () => (
     <div data-testid="table-page">
-      <TableBuilder />
+      <ManageOnly><TableBuilder /></ManageOnly>
     </div>
   ),
 })
@@ -265,7 +283,7 @@ const importRoute = createRoute({
   }),
   component: () => (
     <div data-testid="table-page">
-      <ImportWizard />
+      <ManageOnly><ImportWizard /></ManageOnly>
     </div>
   ),
 })
@@ -276,7 +294,7 @@ const importBatchesRoute = createRoute({
   path: 'imports',
   component: () => (
     <div data-testid="table-page">
-      <ImportBatches />
+      <ManageOnly><ImportBatches /></ManageOnly>
     </div>
   ),
 })
@@ -289,7 +307,7 @@ const columnsRoute = createRoute({
   path: '$table/columns',
   component: () => (
     <div data-testid="table-page">
-      <ColumnEditor />
+      <ManageOnly><ColumnEditor /></ManageOnly>
     </div>
   ),
 })
@@ -300,7 +318,7 @@ const mergeRoute = createRoute({
   path: '$table/merge',
   component: () => (
     <div data-testid="table-page">
-      <TableMerge />
+      <ManageOnly><TableMerge /></ManageOnly>
     </div>
   ),
 })
@@ -514,6 +532,23 @@ const signInMethodsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'sign-in-methods',
   component: SignInMethods,
+})
+
+// person-resolution: find a person by an exact identifier (an employee code
+// mailed by HR) — linked from the Person list.
+const findPersonRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'find-person',
+  component: FindPerson,
+})
+
+// #429: people who signed in but hold no role yet (System Manager only).
+const waitingForAccessRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'waiting-for-access',
+  component: () => (
+    <ManageOnly><WaitingForAccess /></ManageOnly>
+  ),
 })
 
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
@@ -738,5 +773,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
 ])

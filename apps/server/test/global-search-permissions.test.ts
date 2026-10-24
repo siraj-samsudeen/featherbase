@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
-import type { SearchHit } from '../src/search'
+import { registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
 import { createUserWithRole, grantRole, makeTable, type TableRef } from './fixtures'
 
@@ -108,7 +108,7 @@ describe('global search permissions', () => {
     })
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: region.name, for_value: 'gs-region-scope-east' },
+      row: { person: user.user, allow_table: region.name, for_value: 'gs-region-scope-east' },
     })
 
     const regionResults = (await search(user, 'gs-region-scope')).results.filter(
@@ -195,7 +195,7 @@ describe('global search permissions', () => {
       row: {
         share_table: table.name,
         share_name: 'gs-direct-share-hidden',
-        user: alice.user,
+        person: alice.user,
         read: true,
       },
     })
@@ -203,5 +203,41 @@ describe('global search permissions', () => {
     expect((await alice.fetch(table.rowUrl('gs-direct-share-hidden'))).status).toBe(200)
     const { results } = await search(alice, 'gs-direct-share-hidden')
     expect(results.filter((hit) => hit.table === table.name)).toEqual([])
+  })
+})
+
+describe('global search ranking (#431)', () => {
+  test('registry rows (Table definitions) rank after ordinary records', async ({ admin }) => {
+    const table = await makeTable(admin, {
+      name: 'Zz Rank Widget',
+      id_pattern: 'prompt',
+      columns: ['label'],
+    })
+    await admin.post(table.url, { row_id: 'Zz Rank Widget Row', label: 'x' })
+
+    const { results } = await search(admin, 'zz rank widget')
+    const ordinary = results.findIndex((h) => h.table === table.name)
+    const registry = results.findIndex((h) => h.table === 'Table')
+    expect(ordinary).toBeGreaterThanOrEqual(0)
+    expect(registry).toBeGreaterThanOrEqual(0)
+    expect(ordinary).toBeLessThan(registry)
+  })
+})
+
+describe('global search labels (#431)', () => {
+  test('a Table definition row carries the label "Table definition"', async ({ admin }) => {
+    const table = await makeTable(admin, { name: 'Zz Label Widget', id_pattern: 'prompt', columns: ['label'] })
+    const { results } = await search(admin, table.name)
+    expect(results.find((h) => h.table === 'Table' && h.row_id === table.name)).toMatchObject({
+      kind_label: 'Table definition',
+    })
+  })
+
+  test('Object.prototype keys are not registries', () => {
+    for (const name of ['constructor', 'toString', 'valueOf', '__proto__']) {
+      expect(registryLabel(name)).toBeUndefined()
+    }
+    expect(registryLabel('Table')).toBe('Table definition')
+    expect(registryLabel('Metadata Override')).toBe('Metadata override')
   })
 })

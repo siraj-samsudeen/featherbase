@@ -2,13 +2,16 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 
-// PERM-001: role resolution. Every enabled user implicitly holds 'All';
-// explicit roles come from the Has Role child table on User.
-export async function getRoles(user: string): Promise<string[]> {
-  if (user === 'Guest') return ['Guest']
+// PERM-001: role resolution for a principal — a person or a service account
+// (person-rename R2). Every enabled principal implicitly holds 'All';
+// explicit roles come from the Has Role child rows of either kind. Person and
+// service-account ids live in separate namespaces (psn_ / svc_ / built-ins),
+// so the id alone names the principal.
+export async function getRoles(principal: string): Promise<string[]> {
+  if (principal === 'Guest') return ['Guest']
   const rows = await sql`
     select role from has_role
-    where parent = ${user} and parenttype = 'User'
+    where parent = ${principal} and parenttype in ('Person', 'Service Account')
     order by role`
   return ['All', ...rows.map((r) => r.role as string)]
 }
@@ -77,7 +80,7 @@ export async function isSharedWith(
   const [row] = await sql`
     select 1 from share
     where share_table = ${table} and share_name = ${name}
-      and "user" = ${user} and ${sql(col)} = true limit 1`
+      and (person = ${user} or service_account = ${user}) and ${sql(col)} = true limit 1`
   return Boolean(row)
 }
 
@@ -85,7 +88,7 @@ export async function isSharedWith(
 export async function sharedNames(user: string, table: string): Promise<string[]> {
   const rows = await sql`
     select share_name from share
-    where share_table = ${table} and "user" = ${user} and read = true`
+    where share_table = ${table} and (person = ${user} or service_account = ${user}) and read = true`
   return rows.map((r) => r.share_name as string)
 }
 
@@ -118,18 +121,60 @@ export async function assertPermission(
     )
 }
 
-export async function isBypassUser(user: string): Promise<boolean> {
-  if (user === 'Administrator') return true
-  return (await getRoles(user)).includes('System Manager')
+/**
+ * What Tables a principal can use, for drawing the shell (#410): the Tables
+ * they can read or create in, and whether they hold any Table grant of their
+ * own or a shared row. Display only — every request is still checked by its own
+ * route. Sub-tables and dropped Tables never count (same filter as
+ * /api/navigable_tables). Grants to the implicit built-in `All` role (they come
+ * from runtime apps) make a Table listable but do not by themselves earn the
+ * Admin shell.
+ */
+export async function tableAccessFor(
+  principal: string,
+  roles: string[],
+): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
+  const rows = await sql`
+    select p.ref_table, p.role, p.can_read, p.can_create, p.owner_app,
+      (p.can_read or p.can_write or p.can_create or p.can_delete
+        or p.can_submit or p.can_cancel or p.can_amend) as any_action
+    from permission p
+    join table_def d on d.name = p.ref_table and d.kind = 'table'
+    where p.tier = 'basic' and p.role in ${sql(roles)}`
+  const active = rows.filter(
+    (r) => r.any_action && (r.owner_app == null || activeApps.has(String(r.owner_app))),
+  )
+  const names = (pick: (r: (typeof active)[number]) => boolean) =>
+    [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
+  const [shared] = await sql`
+    select 1 from share
+    where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
+  const ownGrant = active.some((r) => r.role !== 'All')
+  return {
+    readable: names((r) => r.can_read),
+    creatable: names((r) => r.can_create),
+    ownGrant,
+    any: ownGrant || Boolean(shared),
+  }
 }
 
-// PERM-005: map of restricted Table -> allowed row names for a user.
-export async function getUserPermissionMap(
-  user: string,
+/** Administrator, or a principal of either kind holding System Manager. */
+export async function isPrivileged(principal: string): Promise<boolean> {
+  if (principal === 'Administrator') return true
+  return (await getRoles(principal)).includes('System Manager')
+}
+
+// PERM-005: map of restricted Table -> allowed row names for a principal.
+// The ONLY reader of data_scope (person-rename R2): list, get, query/report,
+// search, export, realtime, sales-target and bound sources all come here, so
+// a scoped service account is narrowed exactly like a scoped person.
+export async function getScopeMap(
+  principal: string,
 ): Promise<Map<string, Set<string>>> {
   const map = new Map<string, Set<string>>()
   const rows = await sql`
-    select allow_table, for_value from data_scope where "user" = ${user}`
+    select allow_table, for_value from data_scope
+    where person = ${principal} or service_account = ${principal}`
   for (const r of rows) {
     const key = r.allow_table as string
     if (!map.has(key)) map.set(key, new Set())
@@ -178,7 +223,7 @@ export async function permittedTiers(
   table: string,
   action: 'read' | 'write',
 ): Promise<Set<'basic' | 'restricted'>> {
-  if (await isBypassUser(user)) return new Set(['basic', 'restricted'])
+  if (await isPrivileged(user)) return new Set(['basic', 'restricted'])
   const roles = await getRoles(user)
   const rows = await sql`
     select tier, owner_app from permission

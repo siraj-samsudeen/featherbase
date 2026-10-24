@@ -49,7 +49,9 @@ const DT = 'RLS Vault'
 const CHILD = 'RLS Vault Item'
 const SECRET_DT = 'RLS Hidden'
 const ROLE = 'RLS Vault Reader'
-const USER = 'rls-vault@x.com'
+const USER_EMAIL = 'rls-vault@x.com'
+// The person's minted id (`psn_…`), set in beforeAll; cleanup finds it by address.
+let USER = ''
 
 // This suite connects as the unprivileged `app_client` role, so it needs its
 // own URL — but it must reach the SAME database as the rest of the run. The
@@ -74,8 +76,10 @@ async function as(user: string | null) {
 
 async function cleanup() {
   await sql`delete from permission where ref_table in (${DT}, ${SECRET_DT})`
-  await sql`delete from has_role where parent = ${USER}`
-  await sql`delete from "user" where row_id = ${USER}`
+  const people = sql`select row_id from person where email = ${USER_EMAIL}`
+  await sql`delete from has_role where parent in (${people})`
+  await sql`delete from person_identifier where person_id in (select row_id from person where email = ${USER_EMAIL})`
+  await sql`delete from person where email = ${USER_EMAIL}`
   await sql`delete from role where row_id = ${ROLE}`
   await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql`delete from column_def where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
@@ -110,13 +114,14 @@ beforeAll(async () => {
     method: 'POST',
     body: JSON.stringify({ table: 'Role', row: { row_id: ROLE } }),
   })
-  await areq('/api/save_row', {
+  const person = await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      table: 'User',
-      row: { row_id: USER, email: USER, roles: [{ role: ROLE }] },
+      table: 'Person',
+      row: { email: USER_EMAIL, roles: [{ role: ROLE }] },
     }),
   })
+  USER = ((await person.json()) as { row_id: string }).row_id
   await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
@@ -154,7 +159,7 @@ describe('PERM-004: generated RLS for direct clients', () => {
   it('non-permitted Tables yield zero rows', async () => {
     await as(USER)
     expect(await direct`select * from featherbase.rls_hidden`).toHaveLength(0)
-    expect(await direct`select * from featherbase."user"`).toHaveLength(0)
+    expect(await direct`select * from featherbase.person`).toHaveLength(0)
   })
 
   it('an unauthenticated session (Guest) sees nothing', async () => {

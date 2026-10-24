@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sign, verify } from 'hono/jwt'
-import { sql } from './db'
+import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { getSystemSettings } from './settings'
 import { logActivity } from './audit'
@@ -29,20 +29,45 @@ export function verifyPassword(password: string, stored: string): boolean {
 // refused service accounts, but password reset reaches this function directly,
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
-export async function setUserPassword(name: string, password: string) {
-  const [row] = await sql`select user_type from "user" where row_id = ${name}`
-  if (row?.user_type === 'service')
-    throw new AppError(
-      'ValidationError',
-      'Service accounts have no password — issue an access token instead',
-    )
-  await sql`
-    update "user" set password_hash = ${hashPassword(password)}
+export async function setUserPassword(name: string, password: string, db: Sql | TxSql = sql) {
+  // person-rename: only a person has a password. A service account is not a
+  // person, so it is refused here whichever route reached this write.
+  const [row] = await db`select 1 from person where row_id = ${name}`
+  if (!row) {
+    const [service] = await db`select 1 from service_account where row_id = ${name}`
+    if (service)
+      throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
+    throw new AppError('NotFoundError', `Person ${name} not found`)
+  }
+  await db`
+    update person set password_hash = ${hashPassword(password)}
     where row_id = ${name}`
 }
 
+/** #391: the break-glass reset from an operator shell. The same write as
+ *  every other route (so the same refusals). In one transaction it also ends
+ *  every live session of the person and revokes their outstanding reset
+ *  links; the Activity Log then records the actor `cli`. Access tokens are
+ *  left alone: revoke them separately. */
+export async function setPasswordFromShell(person: string, password: string) {
+  await sql.begin(async (tx) => {
+    const t = tx as unknown as TxSql
+    await setUserPassword(person, password, t)
+    // resetPassword re-checks this cut-off under the same row lock, so a link
+    // already consumed but not yet written cannot land after it either.
+    await t`update person set sessions_ended_at = now() where row_id = ${person}`
+    await t`delete from password_reset where "user" = ${person}`
+  })
+  await logActivity('cli', `password_set for ${person}`)
+}
+
+export type PrincipalKind = 'person' | 'service_account'
+
 export interface SessionUser {
+  /** The principal id: a person (`psn_…`, or a built-in) or a service account (`svc_…`). */
   row_id: string
+  /** Which kind of principal this session is (person-rename R2). */
+  kind: PrincipalKind
   /** Optional contact data (person-identities): null for people without one. */
   email: string | null
   full_name: string | null
@@ -59,6 +84,10 @@ export interface SignInClaims {
   preview: boolean
   /** Seconds since the epoch; null for a token minted before the upgrade. */
   issued_at: number | null
+  /** This session's unique id (`jti`, #411): what sign-out revokes. */
+  session_id: string
+  /** Seconds since the epoch when this session's token expires. */
+  expires_at: number
 }
 
 export interface SessionOptions {
@@ -74,19 +103,22 @@ export interface IssuedSession {
   maxAgeSeconds: number
 }
 
-async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number }> {
+async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number; jti: string }> {
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const maxAgeSeconds = hours * 3600
   const iat = Math.floor(Date.now() / 1000)
+  // #411: a unique id per session, so sign-out can revoke exactly this one.
+  const jti = randomBytes(16).toString('base64url')
   // m = sign-in method, idn = linked identity, tm = test mode (design D8).
   const token = await sign(
     {
       sub: userName,
       iat,
       exp: iat + maxAgeSeconds,
+      jti,
       ...(opts.method ? { m: opts.method } : {}),
       ...(opts.identity ? { idn: opts.identity } : {}),
       ...(opts.testMode ? { tm: true } : {}),
@@ -94,11 +126,11 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
     },
     JWT_SECRET,
   )
-  return { token, maxAgeSeconds, iat }
+  return { token, maxAgeSeconds, iat, jti }
 }
 
-function claimsOf(opts: SessionOptions, iat: number): SignInClaims {
-  return { method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat }
+function claimsOf(opts: SessionOptions, iat: number, jti: string, exp: number): SignInClaims {
+  return { expires_at: exp, method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, session_id: jti }
 }
 
 /** The one account a typed username-or-email names for password sign-in and
@@ -109,11 +141,11 @@ export async function findPasswordAccount(typed: string) {
   // A username is the id for older accounts and `username` for people who
   // signed up (their id is opaque); either beats an email.
   const rows = await sql`
-    select row_id, email, full_name, enabled, password_hash, user_type,
+    select row_id, email, full_name, enabled, password_hash,
       case when row_id = ${typed} then 0
            when lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed})) then 1
            else 2 end as rank
-    from "user"
+    from person
     where row_id = ${typed} or lower(row_id) = lower(trim(${typed})) or lower(username) = lower(trim(${typed}))
       or lower(email) = lower(trim(${typed}))
     order by rank
@@ -139,8 +171,8 @@ export function burnPasswordCheck(pwd: string): void {
 // method and identity so the session remembers how it was opened.
 export async function issueSession(userName: string, opts: SessionOptions = {}): Promise<IssuedSession> {
   const [user] = await sql`
-    select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
-  if (!user || !user.enabled || user.user_type === 'service')
+    select row_id, email, full_name, enabled from person where row_id = ${userName}`
+  if (!user || !user.enabled)
     throw new AppError('AuthenticationError', 'User cannot sign in')
   const session = await issueSessionToken(user.row_id as string, opts)
   await logActivity(user.row_id as string, 'login', {
@@ -150,7 +182,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat) },
+    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.jti, session.iat + session.maxAgeSeconds) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -169,16 +201,31 @@ function hashToken(token: string): string {
 export interface AccessTokenRow {
   id: string
   label: string
+  /** The principal the token authenticates as: a person or a service account. */
   owner: string
+  owner_kind: PrincipalKind
   created_at: string
   expires_at: string | null
   last_used_at: string | null
   revoked_at: string | null
   /** Only present on list results — see listAccessTokens. */
   owner_enabled?: boolean
+  /** The owner's name, for screens (never show the opaque id). List results only. */
+  owner_name?: string | null
 }
 
-const tokenFields = () => sql`id, label, owner, created_at, expires_at, last_used_at, revoked_at`
+const tokenFields = () => sql`id, label, coalesce(person, service_account) as owner,
+  case when person is not null then 'person' else 'service_account' end as owner_kind,
+  created_at, expires_at, last_used_at, revoked_at`
+
+/** A principal id → its kind and enabled flag; null when it names nobody. */
+export async function findPrincipal(id: string): Promise<{ row_id: string; kind: PrincipalKind; enabled: boolean } | null> {
+  const [row] = await sql`
+    select row_id, 'person' as kind, enabled from person where row_id = ${id}
+    union all
+    select row_id, 'service_account' as kind, enabled from service_account where row_id = ${id}`
+  return row ? { row_id: String(row.row_id), kind: row.kind as PrincipalKind, enabled: row.enabled === true } : null
+}
 
 export async function issueAccessToken(
   owner: string,
@@ -188,13 +235,14 @@ export async function issueAccessToken(
   if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
   if (expiresAt && !(expiresAt.getTime() > Date.now()))
     throw new AppError('ValidationError', 'expires_at must be in the future')
-  const [user] = await sql`select row_id, enabled from "user" where row_id = ${owner}`
-  if (!user) throw new AppError('NotFoundError', `User ${owner} not found`)
-  if (!user.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
+  const principal = await findPrincipal(owner)
+  if (!principal) throw new AppError('NotFoundError', `Account ${owner} not found`)
+  if (!principal.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
   const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
   const [row] = await sql`
-    insert into access_token (id, label, owner, token_hash, expires_at)
-    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()}, ${owner},
+    insert into access_token (id, label, person, service_account, token_hash, expires_at)
+    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()},
+            ${principal.kind === 'person' ? owner : null}, ${principal.kind === 'service_account' ? owner : null},
             ${hashToken(token)}, ${expiresAt ?? null})
     returning ${tokenFields()}`
   return { token, ...(row as unknown as AccessTokenRow) }
@@ -211,17 +259,17 @@ export async function issueAccessToken(
 // as `owner_enabled: false`, which is the truth: such a token authenticates
 // nobody, and it stays listed and revocable.
 export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]> {
-  const rows = owner
-    ? await sql`
-        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.row_id = t.owner
-        where t.owner = ${owner} order by t.created_at desc`
-    : await sql`
-        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.row_id = t.owner
-        order by t.created_at desc`
+  const rows = await sql`
+    select t.id, t.label, coalesce(t.person, t.service_account) as owner,
+           case when t.person is not null then 'person' else 'service_account' end as owner_kind,
+           t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
+           coalesce(p.enabled, s.enabled, false) as owner_enabled,
+           coalesce(nullif(trim(p.full_name), ''), '@' || nullif(p.username, ''), nullif(p.email, ''), s.label) as owner_name
+    from access_token t
+    left join person p on p.row_id = t.person
+    left join service_account s on s.row_id = t.service_account
+    ${owner ? sql`where t.person = ${owner} or t.service_account = ${owner}` : sql``}
+    order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }
 
@@ -247,16 +295,21 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     where token_hash = ${hashToken(token)}
       and revoked_at is null
       and (expires_at is null or expires_at > now())
-    returning owner`
+    returning person, service_account`
   if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
-  const [user] = await sql`
-    select row_id, email, full_name, enabled from "user" where row_id = ${hit.owner}`
-  if (!user || !user.enabled)
+  // Whichever column is set (person-rename R2); a disabled owner of either
+  // kind is refused.
+  const [owner] = hit.person
+    ? await sql`select row_id, email, full_name, enabled, 'person' as kind from person where row_id = ${hit.person as string}`
+    : await sql`select row_id, null::text as email, label as full_name, enabled, 'service_account' as kind
+        from service_account where row_id = ${hit.service_account as string}`
+  if (!owner || !owner.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
-    row_id: user.row_id as string,
-    email: (user.email as string | null) ?? null,
-    full_name: user.full_name as string | null,
+    row_id: owner.row_id as string,
+    kind: owner.kind as PrincipalKind,
+    email: (owner.email as string | null) ?? null,
+    full_name: owner.full_name as string | null,
   }
 }
 
@@ -300,7 +353,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown; iat?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
   } catch {
@@ -309,6 +362,10 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // A token minted before person-identities carries no `iat`: such sessions
   // were ended at the upgrade (no compatibility window — Siraj, 22-Oct-2026).
   if (typeof payload.iat !== 'number') throw new AppError('AuthenticationError', 'Invalid or expired session')
+  // #411: nor does one minted before sessions carried an id — it could never
+  // be signed out, so it ended at that upgrade too.
+  if (typeof payload.jti !== 'string' || !payload.jti) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  const jti = payload.jti
   const method = typeof payload.m === 'string' ? payload.m : null
   const identity = typeof payload.idn === 'string' ? payload.idn : null
   // One query (design D8): the person, the method the session came through,
@@ -317,21 +374,33 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // unlinked or moved. Tokens from before the upgrade carry no m/idn.
   const [user] = await sql`
     select u.row_id, u.email, u.full_name, u.enabled, (u.password_hash is not null) as has_password,
+      floor(extract(epoch from u.sessions_ended_at)) as sessions_ended_at,
       m.enabled as method_enabled, m.kind as method_kind,
-      i.user_id as identity_owner, i.subject as identity_subject
-    from "user" u
+      i.person_id as identity_owner, i.subject as identity_subject, i.ended_at as identity_ended,
+      (r.jti is not null) as signed_out
+    from person u
     left join sign_in_method m on m.row_id = ${method}
-    left join user_identity i on i.id = ${identity}
+    left join sign_in_identity i on i.id = ${identity}
+    left join revoked_session r on r.jti = ${jti}
     where u.row_id = ${String(payload.sub)}`
   const ended =
     !user ||
     !user.enabled ||
+    // #411: this session was signed out (a primary-key lookup).
+    user.signed_out ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
-    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null))
+    // #391: a session issued before the person's sessions were ended. Whole
+    // seconds, like `iat` (floor(now)): a sign-in in the same second as the
+    // reset survives — and so would an older one from that same second.
+    (user.sessions_ended_at != null && payload.iat < Number(user.sessions_ended_at)) ||
+    // person-resolution D5: a session opened through an identity that has
+    // since ended (left, moved, unlinked) ends on its next request.
+    (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))
   if (ended) throw new AppError('AuthenticationError', 'Invalid or expired session')
   return {
     row_id: user.row_id as string,
+    kind: 'person',
     email: (user.email as string | null) ?? null,
     full_name: user.full_name as string | null,
     sign_in: {
@@ -340,8 +409,65 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       test_mode: payload.tm === true,
       preview: payload.pv === true,
       issued_at: typeof payload.iat === 'number' ? payload.iat : null,
+      session_id: jti,
+      expires_at: Number(payload.exp),
     },
   }
+}
+
+/** #411: the session a credential names, for sign-out. The signature must
+ *  hold but expiry is NOT checked: signing out an expired session still has
+ *  to end it (its sockets may be open). Access tokens and anything not
+ *  correctly signed name no session and return null. */
+export interface SessionToRevoke { jti: string; person: string; expiresAt: number }
+export async function sessionToRevoke(authorization?: string): Promise<SessionToRevoke | null> {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (!token || token.startsWith(TOKEN_PREFIX)) return null
+  let payload: { sub?: unknown; jti?: unknown; exp?: unknown }
+  try {
+    payload = (await verify(token, JWT_SECRET, { alg: 'HS256', exp: false })) as typeof payload
+  } catch {
+    return null
+  }
+  if (typeof payload.jti !== 'string' || !payload.jti || typeof payload.exp !== 'number') return null
+  return { jti: payload.jti, person: String(payload.sub), expiresAt: payload.exp }
+}
+
+/** #411: record a signed-out session so resolveToken refuses it. Only that
+ *  session; the person's others keep working. An already-expired session
+ *  needs no row (expiry refuses it). Rows past their session's expiry are
+ *  pruned in the same transaction, so the table holds only sessions that
+ *  could still be presented. Throws when the write fails — the caller must
+ *  not report sign-out as complete. */
+export async function revokeSession(session: SessionToRevoke): Promise<void> {
+  await sql.begin(async (t) => {
+    await t`delete from revoked_session where expires_at < now()`
+    if (session.expiresAt <= Math.floor(Date.now() / 1000)) return
+    await t`insert into revoked_session (jti, person_id, expires_at)
+      values (${session.jti}, ${session.person}, to_timestamp(${session.expiresAt}))
+      on conflict (jti) do nothing`
+  })
+}
+
+/** #411: which of these open sessions have ended since they were checked —
+ *  expired, signed out (on any instance), the person disabled, or issued before the
+ *  person's sessions were ended (#391; whole seconds, as resolveToken). One
+ *  query for all of them. */
+export interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
+export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
+  if (!sessions.length) return new Set()
+  const rows = await sql`
+    select s.jti
+    from unnest(${sessions.map((x) => x.jti)}::text[], ${sessions.map((x) => x.person)}::text[],
+                ${sessions.map((x) => x.issuedAt)}::bigint[], ${sessions.map((x) => x.expiresAt)}::bigint[]) as s(jti, person, iat, exp)
+    left join person p on p.row_id = s.person
+    left join revoked_session r on r.jti = s.jti
+    where r.jti is not null or p.row_id is null or not p.enabled
+       -- statement_timestamp, not now(): now() is frozen at the start of an
+       -- enclosing transaction, which would keep an expired socket open.
+       or s.exp <= extract(epoch from statement_timestamp())
+       or (p.sessions_ended_at is not null and s.iat < floor(extract(epoch from p.sessions_ended_at)))`
+  return new Set(rows.map((r) => r.jti as string))
 }
 
 /** Linking another sign-in method needs a recent sign-in (design D6): a

@@ -3,7 +3,7 @@ import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
-import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
+import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
@@ -169,7 +169,7 @@ export async function scopedWhere(
   // not disqualify a row — the restriction applies to values, so NULL passes
   // (matches the detail-read check in permissions.ts, which skips empty
   // values).
-  const bypass = await isBypassUser(user)
+  const bypass = await isPrivileged(user)
   // PERM-007: child rows are only as visible as the rows they hang on. The
   // Table grant says "may read rows of this shape"; the PARENT decides which
   // ones. Metadata already names every Table that can hold these rows (the
@@ -179,7 +179,7 @@ export async function scopedWhere(
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
   if (!bypass) {
-    const upMap = await getUserPermissionMap(user)
+    const upMap = await getScopeMap(user)
     if (upMap.size) {
       const own = upMap.get(table)
       if (own) filters.push([ROW_KEY, 'in', [...own]])
@@ -213,7 +213,9 @@ export async function scopedWhere(
   function plainCond(logicalField: string, op: string, value: unknown): ReturnType<typeof sql> {
     const field = phys(logicalField)
     switch (op) {
-      case '=': return sql`${sql(field)} = ${value as string}`
+      // Null-aware like '!=' below: `[col, '=', null]` means "is empty"
+      // (person-resolution: the Person picker's `replaced_by` filter).
+      case '=': return value === null ? sql`${sql(field)} is null` : sql`${sql(field)} = ${value as string}`
       case '!=': return sql`${sql(field)} is distinct from ${value as string}`
       case '>': return sql`${sql(field)} > ${value as string}`
       case '<': return sql`${sql(field)} < ${value as string}`

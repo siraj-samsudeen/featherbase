@@ -70,7 +70,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
         (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, { method: 'DELETE' }))
           .status,
       ).toBe(403)
-      expect((await user.fetch('/api/table/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/Person')).status).toBe(403)
     } finally {
       await unwire()
     }

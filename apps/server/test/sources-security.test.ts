@@ -147,7 +147,7 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     // Restrict the user to ACC-A of the bound Table itself.
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: BOUND, for_value: 'ACC-A' },
+      row: { person: user.user, allow_table: BOUND, for_value: 'ACC-A' },
     })
     const list = (await user.get(
       `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id","label"]')}`,
@@ -340,7 +340,7 @@ describe('re-review findings', () => {
     })
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: user.user, allow_table: 'Sec Region', for_value: 'north' },
+      row: { person: user.user, allow_table: 'Sec Region', for_value: 'north' },
     })
     expect(meta.columns.some((c) => c.column_name === 'region')).toBe(true)
 

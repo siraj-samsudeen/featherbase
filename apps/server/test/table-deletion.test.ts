@@ -145,7 +145,7 @@ describe('DEL-R3: schema references block, and say who', () => {
   })
 
   test('DEL-R3: system tables are platform anatomy — refused', async ({ admin }) => {
-    for (const name of ['User', 'Table', 'Column']) {
+    for (const name of ['Person', 'Service Account', 'Table', 'Column']) {
       await expect(admin.delete(`/api/table_def/${name}`)).rejects.toMatchObject({
         status: 417,
         message: expect.stringContaining('system table'),

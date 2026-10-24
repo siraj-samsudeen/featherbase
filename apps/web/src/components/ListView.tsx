@@ -6,9 +6,10 @@ import { recentActions, type RecentEntry } from '../lib/recents'
 import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
-import { useIsSystemManager } from '../lib/session'
+import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
+import { PrincipalName } from '../lib/people'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
 
@@ -24,6 +25,12 @@ const PAGE = 20
 
 // SET-004: cells render through the global display settings (date format,
 // currency/float precision). Non-typed columns fall back to a plain string.
+// person-rename: a Reference to a person or a service account shows the
+// name, never the opaque id.
+function isPrincipalTable(table: string | null | undefined): boolean {
+  return table === 'Person' || table === 'Service Account'
+}
+
 function cell(value: unknown, columnType: string, settings: Settings): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? '✓' : '✗'
@@ -81,6 +88,9 @@ export function ListView({
   const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
+  const caps = useCapabilities()
+  // #410: New is offered only to someone the server would let create a row here.
+  const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
@@ -391,7 +401,8 @@ export function ListView({
               inside a parent — `saveDoc` refuses a direct child insert, so
               offering New on a directly-reached child list could only ever
               produce an error. */}
-          {!isSourceReadOnly(meta.data) &&
+          {canAddRows &&
+            !isSourceReadOnly(meta.data) &&
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
@@ -414,9 +425,14 @@ export function ListView({
             Report
           </Link>
           <ExploreSplitButton table={table} />
+          {table === 'Person' && (
+            <Link to="/featherbase/admin/find-person" className={buttonClasses()} data-testid="open-find-person">
+              Find by code
+            </Link>
+          )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
-          {!isSourceReadOnly(meta.data) && (
+          {!isSourceReadOnly(meta.data) && caps?.manage && (
             <Link
               to="/featherbase/admin/import"
               search={{ table: table }}
@@ -429,7 +445,7 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {!meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
@@ -440,7 +456,7 @@ export function ListView({
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
-          {!meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/merge"
               params={{ table }}
@@ -721,7 +737,8 @@ export function ListView({
                       {/* TLC-J1.2: an empty table is the moment the user most
                           needs the way forward, so the empty state carries it
                           too — the toolbar action is not the only door. */}
-                      {!isSourceReadOnly(meta.data) &&
+                      {canAddRows &&
+                        !isSourceReadOnly(meta.data) &&
                         meta.data?.kind !== 'settings' &&
                         meta.data?.kind !== 'sub_table' && (
                         <>
@@ -787,7 +804,7 @@ function ListRow({
 }: {
   row: Record<string, unknown>
   table: string
-  columns: { column_name: string; label: string; column_type: string }[]
+  columns: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
   settings: Settings
   selected: boolean
   onToggleSelect: () => void
@@ -837,13 +854,21 @@ function ListRow({
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
               >
-                {cell(row[col.column_name], col.column_type, settings)}
+                {col.column_name === 'row_id' && isPrincipalTable(table) ? (
+                  <PrincipalName id={String(row.row_id)} />
+                ) : (
+                  cell(row[col.column_name], col.column_type, settings)
+                )}
               </Link>
             ) : col.column_type === 'Choice' &&
               row[col.column_name] != null &&
               row[col.column_name] !== '' ? (
               <span className="text-ink" data-testid={`cell-${col.column_name}`}>
                 <Indicator value={String(row[col.column_name])} />
+              </span>
+            ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
+              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
+                <PrincipalName id={String(row[col.column_name])} />
               </span>
             ) : (
               <span className="text-ink" data-testid={`cell-${col.column_name}`}>
@@ -944,7 +969,7 @@ function InlineChildGrid({
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-action hover:underline"
                     >
-                      {String(r[c.column_name])}
+                      {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
                     </Link>
                   ) : (
                     cell(r[c.column_name], c.column_type, settings)

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 import {
   applyColumnCombines,
   autoMapColumns,
+  autoMapImportColumns,
+  retiredColumnNotice,
   coerceRows,
   combineOverlap,
   COMBINE_JOIN_SEPARATOR,
@@ -345,6 +347,25 @@ describe('IMP-009: autoMapColumns / scoreTableMatch', () => {
   })
 })
 
+describe('#387: a Datetime wall time goes on the wire as the instant it names', () => {
+  const wire = (cell: string) => coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [[cell]])[0].values.when
+  test('an offset-free time is read on the importing clock', () => {
+    expect(wire('2024-10-21T12:00:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
+    expect(wire('2024-10-21 12:00')).toBe(new Date(2024, 9, 21, 12).toISOString())
+  })
+  test('fractional seconds keep every digit the text has', () => {
+    const second = new Date(2024, 9, 21, 12).toISOString().slice(0, 19)
+    expect(wire('2024-10-21T12:00:00.123456')).toBe(`${second}.123456Z`)
+  })
+  test('a date-only value is local midnight on the importing clock', () => {
+    expect(wire('2024-10-21')).toBe(new Date(2024, 9, 21).toISOString())
+  })
+  test.each(['2024-10-21T12:00:00+05:30', '2024-10-21T06:30:00Z', '1900-02-29T12:00:00', '2024-10-21T25:00', 'soon'])(
+    '%s is sent as typed (zoned, impossible, or not a date-time)',
+    (cell) => expect(wire(cell)).toBe(cell),
+  )
+})
+
 describe('IMP-004: coerceRows', () => {
   const columns = [
     { column_name: 'title', column_type: 'Data' },
@@ -580,5 +601,25 @@ describe('applyColumnCombines', () => {
     const def = inferTableDef('T', columns.map((c) => c.label), rows)
     expect(def.columns).toHaveLength(1)
     expect(def.columns[0].column_name).toBe('store')
+  })
+})
+
+describe('#408 retired Person columns', () => {
+  const targets = [
+    { column_name: 'full_name', label: 'Full Name' },
+    // A Custom Field someone re-created after 0107: inert, never a mapping target.
+    { column_name: 'employee_code', label: 'Employee code (StyleHR)' },
+  ]
+  test('employee_code and stylehr_username on Person carry a notice; other Tables and headers do not', () => {
+    expect(retiredColumnNotice('Person', 'Employee Code')).toBe(
+      'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+    )
+    expect(retiredColumnNotice('Person', 'stylehr_username')).toMatch(/^stylehr_username is no longer a Person field/)
+    expect(retiredColumnNotice('Person', 'Full Name')).toBeNull()
+    expect(retiredColumnNotice('Store Manager', 'employee_code')).toBeNull()
+  })
+  test('a retired header never maps on Person, even onto a re-created column; elsewhere it maps as usual', () => {
+    expect(autoMapImportColumns('Person', ['Full Name', 'employee_code'], targets)).toEqual(['full_name', null])
+    expect(autoMapImportColumns('Store Manager', ['Full Name', 'employee_code'], targets)).toEqual(['full_name', 'employee_code'])
   })
 })

@@ -310,7 +310,7 @@ try {
     }), error => error.code === '42501')
   } finally { await direct.end() }
   await api('/api/save_row', { table: 'Report', row: {
-    row_id: 'Raw Tasker report', ref_table: 'User', report_type: 'Query Report',
+    row_id: 'Raw Tasker report', ref_table: 'Person', report_type: 'Query Report',
     query: "select query_to_xml('select * from tasker.task', true, false, set_config('role', 'none', true))",
   } }, 201)
   await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)

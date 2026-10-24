@@ -197,9 +197,9 @@ describe('delegated password sign-in', () => {
       expect(sidCookie(res)).toBeUndefined()
       // person-identities (review M4): the account is disabled too. Re-enable
       // it so the next shape is judged on its own.
-      const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+      const [row] = await sql`select enabled from person where row_id = ${tl.user!}`
       expect(row.enabled, JSON.stringify(body)).toBe(false)
-      await sql`update "user" set enabled = true where row_id = ${tl.user!}`
+      await sql`update person set enabled = true where row_id = ${tl.user!}`
     }
   })
 
@@ -231,7 +231,7 @@ describe('delegated password sign-in', () => {
     await configure()
     const tl = await createUser({ email: 'tl.five@example.com' })
     await link(tl.user!, 'tl_5')
-    await sql`update "user" set enabled = false where row_id = ${tl.user!}`
+    await sql`update person set enabled = false where row_id = ${tl.user!}`
     const calls = provider(() => Response.json({ ok: true }))
     const res = await signIn(api, 'tl_5')
     expect(calls).toHaveLength(0)
@@ -240,11 +240,18 @@ describe('delegated password sign-in', () => {
     expect(sidCookie(res)).toBeUndefined()
   })
 
-  test('an automation account is never bound', async ({ api, admin, createUser }) => {
+  test('an automation account is never bound', async ({ api, admin }) => {
     await configure()
-    const bot = await createUser({ email: 'bot@example.com' })
-    await link(bot.user!, 'bot_1')
-    await sql`update "user" set user_type = 'service' where row_id = ${bot.user!}`
+    // person-rename: a service account is not a person, so it cannot hold a
+    // sign-in identity at all — neither through the API nor in the table.
+    const bot = (await admin.post('/api/service_accounts', { label: 'bot' })) as { row_id: string }
+    const res = await admin.fetch(`/api/people/${bot.row_id}/identities`, {
+      method: 'POST',
+      body: JSON.stringify({ method: 'stylehr', subject: 'BOT-1', sign_in_name: 'bot_1' }),
+    })
+    expect(res.status).toBe(417)
+    await expect(sql.begin((tx) => tx`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
+      values ('uid_bot', ${bot.row_id}, 'stylehr', 'BOT-1', 'bot_1', 'test')`)).rejects.toThrow(/foreign key/)
     const calls = provider(() => Response.json({ ok: true }))
     expect((await signIn(api, 'bot_1')).status).toBe(401)
     expect(calls).toHaveLength(0)
@@ -255,13 +262,13 @@ describe('delegated password sign-in', () => {
     const a = await createUser({ email: 'dup.a@example.com' })
     const b = await createUser({ email: 'dup.b@example.com' })
     await link(a.user!, 'dup_1')
-    const res = await admin.fetch(`/api/users/${encodeURIComponent(b.user!)}/identities`, {
+    const res = await admin.fetch(`/api/people/${encodeURIComponent(b.user!)}/identities`, {
       method: 'POST',
       body: JSON.stringify({ method: 'stylehr', subject: 'B-1', sign_in_name: 'DUP_1 ' }),
     })
     expect(res.status).toBe(409)
-    const rows = await sql`select user_id from user_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
-    expect(rows.map((r) => r.user_id)).toEqual([a.user])
+    const rows = await sql`select person_id from sign_in_identity where method = 'stylehr' and lower(sign_in_name) = 'dup_1'`
+    expect(rows.map((r) => r.person_id)).toEqual([a.user])
   })
 
   test('off is 404 like any unknown route, and the provider is never called', async ({ api }) => {
@@ -382,7 +389,7 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     const tl = await createUser({ email: 'tl.test@example.com' })
-    await link(tl.user!, 'ANISHA_1716708795')
+    await link(tl.user!, 'DEVI_1000000001')
     const calls = provider(() => Response.json({ error: 'would have refused' }))
 
     for (const [usr, pwd] of [[tl.user!, ''], [` ${tl.user!.toUpperCase()} `, 'anything at all']]) {
@@ -397,8 +404,8 @@ describe('delegated sign-in test mode', () => {
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
     await configure()
     const tl = await createUser({ email: 'tl.login@example.com' })
-    await link(tl.user!, 'ANISHA_1716708795')
-    expect((await signIn(api, 'ANISHA_1716708795', '')).status).toBe(401)
+    await link(tl.user!, 'DEVI_1000000001')
+    expect((await signIn(api, 'DEVI_1000000001', '')).status).toBe(401)
   })
 
   test('on: an account with no link, a disabled one and a System Manager are still refused', async ({ api, admin, createUser }) => {
@@ -409,7 +416,7 @@ describe('delegated sign-in test mode', () => {
     expect((await signIn(api, office.user!, '')).status).toBe(401)
     const off = await createUser({ email: 'tl.disabled@example.com' })
     await link(off.user!, 'tl_disabled')
-    await sql`update "user" set enabled = false where row_id = ${off.user!}`
+    await sql`update person set enabled = false where row_id = ${off.user!}`
     expect((await signIn(api, off.user!, '')).status).toBe(401)
     const sm = await createUser({ email: 'sm@example.com', roles: ['System Manager'] })
     await link(sm.user!, 'sm_1')
@@ -427,6 +434,76 @@ describe('delegated sign-in test mode', () => {
       expect(calls).toHaveLength(1)
       expect((await signIn(api, 'tl_strict', '')).status).toBe(417)
     }
+  })
+
+  // person-resolution D5: the code resolves through current employee-code
+  // identifier rows; a code on two people is refused; the link must be live.
+  test('a code current on two people is refused, and neither is chosen', async ({ api, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const a = await createUser({ email: 'tl.twin.a@example.com' })
+    const b = await createUser({ email: 'tl.twin.b@example.com' })
+    await link(a.user!, 'twin_a')
+    await link(b.user!, 'twin_b')
+    // Two firms' codes collide: the same code, current, under different assigners.
+    await sql`update person_identifier set assigner = 'firm-7' where person_id = ${a.user!} and system = 'stylehr-employee-code'`
+    await sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
+      values ('pid_twin_b_code', ${b.user!}, 'stylehr-employee-code', 'firm-12', ${a.user!.toUpperCase()}, true, true, 'test', 'test')`
+    const res = await signIn(api, a.user!, '')
+    expect(res.status).toBe(409)
+    expect(sidCookie(res)).toBeUndefined()
+  })
+
+  test('an ended code or an ended link does not sign in', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.ended@example.com' })
+    const identity = await link(tl.user!, 'tl_ended')
+    expect((await signIn(api, tl.user!, '')).status).toBe(200)
+    // The link ends (unlinked): the code alone no longer opens the account.
+    await admin.delete(`/api/identities/${identity}`).catch(() => undefined)
+    await sql`update sign_in_identity set ended_at = coalesce(ended_at, now()), ended_reason = coalesce(ended_reason, 'unlinked') where id = ${identity}`
+    expect((await signIn(api, tl.user!, '')).status).toBe(401)
+    // A link that is live but whose code has ended does not either.
+    const other = await createUser({ email: 'tl.oldcode@example.com' })
+    await link(other.user!, 'tl_oldcode')
+    await sql`update person_identifier set valid = daterange('2024-01-01', '2025-01-01', '[)') where person_id = ${other.user!} and system = 'stylehr-employee-code'`
+    expect((await signIn(api, other.user!, '')).status).toBe(401)
+  })
+
+  test('only the method’s own employee-code system is a test-mode credential (Codex review on #385)', async ({ api, admin, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.other.code@example.com' })
+    await link(tl.user!, 'tl_other_code')
+    // A code from another payroll namespace is not a StyleHR credential.
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'other-payroll-code', label: 'Other payroll', kind: 'employee-record', source: 'other-payroll' } })
+    await sql`insert into person_identifier (id, person_id, system, assigner, value, verified, one_holder, source, recorded_by)
+      values ('pid_other_payroll', ${tl.user!}, 'other-payroll-code', '', 'OP-1', true, true, 'test', 'test')`
+    expect((await signIn(api, 'OP-1', '')).status).toBe(401)
+    expect((await signIn(api, tl.user!, '')).status).toBe(200)
+  })
+
+  test('a server that is not development or test refuses to start with test mode set', async () => {
+    const { assertTestModeAllowed } = await import('../src/delegated-login')
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    expect(() => assertTestModeAllowed('production')).toThrow(/development, test or staging/)
+    expect(() => assertTestModeAllowed('development')).not.toThrow()
+    expect(() => assertTestModeAllowed('test')).not.toThrow()
+    // A hosted trial instance runs as staging: test mode starts there.
+    expect(() => assertTestModeAllowed('staging')).not.toThrow()
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', '1')
+    expect(() => assertTestModeAllowed('production')).not.toThrow()
+  })
+
+  test('staging is production in every other respect: no default Administrator password', async () => {
+    const { bootstrapAdministrator } = await import('../src/admin-bootstrap')
+    vi.stubEnv('ADMIN_PASSWORD', '')
+    await sql`update person set password_hash = null where row_id = 'Administrator'`
+    await bootstrapAdministrator('staging')
+    expect(await sql`select password_hash from person where row_id = 'Administrator'`).toEqual([{ password_hash: null }])
+    await bootstrapAdministrator('development')
+    expect((await sql`select password_hash from person where row_id = 'Administrator'`)[0].password_hash).not.toBeNull()
   })
 
   test('the login page is told, so it can say so', async ({ api }) => {
@@ -482,13 +559,13 @@ describe('delegated sign-in through linked identities', () => {
 
     provider(() => Response.json({ token: 'x', employment_status: 'Resigned' }))
     expect((await signIn(api, 'tl_leaver')).status).toBe(403)
-    const [row] = await sql`select enabled from "user" where row_id = ${tl.user!}`
+    const [row] = await sql`select enabled from person where row_id = ${tl.user!}`
     expect(row.enabled).toBe(false)
     expect((await whoami()).status).toBe(401)
     const again = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: tl.user, pwd: 'local-pw-123' }) })
     expect(again.status).toBe(401)
     // History is kept: the disable is a recorded change, and the link stays.
-    const [link_] = await sql`select 1 from user_identity where user_id = ${tl.user!}`
+    const [link_] = await sql`select 1 from sign_in_identity where person_id = ${tl.user!}`
     expect(link_).toBeTruthy()
   })
 
@@ -526,7 +603,7 @@ describe('delegated sign-in through linked identities', () => {
     expect((await as('/api/access_tokens', { method: 'POST', body: JSON.stringify({ label: 'keep' }) })).status).toBe(403)
     expect((await as(`/api/me/identities/${identity}`, { method: 'DELETE' })).status).toBe(403)
     expect((await as('/api/oauth/google/link', { redirect: 'manual' })).status).toBe(403)
-    const [row] = await sql`select password_hash from "user" where row_id = ${tl.user!}`
+    const [row] = await sql`select password_hash from person where row_id = ${tl.user!}`
     expect(row.password_hash).toBeNull()
   })
 
@@ -538,7 +615,7 @@ describe('delegated sign-in through linked identities', () => {
     const res = await signIn(api, 'tl_stamp')
     const body = (await res.json()) as { user: { sign_in: { method: string; identity: string } } }
     expect(body.user.sign_in).toMatchObject({ method: 'stylehr', identity })
-    const [row] = await sql`select last_used_at from user_identity where id = ${identity}`
+    const [row] = await sql`select last_used_at from sign_in_identity where id = ${identity}`
     expect(row.last_used_at).not.toBeNull()
   })
 })

@@ -52,11 +52,11 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
 
   test('the trail is scoped to the caller — another user sees nothing', async ({ admin, api }) => {
     await admin.post('/api/events', { events: [ev('row:X/private')] })
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: 'events-b@x.com', email: 'events-b@x.com', enabled: true },
+    const person = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'events-b@x.com', enabled: true },
     })
-    const { token } = await issueSession('events-b@x.com')
+    const { token } = await issueSession(person.row_id)
     const res = await api.fetch('/api/events/summary', {
       headers: { authorization: `Bearer ${token}` },
     })

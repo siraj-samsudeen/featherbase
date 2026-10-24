@@ -7,6 +7,9 @@ import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { issueAccessToken, issueSession, resolveToken, setUserPassword, verifyPassword } from '../src/auth'
+import { createServiceAccount } from '../src/service-accounts'
+import { requestPasswordReset, resetPassword } from '../src/password-reset'
 
 // PLAT-004: the developer CLI runs real commands against the dev database.
 // We spawn it as a subprocess (its own connection) and assert the DB effects.
@@ -19,6 +22,10 @@ const USER = 'cli-test-user@x.com'
 const SVC = 'svc-cli-test'
 const DUP_USER = 'cli-dup-user@x.com'
 const NAME_USER = 'cli-name-only'
+const PW_USER = 'cli-pw-user'
+const PW_OTHER = 'cli-pw-other'
+const PW_EMAIL = 'cli-pw-link@x.com'
+const PW_SVC = 'svc-cli-pw-test'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
@@ -37,9 +44,21 @@ function cli(args: string[], input = ''): string {
 
 // Case-insensitive: a run that fails mid-way can leave a case-variant row
 // behind, and an exact-match delete would strand it for every later run.
+// person-rename: ids are minted, so the people are found by email/username
+// and the service account by its label.
 async function cleanup() {
-  await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC, NAME_USER])}`
-  await sql`delete from "user" where lower(row_id) in ${sql([USER, DUP_USER, SVC, NAME_USER])}` // cascades access_token rows
+  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER, PW_EMAIL])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
+  const services = await sql`select row_id from service_account where lower(label) in ${sql([SVC, PW_SVC])}`
+  const ids = [...people, ...services].map((r) => String(r.row_id))
+  if (ids.length) {
+    await sql`delete from access_token where person in ${sql(ids)} or service_account in ${sql(ids)}`
+    await sql`delete from has_role where parent in ${sql(ids)}`
+    await sql`delete from password_reset where "user" in ${sql(ids)}`
+    for (const id of ids) await sql`delete from activity_log where operation = ${`password_set for ${id}`}`
+    await sql`delete from person_identifier where person_id in ${sql(ids)}`
+    await sql`delete from person where row_id in ${sql(ids)}`
+    await sql`delete from service_account where row_id in ${sql(ids)}`
+  }
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists featherbase.cli_test_widget')
 }
@@ -69,54 +88,55 @@ describe('PLAT-004: developer CLI', () => {
     expect(status?.choices).toBe('Open\nClosed') // pipe-separated choices split to newlines
   }, 60_000)
 
-  it('create-user creates a working login with roles', async () => {
+  it('create-person creates a working login with roles', async () => {
     const stdout = cli([
-      'create-user', USER, 'clitestpw123', '--full-name', 'CLI Test', '--roles', 'System Manager',
+      'create-person', USER, 'clitestpw123', '--full-name', 'CLI Test', '--roles', 'System Manager',
     ])
-    expect(stdout).toContain(`created user ${USER}`)
-
-    const [u] = await sql`select full_name, enabled from "user" where row_id = ${USER}`
+    const [u] = await sql`select row_id, full_name, enabled from person where email = ${USER}`
+    expect(stdout).toContain(`created person ${u.row_id as string} (${USER})`)
+    expect(u.row_id).toMatch(/^psn_[a-z2-7]{20}$/)
     expect(u.full_name).toBe('CLI Test')
     expect(u.enabled).toBe(true)
-    const roles = await sql`select role from has_role where parent = ${USER}`
+    const roles = await sql`select role from has_role where parent = ${u.row_id as string}`
     expect(roles.map((r) => r.role)).toContain('System Manager')
   }, 60_000)
 
   // person-identities: a username is not an address, so no email is stored;
   // a service account gets none either.
-  it('create-user with a plain username stores no email', async () => {
-    cli(['create-user', NAME_USER, 'clitestpw123'])
-    const [u] = await sql`select email, password_hash is not null as has_pw from "user" where row_id = ${NAME_USER}`
+  it('create-person with a plain username stores no email', async () => {
+    cli(['create-person', NAME_USER, 'clitestpw123'])
+    const [u] = await sql`select email, password_hash is not null as has_pw from person where username = ${NAME_USER}`
     expect(u).toEqual({ email: null, has_pw: true })
-    const [byEmail] = await sql`select email from "user" where row_id = ${USER}`
+    const [byEmail] = await sql`select email from person where email = ${USER}`
     expect(byEmail.email).toBe(USER)
   }, 60_000)
 
   it('service-account + token lifecycle: create, issue, list, revoke (#131)', async () => {
     const created = cli(['create-service-account', SVC, '--roles', 'System Manager'])
-    expect(created).toContain(`created service account ${SVC}`)
-    const [u] = await sql`select enabled, user_type, password_hash, email from "user" where row_id = ${SVC}`
-    expect(u.email).toBeNull()
-    expect(u.user_type).toBe('service')
+    // person-rename R2: its own table, a minted svc_ id, no person row.
+    const [u] = await sql`select row_id, enabled from service_account where label = ${SVC}`
+    expect(created).toContain(`created service account ${u.row_id as string} ("${SVC}")`)
+    expect(u.row_id).toMatch(/^svc_[a-z2-7]{20}$/)
     expect(u.enabled).toBe(true)
-    expect(u.password_hash).toBeNull()
+    expect(await sql`select 1 from person where row_id = ${u.row_id as string}`).toHaveLength(0)
+    const id = u.row_id as string
 
-    const issued = cli(['issue-token', SVC, '--label', 'cli suite', '--expires', '30'])
+    const issued = cli(['issue-token', id, '--label', 'cli suite', '--expires', '30'])
     const secret = issued.trim().split('\n').at(-1)!
     expect(secret).toMatch(/^fbt_[A-Za-z0-9_-]{43}$/)
-    const [tok] = await sql`select id, label, expires_at, token_hash from access_token where owner = ${SVC}`
+    const [tok] = await sql`select id, label, expires_at, token_hash from access_token where service_account = ${id}`
     expect(tok.label).toBe('cli suite')
     expect(tok.expires_at).not.toBeNull()
     expect(issued).not.toContain(tok.token_hash as string) // hash never printed
 
-    const listed = cli(['list-tokens', SVC])
+    const listed = cli(['list-tokens', id])
     expect(listed).toContain(tok.id as string)
     expect(listed).toContain('active')
     expect(listed).not.toContain(secret) // the secret is shown once, at issue time only
 
     const revoked = cli(['revoke-token', tok.id as string])
     expect(revoked).toContain(`revoked ${tok.id}`)
-    expect(cli(['list-tokens', SVC])).toContain('revoked')
+    expect(cli(['list-tokens', id])).toContain('revoked')
   }, 120_000)
 
   // #135, both halves. Same spelling: saveDoc upserts, so without the guard
@@ -124,16 +144,17 @@ describe('PLAT-004: developer CLI', () => {
   // concurrency error. Different case: `name` and the unique index on `email`
   // are both case-sensitive, so it silently created a SECOND account shadowing
   // the first — the trap #131 closed for service accounts.
-  it('create-user refuses an email that already exists, whatever its case', async () => {
-    await saveDoc(
-      'User',
-      { row_id: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
+  it('create-person refuses an email that already exists, whatever its case', async () => {
+    const existing = await saveDoc(
+      'Person',
+      { email: DUP_USER, full_name: 'Already Here', enabled: true },
       'Administrator',
+      'insert',
     )
 
     const attempt = (spelling: string) => {
       try {
-        cli(['create-user', spelling, 'clitestpw123'])
+        cli(['create-person', spelling, 'clitestpw123'])
         return null
       } catch (err) {
         return err as { status?: number; stderr?: string }
@@ -142,25 +163,229 @@ describe('PLAT-004: developer CLI', () => {
 
     for (const spelling of [DUP_USER, DUP_USER.toUpperCase()]) {
       const failure = attempt(spelling)
-      expect(failure, `create-user ${spelling} should have failed`).not.toBeNull()
+      expect(failure, `create-person ${spelling} should have failed`).not.toBeNull()
       expect(failure?.status).toBe(1)
-      expect(failure?.stderr).toContain(`User ${DUP_USER} already exists`)
+      expect(failure?.stderr).toContain(`Person ${String(existing.row_id)} already exists`)
       // Not the internal concurrency protocol leaking out (#135).
       expect(failure?.stderr).not.toContain('updated_at')
     }
 
     // One account, untouched — no overwrite and no case-variant shadow.
-    const rows = await sql`select row_id, full_name from "user" where lower(row_id) = ${DUP_USER}`
+    const rows = await sql`select row_id, full_name from person where lower(email) = ${DUP_USER}`
     expect(rows).toHaveLength(1)
-    expect(rows[0].row_id).toBe(DUP_USER)
+    expect(rows[0].row_id).toBe(existing.row_id)
     expect(rows[0].full_name).toBe('Already Here')
   }, 60_000)
 
   it('console evaluates a piped script with the document API in scope', async () => {
     const stdout = cli(
       ['console'],
-      'const d = await getDoc("User","Administrator"); console.log("NAME=" + d.row_id)\n',
+      'const d = await getDoc("Person","Administrator"); console.log("NAME=" + d.row_id)\n',
     )
     expect(stdout).toContain('NAME=Administrator')
+  }, 60_000)
+  // #391: break-glass reset. The password arrives on stdin only, is never
+  // printed, ends the person's sessions and leaves an Activity Log entry.
+  describe('set-password (#391)', () => {
+    const OLD = 'old-pw-391'
+    const NEW = 'new-pw-391-secret'
+
+    async function makePerson(username = PW_USER, email?: string) {
+      const p = await saveDoc('Person', { username, ...(email ? { email } : {}), full_name: 'PW Test', enabled: true }, 'Administrator', 'insert')
+      const id = String(p.row_id)
+      await setUserPassword(id, OLD)
+      return id
+    }
+    async function dropPerson(id: string) {
+      await sql`delete from access_token where person = ${id}`
+      await sql`delete from password_reset where "user" = ${id}`
+      await sql`delete from activity_log where operation = ${`password_set for ${id}`}`
+      await sql`delete from person where row_id = ${id}`
+    }
+    const hashOf = async (id: string) =>
+      String((await sql`select password_hash from person where row_id = ${id}`)[0].password_hash)
+    // Session cut-offs are whole seconds (src/auth.ts): step into the next
+    // second so a session issued just before the reset is strictly older.
+    const nextSecond = () => new Promise((r) => setTimeout(r, 1000 - (Date.now() % 1000) + 50))
+    const attempt = (args: string[], input = '') => {
+      try {
+        return { ok: cli(args, input) }
+      } catch (err) {
+        return { err: err as { status?: number; stdout?: string; stderr?: string } }
+      }
+    }
+
+    it('sets the password from stdin, refuses the old one, ends sessions and logs the actor cli', async () => {
+      const id = await makePerson()
+      const other = await makePerson(PW_OTHER)
+      try {
+        const before = await hashOf(id)
+        const { token } = await issueSession(id)
+        const { token: otherToken } = await issueSession(other)
+        const accessToken = (await issueAccessToken(id, 'cli 391', null)).token
+        await expect(resolveToken(`Bearer ${token}`)).resolves.toMatchObject({ row_id: id })
+        await nextSecond()
+
+        const out = cli(['set-password', id, '--stdin'], `${NEW}\n`)
+        expect(out).toContain(`password set for ${id}`)
+        expect(out).toContain(`cli list-tokens ${id}`)
+        expect(out).not.toContain(NEW)
+
+        const after = await hashOf(id)
+        expect(after).not.toBe(before)
+        expect(verifyPassword(NEW, after)).toBe(true) // the trailing newline is not part of it
+        expect(verifyPassword(OLD, after)).toBe(false)
+        await expect(resolveToken(`Bearer ${token}`)).rejects.toThrow('Invalid or expired session')
+
+        // Only the sessions issued before the reset, and only this person's:
+        // a sign-in right after it (same second) works, another person's
+        // session is untouched, and access tokens survive by design.
+        const fresh = (await issueSession(id)).token
+        await expect(resolveToken(`Bearer ${fresh}`)).resolves.toMatchObject({ row_id: id })
+        await expect(resolveToken(`Bearer ${otherToken}`)).resolves.toMatchObject({ row_id: other })
+        await expect(resolveToken(`Bearer ${accessToken}`)).resolves.toMatchObject({ row_id: id })
+
+        // The actor is `cli`; the person it was done to is in the operation.
+        const logs = await sql`select "user", created_by from activity_log where operation = ${`password_set for ${id}`}`
+        expect(logs).toEqual([{ user: 'cli', created_by: 'cli' }])
+      } finally {
+        await dropPerson(id)
+        await dropPerson(other)
+      }
+    }, 60_000)
+
+    // Codex review on #397: an emailed link from before the break-glass reset
+    // must not be able to undo it.
+    it('revokes reset links issued before it', async () => {
+      const id = await makePerson(PW_USER, PW_EMAIL)
+      try {
+        const link = await requestPasswordReset(PW_EMAIL)
+        expect(link).toMatch(/^[0-9a-f]{48}$/)
+        cli(['set-password', id, '--stdin'], `${NEW}\n`)
+        expect(await sql`select 1 from password_reset where "user" = ${id}`).toHaveLength(0)
+        await expect(resetPassword(link as string, 'link-pw-391')).rejects.toThrow('invalid or has expired')
+        expect(verifyPassword(NEW, await hashOf(id))).toBe(true)
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses a password given as an argument, and never echoes it', async () => {
+      const id = await makePerson()
+      try {
+        const before = await hashOf(id)
+        const { err } = attempt(['set-password', id, NEW])
+        expect(err?.status).toBe(1)
+        expect(err?.stderr).toContain('--stdin')
+        expect(`${err?.stdout}${err?.stderr}`).not.toContain(NEW)
+        expect(await hashOf(id)).toBe(before)
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses without --stdin, an empty or short password, and an unknown person', async () => {
+      const id = await makePerson()
+      try {
+        const before = await hashOf(id)
+        expect(attempt(['set-password', id], `${NEW}\n`).err?.stderr).toContain('--stdin')
+        expect(attempt(['set-password', id, '--stdin'], '\n').err?.stderr).toContain('at least 6 characters')
+        expect(attempt(['set-password', id, '--stdin'], 'abc\n').err?.stderr).toContain('at least 6 characters')
+        expect(await hashOf(id)).toBe(before)
+        expect(attempt(['set-password', 'psn_nobodyhere391', '--stdin'], `${NEW}\n`).err?.stderr).toContain(
+          'Person psn_nobodyhere391 not found',
+        )
+      } finally {
+        await dropPerson(id)
+      }
+    }, 60_000)
+
+    it('refuses a service account', async () => {
+      const svc = await createServiceAccount(PW_SVC, [], 'Administrator')
+      try {
+        const { err } = attempt(['set-password', svc.row_id, '--stdin'], `${NEW}\n`)
+        expect(err?.status).toBe(1)
+        expect(err?.stderr).toContain('Service accounts have no password')
+        const logs = await sql`select 1 from activity_log where operation = ${`password_set for ${svc.row_id}`}`
+        expect(logs).toHaveLength(0)
+      } finally {
+        await sql`delete from service_account where row_id = ${svc.row_id}`
+      }
+    }, 60_000)
+  })
+})
+
+// #401: an operator applies the instance's privacy notice from a reviewed file
+// (`cli settings:set privacy_notice --stdin < notice.md`). Only System
+// Settings fields; the value is the whole of stdin, unchanged.
+describe('#401: cli settings:set', () => {
+  let original: string | null = null
+  beforeAll(async () => {
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    original = (row?.value as string | undefined) ?? null
+  })
+  afterAll(async () => {
+    await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set %'`
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    if (original !== null)
+      await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'privacy_notice', value: original })}`
+  })
+
+  function failure(args: string[], input = '') {
+    try {
+      cli(args, input)
+      return null
+    } catch (err) {
+      return err as { status?: number; stderr?: string }
+    }
+  }
+
+  it('sets a System Settings field to the whole of stdin', async () => {
+    const notice = '# Example Org privacy notice\n\nWe hold your **name**.\n'
+    const stdout = cli(['settings:set', 'privacy_notice', '--stdin'], notice)
+    expect(stdout).toContain('privacy_notice')
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    expect(row.value).toBe(notice)
+    // Audited like other administrative changes: actor `cli`.
+    const [log] = await sql`select "user", operation from activity_log
+      where "user" = 'cli' and operation = 'settings_set privacy_notice' order by created_at desc limit 1`
+    expect(log).toEqual({ user: 'cli', operation: 'settings_set privacy_notice' })
+  }, 60_000)
+
+  it('refuses a layout or child-table field', async () => {
+    const [layout] = await sql`select column_name from column_def
+      where parent = 'System Settings' and column_type in ('Section Break', 'Column Break', 'Tab Break', 'Sub-table', 'Table') limit 1`
+    // System Settings has none today; any such column type must still be refused.
+    const name = (layout?.column_name as string | undefined) ?? 'cli_test_section'
+    if (!layout)
+      await sql`insert into column_def ${sql({ parent: 'System Settings', position: 999, column_name: name, label: null, column_type: 'Section Break',
+        reqd: false, unique: false, default_value: null, read_only: false, hidden: false, in_list_view: false, tier: 'basic' })}`
+    try {
+      const f = failure(['settings:set', name, '--stdin'], 'x')
+      expect(f?.status).toBe(1)
+      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text fields only`)
+    } finally {
+      if (!layout) await sql`delete from column_def where parent = 'System Settings' and column_name = ${name}`
+    }
+  }, 60_000)
+
+  it('refuses a field System Settings does not have', async () => {
+    const f = failure(['settings:set', 'no_such_field', '--stdin'], 'x')
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('System Settings has no field no_such_field')
+  }, 60_000)
+
+  // Codex P2: stdin is text, so a typed field (Check, Int, Choice) would fail
+  // validation or take a stray newline; those are set in the form.
+  it('refuses a typed, non-text field', async () => {
+    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'true')
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('System Settings field allow_signup is Check; settings:set writes text fields only')
+  }, 60_000)
+
+  it('refuses without --stdin', async () => {
+    const f = failure(['settings:set', 'privacy_notice', 'inline value'])
+    expect(f?.status).toBe(1)
+    expect(f?.stderr).toContain('usage: cli settings:set <field> --stdin')
   }, 60_000)
 })

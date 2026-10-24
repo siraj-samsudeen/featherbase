@@ -1,23 +1,31 @@
-import { anonymousTest as test, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
+import { anonymousTest as test, expect, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
 
 // person-identities (#275): a person signed in with a password links a Google
 // account from Sign-in methods, then signs in with that Google account after
 // its address changed — Google is recognised by its account ID, not the email.
+// person-rename: the person's id is minted (`psn_…`); USER is their
+// username, and USER_ID the id read back after each creation.
 const USER = 'login-methods-e2e'
+let USER_ID = ''
 const PW = 'login-methods-pw-1'
 const SUBJECT = 'g-login-methods-e2e'
 
 async function reset(request: APIRequestContext) {
   const headers = await adminAuth(request)
-  await request.delete(`/api/table/User/${USER}`, { headers })
+  const filters = encodeURIComponent(JSON.stringify([['username', '=', USER]]))
+  const found = (await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const p of found.data) await request.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { headers })
 }
 
 test.beforeEach(async ({ request }) => {
   await reset(request)
   const headers = await adminAuth(request)
-  const made = await request.post('/api/save_row', { headers, data: { table: 'User', row: { row_id: USER, full_name: 'Login Methods', enabled: true, roles: [] } } })
+  // A role of use, or the person lands on the no-access page (#410).
+  const role = await ensureAdminReaderRole(request)
+  const made = await request.post('/api/save_row', { headers, data: { table: 'Person', row: { username: USER, full_name: 'Login Methods', enabled: true, roles: [{ role }] } } })
   if (made.status() !== 201) throw new Error(`create user: ${made.status()}`)
-  await request.post('/api/set_password', { headers, data: { user: USER, password: PW } })
+  USER_ID = ((await made.json()) as { row_id: string }).row_id
+  await request.post('/api/set_password', { headers, data: { user: USER_ID, password: PW } })
 })
 
 test.afterEach(async ({ request }) => reset(request))
@@ -51,8 +59,8 @@ test('#275: link Google while signed in, then sign in with it after its address 
   })
 
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fc_user') ?? '{}') as { row_id?: string })
-  expect(stored.row_id).toBe(USER)
+  expect(stored.row_id).toBe(USER_ID)
   const headers = await adminAuth(request)
-  const links = (await (await request.get(`/api/users/${USER}/identities`, { headers })).json()) as { identities: { method: string; subject: string }[] }
+  const links = (await (await request.get(`/api/people/${USER_ID}/identities`, { headers })).json()) as { identities: { method: string; subject: string }[] }
   expect(links.identities).toEqual([expect.objectContaining({ method: 'google', subject: SUBJECT })])
 })

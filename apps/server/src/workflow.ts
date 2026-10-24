@@ -271,8 +271,8 @@ async function notifyPendingApprovers(
 
   const holders = await sql<{ parent: string; email: string | null }[]>`
     select distinct hr.parent, u.email from has_role hr
-    join "user" u on u.row_id = hr.parent
-    where hr.parenttype = 'User' and hr.role in ${sql(roles)}
+    join person u on u.row_id = hr.parent
+    where hr.parenttype = 'Person' and hr.role in ${sql(roles)}
       and u.enabled = true`
   // A person without an email gets no mail — a user id is not an address
   // (person-identities: email is optional contact data).

@@ -100,13 +100,14 @@ export function LoginPage() {
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() =>
-      loginDelegated(
-        String(form.get('delegated_id')),
-        String(form.get('delegated_password') ?? ''),
-        delegated!.key,
-      ),
-    )
+    const id = String(form.get('delegated_id') ?? '').trim()
+    const password = String(form.get('delegated_password') ?? '')
+    // Nothing typed is the person's slip, not an API validation failure (#406).
+    if (!id || (!delegatedTestMode && !password)) {
+      setError(delegatedTestMode ? 'Enter your employee code.' : `Enter your ${delegatedLabel} ID and password.`)
+      return
+    }
+    await signIn(() => loginDelegated(id, password, delegated!.key))
   }
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -120,6 +121,10 @@ export function LoginPage() {
     setDelegatedKey(key)
     setMode(next)
   }
+
+  // person-rename: after an upgrade every session ends once; say so plainly
+  // instead of showing an unexplained sign-in page.
+  const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
 
   const errorLine = error && (
     <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
@@ -137,6 +142,11 @@ export function LoginPage() {
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>
         </div>
+        {sessionEnded && (
+          <p className="mb-3 text-center text-sm text-[var(--color-ink-muted)]" data-testid="session-ended">
+            Your session has ended. Please sign in again.
+          </p>
+        )}
         <div className="fc-card p-6">
           {mode === 'delegated' && delegatedLabel ? (
             <>
@@ -144,7 +154,7 @@ export function LoginPage() {
                 {delegatedTestMode ? (
                   <p role="status" data-testid="delegated-test-mode"
                     className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-6761) to open that person's view — no password needed.
+                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
                   </p>
                 ) : (
                   <p className="text-sm text-[var(--color-ink-muted)]">

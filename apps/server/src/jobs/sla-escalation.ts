@@ -53,8 +53,8 @@ registerJob('check_sla', async () => {
     if (!role) continue
     const holders = await sql`
       select distinct u.row_id, u.email from has_role hr
-      join "user" u on u.row_id = hr.parent
-      where hr.parenttype = 'User' and hr.role = ${role} and u.enabled = true`
+      join person u on u.row_id = hr.parent
+      where hr.parenttype = 'Person' and hr.role = ${role} and u.enabled = true`
     for (const row of overdue) {
       // No email, no mail: a user id is not an address (person-identities).
       const mailable = holders.filter((x) => x.email)

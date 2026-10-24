@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
+import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FEATHERBASE_HOME_DESTINATION } from 'shared'
-import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, listResource, signOut } from '../lib/api'
 import {
   actionForLocation,
   ago,
@@ -17,19 +17,26 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
-import { useIsPreview } from '../lib/session'
+import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
+import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
+import { ShownName, isOpaqueId } from '../lib/people'
+import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
+import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
+import { StatusPill } from '../components/ui'
+import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
   table: string
   row_id: string
   title: string
+  kind_label?: string
 }
 
 const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
@@ -57,22 +64,28 @@ connectEventSink({
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
-// A dev-preview deployment announces itself. The link is shareable and the
-// data is disposable; a visitor who does not know that may mistake it for the
-// real thing, or be surprised when it is reset.
-function PreviewBanner() {
-  if (!useIsPreview()) return null
-  return (
-    <div
-      data-testid="preview-banner"
-      className="flex shrink-0 items-center justify-center gap-2 bg-[var(--color-warn-tint)] px-3 py-1 text-xs font-medium text-[var(--color-warn)]"
-    >
-      Preview deployment — data here is disposable and may be reset at any time.
-    </div>
-  )
+// #410: pick the layout from the server-computed capabilities BEFORE mounting
+// the Admin shell, so a person who cannot use it never fires its API calls.
+export function AdminLayout() {
+  const kind = useShellKind()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  if (kind === 'loading') return <Waiting label="Checking your access" />
+  if (kind === 'failed')
+    return (
+      <Waiting>
+        We could not check what you have access to. <button type="button" className="underline" onClick={() => window.location.reload()}>Try again</button>
+      </Waiting>
+    )
+  if (kind === 'no-access') return <NoAccessPage />
+  if (kind === 'report-only') {
+    // The one Admin page a report reader keeps is their own sign-in methods.
+    if (pathname.replace(/\/$/, '') !== SIGN_IN_METHODS_PATH) return <Navigate to={REPORT_PATH} replace />
+    return <ReportOnlyShell />
+  }
+  return <AdminShell />
 }
 
-export function AdminLayout() {
+function AdminShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -157,15 +170,14 @@ export function AdminLayout() {
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
 
-  const tables = useQuery({
-    queryKey: ['tables'],
-    queryFn: () =>
-      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
-        filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system'],
-        order_by: 'row_id asc',
-        limit_page_length: 200,
-      }),
+  const tables = useShellTables()
+  const caps = useCapabilities()
+  const canManage = caps?.manage === true
+  // #429: the count beside "Waiting for access"; asked only by a System Manager.
+  const waiting = useQuery({
+    queryKey: WAITING_COUNT_QUERY_KEY,
+    queryFn: () => api.get<{ count: number }>('/api/people/waiting_for_access/count'),
+    enabled: canManage,
   })
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
@@ -251,8 +263,12 @@ export function AdminLayout() {
     // Invalidate the sid cookie BEFORE dropping local state: while it lives,
     // any token-less request fired in the logout gap re-authenticates as the
     // departing user and re-poisons the cache for the next account in this
-    // tab (#101 review).
-    await api.post('/api/logout', {}).catch(() => {})
+    // tab (#101 review). #411: if the server could not end the session, say
+    // so and stay signed in rather than pretend it ended.
+    if (!(await signOut())) {
+      window.alert(SIGN_OUT_INCOMPLETE)
+      return
+    }
     clearSession()
     delete document.documentElement.dataset.palette
     delete document.documentElement.dataset.theme
@@ -337,7 +353,7 @@ export function AdminLayout() {
       return
     }
     recordSearch(q)
-    const dtHit = tables.data?.data.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
+    const dtHit = tables?.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
       navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
@@ -351,7 +367,8 @@ export function AdminLayout() {
     navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
-  const initials = (user?.full_name || user?.row_id || '?')
+  // person-rename: a person's id is opaque (`psn_…`); never draw initials from it.
+  const initials = (user?.full_name || user?.email || user?.row_id || '?')
     .split(/[\s@.]+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -362,7 +379,7 @@ export function AdminLayout() {
   // keeps the alphabetical order within each group).
   const suggestions =
     search.trim().length > 0
-      ? (tables.data?.data ?? [])
+      ? (tables ?? [])
           .filter((d) => d.row_id.toLowerCase().includes(search.trim().toLowerCase()))
           .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
@@ -370,7 +387,7 @@ export function AdminLayout() {
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) },
+    ...(canManage ? [{ id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) }] : []),
     { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
     { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
   ]
@@ -553,7 +570,7 @@ export function AdminLayout() {
                   {h.title !== h.row_id && (
                     <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">row in {h.table}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{searchHitKind(h)}</span>
                 </button>
               ))}
             </div>
@@ -614,13 +631,13 @@ export function AdminLayout() {
             <button
               onClick={() => setAccountOpen((o) => !o)}
               data-testid="session-user"
-              title={user?.full_name || user?.row_id}
+              title={user?.full_name || user?.email || user?.row_id}
               aria-haspopup="menu"
               aria-expanded={accountOpen}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
             >
               <span aria-hidden="true">{initials}</span>
-              <span className="sr-only">{user?.full_name || user?.row_id}</span>
+              <span className="sr-only">{user?.full_name || user?.email || user?.row_id}</span>
             </button>
             {accountOpen && (
               <div
@@ -726,6 +743,7 @@ export function AdminLayout() {
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
+          {canManage && (
           <div className="px-3 pt-4">
             <Link
               to="/featherbase/admin/new-table"
@@ -752,6 +770,7 @@ export function AdminLayout() {
               Past imports
             </Link>
           </div>
+          )}
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
@@ -821,8 +840,7 @@ export function AdminLayout() {
             >
               All tables
             </Link>
-            {/* #131: automation credentials — tokens are self-service, so the
-                link shows for everyone, not just System Managers. */}
+            {/* #131: automation credentials are self-service (the endpoint is owner-scoped), so the link shows for everyone in the Admin. */}
             <Link
               to="/featherbase/admin/access-tokens"
               data-testid="access-tokens-link"
@@ -844,6 +862,25 @@ export function AdminLayout() {
             >
               Sign-in methods
             </Link>
+            {canManage && (
+              <Link
+                to="/featherbase/admin/waiting-for-access"
+                data-testid="waiting-for-access-link"
+                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
+                activeProps={{
+                  className: 'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
+                }}
+              >
+                Waiting for access
+                {(waiting.data?.count ?? 0) > 0 && (
+                  <StatusPill tone="caution">
+                    <span data-testid="waiting-for-access-count" aria-label={`${waiting.data!.count} waiting`}>
+                      {fmtCount(waiting.data!.count)}
+                    </span>
+                  </StatusPill>
+                )}
+              </Link>
+            )}
           </div>
         </aside>
 
@@ -895,12 +932,12 @@ function SidebarRecentRow({
         onOpen(entry)
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
-      title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
+      title={isOpaqueId(entry.label) ? entry.sub : entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
     >
       <span className="block truncate text-sm text-[var(--color-ink)]">
         {frequent && <span className="mr-1 text-[var(--color-warn)]">★</span>}
-        {entry.label}
+        <ShownName id={entry.label} />
       </span>
       {entry.sub && (
         <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
@@ -935,7 +972,7 @@ function RecentRow({
         {RECENT_KIND_LABEL[entry.kind]}
       </span>
       <span className="min-w-0 flex-1 truncate">
-        {entry.label}
+        <ShownName id={entry.label} />
         {entry.sub && <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{entry.sub}</span>}
       </span>
       <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">{ago(last)}</span>

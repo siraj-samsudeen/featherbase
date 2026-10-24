@@ -8,6 +8,8 @@ import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { logActivity } from './audit'
 import { saveDoc } from './document'
+import { writeThroughIdentity } from './person-identifiers'
+import { alertNewArrival, isMockProvider } from './waiting-for-access'
 import { INVALID_CREDENTIALS, burnPasswordCheck, findPasswordAccount, issueSession, verifyPassword, type IssuedSession } from './auth'
 import {
   KINDS,
@@ -18,7 +20,6 @@ import {
   foldName,
   methodOfKind,
   newIdentityId,
-  newPersonId,
   normaliseEmail,
   touchIdentity,
   type SignInMethod,
@@ -58,11 +59,12 @@ export function leftError(method: SignInMethod): AppError {
   return new AppError('PermissionError', `${method.label || method.key} shows this account as no longer active. Contact your administrator.`)
 }
 
-/** ONE refusal for a person who may not sign in this way (#137): disabled,
- *  service account, or privileged through a method that may not admit them. */
+/** ONE refusal for a person who may not sign in this way (#137): unknown
+ *  (a service account is not a person), disabled, or privileged through a
+ *  method that may not admit them. */
 export async function assertEligible(method: SignInMethod, user: string): Promise<void> {
   const c = await candidate(user)
-  if (!c || !c.enabled || c.user_type === 'service' || (c.privileged && !KINDS[method.kind].admitsPrivileged))
+  if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged))
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
 }
 
@@ -82,8 +84,9 @@ export function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok:
 }
 
 async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
-  const [row] = await sql`select id, user_id from user_identity where method = ${method.key} and subject = ${subject}`
-  return row ? { user: String(row.user_id), identity: String(row.id) } : null
+  // person-resolution D5: an ended identity never opens an account.
+  const [row] = await sql`select id, person_id from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
+  return row ? { user: String(row.person_id), identity: String(row.id) } : null
 }
 
 /** Claim a one-time invite for a verified address, onto an eligible owner only
@@ -93,16 +96,17 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
   try {
     const claimed = await withTransaction(async () => {
       const [invite] = await sql`
-        select id, user_id from user_identity
-        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email!)}
+        select id, person_id from sign_in_identity
+        where method = ${method.key} and subject is null and pending_email = ${foldName(v.email!)} and ended_at is null
         for update`
       if (!invite) return null
-      await assertEligible(method, String(invite.user_id))
+      await assertEligible(method, String(invite.person_id))
       await sql`
-        update user_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
+        update sign_in_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
         where id = ${String(invite.id)}`
-      return { user: String(invite.user_id), identity: String(invite.id) }
+      await writeThroughIdentity(String(invite.id))
+      return { user: String(invite.person_id), identity: String(invite.id) }
     })
     if (claimed) await auditIdentity(claimed.user, 'claimed', claimed.user, method.key, claimed.identity!)
     return claimed
@@ -114,7 +118,16 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
 }
 
 /** The method's rule for a person it does not know (design D4). */
-async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
+/** A new person's starting name: their display name, or the part of the
+ *  address before the @ — never the address itself (#429). An administrator
+ *  can correct it. */
+function starterName(v: VerifiedIdentity, email: string | null): string | null {
+  const shown = v.display_name?.trim() || ''
+  if (shown && !shown.includes('@')) return shown
+  return (shown || email || '').split('@')[0] || null
+}
+
+async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   const kind = KINDS[method.kind]
   let admitted = false
   let reason = 'rule is refuse'
@@ -130,25 +143,26 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
     throw new AppError('AuthenticationError', NOT_PROVISIONED)
   }
   const email = v.email_verified ? normaliseEmail(v.email) : null
-  // An opaque, permanent id — the address is contact data, not the anchor.
-  const rowId = newPersonId()
   try {
-    return await withTransaction(async () => {
+    const found = await withTransaction(async () => {
       const [taken] = await sql`
-        select 1 from "user"
+        select 1 from person
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
       // Never turned into a link: an address already in use belongs to someone
       // an administrator must decide about.
       if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      // An opaque, permanent id (minted by the Person Table's id pattern) —
+      // the address is contact data, not the anchor.
       const created = await saveDoc(
-        'User',
-        { row_id: rowId, email, full_name: v.display_name || email || rowId, enabled: true, roles: [] },
+        'Person',
+        { email, full_name: starterName(v, email), enabled: true, roles: [] },
         'Administrator',
+        'insert',
       )
       const id = newIdentityId()
-      await sql`insert into user_identity ${sql({
+      await sql`insert into sign_in_identity ${sql({
         id,
-        user_id: String(created.row_id),
+        person_id: String(created.row_id),
         method: method.key,
         subject: v.subject!,
         email,
@@ -156,9 +170,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
         linked_by: 'new-person',
         last_used_at: new Date(),
       })}`
+      await writeThroughIdentity(id)
       await auditIdentity(String(created.row_id), 'linked', String(created.row_id), method.key, id)
       return { user: String(created.row_id), identity: id }
     })
+    // #429: tell System Managers someone is waiting — never for a test-mode
+    // or mock-provider sign-in, which would mail real people. Never throws.
+    if (!opts.testMode && !isMockProvider(method)) await alertNewArrival(found.user, method)
+    return found
   } catch (err) {
     // Two first sign-ins with one subject: the loser signs in as the winner.
     if ((err as { code?: string })?.code === '23505') {
@@ -172,14 +191,14 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity): Promise<Fou
 
 /** Resolve a verified outside identity to a person: linked subject, then a
  *  one-time invite, then the method's rule. Never by email match alone. */
-export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity): Promise<Found> {
+export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
   if (linked) return linked
   const claimed = await claimInvite(method, v)
   if (claimed) return claimed
   // A concurrent claim may have linked it a moment ago.
-  return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v)
+  return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v, opts)
 }
 
 /** The shared tail of every sign-in. `found` is the person a candidate-first
@@ -199,7 +218,7 @@ export async function completeSignIn(
     if (found) await disableLeaver(found.user, method.key)
     throw leftError(method)
   }
-  const person = found ?? (await resolveVerified(method, v))
+  const person = found ?? (await resolveVerified(method, v, { testMode: opts.testMode }))
   await assertEligible(method, person.user)
   if (person.identity)
     await touchIdentity(person.identity, {
@@ -225,22 +244,23 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
       if (linked) throw new AppError('ConflictError', 'This account is already linked to another person')
       if (v.email_verified && v.email) {
         const [invite] = await sql`
-          select id, user_id from user_identity
-          where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} for update`
-        if (invite && invite.user_id !== user)
+          select id, person_id from sign_in_identity
+          where method = ${method.key} and subject is null and pending_email = ${foldName(v.email)} and ended_at is null for update`
+        if (invite && invite.person_id !== user)
           throw new AppError('ConflictError', 'This address is reserved for another account. Contact your administrator.')
-        if (invite) await sql`delete from user_identity where id = ${String(invite.id)}`
+        if (invite) await sql`delete from sign_in_identity where id = ${String(invite.id)}`
       }
       const id = newIdentityId()
-      await sql`insert into user_identity ${sql({
+      await sql`insert into sign_in_identity ${sql({
         id,
-        user_id: user,
+        person_id: user,
         method: method.key,
         subject: v.subject!,
         email: v.email_verified ? v.email ?? null : null,
         display_name: v.display_name ?? null,
         linked_by: 'self',
       })}`
+      await writeThroughIdentity(id)
       await auditIdentity(user, 'linked', user, method.key, id)
       return id
     })

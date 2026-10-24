@@ -10,7 +10,25 @@ export interface SearchHit {
   table: string
   row_id: string
   title: string
+  /** Set only for system-registry rows: what the row IS, not where it lives. */
+  kind_label?: string
 }
+
+// #431: rows of these engine registries describe structure, not business data.
+// Without a label, "Activity Log · row in Table" read like a duplicate of the
+// Tables entry for Activity Log. They also rank after ordinary records.
+export const REGISTRY_LABELS: Record<string, string> = {
+  Table: 'Table definition',
+  Column: 'Column definition',
+  'Custom Field': 'Custom field definition',
+  Permission: 'Permission rule',
+  'Data Scope': 'Data scope rule',
+  'Metadata Override': 'Metadata override',
+}
+
+// Own keys only: a user Table named `constructor` is not a registry.
+export const registryLabel = (name: string): string | undefined =>
+  Object.hasOwn(REGISTRY_LABELS, name) ? REGISTRY_LABELS[name] : undefined
 
 const PER_TABLE = 3
 const TOTAL_CAP = 15
@@ -26,6 +44,9 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   const tables = await sql`
     select name from table_def where kind = 'table' and data_source is null
     order by name`
+  // Stable sort: ordinary Tables first, registries last (#431).
+  const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
+  tables.sort((a, b) => isRegistry(a.name) - isRegistry(b.name))
 
   const hits: SearchHit[] = []
   for (const t of tables) {
@@ -49,6 +70,7 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
         table: meta.name,
         row_id: String(row.row_id),
         title: String(row.title ?? row.row_id),
+        ...(registryLabel(meta.name) ? { kind_label: registryLabel(meta.name) } : {}),
       })
       if (hits.length >= TOTAL_CAP) break
     }

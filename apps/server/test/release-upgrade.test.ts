@@ -95,7 +95,7 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
     expect(await db`select project_name from tasker.project where row_id = 'project-73'`).toEqual([{ project_name: 'Preserved project' }])
     expect(await db`select ref_table, ref_name, content from featherbase.comment where row_id = 'comment-41'`)
       .toEqual([{ ref_table: 'tasker.task', ref_name: 'task-19', content: 'Keep discussion' }])
-    expect(await db`select full_name from featherbase."user" where row_id = 'Administrator'`).toEqual([{ full_name: 'Migration sentinel' }])
+    expect(await db`select full_name from featherbase.person where row_id = 'Administrator'`).toEqual([{ full_name: 'Migration sentinel' }])
     expect(await db`select settings from featherbase.user_settings where table_name = 'Task Management Focus'`)
       .toEqual([{ settings: { task_ids: ['task-19'] } }])
     expect(await db`select host, schema from public.site`).toEqual([{ host: 'legacy.invalid', schema: 'tenant_legacy' }])

@@ -107,13 +107,13 @@ const taskManagement: AppManifest = {
           column_name: 'personal_tasks_owner',
           label: 'Personal tasks owner',
           column_type: 'Reference',
-          reference_table: 'User',
+          reference_table: 'Person',
         },
         {
           column_name: 'assigned_to',
           label: 'Assigned to',
           column_type: 'Reference',
-          reference_table: 'User',
+          reference_table: 'Person',
           in_list_view: true,
         },
         {
@@ -143,7 +143,7 @@ const taskManagement: AppManifest = {
       can_delete: true,
     },
     {
-      table: 'User',
+      table: 'Person',
       role: 'All',
       can_read: true,
     },

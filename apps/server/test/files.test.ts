@@ -104,11 +104,11 @@ describe('FILE-001: file upload + storage', () => {
     const [{ n: before }] = await sql`select count(*)::int as n from file`
 
     const row = await upload(stranger, 'x.txt', 'x', 'text/plain', {
-      ref_table: 'User',
+      ref_table: 'Person',
       ref_name: 'Administrator',
     })
     expect(row.status).toBe(403)
-    const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_table: 'User' })
+    const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_table: 'Person' })
     expect(table.status).toBe(403)
 
     // Refused before storage: nothing was registered on the way out.
@@ -132,13 +132,13 @@ describe('FILE-001: file upload + storage', () => {
     const uploaded: string[] = []
     try {
       const res = await upload(admin, 'attach.txt', 'attached', 'text/plain', {
-        ref_table: 'User',
+        ref_table: 'Person',
         ref_name: 'Administrator',
       })
       expect(res.status).toBe(201)
       const doc = (await res.json()) as Record<string, unknown>
       uploaded.push(doc.file_url as string)
-      expect(doc.ref_table).toBe('User')
+      expect(doc.ref_table).toBe('Person')
       expect(doc.ref_name).toBe('Administrator')
     } finally {
       await cleanupDisk(uploaded)
@@ -153,7 +153,7 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
   }) => {
     const uploaded: string[] = []
     try {
-      const target = { ref_table: 'User', ref_name: 'Guest' }
+      const target = { ref_table: 'Person', ref_name: 'Guest' }
       const a = (await (await upload(admin, 'att-a.txt', 'AAA', 'text/plain', target)).json()) as
         Record<string, unknown>
       const b = (await (await upload(admin, 'att-b.txt', 'BBB', 'text/plain', target)).json()) as
@@ -161,7 +161,7 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
       uploaded.push(a.file_url as string, b.file_url as string)
 
       const filters = JSON.stringify([
-        ['ref_table', '=', 'User'],
+        ['ref_table', '=', 'Person'],
         ['ref_name', '=', 'Guest'],
       ])
       const fields = encodeURIComponent(JSON.stringify(['row_id', 'file_name', 'file_url']))

@@ -32,6 +32,15 @@ const EVIDENCE = process.env.SALES_TARGET_EVIDENCE_DIR ?? path.resolve(SHARED_DI
 const TABLE = 'Sales Target Assignment'
 const TABLE_URL = `/api/table/${encodeURIComponent(TABLE)}`
 
+// person-rename: a person's id is minted (`psn_…`); the test accounts are
+// found by username, and the assignment's `employee` holds that id.
+async function personIdOf(request: import('@playwright/test').APIRequestContext, headers: Record<string, string>, username: string): Promise<string> {
+  const filters = encodeURIComponent(JSON.stringify([['username', '=', username]]))
+  const found = (await (await request.get(`/api/table/Person?filters=${filters}&fields=${encodeURIComponent('["row_id"]')}`, { headers })).json()) as { data: { row_id: string }[] }
+  if (!found.data[0]) throw new Error(`no person with username ${username}`)
+  return found.data[0].row_id
+}
+
 function readEnvFile(file: string): Record<string, string> {
   const out: Record<string, string> = {}
   if (!existsSync(file)) return out
@@ -306,13 +315,15 @@ test.describe('3. Store separation', () => {
     ).json()) as { data: { employee: string; plant_code: string; material_group: string; store_subcategory: string }[] }
     expect(rows.data).toHaveLength(8)
     expect(new Set(rows.data.map((r) => r.store_subcategory)).size).toBe(8)
-    const codesOf = (u: string) => rows.data.filter((r) => r.employee === u).map((r) => r.material_group).sort()
-    expect(codesOf('test_employee_1')).toEqual(codesOf('test_employee_3'))
-    expect(codesOf('test_employee_2')).toEqual(codesOf('test_employee_4'))
+    const ids: Record<number, string> = {}
+    for (const n of [1, 2, 3, 4]) ids[n] = await personIdOf(request, headers, `test_employee_${n}`)
+    const codesOf = (n: number) => rows.data.filter((r) => r.employee === ids[n]).map((r) => r.material_group).sort()
+    expect(codesOf(1)).toEqual(codesOf(3))
+    expect(codesOf(2)).toEqual(codesOf(4))
     expect(A(1).plant_code).not.toBe(A(3).plant_code)
     const dup = await request.post('/api/save_row', {
       headers,
-      data: { table: TABLE, row: { employee: 'test_employee_2', plant_code: '1501', material_group: '010101003' } },
+      data: { table: TABLE, row: { employee: ids[2], plant_code: '1501', material_group: '010101003' } },
     })
     expect(dup.status()).toBe(417)
   })
@@ -480,7 +491,8 @@ test('7. Assignment transfer: 1501/010101003 moves from Employee 1 to Employee 2
   const filters = encodeURIComponent(JSON.stringify([['store_subcategory', '=', '1501/010101003']]))
   const list = (await (await request.get(`${TABLE_URL}?filters=${filters}&fields=${encodeURIComponent('["row_id"]')}`, { headers })).json()) as { data: { row_id: string }[] }
   const rowId = list.data[0].row_id
-  const move = async (to: string) => {
+  const move = async (username: string) => {
+    const to = await personIdOf(request, headers, username)
     const current = (await (await request.get(`${TABLE_URL}/${rowId}`, { headers })).json()) as { updated_at: string; employee: string }
     const res = await request.post('/api/save_row', { headers, data: { table: TABLE, row: { row_id: rowId, updated_at: current.updated_at, employee: to } } })
     expect(res.status()).toBe(201)

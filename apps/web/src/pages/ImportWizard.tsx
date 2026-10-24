@@ -3,25 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  autoMapColumns,
-  coerceRows,
-  idPatternFor,
-  inferTableDef,
-  applyColumnCombines,
-  combineOverlap,
-  mergeSheetHeaders,
-  mergeSheetRows,
-  scoreTableMatch,
-  seriesPrefix,
-  shouldAutoMatch,
-  tableMatchQuality,
-  tableNameFromFile,
-  type CoercedRow,
-  type ColumnCombine,
-  type InferredTableDef,
-  type TableMatchQuality,
-} from 'shared'
+import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, calendarDay, coerceRows, combineOverlap, idPatternFor, inferTableDef, isLocalMidnight, localIso, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -390,9 +372,10 @@ function mappableColumns(meta: TableMeta): MappableColumn[] {
 // rows beyond the cap always render.
 const PREVIEW_ROWS = 50
 
-function previewCell(v: unknown): string {
+/** A sheet cell as the preview shows it: a date as its calendar day (#387), never via toISOString(). */
+export function previewCell(v: unknown): string {
   if (v == null) return ''
-  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  if (v instanceof Date) return isLocalMidnight(v) ? calendarDay(v) : localIso(v).replace('T', ' ')
   return String(v)
 }
 
@@ -961,7 +944,7 @@ export function ImportWizard() {
                 ? best.name
                 : null
           const targetCols = tables.find((t) => t.name === target)?.columns ?? []
-          const mapping = target ? autoMapColumns(sheet.headers, targetCols) : []
+          const mapping = target ? autoMapImportColumns(target, sheet.headers, targetCols) : []
           return {
             mode: target ? 'existing' : 'new',
             table: target ?? newName,
@@ -1154,7 +1137,7 @@ export function ImportWizard() {
       return
     }
     const cols = targets.data?.find((t) => t.name === value)?.columns ?? []
-    const mapping = autoMapColumns(sheet.headers, cols)
+    const mapping = autoMapImportColumns(value, sheet.headers, cols)
     setPlan(i, {
       mode: 'existing',
       table: value,
@@ -1214,6 +1197,15 @@ export function ImportWizard() {
     )
   }
 
+  // #416: a refused column is named by the sheet's header that feeds it, so
+  // the message points at a column the user can find in their own file.
+  function headerLabel(sheet: ParsedSheet, plan: SheetPlan) {
+    return (column: string) => {
+      const idx = plan.mapping.findIndex((target, i) => target === column && plan.include[i])
+      return idx >= 0 && sheet.headers[idx] ? String(sheet.headers[idx]) : column
+    }
+  }
+
   function planIdPattern(plan: SheetPlan): string {
     return plan.id_pattern ?? idPatternFor(plan.table)
   }
@@ -1266,7 +1258,8 @@ export function ImportWizard() {
         const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0 }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const m of plan.members) {
-          const rows = mappedRows(memberSheet(plan, m), plan)
+          const sheet = memberSheet(plan, m)
+          const rows = mappedRows(sheet, plan)
           // IMP-I1 disclosure: data rows with nothing in any MAPPED column
           // are sent nowhere — say so instead of letting the counts quietly
           // disagree with the file.
@@ -1277,6 +1270,7 @@ export function ImportWizard() {
             rows,
             dryRun: true,
             upsert: upsertArgs(plan),
+            columnLabel: headerLabel(sheet, plan),
           })
           totals.valid += report.valid
           totals.updated += report.updated
@@ -1389,6 +1383,7 @@ export function ImportWizard() {
             table: plan.table,
             rows,
             upsert: plan.mode === 'existing' ? upsertArgs(plan) : null,
+            columnLabel: plan.mode === 'existing' ? headerLabel(memberSheet(plan, m), plan) : undefined,
             // IMP-011: recorded in the Import Log alongside the counts.
             context: (part, parts) => ({
               file_name: fileName ?? undefined,
@@ -2244,17 +2239,21 @@ export function ImportWizard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sheet.headers.map((h, hi) => (
+                    {sheet.headers.map((h, hi) => {
+                      // #408: a header that is no longer a field of this Table is refused, with a pointer.
+                      const retired = retiredColumnNotice(plan.table, h)
+                      return (
                       <tr
                         key={hi}
-                        className={`border-t border-border ${plan.include[hi] ? '' : 'opacity-40'}`}
+                        className={`border-t border-border ${plan.include[hi] && !retired ? '' : 'opacity-40'}`}
                       >
                         {/* Skipping is the checkbox, same as the new-Table
                             grid — not a buried option inside the select. */}
                         <td className="px-2 py-1 text-center">
                           <input
                             type="checkbox"
-                            checked={plan.include[hi]}
+                            checked={plan.include[hi] && !retired}
+                            disabled={Boolean(retired)}
                             onChange={(e) => {
                               const include = plan.include.map((v, j) =>
                                 j === hi ? e.target.checked : v,
@@ -2275,10 +2274,18 @@ export function ImportWizard() {
                             data-rowfield="include"
                           />
                         </td>
-                        <td className="px-2 py-1 text-ink">{h || <em>(blank)</em>}</td>
+                        <td className="px-2 py-1 text-ink">
+                          {h || <em>(blank)</em>}
+                          {retired && (
+                            <div className="text-xs text-caution" data-testid={`iw-retired-${i}-${hi}`}>
+                              {retired}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-1 py-1">
                           <select
-                            value={plan.mapping[hi] ?? ''}
+                            value={retired ? '' : (plan.mapping[hi] ?? '')}
+                            disabled={Boolean(retired)}
                             onChange={(e) => {
                               const mapping = plan.mapping.map((m, j) =>
                                 j === hi ? e.target.value || null : m,
@@ -2310,7 +2317,7 @@ export function ImportWizard() {
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}
-                            {targetCols.map((c) => (
+                            {targetCols.filter((c) => !retiredColumnNotice(plan.table, c.column_name)).map((c) => (
                               <option key={c.column_name} value={c.column_name}>
                                 {c.label && c.label !== c.column_name
                                   ? `${c.label} · ${c.column_name}`
@@ -2321,7 +2328,7 @@ export function ImportWizard() {
                           </select>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
 

@@ -52,11 +52,11 @@ describe('#101: /api/saved_views', () => {
       label: 'Mine only',
       filters: FILTERS,
     })
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
+    const person = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'sv-user@x.com', enabled: true },
     })
-    const { token } = await issueSession('sv-user@x.com')
+    const { token } = await issueSession(person.row_id)
     const auth = { authorization: `Bearer ${token}` }
 
     const before = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
@@ -95,11 +95,11 @@ describe('#101: /api/saved_views', () => {
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
+    const person = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'sv-locked@x.com', enabled: true },
     })
-    const { token } = await issueSession('sv-locked@x.com')
+    const { token } = await issueSession(person.row_id)
     const auth = { authorization: `Bearer ${token}` }
 
     const list = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {

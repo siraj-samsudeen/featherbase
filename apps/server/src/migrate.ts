@@ -80,6 +80,64 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
   return errors
 }
 
+/** Migrations that apply as ONE transaction (person-resolution review A-M1):
+ *  the person release is all-or-nothing, so a failure in 0102 cannot leave
+ *  0100's identities or 0101's re-id committed without it (#399: prod is at
+ *  0099, so 0100 is part of the release). Members must be adjacent in name order. */
+export const ONE_TRANSACTION: readonly (readonly string[])[] = [
+  ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
+]
+
+/** The pending files, batched: each alone, except the pending members of a
+ *  ONE_TRANSACTION group, which share one batch. Pure, for the unit test. */
+export function migrationBatches(pending: string[]): string[][] {
+  const batches: string[][] = []
+  let open: readonly string[] | null = null
+  for (const file of pending) {
+    const group = ONE_TRANSACTION.find((g) => g.includes(file)) ?? null
+    if (group && group === open) batches[batches.length - 1].push(file)
+    else batches.push([file])
+    open = group
+  }
+  return batches
+}
+
+/** Apply one migration file and record it, inside the caller's transaction
+ *  (the migrator's per-file transaction, or the rolled-back rehearsal of
+ *  `cli people:plan`). */
+export async function applyMigrationFile(file: string): Promise<void> {
+  await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
+  if (file.endsWith('.sql')) {
+    let body = readFileSync(join(dir, file), 'utf8')
+    if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
+      body = body
+        .replaceAll('set search_path = public', 'set search_path = pg_catalog')
+        .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
+        .replaceAll('from permission p', 'from featherbase.permission p')
+        .replaceAll('join has_role hr', 'join featherbase.has_role hr')
+    }
+    await sql.unsafe(body)
+  } else {
+    // .ts migrations export up(); they use the engine itself (createTable,
+    // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
+    // #130 security supersession: retain the shipped migration as history,
+    // but never execute its known-password production fallback on a fresh DB.
+    if (file === '0006_admin_password.ts') await bootstrapAdministrator()
+    else {
+      const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+      await mod.up()
+    }
+  }
+  const [after] = await sql`
+    select to_regclass('public.migration') as legacy,
+      to_regclass('featherbase.migration') as current`
+  if (Boolean(after.legacy) === Boolean(after.current))
+    throw new Error('Migration must leave exactly one platform migration ledger')
+  const target = after.current ? 'featherbase.migration' : 'public.migration'
+  await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
+  invalidateMeta()
+}
+
 // Runs pending migrations. Does NOT close the DB connection — the caller owns
 // its lifecycle (the CLI keeps it open for the rest of the command).
 export async function runMigrations() {
@@ -118,8 +176,8 @@ export async function runMigrations() {
     name text primary key,
     applied_at timestamptz not null default now()
   )`)
-  for (const file of files) {
-    if (applied.has(file)) continue
+  for (const batch of migrationBatches(files.filter((f) => !applied.has(f)))) {
+    const [file] = batch
     // 0088–0093 require public storage; 0094 needs their columns and prototype
     // conversion before it can move that storage. Never rewrite shipped SQL.
     if (legacy && file < '0094_featherbase_schema.sql') {
@@ -128,44 +186,21 @@ export async function runMigrations() {
         await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
         await tx`insert into public.migration (name) values (${file})`
       })
-    } else await withTransaction(async () => {
-      await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
-      if (file.endsWith('.sql')) {
-        let body = readFileSync(join(dir, file), 'utf8')
-        if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
-          body = body
-            .replaceAll('set search_path = public', 'set search_path = pg_catalog')
-            .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
-            .replaceAll('from permission p', 'from featherbase.permission p')
-            .replaceAll('join has_role hr', 'join featherbase.has_role hr')
+    } else
+      await withTransaction(async () => {
+        for (const member of batch) {
+          await applyMigrationFile(member)
+          // Each member validates against the metadata the previous one left.
+          invalidateMeta()
         }
-        await sql.unsafe(body)
-      } else {
-      // .ts migrations export up(); they use the engine itself (createTable,
-      // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
-      // #130 security supersession: retain the shipped migration as history,
-      // but never execute its known-password production fallback on a fresh DB.
-        if (file === '0006_admin_password.ts') await bootstrapAdministrator()
-        else {
-          const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-          await mod.up()
-        }
-      }
-      const [after] = await sql`
-        select to_regclass('public.migration') as legacy,
-          to_regclass('featherbase.migration') as current`
-      if (Boolean(after.legacy) === Boolean(after.current))
-        throw new Error('Migration must leave exactly one platform migration ledger')
-      const target = after.current ? 'featherbase.migration' : 'public.migration'
-      await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
-    })
+      })
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A
     // fresh-database run otherwise crashes at the first save that uses a
     // column added this way — caught by CI's first-ever run.
     invalidateMeta()
-    console.log(`applied ${file}`)
+    for (const member of batch) console.log(`applied ${member}${batch.length > 1 ? ` (one transaction: ${batch.join(', ')})` : ''}`)
   }
   // Claim (or re-affirm) the database for this environment. Re-stamping every
   // run keeps databases created before 0081 correct too.

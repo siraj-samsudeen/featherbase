@@ -1,5 +1,6 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
 export { DISPLAY_DEFAULTS } from './display-settings'
+export { calendarDay, isCalendarDay, isLocalMidnight, localIso, wallTimeToInstant } from './dates'
 export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, appHref } from './app-routes'
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, type SignInMethodKind, type NewPersonRule } from './sign-in'
@@ -7,6 +8,8 @@ export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, Ru
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization } from './app-access'
 export {
   autoMapColumns,
+  autoMapImportColumns,
+  retiredColumnNotice,
   coerceRows,
   inferChoices,
   inferColumnType,
@@ -35,3 +38,4 @@ export {
   type TableMatchQuality,
 } from './import'
 export { SCOPE_BASES, type ScopeBasis } from './sales-target'
+export { REALTIME_MAX_FRAME_BYTES, realtimeFrames } from './realtime'

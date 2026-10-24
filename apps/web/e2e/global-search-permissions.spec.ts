@@ -90,14 +90,17 @@ test.beforeAll(async ({ request }) => {
     const createdUser = await request.post('/api/save_row', {
       headers,
       data: {
-        table: 'User',
-        row: { row_id: user, email: user, enabled: true, roles: [{ role: ROLE }] },
+        table: 'Person',
+        row: { email: user, enabled: true, roles: [{ role: ROLE }] },
       },
     })
-    await expectCreatedRow(createdUser, user, `create User ${user}`)
+    // person-rename: the id is minted (`psn_…`); the person signs in by email.
+    await expectStatus(createdUser, 201, `create Person ${user}`)
+    const personId = ((await createdUser.json()) as { row_id: string }).row_id
+    expect(personId).toMatch(/^psn_[a-z2-7]{20}$/)
     const password = await request.post('/api/set_password', {
       headers,
-      data: { user, password: PASSWORD },
+      data: { user: personId, password: PASSWORD },
     })
     await expectStatus(password, 200, `set password for ${user}`)
   }

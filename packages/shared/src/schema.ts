@@ -1,3 +1,4 @@
+import { calendarDay, isCalendarDay } from './dates'
 import { z } from 'zod'
 
 // META-013: one zod schema generated from Table metadata, used by the
@@ -53,14 +54,28 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
       // timestamps; normalize them back to the date part.
       return z.preprocess(
         (v) => {
-          if (v instanceof Date) return v.toISOString().slice(0, 10)
+          // #387: a Date's calendar day, never toISOString() (that is the previous day east of UTC).
+          if (v instanceof Date) return calendarDay(v)
           if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10)
           return v
         },
-        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date'),
+        z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
+          // A real calendar day (#387): Excel's fictitious 29-Feb-1900, 30-Feb, month 13 or year 0 are refused here, so a
+          // dry run reports them instead of the database refusing the write.
+          .refine((v) => {
+            const [y, m, d] = v.split('-').map(Number)
+            return isCalendarDay(y, m, d)
+          }, 'is not a real calendar day'),
       )
     case 'Datetime':
-      return z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
+      // Date.parse rolls 30-Feb into March; PostgreSQL refuses it. Check the day first (#387).
+      return z.string().refine((v) => {
+        const day = v.match(/^(\d{4})-(\d{2})-(\d{2})/)
+        if (day && !isCalendarDay(Number(day[1]), Number(day[2]), Number(day[3]))) return false
+        return !Number.isNaN(Date.parse(v))
+      }, {
         message: 'must be a valid datetime',
       })
     case 'JSON':

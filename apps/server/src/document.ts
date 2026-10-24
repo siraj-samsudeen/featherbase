@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto'
+import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { afterDocumentCommit } from './action-transaction'
+import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
@@ -20,8 +21,8 @@ import {
   assertPermission,
   checkUserPermissions,
   filterReadFields,
-  getUserPermissionMap,
-  isBypassUser,
+  getScopeMap,
+  isPrivileged,
   isSharedWith,
   permittedTiers,
   stripUnwritableFields,
@@ -87,10 +88,21 @@ async function resolveRowId(
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
+  const rule = meta.id_pattern || 'hash'
+  // person-rename R1: an opaque id is assigned, never chosen — a caller (a
+  // form, an API client, an import) may not supply one. Checked before the
+  // amendment path, so `amended_from` cannot smuggle one in: an amendment of
+  // an opaque-id row simply gets a fresh opaque id.
+  if (rule.startsWith('opaque:')) {
+    if (values.amended_from == null && String(values[ROW_KEY] ?? '').trim())
+      throw new AppError('ValidationError', `${meta.name} ids are assigned by Featherbase; leave the id blank`, {
+        [ROW_KEY]: 'assigned automatically',
+      })
+    return opaqueId(rule.slice('opaque:'.length))
+  }
   // DOC-008: amended rows carry a pre-derived ROWID-n.
   if (values.amended_from != null && values[ROW_KEY])
     return String(values[ROW_KEY])
-  const rule = meta.id_pattern || 'hash'
   // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
   // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
@@ -194,9 +206,9 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     const prefix = `${tableName(meta.name)}_`
     // An expression index names an expression, not a column, in its detail
     // (`lower(email::text)`): map the case-insensitive email rule by name.
-    const fields = e.constraint_name === 'user_email_lower_uq'
+    const fields = e.constraint_name === 'person_email_lower_uq'
       ? ['email']
-      : e.constraint_name === 'user_username_lower_uq'
+      : e.constraint_name === 'person_username_lower_uq'
       ? ['username']
       : detailCols
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
@@ -268,8 +280,8 @@ export async function assertUserPermissions(
   meta: TableMeta,
   row: RowValues,
 ) {
-  if (await isBypassUser(user)) return
-  const map = await getUserPermissionMap(user)
+  if (await isPrivileged(user)) return
+  const map = await getScopeMap(user)
   if (!map.size) return
   const linkFields = meta.columns
     .filter((f) => f.column_type === 'Reference')
@@ -575,7 +587,7 @@ async function saveDocImpl(
   const childInputs = pickChildInputs(meta, values)
   const tbl = await tableRelation(table)
   let attemptedRow: RowValues = {}
-  const [saved] = await sql
+  const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const rowId = await resolveRowId(stx, meta, values)
@@ -627,7 +639,7 @@ async function saveDocImpl(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return inserted
     })
-    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
@@ -828,7 +840,7 @@ async function updateDoc(
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: RowValues | undefined
   let attemptedRow: RowValues = {}
-  const saved = await sql
+  const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const [existing] = await tx`
@@ -897,7 +909,7 @@ async function updateDoc(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return updated
     })
-    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
@@ -963,7 +975,7 @@ async function setStatus(
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const tbl = await tableRelation(table)
-  const [saved] = await sql.begin(async (tx) => {
+  const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
@@ -1003,7 +1015,7 @@ async function setStatus(
     await runHooks('on_update', ctx)
     await runHooks(event, ctx)
     return [updated]
-  })
+  }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
   await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
@@ -1076,7 +1088,7 @@ async function deleteDocImpl(
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
-  await sql.begin(async (tx) => {
+  await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
@@ -1143,7 +1155,7 @@ async function deleteDocImpl(
         where parent = ${name} and parenttype = ${table}`
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
-  })
+  }))
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
@@ -1235,8 +1247,10 @@ async function renameDocImpl(
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   // person-identities: a User's id is the permanent person id (the warehouse
   // person_id); change the name or username instead. A trigger backs this up.
-  if (meta.name === 'User')
-    throw new AppError('ValidationError', 'A person\'s id is permanent and cannot be renamed; change their name or username instead')
+  // person-rename R1: an opaque id (a person's, a service account's) is
+  // permanent — never renamed.
+  if ((meta.id_pattern ?? '').startsWith('opaque:'))
+    throw new AppError('ValidationError', `A ${meta.name}'s id is permanent and cannot be renamed; change its name instead`)
   if (isBound(meta))
     throw new AppError(
       'ValidationError',

@@ -29,13 +29,17 @@ test.beforeAll(async ({ request }) => {
       row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
     },
   })
+  // person-rename: ids are minted (`psn_…`); people are found by email.
   for (const u of [ALICE, BOB]) {
-    await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers: H })
-    await request.post('/api/save_row', {
+    const filters = encodeURIComponent(JSON.stringify([['email', '=', u]]))
+    const prior = (await (await request.get(`/api/table/Person?filters=${filters}`, { headers: H })).json()) as { data: { row_id: string }[] }
+    for (const p of prior.data) await request.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { headers: H })
+    const made = await request.post('/api/save_row', {
       headers: H,
-      data: { table: 'User', row: { row_id: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
+      data: { table: 'Person', row: { email: u, enabled: true, roles: [{ role: ROLE }] } },
     })
-    await request.post('/api/set_password', { headers: H, data: { user: u, password: PWD } })
+    const id = ((await made.json()) as { row_id: string }).row_id
+    await request.post('/api/set_password', { headers: H, data: { user: id, password: PWD } })
   }
 
   // Each user creates their own ticket (owner = creator).

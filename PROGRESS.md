@@ -1,103 +1,256 @@
 # Progress Log
 
-## 2026-10-22 — Design system stage 2: every screen not owned by #371 or person-rename (#380)
+> **Frozen 23-Oct-2026 — not updated any more.** Work is recorded in pull requests, their issues and
+> OpenSpec changes; decisions in `docs/adr/`. This file is kept as history. Do not add entries.
 
-36 web files now use the final tokens and the shared recipes, and none of them breaks a design rule. The pending list
-holds only the 14 files that must wait:
-- #371's 8: Login, ResetPassword, Portal, SalesTarget, AdminLayout, router, Comments, FormView;
-- `index.css`, which still carries the retired names and `.fc-*` classes for those 8;
-- the 5 next to person-rename (#384): AccessTokens, PermissionManager, Assignments, ActivityFeed, ActivityTimeline.
+## 2026-10-23 — An import check names the refused column (#416)
 
-What changed:
-- **Classes.** `.fc-*` classes became `buttonClasses` / `inputClasses` / `cardClasses` / `labelClasses` /
-  `pillClasses`. The recipes now merge with the call site's classes: a call site's padding, size, radius, weight,
-  width, min-height, gap, justify or display replaces the recipe's, so the two never fight in CSS order.
-- **Colours.**
-  - `x-[var(--color-…)]` became utilities with the final names.
-  - Raw palette classes became roles.
-  - `text-white` on a filled colour became `action-ink`.
-  - White over the photo scrim became the new `on-scrim`.
-  - Modal backdrops use the new `scrim`.
-  - ListView's value dots use meaning colours for lifecycle words and the new `series-1…5` for anything else.
-  - Undefined-token fallbacks (`--color-brand-strong`, `--color-hairline-strong`) are gone.
-- **Formatting.**
-  - `formatNumber` uses `fmtNumber` (Indian grouping).
-  - ImportOverview counts use `fmtCount`, the Calendar heading `fmtMonthYear`, import times `fmtInstantIST`, and
-    sheet dates `fmtDay`.
-  - No `toLocale*String` remains outside `lib/inr.ts` and the waiting files.
-- **Guard additions.** It now catches a hex after a comma, as in `var(--x,#d1d8dd)`; two such fallbacks had slipped
-  through. It checks contrast of `action-ink` on the filled meaning colours, of `on-scrim` on the scrim, and of the
-  series colours at 3:1.
+The import wizard's Check showed a bad row only as "Invalid values for <Table>". The server's dry run (and real run)
+already returns the per-column reasons as `fields`; `lib/import-run.ts` dropped them. `failureMessage` appends them:
+`row 4: Invalid values for Section Ownership — effective_from: must be a YYYY-MM-DD date`.
 
-Codex review fixes, each test-first:
-- dark tokens apply on screen only (`@media screen`), so a page printed in dark mode is dark ink on white paper;
-- `fmtNumber` and `formatNumber` are pinned at `12,34,567.50`, which fails on the old browser-locale formatter;
-- `fmtDay` is pinned, including January and late-evening dates;
-- the table builder's type chips take the touch height and announce the chosen type with `aria-pressed` instead of
-  colour alone;
-- icon-only buttons take the new `iconButtonClasses()` (a square at the control size): Attachments' delete,
-  ColumnCards' remove, Peek's back/open/close and the photo viewer's close. Glyphs inside chips (a tag's ×, Explore's
-  release, the builder's clear-file) take `touchTargetClasses()`, an invisible hit area of the control size centred on
-  the glyph, which does not grow the chip;
-- row-scale counts go through `fmtCount`: list totals and the pager (`pageRange`, pinned at `1–20 of 1,23,456`),
-  peek and connection previews, the relation map, import history, the import wizard, the table builder and table
-  merge, plus the report total, dashboard card and bar values, connection counts, Explore's "N of M" (`fmtShowing`)
-  and checklist runs. The import's type-to-confirm prompt shows the count grouped, and `confirmsCount` accepts it
-  with or without the commas. A new guard rule, "raw row count", fails on any expression printed straight before
-  rows/total/records (props such as `total={…}` excepted), so this is enforced rather than found screen by screen;
-- the relation map's SVG labels are 12 units, up from 9.5, 10.5 and 11, with edge labels truncated a little sooner.
-  The small-text rule now also reads JSX `fontSize={…}`, which it had missed.
+**Verified:** `apps/web/test/import-failure-message.test.ts` (red first: no such export), `import-upsert-split`;
+browser check of a Section Ownership CSV whose date cell is `23-10-2026` shows the column and reason. Real Excel date
+cells import on the right day (the #387 fix holds). Open question left on the issue: should a Date column also accept
+the app's own display form `23-Oct-2026`? (Filed as its own follow-up.)
 
-ListView as phone cards (Codex) is deliberately left to page adoption, tracked as OpenSpec task 4.1. Its selection,
-bulk actions, expandable rows and sorting need their own change.
+Review follow-ups: the message names the column by the file's own header (the wizard passes `columnLabel`), a
+`sendImportRun` test with a mocked server answer fails if the `fields` mapping is reverted, and OpenSpec change
+`import-check-names-column` adds the scenario to `spreadsheet-import`.
 
-CI fix: the e2e `listview.spec` desktop band failed on CI's wider Linux font. Side padding is now the density token
-`--spacing-control-x` (12 px under a mouse, the old `.fc-btn` width; 16 px on touch), and the ListView header is
-top-aligned on desktop.
+## 2026-10-23 — Real email through an SMTP server (#395)
 
-Independent review of #386 (no blockers), each item test-first:
-- **Display defaults** (Siraj's decision): `DEFAULT_SETTINGS` and the server default to INR. Rupees group en-IN, and
-  another currency keeps its own grouping (`fmtMoney`). Dates show DD-Mon-YYYY, the one display form. Migration 0103
-  rewrites the System Settings choices and defaults and moves a stored retired date format; a chosen currency is
-  kept. The settings e2e spec now uses a lakh-scale amount, so the two grouping systems differ.
-- **Touch sizes:** `recipe()` keeps `text-control`, `min-h-control` and `size-control` on touch and applies a
-  screen's smaller size as `pointer-fine:` (16 px, no zoom). A new guard rule fails on raw small text on
-  input/select/textarea. Tailwind's emitted order (gap before gap-x; base before `pointer-fine:`) was checked against
-  its compiler.
-- **Recipe colours:** colour utilities now dedupe in `recipe()`; the gap/gap-x precedence is documented and tested.
-- **Counts:** the listed bare row counts go through `fmtCount`. The row-count rule is anchored to one line of display
-  text, with probes both ways, and also catches `{n} {n === 1 ? 'row' : 'rows'}`.
-- **Hex rule:** it now catches `, #fff` and `1px solid #ccc`, while issue refs stay ignored.
-- **Chips:** `touchTargetClasses()` is a 32 px centred area; chips that carry one sit 8 px apart, and removing a tag
-  asks first.
-- **Scrim:** `#000` in both themes, tested darker than the canvas everywhere.
-- **Toggles:** `aria-pressed`/`aria-expanded` on TableBuilder's view toggle, the connector's engine toggle,
-  saved-view chips and related tabs. A new "state by colour alone" rule enforces it.
-- **Status dots:** meaning colours for verdicts only (done/approved, overdue/failed, not set); other statuses take a
-  series identity colour. The series colours are tested distinct (RGB distance > 90) and at 3:1 in every theme.
-- **`fmtDay`:** the old test encoded SheetJS's shifted late-evening Date, the same bug fixed separately in #387/#388.
-  It now reads a Date by the shared `calendarDay` rule (local midnight or UTC midnight), tested in Asia/Kolkata,
-  America/New_York and UTC. Since #388 the parser hands days over as `YYYY-MM-DD` text, so the table-builder preview
-  (`previewValue`) formats that text as DD-Mon-YYYY too.
+`apps/server/src/email.ts` now sends through SMTP (nodemailer) when `SMTP_HOST` is set, and still delivers to the
+Email Sink when it is unset, so development and the test suite are unchanged. Configuration is `SMTP_HOST`,
+`SMTP_PORT` (default 587), `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM`; docs/DEPLOY.md "Email" has the Google
+Workspace relay settings. TLS is always required (STARTTLS on every port but 465, where it is implicit) and
+certificates are verified; tests trust their throwaway certificate through a test-only override, never an env var. `MAIL_FROM` wins over Email Account addresses because the relay accepts only the domain's senders.
 
-**Verified** at the PR head, under Node 22:
-- `pnpm --filter web test`: 857 passed. `pnpm --filter web typecheck` and `pnpm --filter server typecheck` passed.
-  `pnpm --filter server exec vitest run test/settings.test.ts` plus the print and migration tests: 13 passed. Full e2e
-  after the review fixes: 169 passed, 28 skipped.
-- The full e2e suite against a private database, `DATABASE_URL=…/featherbase_design380 E2E_ISOLATED=1 pnpm --filter
-  web exec playwright test`: 169 passed, 28 skipped by the suite. Rerun after the last fixes on the affected specs:
-  dark-mode, palette and print (6 passed), and table-builder, import, naming, responsive, lifecycle and ui-feedback
-  (22 passed), plus attachments, checklist, explore, responsive and table-builder after the icon-button change (14
-  passed). Full suite rerun after the count change: 169 passed, 28 skipped. `import-upsert-journey` is flaky locally
-  under `--repeat-each=3` on #383's head too, so that predates this stage; CI passes it.
-- `pnpm check:specs`, `pnpm check:capabilities` and `git diff --check` are clean.
-- Before/after screenshots against a private local database, with "before" at #383's head: home, User list, report,
-  kanban, all tables, import, import history, jobs, explore, new table and column editor, at 375 and 1280 px, light
-  and dark.
-- The shell (AdminLayout, owned by #371) still shows the old blue next to the new one in the content. That is why this
-  stage merges together with stage 3.
+A failed send becomes `MailDeliveryError` (a 503 `ServiceUnavailableError`) whose message carries only nodemailer's
+code and the SMTP reply code (`ECONFIG` for a bad setting), and is logged as one JSON line
+(`event: mail_delivery_failed`, `purpose`, `code`) with no address, body or credential. Password reset does not
+await the SMTP send (`deliverWithoutWaiting`; tests call `flushPendingMail`), so neither a failure nor the relay's
+latency tells an existing account from an unknown one. A queued email goes back to `queued` on a transient failure
+(4xx, unreachable, timeout) unless it is the job's last attempt, and turns `error` otherwise; the test mail returns
+the error to the System Manager. New `cli mail:test <to>`. nodemailer is pinned exactly (10.2.1).
 
-**Next:** stage 3 after #371 and person-rename merge.
+**Verified:** `apps/server/test/email-smtp.test.ts` (30) runs a real `smtp-server` on a local port: plain delivery,
+the queued job, password reset, STARTTLS + AUTH with a generated certificate, an untrusted certificate refused
+before AUTH, a server without STARTTLS refused before AUTH when credentials are set, failure logging, and the CLI.
+Not yet sent through the real Workspace relay (needs the app password on a deployed instance).
+
+## 2026-10-23 — Person screens after the person release: names not ids, readable identifier dates (#414, #415)
+
+Found in an end-to-end UI pass over a local PG18 copy of the dev data after the person release. (#413, a stale Person
+form writing the employee code back, went away with the field itself in #423.)
+
+- **#414** — the Person form heading and breadcrumb, the sidebar Recent/Frequent rows, the command-bar recents and the
+  Home resume tiles render `ShownName` (a `PrincipalName` for an opaque id). Rename is hidden for an opaque id (the
+  server always refused it). The Unlink confirmation names the person. A Person save invalidates the cached
+  `['principal-name', id]`, so a new full name shows at once (review, Codex P2).
+- **#415** — identifier periods use `fmtDate` (`since 23-Oct-2026`); End and Unlink are `shrink-0` so they no longer
+  wrap one letter per line in the narrow card.
+
+**Verified:** web `person-rename` (heading is the name, no Rename, Recent shows the name; a renamed person shows the new
+name; a Recent row with no caption shows the name and no id tooltip) and `identifiers-panel` (DD-Mon-YYYY periods,
+`shrink-0`), design guards. Browser (Playwright, 1280 px): heading `Person: <name>`, no Rename, Recent shows names,
+End/Unlink on one line.
+
+## 2026-10-23 — Signing out ends that session, not just the cookie (#411)
+
+Sessions are signed tokens, and sign-out only cleared the `sid` cookie, so a copied token kept
+working for its whole lifetime (eight hours by default). Every session now carries a unique id
+(`jti`); `POST /api/logout` records it in `revoked_session` (migration 0106) for both the bearer
+header and the cookie, and closes that session's realtime sockets. `resolveToken` refuses a
+recorded id in the same query that already checks the person (a primary-key join). Only that
+session ends — the person's other sessions keep working; access tokens are untouched. Rows are
+pruned on each sign-out once their session has expired. A token without an id is refused, so the
+deploy signs everyone out once (DEPLOY.md). OpenSpec change `sign-out-ends-the-session`.
+Review round: an expired session's sign-out still closes its sockets (signature checked, expiry
+not); a failed write answers 503 and the app says sign-out did not complete; a socket registering
+just after its sign-out is caught by a short in-memory list; every instance re-checks its sockets
+against `revoked_session` each minute, since sockets are per instance. The same one query also closes sockets whose token
+expired, of a disabled person or of sessions issued before `sessions_ended_at` (#391), which were only checked at
+the upgrade before.
+
+Verification: `apps/server/test/sign-out.test.ts` 13/13 (red first), `apps/web/test/sign-out.test.ts` 2/2, server suite otherwise green
+except the four app-package files that fail identically on origin/main locally.
+Next: archive the OpenSpec change after merge.
+
+## 2026-10-23 — Sales-target scope comes from identifier rows; the Person code fields are gone (#408)
+
+A tester typed another person's code into Person's free-text **Employee code (StyleHR)** field and the
+report moved to that person's Team Lead scope, with no identifier history and no one-holder check. That
+field was a copy of the person's current `stylehr-employee-code` row, but an ordinary editable one.
+
+Sales-target scoping (`currentEmployeeCodes` in `src/sales-target.ts`) now reads the person's **current**
+(`upper_inf(valid)`) `stylehr-employee-code` identifier rows, every one of them: two payrolls give the union
+of both codes' Sections. The Store Sections maps carry the code but not the firm, so a code current on two
+people blocks each of them entirely (`no_assignment`, no partial scope from their other codes or explicit
+rows — design D10) and logs a structured `sales_target_ambiguous_employee_code` warning (people and row ids,
+never the code); DEPLOY.md's leaver procedure now says to END the code so the next holder is not blocked. Map codes compare trimmed and upper-cased, as identifier values
+are stored. Migration **0107** drops the `employee_code` and `stylehr_username` Custom Fields (records,
+column_def rows, columns); the sales-target seed no longer creates one; the temporary
+`mirrorEmployeeCodeField` and its five call sites are gone. A Person import whose file has an
+`employee_code` / `stylehr_username` column refuses that column with a pointer to the Identifiers panel or
+`people:resolve` (`retiredColumnNotice` / `autoMapImportColumns` in `packages/shared/src/import.ts`), never
+maps it — not even onto a re-created, inert Custom Field — and never offers to create it. OpenSpec
+person-resolution task 2.1.
+
+**Verified:** server and web typecheck; `check:specs`; `lint:sql`; the full server suite on Postgres 18.
+New tests: one code, several codes, an ended code, an ambiguous code (whole person no_assignment + alert,
+unblocked once the other holder's code ends), the import refusal (shared + wizard render), and the #408
+repro (saving a Person with another code moves nothing). Parity on the 23-Oct dev snapshot: all 271
+StyleHR-linked people get identical scope from the old code (field) and the new code (rows) — 267 scoped,
+3 refused as before, 1 with no scope.
+
+**Next:** Phase 1a-ii (merge and undo). Matching on (firm, code) waits for the Store Sections maps to carry
+the firm.
+
+## 2026-10-23 — The privacy notice is instance configuration (#401)
+
+Featherbase is public, so an organisation's privacy wording does not belong in the repo (#393's PR #394 hard-coded
+it). System Settings gains `privacy_notice` (Long Text, Markdown; migration 0105). `GET /privacy` is public, sits
+ahead of the legacy-path redirect (which otherwise answers it with a 308), and renders the notice with `markdown-it`
+14.3.2 (`html: false`; its link check drops `javascript:`; image syntax renders as a link with its alt text, so no
+third-party pixel loads). The page has no script, a meta CSP with `script-src 'none'; img-src 'none'` (the global
+`secureHeaders` rewrites the response header after the handler), light and dark via `prefers-color-scheme`, a 16px
+phone gutter and `Cache-Control: public, max-age=300`. Blank or unset = a plain HTML 404 page; `/privacy/` 301s to
+`/privacy`. `cli settings:set <field> --stdin` writes one System Settings text field (Data, Text, Long Text; typed,
+layout and child-table columns refused — Codex P2) from the whole of stdin through `saveDoc`, and logs `settings_set <field>` to the Activity Log as `cli`; DEPLOY.md says where an instance's text lives (its
+own repo) and how to apply it. OpenSpec change `instance-privacy-notice` adds the requirement to
+`sign-in-and-accounts`.
+
+**Verified** on PostgreSQL 18: `test/privacy-notice.test.ts` (9) and the five new `test/cli.test.ts` cases failed
+first (308 instead of 404/200; unknown field; no such command), pass now; full server suite 1130 passed; the new
+and neighbouring files (26) also pass on PostgreSQL 17. Server and web typecheck clean; `pnpm check:specs` clean.
+Not rehearsed: piping the file through `railway ssh` (DEPLOY.md names the form as the fallback).
+
+## 2026-10-23 — Excel dates no longer import a day early in India (#387)
+
+Under `TZ=Asia/Kolkata`, SheetJS `cellDates: true` (xlsx 0.18.5) turned an Excel date cell into 23:59:50 local on
+the previous day: 21-Oct-2024 became `2024-10-20T18:29:50Z`. The import preview and the shared Date schema then
+stored that day via `toISOString().slice(0, 10)`. The Suppliers import on featherbase-dev on 12-Oct-2026 showed it.
+
+`parseWorkbook` now reads serials with their number format (`cellDates: false, cellNF: true`). It picks the section
+SheetJS renders (a port of `choose_fmt`) and converts each date cell with no timezone anywhere:
+- the day comes from pure UTC arithmetic on the serial (`serialDay`). This handles the 1900 quirks (serial 0 is
+  31-Dec-1899, 60 is the fictitious 29-Feb-1900) and 1904-based workbooks. `SSF.parse_date_code` builds a local Date
+  and was wrong in Samoa;
+- a date-only format gives `YYYY-MM-DD` text, not a Date: some zones have no local midnight on a day;
+- a format that shows a time gives wall-clock text, `YYYY-MM-DDTHH:MM:SS[.mmm]`, even at 00:00. Its time is the
+  serial's day fraction in whole milliseconds, carrying into the next day, so 05:30 IST (exactly UTC midnight) is
+  never mistaken for a bare day;
+- a serial below 0 or past 31-Dec-9999, and an elapsed `[h]`/`[m]`/`[s]` duration, stays a number.
+
+`coerceRows` sends a Datetime with no zone through `wallTimeToInstant`, which reads it on the importing browser's
+clock; a bare day is local midnight and fractional seconds keep every digit. Before, it went to the server bare and PostgreSQL read an IST noon as UTC
+(17:30). This applies to CSV date-time text too, and that is a data-shape change. The Date and Datetime schemas
+share `isCalendarDay`, which refuses 30-Feb, Excel's 29-Feb-1900 and year 0 before the write.
+
+`packages/shared/src/dates.ts` is the one home for these helpers. OpenSpec change `fix-excel-date-shift-ist`, with no
+capability delta. Follow-ups: #389 (correct rows imported before this) and #390 (Datetime list cells show the UTC
+day).
+
+**Verified** under Node 22:
+- `apps/web/test/parse-file-ist.test.ts` (54): failed first in IST with `[2024, 10, 20, 23, 59, 50]`. Beyond the
+  month, leap-day and year ends, it covers:
+  - São Paulo's missing midnight and Samoa's skipped day;
+  - the 1900 and 1904 systems, and their last days;
+  - out-of-range serials (`1e12`, `-1`);
+  - format section choice, including conditions;
+  - escaped, quoted, `_x` and `*x` characters;
+  - carries past the second and past midnight;
+  - date-only and wall-time Datetimes on the wire in IST and New York;
+  - a daylight-saving gap and an ambiguous time.
+- Web suite 699 passed; shared 154 passed at 100% line coverage; server import tests 88; web, shared and server
+  typecheck passed.
+- The import and table-builder e2e specs locally in IST: 41 of 42 passed. The one failure, `import-upsert-journey`
+  UPS-J2, also fails locally on untouched `main` (`de6c151c`, twice), so it predates this change; CI passes it.
+
+## 2026-10-22 — A person keeps every identifier they have had (#275, person-resolution Phase 1a-i)
+
+OpenSpec change `person-resolution`, Phase 1a-i, migration 0102 (released
+together with 0101). **Identifier System** is a system Table: one namespace of
+values configured by its kind (employee record, external record, national ID,
+contact), which fills in every other setting (normalising, one holder at a
+time, one per person, editor, match), and by Sensitivity (Normal, Restricted,
+Restricted-hidden, Secret), which decides storage, display and tier together.
+Core ships `phone` and `email`; `cli seed-pack apply jeyarama` adds
+`stylehr-employee-id` (record numbers, hidden) and `stylehr-employee-code`
+(scoped by firm). `person_identifier` keeps every value a person has had with
+its half-open period, source and verification; one holder at a time is an
+exclusion constraint per assigner (btree_gist). Sign-in identities write
+through (a StyleHR record number, a Google address), the person's own email is
+an `email` row, and an identity now **ends** (left, moved, unlinked) instead of
+being deleted — an ended one never opens the account, and a move keeps who
+held it until when. Test mode resolves a typed code through current
+employee-code rows, refuses a code on two people, needs a live link, and the
+server refuses to boot with it outside development, test or staging (a hosted trial instance; dev must be switched to `FEATHERBASE_ENV=staging` and re-stamped before this release — DEPLOY.md). The dev backfill
+writes code and email rows and keeps every StyleHR sign-in working by its
+employee code; `cli people:resolve <csv>` moves them to record numbers after
+the deploy (idempotent, with a report). The release runs a preflight before
+the first migration and applies 0101–0102 as one transaction. Until the
+roster sync runs, a System Manager records or ends an employee code by hand
+with a note (Admin → Person → Find by code for the lookup). The Person form has an Identifiers panel (also
+on the person's own Sign-in methods page); the Identifier System form shows
+each setting's default with "Revert to default".
+
+**Verified:** server and web typecheck; server and web suites on local
+Postgres 18.6; `pnpm check:specs`, `lint:sql`. Rehearsal on the dev snapshot
+(0100 + 0101 + 0102, rolled back, then the real `release.ts` on a copy
+re-stamped `staging`, with the target's variables): 275 re-keyed, scan clean,
+271 code rows, 11 email rows, 271 sign-ins kept by code, parity through
+`testModeUser` 271/271. Then `people:resolve` with a SYNTHETIC file over the
+snapshot's codes: 265 moved, 6 listed (3 absent, 2 on two records, 1 record
+already held), second run 0 moved; parity after it 271/271.
+
+**Next:** the sales-target scoping PR (task 2.1, drops the `employee_code`
+and `stylehr_username` Custom Fields — done 23-Oct, #408); then Phase 1a-ii (merge and undo).
+
+**Gotchas:** migrations run with no controllers loaded — Identifier System
+rows saved by a migration go through `saveIdentifierSystem` (seed-packs.ts),
+which fills the kind's defaults and stamps the derived columns. A person's
+delete removes only rows that mirror their own email or sign-ins; any other
+identifier blocks it (`on delete restrict`).
+
+## 2026-10-22 — A Person, not a User; service accounts are their own principal; opaque ids (#275, person-rename)
+
+OpenSpec change `person-rename`, migration 0101. The human's record is now
+**Person** (`person`, Admin "Person", `/api/people/…`; `/api/users` removed
+with no alias), and `user_identity` is `sign_in_identity` (`person_id`).
+Service accounts moved to their own system Table **Service Account** (`svc_…`
+ids, read-only through the generic API; created, enabled and given roles only
+through `/api/service_accounts`). Tokens, Data Scope, Share and roles name a
+principal through a `person` / `service_account` pair, exactly one set
+(generated columns on `has_role`); every principal FK is `on delete restrict
+deferrable initially immediate`. Every person except Administrator and Guest
+gets an opaque `psn_` id (Person id pattern `opaque:psn_`), dev's trial
+accounts included, by one registry-driven re-id: `src/person-registry.ts`
+classifies every text column (id / json-with-ids / conditional-id / code /
+free-text), rewrites through it with the FKs deferred, and an exact-match scan
+aborts on any surviving old id. `getScopeMap(principal)` is the only
+`data_scope` reader (realtime now narrows by it too). Comment mentions are by
+`@username` or `@[Full Name]`. `cli create-user` is `create-person`;
+`cli people:plan [--rehearse <dsn>]` rehearses the person migrations rolled
+back.
+
+**Verified:** server and web typecheck; `pnpm check:specs`,
+`check:capabilities`, `check:e2e-dsl`, `lint:sql`, `git diff --check`. Server
+suite 1046/1046 passing (runtime-app artifacts built with `apps:prepare`) on a
+local Postgres 18.6; web suite passing except `sales-target-page` (fails on
+untouched main locally); the isolated Playwright suite 170 passed. Rehearsal:
+the dev snapshot `featherbase-dev-pre-371-20261022.sql.gz` restored into local
+PG 18.6, `cli people:plan --rehearse` applied 0100 + 0101 rolled back: 275
+persons re-keyed, 0 service accounts, 276 role rows, scan clean, test-mode
+sign-in by a trial code still works.
+
+**Next:** `person-resolution` Phase 1a-i (0102), released together with 0101
+(DEPLOY.md, "The person release").
+
+**Gotchas:** after 0101, `cli seed` no longer replays the shipped 0005 seed
+(it would recreate `User`); it repairs the built-in persons instead. A
+service account holding tokens can no longer be deleted (revoke or disable).
 
 ## 2026-10-22 — Design system stage 1c: DataList, Headline, readable ₹ and counts (#380)
 
@@ -416,13 +569,13 @@ new test was run against the pre-fix code and failed there: roster derivation re
 
 Browser proof (local, Playwright, MotherDuck embed stubbed):
 
-- TL RR-3769 by password lands on the report: 2 Section subtotals, 90 rows, served from a
+- TL RR-0106 by password lands on the report: 2 Section subtotals, 90 rows, served from a
   snapshot in 88 ms. The embed starting state carries 90 groups, each with its Section,
   for 01–02-Oct, Dive version 3.
 - An unprovisioned Google address is refused.
 
 Locally, against the real ATK roster (64 TLs/DMs provisioned by the data-warehouse
-`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-3769 got 90 groups in
+`sync_report_viewers_to_featherbase.py`) and live MotherDuck, TL RR-0106 got 90 groups in
 Home Décor and Stationery. The report showed ₹2,16,284.95 target and ₹91,802.52 actual for
 01–02-Oct, which matched a direct warehouse query to the paisa.
 
@@ -1169,8 +1322,8 @@ The deterministic prototype migration preserves rows, references, comments, priv
 focus and grants, and aborts collisions. Its regression covers the real Comment,
 Version, File and Share pointers rather than only the task rows. Read-only
 inspection found three tasks in the developer database, including TASK-00003,
-“Follow up with Deepak on the GoFrugal discrepancy discussed in the call with
-Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+a follow-up task about a GoFrugal discrepancy (names withheld), in TPROJ-0001
+“GoFrugal Data Quality”.
 That database was not migrated; migration tests and browser proof use disposable
 databases only. Starting normal init will run the migration and needs operator
 authorization for those existing developer rows.
@@ -1405,7 +1558,7 @@ each, sorted; maps alone serve an employee with no assignment row; maps and
 assignment naming different stores are refused with 417; without the Tables
 or a code nothing changes); full server suite 788 passed / 15 skipped / 1 failed (the pre-existing root-runs-chmod `sources-csv.test.ts` case, identical on base); `pnpm --filter web
 test` 133 passed. Next: on featherbase-dev, create the Custom Field and set
-`employee_code` on a test account to a mapped ATK employee (e.g. RR-11092,
+`employee_code` on a test account to a mapped ATK employee (e.g. RR-0103,
 Kurti) and watch the report widen; the maps' arrival in
 `bronze_featherbase.application` is the data-warehouse side's check.
 
@@ -3212,7 +3365,7 @@ The #127 email tier is now working end to end on
   correct client id, the exact registered https `redirect_uri` (SITE_URL
   path), `prompt=select_account`, and a PKCE S256 challenge; Google renders
   the "continue to Jeyarama Dashboards" page — no `redirect_uri_mismatch`.
-  The owner then completed a real `siraj@jeyarama.com` sign-in and landed
+  The owner then completed a real `@jeyarama.com` sign-in (his own account) and landed
   in `/admin`; the user row was auto-provisioned exactly per design:
   `social_login='google'`, enabled, no roles.
 - Filed on the way: #158 — the disabled-account refusal at the OAuth
@@ -3844,7 +3997,6 @@ The pin survives the refactor rather than passing vacuously.
 `text-red-600`, and TableBuilder keeps pre-existing `hover:text-red-600` /
 `bg-blue-50` literals outside the error UI — all pre-dating this change and
 out of this branch's scope.
-
 
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
@@ -5789,7 +5941,6 @@ Next: worth a guard so this class of bug can't return — either a test assertin
 no `column_def.choices` contains a literal backslash-n after migration, or a
 lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
 sites are fixed, but nothing stops a sixth.
-
 
 ## 2026-07-31 — fix #94: the e2e specs address column rows by marker, not position
 
@@ -10246,7 +10397,7 @@ For the data-warehouse #3783 user trial on featherbase-dev:
 
 - **#366 / #367 — delegated sign-in test mode** (OpenSpec `delegated-login-test-mode`).
   `DELEGATED_LOGIN_TEST_MODE=trust-any-password` (exact phrase, environment only) skips the
-  StyleHR check: a tester types a linked person's **employee code** (`RR-6761`), no password. The
+  StyleHR check: a tester types a linked person's **employee code** (`RR-0107`), no password. The
   account must still be linked, enabled and not privileged. The login page shows a notice and asks
   for an employee code. Leavers are kept out by a disabled account (the data-warehouse roster sync
   runs with `--disable-leavers`). Set on featherbase-dev only; prod has the code, not the switch.

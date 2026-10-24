@@ -18,10 +18,10 @@ describe('API-003: RPC for whitelisted server methods', () => {
   })
 
   test('passes GET query args and runs through the permission layer', async ({ admin }) => {
-    const res = await admin.fetch('/api/method/count_docs?table=User')
+    const res = await admin.fetch('/api/method/count_docs?table=Person')
     expect(res.status).toBe(200)
     const body = (await res.json()) as { message: { table: string; total: number } }
-    expect(body.message.table).toBe('User')
+    expect(body.message.table).toBe('Person')
     expect(body.message.total).toBeGreaterThan(0)
   })
 
@@ -89,7 +89,7 @@ describe('API-003: RPC for whitelisted server methods', () => {
   })
 
   test('a read-effect method still answers GET', async ({ admin }) => {
-    const res = await admin.fetch('/api/method/count_docs?table=User')
+    const res = await admin.fetch('/api/method/count_docs?table=Person')
     expect(res.status).toBe(200)
   })
 })

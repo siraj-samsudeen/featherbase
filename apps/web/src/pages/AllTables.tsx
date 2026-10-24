@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { listResource } from '../lib/api'
+import { useShellTables, type TableSummary } from '../lib/session'
 import { cardClasses } from '../components/ui'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
@@ -10,16 +9,7 @@ import { cardClasses } from '../components/ui'
 // table under ONE System group, collapsed by default with a count badge.
 // Grouping, never hiding.
 export function AllTablesPage() {
-  const tables = useQuery({
-    queryKey: ['tables'],
-    queryFn: () =>
-      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
-        filters: [['kind', '!=', 'sub_table']],
-        fields: ['row_id', 'module', 'system'],
-        order_by: 'row_id asc',
-        limit_page_length: 200,
-      }),
-  })
+  const tables = useShellTables()
 
   // The System group's open/closed choice sticks per browser (#74 — the
   // same localStorage-mirror pattern as lib/theme.ts).
@@ -41,9 +31,9 @@ export function AllTablesPage() {
     })
   }
 
-  const byModule = new Map<string, { row_id: string; module: string; system: boolean }[]>()
-  const systemTables: { row_id: string; module: string; system: boolean }[] = []
-  for (const dt of tables.data?.data ?? []) {
+  const byModule = new Map<string, TableSummary[]>()
+  const systemTables: TableSummary[] = []
+  for (const dt of tables ?? []) {
     if (dt.system) {
       systemTables.push(dt)
       continue
@@ -62,7 +52,7 @@ export function AllTablesPage() {
     <div className="max-w-3xl" data-testid="all-tables-page">
       <h1 className="mb-2 text-lg font-semibold text-ink">All tables</h1>
       <nav className={cardClasses('px-3 py-2')} data-testid="table-nav">
-        {tables.isLoading && (
+        {tables === undefined && (
           <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
         )}
         {appModules.map((mod) => (

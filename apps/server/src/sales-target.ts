@@ -19,6 +19,7 @@ import { logAccess } from './audit'
 import type { SessionUser } from './auth'
 import { platformRelation } from './platform-schema'
 import { tableRelation } from './table-engine'
+import { EMPLOYEE_CODE_SYSTEM } from './person-identifiers'
 
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
 export const VIEWER_ROLE = 'Sales Target Viewer'
@@ -135,7 +136,7 @@ const ASSIGNMENT_TABLE_DEF = {
   name: ASSIGNMENT_TABLE,
   module: 'Sales Target',
   columns: [
-    { column_name: 'employee', column_type: 'Reference', reference_table: 'User', reqd: true, in_list_view: true },
+    { column_name: 'employee', column_type: 'Reference', reference_table: 'Person', reqd: true, in_list_view: true },
     { column_name: 'plant_code', column_type: 'Data', reqd: true, in_list_view: true },
     { column_name: 'store_label', column_type: 'Data', in_list_view: true },
     { column_name: 'material_group', column_type: 'Data', reqd: true, in_list_view: true },
@@ -171,42 +172,35 @@ export async function seedSalesTarget(
   if (role.status === 404)
     await ok(await f('/api/save_row', json({ table: 'Role', row: { row_id: VIEWER_ROLE } })), 'create role')
 
-  // #3783: the host derives an employee's sections from the Store Sections maps, which key on
-  // the StyleHR employee code. A Custom Field is the framework's way to give a platform Table
-  // one more attribute an app needs — no migration, no fork of User.
-  const field = await f(`/api/table/${enc('Custom Field')}/${enc(EMPLOYEE_CODE_FIELD_ID)}`)
-  if (field.status === 404)
-    await ok(
-      await f('/api/save_row', json({
-        table: 'Custom Field',
-        row: {
-          row_id: EMPLOYEE_CODE_FIELD_ID,
-          dt: 'User',
-          column_name: EMPLOYEE_CODE_FIELD,
-          label: 'Employee code (StyleHR)',
-          column_type: 'Data',
-          in_list_view: true,
-        },
-      })),
-      'create employee_code custom field',
-    )
-
+  // person-rename: a person's id is minted (`psn_…`); the seed finds and
+  // creates the test accounts by username.
   const users: string[] = []
+  const idByUsername = new Map<string, string>()
+  const findByUsername = async (username: string): Promise<string | null> => {
+    const filters = enc(JSON.stringify([['username', '=', username]]))
+    const found = (await (await ok(
+      await f(`/api/table/Person?filters=${filters}&fields=${enc('["row_id"]')}`),
+      `find ${username}`,
+    )).json()) as { data: { row_id: string }[] }
+    return found.data[0]?.row_id ?? null
+  }
   for (const a of TEST_ACCOUNTS) {
     const password = passwords[a.username]
     if (!password) throw new Error(`no password configured for ${a.username}`)
-    const existing = await f(`/api/table/User/${enc(a.username)}`)
-    if (existing.status === 404) {
-      await ok(
+    let id = await findByUsername(a.username)
+    if (!id) {
+      const created = (await (await ok(
         await f('/api/save_row', json({
-          table: 'User',
-          row: { row_id: a.username, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
+          table: 'Person',
+          row: { username: a.username, full_name: a.display_name, enabled: true, roles: [{ role: VIEWER_ROLE }] },
         })),
         `create ${a.username}`,
-      )
+      )).json()) as { row_id: string }
+      id = created.row_id
       users.push(a.username)
     }
-    await ok(await f('/api/set_password', json({ user: a.username, password })), `set password ${a.username}`)
+    idByUsername.set(a.username, id)
+    await ok(await f('/api/set_password', json({ user: id, password })), `set password ${a.username}`)
   }
 
   const created: string[] = []
@@ -222,7 +216,7 @@ export async function seedSalesTarget(
       await ok(
         await f('/api/save_row', json({
           table: ASSIGNMENT_TABLE,
-          row: { employee: r.username, plant_code: r.plant_code, store_label: r.store_label, material_group: code },
+          row: { employee: idByUsername.get(r.username) ?? (await findByUsername(r.username)), plant_code: r.plant_code, store_label: r.store_label, material_group: code },
         })),
         `assign ${key} to ${r.username}`,
       )
@@ -250,10 +244,6 @@ export interface Assignment {
   scope_basis: ScopeBasis[]
 }
 
-/** The StyleHR employee code lives on User as a Custom Field the sales-target seed declares. */
-export const EMPLOYEE_CODE_FIELD = 'employee_code'
-export const EMPLOYEE_CODE_FIELD_ID = `User-${EMPLOYEE_CODE_FIELD}`
-
 async function relationExists(name: string): Promise<boolean> {
   const [row] = await sql`select to_regclass(${platformRelation(name)}) as relation`
   return Boolean(row?.relation)
@@ -264,6 +254,45 @@ async function columnExists(table: string, column: string): Promise<boolean> {
     select 1 from information_schema.columns
     where table_schema = 'featherbase' and table_name = ${table} and column_name = ${column}`
   return Boolean(row)
+}
+
+/**
+ * #408 (person-resolution D10): the person's employee codes are their CURRENT
+ * `stylehr-employee-code` identifier rows — every one of them, so a person on
+ * two payrolls gets the union of both codes' Sections. The Store Sections maps
+ * carry the code but not the firm, and a code can be current on two people in
+ * two firms. If ANY of the person's codes is, the person is `ambiguous` and gets
+ * no assignment at all until the other holder's code is ended; each read raises
+ * a structured alert naming people and rows, never the code. Period-valid
+ * codes: Phase 2.
+ */
+async function currentEmployeeCodes(user: string): Promise<{ codes: string[]; ambiguous: boolean }> {
+  const rows = await sql`
+    select mine.value, array_agg(distinct held.person_id order by held.person_id) as holders,
+           array_agg(distinct held.id order by held.id) as identifier_ids
+    from person_identifier mine
+    join person_identifier held
+      on held.system = mine.system and held.value = mine.value and upper_inf(held.valid)
+    where mine.person_id = ${user} and mine.system = ${EMPLOYEE_CODE_SYSTEM} and upper_inf(mine.valid)
+      and mine.value is not null and mine.value <> ''
+    group by mine.value`
+  const codes: string[] = []
+  let ambiguous = false
+  for (const r of rows) {
+    const holders = r.holders as string[]
+    codes.push(String(r.value))
+    if (holders.length === 1) continue
+    ambiguous = true
+    console.warn(JSON.stringify({
+      event: 'sales_target_ambiguous_employee_code',
+      person: user,
+      holders: holders.length,
+      holder_ids: holders,
+      identifier_ids: r.identifier_ids,
+      outcome: 'no_assignment',
+    }))
+  }
+  return { codes, ambiguous }
 }
 
 interface Derived {
@@ -286,13 +315,8 @@ interface Derived {
  * Section Ownership speaks the roster's Section names; Section Name Alias maps them onto the
  * merchandise map's. Every Table is optional: an instance without one derives nothing from it.
  */
-async function derivedFromSections(user: string, today: string): Promise<Derived[]> {
-  if (!(await columnExists('user', EMPLOYEE_CODE_FIELD))) return []
-  if (!(await relationExists('section_merchandise_map'))) return []
-  const [u] = await sql`
-    select employee_code from ${sql(platformRelation('user'))} where row_id = ${user}`
-  const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
-  if (!code) return []
+async function derivedFromSections(codes: string[], today: string): Promise<Derived[]> {
+  if (!codes.length || !(await relationExists('section_merchandise_map'))) return []
   const merch = sql(platformRelation('section_merchandise_map'))
   const out: Derived[] = []
 
@@ -303,7 +327,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
       join ${merch} m
         on  m.store_code = e.store_code
         and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
-      where e.employee_code = ${code}
+      where upper(trim(e.employee_code)) = any(${codes}::text[])
         and m.material_group is not null and m.material_group <> ''`
     for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'section_staff' })
   }
@@ -334,7 +358,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
             where x.store_code = r.store_code and x.section_key = r.section_key)
         ), roster_led as (
           select c.store_code, c.section_key from current_roster c
-          where trim(c.${sql(column)}) = ${code}
+          where upper(trim(c.${sql(column)})) = any(${codes}::text[])
         ), led as (
           -- A roster Section can span several merchandise Sections (Home Décor & Stationery is
           -- Home Décor + Stationery at ATK): every alias row counts, plus the roster name itself.
@@ -362,7 +386,7 @@ async function derivedFromSections(user: string, today: string): Promise<Derived
       select distinct m.store_code as plant_code, m.material_group
       from ${sql(platformRelation('store_manager'))} s
       join ${merch} m on m.store_code = s.store_code
-      where trim(s.employee_code) = ${code}
+      where upper(trim(s.employee_code)) = any(${codes}::text[])
         and m.material_group is not null and m.material_group <> ''`
     for (const r of rows) out.push({ plant_code: String(r.plant_code), material_group: String(r.material_group), basis: 'store_manager' })
   }
@@ -389,21 +413,31 @@ async function sectionsOf(plant: string, groups: string[]): Promise<Record<strin
  * conflict between the two sources is refused loudly rather than mixing stores.
  */
 export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
+  // D10: a code we cannot attribute to one person blocks the whole reader — no partial scope.
+  const { codes, ambiguous } = await currentEmployeeCodes(user)
+  if (ambiguous) return null
   const explicit = await sql`
     select plant_code, store_label, material_group
     from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
     where employee = ${user}
     order by material_group`
-  const derived = await derivedFromSections(user, period.period_end)
+  const derived = await derivedFromSections(codes, period.period_end)
   if (!explicit.length && !derived.length) return null
   const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
-    throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].sort().join(', ')}`)
+    // Addresses the signed-in person (second person, "Your account"): this is the one reader's own refusal, shown to them verbatim by the page.
+    // Written for the reader (#404): the report shows one store at a time. No person id — it is opaque and means nothing to them.
+    throw new AppError(
+      'ValidationError',
+      `Your account is set up for more than one store (${[...plants].sort().join(', ')}), and this report shows one store at a time. Ask your administrator to check which store you belong to.`,
+      // The page shows exactly this refusal's sentence and no other (matched on the code).
+      { code: 'multiple_stores' },
+    )
   const plant = [...plants][0]
   // The maps are edited by the store, and the live read and the Dive both put these codes into
   // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
   // cell is dropped and logged rather than allowed to break, or rewrite, anyone's report.
-  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `${user} maps to a store code that is not four digits: ${JSON.stringify(plant)}`)
+  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `Your account maps to a store code that is not four digits (${JSON.stringify(plant)}). Ask your administrator to correct it.`)
   const all = [...new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])]
   const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
   if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)
@@ -521,9 +555,13 @@ salesTargetRoutes.get('/me', async (c) => {
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
   const a = await currentAssignment(user.row_id, period)
+  const [person] = await sql`select username from person where row_id = ${user.row_id}`
+  const username = (person?.username as string | null | undefined) ?? null
   return c.json({
-    username: user.row_id,
-    display_name: user.full_name ?? user.row_id,
+    // person-rename: the id is opaque (`psn_…`) and never shown. Most people have no username
+    // (StyleHR sign-ins carry none); the page shows them by display_name (#405).
+    username,
+    display_name: user.full_name?.trim() || username || user.email || 'You',
     assignment: a,
     ...period,
     embed_origin: EMBED_ORIGIN,

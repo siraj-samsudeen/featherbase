@@ -20,7 +20,7 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
   // person-identities: a reset link goes only to an account with a password.
   await setUserPassword(member.user!, 'initial-local-password')
   const key = await requestPasswordReset(member.user!)
-  const session = { token: admin.token!, user: { row_id: 'Administrator', email: '', full_name: null } }
+  const session = { token: admin.token!, user: { row_id: 'Administrator', kind: 'person' as const, email: '', full_name: null } }
   const code = mintHandoffCode(session)
   const bridge = globalThis.fetch
   // Browser cookie transport for the real one-time redemption endpoint; all

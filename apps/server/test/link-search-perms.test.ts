@@ -74,7 +74,7 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     await grantRole(admin, { role: ROLE, table: TARGET, can_read: true })
     await admin.post('/api/save_row', {
       table: 'Data Scope',
-      row: { user: bob.user, allow_table: TARGET, for_value: 'doc-alice' },
+      row: { person: bob.user, allow_table: TARGET, for_value: 'doc-alice' },
     })
     const bobRes = await bob.get<{ data: { row_id: string }[]; total: number }>(
       searchQs(target, 'doc'),

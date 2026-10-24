@@ -91,7 +91,7 @@ export function useMeta(table: string, enabled = true) {
 // two data columns when nothing is flagged), matching Frappe's behavior.
 export function listColumns(
   meta: TableMeta,
-): { column_name: string; label: string; column_type: string }[] {
+): { column_name: string; label: string; column_type: string; reference_table?: string | null }[] {
   const dataColumns = meta.columns.filter(
     (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden,
   )
@@ -103,6 +103,7 @@ export function listColumns(
       column_name: c.column_name,
       label: c.label ?? c.column_name,
       column_type: c.column_type,
+      reference_table: c.reference_table ?? null,
     })),
   ]
 }

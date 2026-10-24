@@ -102,7 +102,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
         links: [
           { label: 'Stuff', type: 'Card Break' },
           { label: 'Widgets', type: 'Link', link_to: DT },
-          { label: 'Users', type: 'Link', link_to: 'User' },
+          { label: 'People', type: 'Link', link_to: 'Person' },
         ],
       },
     })
@@ -113,7 +113,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
     ])
     // Administrator sees both links.
     const adminPage = (await pages(admin)).find((p) => p.row_id === 'hp-links')!
-    expect(adminPage.cards[0].links.map((l) => l.link_to)).toEqual([DT, 'User'])
+    expect(adminPage.cards[0].links.map((l) => l.link_to)).toEqual([DT, 'Person'])
   })
 
   test('a card whose links are all filtered out is dropped, the page survives', async ({

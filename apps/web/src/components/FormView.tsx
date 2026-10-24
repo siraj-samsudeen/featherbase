@@ -1,10 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { pickerFor } from '../lib/pickers'
+import { principalLabel, usePrincipalName, ShownName, isOpaqueId } from '../lib/people'
 import { useRealtime } from '../lib/realtime'
-import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
@@ -13,11 +14,14 @@ import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
 import { Comments } from './Comments'
-import { UserSignInMethods } from './UserSignInMethods'
+import { PersonSignInMethods } from './PersonSignInMethods'
+import { PersonIdentifiers } from './PersonIdentifiers'
+import { IdentifierSystemDefaults } from './IdentifierSystemDefaults'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
+import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
 
 type Row = Record<string, unknown>
 
@@ -221,6 +225,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
+      await refreshWaitingAfterSave(queryClient, table)
       navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
@@ -257,6 +262,10 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      await refreshWaitingAfterSave(queryClient, table)
+      // #414: a person's name is cached per id for the heading, breadcrumb
+      // and Recent; a save may have changed it.
+      if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
       if (isNew) {
         navigate({
           to: '/featherbase/admin/$table/$name',
@@ -299,12 +308,12 @@ export function FormView({
           {table}
         </RouterLink>
         <span className="mx-1">/</span>
-        <span className="text-gray-700">{isNew ? 'New' : name}</span>
+        <span className="text-gray-700">{isNew ? 'New' : <ShownName id={name} />}</span>
       </nav>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">
-            {table}: {isNew ? 'New' : name}
+            {table}: {isNew ? 'New' : <ShownName id={name} />}
           </h1>
           <span className="text-xs text-gray-500" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
@@ -369,7 +378,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && (
+          {!isNew && !renaming && !boundSource && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -583,7 +592,9 @@ export function FormView({
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
             {/* person-identities: the one platform Table whose rows sign in. */}
-            {table === 'User' && <UserSignInMethods user={name} />}
+            {table === 'Person' && <PersonIdentifiers person={name} replacedBy={(values.replaced_by as string | null | undefined) ?? null} />}
+            {table === 'Person' && <PersonSignInMethods user={name} />}
+            {table === 'Identifier System' && <IdentifierSystemDefaults systemKey={name} />}
             <ConnectionsPanel table={table} name={name} />
             <Assignments table={table} name={name} />
             <Tags table={table} name={name} />
@@ -927,9 +938,16 @@ function LinkControl({
   common: Record<string, unknown>
 }) {
   const target = field.reference_table ?? ''
+  const picker = pickerFor(target)
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
-  const [options, setOptions] = useState<string[]>([])
+  const [options, setOptions] = useState<{ value: string; label: string }[]>([])
+  // An opaque id (a person's `psn_…`) is shown by its name.
+  const current = useQuery({
+    queryKey: ['link-label', target, String(value ?? '')],
+    enabled: Boolean(picker.labelField) && !picker.peopleSearch && Boolean(value),
+    queryFn: () => api.get<Record<string, unknown>>(`/api/table/${encodeURIComponent(target)}/${encodeURIComponent(String(value))}`),
+  })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const peek = usePeek()
   const navigate = useNavigate()
@@ -941,12 +959,20 @@ function LinkControl({
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
-        const res = await listResource<{ row_id: string }>(target, {
-          filters: q ? [['row_id', 'like', `%${q}%`]] : [],
-          fields: ['row_id'],
+        if (picker.peopleSearch) {
+          // Name, @username, address or employee code — never the id.
+          const res = await api.get<{ people: { row_id: string; label: string }[] }>(`/api/people/pick?q=${encodeURIComponent(q)}`)
+          setOptions(res.people.map((p) => ({ value: p.row_id, label: p.label })))
+          setOpen(true)
+          return
+        }
+        const label = picker.labelField
+        const res = await listResource<Record<string, unknown> & { row_id: string }>(target, {
+          filters: [...picker.filters, ...(q ? [[picker.searchField, 'like', `%${q}%`]] : [])],
+          fields: label ? ['row_id', label] : ['row_id'],
           limit_page_length: 10,
         })
-        setOptions(res.data.map((r) => r.row_id))
+        setOptions(res.data.map((r) => ({ value: r.row_id, label: label ? String(r[label] ?? '') || r.row_id : r.row_id })))
         setOpen(true)
       } catch {
         setOptions([])
@@ -954,7 +980,11 @@ function LinkControl({
     }, 150)
   }
 
-  const shown = query ?? String(value ?? '')
+  const principalName = usePrincipalName(picker.peopleSearch && value ? String(value) : null)
+  const valueLabel = picker.peopleSearch
+    ? value ? principalLabel(String(value), principalName, principalName === null) : null
+    : picker.labelField && current.data ? String(current.data[picker.labelField] ?? '') || null : null
+  const shown = query ?? valueLabel ?? String(value ?? '')
 
   return (
     <div className="relative">
@@ -964,7 +994,7 @@ function LinkControl({
         aria-expanded={open}
         placeholder={`Reference: ${target}`}
         value={shown}
-        onFocus={() => search(shown)}
+        onFocus={() => search(query ?? (picker.labelField ? '' : shown))}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onChange={(e) => {
           setQuery(e.target.value)
@@ -1016,17 +1046,17 @@ function LinkControl({
         >
           {options.map((o) => (
             <button
-              key={o}
+              key={o.value}
               type="button"
               onMouseDown={() => {
-                onChange(o)
+                onChange(o.value)
                 setQuery(null)
                 setOpen(false)
               }}
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
               data-testid="link-option"
             >
-              {o}
+              {o.label}
             </button>
           ))}
           {!options.length && (

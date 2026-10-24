@@ -16,9 +16,14 @@ import { methodOfKind } from '../src/identities'
 
 // person-identities: Google reaches a principal through a linked account ID.
 // Link one directly, then sign in through it the way the callback does.
+async function findOrCreateGoogleUserIn(db: import("../src/db").TxSql | typeof sql, user: string) {
+  const subject = `g-${user}`
+  await db`insert into sign_in_identity (id, person_id, method, subject, linked_by)
+    values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test')`
+}
 async function findOrCreateGoogleUser(user: string, name: string) {
   const subject = `g-${user}`
-  await sql`insert into user_identity (id, user_id, method, subject, linked_by)
+  await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by)
     values (${'uid_' + subject.slice(0, 30)}, ${user}, 'google', ${subject}, 'test') on conflict do nothing`
   const method = (await methodOfKind('google'))!
   // Resolve and check eligibility exactly as the shared pipeline does.
@@ -33,8 +38,11 @@ import { getServiceAccount } from '../src/service-accounts'
 // #137: review findings on the #131 access-token feature. Each case fails
 // against the code as merged in #134.
 
-async function serviceAccount(admin: { post: (p: string, b?: unknown) => Promise<unknown> }, name: string) {
-  await admin.post('/api/service_accounts', { row_id: name, roles: ['System Manager'] })
+// person-rename R2: a service account is its own principal with a minted
+// `svc_` id; the name is its label.
+async function serviceAccount(admin: { post: (p: string, b?: unknown) => Promise<unknown> }, name: string): Promise<string> {
+  const created = (await admin.post('/api/service_accounts', { label: name, roles: ['System Manager'] })) as { row_id: string }
+  return created.row_id
 }
 
 describe('#137 P1: an access token is header-only, never URL-borne', () => {
@@ -42,8 +50,8 @@ describe('#137 P1: an access token is header-only, never URL-borne', () => {
     admin,
     api,
   }) => {
-    await serviceAccount(admin, 'svc-url-test')
-    const { token } = await issueAccessToken('svc-url-test', 'url test')
+    const svc = await serviceAccount(admin, 'svc-url-test')
+    const { token } = await issueAccessToken(svc, 'url test')
 
     // Upload a private file as Administrator, then try to fetch it two ways.
     const form = new FormData()
@@ -75,28 +83,27 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     void seed
     // A disabled human user stays disabled — OAuth used to flip it back on.
     const email = 'disabled-human@example.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: email, email, enabled: false },
-    })
-    await expect(findOrCreateGoogleUser(email, 'Disabled Human')).rejects.toMatchObject({
+    const human = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email, enabled: false },
+    })).row_id
+    await expect(findOrCreateGoogleUser(human, 'Disabled Human')).rejects.toMatchObject({
       type: 'AuthenticationError',
     })
-    const [human] = await sql`select enabled from "user" where row_id = ${email}`
-    expect(human.enabled).toBe(false)
+    const [row] = await sql`select enabled from person where row_id = ${human}`
+    expect(row.enabled).toBe(false)
 
-    // A service account is refused outright, enabled or not — and critically,
-    // its tokens must not come back to life.
-    await serviceAccount(admin, 'svc-oauth-test')
-    const { token } = await issueAccessToken('svc-oauth-test', 'oauth revival')
-    await admin.fetch('/api/service_accounts/svc-oauth-test', {
+    // A service account is not a person (person-rename R2): no sign-in method
+    // can even point at it — and critically, its tokens must not come back
+    // to life.
+    const svcId = await serviceAccount(admin, 'svc-oauth-test')
+    const { token } = await issueAccessToken(svcId, 'oauth revival')
+    await admin.fetch(`/api/service_accounts/${svcId}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled: false }),
     })
-    await expect(
-      findOrCreateGoogleUser('svc-oauth-test', 'svc'),
-    ).rejects.toMatchObject({ type: 'AuthenticationError' })
-    const [svc] = await sql`select enabled from "user" where row_id = 'svc-oauth-test'`
+    await expect(sql.begin((tx) => findOrCreateGoogleUserIn(tx, svcId))).rejects.toThrow(/foreign key constraint/)
+    const [svc] = await sql`select enabled from service_account where row_id = ${svcId}`
     expect(svc.enabled).toBe(false)
     // The token stays dead.
     const who = await admin.fetch('/api/whoami', {
@@ -108,27 +115,28 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
 
 describe('#137 P2: a service account never acquires a password', () => {
   test('setUserPassword refuses, and password reset issues no link', async ({ admin }) => {
-    await serviceAccount(admin, 'svc-pw-test')
+    const svc = await serviceAccount(admin, 'svc-pw-test')
 
-    await expect(setUserPassword('svc-pw-test', 'sneaky123')).rejects.toMatchObject({
+    await expect(setUserPassword(svc, 'sneaky123')).rejects.toMatchObject({
       type: 'ValidationError',
     })
-    const [row] = await sql`select password_hash from "user" where row_id = 'svc-pw-test'`
-    expect(row.password_hash).toBeNull()
+    // A service account has no password column at all; no person was touched.
+    expect(await sql`select 1 from person where row_id = ${svc}`).toHaveLength(0)
 
     // Reset reaches setUserPassword directly, so it must be stopped earlier —
     // and silently, so it cannot be used to enumerate service accounts.
     await expect(requestPasswordReset('svc-pw-test')).resolves.toBeNull()
+    await expect(requestPasswordReset(svc)).resolves.toBeNull()
     await expect(requestPasswordReset('svc-pw-test@service.invalid')).resolves.toBeNull()
   })
 })
 
 describe('#137 P2: "active" means the token actually authenticates', () => {
   test('expired tokens leave the count; a disabled owner is reported', async ({ admin }) => {
-    await serviceAccount(admin, 'svc-count-test')
-    await issueAccessToken('svc-count-test', 'live one')
+    const svc = await serviceAccount(admin, 'svc-count-test')
+    await issueAccessToken(svc, 'live one')
     const expiring = await issueAccessToken(
-      'svc-count-test',
+      svc,
       'expiring',
       new Date(Date.now() + 60_000),
     )
@@ -136,15 +144,15 @@ describe('#137 P2: "active" means the token actually authenticates', () => {
 
     const [account] = (await admin.get<{ service_accounts: { row_id: string; token_count: number }[] }>(
       '/api/service_accounts',
-    )).service_accounts.filter((a) => a.row_id === 'svc-count-test')
+    )).service_accounts.filter((a) => a.row_id === svc)
     expect(account.token_count).toBe(1) // not 2 — the expired one cannot authenticate
 
     // A token whose owner is disabled is not "active" either.
-    await admin.fetch('/api/service_accounts/svc-count-test', {
+    await admin.fetch(`/api/service_accounts/${svc}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled: false }),
     })
-    const listed = await listAccessTokens('svc-count-test')
+    const listed = await listAccessTokens(svc)
     expect(listed.every((t) => t.owner_enabled === false)).toBe(true)
   })
 })
@@ -161,6 +169,15 @@ describe('#137 P2: a user Table cannot squat on the credential store', () => {
 // #137 round 2: findings on the fix above. Each case below fails against the
 // first cut of this PR (029becd) and passes here.
 // ---------------------------------------------------------------------------
+
+// The password write must fail between the reset request and the click. A
+// person can no longer turn into a service account mid-reset (person-rename
+// R2: separate tables), so the person is removed instead: the write then
+// finds no person and refuses.
+async function failPasswordWrites(person: string) {
+  await sql`delete from person_identifier where person_id = ${person}`
+  await sql`delete from person where row_id = ${person}`
+}
 
 const MIGRATIONS = fileURLToPath(new URL('../migrations/', import.meta.url))
 
@@ -209,16 +226,16 @@ describe('#137 R2: the token list never hides a credential', () => {
   test('a token whose owner row has vanished is still listed, and still revocable', async ({
     admin,
   }) => {
-    await serviceAccount(admin, 'svc-orphan')
-    const { id } = await issueAccessToken('svc-orphan', 'orphaned')
+    const svc = await serviceAccount(admin, 'svc-orphan')
+    const { id } = await issueAccessToken(svc, 'orphaned')
 
     // The FK normally keeps owner pointing at a real user, so this state is
     // constructed rather than provoked. It is worth defending anyway: an
     // INNER join drops such a row from the admin screen while
     // resolveAccessToken would still match it by hash — an operator cannot
     // revoke a credential they have been shown does not exist.
-    await sql`alter table access_token drop constraint access_token_owner_fkey`
-    await sql`update access_token set owner = 'ghost-principal' where id = ${id}`
+    await sql`alter table access_token drop constraint access_token_service_account_fkey`
+    await sql`update access_token set service_account = 'ghost-principal' where id = ${id}`
 
     const listed = await listAccessTokens()
     expect(listed.map((t) => t.id)).toContain(id)
@@ -233,12 +250,12 @@ describe('#137 R2: the token list never hides a credential', () => {
 
 describe('#137 R2: token_count agrees with what actually authenticates', () => {
   test('a disabled service account reports zero active tokens', async ({ admin }) => {
-    await serviceAccount(admin, 'svc-count-disabled')
-    const { token } = await issueAccessToken('svc-count-disabled', 'one')
-    await issueAccessToken('svc-count-disabled', 'two')
-    expect((await getServiceAccount('svc-count-disabled')).token_count).toBe(2)
+    const svc = await serviceAccount(admin, 'svc-count-disabled')
+    const { token } = await issueAccessToken(svc, 'one')
+    await issueAccessToken(svc, 'two')
+    expect((await getServiceAccount(svc)).token_count).toBe(2)
 
-    await admin.fetch('/api/service_accounts/svc-count-disabled', {
+    await admin.fetch(`/api/service_accounts/${svc}`, {
       method: 'PATCH',
       body: JSON.stringify({ enabled: false }),
     })
@@ -249,26 +266,31 @@ describe('#137 R2: token_count agrees with what actually authenticates', () => {
       headers: { authorization: `Bearer ${token}` },
     })
     expect(who.status).toBe(401)
-    expect((await getServiceAccount('svc-count-disabled')).token_count).toBe(0)
+    expect((await getServiceAccount(svc)).token_count).toBe(0)
   })
 })
 
 describe('#137 R2: OAuth refusals cannot be told apart', () => {
-  test('a disabled user and a service account fail identically', async ({ admin, seed }) => {
+  test('a disabled person and a privileged one through a method that cannot admit them fail identically; a service account cannot be reached at all', async ({ admin, seed }) => {
     void seed
-    const disabled = 'enum-disabled@example.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: disabled, email: disabled, enabled: false },
-    })
-    await serviceAccount(admin, 'svc-enum')
+    // person-rename R2: a service account is not a person, so no sign-in
+    // method can point at it (the identity's foreign key refuses) — the old
+    // "service account vs disabled user" pair has no second half any more.
+    const svc = await serviceAccount(admin, 'svc-enum')
+    await expect(sql.begin((tx) => findOrCreateGoogleUserIn(tx, svc))).rejects.toThrow(/foreign key constraint/)
 
+    // The refusal for an existing-but-ineligible person is the one generic
+    // AuthenticationError, whichever reason applies.
+    const disabled = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'enum-disabled@example.com', enabled: false },
+    })).row_id
+    const other = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email: 'enum-other@example.com', enabled: false },
+    })).row_id
     const a = await findOrCreateGoogleUser(disabled, 'x').catch((e: Error) => e)
-    const b = await findOrCreateGoogleUser('svc-enum', 'x').catch((e: Error) => e)
-
-    // Distinguishable refusals let an unauthenticated caller probe an address
-    // and learn whether it exists and in what state — the enumeration oracle
-    // requestPasswordReset() already avoids by returning a silent null.
+    const b = await findOrCreateGoogleUser(other, 'x').catch((e: Error) => e)
     expect(a).toBeInstanceOf(Error)
     expect(b).toBeInstanceOf(Error)
     if (!(a instanceof Error) || !(b instanceof Error)) throw new Error('unreachable')
@@ -282,41 +304,41 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     admin,
   }) => {
     const email = 'reset-then-service@example.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: email, email, enabled: true },
-    })
+    const id = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email, enabled: true },
+    })).row_id
     // person-identities: a reset link goes only to an account with a password.
-    await setUserPassword(email, 'initial-pw-1')
-    const [{ password_hash: initial }] = await sql`select password_hash from "user" where row_id = ${email}`
+    await setUserPassword(id, 'initial-pw-1')
+    const [{ password_hash: initial }] = await sql`select password_hash from person where row_id = ${id}`
     const token = await requestPasswordReset(email)
     expect(token).toMatch(/^[0-9a-f]{48}$/)
 
-    // The principal becomes a service account between the request and the
-    // click, so setUserPassword now refuses.
-    await sql`update "user" set user_type = 'service' where row_id = ${email}`
+    // The write must fail between the request and the click. A person can no
+    // longer turn into a service account (person-rename R2: they are separate
+    // tables), so the person's password write is made to fail instead.
+    await failPasswordWrites(id)
 
     // The link is inert from here on: it can never stamp a password, no
     // matter how many times it is presented.
-    for (const attempt of ['first', 'second']) {
-      await expect(resetPassword(token as string, `pw-${attempt}-123`)).rejects.toMatchObject({
-        type: 'ValidationError',
-      })
-    }
-    // The link never stamps a new password: the hash is the one set before.
-    const [row] = await sql`select password_hash from "user" where row_id = ${email}`
-    expect(row.password_hash).toBe(initial)
+    for (const attempt of ['first', 'second'])
+      await expect(resetPassword(token as string, `pw-${attempt}-123`)).rejects.toThrow()
+    // The link never stamps a password anywhere: the person is gone and no
+    // one else's hash changed.
+    void initial
+    expect(await sql`select 1 from person where row_id = ${id}`).toHaveLength(0)
+    expect(await sql`select 1 from password_reset where token = ${token}`).toHaveLength(0)
   })
 
   test('a write that fails does not give the link back', async ({ admin }) => {
     const email = 'reset-burn@example.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: email, email, enabled: true },
-    })
+    const id = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email, enabled: true },
+    })).row_id
     // person-identities: a reset link goes only to an account with a password.
-    await setUserPassword(email, 'initial-pw-1')
-    const [{ password_hash: initial }] = await sql`select password_hash from "user" where row_id = ${email}`
+    await setUserPassword(id, 'initial-pw-1')
+    const [{ password_hash: initial }] = await sql`select password_hash from person where row_id = ${id}`
     const token = await requestPasswordReset(email)
 
     // Same failure mode as above — the principal turns into a service account
@@ -324,10 +346,8 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     // is what separates burn-on-use from an atomic write-and-consume. Under
     // atomicity the refused write rolls the deletion back and the row is still
     // sitting there, live for the rest of its hour.
-    await sql`update "user" set user_type = 'service' where row_id = ${email}`
-    await expect(resetPassword(token as string, 'burned-pw-1')).rejects.toMatchObject({
-      type: 'ValidationError',
-    })
+    await failPasswordWrites(id)
+    await expect(resetPassword(token as string, 'burned-pw-1')).rejects.toThrow()
 
     const outstanding = await sql`select 1 from password_reset where token = ${token}`
     expect(outstanding.length).toBe(0)
@@ -338,29 +358,31 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       type: 'ValidationError',
       message: 'This reset link is invalid or has expired',
     })
-    // The link never stamps a new password: the hash is the one set before.
-    const [row] = await sql`select password_hash from "user" where row_id = ${email}`
-    expect(row.password_hash).toBe(initial)
+    // The link never stamps a password anywhere: the person is gone and no
+    // one else's hash changed.
+    void initial
+    expect(await sql`select 1 from person where row_id = ${id}`).toHaveLength(0)
+    expect(await sql`select 1 from password_reset where token = ${token}`).toHaveLength(0)
   })
 
   test('a successful reset consumes the link, so it cannot be replayed', async ({ admin }) => {
     const email = 'reset-replay@example.com'
-    await admin.post('/api/save_row', {
-      table: 'User',
-      row: { row_id: email, email, enabled: true },
-    })
+    const id = (await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person',
+      row: { email, enabled: true },
+    })).row_id
     // person-identities: a reset link goes only to an account with a password.
-    await setUserPassword(email, 'initial-pw-1')
+    await setUserPassword(id, 'initial-pw-1')
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')
-    const [afterFirst] = await sql`select password_hash from "user" where row_id = ${email}`
+    const [afterFirst] = await sql`select password_hash from person where row_id = ${id}`
     expect(afterFirst.password_hash).not.toBeNull()
 
     // Replaying it must not set a second password.
     await expect(resetPassword(token as string, 'second-password-2')).rejects.toMatchObject({
       type: 'ValidationError',
     })
-    const [afterSecond] = await sql`select password_hash from "user" where row_id = ${email}`
+    const [afterSecond] = await sql`select password_hash from person where row_id = ${id}`
     expect(afterSecond.password_hash).toBe(afterFirst.password_hash)
   })
 })

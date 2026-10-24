@@ -2,10 +2,10 @@ import { ROW_KEY } from '../meta'
 import type { ScriptReport } from '../script-report'
 import { getList } from '../query'
 
-// RPT-005 sample script report: lists users, optionally filtered by enabled
+// RPT-005 sample script report: lists people, optionally filtered by enabled
 // state. Runs through getList so it honors the caller's permissions.
 const report: ScriptReport = {
-  name: 'User Report',
+  name: 'Person Report',
   filters: [
     { column_name: 'enabled', label: 'Enabled', column_type: 'Choice', choices: '\nYes\nNo' },
   ],
@@ -14,7 +14,7 @@ const report: ScriptReport = {
     if (filters.enabled === 'Yes') f.push(['enabled', '=', true])
     else if (filters.enabled === 'No') f.push(['enabled', '=', false])
     const res = await getList(
-      'User',
+      'Person',
       { fields: [ROW_KEY, 'full_name', 'enabled'], filters: f, limit_page_length: 500 },
       user,
     )

@@ -4,6 +4,8 @@ import { describe, expect } from 'vitest'
 import WebSocket from 'ws'
 import { test } from './pg-test'
 import {
+  MAX_FRAME_BYTES,
+  MAX_PENDING_FRAMES,
   attachRealtime,
   canSubscribe,
   onEvent,
@@ -12,6 +14,7 @@ import {
   type RealtimeEvent,
 } from '../src/realtime'
 import type { SessionUser } from '../src/auth'
+import { realtimeFrames } from 'shared'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -59,8 +62,8 @@ describe('realtime event bus', () => {
 })
 
 describe('RT channel authorization (eval #9 fix)', () => {
-  const admin: SessionUser = { row_id: 'Administrator', email: 'a@x.com', full_name: 'Admin' }
-  const guest: SessionUser = { row_id: 'Guest', email: 'g@x.com', full_name: 'Guest' }
+  const admin: SessionUser = { row_id: 'Administrator', kind: 'person', email: 'a@x.com', full_name: 'Admin' }
+  const guest: SessionUser = { row_id: 'Guest', kind: 'person', email: 'g@x.com', full_name: 'Guest' }
 
   test('a user may only subscribe to their own personal channel', async () => {
     expect(await canSubscribe(guest, 'user:Guest')).toBe(true)
@@ -129,4 +132,109 @@ describe('subscription acknowledgment', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
   })
+
+  // #426: the browser sends its subscribe frame the moment the socket opens
+  // (apps/web/src/lib/realtime.ts), not after 'ready'. That frame arrives
+  // while the server is still authenticating the upgrade, a database round
+  // trip. It must be answered, not dropped: a dropped frame leaves the page
+  // subscribed to nothing, with no error and no retry (RT-003 timed out on it).
+  test('a subscribe frame sent the moment the socket opens is still answered', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { cookie: `sid=${admin.token}` },
+    })
+    const frames: RealtimeEvent[] = []
+    socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+    socket.on('open', () => socket.send(JSON.stringify({ subscribe: ['list:User'] })))
+    try {
+      const deadline = Date.now() + 5_000
+      while (!frames.some((f) => f.event === 'subscribed')) {
+        if (Date.now() > deadline) throw new Error(`no 'subscribed' frame arrived; saw ${JSON.stringify(frames)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      expect(frames.find((f) => f.event === 'subscribed')?.payload).toEqual({ channels: ['list:User'] })
+      // 'ready' still comes first: the page is told who it is before anything else.
+      expect(frames[0].event).toBe('ready')
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+  // Codex P1 on #444: frames wait for authentication, so the wait must be
+  // bounded — neither one huge frame nor a flood of small ones is buffered.
+  async function closeCodeAfter(token: string, send: (socket: WebSocket) => void): Promise<number> {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${token}` } })
+    socket.on('error', () => {})
+    try {
+      return await new Promise<number>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('socket was not closed')), 5_000)
+        socket.on('close', (code) => {
+          clearTimeout(timer)
+          resolve(code)
+        })
+        socket.on('open', () => send(socket))
+      })
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }
+
+  test('a frame larger than any subscribe list is refused, not buffered', async ({ admin }) => {
+    const code = await closeCodeAfter(admin.token!, (socket) =>
+      socket.send(JSON.stringify({ subscribe: ['x'.repeat(MAX_FRAME_BYTES)] })),
+    )
+    expect(code).toBe(1009)
+  })
+
+  test('a client that floods frames while they are queued is closed', async ({ admin }) => {
+    const code = await closeCodeAfter(admin.token!, (socket) => {
+      for (let i = 0; i <= MAX_PENDING_FRAMES * 3; i++) socket.send(JSON.stringify({ subscribe: ['list:User'] }))
+    })
+    expect(code).toBe(1008)
+  })
+  // Review of #444: a long-lived page re-sends every channel it watches on
+  // reconnect. Framed the way the client frames it, a set far beyond one
+  // frame's limit is accepted whole, with the socket left open.
+  test('a re-subscribe set larger than one frame is accepted in full', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+    const channels = Array.from({ length: 1500 }, (_, i) => `row:User:user-${String(i).padStart(5, '0')}`)
+    const frames = realtimeFrames('subscribe', channels)
+    expect(frames.length).toBeGreaterThan(2)
+    expect(frames.length).toBeLessThan(MAX_PENDING_FRAMES)
+    const acked = new Set<string>()
+    let closed: number | null = null
+    socket.on('message', (raw) => {
+      const f = JSON.parse(String(raw)) as RealtimeEvent
+      if (f.event === 'subscribed') for (const ch of (f.payload as { channels: string[] }).channels) acked.add(ch)
+    })
+    socket.on('close', (code) => (closed = code))
+    socket.on('open', () => frames.forEach((f) => socket.send(f)))
+    try {
+      const deadline = Date.now() + 10_000
+      while (acked.size < channels.length && closed === null) {
+        if (Date.now() > deadline) throw new Error(`only ${acked.size} of ${channels.length} channels acknowledged`)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+      }
+      expect(closed).toBeNull()
+      expect(acked.size).toBe(channels.length)
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }, 20_000)
 })

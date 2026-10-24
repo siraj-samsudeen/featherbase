@@ -10,12 +10,16 @@ const PWD = 'i18n2pw12345'
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   // A user whose stored language is French.
-  await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
-  await request.post('/api/save_row', {
+  // person-rename: the id is minted (`psn_…`); the person is found by email.
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', USER]]))
+  const prior = (await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const p of prior.data) await request.delete(`/api/table/Person/${encodeURIComponent(p.row_id)}`, { headers })
+  const made = await request.post('/api/save_row', {
     headers,
-    data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
+    data: { table: 'Person', row: { email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
   })
-  await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
+  const id = ((await made.json()) as { row_id: string }).row_id
+  await request.post('/api/set_password', { headers, data: { user: id, password: PWD } })
 
   // French catalog entries for chrome.
   seeded = await seedTranslations(request, headers, 'fr', [

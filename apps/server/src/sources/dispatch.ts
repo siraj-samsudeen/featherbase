@@ -2,8 +2,8 @@ import { sql } from '../db'
 import { AppError } from '../errors'
 import { ROW_KEY, type TableMeta } from '../meta'
 import {
-  getUserPermissionMap,
-  isBypassUser,
+  getScopeMap,
+  isPrivileged,
   permissionScope,
   permittedTiers,
 } from '../permissions'
@@ -174,8 +174,8 @@ async function boundScopeFilters(
   user: string,
   bind: Binding,
 ): Promise<SourceFilter[]> {
-  if (await isBypassUser(user)) return []
-  const upMap = await getUserPermissionMap(user)
+  if (await isPrivileged(user)) return []
+  const upMap = await getScopeMap(user)
   if (!upMap.size) return []
   const filters: SourceFilter[] = []
   const own = upMap.get(meta.name)
