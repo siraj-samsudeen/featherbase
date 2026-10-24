@@ -9,4 +9,4 @@ create table runtime_action_result (
   created_at timestamptz not null default now(),
   primary key (caller, app, action, idempotency_key)
 );
-revoke all on runtime_action_result from public, app_client;
+revoke all on runtime_action_result from public;

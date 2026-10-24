@@ -12,7 +12,6 @@ import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
-import { runQueryReport } from '../src/query-report'
 import { permittedTiers } from '../src/permissions'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
@@ -75,22 +74,13 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(getMeta('other.task')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
-  test('PKG-R3: raw SQL reports cannot read app relations outside the availability-aware API', async ({ admin }) => {
+  test('PKG-R3: no database role but the owner can read app relations outside the availability-aware API', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
-    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'secret', quantity: 37 } })
-    await admin.post('/api/save_row', { table: 'Report', row: {
-      row_id: 'Raw app data', ref_table: 'Person', report_type: 'Query Report',
-      query: "select query_to_xml('select * from other.task', true, false, set_config('role', 'none', true))",
-    } })
     for (const enabled of [true, false]) {
       await admin.post('/api/set_app_enabled', { name: 'other', enabled })
-      await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
+      expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'other.task'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
     }
-    expect(await sql`select has_table_privilege('app_client', 'other.task', 'select') as allowed`).toMatchObject([{ allowed: false }])
-    await discoverPackages([])
-    await loadInstalledApps()
-    await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
   test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {

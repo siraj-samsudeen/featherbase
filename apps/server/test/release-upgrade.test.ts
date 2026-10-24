@@ -103,9 +103,18 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
     expect(await db`select distinct owner_app from featherbase.permission where row_id in
       (select jsonb_array_elements_text(perms) from featherbase.installed_app where name = 'tasker')`)
       .toEqual([{ owner_app: 'tasker' }])
-    expect(await db`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed,
-      has_schema_privilege('app_client', 'featherbase', 'usage') as usage`)
-      .toEqual([{ allowed: false, usage: true }])
+    // The production era's direct-client login role is retired (#451): nothing
+    // in this database references it, its policies now hold every non-owner
+    // role, and while the template still depends on it, it cannot sign in.
+    expect(await db`select count(*)::int as refs from pg_shdepend d join pg_roles r on r.oid = d.refobjid
+      where r.rolname = 'app_client' and d.dbid = (select oid from pg_database where datname = current_database())`)
+      .toEqual([{ refs: 0 }])
+    expect(await db`select rolcanlogin from pg_roles where rolname = 'app_client'`).toEqual([{ rolcanlogin: false }])
+    expect(await db`select p.polroles = '{0}'::oid[] as everyone from pg_policy p
+      where p.polrelid = 'tasker.task'::regclass and p.polname = 'fc_select'`).toEqual([{ everyone: true }])
+    expect(await db`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a
+      where c.oid = 'tasker.task'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
+    expect(await db`select has_schema_privilege('public', 'featherbase', 'usage') as usage`).toEqual([{ usage: true }])
     const ledger = await db`select * from featherbase.migration order by name`
     const grants = await db`select * from featherbase.permission order by row_id`
     expect(run(name)).not.toContain('applied ')

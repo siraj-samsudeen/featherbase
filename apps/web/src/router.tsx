@@ -21,7 +21,6 @@ import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
-import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { TableNaming } from './components/TableNaming'
@@ -480,23 +479,6 @@ function ChecklistPage() {
   )
 }
 
-// RPT-004: a SQL Report renders its own SQL-driven results (static first
-// segment, so it wins over $table/$name).
-const queryReportRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'query-report/$name',
-  component: QueryReportPage,
-})
-
-function QueryReportPage() {
-  const { name } = queryReportRoute.useParams()
-  return (
-    <div data-testid="table-page">
-      <QueryReportView key={name} name={name} />
-    </div>
-  )
-}
-
 // RPT-005: a script report renders its declared filters + data (static segment).
 const scriptReportRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -773,5 +755,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
 ])

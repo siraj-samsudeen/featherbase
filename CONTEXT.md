@@ -203,10 +203,6 @@ _Avoid_: hook, lifecycle event, doc event
 A saved list configuration — filters, columns, sort — over one Table.
 _Avoid_: Report View, saved view
 
-**SQL Report**:
-A saved, parameterized SQL query presented as a report.
-_Avoid_: Query Report
-
 **Code Report**:
 A report whose rows and charts are produced by admin-authored code.
 _Avoid_: Script Report

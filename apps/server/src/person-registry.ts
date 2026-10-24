@@ -110,6 +110,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   permission: { '*': code },
   pre_auth_bucket: { '*': code },
   print_format: { ref_table: code, template: text, letter_head: code },
+  // `query` is dropped by 0111 but still exists when 0101 runs on a fresh database.
   report: { ref_table: code, config: text, report_type: code, query: text, report_script: code },
   revoked_session: { jti: code, person_id: id },
   role: { '*': code },
