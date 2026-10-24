@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
+import { resolvedRelation } from './platform-schema'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -321,6 +322,17 @@ export async function getMeta(name: string): Promise<TableMeta> {
     ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
     row_key: physicalRowKey(name),
     columns,
+  }
+
+  // #432: system-written belongs to the storage, not to the definition's own
+  // flag — any Table that resolves to a system-written Table's relation is
+  // system-written too, whatever its kind or letter case. (The column exists
+  // from 0109 on; earlier migrations load meta without it.)
+  if ('system_written' in dt && !meta.system_written) {
+    const relation = resolvedRelation(dt as { name: string })
+    const owners = await sql<{ name: string; physical_schema: string | null; physical_relation: string | null }[]>`
+      select name, physical_schema, physical_relation from table_def where system_written`
+    if (owners.some((o) => resolvedRelation(o) === relation)) meta.system_written = true
   }
 
   // EDS-7/EDS-13: surface the bound source's access mode and engine on the

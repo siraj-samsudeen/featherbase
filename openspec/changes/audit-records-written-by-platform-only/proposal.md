@@ -25,6 +25,10 @@ record (issue #432).
 - Configuration cannot reach those records from the side: no script,
   metadata override, workflow or custom field may target them, and the
   platform's own writes ignore any that pre-date this change.
+- Whether a table is written by the platform only is decided by the storage
+  it reaches, and no two tables may share storage, so a table spelled like a
+  platform record cannot reach it. A data source cannot point at the
+  platform's own database or connect a table to the platform's schema.
 - Deleting a table keeps its history (change, import, email and notification
   records), and that history never acts on a later table of the same name.
 - Work an administrator genuinely needs, such as retrying a failed job or
@@ -42,6 +46,8 @@ None.
   platform alone writes; a new promise that those records cannot be forged or
   erased by anyone.
 - `table-deletion`: deleting a table keeps its history instead of sweeping it.
+- `external-data-sources`: a data source never reaches the platform's own
+  database or schema.
 
 ## Impact
 

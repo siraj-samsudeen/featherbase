@@ -5,7 +5,9 @@ import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
-import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation } from './platform-schema'
+import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
+
+export { tableName }
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
 // #132: `name` left this list when the primary key became `row_id`, so a user
@@ -192,20 +194,6 @@ function validateDef(def: TableDef) {
   }
   if (Object.keys(errs).length)
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
-}
-
-// Table and Column describe themselves, but "table"/"column" are reserved
-// SQL keywords — their physical storage is table_def/column_def (chosen at
-// bootstrap specifically to dodge that collision) rather than the naive
-// lowercased name every other Table gets.
-const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
-  table: 'table_def',
-  column: 'column_def',
-}
-
-export function tableName(table: string): string {
-  const naive = table.toLowerCase().replace(/\s+/g, '_')
-  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
 }
 
 // Existing core Tables keep their bootstrap mapping. Qualified identities must
@@ -463,21 +451,35 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
   // created it. A hand-written literal rots silently every time a raw table
   // is added (the first draft of this guard covered 3 of ~10), and this asks
   // the database the same question the DDL would — just early enough to
-  // answer with a real error instead of a Postgres one. Settings Tables are
-  // exempt because they generate no DDL; their values live in single_value.
+  // answer with a real error instead of a Postgres one.
+  //
+  // #432: every kind is checked, Settings Tables included. A Settings Table
+  // creates no storage of its own, but tableRelation() still resolves its
+  // name, so a Settings Table spelled like a platform relation would reach
+  // that relation's rows.
   const physical = tableName(def.name)
-  if (def.kind !== 'settings') {
-    const [clash] = await sql`
-      select 1 from information_schema.tables
-      where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
-             and table_name = ${qualified ? def.name.split('.')[1] : physical})
-         or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
-             and table_schema = 'public' and table_name = 'site')`
-    if (clash)
-      throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
-        name: `"${physical}" is reserved for platform storage`,
-      })
-  }
+  const relation = qualified ? `${ownerApp}.${def.name.split('.')[1]}` : platformRelation(physical)
+  const [clash] = await sql`
+    select 1 from information_schema.tables
+    where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
+           and table_name = ${qualified ? def.name.split('.')[1] : physical})
+       or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
+           and table_schema = 'public' and table_name = 'site')`
+  if (clash)
+    throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
+      name: `"${physical}" is reserved for platform storage`,
+    })
+  // #432: names match case-sensitively but storage does not ("Activity Log"
+  // and "activity log" are one relation), and a Settings Table or a bound
+  // Table owns no physical table for the check above to find. No two Tables
+  // may resolve to the same relation.
+  const owners = await sql<{ name: string; physical_schema?: string | null; physical_relation?: string | null }[]>`
+    select * from table_def`
+  const owner = owners.find((o) => resolvedRelation(o) === relation)
+  if (owner)
+    throw new AppError('ConflictError', `Table ${def.name} would share storage with ${owner.name}`, {
+      name: `"${physical}" already belongs to ${owner.name}`,
+    })
 
   // EDS-3 (review finding 10): a binding written by hand (POST /api/table_def)
   // is checked against the live source — it must exist, be allowlisted, and

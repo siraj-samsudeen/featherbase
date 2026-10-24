@@ -15,6 +15,12 @@ import { setUserPassword } from '../src/auth'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { queueEmail } from '../src/email'
 import { expectApiError, grantRole, makeTable, patchDoc } from './fixtures'
+import postgres from 'postgres'
+import { config } from '../src/config'
+import { getMeta } from '../src/meta'
+import { applyWorkflowAction, ensureStateField } from '../src/workflow'
+import { invalidateSources } from '../src/sources/registry'
+import { EXTERNAL_DATABASE_URL } from './external-database'
 
 const AL = 'Activity Log'
 const ENC = encodeURIComponent(AL)
@@ -571,5 +577,118 @@ describe('#432: kept history and the database clock', () => {
     const [row] = await sql`select send_status, error from email_queue where row_id = ${queued}`
     expect(row).toMatchObject({ send_status: 'error', error: expect.stringMatching(/Audit Mail was deleted/) })
     expect(await sql`select 1 from email_sink where subject like '%new private%'`).toHaveLength(0)
+  })
+})
+
+// Review round 3 (#441): what a Table reaches is decided by the storage it
+// resolves to, and no route reaches platform storage from the side: not
+// through an alias, a Data Source or a script.
+describe('#432: storage decides, not the name', () => {
+  test('no Table of any kind or letter case may resolve to storage another Table owns', async ({ admin }) => {
+    const CLASH = { status: 409, type: 'ConflictError' }
+    for (const [name, kind] of [
+      ['activity log', 'settings'],
+      ['ACTIVITY  LOG', 'settings'],
+      ['activity log', 'table'],
+      ['Activity log', 'sub_table'],
+    ] as const)
+      await expectApiError(admin.post('/api/table_def', { name, kind, columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
+    // An ordinary Table's storage is owned just the same, even by a Settings Table.
+    await makeTable(admin, { name: 'Audit Owned', kind: 'settings', columns: ['note'] })
+    await expectApiError(admin.post('/api/table_def', { name: 'audit owned', columns: [{ column_name: 'note', column_type: 'Data' }] }), CLASH)
+    expect(await sql`select name from table_def where lower(name) in ('activity log', 'audit owned') order by name`).toEqual([
+      { name: 'Activity Log' },
+      { name: 'Audit Owned' },
+    ])
+  })
+
+  test('a Table that resolves to an audit table is system-written, whatever its own definition says', async ({ admin }) => {
+    // Written straight into the store: an alias that pre-dates the refusal above.
+    await sql`insert into table_def ${sql({ name: 'activity log', module: 'Core', kind: 'settings' })}`
+    await sql`insert into column_def ${sql({ parent: 'activity log', position: 1, column_name: 'operation', label: 'operation', column_type: 'Data' })}`
+    const victim = await seedActivity('alias target')
+    expect(await getMeta('activity log')).toMatchObject({ system_written: true })
+    await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'alias-wf', ref_table: 'activity log', state_field: 'operation', is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
+    await expect(applyWorkflowAction('activity log', victim, 'Approve', 'Administrator')).rejects.toThrow(/written only by the platform/)
+    await expect(ensureStateField('activity log')).rejects.toThrow(/written only by the platform/)
+    expect(await sql`select operation from activity_log where row_id = ${victim}`).toEqual([{ operation: 'alias target' }])
+  })
+})
+
+describe('#432: a Data Source never reaches platform storage', () => {
+  const PLATFORM_DB = { status: 403, type: 'PermissionError', message: expect.stringMatching(/platform's own database/) }
+
+  async function saveSource(admin: TestClient, row: Record<string, unknown>) {
+    invalidateSources()
+    return admin.post('/api/table/Data%20Source', { engine: 'postgres', access: 'read_write', ...row })
+  }
+
+  test("a Data Source on the platform's own connection is refused when saved", async ({ admin }) => {
+    process.env.AUDIT_SAME_URL = config.databaseUrl
+    await expectApiError(saveSource(admin, { row_id: 'audit-own-db', url_env: 'DATABASE_URL' }), PLATFORM_DB)
+    await expectApiError(saveSource(admin, { row_id: 'audit-own-db', url_env: 'AUDIT_SAME_URL' }), PLATFORM_DB)
+    expect(await sql`select 1 from data_source where row_id = 'audit-own-db'`).toHaveLength(0)
+  })
+
+  test("any other URL to the platform's own database is refused when it connects", async ({ admin }) => {
+    // Same server, same database, a different spelling of the URL.
+    const alias = new URL(config.databaseUrl)
+    alias.hostname = alias.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+    process.env.AUDIT_ALIAS_URL = alias.toString()
+    await saveSource(admin, { row_id: 'audit-alias-db', url_env: 'AUDIT_ALIAS_URL', default_schema: 'public' })
+    const tested = await admin.post<{ ok: boolean; error?: string }>('/api/table/Data%20Source/audit-alias-db:test_connection', {})
+    expect(tested).toMatchObject({ ok: false, error: expect.stringMatching(/platform's own database/) })
+    await expectApiError(
+      admin.post('/api/table/Data%20Source/audit-alias-db:reflect', { schema: 'public', tables: ['site'] }),
+      PLATFORM_DB,
+    )
+    invalidateSources()
+  })
+
+  test('no Table may be bound to a relation in the platform schema, on any database', async ({ admin }) => {
+    const ext = postgres(EXTERNAL_DATABASE_URL, { max: 1, onnotice: () => {} })
+    try {
+      await ext.unsafe(`create schema if not exists featherbase;
+        create table if not exists featherbase.activity_log (row_id text primary key, operation text)`)
+      process.env.AUDIT_EXT_URL = EXTERNAL_DATABASE_URL
+      await saveSource(admin, { row_id: 'audit-ext', url_env: 'AUDIT_EXT_URL' })
+      const binding = { data_source: 'audit-ext', external_schema: 'featherbase', external_table: 'activity_log', external_pk: 'row_id' }
+      await expectApiError(
+        admin.post('/api/table_def', { name: 'Audit Bound Log', ...binding, columns: [{ column_name: 'operation', column_type: 'Data' }] }),
+        { status: 403, type: 'PermissionError', message: expect.stringMatching(/platform schema/) },
+      )
+      // A binding that pre-dates the rule is refused at use.
+      await sql`insert into table_def ${sql({ name: 'Audit Bound Log', module: 'Core', kind: 'table', ...binding })}`
+      await expectApiError(admin.get('/api/table/Audit%20Bound%20Log'), { status: 403, type: 'PermissionError' })
+    } finally {
+      await ext.unsafe('drop schema if exists featherbase cascade')
+      await ext.end({ timeout: 2 })
+      invalidateSources()
+    }
+  })
+})
+
+describe('#432: the Workflow target is checked on the row that is saved', () => {
+  test('a before_save script that retargets a Workflow onto an audit table is refused', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit WF Target', columns: ['title'] })
+    await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'retarget-wf', script_type: 'Document Event', ref_table: 'Workflow', event: 'before_save', script: 'doc.ref_table = "Activity Log"', enabled: true } })
+    await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'retargeted-wf', ref_table: 'Audit WF Target', is_active: true, states: [{ state: 'Open', target_status: 'draft' }] } }), REFUSED)
+    expect((await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${ENC}:meta`)).columns.map((c) => c.column_name)).not.toContain('workflow_state')
+    await expect(ensureStateField(AL)).rejects.toThrow(/written only by the platform/)
+  })
+})
+
+describe('#432: every queued email about a deleted Table fails', () => {
+  test('a plain queued email, with nothing to render, is not sent once its Table is gone', async ({ admin }) => {
+    await loadJobs()
+    await makeTable(admin, { name: 'Audit Plain Mail', columns: ['title'], id_pattern: 'prompt' })
+    await admin.post('/api/table/Audit%20Plain%20Mail', { row_id: 'P-1', title: 'one' })
+    const queued = await queueEmail({ to: 'audit@example.test', subject: 'Plain about P-1', body: 'fixed text', ref_table: 'Audit Plain Mail', reference_name: 'P-1' })
+    await admin.delete('/api/table_def/Audit%20Plain%20Mail')
+    await sql`update background_job set run_at = now() where job_status = 'queued'`
+    await drainJobs().catch(() => {})
+    const [row] = await sql`select send_status, error from email_queue where row_id = ${queued}`
+    expect(row).toMatchObject({ send_status: 'error', error: expect.stringMatching(/Audit Plain Mail was deleted/) })
+    expect(await sql`select 1 from email_sink where subject = 'Plain about P-1'`).toHaveLength(0)
   })
 })

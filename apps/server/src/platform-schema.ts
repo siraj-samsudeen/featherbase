@@ -25,6 +25,32 @@ const PLATFORM_RELATIONS = new Set([
   'workflow_document_state', 'workflow_transition',
 ])
 
+// Table and Column describe themselves, but "table"/"column" are reserved
+// SQL keywords — their physical storage is table_def/column_def (chosen at
+// bootstrap specifically to dodge that collision) rather than the naive
+// lowercased name every other Table gets.
+const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
+  table: 'table_def',
+  column: 'column_def',
+}
+
+export function tableName(table: string): string {
+  const naive = table.toLowerCase().replace(/\s+/g, '_')
+  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
+}
+
+// #432: the storage a Table resolves to, as `schema.relation`. App Tables
+// carry their mapping; every other name lowercases into the platform schema,
+// so "Activity Log", "activity log" and "ACTIVITY  LOG" are one relation.
+export function resolvedRelation(def: {
+  name: string
+  physical_schema?: string | null
+  physical_relation?: string | null
+}): string {
+  if (def.physical_schema && def.physical_relation) return `${def.physical_schema}.${def.physical_relation}`
+  return platformRelation(tableName(def.name))
+}
+
 export function platformRelation(relation: string): string {
   return `${PLATFORM_SCHEMA}.${relation}`
 }

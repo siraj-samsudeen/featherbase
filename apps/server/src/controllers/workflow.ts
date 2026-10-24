@@ -17,6 +17,9 @@ const controller: TableController = {
       validateWorkflow(states, transitions)
     },
     after_save: async ({ row, tx }) => {
+      // #432: checked again on the final row — a before_save Server Script
+      // runs after validate and may have changed ref_table.
+      await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       if (row.is_active && typeof row.ref_table === 'string') {
         // Binding an existing column (state_field) is validated here — saving
         // a workflow that names a nonexistent column fails; a blank

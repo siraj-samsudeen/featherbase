@@ -30,6 +30,13 @@ their columns. Anyone allowed to read them still can.
 - **WHEN** a System Manager tries to add a sign-in to the activity record
 - **THEN** it is refused, and the activity record is unchanged
 
+#### Scenario: A look-alike table reaches nothing
+
+- **WHEN** a System Manager creates a table whose name differs from a
+  platform record's only in letter case or spacing, of any kind
+- **THEN** it is refused, because two tables can never share the same
+  storage
+
 #### Scenario: Signing in is still recorded
 
 - **WHEN** the user signs in

@@ -13,6 +13,7 @@
 - [x] 1.8 Deleting a Table keeps its system-written history; revert, batch delete and the wizard's history only read history written since the current Table was created.
 
 - [x] 1.9 Review round 2: history is dated by the database clock (Import Log, Version and the import run start); lists of system-written history hide rows written before a same-name Table was re-created; a queued email whose Table was deleted after queueing fails with a clear reason.
+- [x] 1.10 Review round 3: a Table is system-written when the storage it resolves to is; no Table of any kind or letter case may resolve to storage another Table owns; a Data Source never connects to the platform's own database (proved by asking the server) and no bound Table names the platform schema; the Workflow target is re-checked on the saved row and the state-column helper refuses a system-written Table; every queued email about a deleted Table fails, rendered or not. Source test fixtures move to a sibling `<db>_ext` database.
 
 ## 2. Web
 

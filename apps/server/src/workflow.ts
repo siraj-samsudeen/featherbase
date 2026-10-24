@@ -128,6 +128,8 @@ export async function ensureStateField(
   field = 'workflow_state',
 ): Promise<void> {
   const meta = await getMeta(table)
+  // #432: the one place a workflow adds a column, so it gates whatever the caller.
+  assertNotSystemWritten(meta, 'put under a workflow')
   if (meta.columns.some((f) => f.column_name === field)) return
   if (field !== 'workflow_state')
     throw new AppError(
