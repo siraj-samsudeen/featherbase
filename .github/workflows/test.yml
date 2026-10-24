@@ -40,10 +40,12 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   # A new push to a PR supersedes the old run. On main every commit is a
   # deploy (prod auto-deploys from main), so every commit gets its own full
-  # run, e2e included — a fast second merge must not cancel the first's.
+  # run, e2e included. A shared group would not guarantee that even without
+  # cancel-in-progress: GitHub keeps one PENDING run per group, so a third
+  # quick merge would replace the second's queued run. Hence the run id.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -409,9 +411,11 @@ jobs:
       - name: Run the release preflight suite on PostgreSQL 18
         run: pnpm --filter server test test/release-preflight.test.ts
 
+  # Fails closed: if `changes` itself failed, e2e runs rather than reporting
+  # a passing `skipped`.
   e2e:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
