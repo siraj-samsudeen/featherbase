@@ -9,6 +9,7 @@ import { normaliseValue, verhoeffValid } from '../src/identifiers'
 import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
 import { makePerson } from './fixtures'
+import { inviteGoogleRaw } from './identity-fixtures'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
@@ -186,6 +187,24 @@ describe('search respects who may read people (Codex review on #385)', () => {
     expect((await scoped.get<{ people: { person_id: string }[] }>('/api/identifiers?system=email&value=scoped.search@x.test')).people.map((x) => x.person_id)).toEqual([p])
     expect((await scoped.get<{ people: unknown[] }>('/api/identifiers?system=email&value=other.search@x.test')).people).toEqual([])
     void q
+  })
+
+  // An invitee has no email identifier until their first Google sign-in, so
+  // an email search also matches an open invite — still only for readers.
+  test('an email search finds a pending Google invite, only for people who may read the invitee', async ({ admin, createUser }) => {
+    const invitee = await makePerson({ full_name: 'Invited Ira' })
+    await inviteGoogleRaw(invitee, 'Invited.Ira@x.test')
+    const found = await admin.get<{ people: { person_id: string; pending_invite: boolean }[] }>('/api/identifiers?system=email&value=INVITED.IRA@x.test')
+    expect(found.people.map((x) => [x.person_id, x.pending_invite])).toEqual([[invitee, true]])
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Person Searcher' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Person Searcher', can_read: true } })
+    const scoped = await createUser({ email: 'invite.scoped@x.test', roles: ['Person Searcher'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: scoped.user, allow_table: 'Person', for_value: scoped.user } })
+    expect((await scoped.get<{ people: unknown[] }>('/api/identifiers?system=email&value=invited.ira@x.test')).people).toEqual([])
+    // A person who holds the address and also has the invite is listed once.
+    const both = await makePerson({ full_name: 'Both Bala', email: 'both.bala@x.test' })
+    await inviteGoogleRaw(both, 'both.bala@x.test')
+    expect((await admin.get<{ people: { person_id: string; pending_invite: boolean }[] }>('/api/identifiers?system=email&value=both.bala@x.test')).people.map((x) => [x.person_id, x.pending_invite])).toEqual([[both, false]])
   })
 })
 
