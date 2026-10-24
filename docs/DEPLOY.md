@@ -43,7 +43,7 @@ Everything comes from the environment; every variable has a dev default in
 | `SITE_URL` | **yes, outside development and test** (the release preflight refuses without it, #430) | this instance's absolute external URL (`https://app.example.com`) — password-reset and invitation links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `SMTP_NAME` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
 
 Two settings already in the codebase matter specifically for hosted
 Postgres and must not regress: `db.ts` sets `prepare: false` (required by
@@ -201,6 +201,7 @@ instead (#395).
 | `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
 | `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
+| `SMTP_NAME` | `jeyarama.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
 
 Production uses port 587. TLS is always required: there is no setting that
 lets mail or a credential leave unencrypted, and none that skips the
@@ -220,6 +221,12 @@ Then set `SMTP_HOST=smtp-relay.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`,
 `SMTP_PASSWORD` and `MAIL_FROM` on the service. The relay can take a few
 minutes, occasionally up to an hour, to accept a new configuration.
 
+The relay refuses an `EHLO` name that is not a fully qualified domain, with
+`421 4.7.0 Try again later, closing connection. (EHLO)`, which `mail:test`
+reports as `Mail delivery failed (ECONNECTION 421)`. The `MAIL_FROM` domain
+(`jeyarama.com`) is a name it accepts, so nothing more is needed; set
+`SMTP_NAME` only to greet with a different hostname.
+
 The `SMTP_USER` account must have **2-Step Verification** turned on; only then
 can it create an **app password** (myaccount.google.com → Security → App
 passwords), and that app password is `SMTP_PASSWORD`. Treat it like any other
@@ -233,8 +240,11 @@ pnpm --filter server cli mail:test <your-address>
 ```
 
 It exits 1 with `Mail delivery failed (<code> [<SMTP reply code>])` when the relay
-refuses (`EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
-TLS or network; `EENVELOPE` = a sender or recipient the relay rejected). A
+refuses, and first prints the relay's own reply line as
+`mail:test: server reply: …`, with every email address in it and
+`SMTP_PASSWORD` masked out. That line is printed by `mail:test` only; the
+stored error and the log line carry the code alone. Codes: `EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
+TLS or network; `EENVELOPE` = a sender or recipient the relay rejected. A
 bad setting (unparseable `SMTP_PORT`, `SMTP_USER` without `SMTP_PASSWORD`, no
 `MAIL_FROM` and no Email Account) reports
 `Mail configuration invalid (ECONFIG): …`.

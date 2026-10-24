@@ -373,9 +373,23 @@ async function main() {
     case 'mail:test': {
       const [to] = positional
       if (!to) throw new Error('usage: cli mail:test <to>')
-      const { readSmtpConfig, sendTestEmail } = await import('./email')
+      const { readSmtpConfig, sendTestEmail, MailDeliveryError } = await import('./email')
       const smtp = readSmtpConfig()
-      await sendTestEmail(to)
+      try {
+        await sendTestEmail(to)
+      } catch (err) {
+        // The server's own reply says why (a 421 names the command it
+        // refused). Every address in it is masked (a relay may echo any
+        // envelope address, however the recipient was written), and so are
+        // the credentials.
+        if (err instanceof MailDeliveryError && err.serverReply) {
+          let reply = err.serverReply
+          if (smtp?.password) reply = reply.split(smtp.password).join('[password]')
+          reply = reply.replace(/[^\s<>()\[\],;:"']+@[^\s<>()\[\],;:"']+/g, '[address]')
+          console.error(`mail:test: server reply: ${reply}`)
+        }
+        throw err
+      }
       // The recipient is not echoed: the operator typed it, and output may be
       // captured in deploy logs.
       console.log(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
