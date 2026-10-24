@@ -137,8 +137,8 @@ shrinking `design-guards.pending.ts` list. The older "Visual identity" section i
   login user on Homebrew, `su postgres` when running as root in the container.
   So it works on macOS and Linux alike, and is a no-op once things are up.
 - **Connection strings** default in `apps/server/src/config.ts`; override with
-  `DATABASE_URL`. The RLS suite connects as the `app_client` role and
-  overrides with `RLS_TEST_URL`.
+  `DATABASE_URL`. The RLS suite creates its own short-lived login role for
+  each run, so the connecting user needs permission to create roles.
 - **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
   listeners by port and waits for both to answer.
 - **Chromium is resolved from the environment, never hardcoded.** Both

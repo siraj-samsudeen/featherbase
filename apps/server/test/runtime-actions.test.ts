@@ -124,7 +124,7 @@ describe('declared transactional runtime actions', () => {
     await expect(admin.post(action + 'probe', { ...request, user: 'Administrator' })).rejects.toMatchObject({ status: 417 })
     const manager = await admin.get<any>('/api/apps')
     expect(manager.actions).toContainEqual({ app: 'actionproof', actions: ['transform', 'discard', 'probe'] })
-    expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
+    expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'featherbase.runtime_action_result'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
     await discoverPackages([]); await loadInstalledApps()
     await expect(admin.post(action + 'probe', request)).rejects.toMatchObject({ status: 403 })
   })

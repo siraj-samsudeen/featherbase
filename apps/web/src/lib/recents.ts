@@ -241,7 +241,6 @@ const RESERVED = new Set([
   'new-table', 'import', 'jobs', 'all-tables', 'naming', 'permissions', 'home',
 ])
 const PAGE_KINDS: Record<string, string> = {
-  'query-report': 'Report',
   'script-report': 'Report',
   dashboard: 'Dashboard',
 }

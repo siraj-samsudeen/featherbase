@@ -1,6 +1,8 @@
 // NOT sandbox-migrated: verifies NATIVE Postgres RLS through a second
-// connection under the app_client PG role — that connection can never see
-// the sandbox's uncommitted transaction, so this file needs real commits.
+// connection under a login role this file creates for its own run — that
+// connection can never see the sandbox's uncommitted transaction, so this
+// file needs real commits.
+import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import postgres from 'postgres'
 import { app } from '../src/index'
@@ -40,10 +42,12 @@ async function areq(path: string, init: RequestInit = {}) {
   })
 }
 
-// PERM-004: generated RLS. A direct client (the app_client PG role — the
-// local stand-in for supabase-js/PostgREST) can SELECT only rows its
-// session user has Permission read access to, and can never write. The app
-// server (table owner) bypasses RLS and stays the only write path.
+// PERM-004: generated RLS. A direct client (a non-owner PG role — the local
+// stand-in for supabase-js/PostgREST) can SELECT only rows its session user
+// has Permission read access to, and can never write. The app server (table
+// owner) bypasses RLS and stays the only read and write path: no role is
+// granted access to a Table, so this suite grants its own probe role SELECT on
+// the Tables it reads.
 
 const DT = 'RLS Vault'
 const CHILD = 'RLS Vault Item'
@@ -53,22 +57,22 @@ const USER_EMAIL = 'rls-vault@x.com'
 // The person's minted id (`psn_…`), set in beforeAll; cleanup finds it by address.
 let USER = ''
 
-// This suite connects as the unprivileged `app_client` role, so it needs its
-// own URL — but it must reach the SAME database as the rest of the run. The
-// default used to name `featherbase` outright, which meant an unset
-// RLS_TEST_URL quietly pointed the RLS suite at the DEVELOPMENT database even
-// once everything else had moved to `featherbase_test`. Deriving it from
-// config.databaseUrl keeps the two in step by construction: only the
-// credentials are swapped, never the target.
-function appClientUrl(): string {
-  if (process.env.RLS_TEST_URL) return process.env.RLS_TEST_URL
+// Roles are cluster-wide and test databases share a cluster, so the probe
+// role is unique to this run, with a password nobody else knows.
+const PROBE_ROLE = `rls_probe_${randomBytes(6).toString('hex')}`
+const PROBE_PASSWORD = randomBytes(24).toString('hex')
+const READABLE = ['featherbase.rls_vault', 'featherbase.rls_vault_item', 'featherbase.rls_hidden', 'featherbase.person']
+
+// The probe connection must reach the SAME database as the rest of the run,
+// so its URL is config.databaseUrl with only the credentials swapped.
+function probeUrl(): string {
   const url = new URL(config.databaseUrl)
-  url.username = 'app_client'
-  url.password = 'app_client'
+  url.username = PROBE_ROLE
+  url.password = PROBE_PASSWORD
   return url.toString()
 }
 
-const direct = postgres(appClientUrl(), { max: 1, onnotice: () => {} })
+let direct: ReturnType<typeof postgres>
 
 async function as(user: string | null) {
   await direct`select set_config('app.user', ${user ?? ''}, false)`
@@ -88,6 +92,8 @@ async function cleanup() {
 
 beforeAll(async () => {
   await cleanup()
+  await sql.unsafe(`create role ${PROBE_ROLE} login password '${PROBE_PASSWORD}'`)
+  direct = postgres(probeUrl(), { max: 1, onnotice: () => {} })
   await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({
@@ -140,11 +146,19 @@ beforeAll(async () => {
     method: 'POST',
     body: JSON.stringify({ table: SECRET_DT, row: { code: 's3cret' } }),
   })
+  // A new Table grants nothing to any role but its owner.
+  expect(await sql`
+    select count(*)::int as grants
+    from pg_class c, aclexplode(c.relacl) a
+    where c.oid = 'featherbase.rls_vault'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
+  for (const table of READABLE) await sql.unsafe(`grant select on ${table} to ${PROBE_ROLE}`)
 })
 
 afterAll(async () => {
+  await direct?.end()
   await cleanup()
-  await direct.end()
+  const [probe] = await sql`select 1 from pg_roles where rolname = ${PROBE_ROLE}`
+  if (probe) await sql.unsafe(`drop owned by ${PROBE_ROLE}; drop role ${PROBE_ROLE}`)
 })
 
 describe('PERM-004: generated RLS for direct clients', () => {
