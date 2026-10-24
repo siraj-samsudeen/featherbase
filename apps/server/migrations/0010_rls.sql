@@ -1,22 +1,15 @@
 -- PERM-004: generated row-level security.
 --
--- Local equivalent of Supabase's PostgREST + RLS setup: a `app_client`
--- login role models a direct (non-server) client connection. The session
--- user travels in the `app.user` GUC — the analogue of PostgREST setting
+-- Local equivalent of Supabase's PostgREST + RLS setup. The session user
+-- travels in the `app.user` GUC — the analogue of PostgREST setting
 -- request.jwt.claims from a verified JWT; the trusted connection layer is
 -- responsible for setting it. SELECT policies are generated per Table from
--- Permission; no INSERT/UPDATE/DELETE policies (and no grants) exist, so
--- every direct write is denied. The app server connects as the table owner
--- (postgres) and bypasses RLS — it remains the only write path, running the
--- full row lifecycle.
-
-do $$ begin
-  if not exists (select from pg_roles where rolname = 'app_client') then
-    create role app_client login password 'app_client';
-  end if;
-end $$;
-
-grant usage on schema public to app_client;
+-- Permission and apply to every role but the table owner; no
+-- INSERT/UPDATE/DELETE policies exist, so every direct write is denied. No
+-- role is granted SELECT either: the app server connects as the table owner
+-- (postgres), bypasses RLS and remains the only read and write path, running
+-- the full row lifecycle. The RLS suite exercises the policies through a role
+-- it creates for its own run.
 
 create or replace function fc_session_user() returns text
 language sql stable
@@ -63,13 +56,12 @@ begin
     execute format('drop policy if exists fc_select on %I', tbl);
     if r.kind = 'sub_table' then
       execute format(
-        'create policy fc_select on %I for select to app_client using (fc_has_read(parenttype))',
+        'create policy fc_select on %I for select using (fc_has_read(parenttype))',
         tbl);
     else
       execute format(
-        'create policy fc_select on %I for select to app_client using (fc_has_read(%L))',
+        'create policy fc_select on %I for select using (fc_has_read(%L))',
         tbl, r.name);
     end if;
-    execute format('grant select on %I to app_client', tbl);
   end loop;
 end $$;

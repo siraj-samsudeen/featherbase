@@ -6,6 +6,7 @@ import {
   createRoute,
   redirect,
 } from '@tanstack/react-router'
+import { parseFilters } from 'shared'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
@@ -21,7 +22,6 @@ import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
-import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { TableNaming } from './components/TableNaming'
@@ -32,6 +32,7 @@ import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { FindPerson } from './pages/FindPerson'
+import { WaitingForAccess } from './pages/WaitingForAccess'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -63,31 +64,7 @@ function searchString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
-// #87: `filters` is the one search param whose SHAPE matters — ListView indexes
-// each entry as a [field, op, value] triple. A URL is user input, so the parsed
-// value is validated, not asserted: `?filters={}` and `?filters=[null]` both
-// parse as valid JSON and would otherwise reach `filters.find(...)` and throw,
-// blanking the list. Anything that is not a well-formed triple array is
-// discarded the way a malformed value always was.
-function parseFilters(raw: string | undefined): [string, string, unknown][] {
-  if (!raw) return []
-  let value: unknown
-  try {
-    value = JSON.parse(raw)
-  } catch {
-    return []
-  }
-  const ok =
-    Array.isArray(value) &&
-    value.every(
-      (f) =>
-        Array.isArray(f) &&
-        f.length === 3 &&
-        typeof f[0] === 'string' &&
-        typeof f[1] === 'string',
-    )
-  return ok ? (value as [string, string, unknown][]) : []
-}
+// #87: `filters` is validated, not asserted — see parseFilters in `shared`.
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -479,23 +456,6 @@ function ChecklistPage() {
   )
 }
 
-// RPT-004: a SQL Report renders its own SQL-driven results (static first
-// segment, so it wins over $table/$name).
-const queryReportRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'query-report/$name',
-  component: QueryReportPage,
-})
-
-function QueryReportPage() {
-  const { name } = queryReportRoute.useParams()
-  return (
-    <div data-testid="table-page">
-      <QueryReportView key={name} name={name} />
-    </div>
-  )
-}
-
 // RPT-005: a script report renders its declared filters + data (static segment).
 const scriptReportRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -539,6 +499,15 @@ const findPersonRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'find-person',
   component: FindPerson,
+})
+
+// #429: people who signed in but hold no role yet (System Manager only).
+const waitingForAccessRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'waiting-for-access',
+  component: () => (
+    <ManageOnly><WaitingForAccess /></ManageOnly>
+  ),
 })
 
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
@@ -763,5 +732,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
 ])

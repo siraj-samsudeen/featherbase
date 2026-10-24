@@ -4,7 +4,7 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { afterDocumentCommit } from './action-transaction'
+import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
@@ -671,7 +671,7 @@ async function saveDocImpl(
   const childInputs = pickChildInputs(meta, values)
   const tbl = await tableRelation(table)
   let attemptedRow: RowValues = {}
-  const [saved] = await sql
+  const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const rowId = await resolveRowId(stx, meta, values)
@@ -726,7 +726,7 @@ async function saveDocImpl(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return inserted
     })
-    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
@@ -928,7 +928,7 @@ async function updateDoc(
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: RowValues | undefined
   let attemptedRow: RowValues = {}
-  const saved = await sql
+  const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const [existing] = await tx`
@@ -1001,7 +1001,7 @@ async function updateDoc(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return updated
     })
-    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
@@ -1068,7 +1068,7 @@ async function setStatus(
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
   const tbl = await tableRelation(table)
-  const [saved] = await sql.begin(async (tx) => {
+  const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
@@ -1108,7 +1108,7 @@ async function setStatus(
     await runHooks('on_update', ctx)
     await runHooks(event, ctx)
     return [updated]
-  })
+  }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
   await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
@@ -1183,7 +1183,7 @@ async function deleteDocImpl(
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
-  await sql.begin(async (tx) => {
+  await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
@@ -1250,7 +1250,7 @@ async function deleteDocImpl(
         where parent = ${name} and parenttype = ${table}`
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
-  })
+  }))
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.

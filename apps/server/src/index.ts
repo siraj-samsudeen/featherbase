@@ -20,6 +20,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
+import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -57,14 +58,13 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { staticAdminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
-import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -803,15 +803,29 @@ app.get('/api/activity_feed', async (c) => {
       select kind, ref_key, label, sub_label, path, occurred_at
       from user_event where created_by = ${user}
       order by occurred_at desc limit ${limit}`
+    const me = (await whoLabels([user])).get(user)
+    const whoName = me?.name ?? user
     return c.json({
-      items: rows.map((r) => ({
-        who: user,
-        kind: r.kind as string,
-        label: (r.label as string | null) ?? (r.ref_key as string),
-        sub: (r.sub_label as string | null) ?? undefined,
-        path: (r.path as string | null) ?? '',
-        at: new Date(r.occurred_at as string).toISOString(),
-      })),
+      items: rows.map((r) => {
+        const path = (r.path as string | null) ?? ''
+        const title = staticAdminPageTitle(path)
+        const base = {
+          who_name: whoName,
+          ...(me?.role ? { who_role: me.role } : {}),
+          path,
+          at: new Date(r.occurred_at as string).toISOString(),
+        }
+        // #440: a fixed admin page is a page, titled — not a slug-named list.
+        if (title && (r.kind === 'list' || r.kind === 'page'))
+          return { ...base, kind: 'page', label: title }
+        return {
+          ...base,
+          kind: r.kind as string,
+          label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
+          sub: (r.sub_label as string | null) ?? undefined,
+          ...(r.kind === 'list' ? { filtered: listKeyHasFilter((r.ref_key as string | null) ?? '') } : {}),
+        }
+      }),
     })
   }
 
@@ -825,9 +839,14 @@ app.get('/api/activity_feed', async (c) => {
     select "user", full_name, created_at
     from activity_log where operation = 'login'
     order by created_at desc limit ${limit}`
+  const names = await whoLabels([
+    ...versions.map((v) => v.created_by as string),
+    ...logins.map((l) => l.user as string),
+  ])
   const items = [
     ...versions.map((v) => ({
-      who: v.created_by as string,
+      who_name: names.get(v.created_by as string)?.name ?? (v.created_by as string),
+      who_role: names.get(v.created_by as string)?.role,
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
@@ -835,9 +854,10 @@ app.get('/api/activity_feed', async (c) => {
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({
-      who: l.user as string,
+      who_name: names.get(l.user as string)?.name ?? (l.user as string),
+      who_role: names.get(l.user as string)?.role,
       kind: 'login',
-      label: (l.full_name as string | null) || (l.user as string),
+      label: '', // the row already names the person; a sign-in has no object
       sub: 'signed in',
       path: '',
       at: new Date(l.created_at as string).toISOString(),
@@ -927,6 +947,19 @@ app.get('/api/people/:id/identities', async (c) => {
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+})
+
+// #429: people who signed in but hold no role yet. System Manager only; the
+// list carries an address's domain, never the address.
+app.get('/api/people/waiting_for_access', async (c) => {
+  await assertSystemManager(who(c))
+  const people = await listWaitingForAccess()
+  return c.json({ people, count: people.length })
+})
+
+app.get('/api/people/waiting_for_access/count', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ count: await countWaitingForAccess() })
 })
 
 // person-rename: ids are opaque, so screens ask for names (batch), and the
@@ -1404,30 +1437,6 @@ app.post('/api/permissions/:table', async (c) => {
   return c.json({ ok: true })
 })
 
-// RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
-// query is intentionally NOT returned here, so running a report never exposes
-// its SQL to the client. Read permission on the Report is enforced by getDoc.
-app.get('/api/query_report/:name', async (c) => {
-  const report = await getDoc('Report', c.req.param('name'), who(c))
-  if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
-  return c.json({
-    row_id: report.row_id,
-    ref_table: report.ref_table ?? null,
-    filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
-  })
-})
-
-// RPT-004: run a query report with bound filter params (read-only execution).
-app.post('/api/run_query_report', async (c) => {
-  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
-    report?: string
-    filters?: Record<string, unknown>
-  }
-  if (!report) throw new AppError('ValidationError', 'Expected { report }')
-  return c.json(await runQueryReport(report, filters ?? {}, who(c)))
-})
-
 // PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
 // endpoints resolve the target site from the request Host header, and every
 // query runs on that site's isolated schema — data never crosses sites.
@@ -1673,8 +1682,8 @@ app.delete('/api/tags/:table/:name/:tag', async (c) => {
   return c.json({ ok: true })
 })
 
-// EML-001: send a test email from the configured account (delivered to the
-// dev sink). EML-002: queue an email for background delivery.
+// EML-001: send a test email from the configured account (through SMTP when
+// SMTP_HOST is set, otherwise the Email Sink). EML-002: queue an email for background delivery.
 app.post('/api/send_test_email', async (c) => {
   await assertSystemManager(who(c))
   const { to } = (await c.req.json()) as { to?: string }
