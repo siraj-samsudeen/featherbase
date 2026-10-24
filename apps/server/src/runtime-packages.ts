@@ -12,6 +12,7 @@ import { RESERVED_APP_ROOTS, appHref, type AppScopeResolver, type AppProductAuth
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import { sql, withTransaction } from './db'
+import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
 
@@ -278,23 +279,28 @@ async function upgradePlan(name: string, version: string) {
     table.columns.push(op.column)
   }
   if (canonical(expected) !== canonical(target.manifest.tables)) refuse('Unsupported destructive or undeclared schema change')
-  if (canonical(prior.manifest.permissions) !== canonical(target.manifest.permissions) || prior.app.runtime_manifest == null ||
+  // #437: an upgrade may withdraw grants (narrowing access is always safe to
+  // apply) but never add or widen one; those still need a reviewed install.
+  const priorGrants = new Set(prior.manifest.permissions.map(canonical))
+  if (!target.manifest.permissions.every((p) => priorGrants.has(canonical(p))) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
+  const kept = new Set(target.manifest.permissions.map(canonical))
+  const withdrawn = prior.manifest.permissions.filter((p) => !kept.has(canonical(p)))
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
     tables: [...new Set(pending.flatMap(m => m.operations.map(op => op.table)))],
-    permissions: [], jobs: [], indexes: [], destructive: false, dataEffects: 'Existing rows unchanged; added columns are NULL',
+    permissions: withdrawn.map((p) => ({ withdraw: p })), jobs: [], indexes: [], destructive: false, dataEffects: 'Existing rows unchanged; added columns are NULL',
     codeOnly: pending.every(m => m.operations.length === 0) }
-  return { row, target, prior, pending, ledger, plan: { ...plan, planId: checksum(plan) } }
+  return { row, target, prior, pending, ledger, withdrawn, plan: { ...plan, planId: checksum(plan) } }
 }
 
 export function previewAppUpgrade(name: string, version: string) {
   return appOperation(async () => (await upgradePlan(name, version)).plan)
 }
 
-export function upgradeApp(name: string, version: string, planId: string) {
+export function upgradeApp(name: string, version: string, planId: string, actor = 'Administrator') {
   return appOperation(async () => {
     const [done] = await sql`select * from installed_app where name = ${name}`
     if (done?.package_version === version && done.upgrade_plan === planId) {
@@ -307,6 +313,17 @@ export function upgradeApp(name: string, version: string, planId: string) {
     try {
       await withTransaction(async () => {
         await applyAdditions(prepared.pending, name)
+        // Only the grants this app owns: an adopted, pre-existing grant stays.
+        for (const p of prepared.withdrawn) {
+          const gone = await sql`
+            delete from permission
+            where owner_app = ${name} and ref_table = ${p.table} and role = ${p.role} and tier = ${p.tier ?? 'basic'}
+            returning row_id`
+          for (const g of gone) {
+            await sql`update installed_app set perms = perms - ${String(g.row_id)} where name = ${name}`
+            await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'}, ${String(g.row_id)})`.slice(0, 140))
+          }
+        }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,

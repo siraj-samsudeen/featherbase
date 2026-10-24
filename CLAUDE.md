@@ -119,11 +119,12 @@ belongs, dated.
 **Visual identity is a standing directive.** Every UI uses the Shop Floor design
 system (#380, OpenSpec change `adopt-shop-floor-design-system`): the colour,
 shape and density tokens in `apps/web/src/index.css` and the shared components.
-`apps/web/test/design-guards.test.ts` enforces it — text contrast in light and
-dark, and no raw palette classes, literal colours, text under 12px, browser-locale
-number/date formatting or retired token and `.fc-*` class names outside the
-shrinking `design-guards.pending.ts` list. The older "Visual identity" section in
-`PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
+`apps/web/test/design-guards.test.ts` enforces it as a hard zero over every
+source file — text contrast in light and dark, and no raw Tailwind colour classes,
+literal colours, text under 12px, browser-locale number/date formatting or retired
+token and `.fc-*` class names. There is one colour palette; the theme is light,
+dark or the device's own setting (#380 stage 3). The older "Visual identity"
+section in `PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
 
 ## Environment
 

@@ -8,12 +8,16 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   Button,
   buttonClasses,
+  iconButtonClasses,
+  touchTargetClasses,
   Card,
+  cardClasses,
   EmptyState,
   Field,
   inputClasses,
   Notice,
   PasswordInput,
+  pillClasses,
   SearchInput,
   Select,
   Skeleton,
@@ -258,5 +262,75 @@ describe('focus stays visible in forced-colours mode', () => {
     const c = inputClasses().split(' ')
     expect(c).toContain('focus:outline-hidden')
     expect(c).not.toContain('focus:outline-none')
+  })
+})
+
+describe('icon-only controls are thumb-sized', () => {
+  test('a standalone icon button is a square of the control size', () => {
+    const c = iconButtonClasses('hover:text-negative').split(' ')
+    expect(c).toEqual(expect.arrayContaining(['size-control', 'inline-flex', 'items-center', 'justify-center', 'hover:text-negative']))
+  })
+
+  test('a glyph inside a chip gets an invisible larger hit area without growing the chip', () => {
+    const c = touchTargetClasses().split(' ')
+    expect(c).toContain('relative')
+    expect(c).toContain('before:absolute')
+    // A fixed 32px area centred on the glyph: big enough for a thumb, small enough not to reach a
+    // neighbouring chip (chips sit at least 8px apart), never grown from the glyph's line box.
+    expect(c).toEqual(expect.arrayContaining(['before:size-8', 'before:left-1/2', 'before:top-1/2', 'before:-translate-x-1/2', 'before:-translate-y-1/2']))
+    expect(c).not.toContain('before:size-control')
+  })
+})
+
+describe('density', () => {
+  test('a button takes its side padding from the density token, so laptop toolbars stay as compact as before', () => {
+    const c = buttonClasses().split(' ')
+    expect(c).toContain('px-control-x')
+    expect(c).not.toContain('px-4')
+  })
+})
+
+describe('class recipes give way to the call site', () => {
+  test("a call site's padding, radius and weight replace the recipe's own, never both", () => {
+    const c = buttonClasses({ className: 'px-2 rounded-r-none font-medium' }).split(' ')
+    expect(c).toContain('px-2')
+    expect(c).not.toContain('px-control-x')
+    expect(c).toContain('rounded-r-none')
+    expect(c).toContain('font-medium')
+    expect(c).not.toContain('font-semibold')
+  })
+
+  test('a smaller text size or height from the call site applies under a mouse only, so touch keeps 16px and 48px', () => {
+    // Below 16px an iPhone zooms the page when a box is tapped (usable-on-any-device).
+    const input = inputClasses('w-auto py-1 text-sm min-h-0').split(' ')
+    expect(input).toEqual(expect.arrayContaining(['text-control', 'min-h-control', 'pointer-fine:text-sm', 'pointer-fine:min-h-0', 'w-auto', 'py-1']))
+    expect(input).not.toContain('text-sm')
+    expect(input).not.toContain('min-h-0')
+    expect(input).not.toContain('w-full')
+    const button = buttonClasses({ className: 'text-xs' }).split(' ')
+    expect(button).toEqual(expect.arrayContaining(['text-control', 'pointer-fine:text-xs']))
+    expect(button).not.toContain('text-xs')
+  })
+
+  test("a call site's colour replaces the recipe's, so two colours never compete in CSS order", () => {
+    const c = iconButtonClasses('text-ink-subtle hover:text-negative').split(' ')
+    expect(c).toContain('text-ink-subtle')
+    expect(c).not.toContain('text-ink-muted')
+    expect(c).toContain('hover:text-negative') // variants never merge; the call site's comes later in the list
+    expect(inputClasses('border-negative bg-subtle').split(' ')).toEqual(expect.arrayContaining(['border-negative', 'bg-subtle']))
+    expect(inputClasses('border-negative bg-subtle').split(' ')).not.toEqual(expect.arrayContaining(['border-border-control']))
+  })
+
+  test('gap-x and gap-y sit beside a recipe gap: Tailwind emits gap before its axis forms, so the axis wins', () => {
+    const c = buttonClasses({ className: 'gap-x-4' }).split(' ')
+    expect(c).toEqual(expect.arrayContaining(['gap-2', 'gap-x-4']))
+  })
+
+  test('a card keeps its surface and takes the caller padding', () => {
+    expect(cardClasses('p-4').split(' ')).toEqual(expect.arrayContaining(['p-4', 'rounded-card', 'bg-surface']))
+  })
+
+  test('a pill is only a shape; the caller brings the colour', () => {
+    expect(pillClasses('bg-positive-tint text-positive').split(' ')).toEqual(expect.arrayContaining(['rounded-full', 'text-xs', 'text-positive']))
   })
 })

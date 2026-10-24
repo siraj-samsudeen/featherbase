@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
+import { buttonClasses, pillClasses } from './ui'
 
 interface WorkflowStatus {
   workflow: string | null
@@ -47,7 +48,7 @@ export function WorkflowActions({ table, name }: { table: string; name: string }
   return (
     <span className="flex items-center gap-2" data-testid="workflow-actions">
       <span
-        className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand)]"
+        className={pillClasses('bg-action-tint text-action')}
         data-testid="workflow-state"
       >
         {status.data.state}
@@ -58,13 +59,13 @@ export function WorkflowActions({ table, name }: { table: string; name: string }
           onClick={() => apply(a.action)}
           disabled={busy}
           data-testid={`workflow-action-${a.action}`}
-          className="fc-btn-primary disabled:opacity-40"
+          className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
         >
           {a.action}
         </button>
       ))}
       {error && (
-        <span className="text-xs text-[var(--color-danger)]" data-testid="workflow-error">
+        <span className="text-xs text-negative" data-testid="workflow-error">
           {error}
         </span>
       )}

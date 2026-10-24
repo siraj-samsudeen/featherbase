@@ -1,5 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
+import { config } from '../config'
 import { invalidateMeta } from '../meta'
 import { assertSystemManager } from '../permissions'
 import { invalidateSources } from '../sources/registry'
@@ -49,6 +50,13 @@ const controller: TableController = {
       if (/[:/@=]/.test(urlEnv))
         throw new AppError('ValidationError', 'url_env must be a variable NAME', {
           url_env: 'Store the name of an environment variable, never the connection string itself',
+        })
+      // #432: the platform's own connection is never a data source. This is
+      // the early, obvious refusal; the driver proves it for any other URL to
+      // the same database when it first connects (sources/platform-guard.ts).
+      if (urlEnv && (urlEnv === 'DATABASE_URL' || process.env[urlEnv] === config.databaseUrl))
+        throw new AppError('PermissionError', "A data source cannot use the platform's own database", {
+          url_env: `${urlEnv} holds the platform's own connection; point the source at another database`,
         })
     },
     // POST-COMMIT only (review finding 6). Invalidating inside the save

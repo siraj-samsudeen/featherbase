@@ -9,7 +9,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { makeClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { app } from '../src/index'
-import { config } from '../src/config'
+import { EXTERNAL_DATABASE_URL } from './external-database'
 import { issueAccessToken, type SessionUser } from '../src/auth'
 import { runReportChart } from '../src/report-chart'
 import { canSubscribe, eventVisibleTo } from '../src/realtime'
@@ -20,11 +20,11 @@ import { sql } from '../src/db'
 const STORE = 'Scope Store'
 const ROLE = 'Scope Reader'
 const EXT_URL_ENV = 'SCOPE_FIXTURE_URL'
-process.env[EXT_URL_ENV] = config.databaseUrl
+process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
 let cli: ReturnType<typeof postgres>
 
 beforeAll(async () => {
-  cli = postgres(config.databaseUrl, { max: 2 })
+  cli = postgres(EXTERNAL_DATABASE_URL, { max: 2 })
   await cli.unsafe(`drop schema if exists scope_fixture cascade`)
   await cli.unsafe(`create schema scope_fixture`)
   await cli.unsafe(`create table scope_fixture.till (id text primary key, label text, updated_at timestamptz not null default now())`)

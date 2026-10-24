@@ -35,15 +35,15 @@ Everything comes from the environment; every variable has a dev default in
 | Variable | Required in production | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | **yes** | Postgres connection string |
-| `FEATHERBASE_ENV` / `NODE_ENV` | **yes** | set to `production` for release and serve; `FEATHERBASE_ENV` takes precedence. Only `development` and `test` allow zero-setup Administrator credentials |
+| `FEATHERBASE_ENV` / `NODE_ENV` | **yes** | set to `production` for release and serve; `FEATHERBASE_ENV` takes precedence. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
 | `ADMIN_PASSWORD` | optional | provisions a null Administrator password hash; missing/blank leaves production password login locked. Never rotates an existing hash |
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
-| `SITE_URL` | **yes, behind a proxy** | this instance's absolute external URL (`https://app.example.com`) — password-reset links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
+| `SITE_URL` | **yes, outside development and test** (the release preflight refuses without it, #430) | this instance's absolute external URL (`https://app.example.com`) — password-reset and invitation links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `SMTP_NAME` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
 
 Two settings already in the codebase matter specifically for hosted
 Postgres and must not regress: `db.ts` sets `prepare: false` (required by
@@ -201,6 +201,7 @@ instead (#395).
 | `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
 | `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
+| `SMTP_NAME` | `jeyarama.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
 
 Production uses port 587. TLS is always required: there is no setting that
 lets mail or a credential leave unencrypted, and none that skips the
@@ -220,6 +221,12 @@ Then set `SMTP_HOST=smtp-relay.gmail.com`, `SMTP_PORT=587`, `SMTP_USER`,
 `SMTP_PASSWORD` and `MAIL_FROM` on the service. The relay can take a few
 minutes, occasionally up to an hour, to accept a new configuration.
 
+The relay refuses an `EHLO` name that is not a fully qualified domain, with
+`421 4.7.0 Try again later, closing connection. (EHLO)`, which `mail:test`
+reports as `Mail delivery failed (ECONNECTION 421)`. The `MAIL_FROM` domain
+(`jeyarama.com`) is a name it accepts, so nothing more is needed; set
+`SMTP_NAME` only to greet with a different hostname.
+
 The `SMTP_USER` account must have **2-Step Verification** turned on; only then
 can it create an **app password** (myaccount.google.com → Security → App
 passwords), and that app password is `SMTP_PASSWORD`. Treat it like any other
@@ -233,8 +240,11 @@ pnpm --filter server cli mail:test <your-address>
 ```
 
 It exits 1 with `Mail delivery failed (<code> [<SMTP reply code>])` when the relay
-refuses (`EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
-TLS or network; `EENVELOPE` = a sender or recipient the relay rejected). A
+refuses, and first prints the relay's own reply line as
+`mail:test: server reply: …`, with every email address in it and
+`SMTP_PASSWORD` masked out. That line is printed by `mail:test` only; the
+stored error and the log line carry the code alone. Codes: `EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
+TLS or network; `EENVELOPE` = a sender or recipient the relay rejected. A
 bad setting (unparseable `SMTP_PORT`, `SMTP_USER` without `SMTP_PASSWORD`, no
 `MAIL_FROM` and no Email Account) reports
 `Mail configuration invalid (ECONFIG): …`.
@@ -599,6 +609,27 @@ cacheable for five minutes, so a change can take that long to show.
   Not yet rehearsed over `railway ssh` (#401): if the file does not reach the
   remote command, a System Manager pastes it into the System Settings form
   instead. Either way, check the result at `https://<host>/privacy`.
+
+## Invitation email (#430)
+
+Inviting a Google address on a Person's sign-in methods emails it by default
+(the inviter can untick it; Resend sends it again, at most once in ten
+minutes). The email is built from instance configuration, never from the
+repo:
+
+- **Name:** System Settings `app_name` ("Example Dash invited you…").
+- **Introduction (optional):** System Settings `invitation_email_intro`, plain
+  text, one paragraph or two on what the service is for. Set it in the form or
+  `pnpm --filter server cli settings:set invitation_email_intro --stdin < intro.txt`.
+- **Link:** `SITE_URL` + `/featherbase/login`. Outside development and test,
+  `SITE_URL` is **required**: the release preflight refuses to start without
+  it, and no invitation is sent (the inviter is told why). A link is never
+  built from a request's Host header there.
+
+Mail goes through the instance's transport (the Email Sink until SMTP is
+configured). A send that has not finished in 20 seconds counts as failed; if
+the transport completes it later, a resend can deliver a second copy. A failed send leaves the invite in place, tells the inviter, and
+logs `mail_delivery_failed` with purpose `sign_in_invitation` and no address.
 
 ## Automation credentials (#131)
 

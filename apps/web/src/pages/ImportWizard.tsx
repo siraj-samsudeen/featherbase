@@ -27,6 +27,16 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { fmtCount } from '../lib/inr'
+
+/**
+ * Type-to-confirm for an update run: the prompt shows the count with Indian
+ * grouping (1,23,456), so the typed value matches with or without the commas.
+ */
+export function confirmsCount(typed: string, total: number): boolean {
+  return typed.trim().replace(/,/g, '') === String(total)
+}
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -196,9 +206,9 @@ function TargetPicker({
   }
 
   const optionClass =
-    'block w-full rounded px-2 py-1 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]'
+    'block w-full rounded px-2 py-1 text-left text-sm text-ink hover:bg-action-tint'
   const sectionClass =
-    'px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400'
+    'px-2 pt-2 pb-0.5 text-xs font-semibold uppercase tracking-wide text-ink-subtle'
 
   return (
     <div ref={rootRef} className="relative">
@@ -207,11 +217,11 @@ function TargetPicker({
         value={display}
         onClick={() => setOpen((o) => !o)}
         data-testid={`iw-target-${i}`}
-        className="fc-input w-56 cursor-pointer py-1"
+        className={inputClasses('w-56 cursor-pointer py-1')}
       />
       {open && (
         <div
-          className="fc-card absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto p-1"
+          className={cardClasses('absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto p-1')}
           data-testid={`iw-target-menu-${i}`}
         >
           <input
@@ -227,10 +237,10 @@ function TargetPicker({
             }}
             placeholder="Search Tables…"
             data-testid={`iw-target-search-${i}`}
-            className="fc-input mb-1 w-full py-1"
+            className={inputClasses('mb-1 w-full py-1')}
           />
           <button type="button" onClick={() => pick('__new__')} data-testid={`iw-target-new-${i}`} className={optionClass}>
-            <span className="text-[var(--color-brand)]">+</span> New Table…
+            <span className="text-action">+</span> New Table…
           </button>
           {bestMatches.length > 0 && (
             <>
@@ -244,7 +254,7 @@ function TargetPicker({
                   className={optionClass}
                 >
                   {t.name}
-                  <span className="ml-2 text-xs text-gray-400">
+                  <span className="ml-2 text-xs text-ink-subtle">
                     {q.mapped} of its {t.columns.length} columns
                   </span>
                 </button>
@@ -268,7 +278,7 @@ function TargetPicker({
             </>
           )}
           {bestMatches.length === 0 && rest.length === 0 && (
-            <p className="px-2 py-1 text-xs text-gray-400">No Table matches "{filter}"</p>
+            <p className="px-2 py-1 text-xs text-ink-subtle">No Table matches "{filter}"</p>
           )}
         </div>
       )}
@@ -286,8 +296,8 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   })
   if (count.data == null) return null
   return (
-    <span className="text-xs text-gray-500" data-testid={`iw-target-count-${i}`}>
-      holds {count.data.count} rows now
+    <span className="text-xs text-ink-muted" data-testid={`iw-target-count-${i}`}>
+      holds {fmtCount(count.data.count)} rows now
     </span>
   )
 }
@@ -329,17 +339,17 @@ function UpsertPreview({
   if (preview.isError) return null // e.g. no permission — rehearse/import will say so
   if (!preview.data)
     return (
-      <p className="mt-1 text-xs text-gray-400" data-testid={`iw-preview-pending-${i}`}>
+      <p className="mt-1 text-xs text-ink-subtle" data-testid={`iw-preview-pending-${i}`}>
         Counting matches…
       </p>
     )
   return (
-    <p className="mt-1 text-sm text-[var(--color-ink)]" data-testid={`iw-preview-${i}`}>
-      <strong>{preview.data.updated}</strong> rows match existing rows and will be{' '}
-      <strong>updated</strong>; <strong>{preview.data.inserted}</strong> will be added
+    <p className="mt-1 text-sm text-ink" data-testid={`iw-preview-${i}`}>
+      <strong>{fmtCount(preview.data.updated)}</strong> rows match existing rows and will be{' '}
+      <strong>updated</strong>; <strong>{fmtCount(preview.data.inserted)}</strong> will be added
       {preview.data.failed > 0 && (
         <>
-          ; <strong>{preview.data.failed}</strong> will fail
+          ; <strong>{fmtCount(preview.data.failed)}</strong> will fail
         </>
       )}
     </p>
@@ -402,9 +412,9 @@ function SheetPreview({
         key={si}
         data-testid={`iw-preview-row-${i}-${excelRow(si, sheet.headerExcelRow)}`}
         data-failed={message ? 'true' : undefined}
-        className={message ? 'bg-red-50' : blank ? 'text-gray-300' : undefined}
+        className={message ? 'bg-negative-tint' : blank ? 'text-ink-subtle' : undefined}
       >
-        <td className="px-2 py-0.5 text-right text-gray-400">
+        <td className="px-2 py-0.5 text-right text-ink-subtle">
           {excelRow(si, sheet.headerExcelRow)}
         </td>
         {sheet.headers.map((_, c) => (
@@ -412,22 +422,22 @@ function SheetPreview({
             {blank ? (c === 0 ? '—' : '') : previewCell(cells[c])}
           </td>
         ))}
-        {problemCol && <td className="px-2 py-0.5 text-red-700">{message ?? ''}</td>}
+        {problemCol && <td className="px-2 py-0.5 text-negative">{message ?? ''}</td>}
       </tr>
     )
   }
 
   return (
     <details className="mt-2" data-testid={`iw-sheet-preview-${i}`} open={problemCol}>
-      <summary className="cursor-pointer text-xs text-gray-500">
+      <summary className="cursor-pointer text-xs text-ink-muted">
         {label ? `Preview "${label}"` : 'Preview'} — row numbers match your spreadsheet
       </summary>
-      <div className="mt-1 max-h-64 overflow-auto rounded border border-gray-100">
+      <div className="mt-1 max-h-64 overflow-auto rounded border border-border">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-gray-50 text-left text-gray-600">
+          <thead className="sticky top-0 bg-subtle text-left text-ink-muted">
             <tr>
               {/* The header's own Excel row number sits in the corner. */}
-              <th className="w-10 px-2 py-1 text-right font-normal text-gray-400">
+              <th className="w-10 px-2 py-1 text-right font-normal text-ink-subtle">
                 {sheet.headerExcelRow}
               </th>
               {sheet.headers.map((h, c) => (
@@ -435,7 +445,7 @@ function SheetPreview({
                   {h}
                 </th>
               ))}
-              {problemCol && <th className="px-2 py-1 font-medium text-red-600">Problem</th>}
+              {problemCol && <th className="px-2 py-1 font-medium text-negative">Problem</th>}
             </tr>
           </thead>
           <tbody>
@@ -444,7 +454,7 @@ function SheetPreview({
               <tr data-testid={`iw-preview-gap-${i}`}>
                 <td
                   colSpan={sheet.headers.length + (problemCol ? 2 : 1)}
-                  className="px-2 py-1 text-gray-400"
+                  className="px-2 py-1 text-ink-subtle"
                 >
                   … {hidden} more rows
                 </td>
@@ -506,7 +516,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
     const editedAfter = outcome.skipped.filter((s) => s.reason === 'edited-after')
     return (
       <div className="mt-1 text-sm" data-testid={`iw-revert-result-${i}`}>
-        <span className={outcome.failed.length ? 'text-red-600' : 'text-green-700'}>
+        <span className={outcome.failed.length ? 'text-negative' : 'text-positive'}>
           Reverted: {outcome.restored} restored, {outcome.deleted} deleted
           {outcome.skipped.length > 0 && `; skipped ${skips(outcome)}`}
           {outcome.failed.length > 0 &&
@@ -514,7 +524,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
         </span>
         {editedAfter.length > 0 && (
           <button
-            className="fc-btn ml-2 py-0.5 text-xs"
+            className={buttonClasses({ className: 'ml-2 py-0.5 text-xs' })}
             data-testid={`iw-revert-override-${i}`}
             disabled={busy}
             onClick={async () => {
@@ -533,7 +543,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
     <div className="mt-1 text-sm" data-testid={`iw-revert-${i}`}>
       {preview === null ? (
         <button
-          className="fc-btn py-0.5 text-xs"
+          className={buttonClasses({ className: 'py-0.5 text-xs' })}
           data-testid={`iw-revert-open-${i}`}
           disabled={busy}
           onClick={async () => {
@@ -548,7 +558,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
           Will restore {preview.restored} updated rows and delete {preview.deleted} added rows
           {preview.skipped.length > 0 && `; skipping ${skips(preview)}`}.{' '}
           <button
-            className="fc-btn-primary ml-1 py-0.5 text-xs"
+            className={buttonClasses({ variant: 'primary', className: 'ml-1 py-0.5 text-xs' })}
             data-testid={`iw-revert-confirm-${i}`}
             disabled={busy || (preview.restored === 0 && preview.deleted === 0)}
             onClick={async () => {
@@ -562,7 +572,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
             Revert
           </button>{' '}
           <button
-            className="fc-btn ml-1 py-0.5 text-xs"
+            className={buttonClasses({ className: 'ml-1 py-0.5 text-xs' })}
             onClick={() => setPreview(null)}
             disabled={busy}
           >
@@ -570,7 +580,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
           </button>
         </span>
       )}
-      {error && <span className="ml-2 text-red-600">{error}</span>}
+      {error && <span className="ml-2 text-negative">{error}</span>}
     </div>
   )
 }
@@ -633,8 +643,8 @@ function RunHistory({ table }: { table: string }) {
   })
   if (!runs.data?.length) return null
   return (
-    <div className="fc-card mt-4 p-3" data-testid="iw-run-history">
-      <div className="mb-1 text-xs font-medium text-gray-600">Recent imports into {table}</div>
+    <div className={cardClasses('mt-4 p-3')} data-testid="iw-run-history">
+      <div className="mb-1 text-xs font-medium text-ink-muted">Recent imports into {table}</div>
       {runs.data.map((r, idx) => (
         <div
           key={r.run_id}
@@ -642,11 +652,11 @@ function RunHistory({ table }: { table: string }) {
           data-testid={`iw-run-${idx}`}
         >
           <span>
-            {r.file_name ?? 'API import'} — {r.updated} updated · {r.inserted} added · {r.failed}{' '}
+            {r.file_name ?? 'API import'} — {fmtCount(r.updated)} updated · {fmtCount(r.inserted)} added · {fmtCount(r.failed)}{' '}
             failed
           </span>
           {r.reverted_at ? (
-            <span className="text-xs text-gray-400">reverted</span>
+            <span className="text-xs text-ink-subtle">reverted</span>
           ) : (
             <RevertControl i={`h${idx}`} table={table} runId={r.run_id} />
           )}
@@ -1512,7 +1522,7 @@ export function ImportWizard() {
 
   return (
     <div data-testid="import-wizard" className="max-w-4xl">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">Import Data</h1>
+      <h1 className="mb-4 text-xl font-semibold text-ink">Import Data</h1>
 
       <div
         data-testid="iw-dropzone"
@@ -1530,8 +1540,8 @@ export function ImportWizard() {
         }}
         className={`mb-4 cursor-pointer rounded-md border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
           dragging
-            ? 'border-[var(--color-brand)] bg-blue-50 text-[var(--color-brand)]'
-            : 'border-[var(--color-hairline-strong,#d1d8dd)] text-gray-500 hover:border-[var(--color-brand)]'
+            ? 'border-action bg-action-tint text-action'
+            : 'border-border-control text-ink-muted hover:border-action'
         }`}
       >
         {fileName && needsFile ? (
@@ -1563,7 +1573,7 @@ export function ImportWizard() {
           simply reopens empty is what sent the owner here. */}
       {needsFile && (
         <div
-          className="mb-3 rounded border border-[var(--color-brand)] bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          className="mb-3 rounded border border-action bg-action-tint px-3 py-2 text-sm"
           data-testid="iw-resume"
         >
           <strong>Your work on {needsFile.fileName} is saved.</strong>{' '}
@@ -1586,14 +1596,14 @@ export function ImportWizard() {
 
       {/* Said BEFORE leaving the page, not discovered on returning to it. */}
       {!dataKept && sheets.length > 0 && (
-        <p className="mb-3 text-xs text-gray-500" data-testid="iw-too-big">
+        <p className="mb-3 text-xs text-ink-muted" data-testid="iw-too-big">
           This workbook is too large to keep in the browser. Your choices are saved, but if you
           leave this page you will need to drop the file again.
         </p>
       )}
 
       {fileName && !needsFile && (
-        <p className="mb-3 text-xs text-gray-500">
+        <p className="mb-3 text-xs text-ink-muted">
           <button
             type="button"
             className="underline"
@@ -1612,7 +1622,7 @@ export function ImportWizard() {
           completion block, which renders only when NOTHING failed — so the
           one situation where the log matters most was the one that hid it.
           It is present from the moment a file is loaded, and after. */}
-      <p className="mb-3 text-xs text-gray-500">
+      <p className="mb-3 text-xs text-ink-muted">
         <Link
           to="/featherbase/admin/$table"
           params={{ table: 'Import Log' }}
@@ -1654,20 +1664,20 @@ export function ImportWizard() {
           screen; a stepper is only an improvement if it never leaves you
           wondering how many are left. */}
       {stage === 'columns' && sheets.length > 0 && targetIndexes.length > 0 && (
-        <div className="fc-card mb-3 p-3" data-testid="iw-stepper">
+        <div className={cardClasses('mb-3 p-3')} data-testid="iw-stepper">
           <div className="flex flex-wrap items-center gap-3">
             {sheets.length > 1 && !done && (
               <button
                 type="button"
                 onClick={() => setStage('overview')}
                 data-testid="iw-back-to-overview"
-                className="fc-btn py-1"
+                className={buttonClasses({ className: 'py-1' })}
               >
                 ← Choose sheets
               </button>
             )}
             <span
-              className="text-sm font-semibold text-[var(--color-ink)]"
+              className="text-sm font-semibold text-ink"
               data-testid="iw-step-of"
             >
               {targetIndexes.length > 1
@@ -1679,7 +1689,7 @@ export function ImportWizard() {
             <span className="ml-auto flex items-center gap-2">
               <button
                 type="button"
-                className="fc-btn py-1 disabled:opacity-40"
+                className={buttonClasses({ className: 'py-1 disabled:opacity-40' })}
                 data-testid="iw-prev"
                 disabled={activePos === 0}
                 onClick={() => setCurrent(targetIndexes[activePos - 1])}
@@ -1690,7 +1700,7 @@ export function ImportWizard() {
                 type="button"
                 /* Emphasised once this target has landed: its result is read,
                    and moving on is the only thing left to do here. */
-                className={`${activePlan?.result ? 'fc-btn-primary' : 'fc-btn'} py-1 disabled:opacity-40`}
+                className={buttonClasses({ variant: activePlan?.result ? 'primary' : 'secondary', className: 'py-1 disabled:opacity-40' })}
                 data-testid="iw-next"
                 disabled={activePos >= targetIndexes.length - 1}
                 onClick={() => setCurrent(targetIndexes[activePos + 1])}
@@ -1710,10 +1720,10 @@ export function ImportWizard() {
                 const state = plan.result ? 'done' : plan.failure ? 'failed' : 'todo'
                 const tone =
                   state === 'done'
-                    ? 'border-green-600 text-green-800'
+                    ? 'border-positive text-positive'
                     : state === 'failed'
-                      ? 'border-[var(--color-danger)] text-[var(--color-danger)]'
-                      : 'border-[var(--color-border)] text-gray-600'
+                      ? 'border-negative text-negative'
+                      : 'border-border text-ink-muted'
                 return (
                   <button
                     key={i}
@@ -1724,8 +1734,8 @@ export function ImportWizard() {
                     aria-current={i === activeTarget ? 'step' : undefined}
                     className={`rounded border px-2 py-0.5 text-xs ${tone} ${
                       i === activeTarget
-                        ? 'bg-[var(--color-brand-tint)] font-semibold'
-                        : 'bg-[var(--color-surface)]'
+                        ? 'bg-action-tint font-semibold'
+                        : 'bg-surface'
                     }`}
                   >
                     {state === 'done' ? '✓ ' : state === 'failed' ? '✗ ' : ''}
@@ -1736,7 +1746,7 @@ export function ImportWizard() {
             </div>
           )}
 
-          <p className="mt-2 text-xs text-gray-500" data-testid="iw-chosen-count">
+          <p className="mt-2 text-xs text-ink-muted" data-testid="iw-chosen-count">
             {selected.filter(Boolean).length} of {sheets.length} sheets selected
             {targetIndexes.length > 1 &&
               ` — ${landedCount} of ${targetIndexes.length} Tables imported`}
@@ -1772,36 +1782,36 @@ export function ImportWizard() {
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
-          <div key={sheet.sheetName + i} className="fc-card mb-4 p-3" data-testid={`iw-sheet-${i}`}>
+          <div key={sheet.sheetName + i} className={cardClasses('mb-4 p-3')} data-testid={`iw-sheet-${i}`}>
             <div className="mb-2 flex items-center justify-between">
               {/* The counts describe the FILE's sheet, never the target
                   Table — say so, since sheet and Table often share a name
                   and the Table's own count sits beside the picker. */}
-              <div className="text-sm font-semibold text-[var(--color-ink)]">
+              <div className="text-sm font-semibold text-ink">
                 {merged ? (
                   <>
                     <span
-                      className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand-dark)]"
+                      className={pillClasses('bg-action-tint text-action-hover')}
                       data-testid={`iw-group-${i}`}
                     >
                       {plan.members.length} sheets → one Table
                     </span>{' '}
-                    <span className="font-normal text-gray-500">
-                      — {plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0)} rows,{' '}
+                    <span className="font-normal text-ink-muted">
+                      — {fmtCount(plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0))} rows,{' '}
                       {sheet.headers.length} columns combined
                     </span>
                   </>
                 ) : (
                   <>
                     Sheet "{sheet.sheetName}"{' '}
-                    <span className="font-normal text-gray-500">
-                      — {countDataRows(sheet.rows)} rows, {sheet.headers.length} columns in the file
+                    <span className="font-normal text-ink-muted">
+                      — {fmtCount(countDataRows(sheet.rows))} rows, {sheet.headers.length} columns in the file
                     </span>
                   </>
                 )}
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <span className="fc-label m-0">Import into</span>
+                <span className={labelClasses('m-0')}>Import into</span>
                 <TargetPicker
                   i={i}
                   plan={plan}
@@ -1818,7 +1828,7 @@ export function ImportWizard() {
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
-                      className="text-xs text-[var(--color-brand)] underline"
+                      className="text-xs text-action underline"
                     >
                       view ↗
                     </a>
@@ -1829,7 +1839,7 @@ export function ImportWizard() {
 
             {merged && (
               <div
-                className="mb-2 rounded bg-[var(--color-subtle)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"
+                className="mb-2 rounded bg-subtle px-2 py-1 text-xs text-ink-muted"
                 data-testid={`iw-group-members-${i}`}
               >
                 {plan.members.map((m, k) => {
@@ -1842,9 +1852,9 @@ export function ImportWizard() {
                   return (
                     <span key={m} className="mr-3 inline-block">
                       {sheets[m].sheetName}{' '}
-                      <span className="tabular-nums">({countDataRows(sheets[m].rows)} rows)</span>
+                      <span className="tabular-nums">({fmtCount(countDataRows(sheets[m].rows))} rows)</span>
                       {absent.length > 0 && (
-                        <span className="text-[var(--color-warn)]">
+                        <span className="text-caution">
                           {' '}
                           — no {absent.map((c) => c.label).join(', ')}
                         </span>
@@ -1859,7 +1869,7 @@ export function ImportWizard() {
               <>
                 {plan.similar && (
                   <div
-                    className="mb-2 rounded bg-blue-50 px-2 py-1 text-xs text-blue-800"
+                    className="mb-2 rounded bg-action-tint px-2 py-1 text-xs text-action"
                     data-testid={`iw-similar-${i}`}
                   >
                     A similar existing Table matches this sheet:{' '}
@@ -1876,16 +1886,16 @@ export function ImportWizard() {
                   </div>
                 )}
                 <div className="mb-2 flex items-center gap-2">
-                  <label className="fc-label m-0">New Table name</label>
+                  <label className={labelClasses('m-0')}>New Table name</label>
                   <input
                     value={plan.table}
                     onChange={(e) => setPlan(i, { table: e.target.value })}
                     data-testid={`iw-new-name-${i}`}
-                    className="fc-input w-64 py-1"
+                    className={inputClasses('w-64 py-1')}
                   />
                 </div>
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
-                  <thead className="bg-gray-50 text-left text-xs text-gray-600">
+                  <thead className="bg-subtle text-left text-xs text-ink-muted">
                     <tr>
                       {merged && (
                         <th className="px-2 py-1" title="Tick two to combine them">
@@ -1906,16 +1916,16 @@ export function ImportWizard() {
                         comes from is the same kind of decision as any other
                         column's. Always present, never removable. */}
                     <tr
-                      className="border-t border-gray-100 bg-blue-50/60"
+                      className="border-t border-border bg-action-tint/60"
                       data-testid={`iw-row-id-${i}`}
                     >
                       {merged && <td />}
-                      <td className="px-2 py-1 text-center text-gray-400" title="always present">
+                      <td className="px-2 py-1 text-center text-ink-subtle" title="always present">
                         🔒
                       </td>
                       <td className="px-2 py-1" colSpan={5}>
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                          <span className="fc-label m-0 shrink-0">Row ID</span>
+                          <span className={labelClasses('m-0 shrink-0')}>Row ID</span>
                           <div className="min-w-0">
                             <NamingControl
                               value={planIdPattern(plan)}
@@ -1941,7 +1951,7 @@ export function ImportWizard() {
                       <tr
                         key={ci}
                         data-columnrow=""
-                        className={`border-t border-gray-100 ${plan.include[ci] ? '' : 'opacity-40'}`}
+                        className={`border-t border-border ${plan.include[ci] ? '' : 'opacity-40'}`}
                       >
                         {merged && (
                           <td className="px-2 py-1 text-center">
@@ -1971,7 +1981,7 @@ export function ImportWizard() {
                             data-rowfield="include"
                           />
                         </td>
-                        <td className="px-2 py-1 text-gray-500">{sheet.headers[ci]}</td>
+                        <td className="px-2 py-1 text-ink-muted">{sheet.headers[ci]}</td>
                         <td className="px-1 py-1">
                           {/* The display name (normalized from the header);
                               the machine name in the next cell is what the
@@ -1989,7 +1999,7 @@ export function ImportWizard() {
                               })
                             }
                             data-rowfield="label"
-                            className="w-full rounded border border-gray-200 px-1 py-0.5"
+                            className="w-full rounded border border-border px-1 py-0.5"
                           />
                         </td>
                         <td className="px-1 py-1">
@@ -2007,7 +2017,7 @@ export function ImportWizard() {
                             }
                             data-rowfield="column_name"
                             placeholder="(skip)"
-                            className="w-full rounded border border-gray-200 px-1 py-0.5"
+                            className="w-full rounded border border-border px-1 py-0.5"
                           />
                         </td>
                         <td className="px-1 py-1">
@@ -2024,7 +2034,7 @@ export function ImportWizard() {
                               })
                             }
                             data-rowfield="column_type"
-                            className="rounded border border-gray-200 px-1 py-0.5"
+                            className="rounded border border-border px-1 py-0.5"
                           >
                             {COLUMN_TYPES.map((t) => (
                               <option key={t} value={t}>
@@ -2033,7 +2043,7 @@ export function ImportWizard() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-2 py-1 text-xs text-gray-500">
+                        <td className="px-2 py-1 text-xs text-ink-muted">
                           {c.column_type === 'Choice' ? c.choices?.split('\n').join(', ') : ''}
                         </td>
                       </tr>
@@ -2054,7 +2064,7 @@ export function ImportWizard() {
                           .map((c) => (
                             <span
                               key={c.key}
-                              className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand-dark)]"
+                              className={pillClasses('bg-action-tint text-action-hover')}
                               data-testid={`iw-combined-${i}-${c.label}`}
                             >
                               {c.label} — combined by you
@@ -2085,12 +2095,12 @@ export function ImportWizard() {
                           (k) => groupColumns.find((c) => c.key === k)?.label ?? k,
                         )
                         return (
-                          <div className="rounded border border-[var(--color-border-strong)] bg-[var(--color-subtle)] p-2">
-                            <div className="mb-1 text-sm font-medium text-[var(--color-ink)]">
+                          <div className="rounded border border-border-control bg-subtle p-2">
+                            <div className="mb-1 text-sm font-medium text-ink">
                               Combine {names.join(' + ')} into one column
                             </div>
                             {/* Sample values: the reason to believe, or not. */}
-                            <div className="mb-2 text-xs text-[var(--color-ink-muted)]">
+                            <div className="mb-2 text-xs text-ink-muted">
                               {pickedKeys.map((k) => {
                                 const col = groupColumns.find((c) => c.key === k)
                                 const from = col?.from.findIndex((x) => x !== -1) ?? -1
@@ -2112,7 +2122,7 @@ export function ImportWizard() {
                             </div>
                             {overlap.length > 0 ? (
                               <div className="mb-2" data-testid={`iw-combine-overlap-${i}`}>
-                                <div className="mb-1 rounded bg-[var(--color-warn-tint)] px-2 py-1 text-xs text-[var(--color-warn)]">
+                                <div className="mb-1 rounded bg-caution-tint px-2 py-1 text-xs text-caution">
                                   {overlap.map((sh) => sheets[plan.members[sh]].sheetName).join(', ')}{' '}
                                   {overlap.length === 1 ? 'has' : 'have'} more than one of these.
                                   Those rows need a rule.
@@ -2124,7 +2134,7 @@ export function ImportWizard() {
                                     checked={combineRule === 'first'}
                                     onChange={() => setCombineRule('first')}
                                     data-testid={`iw-combine-rule-first-${i}`}
-                                    className="mr-1 accent-[var(--color-brand)]"
+                                    className="mr-1 accent-action"
                                   />
                                   Use {names[0]}, falling back to {names[1]}
                                 </label>
@@ -2135,14 +2145,14 @@ export function ImportWizard() {
                                     checked={combineRule === 'join'}
                                     onChange={() => setCombineRule('join')}
                                     data-testid={`iw-combine-rule-join-${i}`}
-                                    className="mr-1 accent-[var(--color-brand)]"
+                                    className="mr-1 accent-action"
                                   />
                                   Join them
                                 </label>
                               </div>
                             ) : (
                               <div
-                                className="mb-2 rounded bg-[var(--color-good-tint)] px-2 py-1 text-xs text-[var(--color-good)]"
+                                className="mb-2 rounded bg-positive-tint px-2 py-1 text-xs text-positive"
                                 data-testid={`iw-combine-no-overlap-${i}`}
                               >
                                 No sheet has more than one of these, so every row takes whichever
@@ -2150,12 +2160,12 @@ export function ImportWizard() {
                               </div>
                             )}
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="fc-label m-0">New column name</span>
+                              <span className={labelClasses('m-0')}>New column name</span>
                               <input
                                 value={combineName || names[0]}
                                 onChange={(e) => setCombineName(e.target.value)}
                                 data-testid={`iw-combine-name-${i}`}
-                                className="fc-input w-48 py-1"
+                                className={inputClasses('w-48 py-1')}
                               />
                               <button
                                 type="button"
@@ -2172,14 +2182,14 @@ export function ImportWizard() {
                                   setCombineName('')
                                 }}
                                 data-testid={`iw-combine-go-${i}`}
-                                className="fc-btn-primary py-1"
+                                className={buttonClasses({ variant: 'primary', className: 'py-1' })}
                               >
                                 Combine
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setCombinePick({})}
-                                className="fc-btn py-1"
+                                className={buttonClasses({ className: 'py-1' })}
                               >
                                 Clear
                               </button>
@@ -2188,7 +2198,7 @@ export function ImportWizard() {
                         )
                       })()
                     ) : (
-                      <p className="text-xs text-[var(--color-ink-faint)]">
+                      <p className="text-xs text-ink-subtle">
                         Tick two columns in the <strong>Join</strong> column to declare them one —
                         for names Featherbase cannot match on its own, like a store code and a
                         store name.
@@ -2201,7 +2211,7 @@ export function ImportWizard() {
               <>
                 {plan.auto_matched && (
                   <div
-                    className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                    className="mb-1 rounded bg-caution-tint px-2 py-1 text-xs text-caution"
                     data-testid={`iw-auto-matched-${i}`}
                   >
                     Auto-matched to the existing Table{' '}
@@ -2217,11 +2227,11 @@ export function ImportWizard() {
                     "New Table…" above if you meant to create a separate Table.
                   </div>
                 )}
-                <div className="mb-1 text-xs text-gray-500" data-testid={`iw-mapped-count-${i}`}>
+                <div className="mb-1 text-xs text-ink-muted" data-testid={`iw-mapped-count-${i}`}>
                   {mappedCount} of {sheet.headers.length} file columns mapped
                 </div>
                 <table className="w-full text-sm" data-testid={`iw-mapping-${i}`}>
-                  <thead className="bg-gray-50 text-left text-xs text-gray-600">
+                  <thead className="bg-subtle text-left text-xs text-ink-muted">
                     <tr>
                       <th className="px-2 py-1">Use</th>
                       <th className="px-2 py-1">File column</th>
@@ -2235,7 +2245,7 @@ export function ImportWizard() {
                       return (
                       <tr
                         key={hi}
-                        className={`border-t border-gray-100 ${plan.include[hi] && !retired ? '' : 'opacity-40'}`}
+                        className={`border-t border-border ${plan.include[hi] && !retired ? '' : 'opacity-40'}`}
                       >
                         {/* Skipping is the checkbox, same as the new-Table
                             grid — not a buried option inside the select. */}
@@ -2264,7 +2274,7 @@ export function ImportWizard() {
                             data-rowfield="include"
                           />
                         </td>
-                        <td className="px-2 py-1 text-gray-700">
+                        <td className="px-2 py-1 text-ink">
                           {h || <em>(blank)</em>}
                           {retired && (
                             <div className="text-xs text-caution" data-testid={`iw-retired-${i}-${hi}`}>
@@ -2296,7 +2306,7 @@ export function ImportWizard() {
                               })
                             }}
                             data-testid={`iw-map-${i}-${hi}`}
-                            className="rounded border border-gray-200 px-1 py-0.5"
+                            className="rounded border border-border px-1 py-0.5"
                           >
                             <option value="">— pick a column —</option>
                             {/* UPS-R4: the Row ID is a first-class mapping
@@ -2350,9 +2360,9 @@ export function ImportWizard() {
                       ? 'Row ID'
                       : (targetCols.find((tc) => tc.column_name === col)?.label ?? col)
                   return (
-                    <div className="mt-2 border-t border-gray-100 pt-2">
+                    <div className="mt-2 border-t border-border pt-2">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <label htmlFor={`iw-key-${i}`} className="fc-label m-0">
+                        <label htmlFor={`iw-key-${i}`} className={labelClasses('m-0')}>
                           Match key
                         </label>
                         <select
@@ -2360,7 +2370,7 @@ export function ImportWizard() {
                           value={plan.key ?? ''}
                           onChange={(e) => setPlan(i, { key: e.target.value || null })}
                           data-testid={`iw-key-${i}`}
-                          className="rounded border border-gray-200 px-1 py-0.5 text-sm"
+                          className="rounded border border-border px-1 py-0.5 text-sm"
                         >
                           <option value="">— none: always add rows —</option>
                           {keyOptions.map((col) => (
@@ -2371,7 +2381,7 @@ export function ImportWizard() {
                         </select>
                         {plan.suggested && plan.key === plan.suggested.key && (
                           <span
-                            className="text-xs text-[var(--color-brand)]"
+                            className="text-xs text-action"
                             data-testid={`iw-key-suggested-${i}`}
                           >
                             Match on {friendly(plan.suggested.key)}, as last time
@@ -2382,7 +2392,7 @@ export function ImportWizard() {
                             className="flex items-center gap-2 text-sm"
                             data-testid={`iw-empty-cells-${i}`}
                           >
-                            <span className="fc-label m-0">Empty cells</span>
+                            <span className={labelClasses('m-0')}>Empty cells</span>
                             <label className="flex items-center gap-1">
                               <input
                                 type="radio"
@@ -2444,17 +2454,17 @@ export function ImportWizard() {
                 {/* UPS-J1.4: with a match key the rehearsal report is
                     action-aware — updates and inserts counted apart. */}
                 {plan.check.failed.length === 0 ? (
-                  <span className="text-green-700">
-                    ✓ All {plan.check.valid} rows are ready to import
+                  <span className="text-positive">
+                    ✓ All {fmtCount(plan.check.valid)} rows are ready to import
                     {plan.key != null &&
-                      `: ${plan.check.updated} will update, ${plan.check.inserted} will insert`}
+                      `: ${fmtCount(plan.check.updated)} will update, ${fmtCount(plan.check.inserted)} will insert`}
                   </span>
                 ) : (
-                  <span className="text-red-600">
-                    {plan.check.valid} rows ready
+                  <span className="text-negative">
+                    {fmtCount(plan.check.valid)} rows ready
                     {plan.key != null &&
-                      ` (${plan.check.updated} update · ${plan.check.inserted} insert)`}
-                    , {plan.check.failed.length} with problems:{' '}
+                      ` (${fmtCount(plan.check.updated)} update · ${fmtCount(plan.check.inserted)} insert)`}
+                    , {fmtCount(plan.check.failed.length)} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => failLabel(plan, f))
@@ -2463,8 +2473,8 @@ export function ImportWizard() {
                   </span>
                 )}
                 {plan.check.skipped > 0 && (
-                  <span className="ml-1 text-gray-500" data-testid={`iw-check-skipped-${i}`}>
-                    ({plan.check.skipped} rows have no data in the imported columns and will be
+                  <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>
+                    ({fmtCount(plan.check.skipped)} rows have no data in the imported columns and will be
                     skipped)
                   </span>
                 )}
@@ -2480,16 +2490,16 @@ export function ImportWizard() {
           started from, and with one card on screen the card is the wrong
           place to keep it. */}
       {stage === 'columns' && targetIndexes.some((i) => plans[i]?.result || plans[i]?.failure) && (
-        <div className="fc-card mb-4 p-3" data-testid="iw-results">
-          <div className="fc-label mb-1">This import</div>
+        <div className={cardClasses('mb-4 p-3')} data-testid="iw-results">
+          <div className={labelClasses('mb-1')}>This import</div>
           {targetIndexes.map((i) => {
             const plan = plans[i]
             if (!plan.result && !plan.failure) return null
             return (
-              <div key={i} className="border-t border-[var(--color-border)] py-2 first:border-t-0">
+              <div key={i} className="border-t border-border py-2 first:border-t-0">
                 {plan.failure && (
                   <div
-                    className="rounded bg-[var(--color-danger-tint)] px-2 py-1 text-sm text-[var(--color-danger)]"
+                    className="rounded bg-negative-tint px-2 py-1 text-sm text-negative"
                     data-testid={`iw-failure-${i}`}
                   >
                     ✗ {plan.table} failed — {plan.failure}{' '}
@@ -2508,10 +2518,10 @@ export function ImportWizard() {
                     {/* UPS-J1.5: completion reports updated / inserted /
                         failed as separate counts — never one blended
                         number. */}
-                    <span className={plan.result.failed.length ? 'text-red-600' : 'text-green-700'}>
+                    <span className={plan.result.failed.length ? 'text-negative' : 'text-positive'}>
                       {plan.result.updated > 0
-                        ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
-                        : `Imported ${plan.result.inserted} rows into `}
+                        ? `Updated ${fmtCount(plan.result.updated)} and added ${fmtCount(plan.result.inserted)} rows in `
+                        : `Imported ${fmtCount(plan.result.inserted)} rows into `}
                       <Link
                         to="/featherbase/admin/$table"
                         params={{ table: plan.table }}
@@ -2526,7 +2536,7 @@ export function ImportWizard() {
                           plan.result.failed[0],
                         )})`}
                       {plan.result.skipped > 0 &&
-                        ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
+                        ` (${fmtCount(plan.result.skipped)} rows had no data in the imported columns and were skipped)`}
                     </span>
                     <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
                   </div>
@@ -2538,30 +2548,30 @@ export function ImportWizard() {
       )}
 
       {busy && (
-        <p className="mt-2 text-sm text-gray-500" data-testid="iw-progress">
+        <p className="mt-2 text-sm text-ink-muted" data-testid="iw-progress">
           {busy}
         </p>
       )}
       {error && (
-        <p className="mt-2 text-sm text-red-600" data-testid="iw-error">
+        <p className="mt-2 text-sm text-negative" data-testid="iw-error">
           {error}
         </p>
       )}
       {runOutcome && (
         <p
-          className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-[var(--color-danger)]' : 'text-green-700'}`}
+          className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"
         >
           {runOutcome.failed.length > 0
-            ? `Imported ${runOutcome.imported}; ${runOutcome.failed.length} failed: ${runOutcome.failed.join(', ')}.`
+            ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.failed.length)} failed: ${runOutcome.failed.join(', ')}.`
             : runOutcome.remaining > 0
-              ? `Imported ${runOutcome.imported}; ${runOutcome.remaining} still to import.`
+              ? `Imported ${fmtCount(runOutcome.imported)}; ${fmtCount(runOutcome.remaining)} still to import.`
               : 'Import complete.'}
         </p>
       )}
 
       {stage === 'columns' && sheets.length > 0 && !done && (
-        <div className="sticky bottom-0 z-10 mt-4 flex items-center gap-2 rounded-t-[var(--radius-card)] border-t border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-3 shadow-[0_-6px_16px_rgba(25,39,52,0.09)]">
+        <div className="sticky bottom-0 z-10 mt-4 flex items-center gap-2 rounded-t-[var(--radius-card)] border-t border-border-control bg-surface px-2 py-3 shadow-[0_-6px_16px_color-mix(in_srgb,var(--color-scrim)_9%,transparent)]">
           {/* #202: check what is on screen. Rehearsing targets you cannot
               see puts their report somewhere you are not looking. */}
           {activePlan?.mode === 'existing' && (
@@ -2569,32 +2579,32 @@ export function ImportWizard() {
               onClick={() => void runCheck(activeTarget)}
               disabled={!!busy}
               data-testid="iw-check"
-              className="fc-btn disabled:opacity-40"
+              className={buttonClasses({ className: 'disabled:opacity-40' })}
             >
               Check
             </button>
           )}
           {confirmUpdates && (
             <span
-              className="mr-2 rounded bg-amber-50 px-2 py-1 text-sm text-amber-900"
+              className="mr-2 rounded bg-caution-tint px-2 py-1 text-sm text-caution"
               data-testid="iw-confirm-updates"
             >
-              This import will <strong>update {confirmUpdates.total} existing rows</strong>. Type{' '}
-              <strong>{confirmUpdates.total}</strong> to confirm:{' '}
+              This import will <strong>update {fmtCount(confirmUpdates.total)} existing rows</strong>. Type{' '}
+              <strong>{fmtCount(confirmUpdates.total)}</strong> to confirm:{' '}
               <input
-                className="fc-input mx-1 w-24 py-0.5"
+                className={inputClasses('mx-1 w-24 py-0.5')}
                 data-testid="iw-confirm-input"
-                aria-label={`Type ${confirmUpdates.total} to confirm updating ${confirmUpdates.total} rows`}
+                aria-label={`Type ${fmtCount(confirmUpdates.total)} to confirm updating ${fmtCount(confirmUpdates.total)} rows`}
                 value={confirmUpdates.typed}
                 onChange={(e) => setConfirmUpdates({ ...confirmUpdates, typed: e.target.value })}
               />
               <button
-                className="fc-btn-primary py-0.5 disabled:opacity-40"
+                className={buttonClasses({ variant: 'primary', className: 'py-0.5 disabled:opacity-40' })}
                 data-testid="iw-confirm-go"
-                disabled={!!busy || confirmUpdates.typed.trim() !== String(confirmUpdates.total)}
+                disabled={!!busy || !confirmsCount(confirmUpdates.typed, confirmUpdates.total)}
                 onClick={() => void runImport(true, confirmUpdates.only)}
               >
-                Update {confirmUpdates.total} rows
+                Update {fmtCount(confirmUpdates.total)} rows
               </button>
             </span>
           )}
@@ -2605,7 +2615,7 @@ export function ImportWizard() {
           {targetIndexes.length > 1 &&
             activeTarget !== -1 &&
             (activePlan?.result ? (
-              <span className="text-sm text-green-700" data-testid="iw-import-one-done">
+              <span className="text-sm text-positive" data-testid="iw-import-one-done">
                 ✓ {activePlan.table} imported
               </span>
             ) : (
@@ -2613,9 +2623,9 @@ export function ImportWizard() {
                 onClick={() => void runImport(false, activeTarget)}
                 disabled={!!busy || !!confirmUpdates}
                 data-testid="iw-import-one"
-                className="fc-btn-primary disabled:opacity-40"
+                className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               >
-                {`Import ${targetRows(activeTarget)} rows into ${activePlan?.table || 'this Table'}`}
+                {`Import ${fmtCount(targetRows(activeTarget))} rows into ${activePlan?.table || 'this Table'}`}
               </button>
             ))}
           <button
@@ -2627,15 +2637,17 @@ export function ImportWizard() {
               targetIndexes.every((i) => plans[i]?.result)
             }
             data-testid="iw-import"
-            className={`${targetIndexes.length > 1 ? 'fc-btn' : 'fc-btn-primary'} disabled:opacity-40`}
+            className={buttonClasses({ variant: targetIndexes.length > 1 ? 'secondary' : 'primary', className: 'disabled:opacity-40' })}
           >
             {anyChecked && blockingProblems > 0
-              ? `Import anyway (skip ${blockingProblems} bad rows)`
+              ? `Import anyway (skip ${fmtCount(blockingProblems)} bad rows)`
               : targetIndexes.length > 1
                 ? `Import the remaining ${targetIndexes.filter((i) => !plans[i]?.result).length} Tables`
-                : `Import ${sheets.reduce(
-                    (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
-                    0,
+                : `Import ${fmtCount(
+                    sheets.reduce(
+                      (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
+                      0,
+                    ),
                   )} rows`}
           </button>
         </div>

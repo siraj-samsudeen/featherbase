@@ -1,4 +1,5 @@
 import { sql } from '../db'
+import { assertNotPlatformRelation } from './platform-guard'
 import { AppError } from '../errors'
 import { ROW_KEY, type TableMeta } from '../meta'
 import {
@@ -64,6 +65,7 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
       'ValidationError',
       `${meta.name} maps updated_at to a credential-named column (${meta.external_modified}) and cannot be queried`,
     )
+  assertNotPlatformRelation(cfg.name, schema)
   assertAllowed(cfg, schema, table)
   const bind: Binding = {
     source: cfg,

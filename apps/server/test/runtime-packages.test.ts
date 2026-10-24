@@ -161,8 +161,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const file = resolve(other, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
       manifest.permissions.push(
-        { table: 'Person', role: 'All', can_read: true },
-        { table: 'Person', role: 'All', tier: 'restricted', can_read: true },
+        // #437: a shared core Table both packages grant on (Tasker's Comment grant).
+        { table: 'Comment', role: 'All', can_read: true },
+        { table: 'Comment', role: 'All', tier: 'restricted', can_read: true },
       )
       await writeFile(file, JSON.stringify(manifest))
       expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
@@ -173,7 +174,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       // owner. The migration must recover both independent declarations.
       const [adopted] = await sql`
         delete from permission
-        where owner_app = 'other' and ref_table = 'Person' and tier = 'basic'
+        where owner_app = 'other' and ref_table = 'Comment' and tier = 'basic'
         returning row_id`
       await sql`
         update installed_app set perms = perms - ${String(adopted.row_id)}
@@ -182,7 +183,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
       expect(await sql`
         select owner_app, tier from permission
-        where ref_table = 'Person' and owner_app in ('tasker', 'other')
+        where ref_table = 'Comment' and owner_app in ('tasker', 'other')
         order by owner_app, tier`
       ).toEqual([
         { owner_app: 'other', tier: 'basic' },
@@ -190,18 +191,18 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
         { owner_app: 'tasker', tier: 'basic' },
       ])
       const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
-      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
+      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
 
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
+      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic']))
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
       await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
-      expect((await member.get<{ data: unknown[] }>('/api/table/Person')).data.length).toBeGreaterThan(0)
-      expect(await permittedTiers(member.user!, 'Person', 'read')).toEqual(new Set(['basic', 'restricted']))
+      expect((await member.get<{ data: unknown[] }>('/api/table/Comment')).data).toBeInstanceOf(Array)
+      expect(await permittedTiers(member.user!, 'Comment', 'read')).toEqual(new Set(['basic', 'restricted']))
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
-      await expect(member.get('/api/table/Person')).rejects.toMatchObject({ status: 403 })
+      await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
     } finally {
       await rm(other, { recursive: true, force: true })
     }
@@ -373,16 +374,27 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  test('changed Tasker package upgrades from its exact shipped predecessor', async ({ admin }) => {
-    const predecessorTasker = resolve('../..', 'runtime-apps/fixtures/tasker-v2.1')
-    const currentTasker = resolve('../..', 'runtime-apps/tasker')
-    expect(await discoverPackages([predecessorTasker])).toEqual([])
-    await admin.post('/api/install_app', { name: 'tasker' })
-    expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])
-    await loadInstalledApps()
-    const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.2.0' })
-    await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.2.0', planId: plan.planId })
-    await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.2.0' })
-    expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
-  })
+  // #437: 2.3.0 withdraws the everyone-reads-Person grant; both shipped
+  // predecessors upgrade to it, and the image ships 2.2.0 beside it.
+  for (const predecessor of ['tasker-v2.1', 'tasker-v2.2'])
+    test(`changed Tasker package upgrades from its exact shipped predecessor (${predecessor})`, async ({ admin }) => {
+      const predecessorTasker = resolve('../..', 'runtime-apps/fixtures', predecessor)
+      const currentTasker = resolve('../..', 'runtime-apps/tasker')
+      expect(await discoverPackages([predecessorTasker])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      expect(await discoverPackages([predecessorTasker, currentTasker])).toEqual([])
+      await loadInstalledApps()
+      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(1)
+      const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.3.0' })
+      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
+      await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.3.0', planId: plan.planId })
+      await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.3.0' })
+      expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
+      expect(await sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`).toHaveLength(0)
+      const [app] = await sql`select perms from installed_app where name = 'tasker'`
+      expect(await sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`)
+        .toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
+      // The withdrawal is on the record.
+      expect(await sql`select operation from activity_log where operation like 'app_grant_withdrawn tasker@2.3.0: All on Person%'`).toHaveLength(1)
+    })
 })

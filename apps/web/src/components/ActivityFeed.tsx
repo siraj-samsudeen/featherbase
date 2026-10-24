@@ -5,6 +5,7 @@ import { api, getSessionUser } from '../lib/api'
 import { ago } from '../lib/recents'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
+import { cardClasses } from './ui'
 
 interface FeedItem {
   /** Display name (#440). The feed carries no person id, by design. */
@@ -28,12 +29,12 @@ interface FeedItem {
 // an invalidation ping.
 
 const KIND_STYLE: Record<string, string> = {
-  row: 'bg-[var(--color-subtle)] text-[var(--color-ink-muted)]',
-  list: 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]',
-  page: 'bg-[var(--color-subtle)] text-[var(--color-ink-muted)]',
-  search: 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]',
-  change: 'bg-[var(--color-warn-tint)] text-[var(--color-warn)]',
-  login: 'bg-[var(--color-good-tint)] text-[var(--color-good)]',
+  row: 'bg-subtle text-ink-muted',
+  list: 'bg-action-tint text-action',
+  page: 'bg-subtle text-ink-muted',
+  search: 'bg-action-tint text-action',
+  change: 'bg-caution-tint text-caution',
+  login: 'bg-positive-tint text-positive',
 }
 const KIND_LABEL: Record<string, string> = {
   row: 'row',
@@ -93,29 +94,29 @@ export function ActivityFeed() {
   const items = feed.data?.items ?? []
 
   return (
-    <div className="fc-card overflow-hidden" data-testid="activity-feed">
-      <div className="flex items-center gap-1 border-b border-[var(--color-border)] px-3 pt-1.5">
+    <div className={cardClasses('overflow-hidden')} data-testid="activity-feed">
+      <div className="flex items-center gap-1 border-b border-border px-3 pt-1.5">
         <FeedTab label="My activity" on={scope === 'mine'} onClick={() => setScope('mine')} testid="feed-tab-mine" />
         {isSystemManager && (
           <FeedTab label="Team" on={scope === 'team'} onClick={() => setScope('team')} testid="feed-tab-team" />
         )}
       </div>
       {items.length === 0 && (
-        <p className="px-4 py-3 text-sm text-[var(--color-ink-faint)]" data-testid="feed-empty">
+        <p className="px-4 py-3 text-sm text-ink-subtle" data-testid="feed-empty">
           {feed.isLoading ? 'Loading…' : 'Nothing here yet — activity shows up as you work.'}
         </p>
       )}
       {items.map((item, i) => (
         <div
           key={`${item.at}-${i}`}
-          className="flex items-center gap-2.5 border-b border-[var(--color-border)] px-3 py-1.5 text-sm last:border-b-0"
+          className="flex items-center gap-2.5 border-b border-border px-3 py-1.5 text-sm last:border-b-0"
           data-testid="feed-item"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand-tint)] text-[10px] font-bold text-[var(--color-brand)]">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-tint text-xs font-bold text-action">
             {initials(item.who_name)}
           </span>
           <span
-            className={`w-14 shrink-0 rounded-full px-0 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wide ${KIND_STYLE[item.kind] ?? KIND_STYLE.row}`}
+            className={`w-14 shrink-0 rounded-full px-0 py-0.5 text-center text-xs font-semibold uppercase tracking-wide ${KIND_STYLE[item.kind] ?? KIND_STYLE.row}`}
           >
             {KIND_LABEL[item.kind] ?? item.kind}
           </span>
@@ -124,32 +125,32 @@ export function ActivityFeed() {
               <>
                 <span className="font-medium" data-testid="feed-who">{item.who_name}</span>
                 {item.who_role && (
-                  <span className="ml-1 text-xs text-[var(--color-ink-subtle)]" data-testid="feed-role">
+                  <span className="ml-1 text-xs text-ink-subtle" data-testid="feed-role">
                     {item.who_role}
                   </span>
                 )}
               </>
             )}{' '}
-            <span className="text-[var(--color-ink-muted)]">{feedVerb(item)}</span>{' '}
+            <span className="text-ink-muted">{feedVerb(item)}</span>{' '}
             {item.path ? (
               <button
                 type="button"
                 onClick={() => router.history.push(item.path)}
-                className="font-medium text-[var(--color-brand)] hover:underline"
+                className="font-medium text-action hover:underline"
               >
                 {item.label}
               </button>
             ) : (
               <span className="font-medium">{item.label}</span>
             )}
-            {item.sub && <span className="ml-1.5 text-xs text-[var(--color-ink-faint)]">{item.sub}</span>}
+            {item.sub && <span className="ml-1.5 text-xs text-ink-subtle">{item.sub}</span>}
           </span>
-          <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">
+          <span className="shrink-0 text-xs tabular-nums text-ink-subtle">
             {ago(new Date(item.at).getTime())}
           </span>
         </div>
       ))}
-      <div className="bg-[var(--color-subtle)] px-3 py-1.5 text-[11px] text-[var(--color-ink-muted)]">
+      <div className="bg-subtle px-3 py-1.5 text-xs text-ink-muted">
         {scope === 'mine'
           ? 'Your full trail — visible to you alone.'
           : 'Changes and sign-ins only — what colleagues viewed is never shown.'}
@@ -174,10 +175,11 @@ function FeedTab({
       type="button"
       onClick={onClick}
       data-testid={testid}
+      aria-pressed={on}
       className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${
         on
-          ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-          : 'border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]'
+          ? 'border-action text-action'
+          : 'border-transparent text-ink-muted hover:text-ink'
       }`}
     >
       {label}

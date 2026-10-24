@@ -3,14 +3,15 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
-import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
-import { buttonClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 export type Filter = [string, string, unknown]
 
@@ -36,21 +37,26 @@ function cell(value: unknown, columnType: string, settings: Settings): string {
   return formatValue(columnType, value, settings) || '—'
 }
 
-// Frappe's "indicator" idiom (adopted from the PR-2 Desk): status-like Select
-// values render as a colored dot + label. Known lifecycle words get their
-// conventional color; anything else picks a stable palette color by hash.
-const INDICATOR_GREEN = /\b(closed|resolved|done|complete|completed|active|approved|paid|sent|success|finished|enabled|on track)\b/
-const INDICATOR_ORANGE = /\b(in progress|pending|working|review|reviewing|on hold|partially|queued|medium)\b/
-const INDICATOR_RED = /\b(open|urgent|high|critical|overdue|error|failed|rejected|blocked|disabled|cancelled)\b/
-const INDICATOR_GRAY = /\b(draft|low|inactive|none|not set)\b/
-const INDICATOR_PALETTE = ['#2490ef', '#8b5cf6', '#0d9488', '#db2777', '#ca8a04']
+// Status dots: a value that is a VERDICT takes its meaning colour (done is
+// positive, overdue or failed is negative, "not set" is missing data). Every
+// other status (open, urgent, pending, in progress, draft …) is a state, not a
+// verdict, so it gets a stable identity colour from the series: the same
+// value always has the same dot, and no dot reads as good or bad.
+const VERDICT_POSITIVE = /\b(closed|resolved|done|complete|completed|approved|paid|success|succeeded|finished)\b/
+const VERDICT_NEGATIVE = /\b(overdue|error|failed|rejected|blocked)\b/
+const NO_VALUE = /\b(none|not set)\b/
+const INDICATOR_PALETTE = [1, 2, 3, 4, 5].map((n) => `var(--color-series-${n})`)
+
+/** The pager's "1–20 of 1,23,456", counts Indian-grouped. */
+export function pageRange(start: number, pageSize: number, total: number): string {
+  return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
+}
 
 export function indicatorColor(value: string): string {
   const v = value.toLowerCase()
-  if (INDICATOR_GREEN.test(v)) return '#16a34a'
-  if (INDICATOR_ORANGE.test(v)) return '#ea580c'
-  if (INDICATOR_RED.test(v)) return '#dc2626'
-  if (INDICATOR_GRAY.test(v)) return '#9ca3af'
+  if (VERDICT_POSITIVE.test(v)) return 'var(--color-positive)'
+  if (VERDICT_NEGATIVE.test(v)) return 'var(--color-negative)'
+  if (NO_VALUE.test(v)) return 'var(--color-missing)'
   let h = 0
   for (const ch of value) h = (h * 31 + ch.charCodeAt(0)) >>> 0
   return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
@@ -207,12 +213,12 @@ export function ListView({
       }),
   })
 
-  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
   // … on …") — show its words, not a generic shrug.
   if (meta.isError)
     return (
-      <p className="text-sm text-red-600" data-testid="list-error">
+      <p className="text-sm text-negative" data-testid="list-error">
         {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${table}`}
       </p>
     )
@@ -331,22 +337,24 @@ export function ListView({
 
   return (
     <div data-testid="list-view">
-      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* Top-aligned on desktop: however many rows the actions wrap to, the first
+          row sits level with the title (listview.spec "share a vertical band"). */}
+      <div className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-xs text-[var(--color-ink-faint)]">
-            <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">
+          <div className="text-xs text-ink-subtle">
+            <Link to="/featherbase/admin" className="hover:text-ink">
               Home
             </Link>
             {' / '}
             {table}
           </div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table}</h1>
-          <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
-            {total} total
+          <h1 className="text-xl font-semibold text-ink">{table}</h1>
+          <span className="text-xs text-ink-muted" data-testid="list-total">
+            {fmtCount(total)} total
           </span>
           {meta.data?.data_source && (
             <span
-              className="fc-pill ml-2 align-middle text-[10px]"
+              className={pillClasses('ml-2 align-middle text-xs')}
               data-testid="source-badge"
               title={`Rows live on data source ${meta.data.data_source}`}
             >
@@ -358,17 +366,17 @@ export function ListView({
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="list-columns"
             >
               Columns
             </button>
             {colPickerOpen && (
-              <div className="fc-card absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2">
+              <div className={cardClasses('absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2')}>
                 {allColumns.map((col) => (
                   <label
                     key={col.column_name}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
                   >
                     <input
                       type="checkbox"
@@ -394,14 +402,14 @@ export function ListView({
               offering New on a directly-reached child list could only ever
               produce an error. */}
           {canAddRows &&
-            !isSourceReadOnly(meta.data) &&
+            !isRowsReadOnly(meta.data) &&
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
               to="/featherbase/admin/$table/$name"
               params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
-              className="fc-btn-primary"
+              className={buttonClasses({ variant: 'primary' })}
               data-testid="list-new"
             >
               New
@@ -411,7 +419,7 @@ export function ListView({
             to="/featherbase/admin/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
-            className="fc-btn"
+            className={buttonClasses()}
             data-testid="open-report"
           >
             Report
@@ -424,11 +432,11 @@ export function ListView({
           )}
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
-          {!isSourceReadOnly(meta.data) && caps?.manage && (
+          {!isRowsReadOnly(meta.data) && caps?.manage && (
             <Link
               to="/featherbase/admin/import"
               search={{ table: table }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-import"
             >
               Import
@@ -437,22 +445,22 @@ export function ListView({
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
-          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/columns"
               params={{ table }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-columns"
             >
               Columns
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
-          {caps?.manage && !meta.data?.system && !meta.data?.data_source && (
+          {caps?.manage && !meta.data?.system && !isSystemWritten(meta.data) && !meta.data?.data_source && (
             <Link
               to="/featherbase/admin/$table/merge"
               params={{ table }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-merge"
             >
               Merge into…
@@ -463,7 +471,7 @@ export function ListView({
               to="/featherbase/admin/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-kanban"
             >
               Kanban
@@ -473,7 +481,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/$table/view/calendar"
               params={{ table }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-calendar"
             >
               Calendar
@@ -484,7 +492,7 @@ export function ListView({
             <Link
               to="/featherbase/admin/$table/view/gantt"
               params={{ table }}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="open-gantt"
             >
               Gantt
@@ -495,19 +503,22 @@ export function ListView({
           <ChecklistSwitch table={table} meta={meta.data} />
           {isSystemManager && (
             <>
-              {/* NAM-001: change how new rows in this Table are named. */}
-              <Link
-                to="/featherbase/admin/naming/$table"
-                params={{ table }}
-                className="fc-btn"
-                data-testid="open-naming"
-              >
-                Naming
-              </Link>
+              {/* NAM-001: change how new rows in this Table are named —
+                  never for a Table whose rows the platform writes (#432). */}
+              {!isSystemWritten(meta.data) && (
+                <Link
+                  to="/featherbase/admin/naming/$table"
+                  params={{ table }}
+                  className={buttonClasses()}
+                  data-testid="open-naming"
+                >
+                  Naming
+                </Link>
+              )}
               <Link
                 to="/featherbase/admin/permissions/$table"
                 params={{ table }}
-                className="fc-btn"
+                className={buttonClasses()}
                 data-testid="open-permissions"
               >
                 Permissions
@@ -515,10 +526,10 @@ export function ListView({
               {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
                   affordance is generic and metadata-gated — never rendered
                   for system tables, never per-table code. */}
-              {!meta.data?.system && (
+              {!meta.data?.system && !isSystemWritten(meta.data) && (
                 <button
                   onClick={() => setConfirmingDelete(true)}
-                  className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+                  className={buttonClasses({ variant: 'danger' })}
                   data-testid="delete-table"
                 >
                   Delete Table
@@ -532,7 +543,7 @@ export function ListView({
           the Table and its live row count before anything irreversible. */}
       {confirmingDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
           onClick={() => !deleteBusy && setConfirmingDelete(false)}
           onKeyDown={(e) => e.key === 'Escape' && !deleteBusy && setConfirmingDelete(false)}
         >
@@ -540,21 +551,21 @@ export function ListView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-table-title"
-            className="fc-card w-full max-w-md p-4"
+            className={cardClasses('w-full max-w-md p-4')}
             data-testid="delete-table-dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="delete-table-title" className="mb-2 text-base font-semibold text-[var(--color-ink)]">
+            <h2 id="delete-table-title" className="mb-2 text-base font-semibold text-ink">
               Delete {table}?
             </h2>
-            <p className="mb-3 text-sm text-[var(--color-ink-muted)]" data-testid="delete-table-count">
+            <p className="mb-3 text-sm text-ink-muted" data-testid="delete-table-count">
               {deleteCount.data
-                ? `${deleteCount.data.count} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
+                ? `${fmtCount(deleteCount.data.count)} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
                 : 'Counting rows…'}{' '}
               This cannot be undone.
             </p>
             {deleteError && (
-              <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="delete-table-error">
+              <p className="mb-3 text-sm text-negative" data-testid="delete-table-error">
                 {deleteError}
               </p>
             )}
@@ -563,7 +574,7 @@ export function ListView({
                 autoFocus
                 onClick={() => setConfirmingDelete(false)}
                 disabled={deleteBusy}
-                className="fc-btn"
+                className={buttonClasses()}
                 data-testid="delete-table-cancel"
               >
                 Cancel
@@ -571,7 +582,7 @@ export function ListView({
               <button
                 onClick={deleteTable}
                 disabled={deleteBusy || !deleteCount.data}
-                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-40"
+                className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
                 data-testid="delete-table-confirm"
               >
                 {deleteBusy ? 'Deleting…' : 'Delete'}
@@ -588,18 +599,18 @@ export function ListView({
           <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
         </>
       )}
-      {selected.size > 0 && !isSourceReadOnly(meta.data) && (
+      {selected.size > 0 && !isRowsReadOnly(meta.data) && (
         <div
-          className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-action/30 bg-action-tint px-3 py-2 text-sm"
           data-testid="bulk-bar"
         >
-          <span className="font-medium text-[var(--color-ink)]" data-testid="bulk-count">
-            {selected.size} selected
+          <span className="font-medium text-ink" data-testid="bulk-count">
+            {fmtCount(selected.size)} selected
           </span>
           <button
             onClick={bulkDelete}
             disabled={bulkBusy}
-            className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+            className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-delete"
           >
             Delete
@@ -608,7 +619,7 @@ export function ListView({
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
-              className="fc-input w-40"
+              className={inputClasses('w-40')}
               data-testid="bulk-edit-field"
             >
               <option value="">Edit field…</option>
@@ -624,13 +635,13 @@ export function ListView({
                   value={bulkValue}
                   onChange={(e) => setBulkValue(e.target.value)}
                   placeholder="New value"
-                  className="fc-input w-40"
+                  className={inputClasses('w-40')}
                   data-testid="bulk-edit-value"
                 />
                 <button
                   onClick={bulkEdit}
                   disabled={bulkBusy}
-                  className="fc-btn-primary"
+                  className={buttonClasses({ variant: 'primary' })}
                   data-testid="bulk-edit-apply"
                 >
                   Apply
@@ -639,20 +650,20 @@ export function ListView({
             )}
           </span>
           {bulkError && (
-            <span className="text-xs text-[var(--color-danger)]" data-testid="bulk-error">
+            <span className="text-xs text-negative" data-testid="bulk-error">
               {bulkError}
             </span>
           )}
         </div>
       )}
-      <div className="fc-card overflow-x-auto" data-testid="list-table-scroll">
+      <div className={cardClasses('overflow-x-auto')} data-testid="list-table-scroll">
         <table className="w-full text-sm">
-          <thead className="bg-[var(--color-subtle)] text-left">
+          <thead className="bg-subtle text-left">
             <tr>
               {/* Selection exists only to feed the bulk bar — a read-only
                   source has neither (EDS-13: absent, not disabled). */}
-              {!isSourceReadOnly(meta.data) && (
-                <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
+              {!isRowsReadOnly(meta.data) && (
+                <th className="w-8 border-b border-border px-3 py-2">
                   <input
                     type="checkbox"
                     data-testid="select-all"
@@ -665,11 +676,11 @@ export function ListView({
                   />
                 </th>
               )}
-              {expandable && <th className="w-7 border-b border-[var(--color-border)]" />}
+              {expandable && <th className="w-7 border-b border-border" />}
               {columns.map((col) => (
-                <th key={col.column_name} className="border-b border-[var(--color-border)]">
+                <th key={col.column_name} className="border-b border-border">
                   <button
-                    className="w-full px-3 py-2 text-left font-medium text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+                    className="w-full px-3 py-2 text-left font-medium text-ink-muted hover:text-ink"
                     data-testid={`col-${col.column_name}`}
                     onClick={() => toggleSort(col.column_name)}
                   >
@@ -690,7 +701,7 @@ export function ListView({
                 settings={settings}
                 selected={selected.has(String(row.row_id))}
                 onToggleSelect={() => toggleRow(String(row.row_id))}
-                selectable={!isSourceReadOnly(meta.data)}
+                selectable={!isRowsReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
                 expanded={expanded.has(String(row.row_id))}
@@ -710,9 +721,9 @@ export function ListView({
                   colSpan={
                     columns.length +
                     (expandable ? 1 : 0) +
-                    (isSourceReadOnly(meta.data) ? 0 : 1)
+                    (isRowsReadOnly(meta.data) ? 0 : 1)
                   }
-                  className={`px-3 py-8 text-center ${list.isError ? 'text-[var(--color-danger)]' : 'text-[var(--color-ink-faint)]'}`}
+                  className={`px-3 py-8 text-center ${list.isError ? 'text-negative' : 'text-ink-subtle'}`}
                   data-testid={list.isError ? 'list-rows-error' : undefined}
                 >
                   {/* A refused list query is an error, not an empty table —
@@ -730,7 +741,7 @@ export function ListView({
                           needs the way forward, so the empty state carries it
                           too — the toolbar action is not the only door. */}
                       {canAddRows &&
-                        !isSourceReadOnly(meta.data) &&
+                        !isRowsReadOnly(meta.data) &&
                         meta.data?.kind !== 'settings' &&
                         meta.data?.kind !== 'sub_table' && (
                         <>
@@ -739,7 +750,7 @@ export function ListView({
                             to="/featherbase/admin/$table/$name"
                             params={{ table, name: 'new' }}
                             search={{ prefill: undefined }}
-                            className="text-[var(--color-brand)] underline"
+                            className="text-action underline"
                             data-testid="list-empty-new"
                           >
                             add the first one
@@ -759,18 +770,18 @@ export function ListView({
           disabled={start === 0}
           onClick={() => setStart((s) => Math.max(0, s - PAGE))}
           data-testid="prev-page"
-          className="fc-btn disabled:opacity-40"
+          className={buttonClasses({ className: 'disabled:opacity-40' })}
         >
           Prev
         </button>
-        <span className="text-xs text-[var(--color-ink-muted)]" data-testid="page-info">
-          {total === 0 ? 0 : start + 1}–{Math.min(start + PAGE, total)} of {total}
+        <span className="text-xs text-ink-muted" data-testid="page-info">
+          {pageRange(start, PAGE, total)}
         </span>
         <button
           disabled={start + PAGE >= total}
           onClick={() => setStart((s) => s + PAGE)}
           data-testid="next-page"
-          className="fc-btn disabled:opacity-40"
+          className={buttonClasses({ className: 'disabled:opacity-40' })}
         >
           Next
         </button>
@@ -809,7 +820,7 @@ function ListRow({
 }) {
   return (
     <>
-      <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+      <tr className="border-b border-border last:border-0 hover:bg-subtle">
         {expandable && (
           <td className="pl-2">
             <button
@@ -817,8 +828,8 @@ function ListRow({
               aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
               aria-expanded={expanded}
               data-testid="row-expand"
-              className={`rounded px-1 text-xs text-[var(--color-ink-faint)] transition-transform hover:text-[var(--color-brand)] ${
-                expanded ? 'rotate-90 text-[var(--color-brand)]' : ''
+              className={`rounded px-1 text-xs text-ink-subtle transition-transform hover:text-action ${
+                expanded ? 'rotate-90 text-action' : ''
               }`}
             >
               ▶
@@ -842,7 +853,7 @@ function ListRow({
                 to="/featherbase/admin/$table/$name"
                 search={{ prefill: undefined }}
                 params={{ table, name: String(row.row_id) }}
-                className={`font-medium text-[var(--color-brand)] hover:underline ${
+                className={`font-medium text-action hover:underline ${
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
               >
@@ -855,15 +866,15 @@ function ListRow({
             ) : col.column_type === 'Choice' &&
               row[col.column_name] != null &&
               row[col.column_name] !== '' ? (
-              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
                 <Indicator value={String(row[col.column_name])} />
               </span>
             ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
-              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
                 <PrincipalName id={String(row[col.column_name])} />
               </span>
             ) : (
-              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
                 {cell(row[col.column_name], col.column_type, settings)}
               </span>
             )}
@@ -874,7 +885,7 @@ function ListRow({
         <tr data-testid="expanded-row">
           <td
             colSpan={columns.length + 1 + (selectable ? 1 : 0)}
-            className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
+            className="border-b border-border bg-subtle py-3 pl-10 pr-4"
           >
             <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
           </td>
@@ -903,8 +914,8 @@ function InlineChildren({
         `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })
-  if (doc.isLoading) return <p className="text-xs text-[var(--color-ink-faint)]">Loading…</p>
-  if (doc.isError) return <p className="text-xs text-[var(--color-danger)]">Cannot load {name}</p>
+  if (doc.isLoading) return <p className="text-xs text-ink-subtle">Loading…</p>
+  if (doc.isError) return <p className="text-xs text-negative">Cannot load {name}</p>
   return (
     <div className="flex flex-col gap-3">
       {childFields.map((f) => (
@@ -935,15 +946,15 @@ function InlineChildGrid({
   )
   const currencyCols = cols.filter((c) => c.column_type === 'Currency')
   return (
-    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)]" data-testid={`inline-children-${field.column_name}`}>
-      <div className="border-b border-[var(--color-border)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
-        {field.label ?? field.column_name} ({rows.length})
+    <div className="overflow-hidden rounded-[var(--radius-control)] border border-border bg-surface" data-testid={`inline-children-${field.column_name}`}>
+      <div className="border-b border-border px-3 py-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        {field.label ?? field.column_name} ({fmtCount(rows.length)})
       </div>
       <table className="w-full text-xs">
         <thead>
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-[var(--color-border)] px-3 py-1 text-left font-medium text-[var(--color-ink-muted)]">
+              <th key={c.column_name} className="border-b border-border px-3 py-1 text-left font-medium text-ink-muted">
                 {c.label ?? c.column_name}
               </th>
             ))}
@@ -951,15 +962,15 @@ function InlineChildGrid({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.row_id ?? i)} className="border-b border-[var(--color-border)] last:border-0">
+            <tr key={String(r.row_id ?? i)} className="border-b border-border last:border-0">
               {cols.map((c) => (
-                <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
+                <td key={c.column_name} className="px-3 py-1 text-ink">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
                       to="/featherbase/admin/$table/$name"
                       search={{ prefill: undefined }}
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
-                      className="text-[var(--color-brand)] hover:underline"
+                      className="text-action hover:underline"
                     >
                       {isPrincipalTable(c.reference_table) ? <PrincipalName id={String(r[c.column_name])} /> : String(r[c.column_name])}
                     </Link>
@@ -972,7 +983,7 @@ function InlineChildGrid({
           ))}
           {!rows.length && (
             <tr>
-              <td colSpan={cols.length} className="px-3 py-3 text-center text-[var(--color-ink-faint)]">
+              <td colSpan={cols.length} className="px-3 py-3 text-center text-ink-subtle">
                 No rows
               </td>
             </tr>
@@ -980,7 +991,7 @@ function InlineChildGrid({
         </tbody>
       </table>
       {currencyCols.length > 0 && rows.length > 0 && (
-        <div className="border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1 text-[11px] text-[var(--color-ink-muted)]">
+        <div className="border-t border-border bg-subtle px-3 py-1 text-xs text-ink-muted">
           {currencyCols
             .map(
               (c) =>
@@ -1044,14 +1055,14 @@ export function StandardFilters({
       {columns.map((f) =>
         f.column_type === 'Choice' ? (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <select
               value={current(f.column_name, '=')}
               onChange={(e) => apply(f.column_name, '=', e.target.value)}
               data-testid={`std-filter-${f.column_name}`}
-              className="fc-input max-w-[10rem]"
+              className={inputClasses('max-w-[10rem]')}
             >
               <option value="">All</option>
               {(f.choices ?? '')
@@ -1066,7 +1077,7 @@ export function StandardFilters({
           </label>
         ) : (
           <label key={f.column_name} className="flex flex-col gap-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
               {f.label ?? f.column_name}
             </span>
             <input
@@ -1081,7 +1092,7 @@ export function StandardFilters({
               }}
               placeholder={`Filter ${f.label ?? f.column_name}…`}
               data-testid={`std-filter-${f.column_name}`}
-              className="fc-input max-w-[10rem]"
+              className={inputClasses('max-w-[10rem]')}
             />
           </label>
         ),
@@ -1137,7 +1148,7 @@ export function FilterBar({
           value={field}
           onChange={(e) => setField(e.target.value)}
           data-testid="filter-field"
-          className="fc-input max-w-[10rem]"
+          className={inputClasses('max-w-[10rem]')}
         >
           {fields.map((f) => (
             <option key={f.fieldname} value={f.fieldname}>
@@ -1149,7 +1160,7 @@ export function FilterBar({
           value={op}
           onChange={(e) => setOp(e.target.value)}
           data-testid="filter-op"
-          className="fc-input max-w-[10rem]"
+          className={inputClasses('max-w-[10rem]')}
         >
           {OPS.map((o) => (
             <option key={o} value={o}>
@@ -1163,12 +1174,12 @@ export function FilterBar({
           onKeyDown={(e) => e.key === 'Enter' && add()}
           placeholder="Value"
           data-testid="filter-value"
-          className="fc-input max-w-[10rem]"
+          className={inputClasses('max-w-[10rem]')}
         />
         <button
           onClick={add}
           data-testid="filter-add"
-          className="fc-btn"
+          className={buttonClasses()}
         >
           Add filter
         </button>
@@ -1178,14 +1189,14 @@ export function FilterBar({
           {filters.map((f, i) => (
             <span
               key={i}
-              className="fc-pill bg-[var(--color-subtle)] text-[var(--color-ink)] gap-1 border border-[var(--color-border)]"
+              className={pillClasses('bg-subtle text-ink gap-1 border border-border')}
               data-testid="filter-chip"
             >
               {f[0]} {f[1]} {filterValueLabel(f[1], f[2])}
               <button
                 aria-label="Remove filter"
                 onClick={() => onChange(filters.filter((_, j) => j !== i))}
-                className="text-gray-400 hover:text-gray-900"
+                className="text-ink-subtle hover:text-ink"
               >
                 ×
               </button>
@@ -1227,7 +1238,7 @@ function RecentStrip({
   if (rows.length === 0 && views.length === 0) return null
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="recent-strip">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+      <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
         Recent
       </span>
       {rows.map((r) => (
@@ -1237,7 +1248,7 @@ function RecentStrip({
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
-          className="rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]"
+          className="rounded-full border border-border-control bg-surface px-2.5 py-0.5 text-xs text-ink-muted hover:border-action hover:text-action"
         >
           {r.label}
         </Link>
@@ -1249,7 +1260,7 @@ function RecentStrip({
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
           title={entry.sub}
-          className="max-w-72 truncate rounded-full bg-[var(--color-brand-tint)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-brand)] hover:opacity-80"
+          className="max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80"
         >
           {entry.sub}
         </button>
@@ -1379,7 +1390,7 @@ function SavedViewsBar({
     <div className="mb-3" data-testid="saved-views-bar">
       {list.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+          <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
             Views
           </span>
           {list.map((v) => {
@@ -1389,12 +1400,13 @@ function SavedViewsBar({
                 key={v.row_id}
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   active
-                    ? 'bg-[var(--color-brand)] text-white'
-                    : 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]'
+                    ? 'bg-action text-action-ink'
+                    : 'bg-action-tint text-action'
                 }`}
               >
                 <button
                   type="button"
+                  aria-pressed={active}
                   onClick={() => onApply(v.filters)}
                   data-testid="saved-view-chip"
                   title={v.mine ? undefined : `shared by its owner`}
@@ -1413,7 +1425,7 @@ function SavedViewsBar({
                       })
                       void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
                     }}
-                    className="rounded-full px-1 hover:bg-white/20"
+                    className="rounded-full px-1 hover:bg-surface/20"
                   >
                     {v.shared ? '🔒' : '👥'}
                   </button>
@@ -1427,7 +1439,7 @@ function SavedViewsBar({
                       await api.delete(`/api/saved_views/${encodeURIComponent(v.row_id)}`)
                       void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
                     }}
-                    className="rounded-full px-1 hover:bg-white/20"
+                    className="rounded-full px-1 hover:bg-surface/20"
                   >
                     ✕
                   </button>
@@ -1439,10 +1451,10 @@ function SavedViewsBar({
       )}
       {showNudge && (
         <div
-          className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-[var(--color-brand)]/40 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-action/40 bg-action-tint px-3 py-2 text-sm"
           data-testid="filter-nudge"
         >
-          <span className="text-[var(--color-ink)]">
+          <span className="text-ink">
             That's <b>{applyCount}×</b> for this filter in a week — save it as a view?
           </span>
           <input
@@ -1450,12 +1462,12 @@ function SavedViewsBar({
             onChange={(e) => setNudgeName(e.target.value)}
             placeholder={`${table} view`}
             data-testid="nudge-name"
-            className="fc-input !w-44 !py-0.5 text-xs"
+            className={inputClasses('!w-44 !py-0.5 text-xs')}
           />
-          <button type="button" onClick={() => void saveView()} data-testid="nudge-save" className="fc-btn-primary !py-0.5 text-xs">
+          <button type="button" onClick={() => void saveView()} data-testid="nudge-save" className={buttonClasses({ variant: 'primary', className: '!py-0.5 text-xs' })}>
             Save view
           </button>
-          <button type="button" onClick={dismissNudge} data-testid="nudge-dismiss" className="fc-btn !py-0.5 text-xs">
+          <button type="button" onClick={dismissNudge} data-testid="nudge-dismiss" className={buttonClasses({ className: '!py-0.5 text-xs' })}>
             Not now
           </button>
         </div>
@@ -1493,7 +1505,7 @@ function ExploreSplitButton({ table }: { table: string }) {
         <button
           type="button"
           onClick={() => void openExplore([])}
-          className="fc-btn rounded-r-none"
+          className={buttonClasses({ className: 'rounded-r-none' })}
           data-testid="open-explore"
         >
           Explore
@@ -1503,15 +1515,15 @@ function ExploreSplitButton({ table }: { table: string }) {
           onClick={() => setOpen((o) => !o)}
           aria-label="Explore with a chain"
           aria-expanded={open}
-          className="fc-btn rounded-l-none border-l-0 !px-1.5"
+          className={buttonClasses({ className: 'rounded-l-none border-l-0 !px-1.5' })}
           data-testid="explore-split-toggle"
         >
           ▾
         </button>
       </div>
       {open && (
-        <div className="fc-card absolute right-0 z-10 mt-1 w-64 p-2" data-testid="explore-split-panel">
-          <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+        <div className={cardClasses('absolute right-0 z-10 mt-1 w-64 p-2')} data-testid="explore-split-panel">
+          <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
             Chain into
           </div>
           {options.map((o) => {
@@ -1519,7 +1531,7 @@ function ExploreSplitButton({ table }: { table: string }) {
             return (
               <label
                 key={o.key}
-                className={`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)] ${
+                className={`flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle ${
                   !checked && picked.length >= 2 ? 'opacity-40' : ''
                 }`}
               >
@@ -1535,9 +1547,9 @@ function ExploreSplitButton({ table }: { table: string }) {
             )
           })}
           {!options.length && (
-            <p className="px-2 py-1 text-sm text-[var(--color-ink-faint)]">No dependents</p>
+            <p className="px-2 py-1 text-sm text-ink-subtle">No dependents</p>
           )}
-          <div className="mt-1 border-t border-[var(--color-border)] px-2 pt-2">
+          <div className="mt-1 border-t border-border px-2 pt-2">
             <button
               type="button"
               disabled={!picked.length}
@@ -1548,7 +1560,7 @@ function ExploreSplitButton({ table }: { table: string }) {
                     .filter((s): s is Step => Boolean(s)),
                 )
               }
-              className="fc-btn-primary w-full !py-1 text-xs"
+              className={buttonClasses({ variant: 'primary', className: 'w-full !py-1 text-xs' })}
               data-testid="explore-split-open"
             >
               Open

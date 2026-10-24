@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
+import { cardClasses } from './ui'
+import { fmtAsStored, fmtCount } from '../lib/inr'
 
 // UI-026: renders a saved Dashboard — number cards and bar charts computed on
 // demand from live data through the permission-scoped dashboard endpoints.
@@ -10,7 +12,7 @@ interface CardCfg {
   table: string
   filters?: Filter[]
 }
-interface ChartCfg {
+export interface ChartCfg {
   label: string
   // A chart is driven EITHER by a Table + group_by (UI-026) OR by a saved
   // Report (RPT-006). Report-driven charts recompute from live report data.
@@ -36,13 +38,18 @@ function NumberCard({ card }: { card: CardCfg }) {
       }),
   })
   return (
-    <div className="fc-card p-4" data-testid={`card-${card.label}`}>
-      <div className="text-sm text-[var(--color-ink-muted)]">{card.label}</div>
-      <div className="mt-1 text-3xl font-semibold text-[var(--color-ink)]" data-testid={`card-value-${card.label}`}>
-        {q.data ? q.data.count : q.isError ? '—' : '…'}
+    <div className={cardClasses('p-4')} data-testid={`card-${card.label}`}>
+      <div className="text-sm text-ink-muted">{card.label}</div>
+      <div className="mt-1 text-3xl font-semibold text-ink" data-testid={`card-value-${card.label}`}>
+        {q.data ? fmtCount(q.data.count) : q.isError ? '—' : '…'}
       </div>
     </div>
   )
+}
+
+/** A table chart, or a report grouped by a field, counts rows; a report value chart shows its field as stored. */
+export function chartValueText(chart: ChartCfg, value: number): string {
+  return chart.report && !chart.group_by ? fmtAsStored(value) : fmtCount(value)
 }
 
 function BarChart({ chart }: { chart: ChartCfg }) {
@@ -65,26 +72,26 @@ function BarChart({ chart }: { chart: ChartCfg }) {
   const rows = q.data?.data ?? []
   const max = rows.reduce((m, r) => Math.max(m, r.value), 0) || 1
   return (
-    <div className="fc-card p-4" data-testid={`chart-${chart.label}`}>
-      <div className="mb-3 text-sm font-medium text-[var(--color-ink)]">{chart.label}</div>
-      {q.isError && <div className="text-sm text-red-600">Failed to load</div>}
+    <div className={cardClasses('p-4')} data-testid={`chart-${chart.label}`}>
+      <div className="mb-3 text-sm font-medium text-ink">{chart.label}</div>
+      {q.isError && <div className="text-sm text-negative">Failed to load</div>}
       <div className="space-y-2">
         {rows.map((r) => (
           <div key={r.label} className="flex items-center gap-2" data-testid={`bar-${r.label}`}>
-            <div className="w-24 shrink-0 truncate text-xs text-[var(--color-ink-muted)]">{r.label || '—'}</div>
-            <div className="h-5 flex-1 rounded bg-[var(--color-subtle)]">
+            <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{r.label || '—'}</div>
+            <div className="h-5 flex-1 rounded bg-subtle">
               <div
-                className="h-5 rounded bg-[var(--color-brand)]"
+                className="h-5 rounded bg-action"
                 style={{ width: `${Math.round((r.value / max) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
               />
             </div>
-            <div className="w-8 shrink-0 text-right text-xs tabular-nums text-[var(--color-ink)]" data-testid={`bar-value-${r.label}`}>
-              {r.value}
+            <div className="min-w-8 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`bar-value-${r.label}`}>
+              {chartValueText(chart, r.value)}
             </div>
           </div>
         ))}
         {!rows.length && !q.isLoading && (
-          <div className="text-sm text-[var(--color-ink-faint)]">No data</div>
+          <div className="text-sm text-ink-subtle">No data</div>
         )}
       </div>
     </div>
@@ -99,11 +106,11 @@ export function DashboardView({ name }: { name: string }) {
 
   if (dash.isError)
     return (
-      <div className="fc-card p-4 text-sm text-red-600" data-testid="dashboard-error">
+      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="dashboard-error">
         {dash.error instanceof ApiError ? dash.error.message : 'Dashboard not found'}
       </div>
     )
-  if (!dash.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
+  if (!dash.data) return <div className="p-4 text-ink-subtle">Loading…</div>
 
   const cfgRaw = dash.data.config
   const config: DashboardConfig =
@@ -113,7 +120,7 @@ export function DashboardView({ name }: { name: string }) {
 
   return (
     <div data-testid="dashboard" className="space-y-6">
-      <h1 className="text-lg font-semibold text-[var(--color-ink)]" data-testid="dashboard-title">
+      <h1 className="text-lg font-semibold text-ink" data-testid="dashboard-title">
         {dash.data.label || dash.data.name}
       </h1>
 

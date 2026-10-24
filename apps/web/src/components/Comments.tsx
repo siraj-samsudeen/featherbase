@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses } from './ui'
+import { fmtInstantIST } from '../lib/inr'
 
 interface CommentRow {
   row_id: string
@@ -120,7 +122,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
     const parts = text.split(/((?<![\w.@-])@\[[^\]\n]{1,140}\]|(?<![\w.@-])@[\w.-]+)/g)
     return parts.map((p, i) =>
       p.startsWith('@') ? (
-        <span key={i} className="font-medium text-[var(--color-brand)]">
+        <span key={i} className="font-medium text-action">
           {p}
         </span>
       ) : (
@@ -130,24 +132,24 @@ export function Comments({ table, name }: { table: string; name: string }) {
   }
 
   return (
-    <div className="fc-card p-4" data-testid="comments-panel">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+    <div className={cardClasses('p-4')} data-testid="comments-panel">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Comments
       </div>
 
       <div className="mb-3 space-y-3" data-testid="comment-list">
         {comments.data?.data.length === 0 && (
-          <p className="text-xs text-[var(--color-ink-faint)]">No comments yet</p>
+          <p className="text-xs text-ink-subtle">No comments yet</p>
         )}
         {comments.data?.data.map((c) => (
           <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
             <AuthorInitials id={c.created_by} />
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-[var(--color-ink-muted)]">
-                <span className="font-medium text-[var(--color-ink)]" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
-                <span data-testid="comment-time">{new Date(c.created_at).toLocaleString()}</span>
+              <div className="text-xs text-ink-muted">
+                <span className="font-medium text-ink" data-testid="comment-author"><PrincipalName id={c.created_by} /></span>{' '}
+                <span data-testid="comment-time">{fmtInstantIST(c.created_at)}</span>
               </div>
-              <div className="whitespace-pre-wrap break-words text-sm text-[var(--color-ink)]" data-testid="comment-content">
+              <div className="whitespace-pre-wrap break-words text-sm text-ink" data-testid="comment-content">
                 {renderContent(c.content)}
               </div>
             </div>
@@ -162,17 +164,17 @@ export function Comments({ table, name }: { table: string; name: string }) {
           onChange={onChange}
           rows={2}
           placeholder={`Comment as ${me?.row_id ?? 'you'}… use @ to mention`}
-          className="fc-input resize-none"
+          className={inputClasses('resize-none')}
           data-testid="comment-input"
         />
         {mention && candidates.length > 0 && (
-          <div className="fc-card absolute z-20 mt-1 w-56 overflow-hidden py-1" data-testid="mention-list">
+          <div className={cardClasses('absolute z-20 mt-1 w-56 overflow-hidden py-1')} data-testid="mention-list">
             {candidates.map((u) => (
               <button
                 key={u.row_id}
                 onClick={() => applyMention(mentionToken(u))}
                 data-testid="mention-option"
-                className="block w-full px-3 py-1 text-left text-sm hover:bg-[var(--color-brand-tint)]"
+                className="block w-full px-3 py-1 text-left text-sm hover:bg-action-tint"
               >
                 {u.full_name && u.username ? `${u.full_name} · @${u.username}` : u.full_name || u.username}
               </button>
@@ -181,13 +183,13 @@ export function Comments({ table, name }: { table: string; name: string }) {
         )}
       </div>
       {error && (
-        <p className="mt-1 text-xs text-[var(--color-danger)]" data-testid="comment-error">
+        <p className="mt-1 text-xs text-negative" data-testid="comment-error">
           {error}
         </p>
       )}
       <div className="mt-2 flex justify-end">
         {mentionWarning && (
-          <p className="mb-1 text-xs text-[var(--color-warning,#b45309)]" data-testid="mention-warning" role="status">
+          <p className="mb-1 text-xs text-caution" data-testid="mention-warning" role="status">
             {mentionWarning}
           </p>
         )}
@@ -195,7 +197,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
           onClick={post}
           disabled={posting || !draft.trim()}
           data-testid="comment-submit"
-          className="fc-btn-primary disabled:opacity-40"
+          className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
         >
           {posting ? 'Posting…' : 'Comment'}
         </button>
@@ -217,7 +219,7 @@ function AuthorInitials({ id }: { id: string }) {
   const name = usePrincipalName(id)
   return (
     <span
-      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white"
+      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink"
       data-testid="comment-initials"
     >
       {name ? initialsOf(name) : isOpaqueId(id) ? '·' : initialsOf(id)}

@@ -4,6 +4,8 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { FilterBar, type Filter } from './ListView'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -149,8 +151,8 @@ export function ReportView({
     }
   }
 
-  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
-  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {table}</p>
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
+  if (meta.isError) return <p className="text-sm text-negative">Cannot load {table}</p>
 
   const numericCols = columns.filter((c) =>
     NUMERIC.has(available.find((f) => f.column_name === c)?.column_type ?? ''),
@@ -221,7 +223,7 @@ export function ReportView({
     if (groupBy) {
       for (const [key, list] of groups.entries()) {
         out.push([
-          `${key} (${list.length})`,
+          `${key} (${fmtCount(list.length)})`,
           ...columns.map((c) => (numericCols.includes(c) ? sum(list, c) : '')),
         ])
         for (const row of list) out.push(member(row))
@@ -231,7 +233,7 @@ export function ReportView({
     }
     if (data.length && numericCols.length)
       out.push([
-        `Total (${data.length})`,
+        `Total (${fmtCount(data.length)})`,
         ...columns.map((c) => (numericCols.includes(c) ? sum(data, c) : '')),
       ])
     return out
@@ -279,13 +281,13 @@ export function ReportView({
   }
 
   const bodyRow = (row: Row) => (
-    <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="report-row">
+    <tr key={String(row.row_id)} className="border-t border-border" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
           to="/featherbase/admin/$table/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
-          className="text-[var(--color-brand)] hover:underline"
+          className="text-action hover:underline"
         >
           {String(row.row_id)}
         </RouterLink>
@@ -302,23 +304,23 @@ export function ReportView({
     <div data-testid="report-view">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Summary</h1>
-          <span className="text-xs text-[var(--color-ink-muted)]" data-testid="report-total">
-            {rows.data?.total ?? 0} rows
+          <h1 className="text-xl font-semibold text-ink">{table} — Summary</h1>
+          <span className="text-xs text-ink-muted" data-testid="report-total">
+            {fmtCount(rows.data?.total ?? 0)} rows
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={exportCsv} className="fc-btn" data-testid="export-csv">
+          <button onClick={exportCsv} className={buttonClasses()} data-testid="export-csv">
             CSV
           </button>
-          <button onClick={exportXlsx} className="fc-btn" data-testid="export-xlsx">
+          <button onClick={exportXlsx} className={buttonClasses()} data-testid="export-xlsx">
             XLSX
           </button>
           <RouterLink
             to="/featherbase/admin/$table"
             params={{ table }}
             search={{ filters: undefined }}
-            className="fc-btn"
+            className={buttonClasses()}
             data-testid="report-to-list"
           >
             List view
@@ -330,17 +332,17 @@ export function ReportView({
         <div className="relative">
           <button
             onClick={() => setPickerOpen((o) => !o)}
-            className="fc-btn"
+            className={buttonClasses()}
             data-testid="report-columns"
           >
             Columns ({columns.length})
           </button>
           {pickerOpen && (
-            <div className="fc-card absolute z-10 mt-1 max-h-72 w-56 overflow-y-auto p-2">
+            <div className={cardClasses('absolute z-10 mt-1 max-h-72 w-56 overflow-y-auto p-2')}>
               {available.map((f) => (
                 <label
                   key={f.column_name}
-                  className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
+                  className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-subtle"
                 >
                   <input
                     type="checkbox"
@@ -361,12 +363,12 @@ export function ReportView({
           )}
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-[var(--color-ink-muted)]">
+        <label className="flex items-center gap-2 text-sm text-ink-muted">
           Group by
           <select
             value={groupBy}
             onChange={(e) => setGroupBy(e.target.value)}
-            className="fc-input w-44"
+            className={inputClasses('w-44')}
             data-testid="report-groupby"
           >
             <option value="">None</option>
@@ -384,7 +386,7 @@ export function ReportView({
         <select
           value={report ?? ''}
           onChange={(e) => onReportChange?.(e.target.value || undefined)}
-          className="fc-input w-48"
+          className={inputClasses('w-48')}
           data-testid="saved-report-picker"
         >
           <option value="">Saved reports…</option>
@@ -397,30 +399,30 @@ export function ReportView({
         <div className="relative">
           <button
             onClick={() => setSaveOpen((o) => !o)}
-            className="fc-btn"
+            className={buttonClasses()}
             data-testid="report-save"
           >
             Save report
           </button>
           {saveOpen && (
-            <div className="fc-card absolute right-0 z-10 mt-1 w-64 p-3">
-              <label className="fc-label">Report name</label>
+            <div className={cardClasses('absolute right-0 z-10 mt-1 w-64 p-3')}>
+              <label className={labelClasses()}>Report name</label>
               <input
                 value={saveName}
                 onChange={(e) => setSaveName(e.target.value)}
-                className="fc-input mb-2"
+                className={inputClasses('mb-2')}
                 data-testid="report-save-name"
                 placeholder="e.g. Open tickets by status"
               />
               {saveError && (
-                <p className="mb-2 text-xs text-[var(--color-danger)]" data-testid="report-save-error">
+                <p className="mb-2 text-xs text-negative" data-testid="report-save-error">
                   {saveError}
                 </p>
               )}
               <button
                 onClick={saveReport}
                 disabled={!saveName.trim()}
-                className="fc-btn-primary w-full justify-center"
+                className={buttonClasses({ variant: 'primary', className: 'w-full justify-center' })}
                 data-testid="report-save-confirm"
               >
                 Save
@@ -432,9 +434,9 @@ export function ReportView({
 
       {meta.data && <FilterBar meta={meta.data} filters={filters} onChange={setFilters} />}
 
-      <div className="fc-card overflow-x-auto">
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm" data-testid="report-table">
-          <thead className="bg-[var(--color-subtle)] text-left text-xs text-[var(--color-ink-muted)]">
+          <thead className="bg-subtle text-left text-xs text-ink-muted">
             <tr>
               <th className="px-3 py-2 font-medium">Name</th>
               {columns.map((c) => (
@@ -461,10 +463,10 @@ export function ReportView({
               ))}
             {data.length > 0 && numericCols.length > 0 && (
               <tr
-                className="border-t-2 border-[var(--color-border-strong)] bg-[var(--color-subtle)] font-medium"
+                className="border-t-2 border-border-control bg-subtle font-medium"
                 data-testid="report-grand-total"
               >
-                <td className="px-3 py-1.5">Total ({data.length})</td>
+                <td className="px-3 py-1.5">Total ({fmtCount(data.length)})</td>
                 {columns.map((c) => (
                   <td key={c} className="px-3 py-1.5" data-testid={`grand-sum-${c}`}>
                     {numericCols.includes(c) ? fmt(sum(data, c)) : ''}
@@ -475,22 +477,22 @@ export function ReportView({
           </tbody>
         </table>
         {data.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]">No rows</p>
+          <p className="px-3 py-6 text-center text-sm text-ink-subtle">No rows</p>
         )}
       </div>
 
       {/* RPT-006: chart of the report data + pin to a dashboard */}
-      <div className="fc-card mt-4 p-4" data-testid="report-chart">
+      <div className={cardClasses('mt-4 p-4')} data-testid="report-chart">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm font-medium text-[var(--color-ink)]">Chart</div>
+          <div className="text-sm font-medium text-ink">Chart</div>
           <div className="flex flex-wrap items-center gap-2">
             {!groupBy && numericCols.length > 0 && (
-              <label className="flex items-center gap-1 text-xs text-[var(--color-ink-muted)]">
+              <label className="flex items-center gap-1 text-xs text-ink-muted">
                 Value
                 <select
                   value={effectiveChartValue}
                   onChange={(e) => setChartValue(e.target.value)}
-                  className="fc-input w-32"
+                  className={inputClasses('w-32')}
                   data-testid="chart-value"
                 >
                   {numericCols.map((c) => (
@@ -504,7 +506,7 @@ export function ReportView({
             <select
               value={pinDashboard}
               onChange={(e) => setPinDashboard(e.target.value)}
-              className="fc-input w-40"
+              className={inputClasses('w-40')}
               data-testid="pin-dashboard"
             >
               <option value="">Dashboard…</option>
@@ -517,7 +519,7 @@ export function ReportView({
             <button
               onClick={pinChart}
               disabled={!report || !pinDashboard}
-              className="fc-btn"
+              className={buttonClasses()}
               data-testid="pin-chart"
               title={report ? 'Pin this chart to the selected dashboard' : 'Save the report first'}
             >
@@ -526,27 +528,27 @@ export function ReportView({
           </div>
         </div>
         {pinMsg && (
-          <p className="mb-2 text-xs text-[var(--color-ink-muted)]" data-testid="pin-msg">
+          <p className="mb-2 text-xs text-ink-muted" data-testid="pin-msg">
             {pinMsg}
           </p>
         )}
         <div className="space-y-2">
           {chartData.map((r, i) => (
             <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
-              <div className="w-24 shrink-0 truncate text-xs text-[var(--color-ink-muted)]">{r.label || '—'}</div>
-              <div className="h-5 flex-1 rounded bg-[var(--color-subtle)]">
+              <div className="w-24 shrink-0 truncate text-xs text-ink-muted">{r.label || '—'}</div>
+              <div className="h-5 flex-1 rounded bg-subtle">
                 <div
-                  className="h-5 rounded bg-[var(--color-brand)]"
+                  className="h-5 rounded bg-action"
                   style={{ width: `${Math.round((r.value / chartMax) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
                 />
               </div>
-              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-[var(--color-ink)]" data-testid={`chart-bar-value-${r.label}`}>
+              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-ink" data-testid={`chart-bar-value-${r.label}`}>
                 {r.value}
               </div>
             </div>
           ))}
           {chartData.length === 0 && (
-            <div className="text-sm text-[var(--color-ink-faint)]">No data</div>
+            <div className="text-sm text-ink-subtle">No data</div>
           )}
         </div>
       </div>
@@ -575,16 +577,16 @@ function ReportGroup({
   return (
     <>
       <tr
-        className="cursor-pointer border-t border-[var(--color-border)] bg-[var(--color-brand-tint)]/60"
+        className="cursor-pointer border-t border-border bg-action-tint/60"
         data-testid="group-header"
         data-group={groupKey}
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="px-3 py-1.5 font-medium text-[var(--color-ink)]">
-          <span className="mr-1 inline-block w-3 text-[var(--color-ink-faint)]">
+        <td className="px-3 py-1.5 font-medium text-ink">
+          <span className="mr-1 inline-block w-3 text-ink-subtle">
             {open ? '▾' : '▸'}
           </span>
-          {groupKey} <span data-testid="group-count">({list.length})</span>
+          {groupKey} <span data-testid="group-count">({fmtCount(list.length)})</span>
         </td>
         {columns.map((c) => (
           <td key={c} className="px-3 py-1.5 font-medium" data-testid={`group-sum-${c}`}>

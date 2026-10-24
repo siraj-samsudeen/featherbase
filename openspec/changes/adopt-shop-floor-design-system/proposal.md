@@ -33,6 +33,7 @@ None.
 - `usable-on-any-device`: adds readable-in-bright-light, comfortable-to-tap, Indian amounts and dates, lists that fit a
   phone, and screens that say when they are loading, empty or failed.
 - `admin-ui-feedback`: the theme follows the user and can follow the device; the colour palette choice is removed.
+- `personal-preferences`: no language picker is shown while no translation ships; the stored language still applies.
 
 ## Impact
 

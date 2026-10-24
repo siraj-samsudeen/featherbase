@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Featherbase</title>
+    <script>
+      // #380: paint the theme before the first frame, so a dark phone never
+      // flashes light. Same rule as src/lib/theme.ts: the signed-in person's
+      // mirrored choice (fc_theme:<row_id>), else the device's own setting.
+      // whoami then repaints from the server value, correcting a stale mirror.
+      ;(function () {
+        var choice = 'device'
+        try {
+          var user = JSON.parse(localStorage.getItem('fc_user') || 'null')
+          var saved = user && user.row_id ? localStorage.getItem('fc_theme:' + user.row_id) : null
+          if (saved === 'light' || saved === 'dark' || saved === 'device') choice = saved
+        } catch (e) {}
+        var dark = choice === 'dark' || (choice === 'device' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

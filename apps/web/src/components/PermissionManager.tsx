@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
+import { buttonClasses, cardClasses } from './ui'
 
 // SET-003: edit the Permission matrix (roles × actions) for a Table at
 // tier 'basic'. System-Manager-only; changes take effect immediately because
@@ -69,24 +70,24 @@ export function PermissionManager({ table }: { table: string }) {
 
   if (q.isError)
     return (
-      <div className="fc-card p-4 text-sm text-red-600" data-testid="perm-error">
+      <div className={cardClasses('p-4 text-sm text-negative')} data-testid="perm-error">
         {q.error instanceof ApiError ? q.error.message : 'Cannot load permissions'}
       </div>
     )
-  if (!q.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
+  if (!q.data) return <div className="p-4 text-ink-subtle">Loading…</div>
 
   return (
     <div data-testid="permission-manager" className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Permissions — {table}</h1>
+        <h1 className="text-lg font-semibold text-ink">Permissions — {table}</h1>
         <div className="flex items-center gap-3">
           {savedAt > 0 && !dirty.size && (
-            <span className="text-sm text-green-700" data-testid="perm-saved">
+            <span className="text-sm text-positive" data-testid="perm-saved">
               Saved
             </span>
           )}
           <button
-            className="fc-btn fc-btn-primary"
+            className={buttonClasses({ variant: 'primary' })}
             data-testid="perm-save"
             disabled={saving || !dirty.size}
             onClick={() => void save()}
@@ -97,15 +98,15 @@ export function PermissionManager({ table }: { table: string }) {
       </div>
 
       {error && (
-        <div className="fc-card p-3 text-sm text-red-600" data-testid="perm-save-error">
+        <div className={cardClasses('p-3 text-sm text-negative')} data-testid="perm-save-error">
           {error}
         </div>
       )}
 
-      <div className="fc-card overflow-x-auto">
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-ink-muted)]">
+            <tr className="border-b border-border text-left text-ink-muted">
               <th className="px-3 py-2 font-medium">Role</th>
               {FLAGS.map((f) => (
                 <th key={f.key} className="px-3 py-2 text-center font-medium">
@@ -116,8 +117,8 @@ export function PermissionManager({ table }: { table: string }) {
           </thead>
           <tbody>
             {q.data.roles.map((role) => (
-              <tr key={role} className="border-b border-[var(--color-border)] last:border-0">
-                <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{role}</td>
+              <tr key={role} className="border-b border-border last:border-0">
+                <td className="px-3 py-2 font-medium text-ink">{role}</td>
                 {FLAGS.map((f) => (
                   <td key={f.key} className="px-3 py-2 text-center">
                     <input

@@ -6,6 +6,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
+import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
@@ -23,6 +24,7 @@ import { pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { sendInvitation } from './invitation-email'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -718,7 +720,7 @@ app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
+  const [row] = await sql`select theme, language from person where row_id = ${user.row_id}`
   const roles = await getRoles(user.row_id)
   // #410: what the shell may draw. Computed here, from current roles and
   // grants, never from role names the browser holds; display only — every
@@ -732,8 +734,7 @@ app.get('/api/whoami', async (c) => {
     ...user,
     roles,
     capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
-    theme: (row?.theme as string) || 'light',
-    palette: (row?.palette as string) || 'classic',
+    theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
     // know the data is disposable and that they are signed in as someone.
@@ -868,23 +869,14 @@ app.get('/api/activity_feed', async (c) => {
   return c.json({ items })
 })
 
-// UI-024: persist the caller's theme preference (light/dark), per user.
+// UI-024 / #380: persist the caller's theme — light, dark, or follow the device.
+const THEMES = ['light', 'dark', 'device'] as const
 app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
-  if (theme !== 'light' && theme !== 'dark')
-    throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update person set theme = ${theme} where row_id = ${who(c)}`
+  if (!THEMES.includes(theme as (typeof THEMES)[number]))
+    throw new AppError('ValidationError', `theme must be one of ${THEMES.join(', ')}`)
+  await sql`update person set theme = ${theme!} where row_id = ${who(c)}`
   return c.json({ ok: true, theme })
-})
-
-// UI-025: persist the caller's palette preference, per user.
-const PALETTES = ['classic', 'ivory', 'graphite', 'indigo'] as const
-app.post('/api/set_palette', async (c) => {
-  const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
-  if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
-    throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
-  await sql`update person set palette = ${palette!} where row_id = ${who(c)}`
-  return c.json({ ok: true, palette })
 })
 
 // I18N-001/002: per-user language + the translation catalog for a language.
@@ -976,15 +968,39 @@ app.get('/api/people/pick', async (c) => {
 app.post('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    method?: string; subject?: string; sign_in_name?: string; email?: string; send_invitation_email?: boolean
+  }
   if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
   const google = await methodOfKind('google')
-  const { created, ...identity } =
-    google && body.method === google.key && !body.subject && body.email
-      ? await inviteGoogle(c.req.param('id'), body.email, who(c))
-      : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
+  if (google && body.method === google.key && !body.subject && body.email) {
+    const { created, ...identity } = await inviteGoogle(c.req.param('id'), body.email, who(c))
+    // #430: a new invite emails the address unless the inviter said not to; a
+    // re-invite sends nothing (Resend does). A failed send keeps the invite.
+    if (!created) return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'already_invited' } }, 200)
+    if (body.send_invitation_email === false)
+      return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'not_requested' } }, 201)
+    // The invite is already committed: whatever happens to the email, answer 201.
+    const sent = await sendInvitation(identity.id, who(c), externalOrigin(c).origin).catch((err) => {
+      console.error(JSON.stringify({ level: 'error', event: 'invitation_email_error', type: err instanceof AppError ? err.type : 'InternalError' }))
+      return { invitation_email: { status: 'failed', error: 'The invitation email was not sent' }, invitation_sent_at: null }
+    })
+    return c.json({ ...identity, ...sent }, 201)
+  }
+  const { created, ...identity } = await linkIdentity(
+    c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
   // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
   return c.json(identity, created ? 201 : 200)
+})
+
+// #430: send a pending invite's email again, at most once in ten minutes. A
+// failed send is the answer here (503), since the email is all this does.
+app.post('/api/identities/:id/resend_invitation', async (c) => {
+  await assertSystemManager(who(c))
+  assertCanChangeAccess(c.get('user'))
+  const sent = await sendInvitation(c.req.param('id'), who(c), externalOrigin(c).origin)
+  if (sent.invitation_email.status === 'failed') throw new AppError('ServiceUnavailableError', sent.invitation_email.error)
+  return c.json(sent)
 })
 
 // person-resolution D3/D9: a person's identifiers. Reads follow the display
@@ -1508,7 +1524,7 @@ for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upg
         (operation === 'upgrade_app' && typeof body.planId !== 'string'))
       throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
     if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
-    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId, who(c)))
     return c.json(await activateAppUpgrade(body.name, body.version))
   })
 }
@@ -1880,6 +1896,9 @@ app.post('/api/table/:table', async (c) => {
     const action = getCollectionAction(suffix)
     if (!action || action.effect !== 'write')
       throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
+    // #432: one gate for every write action, present and future (import,
+    // import-revert, …) — a system-written Table takes none of them.
+    assertNotSystemWritten(await getMeta(table), 'changed')
     const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await action.handler({ table, args, user }), 201)
   }
@@ -1916,6 +1935,8 @@ app.post('/api/table/:table/:name', async (c) => {
   const action = getRowAction(suffix)
   if (!action || action.effect !== 'write')
     throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
+  // #432: submit, cancel, amend, rename, workflow actions and any later one.
+  assertNotSystemWritten(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
   publishDocEvent(table, name, 'updated')
