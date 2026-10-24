@@ -22,15 +22,17 @@
 
 ## 3. After #371 merges (PR 3)
 
-- [ ] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout (using `useMediaQuery`), router, Comments,
+- [x] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout (using `useMediaQuery`), router, Comments,
   FormView and #371's new screens; after person-rename (#384), AccessTokens, PermissionManager, Assignments,
   ActivityFeed and ActivityTimeline.
-- [ ] 3.2 Remove the palette: picker, client preference, server endpoint and stored column (migration), and its tests.
-- [ ] 3.3 Theme choice of light, dark or follow-the-device, and follow-the-device before sign-in.
-- [ ] 3.4 Delete every old token name and the six `fc-*` classes; delete the pending list so every rule is a hard zero.
-- [ ] 3.5 Update the visual-identity directive in `CLAUDE.md`/`AGENTS.md` and the Purpose lines of
-  `admin-ui-feedback` and `personal-preferences` that mention palettes; archive this change after
-  `/openspec-verify-change`.
+- [x] 3.2 Remove the palette: picker, client preference, server endpoint and stored column (migration), and its tests.
+- [x] 3.3 Theme choice of light, dark or follow-the-device, and follow-the-device before sign-in.
+- [x] 3.4 Delete every old token name and the six `fc-*` classes; delete the pending list so every rule is a hard zero.
+- [x] 3.5 Update the visual-identity directive in `CLAUDE.md`/`AGENTS.md` and the Purpose lines of
+  `admin-ui-feedback` and `personal-preferences` that mention palettes. (Archiving waits for section 4, which is
+  still in this change.)
+- [x] 3.6 Remove the language picker from the header and the account menu (Siraj, 24-Oct-2026: no translation
+  ships). Keep the stored language and the translation catalog, so a picker can return with a translation.
 
 ## 4. Page adoption (after stage 3)
 

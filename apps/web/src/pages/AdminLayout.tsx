@@ -20,8 +20,7 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
-import { useTheme } from '../lib/theme'
-import { PALETTES, usePalette, type Palette } from '../lib/palette'
+import { THEMES, THEME_LABEL, useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
@@ -29,7 +28,8 @@ import { PeekProvider } from '../components/Peek'
 import { ShownName, isOpaqueId } from '../lib/people'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
-import { StatusPill } from '../components/ui'
+import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
+import { Bell, Menu } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -90,9 +90,9 @@ function AdminShell() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const user = getSessionUser()
-  const { theme, toggle: toggleTheme } = useTheme()
-  const { palette, set: setPalette } = usePalette()
-  const { t, language, setLanguage } = useI18n()
+  const { theme, set: setTheme } = useTheme()
+  // No language picker until a translation ships (#380); i18n stays wired.
+  const { t } = useI18n()
   // SET-004: the instance brand (System Settings → app_name) names the
   // navbar and the browser tab — "Frappe Clone" is only the default.
   const { app_name } = useSettings()
@@ -127,17 +127,7 @@ function AdminShell() {
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [isMobileSidebar, setIsMobileSidebar] = useState(
-    () => typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_SIDEBAR_QUERY).matches,
-  )
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return
-    const media = window.matchMedia(MOBILE_SIDEBAR_QUERY)
-    const sync = () => setIsMobileSidebar(media.matches)
-    sync()
-    media.addEventListener('change', sync)
-    return () => media.removeEventListener('change', sync)
-  }, [])
+  const isMobileSidebar = useMediaQuery(MOBILE_SIDEBAR_QUERY)
 
   // #72: the avatar opens an account menu (Change password, Log out).
   const [accountOpen, setAccountOpen] = useState(false)
@@ -270,8 +260,6 @@ function AdminShell() {
       return
     }
     clearSession()
-    delete document.documentElement.dataset.palette
-    delete document.documentElement.dataset.theme
     // Leave the admin screen BEFORE dropping the cache: clearing while the
     // layout's queries are still mounted makes every observer refetch
     // token-less — 401s that api.ts answers with a hard redirect. Once
@@ -390,7 +378,9 @@ function AdminShell() {
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
     ...(canManage ? [{ id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) }] : []),
-    { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
+    { id: 'theme-light', label: 'Theme: light', run: () => setTheme('light') },
+    { id: 'theme-dark', label: 'Theme: dark (dark mode)', run: () => setTheme('dark') },
+    { id: 'theme-device', label: 'Theme: same as device', run: () => setTheme('device') },
     { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
   ]
   const commandHits =
@@ -403,8 +393,8 @@ function AdminShell() {
     <div className="flex h-full flex-col">
       <PreviewBanner />
       {/* Navbar */}
-      <header className="flex h-24 shrink-0 flex-wrap items-center gap-x-0.5 gap-y-1 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-1 sm:h-12 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
-        <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className="order-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-[var(--color-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:order-none sm:h-9 sm:w-9">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-surface px-2 py-1 sm:flex-nowrap sm:gap-4 sm:px-4">
+        <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('order-1 max-sm:min-h-11 max-sm:min-w-11 sm:order-none')}>
           <Logo className="h-7 w-7" />
         </Link>
         <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
@@ -413,7 +403,7 @@ function AdminShell() {
           aria-label="Switch application"
           value={FEATHERBASE_HOME_DESTINATION.href}
           onChange={(event) => { window.location.assign(event.target.value) }}
-          className="order-2 h-11 w-[9.5rem] shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm font-semibold text-[var(--color-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:order-none sm:h-9 sm:w-52"
+          className={inputClasses('order-2 w-[9.5rem] shrink-0 font-semibold max-sm:min-h-11 sm:order-none sm:w-52')}
         >
           <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
           {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
@@ -422,9 +412,10 @@ function AdminShell() {
           onClick={() => setSidebarOpen((o) => !o)}
           data-testid="sidebar-toggle"
           aria-label="Toggle menu"
-          className="order-3 flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] sm:order-none md:hidden"
+          aria-expanded={sidebarOpen}
+          className={iconButtonClasses('order-3 sm:order-none md:hidden')}
         >
-          ☰
+          <Menu aria-hidden size={20} />
         </button>
 
         <form onSubmit={runSearch} className="relative order-5 mx-auto w-full basis-full sm:order-none sm:basis-auto sm:max-w-md" data-testid="awesomebar">
@@ -452,10 +443,11 @@ function AdminShell() {
               }
             }}
             placeholder="Search or type a command…"
-            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 pr-10 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
+            aria-label="Search or type a command"
+            className={inputClasses('bg-canvas pr-12 focus:bg-surface')}
           />
           <kbd
-            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1 text-[10px] text-[var(--color-ink-faint)]"
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-surface px-1 text-xs text-ink-subtle"
             aria-hidden="true"
           >
             ⌘K
@@ -465,19 +457,19 @@ function AdminShell() {
             (docHits.data?.results.length ?? 0) > 0 ||
             (showRecents && pick.length > 0) ||
             searchChips.length > 0) && (
-            <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
+            <div className={cardClasses('absolute z-20 mt-1 w-full overflow-hidden py-1')} data-testid="awesomebar-results">
               {/* #101: empty-bar recents — mousedown is swallowed so the
                   input keeps focus until the click lands. */}
               {showRecents && pick.length > 0 && (
                 <div data-testid="awesomebar-recents" onMouseDown={(e) => e.preventDefault()}>
-                  <div className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                  <div className="px-3 pb-0.5 pt-1 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
                     Recent
                   </div>
                   {recentItems.map((r, i) => (
                     <RecentRow key={r.key} entry={r} selected={i === Math.min(recentSel, pick.length - 1)} onOpen={openRecent} />
                   ))}
                   {frequentItems.length > 0 && (
-                    <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                    <div className="px-3 pb-0.5 pt-1.5 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
                       Frequent
                     </div>
                   )}
@@ -499,14 +491,14 @@ function AdminShell() {
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setSearch(s.label)}
                   data-testid="awesomebar-recent-search"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
-                  <span className="text-[var(--color-ink-faint)]">↻</span> {s.label}
-                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">recent search</span>
+                  <span className="text-ink-subtle">↻</span> {s.label}
+                  <span className="ml-2 text-xs text-ink-subtle">recent search</span>
                 </button>
               ))}
               {commandHits.length > 0 && (
-                <h2 data-testid="awesomebar-commands-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Commands</h2>
+                <h2 data-testid="awesomebar-commands-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Commands</h2>
               )}
               {commandHits.map((cmd) => (
                 <button
@@ -517,13 +509,13 @@ function AdminShell() {
                     cmd.run()
                   }}
                   data-testid={`awesomebar-cmd-${cmd.id}`}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
-                  <span className="text-[var(--color-brand)]">›</span> {cmd.label}
+                  <span className="text-action">›</span> {cmd.label}
                 </button>
               ))}
               {suggestions.length > 0 && (
-                <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Tables</h2>
+                <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Tables</h2>
               )}
               {suggestions.map((d) => (
                 <Link
@@ -533,15 +525,15 @@ function AdminShell() {
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-table"
-                  className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
                   {d.row_id}
-                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{d.module} module · open list</span>
+                  <span className="ml-2 text-xs text-ink-muted">{d.module} module · open list</span>
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
               {creatableSuggestions.length > 0 && (
-                <h2 data-testid="awesomebar-create-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Create rows</h2>
+                <h2 data-testid="awesomebar-create-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Create rows</h2>
               )}
               {creatableSuggestions.slice(0, 2).map((d) => (
                 <Link
@@ -551,14 +543,14 @@ function AdminShell() {
                   params={{ table: d.row_id, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
-                  className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="block px-3 py-1.5 text-sm text-ink hover:bg-action-tint"
                 >
-                  <span className="text-[var(--color-brand)]">+</span> New {d.row_id} row
+                  <span className="text-action">+</span> New {d.row_id} row
                 </Link>
               ))}
               {/* UI-014: row hits */}
               {(docHits.data?.results.length ?? 0) > 0 && (
-                <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Records</h2>
+                <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-ink-muted">Records</h2>
               )}
               {docHits.data?.results.map((h) => (
                 <button
@@ -566,69 +558,36 @@ function AdminShell() {
                   type="button"
                   onClick={() => openDoc(h)}
                   data-testid="awesomebar-doc"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
                   {h.title}
                   {h.title !== h.row_id && (
-                    <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
+                    <span className="ml-2 text-xs text-ink-subtle">{h.row_id}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{searchHitKind(h)}</span>
+                  <span className="ml-2 text-xs text-ink-muted">{searchHitKind(h)}</span>
                 </button>
               ))}
             </div>
           )}
         </form>
 
-        <div className="order-4 flex shrink-0 items-center gap-1 sm:order-none sm:gap-3">
-          {/* On narrow screens these selects move into the account menu —
-              the primary controls and search already consume both mobile
-              header rows (PR #92 review). */}
-          <select
-            data-testid="language-select"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            title="Language"
-            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)] md:block"
-          >
-            <option value="en">EN</option>
-            <option value="fr">FR</option>
-            <option value="es">ES</option>
-          </select>
-          <select
-            data-testid="palette-select"
-            value={palette}
-            onChange={(e) => setPalette(e.target.value as Palette)}
-            title="Color palette"
-            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs capitalize text-[var(--color-ink)] md:block"
-          >
-            {PALETTES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={toggleTheme}
-            data-testid="theme-toggle"
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
-          >
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
+        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:ml-0 sm:gap-2">
           <div className="relative" title="Notifications">
-            <span className="text-[var(--color-ink-muted)]" data-testid="notif-bell">
-              🔔
+            {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
+            <span className="flex size-9 items-center justify-center text-ink-muted" data-testid="notif-bell">
+              <Bell aria-hidden size={20} />
+              <span className="sr-only">Notifications</span>
             </span>
             {(unread.data?.count ?? 0) > 0 && (
               <span
-                className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold text-white"
+                className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-negative px-1 text-xs font-semibold text-action-ink"
                 data-testid="unread-count"
               >
                 {unread.data?.count}
               </span>
             )}
           </div>
-          {/* #72: the avatar is the account menu — Change password + Log out. */}
+          {/* #72: the avatar is the account menu — theme, password, sign-in methods, log out. */}
           <div className="relative" ref={accountRef}>
             <button
               onClick={() => setAccountOpen((o) => !o)}
@@ -636,57 +595,48 @@ function AdminShell() {
               title={user?.full_name || user?.email || user?.row_id}
               aria-haspopup="menu"
               aria-expanded={accountOpen}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
+              className={iconButtonClasses('rounded-full hover:bg-transparent')}
             >
-              <span aria-hidden="true">{initials}</span>
+              <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink">
+                {initials}
+              </span>
               <span className="sr-only">{user?.full_name || user?.email || user?.row_id}</span>
             </button>
             {accountOpen && (
               <div
-                className="fc-card absolute right-0 top-9 z-30 w-56 overflow-hidden py-1"
+                className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')}
                 data-testid="account-menu"
                 role="menu"
               >
-                <div className="border-b border-[var(--color-border)] px-3 py-2">
-                  <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+                <div className="border-b border-border px-3 py-2">
+                  <p className="truncate text-sm font-medium text-ink">
                     {user?.full_name || user?.row_id}
                   </p>
                   {user?.email && (
-                    <p className="truncate text-xs text-[var(--color-ink-faint)]">{user.email}</p>
+                    <p className="truncate text-xs text-ink-subtle">{user.email}</p>
                   )}
                 </div>
-                {/* Mobile home of the navbar selects (hidden there below md). */}
-                <div className="border-b border-[var(--color-border)] px-3 py-2 md:hidden">
-                  <label className="fc-label" htmlFor="palette-select-mobile">
-                    {t('Palette')}
-                  </label>
-                  <select
-                    id="palette-select-mobile"
-                    data-testid="palette-select-mobile"
-                    value={palette}
-                    onChange={(e) => setPalette(e.target.value as Palette)}
-                    className="fc-input capitalize"
-                  >
-                    {PALETTES.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
+                {/* #380: one theme choice — light, dark, or follow the device. */}
+                <div className="border-b border-border px-3 py-2" role="group" aria-labelledby="account-theme-label">
+                  <p id="account-theme-label" className={labelClasses()}>{t('Theme')}</p>
+                  <div className="grid grid-cols-3 gap-1" data-testid="theme-choice">
+                    {THEMES.map((choice) => (
+                      <button
+                        key={choice}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={theme === choice}
+                        onClick={() => setTheme(choice)}
+                        data-testid={`theme-${choice}`}
+                        className={buttonClasses({
+                          variant: theme === choice ? 'primary' : 'secondary',
+                          className: 'px-1 text-xs',
+                        })}
+                      >
+                        {t(THEME_LABEL[choice])}
+                      </button>
                     ))}
-                  </select>
-                  <label className="fc-label mt-2" htmlFor="language-select-mobile">
-                    {t('Language')}
-                  </label>
-                  <select
-                    id="language-select-mobile"
-                    data-testid="language-select-mobile"
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
-                    className="fc-input"
-                  >
-                    <option value="en">EN</option>
-                    <option value="fr">FR</option>
-                    <option value="es">ES</option>
-                  </select>
+                  </div>
                 </div>
                 <button
                   role="menuitem"
@@ -695,7 +645,7 @@ function AdminShell() {
                     setPwModalOpen(true)
                   }}
                   data-testid="account-change-password"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
                   {t('Change password')}
                 </button>
@@ -704,7 +654,7 @@ function AdminShell() {
                   to="/featherbase/admin/sign-in-methods"
                   onClick={() => setAccountOpen(false)}
                   data-testid="account-sign-in-methods"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
                   {t('Sign-in methods')}
                 </Link>
@@ -712,7 +662,7 @@ function AdminShell() {
                   role="menuitem"
                   onClick={logout}
                   data-testid="logout"
-                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
                 >
                   {t('Log out')}
                 </button>
@@ -727,7 +677,7 @@ function AdminShell() {
         {/* UI-025: on mobile, a backdrop closes the drawer. */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 top-24 z-20 bg-black/30 sm:top-12 md:hidden"
+            className="absolute inset-0 z-20 bg-scrim/30 md:hidden"
             data-testid="sidebar-backdrop"
             onClick={() => setSidebarOpen(false)}
           />
@@ -741,7 +691,7 @@ function AdminShell() {
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
           }}
-          className={`fixed bottom-0 left-0 top-24 z-30 flex w-64 flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-transform sm:top-12 md:static md:top-0 md:w-60 md:shrink-0 md:translate-x-0 ${
+          className={`absolute inset-y-0 left-0 z-30 flex w-64 flex-col overflow-y-auto border-r border-border bg-surface transition-transform md:static md:w-60 md:shrink-0 md:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -750,7 +700,7 @@ function AdminShell() {
             <Link
               to="/featherbase/admin/new-table"
               data-testid="new-table-link"
-              className="fc-btn-primary w-full justify-center"
+              className={buttonClasses({ variant: 'primary', className: 'w-full justify-center' })}
             >
               + New Table
             </Link>
@@ -758,7 +708,7 @@ function AdminShell() {
               to="/featherbase/admin/import"
               search={{ table: undefined }}
               data-testid="import-data-link"
-              className="fc-btn mt-2 w-full justify-center"
+              className={buttonClasses({ className: 'mt-2 w-full justify-center' })}
             >
               Import Data
             </Link>
@@ -767,7 +717,7 @@ function AdminShell() {
             <Link
               to="/featherbase/admin/imports"
               data-testid="past-imports-link"
-              className="mt-1 block text-center text-xs text-[var(--color-ink-faint)] underline"
+              className="mt-1 block text-center text-xs text-ink-subtle underline"
             >
               Past imports
             </Link>
@@ -778,7 +728,7 @@ function AdminShell() {
               grouping and curation moved there, nothing is hidden. */}
           <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
             {homePages.isLoading && (
-              <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
+              <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
             )}
             {(homePages.data?.pages ?? []).map((p) => (
               <Link
@@ -786,10 +736,10 @@ function AdminShell() {
                 to="/featherbase/admin/home/$name"
                 params={{ name: p.row_id }}
                 data-testid={`home-page-link-${p.row_id}`}
-                className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
+                className="block rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle"
                 activeProps={{
                   className:
-                    'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                    'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
                 }}
               >
                 {p.icon ? `${p.icon} ` : ''}
@@ -800,15 +750,15 @@ function AdminShell() {
           {/* #101 Phase 2: recall without a keystroke — the same per-user
               buffer the command bar reads. */}
           {(sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
-            <div className="border-t border-[var(--color-border)] px-2 py-2" data-testid="sidebar-recents">
-              <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+            <div className="border-t border-border px-2 py-2" data-testid="sidebar-recents">
+              <p className="px-2 pb-0.5 pt-1 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
                 Recent
               </p>
               {sidebarRecent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
-                <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                <p className="px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
                   Frequent
                 </p>
               )}
@@ -817,16 +767,16 @@ function AdminShell() {
               ))}
             </div>
           )}
-          <div className="border-t border-[var(--color-border)] px-2 py-2">
+          <div className="border-t border-border px-2 py-2">
             {/* #100 pattern 4: the cross-filter Explore surface. */}
             <Link
               to="/featherbase/admin/explore"
               search={{ root: undefined, chain: undefined, select: undefined }}
               data-testid="explore-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
               activeProps={{
                 className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
               }}
             >
               Explore
@@ -834,10 +784,10 @@ function AdminShell() {
             <Link
               to="/featherbase/admin/all-tables"
               data-testid="all-tables-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
               activeProps={{
                 className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
               }}
             >
               All tables
@@ -846,10 +796,10 @@ function AdminShell() {
             <Link
               to="/featherbase/admin/access-tokens"
               data-testid="access-tokens-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
               activeProps={{
                 className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
               }}
             >
               Access tokens
@@ -887,7 +837,7 @@ function AdminShell() {
         </aside>
 
         {/* Page canvas */}
-        <main className="min-w-0 flex-1 overflow-auto bg-[var(--color-canvas)] p-4 sm:p-6">
+        <main className="min-w-0 flex-1 overflow-auto bg-canvas p-4 sm:p-6">
           <div className="mx-auto max-w-5xl">
             <Outlet />
           </div>
@@ -900,7 +850,7 @@ function AdminShell() {
 
 // #72: change the session user's own password. Posts { password } to
 // /api/set_password (the endpoint scopes to the caller when no user is given).
-// Mirrors the ResetPassword page's form: fc-card / fc-label / fc-input, a
+// Mirrors the ResetPassword page's form: card, label and input recipes, a
 // client-side confirm check, then a success state.
 // #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
 // the rail's width, ★-marked when it comes from the Frequent ranking.
@@ -935,14 +885,14 @@ function SidebarRecentRow({
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
       title={isOpaqueId(entry.label) ? entry.sub : entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
-      className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
+      className="block w-full rounded-md px-2 py-1 text-left hover:bg-subtle"
     >
-      <span className="block truncate text-sm text-[var(--color-ink)]">
-        {frequent && <span className="mr-1 text-[var(--color-warn)]">★</span>}
+      <span className="block truncate text-sm text-ink">
+        {frequent && <span className="mr-1 text-caution">★</span>}
         <ShownName id={entry.label} />
       </span>
       {entry.sub && (
-        <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
+        <span className="block truncate text-xs text-ink-subtle">{entry.sub}</span>
       )}
     </a>
   )
@@ -966,18 +916,19 @@ function RecentRow({
       type="button"
       onClick={() => onOpen(entry)}
       data-testid="awesomebar-recent"
-      className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)] ${
-        selected ? 'bg-[var(--color-brand-tint)]' : ''
+      aria-current={selected || undefined}
+      className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint ${
+        selected ? 'bg-action-tint' : ''
       }`}
     >
-      <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
+      <span className="w-10 shrink-0 text-xs font-semibold uppercase tracking-wide text-action">
         {RECENT_KIND_LABEL[entry.kind]}
       </span>
       <span className="min-w-0 flex-1 truncate">
         <ShownName id={entry.label} />
-        {entry.sub && <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{entry.sub}</span>}
+        {entry.sub && <span className="ml-2 text-xs text-ink-subtle">{entry.sub}</span>}
       </span>
-      <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">{ago(last)}</span>
+      <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{ago(last)}</span>
     </button>
   )
 }
@@ -1022,21 +973,21 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-4"
+      className="fixed inset-0 z-40 flex items-center justify-center bg-scrim/40 px-4"
       data-testid="change-password-modal"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="fc-card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-label="Change password">
-        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Change password</h2>
+      <div className={cardClasses('w-full max-w-sm p-6')} role="dialog" aria-modal="true" aria-label="Change password">
+        <h2 className="mb-4 text-base font-semibold text-ink">Change password</h2>
         {done ? (
           <div className="space-y-4" data-testid="change-password-done">
-            <p className="text-sm text-[var(--color-ink)]">Your password has been updated.</p>
+            <p className="text-sm text-ink">Your password has been updated.</p>
             <button
               type="button"
               onClick={onClose}
-              className="fc-btn-primary w-full justify-center py-2"
+              className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
               data-testid="change-password-close"
             >
               Done
@@ -1045,7 +996,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         ) : (
           <form className="space-y-4" data-testid="change-password-form" onSubmit={onSubmit}>
             <div>
-              <label className="fc-label" htmlFor="account-new-password">
+              <label className={labelClasses()} htmlFor="account-new-password">
                 New password
               </label>
               <input
@@ -1054,12 +1005,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 name="password"
                 autoComplete="new-password"
                 autoFocus
-                className="fc-input"
+                className={inputClasses()}
                 data-testid="change-password-new"
               />
             </div>
             <div>
-              <label className="fc-label" htmlFor="account-confirm-password">
+              <label className={labelClasses()} htmlFor="account-confirm-password">
                 Confirm password
               </label>
               <input
@@ -1067,20 +1018,20 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 type="password"
                 name="confirm"
                 autoComplete="new-password"
-                className="fc-input"
+                className={inputClasses()}
                 data-testid="change-password-confirm"
               />
             </div>
             {error && (
-              <p className="text-sm text-[var(--color-danger)]" data-testid="change-password-error">
+              <p className="text-sm text-negative" data-testid="change-password-error">
                 {error}
               </p>
             )}
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="fc-btn" data-testid="change-password-cancel">
+              <button type="button" onClick={onClose} className={buttonClasses()} data-testid="change-password-cancel">
                 Cancel
               </button>
-              <button type="submit" disabled={busy} className="fc-btn-primary" data-testid="change-password-submit">
+              <button type="submit" disabled={busy} className={buttonClasses({ variant: 'primary' })} data-testid="change-password-submit">
                 {busy ? 'Saving…' : 'Change password'}
               </button>
             </div>

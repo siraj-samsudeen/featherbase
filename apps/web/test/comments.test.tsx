@@ -122,7 +122,7 @@ test('a stored mention renders as its own highlighted node, and notifies', async
   // the surrounding sentence.
   const mention = within(screen.getByTestId('comment-content')).getByText('@[Ravi Menon]')
   expect(mention.tagName).toBe('SPAN')
-  expect(mention.className).toContain('--color-brand')
+  expect(mention.className).toContain('text-action')
 
   const notifs = (await admin.get(
     `/api/table/Notification%20Log?filters=${encodeURIComponent(

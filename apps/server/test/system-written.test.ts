@@ -327,7 +327,6 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/saved_views/:name/share': 'saved views',
     'DELETE /api/saved_views/:name': 'saved views',
     'POST /api/set_theme': 'personal preference',
-    'POST /api/set_palette': 'personal preference',
     'POST /api/set_language': 'personal preference',
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',

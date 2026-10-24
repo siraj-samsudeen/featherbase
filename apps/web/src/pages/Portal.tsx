@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
+import { cardClasses } from '../components/ui'
 
 type Row = Record<string, unknown>
 
@@ -13,13 +14,13 @@ type Row = Record<string, unknown>
 function PortalShell({ children }: { children: React.ReactNode }) {
   const user = getSessionUser()
   return (
-    <div className="min-h-screen bg-[var(--color-canvas)]">
-      <header className="flex h-12 items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
+    <div className="min-h-screen bg-canvas">
+      <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">F</span>
-          <span className="text-sm font-semibold text-[var(--color-ink)]">Portal</span>
+          <span className="flex h-6 w-6 items-center justify-center rounded bg-action text-xs font-bold text-action-ink">F</span>
+          <span className="text-sm font-semibold text-ink">Portal</span>
         </div>
-        <div className="flex items-center gap-3 text-xs text-[var(--color-ink-muted)]">
+        <div className="flex items-center gap-3 text-xs text-ink-muted">
           <span data-testid="portal-user">{user?.full_name || user?.email || user?.row_id}</span>
           <button
             data-testid="portal-logout"
@@ -27,7 +28,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
               clearSession()
               window.location.href = '/featherbase/login'
             }}
-            className="hover:text-[var(--color-ink)]"
+            className="hover:text-ink"
           >
             Log out
           </button>
@@ -62,13 +63,13 @@ export function PortalListPage({ table }: { table: string }) {
 
   return (
     <PortalShell>
-      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]" data-testid="portal-title">
+      <h1 className="mb-4 text-xl font-semibold text-ink" data-testid="portal-title">
         My {table}
       </h1>
-      {meta.isError && <p className="text-sm text-red-600" data-testid="portal-error">Cannot load {table}</p>}
-      <div className="fc-card overflow-x-auto">
+      {meta.isError && <p className="text-sm text-negative" data-testid="portal-error">Cannot load {table}</p>}
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm" data-testid="portal-list">
-          <thead className="bg-[var(--color-subtle)] text-left text-xs text-[var(--color-ink-muted)]">
+          <thead className="bg-subtle text-left text-xs text-ink-muted">
             <tr>
               <th className="px-3 py-2 font-medium">Name</th>
               {columns.map((c) => (
@@ -78,12 +79,12 @@ export function PortalListPage({ table }: { table: string }) {
           </thead>
           <tbody>
             {rows.data?.data.map((row) => (
-              <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
+              <tr key={String(row.row_id)} className="border-t border-border" data-testid="portal-row">
                 <td className="px-3 py-1.5">
                   <Link
                     to="/featherbase/portal/$table/$name"
                     params={{ table, name: String(row.row_id) }}
-                    className="text-[var(--color-brand)] hover:underline"
+                    className="text-action hover:underline"
                   >
                     {String(row.row_id)}
                   </Link>
@@ -96,7 +97,7 @@ export function PortalListPage({ table }: { table: string }) {
           </tbody>
         </table>
         {rows.data?.data.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]" data-testid="portal-empty">
+          <p className="px-3 py-6 text-center text-sm text-ink-subtle" data-testid="portal-empty">
             You have no rows yet.
           </p>
         )}
@@ -121,23 +122,23 @@ export function PortalRowPage({ table, name }: { table: string; name: string }) 
 
   return (
     <PortalShell>
-      <Link to="/featherbase/portal/$table" params={{ table }} className="mb-4 inline-block text-sm text-[var(--color-brand)] hover:underline">
+      <Link to="/featherbase/portal/$table" params={{ table }} className="mb-4 inline-block text-sm text-action hover:underline">
         ← Back to my {table}
       </Link>
       {forbidden ? (
-        <div className="fc-card p-6 text-center" data-testid="portal-forbidden">
-          <p className="text-sm font-medium text-[var(--color-danger)]">You don't have access to this row.</p>
+        <div className={cardClasses('p-6 text-center')} data-testid="portal-forbidden">
+          <p className="text-sm font-medium text-negative">You don't have access to this row.</p>
         </div>
       ) : doc.isLoading || meta.isLoading ? (
-        <p className="text-sm text-[var(--color-ink-faint)]">Loading…</p>
+        <p className="text-sm text-ink-subtle">Loading…</p>
       ) : doc.data ? (
-        <div className="fc-card p-6" data-testid="portal-doc">
-          <h1 className="mb-4 text-lg font-semibold text-[var(--color-ink)]">{name}</h1>
+        <div className={cardClasses('p-6')} data-testid="portal-doc">
+          <h1 className="mb-4 text-lg font-semibold text-ink">{name}</h1>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {columns.map((c) => (
               <div key={c.column_name}>
-                <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">{c.label ?? c.column_name}</dt>
-                <dd className="text-sm text-[var(--color-ink)]" data-testid={`portal-field-${c.column_name}`}>
+                <dt className="text-xs uppercase tracking-wide text-ink-muted">{c.label ?? c.column_name}</dt>
+                <dd className="text-sm text-ink" data-testid={`portal-field-${c.column_name}`}>
                   {val(doc.data[c.column_name])}
                 </dd>
               </div>

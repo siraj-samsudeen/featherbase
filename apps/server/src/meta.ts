@@ -327,7 +327,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
   // #432: system-written belongs to the storage, not to the definition's own
   // flag — any Table that resolves to a system-written Table's relation is
   // system-written too, whatever its kind or letter case. (The column exists
-  // from 0109 on; earlier migrations load meta without it.)
+  // from 0113 on; earlier migrations load meta without it.)
   if ('system_written' in dt && !meta.system_written) {
     const relation = resolvedRelation(dt as { name: string })
     const owners = await sql<{ name: string; physical_schema: string | null; physical_relation: string | null }[]>`
