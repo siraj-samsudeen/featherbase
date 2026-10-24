@@ -688,7 +688,7 @@ describe('#395: cli mail:test', () => {
     }
   })
 
-  it('masks the recipient when the relay echoes it in a refusal', async () => {
+  it('masks every address the relay echoes, however the recipient was written', async () => {
     const smtp = await startSmtp({
       onRcptTo(address, _session, cb) {
         const err = new Error(`5.1.1 <${address.address}> mailbox unavailable`) as Error & { responseCode: number }
@@ -697,14 +697,14 @@ describe('#395: cli mail:test', () => {
       },
     })
     try {
-      const err = (await run(['mail:test', 'Ops@Example.test'], {
+      const err = (await run(['mail:test', 'Ops <Ops@Example.test>, second@example.test'], {
         SMTP_HOST: '127.0.0.1',
         SMTP_PORT: String(smtp.port),
         MAIL_FROM: FROM,
       }).catch((e: unknown) => e)) as { code?: number; stderr?: string }
       expect(err.code).toBe(1)
-      expect(err.stderr).toContain('server reply: 550 5.1.1 <[recipient]> mailbox unavailable')
-      expect(err.stderr?.toLowerCase()).not.toContain('ops@example.test')
+      expect(err.stderr).toContain('server reply: 550 5.1.1 <[address]> mailbox unavailable')
+      for (const a of ['ops@example.test', 'second@example.test']) expect(err.stderr?.toLowerCase()).not.toContain(a)
     } finally {
       await smtp.close()
     }

@@ -241,7 +241,7 @@ pnpm --filter server cli mail:test <your-address>
 
 It exits 1 with `Mail delivery failed (<code> [<SMTP reply code>])` when the relay
 refuses, and first prints the relay's own reply line as
-`mail:test: server reply: …`, with the recipient, `SMTP_USER` and
+`mail:test: server reply: …`, with every email address in it and
 `SMTP_PASSWORD` masked out. That line is printed by `mail:test` only; the
 stored error and the log line carry the code alone. Codes: `EAUTH` = wrong user or app password; `ETLS`/`ESOCKET`/`ECONNECTION` =
 TLS or network; `EENVELOPE` = a sender or recipient the relay rejected. A

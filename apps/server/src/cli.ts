@@ -379,11 +379,13 @@ async function main() {
         await sendTestEmail(to)
       } catch (err) {
         // The server's own reply says why (a 421 names the command it
-        // refused). The recipient and credentials are masked out of it.
+        // refused). Every address in it is masked (a relay may echo any
+        // envelope address, however the recipient was written), and so are
+        // the credentials.
         if (err instanceof MailDeliveryError && err.serverReply) {
           let reply = err.serverReply
-          for (const [secret, mask] of [[to, '[recipient]'], [smtp?.password, '[password]'], [smtp?.user, '[user]']] as const)
-            if (secret) reply = reply.replace(new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), mask)
+          if (smtp?.password) reply = reply.split(smtp.password).join('[password]')
+          reply = reply.replace(/[^\s<>()\[\],;:"']+@[^\s<>()\[\],;:"']+/g, '[address]')
           console.error(`mail:test: server reply: ${reply}`)
         }
         throw err
