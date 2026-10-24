@@ -60,22 +60,6 @@ data.
 - **THEN** the chart appears on the dashboard and reflects new orders the
   next time it loads
 
-### Requirement: Ask a precise question with a query report
-
-A query report SHALL run an admin-authored question against the data and
-fill in the user's own values for its blanks; it can only read data, never
-change it. Only a System Manager may write or change the question itself.
-Anyone who can open the report sees its results in full, not narrowed to
-what they could otherwise read.
-
-#### Scenario: Run a query report with a filter
-
-- **WHEN** a query report asks for orders placed "from" a date and the user
-  fills that date in and runs it
-- **THEN** only orders from that date onward appear
-- **AND** running it can never change any data, however the question is
-  written
-
 ### Requirement: Run a script report
 
 A script report SHALL show its own declared filters and, once run, return
