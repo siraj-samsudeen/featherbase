@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import postgres from 'postgres'
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
@@ -132,6 +132,17 @@ describe('release preflight: access configuration', () => {
   const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'
   const SIGNUP_OK = 'no sign-in method creates new people for anyone here'
   const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
+
+  // These cases run preflight as production; give it the SITE_URL a production
+  // server must have (#430) so they reach the access checks they are about.
+  let siteUrlBefore = ''
+  beforeEach(() => {
+    siteUrlBefore = config.siteUrl
+    ;(config as { siteUrl: string }).siteUrl = 'https://featherbase.example.test'
+  })
+  afterEach(() => {
+    ;(config as { siteUrl: string }).siteUrl = siteUrlBefore
+  })
 
   async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
     await sql`insert into permission ${sql({ row_id: `p437-${role}-${refTable}`.replaceAll(' ', '-'), ref_table: refTable, role, tier: 'basic', created_by: 'Administrator', updated_by: 'Administrator', ...flags })}`
