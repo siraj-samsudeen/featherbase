@@ -64,7 +64,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
               ◎
             </button>
           )}
-          {!c.via && (
+          {!c.via && !c.system_written && (
             <Link
               to="/featherbase/admin/$table/$name"
               params={{ table: c.table, name: 'new' }}
@@ -208,7 +208,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         >
           Open as filtered list ↗
         </Link>
-        {!connection.via && (
+        {!connection.via && !connection.system_written && (
           <Link
             to="/featherbase/admin/$table/$name"
             params={{ table: connection.table, name: 'new' }}

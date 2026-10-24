@@ -16,6 +16,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workfl
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { assertNotSystemWritten } from './system-written'
 import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
@@ -605,12 +606,53 @@ export interface SaveOptions {
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
   return appOperation(() => saveDocImpl(...args))
 }
+// #432: the public save. A system-written Table is refused here, ahead of any
+// permission check, so no principal's bypass reaches the write.
 async function saveDocImpl(
   table: string,
   values: RowValues,
   user = 'Administrator',
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
+): Promise<RowValues> {
+  assertNotSystemWritten(await getMeta(table), mode === 'insert' ? 'created' : 'saved')
+  return writeDoc(table, values, user, mode, opts)
+}
+
+// #432: the trusted path for the server's own writers into a system-written
+// Table (the import logger today), reached by importing it, never through any
+// route, action or script. A plain insert of exactly the given columns: no
+// hooks, no Server Scripts, no defaults, no validation — nothing a person can
+// configure may rewrite, block or drop the record.
+export async function saveSystemRow(table: string, values: RowValues, actor: string): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (!meta.system_written)
+    throw new AppError('ValidationError', `${table} is not system-written; use saveDoc`)
+  const known = new Set(meta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type)).map((f) => f.column_name))
+  const unknown = Object.keys(values).filter((k) => !known.has(k) && k !== ROW_KEY)
+  if (unknown.length) throw new AppError('ValidationError', `Unknown ${table} columns: ${unknown.join(', ')}`)
+  const row: RowValues = {}
+  for (const [k, v] of Object.entries(values)) if (v !== undefined && k !== ROW_KEY) row[k] = v
+  // created_at/updated_at are left to the column default, now(): history is
+  // dated by the database clock, the same clock that dates its Table, so a
+  // skewed app clock can never make a record look older than its Table.
+  const [saved] = await sql`insert into ${sql(await tableRelation(table))} ${sql({
+    ...row,
+    [meta.row_key]: String(values[ROW_KEY] ?? '') || hashRowId(),
+    created_by: actor,
+    updated_by: actor,
+    status: 'draft',
+    position: 0,
+  } as unknown as Record<string, never>)} returning *`
+  return { table, ...(saved as RowValues) }
+}
+
+async function writeDoc(
+  table: string,
+  values: RowValues,
+  user: string,
+  mode: 'upsert' | 'insert',
+  opts: SaveOptions,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   if (ENGINE_MANAGED.has(table))
@@ -1037,13 +1079,17 @@ async function recordVersion(
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
-  const now = new Date()
+  // #432: dated by the database's wall clock, like its Table, so a skewed
+  // app clock never misdates history. clock_timestamp(), not now(): the
+  // import's revert trail ties a version to its run by comparing against a
+  // run start read from the same clock.
+  const [{ at }] = await tx<{ at: Date }[]>`select clock_timestamp() as at`
   await tx`insert into version ${tx({
     [ROW_KEY]: hashRowId(),
     created_by: user,
     updated_by: user,
-    created_at: now,
-    updated_at: now,
+    created_at: at,
+    updated_at: at,
     status: 'draft',
     position: 0,
     ref_table: meta.name,
@@ -1064,6 +1110,7 @@ async function setStatus(
   user: string,
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, event === 'on_submit' ? 'submitted' : 'cancelled')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1136,6 +1183,7 @@ async function amendDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'amended')
   await assertSecurityWriter(table, user)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
@@ -1179,6 +1227,7 @@ async function deleteDocImpl(
   opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'deleted')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
@@ -1338,6 +1387,7 @@ async function renameDocImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'renamed')
   await assertSecurityWriter(table, user)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
@@ -1492,6 +1542,7 @@ async function saveSingleImpl(
   user = 'Administrator',
 ): Promise<RowValues> {
   const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'saved')
   await assertSecurityWriter(table, user)
   if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
   await assertPermission(user, table, 'write')

@@ -49,6 +49,7 @@
 //     the backstop for a migration that cannot apply, not the primary path.
 import postgres from 'postgres'
 import { config } from '../src/config'
+import { ensureExternalDatabase } from './external-database'
 
 const SHARED_TABLES = ['background_job', 'user_event']
 
@@ -71,6 +72,7 @@ export async function setup() {
       `Refusing to run: ${pending.length} migration(s) did not apply:\n  ${pending.join('\n  ')}`,
     )
   await appSql.end({ timeout: 5 }).catch(() => {})
+  await ensureExternalDatabase()
 
   const sql = postgres(config.databaseUrl, { onnotice: () => {}, prepare: false })
   try {

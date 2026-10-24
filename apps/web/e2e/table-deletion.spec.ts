@@ -89,15 +89,15 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
     .visit(`/admin/${ENC}`)
     .assertText(`${DT} was deleted by Administrator on`)
 
-  // J1.5 — no Import Log entry names the deleted Table (swept, DEL-R4);
-  // witnessed at the contract tier where the whole log is visible unpaginated.
+  // J1.5 — the Import Log entry outlives the Table (#432: history survives
+  // its Table); witnessed at the contract tier, unpaginated.
   const log = await request.get(
     `/api/table/${encodeURIComponent('Import Log')}:count?filters=${encodeURIComponent(
       JSON.stringify([['ref_table', '=', DT]]),
     )}`,
     { headers },
   )
-  expect(((await log.json()) as { count: number }).count).toBe(0)
+  expect(((await log.json()) as { count: number }).count).toBeGreaterThan(0)
   // And the definition is truly gone at the contract tier too.
   expect((await request.get(`/api/table/${ENC}:meta`, { headers })).status()).toBe(404)
 })
