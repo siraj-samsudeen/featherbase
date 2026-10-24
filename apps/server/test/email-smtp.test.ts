@@ -18,6 +18,7 @@ import {
   sendTestEmail,
   sendViaSmtp,
   smtpTransportOptions,
+  type MailDeliveryError,
 } from '../src/email'
 import { requestPasswordReset } from '../src/password-reset'
 
@@ -120,7 +121,7 @@ async function closedPort(): Promise<number> {
   return port
 }
 
-const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM'] as const
+const SMTP_VARS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'MAIL_FROM', 'SMTP_NAME'] as const
 const saved: Record<string, string | undefined> = {}
 function setSmtpEnv(vars: Partial<Record<(typeof SMTP_VARS)[number], string>>) {
   for (const k of SMTP_VARS) {
@@ -139,7 +140,92 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// A relay that greets like Google's smtp-relay.gmail.com: an EHLO name that
+// is not a fully qualified domain (nodemailer's `[127.0.0.1]` fallback when
+// the container hostname has no dot) gets `421 4.7.0 ... (EHLO)` and a closed
+// connection. Records each EHLO name it was given; never accepts mail.
+async function startEhloStrictRelay() {
+  const names: string[] = []
+  const server = createServer((sock) => {
+    sock.write('220 relay.example.test ESMTP ready\r\n')
+    sock.on('data', (buf) => {
+      const line = buf.toString('utf8').trim()
+      const m = /^EHLO (.+)$/i.exec(line)
+      if (!m) return void sock.end('221 bye\r\n')
+      names.push(m[1])
+      if (/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(m[1])) sock.end('554 5.7.0 accepted the name; this test relay stops here\r\n')
+      else sock.end('421 4.7.0 Try again later, closing connection. (EHLO) a1-test.0 - gsmtp\r\n')
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return {
+    port: (server.address() as AddressInfo).port,
+    names,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  }
+}
+
 const FROM = 'Feather Dash <noreply@jeyarama.test>'
+
+describe('EHLO name: never the container hostname', () => {
+  const name = (env: Record<string, string>) => readSmtpConfig({ SMTP_HOST: 'h', ...env })!.name
+
+  test('SMTP_NAME wins, then the MAIL_FROM domain, then the SITE_URL host', () => {
+    expect(name({ SMTP_NAME: 'mail.jeyarama.com', MAIL_FROM: FROM, SITE_URL: 'https://dash.example.test' })).toBe('mail.jeyarama.com')
+    expect(name({ MAIL_FROM: 'Feather Dash <noreply@Jeyarama.COM>', SITE_URL: 'https://dash.example.test' })).toBe('jeyarama.com')
+    expect(name({ MAIL_FROM: 'noreply@jeyarama.com' })).toBe('jeyarama.com')
+    expect(name({ SITE_URL: 'https://dash.example.test:8443/x' })).toBe('dash.example.test')
+  })
+
+  test('with none of them, the sender address supplies it at send time; it is never left to nodemailer', () => {
+    expect(name({})).toBeUndefined()
+    expect(smtpTransportOptions({ host: 'h', port: 587, name: 'jeyarama.com' }).name).toBe('jeyarama.com')
+  })
+
+  test('an SMTP_NAME that is not a hostname is a configuration error', () => {
+    for (const bad of ['jeyarama.com\r\nRCPT TO:<x@y>', 'has space.com', 'under_score.com'])
+      expect(() => readSmtpConfig({ SMTP_HOST: 'h', SMTP_NAME: bad })).toThrow(
+        expect.objectContaining({ code: 'ECONFIG', message: expect.stringMatching(/SMTP_NAME/) }),
+      )
+  })
+
+  test('a relay that refuses a non-FQDN EHLO accepts the MAIL_FROM domain', async () => {
+    const relay = await startEhloStrictRelay()
+    try {
+      const cfg = readSmtpConfig({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(relay.port), MAIL_FROM: FROM })!
+      // The relay stops after EHLO either way; what matters is which reply.
+      await expect(sendViaSmtp(cfg, { to: 'ops@example.test', subject: 's', body: 'b' })).rejects.not.toMatchObject({ responseCode: 421 })
+      expect(relay.names).toEqual(['jeyarama.test'])
+    } finally {
+      await relay.close()
+    }
+  })
+
+  test('without a name, the Email Account sender domain is used, not the hostname fallback', async () => {
+    const relay = await startEhloStrictRelay()
+    try {
+      const cfg = readSmtpConfig({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(relay.port) })!
+      await sendViaSmtp(cfg, { to: 'ops@example.test', from: 'helpdesk@jeyarama.test', subject: 's', body: 'b' }).catch(() => {})
+      expect(relay.names).toEqual(['jeyarama.test'])
+    } finally {
+      await relay.close()
+    }
+  })
+
+  test("the failure carries the relay's reply text, outside the stored message", async () => {
+    const relay = await startEhloStrictRelay()
+    try {
+      // An explicit dotless name reproduces what the container hostname did.
+      const cfg = readSmtpConfig({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(relay.port), MAIL_FROM: FROM, SMTP_NAME: 'a1b2c3d4' })!
+      const err = await sendViaSmtp(cfg, { to: 'ops@example.test', subject: 's', body: 'b' }).catch((e: unknown) => e)
+      expect(err).toMatchObject({ code: 'ECONNECTION', responseCode: 421, message: 'Mail delivery failed (ECONNECTION 421)' })
+      expect((err as MailDeliveryError).serverReply).toBe('421 4.7.0 Try again later, closing connection. (EHLO) a1-test.0 - gsmtp')
+      expect(Object.keys(err as object)).not.toContain('serverReply')
+    } finally {
+      await relay.close()
+    }
+  })
+})
 
 describe('#395: transport selection and options', () => {
   test('no SMTP_HOST means no SMTP config, so the sink stays the transport', () => {
@@ -552,7 +638,7 @@ describe('#395: cli mail:test', () => {
     promisify(execFile)(path.join(serverDir, 'node_modules', '.bin', 'tsx'), [path.join(serverDir, 'src', 'cli.ts'), ...args], {
       cwd: serverDir,
       timeout: 60_000,
-      env: { ...process.env, SMTP_USER: '', SMTP_PASSWORD: '', NODE_EXTRA_CA_CERTS: path.join(certDir, 'cert.pem'), ...env },
+      env: { ...process.env, SMTP_USER: '', SMTP_PASSWORD: '', SMTP_NAME: '', NODE_EXTRA_CA_CERTS: path.join(certDir, 'cert.pem'), ...env },
     })
 
   it('sends one test message through the configured SMTP server', async () => {
@@ -581,6 +667,64 @@ describe('#395: cli mail:test', () => {
     expect(err.code).toBe(1)
     expect(err.stderr).toMatch(/Mail delivery failed \(E[A-Z]+\)/)
     expect(err.stderr).not.toContain('ops@example.test')
+  })
+
+  it("prints the relay's reply line on failure, with the recipient and credentials masked", async () => {
+    const smtp = await startSmtp({ authOptional: false })
+    try {
+      const err = (await run(['mail:test', 'ops@example.test'], {
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: String(smtp.port),
+        SMTP_USER: 'relay-user',
+        SMTP_PASSWORD: 'wrong-password-123',
+        MAIL_FROM: FROM,
+      }).catch((e: unknown) => e)) as { code?: number; stderr?: string }
+      expect(err.code).toBe(1)
+      expect(err.stderr).toMatch(/Mail delivery failed \(EAUTH 535\)/)
+      expect(err.stderr).toMatch(/server reply: 535 /)
+      for (const secret of ['ops@example.test', 'wrong-password-123']) expect(err.stderr).not.toContain(secret)
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  it('masks every address the relay echoes, however the recipient was written', async () => {
+    const smtp = await startSmtp({
+      onRcptTo(address, _session, cb) {
+        const err = new Error(`5.1.1 <${address.address}> mailbox unavailable`) as Error & { responseCode: number }
+        err.responseCode = 550
+        cb(err)
+      },
+    })
+    try {
+      const err = (await run(['mail:test', 'Ops <Ops@Example.test>, second@example.test'], {
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: String(smtp.port),
+        MAIL_FROM: FROM,
+      }).catch((e: unknown) => e)) as { code?: number; stderr?: string }
+      expect(err.code).toBe(1)
+      expect(err.stderr).toContain('server reply: 550 5.1.1 <[address]> mailbox unavailable')
+      for (const a of ['ops@example.test', 'second@example.test']) expect(err.stderr?.toLowerCase()).not.toContain(a)
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  it('prints a 421 EHLO refusal in full', async () => {
+    const relay = await startEhloStrictRelay()
+    try {
+      const err = (await run(['mail:test', 'ops@example.test'], {
+        SMTP_HOST: '127.0.0.1',
+        SMTP_PORT: String(relay.port),
+        MAIL_FROM: FROM,
+        SMTP_NAME: 'a1b2c3d4',
+      }).catch((e: unknown) => e)) as { code?: number; stderr?: string }
+      expect(err.code).toBe(1)
+      expect(err.stderr).toContain('Mail delivery failed (ECONNECTION 421)')
+      expect(err.stderr).toContain('server reply: 421 4.7.0 Try again later, closing connection. (EHLO)')
+    } finally {
+      await relay.close()
+    }
   })
 
   it('needs a recipient', async () => {
