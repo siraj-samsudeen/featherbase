@@ -10,7 +10,7 @@ export const PENDING_SWEEP: Record<string, number> = {
   'src/components/PermissionManager.tsx': 9,
   'src/index.css': 161,
   'src/pages/AccessTokens.tsx': 40,
-  'src/pages/AdminLayout.tsx': 75,
+  'src/pages/AdminLayout.tsx': 73,
   'src/pages/Login.tsx': 22,
   'src/pages/Portal.tsx': 11,
   'src/pages/ResetPassword.tsx': 11,
