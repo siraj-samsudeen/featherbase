@@ -115,7 +115,7 @@ if it reuses the same default port).
 
 A second, unrelated gotcha: **re-running the full suite against the SAME
 database a second time is not clean.** A handful of specs
-(`dashboard.spec.ts`, `palette.spec.ts`'s second test,
+(`dashboard.spec.ts`,
 `portal.spec.ts`, `task-management.spec.ts`, `user-management.spec.ts`)
 create named Users/rows without the 404-tolerant idempotency the
 `fixtures-ui.ts` builders use, so a second run against leftover data from
@@ -354,7 +354,7 @@ any of these controls — every one is testid- or attribute-addressed, matching
 like `admin.spec.ts`/`web-page.spec.ts`: often has a label-friendly login
 sequence worth converting, with testid-heavy application logic in steps.
 `core-form-responsive.spec.ts`, `dark-mode.spec.ts`, `i18n-login.spec.ts`,
-`oauth.spec.ts`, `palette.spec.ts`, `portal.spec.ts`,
+`oauth.spec.ts`, `portal.spec.ts`,
 `preview-login.spec.ts`, `realtime.spec.ts`, `runtime-login-return.spec.ts`,
 `sales-target.spec.ts` (large — env-gated, mostly skips locally; migrate
 the shape, don't try to exercise the live-embed parts), `smoke.spec.ts`
@@ -462,7 +462,6 @@ GitHub issue was filed.
 | `dark-mode.spec.ts` | plain `test`, single attribute/evaluate test | pass → pass | Whole body is one named step (`data-theme` attribute + computed-style evaluate — no verb reaches either). |
 | `i18n-login.spec.ts` | `anonymousTest`, non-Administrator login | pass → pass | Login form is label-friendly (`fillIn`/`clickButton`, mirrors `admin.spec.ts`'s `signIn` but for a different user); account-menu/date-cell checks are testid-addressed steps. |
 | `oauth.spec.ts` | `anonymousTest`, mock-OAuth flow, 3 tests | pass → pass | Mock consent screen is entirely testid-addressed (steps); `session.visit('/login')` carries navigation. Third test is API-only, untouched. |
-| `palette.spec.ts` | `anonymousTest`, `loginAs`, 3 tests | pass → pass | Every check is a `data-*` attribute assertion or a computed-style/localStorage evaluate — no verb reaches any of them — so each test is a sequence of named steps around `loginAs`/`serverPalette`, unchanged from baseline. |
 | `portal.spec.ts` | `anonymousTest`, `loginAs` with a non-Administrator identity, 3 tests | pass → pass | `loginAs` (a website-user identity, not Administrator) stays a step; navigation to `/portal/...` moves onto `session.visit`. |
 | `preview-login.spec.ts` | `anonymousTest`, env-gated `describe`, 4 tests | skip → skip (same reason: no `PREVIEW_LOGIN_KEY`/`PREVIEW_LOGIN_USER`) | Navigation via `session.visit`; every check (URL regex, localStorage, framenavigated recording) stays a named step. |
 | `realtime.spec.ts` | `anonymousTest`, `browser.newContext()` multi-viewer, 3 tests | pass → pass | `session` (bound to the default `page`) can't reach a second browser context, so each context gets its own `createSession(page)` — the same factory `fixtures.ts`'s own DSL-backed `test` is built on — and both go through `.visit`/`.assertHas`/`.refuteHas`/`.step()` rather than raw Playwright throughout. |

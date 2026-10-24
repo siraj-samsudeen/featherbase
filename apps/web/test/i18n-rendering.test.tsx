@@ -15,7 +15,7 @@
 // another is exactly the bug worth catching.
 
 import { screen, waitFor } from '@testing-library/react'
-import { fireEvent } from '@testing-library/dom'
+import type { QueryClient } from '@tanstack/react-query'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'I18n Doc'
@@ -63,41 +63,39 @@ async function mountForm(admin: Admin) {
 }
 
 /**
- * Switch the language and wait for the server to own the choice. setLanguage
- * POSTs fire-and-forget; a test that returns before it lands lets the write
- * execute after its transaction rolled back — committing a French
- * Administrator into the database for every later test.
+ * Store the language and let the mounted app read it back. There is no
+ * language picker while no translation ships (#380), but the stored choice and
+ * the catalog still drive every string, which is what these tests prove.
  */
-async function switchTo(admin: Admin, language: string) {
-  fireEvent.change(await screen.findByTestId('language-select'), { target: { value: language } })
-  await waitFor(async () =>
-    expect((await admin.get('/api/whoami')) as { language?: string }).toMatchObject({ language }),
-  )
+async function switchTo(admin: Admin, queryClient: QueryClient, language: string) {
+  await admin.post('/api/set_language', { language })
+  await queryClient.invalidateQueries({ queryKey: ['whoami'] })
+  await waitFor(() => expect(queryClient.getQueryData(['whoami'])).toMatchObject({ language }))
 }
 
 test('a chrome string with a catalog entry renders translated', async ({ admin }) => {
   await seed(admin)
-  await mountForm(admin)
+  const qc = await mountForm(admin)
   expect(screen.getByTestId('form-save')).toHaveTextContent('Save')
 
-  await switchTo(admin, 'fr')
+  await switchTo(admin, qc, 'fr')
   await waitFor(() => expect(screen.getByTestId('form-save')).toHaveTextContent('Enregistrer'))
 })
 
 test('a column label from Table metadata is translated too', async ({ admin }) => {
   await seed(admin)
-  await mountForm(admin)
+  const qc = await mountForm(admin)
   expect(screen.getByText('Priority')).toBeInTheDocument()
 
-  await switchTo(admin, 'fr')
+  await switchTo(admin, qc, 'fr')
   await waitFor(() => expect(screen.getByText('Priorité')).toBeInTheDocument())
   expect(screen.queryByText('Priority')).not.toBeInTheDocument()
 })
 
 test('a string with no catalog entry falls back to its source', async ({ admin }) => {
   await seed(admin)
-  await mountForm(admin)
-  await switchTo(admin, 'fr')
+  const qc = await mountForm(admin)
+  await switchTo(admin, qc, 'fr')
   await waitFor(() => expect(screen.getByTestId('form-save')).toHaveTextContent('Enregistrer'))
 
   // 'Owner Note' has no fr entry — it stays in the source language rather
@@ -107,11 +105,11 @@ test('a string with no catalog entry falls back to its source', async ({ admin }
 
 test('switching back to English reverts every translated string', async ({ admin }) => {
   await seed(admin)
-  await mountForm(admin)
-  await switchTo(admin, 'fr')
+  const qc = await mountForm(admin)
+  await switchTo(admin, qc, 'fr')
   await waitFor(() => expect(screen.getByTestId('form-save')).toHaveTextContent('Enregistrer'))
 
-  await switchTo(admin, 'en')
+  await switchTo(admin, qc, 'en')
   await waitFor(() => expect(screen.getByTestId('form-save')).toHaveTextContent('Save'))
   expect(screen.getByText('Priority')).toBeInTheDocument()
 })

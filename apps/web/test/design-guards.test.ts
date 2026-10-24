@@ -8,15 +8,11 @@
 //      and 1.4.11). Values are read straight from src/index.css.
 //   2. Rules. No screen may use a colour outside the token set, text under
 //      12px, the browser's own number/date formatting, or a retired token or
-//      class name. Files still waiting for the sweep are listed in
-//      design-guards.pending.ts; a listed file that is already clean fails
-//      too, so the list can only shrink. Stage 3 of the change deletes it.
+//      class name. Every rule is a hard zero over every source file.
 
-import { execFileSync } from 'node:child_process'
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { PENDING_SWEEP } from './design-guards.pending'
 
 const WEB = join(__dirname, '..')
 const CSS = readFileSync(join(WEB, 'src/index.css'), 'utf8')
@@ -34,26 +30,18 @@ function colourBlock(opener: string): Record<string, string> {
 }
 
 const light = colourBlock('@theme static {')
-// The dark block proper; palette-compound selectors are not the default theme.
-const dark = { ...light, ...colourBlock("\n  [data-theme='dark'] {") }
-
-// Until stage 3 removes the palette choice, every selectable palette must pass
-// too. Cascade order in index.css: the default tokens, then dark, then the
-// palette's own block (same specificity as dark, later in the file), then the
-// palette's dark block (two attributes, most specific).
-const PALETTES = ['ivory', 'graphite', 'indigo']
+const darkOnly = colourBlock("\n  [data-theme='dark'] {")
+const dark = { ...light, ...darkOnly }
+// One palette: the light tokens and their dark values are the whole colour set.
 const themes: [string, Record<string, string>][] = [
   ['light', light],
   ['dark', dark],
-  ...PALETTES.flatMap((p): [string, Record<string, string>][] => {
-    const own = colourBlock(`[data-palette='${p}'] {`)
-    const ownDark = colourBlock(`[data-palette='${p}'][data-theme='dark'] {`)
-    return [
-      [`${p} light`, { ...light, ...own }],
-      [`${p} dark`, { ...dark, ...own, ...ownDark }],
-    ]
-  }),
 ]
+
+test('there is one palette: no palette selector, and every colour token is in the light or dark block', () => {
+  expect(CSS).not.toContain('data-palette')
+  expect(CSS.match(/--color-[a-z0-9-]+:/g)?.length).toBe(Object.keys(light).length + Object.keys(darkOnly).length)
+})
 
 function luminance(hex: string): number {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -324,7 +312,7 @@ function countText(text: string, file: string): number {
   const body = css ? text.replace(/^\s*--[\w-]+\s*:[^;]*;.*$/gm, '') : text
   return Object.entries(RULES).reduce((sum, [rule, hits]) => {
     if (RULE_EXEMPT[rule]?.includes(file)) return sum
-    // Retired names are counted even in declarations: stage 3 deletes them too.
+    // Retired names are counted even in declarations: none may be defined.
     return sum + hits(rule === 'retired token' ? text : body, css)
   }, 0)
 }
@@ -346,123 +334,17 @@ describe('stylesheets are checked too, except their token declarations', () => {
 
 const files = sources(join(WEB, 'src'))
 
-// The pending list as first written (22-Oct-2026). Files may leave it and their
-// counts may drop; nothing may be added or rise. Adding a file means editing
-// this ceiling, which a reviewer will see.
-const CEILING: Record<string, number> = {
-  'src/components/ActivityFeed.tsx': 20,
-  'src/components/ActivityTimeline.tsx': 6,
-  'src/components/Assignments.tsx': 6,
-  'src/components/Attachments.tsx': 8,
-  'src/components/CalendarView.tsx': 9,
-  'src/components/ChecklistView.tsx': 37,
-  'src/components/ColumnCards.tsx': 28,
-  'src/components/Comments.tsx': 13,
-  'src/components/ConnectionsPanel.tsx': 26,
-  'src/components/DashboardView.tsx': 8,
-  'src/components/FormView.tsx': 83,
-  'src/components/GanttView.tsx': 9,
-  'src/components/HomePageView.tsx': 13,
-  'src/components/HomeRecall.tsx': 14,
-  'src/components/ImportOverview.tsx': 27,
-  'src/components/JobMonitor.tsx': 10,
-  'src/components/KanbanView.tsx': 6,
-  'src/components/ListView.tsx': 104,
-  'src/components/Logo.tsx': 5,
-  'src/components/NamingControl.tsx': 4,
-  'src/components/PasteColumns.tsx': 13,
-  'src/components/Peek.tsx': 23,
-  'src/components/PermissionManager.tsx': 9,
-  'src/components/QueryReportView.tsx': 12,
-  'src/components/ReportView.tsx': 27,
-  'src/components/ScriptReportView.tsx': 13,
-  'src/components/TableNaming.tsx': 11,
-  'src/components/Tags.tsx': 11,
-  'src/components/WorkflowActions.tsx': 5,
-  'src/index.css': 161, // +2 on 22-Oct: rules now read stylesheets (the fc-card shadow's two rgba())
-  'src/lib/settings.ts': 1,
-  'src/pages/AccessTokens.tsx': 40,
-  'src/pages/AdminLayout.tsx': 75,
-  'src/pages/AllTables.tsx': 10,
-  'src/pages/ColumnEditor.tsx': 33,
-  'src/pages/Explore.tsx': 24,
-  'src/pages/ImportBatches.tsx': 27,
-  'src/pages/ImportWizard.tsx': 131,
-  'src/pages/Login.tsx': 22,
-  'src/pages/Portal.tsx': 11,
-  'src/pages/PrintView.tsx': 9,
-  'src/pages/PrototypeConnectSource.tsx': 57,
-  'src/pages/RelationMap.tsx': 29,
-  'src/pages/ResetPassword.tsx': 11,
-  'src/pages/SalesTarget.tsx': 8,
-  'src/pages/SourceBrowser.tsx': 21,
-  'src/pages/TableBuilder.tsx': 47,
-  'src/pages/TableMerge.tsx': 21,
-  'src/pages/WebForm.tsx': 11,
-  'src/router.tsx': 2,
+/** Each rule's hits in a file, by line, so a failure says where to look. */
+function hitsByRule(file: string): string[] {
+  const text = readFileSync(join(WEB, file), 'utf8')
+  const css = file.endsWith('.css')
+  return Object.entries(RULES).flatMap(([rule, hits]) => {
+    if (RULE_EXEMPT[rule]?.includes(file)) return []
+    const lines = text.split('\n').flatMap((line, i) => (hits(line, css) > 0 ? [`${file}:${i + 1} ${rule}`] : []))
+    return lines.length ? lines : hits(text, css) ? [`${file} ${rule}`] : []
+  })
 }
 
-/** What main has accepted: its pending pins, read from git. Null where main has none yet. */
-function acceptedOnMain(): Record<string, number> | null {
-  try {
-    const src = execFileSync('git', ['show', 'origin/main:apps/web/test/design-guards.pending.ts'], {
-      cwd: WEB,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return Object.fromEntries([...src.matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]))
-  } catch {
-    return null
-  }
-}
-
-/** Files added to the list, and pins above what was allowed. */
-function ratchetBreaks(pins: Record<string, number>, allowed: Record<string, number>) {
-  return {
-    added: Object.keys(pins).filter((f) => !(f in allowed)),
-    risen: Object.entries(pins).filter(([f, n]) => f in allowed && n > allowed[f]).map(([f]) => f),
-  }
-}
-
-describe('the pending sweep is a ratchet', () => {
-  test('a file outside the pending list has no violations', () => {
-    const broken = files.filter((f) => !(f in PENDING_SWEEP)).map((f) => [f, violations(f)] as const).filter(([, n]) => n)
-    expect(broken).toEqual([])
-  })
-
-  test('a pin cleaned on main cannot climb back, even below where it started', () => {
-    // Codex's case: 20 at the start, 10 accepted on main, 15 proposed.
-    expect(ratchetBreaks({ 'a.tsx': 15 }, { 'a.tsx': 10 })).toEqual({ added: [], risen: ['a.tsx'] })
-    expect(ratchetBreaks({ 'a.tsx': 9, 'b.tsx': 1 }, { 'a.tsx': 10 })).toEqual({ added: ['b.tsx'], risen: [] })
-  })
-
-  test('no file joins the list and no pin rises above what main accepted (or the start, before main has a list)', () => {
-    expect(ratchetBreaks(PENDING_SWEEP, acceptedOnMain() ?? CEILING)).toEqual({ added: [], risen: [] })
-    expect(ratchetBreaks(PENDING_SWEEP, CEILING)).toEqual({ added: [], risen: [] })
-  })
-
-  test('each pinned count is exactly the file’s violations, so a fix must lower its pin', () => {
-    const off = Object.entries(PENDING_SWEEP)
-      .map(([f, n]) => [f, n, files.includes(f) ? violations(f) : 0] as const)
-      .filter(([, pinned, actual]) => pinned !== actual)
-    expect(off, 'set these pins to the actual count (and drop files at 0) in design-guards.pending.ts').toEqual([])
-  })
+test('every rule is a hard zero over every source file', () => {
+  expect(files.filter((f) => violations(f) > 0).flatMap(hitsByRule)).toEqual([])
 })
-
-// `DG_WRITE_PENDING=1 pnpm vitest run test/design-guards.test.ts` rewrites the
-// pins to the actual counts after a sweep. The ceiling above still refuses any
-// file or count that went up.
-if (process.env.DG_WRITE_PENDING) {
-  test('write the pending pins', () => {
-    const rows = files.map((f) => [f, violations(f)] as const).filter(([, n]) => n > 0)
-    writeFileSync(
-      join(WEB, 'test/design-guards.pending.ts'),
-      '// Files still waiting for the design-system sweep (#380), each pinned to its exact\n' +
-        '// number of rule violations. A pin may only drop; a file at zero leaves the list.\n' +
-        '// Regenerate with DG_WRITE_PENDING=1 (see design-guards.test.ts). Stage 3 deletes this file.\n' +
-        'export const PENDING_SWEEP: Record<string, number> = {\n' +
-        rows.map(([f, n]) => `  '${f}': ${n},\n`).join('') +
-        '}\n',
-    )
-  })
-}

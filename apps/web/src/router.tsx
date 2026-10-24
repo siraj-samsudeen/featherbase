@@ -253,9 +253,9 @@ function AdminIndexPage() {
     )
   if (first) return null
   return (
-    <p className="text-sm text-gray-500" data-testid="admin-index-empty">
+    <p className="text-sm text-ink-muted" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
-      <Link to="/featherbase/admin/all-tables" className="text-[var(--color-brand)] underline">
+      <Link to="/featherbase/admin/all-tables" className="text-action underline">
         All tables
       </Link>{' '}
       instead.

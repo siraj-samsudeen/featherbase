@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client'
 import { routeTree } from './router'
 import { ApiError } from './lib/api'
 import './index.css'
+// Paints the theme before anything renders, so even the sign-in page follows the device.
+import './lib/theme'
 
 // Client errors (401/403/404/417) are definitive — retrying them just
 // leaves views stuck in loading states.

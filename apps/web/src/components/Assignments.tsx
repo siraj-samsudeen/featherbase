@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses } from './ui'
 
 interface ToDoRow {
   row_id: string
@@ -48,16 +49,16 @@ export function Assignments({ table, name }: { table: string; name: string }) {
   }
 
   return (
-    <div className="fc-card p-4" data-testid="assignments-panel">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+    <div className={cardClasses('p-4')} data-testid="assignments-panel">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
         Assigned To
       </div>
       <ul className="mb-2 space-y-1">
         {todos.data?.data.length === 0 && (
-          <li className="text-xs text-[var(--color-ink-faint)]">No one assigned</li>
+          <li className="text-xs text-ink-subtle">No one assigned</li>
         )}
         {todos.data?.data.map((t) => (
-          <li key={t.row_id} className="text-sm text-[var(--color-ink)]" data-testid="assignee">
+          <li key={t.row_id} className="text-sm text-ink" data-testid="assignee">
             {t.allocated_to}
           </li>
         ))}
@@ -67,20 +68,20 @@ export function Assignments({ table, name }: { table: string; name: string }) {
           value={assignTo}
           onChange={(e) => setAssignTo(e.target.value)}
           placeholder="user@example.com"
-          className="fc-input flex-1"
+          className={inputClasses('flex-1')}
           data-testid="assign-to"
         />
         <button
           onClick={assign}
           disabled={busy || !assignTo.trim()}
-          className="fc-btn-primary disabled:opacity-40"
+          className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
           data-testid="assign-submit"
         >
           Assign
         </button>
       </div>
       {error && (
-        <p className="mt-1 text-xs text-[var(--color-danger)]" data-testid="assign-error">
+        <p className="mt-1 text-xs text-negative" data-testid="assign-error">
           {error}
         </p>
       )}

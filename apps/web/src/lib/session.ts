@@ -20,8 +20,7 @@ interface WhoAmI {
   email: string | null
   full_name: string | null
   roles: string[]
-  theme?: 'light' | 'dark'
-  palette?: 'classic' | 'ivory' | 'graphite' | 'indigo'
+  theme?: 'light' | 'dark' | 'device'
   language?: string
   // True on a dev-preview deployment. The shell says so out loud: anyone
   // handed the link should know the data is disposable.

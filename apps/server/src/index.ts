@@ -719,7 +719,7 @@ app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
+  const [row] = await sql`select theme, language from person where row_id = ${user.row_id}`
   const roles = await getRoles(user.row_id)
   // #410: what the shell may draw. Computed here, from current roles and
   // grants, never from role names the browser holds; display only — every
@@ -733,8 +733,7 @@ app.get('/api/whoami', async (c) => {
     ...user,
     roles,
     capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
-    theme: (row?.theme as string) || 'light',
-    palette: (row?.palette as string) || 'classic',
+    theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
     // know the data is disposable and that they are signed in as someone.
@@ -849,23 +848,14 @@ app.get('/api/activity_feed', async (c) => {
   return c.json({ items })
 })
 
-// UI-024: persist the caller's theme preference (light/dark), per user.
+// UI-024 / #380: persist the caller's theme — light, dark, or follow the device.
+const THEMES = ['light', 'dark', 'device'] as const
 app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
-  if (theme !== 'light' && theme !== 'dark')
-    throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update person set theme = ${theme} where row_id = ${who(c)}`
+  if (!THEMES.includes(theme as (typeof THEMES)[number]))
+    throw new AppError('ValidationError', `theme must be one of ${THEMES.join(', ')}`)
+  await sql`update person set theme = ${theme!} where row_id = ${who(c)}`
   return c.json({ ok: true, theme })
-})
-
-// UI-025: persist the caller's palette preference, per user.
-const PALETTES = ['classic', 'ivory', 'graphite', 'indigo'] as const
-app.post('/api/set_palette', async (c) => {
-  const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
-  if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
-    throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
-  await sql`update person set palette = ${palette!} where row_id = ${who(c)}`
-  return c.json({ ok: true, palette })
 })
 
 // I18N-001/002: per-user language + the translation catalog for a language.

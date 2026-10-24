@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
-import { Button, Field, TextInput } from '../components/ui'
+import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(
@@ -127,42 +127,43 @@ export function LoginPage() {
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
 
   const errorLine = error && (
-    <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
+    <p className="text-sm text-negative" data-testid="login-error">
       {error}
     </p>
   )
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
-          <h1 className="text-lg font-semibold text-[var(--color-ink)]">{appName}</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">
+          <h1 className="text-lg font-semibold text-ink">{appName}</h1>
+          <p className="text-sm text-ink-muted">
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
           </p>
         </div>
         {sessionEnded && (
-          <p className="mb-3 text-center text-sm text-[var(--color-ink-muted)]" data-testid="session-ended">
+          <p className="mb-3 text-center text-sm text-ink-muted" data-testid="session-ended">
             Your session has ended. Please sign in again.
           </p>
         )}
-        <div className="fc-card p-6">
+        <div className={cardClasses('p-6')}>
           {mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
                 {delegatedTestMode ? (
-                  <p role="status" data-testid="delegated-test-mode"
-                    className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
-                  </p>
+                  <div data-testid="delegated-test-mode">
+                    <Notice tone="caution">
+                      Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
+                    </Notice>
+                  </div>
                 ) : (
-                  <p className="text-sm text-[var(--color-ink-muted)]">
+                  <p className="text-sm text-ink-muted">
                     Use the same ID and password you use for {delegatedLabel}.
                   </p>
                 )}
                 <div>
-                  <label className="fc-label" htmlFor="delegated-id">{delegatedTestMode ? 'Employee code' : `${delegatedLabel} ID`}</label>
+                  <label className={labelClasses()} htmlFor="delegated-id">{delegatedTestMode ? 'Employee code' : `${delegatedLabel} ID`}</label>
                   <input
                     id="delegated-id"
                     type="text"
@@ -171,17 +172,17 @@ export function LoginPage() {
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    className="fc-input"
+                    className={inputClasses()}
                   />
                 </div>
                 {!delegatedTestMode && <div>
-                  <label className="fc-label" htmlFor="delegated-password">Password</label>
+                  <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
                     id="delegated-password"
                     type="password"
                     name="delegated_password"
                     autoComplete="current-password"
-                    className="fc-input"
+                    className={inputClasses()}
                   />
                 </div>}
                 {errorLine}
@@ -189,7 +190,7 @@ export function LoginPage() {
                   type="submit"
                   disabled={busy}
                   data-testid="delegated-login-submit"
-                  className="fc-btn-primary w-full justify-center py-2"
+                  className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
                 >
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
@@ -198,7 +199,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   data-testid="password-login-toggle"
-                  className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
+                  className="mt-4 text-sm text-action hover:underline"
                   onClick={() => switchMode('password')}
                 >
                   Use email and password instead
@@ -229,29 +230,29 @@ export function LoginPage() {
           {passwordOn && (
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
             <div>
-              <label className="fc-label" htmlFor="login-email">Email or username</label>
+              <label className={labelClasses()} htmlFor="login-email">Email or username</label>
               <input
                 id="login-email"
                 type="text"
                 name="email"
                 autoComplete="username"
                 placeholder="Administrator"
-                className="fc-input"
+                className={inputClasses()}
               />
             </div>
             <div>
-              <label className="fc-label" htmlFor="login-password">Password</label>
+              <label className={labelClasses()} htmlFor="login-password">Password</label>
               <input
                 id="login-password"
                 type="password"
                 name="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
-                className="fc-input"
+                className={inputClasses()}
               />
             </div>
             {errorLine}
-            <button type="submit" disabled={busy} className="fc-btn-primary w-full justify-center py-2">
+            <button type="submit" disabled={busy} className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
@@ -263,7 +264,7 @@ export function LoginPage() {
             <a
               href="/api/oauth/google/login"
               data-testid="google-login"
-              className="fc-btn mt-3 flex w-full justify-center py-2"
+              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
             >
               Sign in with {google.label}
             </a>
@@ -275,7 +276,7 @@ export function LoginPage() {
               key={m.key}
               type="button"
               data-testid={delegatedMethods.length === 1 ? 'delegated-login-toggle' : `delegated-login-toggle-${m.key}`}
-              className="fc-btn mt-3 flex w-full justify-center py-2"
+              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
               onClick={() => switchMode('delegated', m.key)}
             >
               Sign in with {m.label}
@@ -286,18 +287,18 @@ export function LoginPage() {
               Create an account
             </Button>
           )}
-          <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          <div className="mt-4 border-t border-border pt-4">
             {!forgot ? (
               <button
                 type="button"
-                className="text-sm text-[var(--color-brand)] hover:underline"
+                className="text-sm text-action hover:underline"
                 data-testid="forgot-password"
                 onClick={() => setForgot(true)}
               >
                 Forgot password?
               </button>
             ) : resetSent ? (
-              <p className="text-sm text-[var(--color-ink-muted)]" data-testid="reset-sent">
+              <p className="text-sm text-ink-muted" data-testid="reset-sent">
                 If that account exists, a reset link has been emailed.
               </p>
             ) : (
@@ -307,9 +308,9 @@ export function LoginPage() {
                     {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
                   </p>
                 )}
-                <label className="fc-label">Email or username</label>
-                <input type="text" name="usr" className="fc-input" data-testid="forgot-usr" />
-                <button type="submit" className="fc-btn w-full justify-center py-2" data-testid="forgot-submit">
+                <label className={labelClasses()}>Email or username</label>
+                <input type="text" name="usr" className={inputClasses()} data-testid="forgot-usr" />
+                <button type="submit" className={buttonClasses({ className: 'w-full justify-center py-2' })} data-testid="forgot-submit">
                   Send reset link
                 </button>
               </form>

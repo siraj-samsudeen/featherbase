@@ -119,66 +119,48 @@ function luminance(hex: string) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
 }
 
-test('all palette/mode text roles meet AA, and existing text utilities resolve to the new roles', async ({ session }) => {
-  await session.step('every palette/mode text role meets AA contrast; legacy text utilities resolve to the new roles', async ({ page }) => {
+test('every text role meets AA in light and dark, as the browser computes the production cascade', async ({ session }) => {
+  await session.step('every text role on every surface reaches 4.5:1 in both themes', async ({ page }) => {
   const who = page.waitForResponse((r) => r.url().endsWith('/api/whoami'))
   await page.goto('/admin/new-table')
   await expect(page.getByTestId('session-user')).toBeVisible()
-  // Wait for server preferences before selecting the purely visual matrix.
+  // Wait for server preferences before setting the purely visual matrix.
   await who
-  for (const palette of ['classic', 'ivory', 'graphite', 'indigo']) {
-    for (const theme of ['light', 'dark']) {
-      const result = await page.evaluate(({ palette, theme }) => {
-        const root = document.documentElement
-        root.dataset.palette = palette
-        root.dataset.theme = theme
-        const style = getComputedStyle(root)
-        const tokens = Object.fromEntries(['link', 'good-text', 'danger-text', 'warn-text', 'canvas', 'surface', 'subtle', 'brand-tint', 'good-tint', 'danger-tint', 'warn-tint', 'primary-btn', 'primary-btn-hover', 'primary-btn-ink'].map((name) => [name, style.getPropertyValue(`--color-${name}`).trim()]))
-        const applied: Record<string, boolean> = {}
-        for (const [old, role] of [['brand', 'link'], ['good', 'good-text'], ['danger', 'danger-text'], ['warn', 'warn-text']]) {
-          const legacy = document.createElement('span'), expected = document.createElement('span')
-          legacy.className = `text-[var(--color-${old})]`
-          expected.style.color = `var(--color-${role})`
-          document.body.append(legacy, expected)
-          applied[role] = getComputedStyle(legacy).color === getComputedStyle(expected).color
-          legacy.remove(); expected.remove()
-        }
-        return { tokens, applied }
-      }, { palette, theme })
-      expect(Object.values(result.applied)).toEqual([true, true, true, true])
-      const pairs = [
-        ...['canvas', 'surface', 'subtle', 'brand-tint'].map((bg) => ['link', bg]),
-        ...['good', 'danger', 'warn'].flatMap((role) => ['canvas', 'surface', 'subtle', `${role}-tint`].map((bg) => [`${role}-text`, bg])),
-        ['primary-btn-ink', 'primary-btn'], ['primary-btn-ink', 'primary-btn-hover'],
-      ]
-      for (const [fg, bg] of pairs) {
-        const a = luminance(result.tokens[fg]), b = luminance(result.tokens[bg])
-        expect((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), `${palette}/${theme}: ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5)
-      }
+  const roles = ['canvas', 'surface', 'subtle', 'ink', 'ink-muted', 'ink-subtle', 'action', 'action-ink', 'action-hover', 'negative', 'negative-tint', 'caution', 'caution-tint', 'positive', 'positive-tint']
+  for (const theme of ['light', 'dark']) {
+    const tokens = await page.evaluate(({ theme, roles }) => {
+      document.documentElement.dataset.theme = theme
+      const style = getComputedStyle(document.documentElement)
+      return Object.fromEntries(roles.map((name) => [name, style.getPropertyValue(`--color-${name}`).trim()]))
+    }, { theme, roles })
+    const pairs = [
+      ...['ink', 'ink-muted', 'ink-subtle', 'action'].flatMap((fg) => ['canvas', 'surface', 'subtle'].map((bg) => [fg, bg])),
+      ...['negative', 'caution', 'positive'].flatMap((role) => ['canvas', 'surface', `${role}-tint`].map((bg) => [role, bg])),
+      ['action-ink', 'action'], ['action-ink', 'action-hover'],
+    ]
+    for (const [fg, bg] of pairs) {
+      const x = luminance(tokens[fg]), y = luminance(tokens[bg])
+      expect((Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05), `${theme}: ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5)
     }
   }
   })
 })
 
-test('a rejected latest preference returns the rendered picker to the confirmed choice', async ({ session }) => {
-  await session.step('a rejected preference update rolls the rendered picker back to the confirmed choice', async ({ page }) => {
+test('a rejected latest theme choice returns the rendered choice to the confirmed one', async ({ session }) => {
+  await session.step('a refused theme update rolls the account menu back to the confirmed choice', async ({ page }) => {
   await page.goto('/admin/new-table')
-  const picker = page.getByTestId('palette-select')
-  await expect(picker).toBeVisible()
-  await picker.selectOption('ivory')
-  await expect.poll(async () => (await page.request.get('/api/whoami')).json().then((who) => who.palette)).toBe('ivory')
-  await page.route('**/api/set_palette', (route) => route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Preference refused' } } }))
-  await picker.selectOption('indigo')
-  await expect(picker).toHaveValue('ivory')
-  await expect(page.locator('html')).toHaveAttribute('data-palette', 'ivory')
+  await page.getByTestId('session-user').click()
+  await page.getByTestId('theme-dark').click()
+  await expect.poll(async () => (await page.request.get('/api/whoami')).json().then((who) => who.theme)).toBe('dark')
+  await page.route('**/api/set_theme', (route) => route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Preference refused' } } }))
+  await page.getByTestId('theme-light').click()
+  await expect(page.getByTestId('theme-dark')).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.keyboard.press('Escape')
   await page.getByTestId('dt-file-input').setInputFiles(workbook(['Zones', 'Stores', 'Prices']))
   await expect(page.getByTestId('dt-more-sheets')).toBeVisible()
-  await capture(page, 'ivory-preference-rollback')
-  await page.getByTestId('theme-toggle').click()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await capture(page, 'ivory-dark-warning')
-  await page.unroute('**/api/set_palette')
-  await page.request.post('/api/set_palette', { data: { palette: 'classic' } })
+  await capture(page, 'dark-preference-rollback')
+  await page.unroute('**/api/set_theme')
   await page.request.post('/api/set_theme', { data: { theme: 'light' } })
   })
 })
@@ -194,17 +176,14 @@ test('generated controls are reachable by labels in a browser, including child r
   await page.getByLabel('Title', { exact: true }).fill('Accessible form')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toHaveText('Saved')
-  await page.evaluate(() => {
-    document.documentElement.dataset.palette = 'indigo'
-    document.documentElement.dataset.theme = 'light'
-  })
-  await capture(page, 'indigo-form-saved')
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light' })
+  await capture(page, 'form-saved')
   await page.route('**/api/save_row', (route) => route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Save refused for visual verification' } } }))
   await page.getByLabel('Title', { exact: true }).fill('Unsaved correction')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toContainText('Save refused')
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
-  await capture(page, 'indigo-form-error')
+  await capture(page, 'form-error')
   })
 })
 
