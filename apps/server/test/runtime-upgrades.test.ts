@@ -216,7 +216,8 @@ describe('runtime upgrades', () => {
       }
       for (const changed of [
         { ...manifest, migrations: [{ ...manifest.migrations[0], fromVersion: '1.5.0' }] },
-        { ...manifest, permissions: [] },
+        // #437: withdrawing a grant is allowed; adding one never is.
+        { ...manifest, permissions: [...manifest.permissions, { table: 'Comment', role: 'All', can_read: true }] },
         { ...manifest, tables: manifest.tables.map((t: { columns: unknown[] }) => ({ ...t, columns: t.columns.slice(1) })) },
       ]) {
         await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(changed))

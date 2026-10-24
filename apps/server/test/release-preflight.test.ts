@@ -121,6 +121,93 @@ describe('release preflight', () => {
   })
 })
 
+// #437: the access configuration a release must never ship with.
+describe('release preflight: access configuration', () => {
+  const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'
+  const SIGNUP_OK = 'no sign-in method creates new people for anyone here'
+  const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
+
+  async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
+    await sql`insert into permission ${sql({ row_id: `p437-${role}-${refTable}`.replaceAll(' ', '-'), ref_table: refTable, role, tier: 'basic', created_by: 'Administrator', updated_by: 'Administrator', ...flags })}`
+  }
+
+  test('a clean instance passes all three and says so', async () => {
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toEqual(expect.arrayContaining([ACCESS_OK, SIGNUP_OK, DOMAINS_OK]))
+  })
+
+  test('(a) All reading Person refuses, naming the row', async () => {
+    await grant('All', 'Person', { can_read: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Person" \(read\)/)
+  })
+
+  test('(a) Guest writing a security Table refuses', async () => {
+    await grant('Guest', 'Data Scope', { can_create: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) a grant with every action off, or to another role, passes', async () => {
+    await grant('All', 'Share', {})
+    await grant('Sales Target Viewer', 'Person', { can_read: true })
+    expect(await preflightRelease({ environment: 'test' })).toContain(ACCESS_OK)
+  })
+
+  test('(b) password sign-up outside development or test refuses; in test it passes', async () => {
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    await sql`update sign_in_method set new_person = 'create' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
+    await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/password sign-in method "password" creates a new person/)
+    expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
+    expect(await preflightRelease({ environment: 'development' })).toContain(SIGNUP_OK)
+  })
+
+  test('(b) a Google method that creates anyone it admits refuses outside development or test', async () => {
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    await sql`update sign_in_method set new_person = 'create', allowed_email_domains = 'example.com' where kind = 'google'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/google sign-in method "google" creates a new person/)
+    expect(await preflightRelease({ environment: 'test' })).toContain(SIGNUP_OK)
+  })
+
+  test('(c) any-address or consumer domains while creating people refuse', async () => {
+    await sql`update sign_in_method set new_person = 'create_if_email_domain_allowed', allowed_email_domains = 'example.com, *' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/"password".*"\*"/)
+    await sql`update sign_in_method set allowed_email_domains = 'example.com,Gmail.com' where kind = 'password'`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/"password".*"gmail\.com"/)
+  })
+
+  test('(c) a company domain while creating, or a consumer domain while refusing, passes', async () => {
+    await sql`update sign_in_method set new_person = 'create_if_email_domain_allowed', allowed_email_domains = 'example.com' where kind = 'password'`
+    expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+    await sql`update sign_in_method set new_person = 'refuse', allowed_email_domains = 'gmail.com,*' where kind = 'password'`
+    expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+  })
+
+  // Before 0100 there is no Sign In Method to read, but 0100 copies the
+  // legacy allowed_login_domains into a Google method that creates people.
+  describe('before 0100', () => {
+    async function pending0100(domains: string) {
+      vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+      await sql`delete from migration where name = '0100_person_identities.ts'`
+      await sql`delete from single_value where table_name = 'System Settings' and field = 'allowed_login_domains'`
+      await sql`insert into single_value (table_name, field, value) values ('System Settings', 'allowed_login_domains', ${domains})`
+    }
+
+    test('a legacy any-address or consumer domain refuses outside development or test', async () => {
+      await pending0100('example.com, *')
+      await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/allowed_login_domains holds "\*"/)
+      await pending0100('example.com,Gmail.com')
+      await expect(preflightRelease({ environment: 'staging' })).rejects.toThrow(/allowed_login_domains holds "gmail.com"/)
+    })
+
+    test('company domains pass, and so does test', async () => {
+      await pending0100('example.com')
+      expect(await preflightRelease({ environment: 'production' })).toContain(DOMAINS_OK)
+      await pending0100('*')
+      expect(await preflightRelease({ environment: 'test' })).toContain(DOMAINS_OK)
+    })
+  })
+})
+
 // End to end: the real release command against a fresh database labelled
 // production, with test mode set. It must stop before creating anything.
 const server = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -160,6 +247,41 @@ it('a production-labelled database with test mode set refuses BEFORE migrating',
     expect(output).not.toMatch(/applied 0001/)
     const [ledger] = await db`select to_regclass('featherbase.migration') as m, to_regclass('public.migration') as p`
     expect(ledger).toEqual({ m: null, p: null })
+  } finally {
+    await db.end()
+  }
+}, 90_000)
+
+// #437 (a) before the schema move: a production-era database keeps its
+// platform tables in `public`, and preflight runs before 0094 moves them.
+it('a legacy everyone-reads-User grant in public refuses BEFORE migrating', async () => {
+  const name = `featherbase_preflight_${randomUUID().replaceAll('-', '')}`
+  await admin.unsafe(`create database "${name}"`)
+  created.push(name)
+  const url = new URL(config.databaseUrl)
+  url.pathname = `/${name}`
+  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+  try {
+    await db.unsafe(`create schema featherbase;
+      create table featherbase.internal_metadata (key text primary key, value text not null, updated_at timestamptz not null default now());
+      insert into featherbase.internal_metadata (key, value) values ('environment', 'test');
+      create table public.permission (row_id text primary key, ref_table text, role text, tier text default 'basic', can_read boolean default false, can_write boolean default false);
+      insert into public.permission (row_id, ref_table, role, can_read) values ('legacy-grant', 'User', 'All', true)`)
+    let output = ''
+    let failed = false
+    try {
+      execFileSync(process.execPath, [tsx, 'src/release.ts'], {
+        cwd: server, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '' },
+      })
+    } catch (error) {
+      failed = true
+      const e = error as { stdout?: string; stderr?: string }
+      output = `${e.stdout ?? ''}${e.stderr ?? ''}`
+    }
+    expect(failed).toBe(true)
+    expect(output).toMatch(/Permission legacy-grant grants role "All" on "User" \(read\)/)
+    expect(output).not.toMatch(/applied 0001/)
   } finally {
     await db.end()
   }

@@ -1509,7 +1509,7 @@ for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upg
         (operation === 'upgrade_app' && typeof body.planId !== 'string'))
       throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
     if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
-    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId, who(c)))
     return c.json(await activateAppUpgrade(body.name, body.version))
   })
 }
