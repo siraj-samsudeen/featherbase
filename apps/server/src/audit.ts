@@ -62,7 +62,7 @@ export async function logAccess(
     ref_table: ref.table ?? null,
     reference_name: ref.row_id ?? null,
     method: ref.method ?? null,
-    // What the read was limited to (`store=1501`), when it was (#409); the column arrives in 0108.
+    // What the read was limited to (`store=1501`), when it was (#409); the column arrives in 0109.
     ...(ref.scope === undefined ? {} : { scope: ref.scope }),
   })}`
 }
