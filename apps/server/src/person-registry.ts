@@ -61,7 +61,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   person: {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
     user_image: code, theme: code,
-    // 0109 drops it; the person migrations (0100–0102) still see it on a fresh database.
+    // 0117 drops it; the person migrations (0100–0102) still see it on a fresh database.
     palette: code,
     // Codes, declared "not a person reference" (R3): left alone, never scanned.
     // 0107 drops both columns; 0101 still runs before it on a dev database.
@@ -69,7 +69,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   },
   service_account: { row_id: id, label: text },
   person_id_map: { '*': code },
-  access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code },
+  access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
   assignment_rule: { ref_table: code, description: text, assign_condition: text, assign_to_field: code, last_user: id },
@@ -112,10 +112,12 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   permission: { '*': code },
   pre_auth_bucket: { '*': code },
   print_format: { ref_table: code, template: text, letter_head: code },
+  // `query` is dropped by 0111 but still exists when 0101 runs on a fresh database.
   report: { ref_table: code, config: text, report_type: code, query: text, report_script: code },
   revoked_session: { jti: code, person_id: id },
   role: { '*': code },
   runtime_action_result: { caller: id, app: code, action: code, idempotency_key: code, payload: text, result: text, authorization: text },
+  sales_target_snapshot_name: { '*': code },
   sales_target_snapshot_row: { '*': code },
   saved_view: { ref_table: code, label: text, filters: filters('ref_table') },
   scheduled_job: { '*': code, description: text },

@@ -8,7 +8,12 @@ import { useIsSystemManager } from '../lib/session'
 import { cardClasses } from './ui'
 
 interface FeedItem {
-  who: string
+  /** Display name (#440). The feed carries no person id, by design. */
+  who_name: string
+  /** Their main role, absent when they hold none. */
+  who_role?: string
+  /** Lists only: was a filter actually applied? */
+  filtered?: boolean
   kind: string
   label: string
   sub?: string
@@ -33,7 +38,7 @@ const KIND_STYLE: Record<string, string> = {
 }
 const KIND_LABEL: Record<string, string> = {
   row: 'row',
-  list: 'view',
+  list: 'list',
   page: 'page',
   search: 'search',
   change: 'change',
@@ -41,14 +46,20 @@ const KIND_LABEL: Record<string, string> = {
 }
 const KIND_VERB: Record<string, string> = {
   row: 'opened',
-  list: 'filtered',
+  list: 'opened', // 'filtered' only when a filter was applied — see feedVerb
   page: 'opened',
   search: 'searched',
   change: 'changed',
   login: '',
 }
 
-function initials(who: string): string {
+/** The verb for a row: a list open says "filtered" only if a filter existed. */
+export function feedVerb(item: Pick<FeedItem, 'kind' | 'filtered'>): string {
+  if (item.kind === 'list' && item.filtered) return 'filtered'
+  return KIND_VERB[item.kind] ?? ''
+}
+
+export function initials(who: string): string {
   return who
     .split(/[\s@.]+/)
     .filter(Boolean)
@@ -102,7 +113,7 @@ export function ActivityFeed() {
           data-testid="feed-item"
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-tint text-xs font-bold text-action">
-            {initials(item.who)}
+            {initials(item.who_name)}
           </span>
           <span
             className={`w-14 shrink-0 rounded-full px-0 py-0.5 text-center text-xs font-semibold uppercase tracking-wide ${KIND_STYLE[item.kind] ?? KIND_STYLE.row}`}
@@ -110,8 +121,17 @@ export function ActivityFeed() {
             {KIND_LABEL[item.kind] ?? item.kind}
           </span>
           <span className="min-w-0 flex-1 truncate">
-            {scope === 'team' && <span className="font-medium">{item.who}</span>}{' '}
-            <span className="text-ink-muted">{KIND_VERB[item.kind] ?? ''}</span>{' '}
+            {scope === 'team' && (
+              <>
+                <span className="font-medium" data-testid="feed-who">{item.who_name}</span>
+                {item.who_role && (
+                  <span className="ml-1 text-xs text-ink-subtle" data-testid="feed-role">
+                    {item.who_role}
+                  </span>
+                )}
+              </>
+            )}{' '}
+            <span className="text-ink-muted">{feedVerb(item)}</span>{' '}
             {item.path ? (
               <button
                 type="button"

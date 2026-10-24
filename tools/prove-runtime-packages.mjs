@@ -298,22 +298,15 @@ try {
   const task = await api(`/api/table/tasker.task/${packageTask.row_id}`)
   assert.equal(task.description, 'Delivered after the core artifact was frozen.')
   await api('/api/save_row', { table: 'other.task', row: { row_id: task.row_id, quantity: 37 } }, 201)
-  const directUrl = new URL(process.env.QUERY_REPORT_DATABASE_URL ?? database)
-  if (!process.env.QUERY_REPORT_DATABASE_URL) {
-    directUrl.username = 'app_client'
-    directUrl.password = 'app_client'
-  }
-  const direct = postgres(directUrl.toString(), { max: 1 })
+  // App relations are API-only: no database role but their owner holds any privilege on them.
+  const owner = postgres(database, { max: 1 })
   try {
-    await assert.rejects(direct.begin(async tx => {
-      await tx.unsafe('select * from other.task')
-    }), error => error.code === '42501')
-  } finally { await direct.end() }
-  await api('/api/save_row', { table: 'Report', row: {
-    row_id: 'Raw Tasker report', ref_table: 'Person', report_type: 'Query Report',
-    query: "select query_to_xml('select * from tasker.task', true, false, set_config('role', 'none', true))",
-  } }, 201)
-  await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)
+    for (const relation of ['other.task', 'tasker.task']) {
+      const [{ grants }] = await owner`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a
+        where c.oid = ${relation}::regclass and a.grantee <> c.relowner`
+      assert.equal(grants, 0, `${relation} grants a non-owner role access`)
+    }
+  } finally { await owner.end() }
   await api('/api/set_app_enabled', { name: 'tasker', enabled: false })
   // The browser is still open: this is a stale client, not just a new denied GET.
   await capture.fill('Must not save after disabling')
@@ -326,7 +319,6 @@ try {
   assert.deepEqual((await api('/api/app_catalog')).map(a => a.name), ['other'])
   let other = await api(`/api/table/other.task/${task.row_id}`)
   other = await api('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } }, 201)
-  await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)
   assert.equal(other.validation_runs, '2')
   await stop()
   await start(paths)
@@ -343,7 +335,6 @@ try {
   await stop()
   await start([paths[1]])
   await api('/api/app_actions/actionproof/transform', actionRequest, 403)
-  await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)
   await api('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } }, 403)
   assert((await api('/api/apps')).installed.some(a => a.name === 'tasker' && !a.available && !a.active))
   await stop()

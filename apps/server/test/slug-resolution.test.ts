@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { resolveTableName } from '../src/meta'
+import { invalidateMeta, resolveTableName } from '../src/meta'
+import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #56: /api/resource accepts slug spellings of Table names with spaces —
@@ -43,14 +44,24 @@ describe('#56: Table slugs in resource URLs', () => {
     expect((await admin.fetch('/api/table/Slug%20Test%20Note')).status).toBe(200)
   })
 
-  // Two table-backed Tables can never share a slug — tableName() collapses
-  // the same variants, so the second create collides on the table. Settings
-  // Tables (kind: 'settings') get no table, so they are the one way two names
-  // can normalize alike — which is exactly the case the resolver must refuse
-  // to guess on.
-  test('an exact match always wins over a slug match', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Case Twin', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'CASE Twin', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] })
+  // Two Tables can no longer share a slug: the slug normalizes like the
+  // storage name, and createTable refuses a second Table on the same storage
+  // whatever its kind (#432). The twins below are written straight into the
+  // store, standing for definitions that pre-date that rule, which is the
+  // case the resolver must still refuse to guess on.
+  async function twins(a: string, b: string) {
+    for (const name of [a, b]) await sql`insert into table_def ${sql({ name, module: 'Core', kind: 'settings' })}`
+    invalidateMeta()
+  }
+
+  test('a second Table with the same slug is refused at creation', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Slug Twin', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
+    const res = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'SLUG Twin', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] }) })
+    expect(res.status).toBe(409)
+  })
+
+  test('an exact match always wins over a slug match', async () => {
+    await twins('Case Twin', 'CASE Twin')
     // Both spellings slug-match both Tables, but each IS an exact name — so
     // each resolves to itself instead of erroring as ambiguous.
     expect(await resolveTableName('Case Twin')).toBe('Case Twin')
@@ -58,8 +69,7 @@ describe('#56: Table slugs in resource URLs', () => {
   })
 
   test('an ambiguous slug is an error, not a silent pick', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: 'Twin Case', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
-    await admin.post('/api/table_def', { name: 'TWIN CASE', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] })
+    await twins('Twin Case', 'TWIN CASE')
     const res = await admin.fetch('/api/table/twin-case')
     expect(res.status).toBe(409)
     const body = (await res.json()) as { error: { message: string } }

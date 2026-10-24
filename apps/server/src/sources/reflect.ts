@@ -1,4 +1,5 @@
 import { sanitizeHeaders, prettifyLabel, tableNameFromFile } from 'shared'
+import { assertNotPlatformRelation } from './platform-guard'
 import { sql } from '../db'
 import { AppError } from '../errors'
 import { createTable } from '../table-engine'
@@ -150,6 +151,7 @@ export async function assertBindingIsValid(def: {
   columns: { column_name: string; source_column?: string }[]
 }): Promise<void> {
   const cfg = await getSource(def.data_source) // NotFoundError if absent
+  assertNotPlatformRelation(cfg.name, def.external_schema)
   assertAllowed(cfg, def.external_schema ?? '', def.external_table)
   const driver = getDriver(cfg)
   const introspected = await driver.introspect(cfg, def.external_schema || undefined)

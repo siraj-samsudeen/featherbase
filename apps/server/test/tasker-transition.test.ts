@@ -6,6 +6,7 @@ import { registerApp, installApp, loadInstalledApps } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
+import { saveSystemRow } from '../src/document'
 
 // 0090 is immutable migration history whose original physical source was
 // public. These focused behavior tests run after 0094, so adapt only that
@@ -48,9 +49,11 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   const comment = await member.post<{ row_id: string }>('/api/save_row', { table: 'Comment', row: {
     ref_table: 'Team Task', ref_name: task.row_id, content: 'Keep this discussion',
   } })
-  const version = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Version', row: {
+  // Version is system-written (#432): the history row is written the way
+  // the platform writes it, not through the public save.
+  const version = await saveSystemRow('Version', {
     ref_table: 'Team Task', ref_name: task.row_id, data: { changed: ['task_state'] },
-  } })
+  }, 'Administrator') as { row_id: string }
   const file = await admin.post<{ row_id: string }>('/api/save_row', { table: 'File', row: {
     file_name: 'transition-note.txt', ref_table: 'Team Task', ref_name: task.row_id,
   } })
@@ -78,7 +81,7 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   await runTransition(migration)
   await sql.unsafe(await readFile(resolve('migrations/0091_runtime_api_only.sql'), 'utf8'))
   await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
-  expect(await sql`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed`).toMatchObject([{ allowed: false }])
+  expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'tasker.task'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
   expect(await sql`
     select distinct owner_app from permission
     where row_id in (select jsonb_array_elements_text(perms) from installed_app where name = 'tasker')`

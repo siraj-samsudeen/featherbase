@@ -40,6 +40,9 @@ export interface TableMeta {
   // #74: platform tables created by the migration chain — grouped under the
   // sidebar's collapsed System section, never hidden.
   system: boolean
+  // #432: the platform alone writes this Table's rows (Activity Log, Version,
+  // Background Job, …). Lists and forms show it read-only for everyone.
+  system_written?: boolean
   // EDS-13: set when the Table is bound to an external Data Source. The Desk
   // shows a source badge and, for read-only sources, renders lists/forms
   // without any write affordance.
@@ -76,6 +79,19 @@ export const COLUMN_TYPES = [
 export function isSourceReadOnly(meta: TableMeta | undefined): boolean {
   if (!meta?.data_source) return false
   return meta.source_writable !== true
+}
+
+// #432: rows only the platform writes — no create, edit, delete, import,
+// merge or column change for anyone, administrators included.
+export function isSystemWritten(meta: TableMeta | undefined): boolean {
+  return meta?.system_written === true
+}
+
+// Every row-write affordance (New, Save, Delete, Rename, Import, bulk edit)
+// hangs on this: absent when a read-only source owns the rows or when the
+// platform does.
+export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
+  return isSourceReadOnly(meta) || isSystemWritten(meta)
 }
 
 export function useMeta(table: string, enabled = true) {

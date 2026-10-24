@@ -13,7 +13,7 @@ const PLATFORM_RELATIONS = new Set([
   'metadata_override', 'migration', 'notification_log', 'password_reset', 'patch_log',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role',
   'runtime_action_result',
-  'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
+  'sales_target_snapshot_name', 'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
   'service_level_agreement', 'share', 'sign_in_method', 'single_value', 'sla_priority', 'table_def',
   'tag_link', 'todo', 'translation', 'user', 'user_event', 'user_identity', 'user_settings', 'version',
   // person-rename (0101) and person-resolution (0102). `user` and
@@ -24,6 +24,32 @@ const PLATFORM_RELATIONS = new Set([
   'web_form', 'web_page', 'webhook', 'workflow', 'workflow_action',
   'workflow_document_state', 'workflow_transition',
 ])
+
+// Table and Column describe themselves, but "table"/"column" are reserved
+// SQL keywords — their physical storage is table_def/column_def (chosen at
+// bootstrap specifically to dodge that collision) rather than the naive
+// lowercased name every other Table gets.
+const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
+  table: 'table_def',
+  column: 'column_def',
+}
+
+export function tableName(table: string): string {
+  const naive = table.toLowerCase().replace(/\s+/g, '_')
+  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
+}
+
+// #432: the storage a Table resolves to, as `schema.relation`. App Tables
+// carry their mapping; every other name lowercases into the platform schema,
+// so "Activity Log", "activity log" and "ACTIVITY  LOG" are one relation.
+export function resolvedRelation(def: {
+  name: string
+  physical_schema?: string | null
+  physical_relation?: string | null
+}): string {
+  if (def.physical_schema && def.physical_relation) return `${def.physical_schema}.${def.physical_relation}`
+  return platformRelation(tableName(def.name))
+}
 
 export function platformRelation(relation: string): string {
   return `${PLATFORM_SCHEMA}.${relation}`

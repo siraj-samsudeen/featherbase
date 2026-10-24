@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
+import { adminPageTitle } from 'shared'
 import { useIsSystemManager } from '../lib/session'
 import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
 import { fmtInstantIST } from '../lib/inr'
@@ -143,7 +144,7 @@ export function AccessTokens() {
     <div data-testid="access-tokens" className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-ink">Access tokens</h1>
+          <h1 className="text-lg font-semibold text-ink">{adminPageTitle('access-tokens')}</h1>
           <p className="text-sm text-ink-muted">
             Bearer credentials for the API. The secret is shown once, at creation.
           </p>

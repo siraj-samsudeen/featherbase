@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useQuery, type QueryClient } from '@tanstack/react-query'
+import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { DataList, type DataColumn } from '../components/ui'
@@ -60,7 +61,7 @@ export function WaitingForAccess() {
   return (
     <div className="space-y-4" data-testid="waiting-for-access">
       <div>
-        <h1 className="text-lg font-semibold text-ink">Waiting for access</h1>
+        <h1 className="text-lg font-semibold text-ink">{adminPageTitle('waiting-for-access')}</h1>
         <p className="text-sm text-ink-muted">
           People who signed in but hold no role yet, newest first. Open one to give them roles.
         </p>

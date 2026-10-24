@@ -20,7 +20,7 @@ import {
   registerDataset,
 } from '../src/dataset-snapshot'
 import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/datasets/sales-target-mtd'
-import { reportFor } from '../src/sales-target-report'
+import { reportFor, snapshotStoreNames } from '../src/sales-target-report'
 import type { Assignment } from '../src/sales-target'
 
 // The report is month to date in IST; these fixtures were cut on 17-Sep-2026,
@@ -35,9 +35,9 @@ afterAll(() => {
 const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
 const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'], sections: [], section_by_material_group: {}, scope_basis: ['assignment'] }
 
-/** One snapshot row in the dataset's 8-column shape. */
+/** One snapshot row in the dataset's 7-column shape (the name is the hierarchy's, read apart: #4344). */
 const row = (plant: string, code: string, date: string, target: number | null, actual: number | null) =>
-  [plant, plant === '1501' ? 'Attakulangara' : 'Kattakada', plant === '1501' ? 'ATK' : 'KTK', code, `Sub ${code}`, date, target, actual]
+  [plant, plant === '1501' ? 'Attakulangara' : 'Kattakada', plant === '1501' ? 'ATK' : 'KTK', code, date, target, actual]
 
 /** Two stores x two codes x two days, with known sums. */
 function sampleRows() {
@@ -49,8 +49,14 @@ function sampleRows() {
   return out
 }
 
+/** The names query answers with every code the rows carry; the as-of query with the day; the rest with the rows. */
 function stub(rows: unknown[][], asOf = '2026-09-17') {
-  _setSourceReader(async (text: string) => (/max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [[asOf]] : rows))
+  _setSourceReader(async (text: string) => {
+    if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text))
+      return [...new Set(rows.map((r) => String(r[3])))].map((code) => [code, `Sub ${code}`])
+    // The as-of day, and the period's target-row count the live path checks.
+    return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [[asOf, rows.length]] : rows
+  })
 }
 
 afterEach(() => _setSourceReader(null))
@@ -69,6 +75,15 @@ describe('dataset definition', () => {
 })
 
 describe('snapshot lifecycle', () => {
+  // #409: a store switcher whose stores carry no assignment label names them from the active snapshot.
+  test('store names come from the active snapshot, and only for stores it holds', async () => {
+    expect(await snapshotStoreNames(['1501'])).toEqual({})
+    stub(sampleRows())
+    await buildSnapshot(SALES_TARGET_DATASET)
+    expect(await snapshotStoreNames(['1501', '9999'])).toEqual({ '1501': 'Attakulangara' })
+    expect(await snapshotStoreNames([])).toEqual({})
+  })
+
   test('a build activates and carries the source as-of', async () => {
     stub(sampleRows())
     const out = await buildSnapshot(SALES_TARGET_DATASET)
@@ -177,16 +192,18 @@ describe('personalisation is applied at read time', () => {
     expect(after.snapshot_id).toBe(built.snapshotId) // same snapshot, no rebuild
   })
 
-  test('a selected code with no rows still appears, as missing rather than zero', async () => {
+  // #4344: the rows carry every sale, so a selected code with no row neither had a target nor
+  // sold. It still appears — classed as such, not as a missing actual.
+  test('a selected code with no rows still appears, as "no target, no sale"', async () => {
     stub(sampleRows())
     await buildSnapshot(SALES_TARGET_DATASET)
     const withUnknown: Assignment = { ...EMP1, material_groups: ['010101001', '019999999'] }
     const r = await reportFor(withUnknown)
     expect(r.rows).toHaveLength(2)
-    const missing = r.rows.find((x) => x.code === '019999999')!
-    expect(missing.actual).toBeNull()      // never ₹0
-    expect(missing.missingActual).toBe(true)
-    expect(r.total.missing).toBe(1)
+    const idle = r.rows.find((x) => x.code === '019999999')!
+    expect(idle).toMatchObject({ target: 0, actual: 0, noTargetNoSale: true, missingActual: false })
+    expect(idle.subcategory).toBe('(name not in hierarchy)') // and now that label is true: the stub's hierarchy lacks it
+    expect(r.total).toMatchObject({ missing: 0, no_target_no_sale: 1 })
   })
 })
 
@@ -308,9 +325,9 @@ describe('Section subtotals', () => {
     ])
     // The missing actual is counted, never summed as ₹0 — the subtotal carries its own count.
     expect(r.sections).toEqual([
-      { section: 'Boys Bottoms', target: 130, actual: 40, gap: -90, achievement: (100 * 40) / 130, missing: 1, n: 2 },
-      { section: 'Boys Tops', target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, n: 1 },
-      { section: null, target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, n: 1 },
+      { section: 'Boys Bottoms', target: 130, actual: 40, gap: -90, achievement: (100 * 40) / 130, missing: 1, no_target_no_sale: 0, n: 2 },
+      { section: 'Boys Tops', target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, no_target_no_sale: 0, n: 1 },
+      { section: null, target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, no_target_no_sale: 0, n: 1 },
     ])
     expect(r.total).toMatchObject({ target: 530, actual: 280, n: 4, missing: 1 })
   })

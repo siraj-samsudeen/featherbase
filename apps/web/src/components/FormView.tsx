@@ -6,7 +6,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, ShownName, isOpaqueId } from '../lib/people'
 import { useRealtime } from '../lib/realtime'
-import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -169,6 +169,9 @@ export function FormView({
   // EDS-13: a bound Table on a read-only source renders with no write
   // affordance at all — every field read-only, Save/Rename absent.
   const sourceReadOnly = isSourceReadOnly(m)
+  // #432: also read-only when the platform alone writes the rows — the form
+  // opens for reading, with no Save, Delete or Rename, for everyone.
+  const rowsReadOnly = isRowsReadOnly(m)
   const boundSource = m.data_source ?? null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
@@ -379,7 +382,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !isOpaqueId(name) && (
+          {!isNew && !renaming && !boundSource && !rowsReadOnly && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -413,7 +416,7 @@ export function FormView({
               so an affordance here would only ever produce an error), and a
               read-only source, which owns its rows. */}
           {!isNew &&
-            !sourceReadOnly &&
+            !rowsReadOnly &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
               <button
@@ -427,7 +430,7 @@ export function FormView({
                 {t('Delete')}
               </button>
             )}
-          {!sourceReadOnly && (
+          {!rowsReadOnly && (
             <button
               onClick={save}
               disabled={saving || !dirty || (submittable && status !== 'draft')}
@@ -574,7 +577,7 @@ export function FormView({
                   <FieldControl
                     key={f.column_name}
                     field={
-                      sourceReadOnly || (submittable && status !== 'draft')
+                      rowsReadOnly || (submittable && status !== 'draft')
                         ? { ...f, read_only: true }
                         : f
                     }

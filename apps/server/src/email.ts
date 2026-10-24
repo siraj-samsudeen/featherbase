@@ -70,6 +70,9 @@ export interface SmtpConfig {
   password?: string
   /** MAIL_FROM: the deployment's one sender (e.g. `Feather Dash <noreply@…>`). */
   from?: string
+  /** The EHLO name: SMTP_NAME, else the MAIL_FROM domain, else the SITE_URL
+   *  host. Unset here, the sender's domain is used at send time. */
+  name?: string
   /** Extra TLS options. Never read from the environment: tests use it to
    *  trust a throwaway certificate. */
   tls?: ConnectionOptions
@@ -106,10 +109,35 @@ export function readSmtpConfig(env: Record<string, string | undefined> = process
   const raw = env.SMTP_PASSWORD ?? ''
   const password = (GOOGLE_APP_PASSWORD.test(raw.trim()) ? raw.replace(/\s+/g, '') : raw) || undefined
   if (user && !password) throw new MailDeliveryError('ECONFIG', undefined, 'SMTP_USER is set but SMTP_PASSWORD is empty')
-  return { host, port, user, password, from: val('MAIL_FROM') }
+  const from = val('MAIL_FROM')
+  const explicitName = val('SMTP_NAME')
+  if (explicitName && !HOSTNAME.test(explicitName))
+    throw new MailDeliveryError('ECONFIG', undefined, 'SMTP_NAME must be a hostname such as jeyarama.com')
+  const name = explicitName ?? (from && senderDomain(from)) ?? siteHost(val('SITE_URL'))
+  return { host, port, user, password, from, ...(name ? { name } : {}) }
 }
 
 const GOOGLE_APP_PASSWORD = /^[a-z]{4}( [a-z]{4}){3}$/i
+
+// The name sent in EHLO. Left unset, nodemailer uses os.hostname(), and a
+// container's hostname has no dot, so it greets as `[127.0.0.1]`; Google's
+// relay answers that with `421 4.7.0 Try again later ... (EHLO)`.
+const HOSTNAME = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/
+
+function senderDomain(sender: string): string | undefined {
+  const domain = bareAddress(sender).split('@')[1]
+  return domain && HOSTNAME.test(domain) ? domain : undefined
+}
+
+function siteHost(siteUrl: string | undefined): string | undefined {
+  if (!siteUrl) return undefined
+  try {
+    const host = new URL(siteUrl).hostname.toLowerCase()
+    return HOSTNAME.test(host) ? host : undefined
+  } catch {
+    return undefined
+  }
+}
 
 // 465 is implicit TLS. On every other port the session starts in plain text
 // and STARTTLS is REQUIRED: nodemailer refuses to go on if the server does not
@@ -121,6 +149,7 @@ export function smtpTransportOptions(cfg: SmtpConfig) {
   return {
     host: cfg.host,
     port: cfg.port,
+    name: cfg.name,
     secure,
     requireTLS: !secure,
     auth,
@@ -140,6 +169,10 @@ export function smtpTransportOptions(cfg: SmtpConfig) {
 export class MailDeliveryError extends AppError {
   code: string
   responseCode?: number
+  /** The server's reply line, for the operator running `cli mail:test`.
+   *  Not part of `message`, so it is never stored, logged or returned: a
+   *  relay may echo an address in it. Non-enumerable for the same reason. */
+  declare serverReply?: string
   /** `detail` is fixed text written here (a configuration problem), never
    *  anything taken from the server or the message. */
   constructor(code: string, responseCode?: number, detail?: string) {
@@ -171,13 +204,19 @@ function bareAddress(sender: string): string {
 
 function toDeliveryError(err: unknown): MailDeliveryError {
   if (err instanceof MailDeliveryError) return err
-  const e = (err ?? {}) as { code?: unknown; responseCode?: unknown }
+  const e = (err ?? {}) as { code?: unknown; responseCode?: unknown; response?: unknown }
   // nodemailer's codes are fixed identifiers (ECONNECTION, ETLS, EAUTH,
   // EENVELOPE, ...); anything else is reported as an unknown failure rather
   // than echoing free text that could carry an address.
   const code = typeof e.code === 'string' && /^[A-Z_]{2,32}$/.test(e.code) ? e.code : 'EUNKNOWN'
   const responseCode = typeof e.responseCode === 'number' ? e.responseCode : undefined
-  return new MailDeliveryError(code, responseCode)
+  const out = new MailDeliveryError(code, responseCode)
+  if (typeof e.response === 'string' && e.response.trim()) {
+    // Control characters stripped, length capped: it is printed to a terminal.
+    const reply = e.response.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, 500)
+    Object.defineProperty(out, 'serverReply', { value: reply, enumerable: false })
+  }
+  return out
 }
 
 /** One structured log line per failed delivery: what the mail was for and
@@ -203,7 +242,9 @@ export async function sendViaSmtp(cfg: SmtpConfig, msg: MailMessage): Promise<vo
   const from = cfg.from ?? sender
   if (!from) throw new MailDeliveryError('ECONFIG', undefined, 'set MAIL_FROM or a default Email Account')
   const replyTo = cfg.from && sender && bareAddress(sender) !== bareAddress(cfg.from) ? sender : undefined
-  const transport = createTransport(smtpTransportOptions(cfg))
+  const name = cfg.name ?? senderDomain(from)
+  if (!name) throw new MailDeliveryError('ECONFIG', undefined, 'set SMTP_NAME: the sender address has no domain to greet the server with')
+  const transport = createTransport(smtpTransportOptions({ ...cfg, name }))
   try {
     await transport.sendMail({
       from,
@@ -342,6 +383,18 @@ registerJob('send_email', async (payload, ctx) => {
     let subject = (row.subject as string) ?? ''
     let body = (row.body as string) ?? ''
     const attachments: Attachment[] = [...(opts.files ?? [])]
+
+    // #432: the queued row outlives its Table. An email about a row of a
+    // Table that was deleted (or re-created under the same name) after
+    // queueing is not sent, whether or not it renders that row.
+    // Compared in SQL: a JS Date drops the microseconds both stamps carry.
+    if (refTable) {
+      const [current] = await sql`
+        select 1 from table_def td join email_queue q on q.ref_table = td.name
+        where q.row_id = ${queueName} and td.created_at <= q.created_at`
+      if (!current)
+        throw new Error(`${refTable} was deleted after this email was queued; it was not sent`)
+    }
 
     if ((opts.render || opts.attach_pdf) && refTable && refName) {
       const refRow = await getDoc(refTable, refName)

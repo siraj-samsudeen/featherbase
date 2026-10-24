@@ -406,53 +406,87 @@ async function sectionsOf(plant: string, groups: string[]): Promise<Record<strin
 }
 
 /**
- * The caller's CURRENT assignment, read on every call: the explicit Sales Target Assignment rows
- * plus what the Store Sections maps derive for the employee (#3783). An employee whose sections
- * are mapped needs no assignment row; an assignment row still works for a store with no map yet,
- * and adds to the derived set where both exist. One store per employee is still the rule — a
- * conflict between the two sources is refused loudly rather than mixing stores.
+ * The caller's CURRENT assignments, one per store, read on every call: the explicit Sales Target
+ * Assignment rows plus what the Store Sections maps derive for the employee (#3783). An employee
+ * whose sections are mapped needs no assignment row; an assignment row still works for a store with
+ * no map yet, and adds to the derived set where both exist. #409: a person whose scope spans several
+ * stores gets one assignment per store, sorted by store code — the report shows one store at a
+ * time and never mixes them.
  */
-export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
+export async function currentAssignments(user: string, period: Period = currentPeriod()): Promise<Assignment[]> {
   // D10: a code we cannot attribute to one person blocks the whole reader — no partial scope.
   const { codes, ambiguous } = await currentEmployeeCodes(user)
-  if (ambiguous) return null
+  if (ambiguous) return []
   const explicit = await sql`
     select plant_code, store_label, material_group
     from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
     where employee = ${user}
     order by material_group`
   const derived = await derivedFromSections(codes, period.period_end)
-  if (!explicit.length && !derived.length) return null
-  const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
-  if (plants.size > 1)
-    // Addresses the signed-in person (second person, "Your account"): this is the one reader's own refusal, shown to them verbatim by the page.
-    // Written for the reader (#404): the report shows one store at a time. No person id — it is opaque and means nothing to them.
-    throw new AppError(
-      'ValidationError',
-      `Your account is set up for more than one store (${[...plants].sort().join(', ')}), and this report shows one store at a time. Ask your administrator to check which store you belong to.`,
-      // The page shows exactly this refusal's sentence and no other (matched on the code).
-      { code: 'multiple_stores' },
-    )
-  const plant = [...plants][0]
+  const plants = [...new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])].sort()
   // The maps are edited by the store, and the live read and the Dive both put these codes into
   // query text. Only the exact shapes the assignment Table itself enforces get through; one bad
   // cell is dropped and logged rather than allowed to break, or rewrite, anyone's report.
-  if (!PLANT_CODE.test(plant)) throw new AppError('ValidationError', `Your account maps to a store code that is not four digits (${JSON.stringify(plant)}). Ask your administrator to correct it.`)
-  const all = [...new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])]
-  const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
-  if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)
-  const groups = all.filter((g) => MATERIAL_GROUP.test(g)).sort()
-  const sectionByGroup = await sectionsOf(plant, groups)
-  const basis = new Set<ScopeBasis>(derived.map((r) => r.basis))
-  if (explicit.length) basis.add('assignment')
-  return {
-    plant_code: plant,
-    store_label: (explicit[0]?.store_label as string | null) ?? null,
-    material_groups: groups,
-    sections: [...new Set(Object.values(sectionByGroup))].sort(),
-    section_by_material_group: sectionByGroup,
-    scope_basis: [...basis].sort(),
+  const badPlant = plants.find((p) => !PLANT_CODE.test(p))
+  if (badPlant !== undefined) throw new AppError('ValidationError', `Your account maps to a store code that is not four digits (${JSON.stringify(badPlant)}). Ask your administrator to correct it.`)
+  const out: Assignment[] = []
+  for (const plant of plants) {
+    const mine = explicit.filter((r) => String(r.plant_code) === plant)
+    const theirs = derived.filter((r) => r.plant_code === plant)
+    const all = [...new Set([...mine.map((r) => String(r.material_group)), ...theirs.map((r) => r.material_group)])]
+    const bad = all.filter((g) => !MATERIAL_GROUP.test(g))
+    if (bad.length) console.warn(`sales-target: ${user}: ignoring ${bad.length} material group value(s) that are not nine digits: ${JSON.stringify(bad.slice(0, 5))}`)
+    const groups = all.filter((g) => MATERIAL_GROUP.test(g)).sort()
+    const sectionByGroup = await sectionsOf(plant, groups)
+    const basis = new Set<ScopeBasis>(theirs.map((r) => r.basis))
+    if (mine.length) basis.add('assignment')
+    out.push({
+      plant_code: plant,
+      store_label: (mine[0]?.store_label as string | null) ?? null,
+      material_groups: groups,
+      sections: [...new Set(Object.values(sectionByGroup))].sort(),
+      section_by_material_group: sectionByGroup,
+      scope_basis: [...basis].sort(),
+    })
   }
+  return out
+}
+
+/** #409: the store a reader opens on — the one with the most Sections; a tie goes to the lowest store code. */
+export function defaultStore(assignments: Assignment[]): Assignment | null {
+  // Relies on currentAssignments sorting by store code: keeping the first of equals is the lowest code.
+  return assignments.reduce<Assignment | null>((best, a) => (!best || a.sections.length > best.sections.length ? a : best), null)
+}
+
+/**
+ * The assignment for the store the reader asked for, or their default store when they named none.
+ * The store is the browser's choice, so it is never trusted: one that is not among the reader's
+ * own stores — someone else's, or no store at all — is refused, never served.
+ */
+export async function assignmentFor(
+  user: string,
+  store: string | undefined,
+  period: Period = currentPeriod(),
+): Promise<{ assignments: Assignment[]; chosen: Assignment | null }> {
+  const assignments = await currentAssignments(user, period)
+  if (store === undefined) return { assignments, chosen: defaultStore(assignments) }
+  const chosen = assignments.find((a) => a.plant_code === store)
+  if (!chosen) throw new AppError('PermissionError', 'That store is not one of yours')
+  return { assignments, chosen }
+}
+
+/**
+ * The `store` query parameter: absent or empty = no store chosen (the default). A repeated
+ * parameter names no one store and is refused like any store that is not the reader's.
+ */
+export function requestedStore(values: string[] | undefined): string | undefined {
+  if (values && values.length > 1) throw new AppError('PermissionError', 'That store is not one of yours')
+  return values?.[0] || undefined
+}
+
+/** The default store's assignment — what a reader who names no store is shown. */
+export async function currentAssignment(user: string, period: Period = currentPeriod()): Promise<Assignment | null> {
+  return (await assignmentFor(user, undefined, period)).chosen
 }
 
 /** Exactly the Dive's useDiveState keys — nothing else rides along. */
@@ -554,8 +588,13 @@ salesTargetRoutes.get('/me', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const a = await currentAssignment(user.row_id, period)
+  // No store parameter: /me is the default store's assignment plus every store the reader can open.
+  const { assignments, chosen: a } = await assignmentFor(user.row_id, undefined, period)
   const [person] = await sql`select username from person where row_id = ${user.row_id}`
+  // #409: the stores the reader can switch between. A store's name is its assignment label, else
+  // the active snapshot's name for it — lazily imported, as /report does.
+  const unlabelled = assignments.filter((s) => !s.store_label).map((s) => s.plant_code)
+  const names = unlabelled.length ? await (await import('./sales-target-report')).snapshotStoreNames(unlabelled) : {}
   const username = (person?.username as string | null | undefined) ?? null
   return c.json({
     // person-rename: the id is opaque (`psn_…`) and never shown. Most people have no username
@@ -563,17 +602,25 @@ salesTargetRoutes.get('/me', async (c) => {
     username,
     display_name: user.full_name?.trim() || username || user.email || 'You',
     assignment: a,
+    stores: assignments.map((s) => ({
+      plant_code: s.plant_code,
+      store_name: s.store_label || names[s.plant_code] || null,
+      sections: s.sections,
+      scope_basis: s.scope_basis,
+    })),
+    default_store: defaultStore(assignments)?.plant_code ?? null,
     ...period,
     embed_origin: EMBED_ORIGIN,
   })
 })
 
-// A fresh session per call; the browser receives only the session string.
+// A fresh session per call; the browser receives only the session string. `?store=` picks one
+// of the reader's own stores (#409); without it, their default store.
 salesTargetRoutes.post('/embed_session', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const a = await currentAssignment(user.row_id, period)
+  const { chosen: a } = await assignmentFor(user.row_id, requestedStore(c.req.queries('store')), period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   const r = await createEmbedSession(initialStateFor(a, period))
   // A deployment with no Dive configured is not a failure — it is a deployment
@@ -603,7 +650,7 @@ salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
   const period = currentPeriod()
-  const a = await currentAssignment(user.row_id, period)
+  const { chosen: a } = await assignmentFor(user.row_id, requestedStore(c.req.queries('store')), period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   // Lazy, like reportFor: the dataset module imports currentPeriod from this file.
   const { reportFor } = await import('./sales-target-report')
@@ -619,6 +666,7 @@ salesTargetRoutes.get('/report', async (c) => {
     table: SALES_TARGET_DATASET,
     row_id: report.snapshot_id ?? undefined,
     method: report.source,
+    scope: `store=${a.plant_code}`,
   })
   return c.json(report)
 })

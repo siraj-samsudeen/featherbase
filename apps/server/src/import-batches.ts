@@ -127,10 +127,13 @@ export async function listBatches(
   // Which of the named Tables still exist — asked once for the whole page
   // rather than per target.
   const named = [...new Set(rows.map((r) => r.ref_table))]
-  const alive = new Set(
+  // #432: import history outlives its Table, so a log row may name a Table
+  // that was deleted and later re-created under the same name. Only the Table
+  // that already existed when the part was logged is this batch's.
+  const createdAt = new Map(
     (
-      await sql<{ name: string }[]>`select name from table_def where name = any(${named})`
-    ).map((t) => t.name),
+      await sql<{ name: string; created_at: Date }[]>`select name, created_at from table_def where name = any(${named})`
+    ).map((t) => [t.name, new Date(t.created_at).getTime()]),
   )
 
   const byBatch = new Map<string, LogRow[]>()
@@ -155,7 +158,9 @@ export async function listBatches(
           run_id: null,
           reverted_at: null,
           sheets: [],
-          exists: alive.has(part.ref_table),
+          exists:
+            createdAt.has(part.ref_table) &&
+            createdAt.get(part.ref_table)! <= new Date(part.created_at).getTime(),
         }
         targets.set(part.ref_table, target)
       }

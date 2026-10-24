@@ -210,10 +210,12 @@ Creating a Table:
    types map to Postgres column types (`Data` → `varchar(140)`, `Currency` →
    `numeric(21,9)`, `JSON` → `jsonb`, ...). Layout columns (section break,
    column break) and Sub-table columns produce no physical column.
-3. Enables row-level security and generates a SELECT-only policy for the
-   `app_client` role (`applyRls`) — the local stand-in for a direct
-   PostgREST-style client. The app server connects as the table owner and
-   remains the only write path (see `apps/server/migrations/0010_rls.sql`).
+3. Enables row-level security and generates a SELECT-only policy that holds
+   every role but the owner to the session user's read Permission
+   (`applyRls`) — the local stand-in for a direct PostgREST-style client. No
+   role is granted access; the app server connects as the table owner and
+   remains the only read and write path (see
+   `apps/server/migrations/0010_rls.sql`).
 
 Updating a Table's definition syncs the edit: new columns add physical
 columns (`ALTER TABLE ... ADD COLUMN`), property edits update `column_def`

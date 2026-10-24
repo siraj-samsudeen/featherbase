@@ -4,6 +4,7 @@ import { api, listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
+import { adminPageTitle } from 'shared'
 import { usePeek } from '../components/Peek'
 import { cardClasses, inputClasses, pillClasses, touchTargetClasses } from '../components/ui'
 import { fmtCount, fmtShowing } from '../lib/inr'
@@ -133,7 +134,7 @@ export function ExploreView({
   return (
     <div data-testid="explore-view">
       <div className="mb-1 text-xs text-ink-subtle">Explore</div>
-      <h1 className="text-xl font-semibold text-ink">Cross-filter workspace</h1>
+      <h1 className="text-xl font-semibold text-ink">{adminPageTitle('explore')}</h1>
       <p className="mb-4 mt-1 max-w-2xl text-sm text-ink-muted">
         Chain tables along their references, then click rows — each selection filters every pane
         downstream. With nothing selected, a pane follows the whole upstream set. Click a selected

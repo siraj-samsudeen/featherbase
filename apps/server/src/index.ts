@@ -6,6 +6,7 @@ import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql, withTransaction } from './db'
+import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
@@ -23,6 +24,7 @@ import { pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { sendInvitation } from './invitation-email'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -58,14 +60,13 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { staticAdminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
-import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -803,15 +804,29 @@ app.get('/api/activity_feed', async (c) => {
       select kind, ref_key, label, sub_label, path, occurred_at
       from user_event where created_by = ${user}
       order by occurred_at desc limit ${limit}`
+    const me = (await whoLabels([user])).get(user)
+    const whoName = me?.name ?? user
     return c.json({
-      items: rows.map((r) => ({
-        who: user,
-        kind: r.kind as string,
-        label: (r.label as string | null) ?? (r.ref_key as string),
-        sub: (r.sub_label as string | null) ?? undefined,
-        path: (r.path as string | null) ?? '',
-        at: new Date(r.occurred_at as string).toISOString(),
-      })),
+      items: rows.map((r) => {
+        const path = (r.path as string | null) ?? ''
+        const title = staticAdminPageTitle(path)
+        const base = {
+          who_name: whoName,
+          ...(me?.role ? { who_role: me.role } : {}),
+          path,
+          at: new Date(r.occurred_at as string).toISOString(),
+        }
+        // #440: a fixed admin page is a page, titled — not a slug-named list.
+        if (title && (r.kind === 'list' || r.kind === 'page'))
+          return { ...base, kind: 'page', label: title }
+        return {
+          ...base,
+          kind: r.kind as string,
+          label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
+          sub: (r.sub_label as string | null) ?? undefined,
+          ...(r.kind === 'list' ? { filtered: listKeyHasFilter((r.ref_key as string | null) ?? '') } : {}),
+        }
+      }),
     })
   }
 
@@ -825,9 +840,14 @@ app.get('/api/activity_feed', async (c) => {
     select "user", full_name, created_at
     from activity_log where operation = 'login'
     order by created_at desc limit ${limit}`
+  const names = await whoLabels([
+    ...versions.map((v) => v.created_by as string),
+    ...logins.map((l) => l.user as string),
+  ])
   const items = [
     ...versions.map((v) => ({
-      who: v.created_by as string,
+      who_name: names.get(v.created_by as string)?.name ?? (v.created_by as string),
+      who_role: names.get(v.created_by as string)?.role,
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
@@ -835,9 +855,10 @@ app.get('/api/activity_feed', async (c) => {
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({
-      who: l.user as string,
+      who_name: names.get(l.user as string)?.name ?? (l.user as string),
+      who_role: names.get(l.user as string)?.role,
       kind: 'login',
-      label: (l.full_name as string | null) || (l.user as string),
+      label: '', // the row already names the person; a sign-in has no object
       sub: 'signed in',
       path: '',
       at: new Date(l.created_at as string).toISOString(),
@@ -947,15 +968,39 @@ app.get('/api/people/pick', async (c) => {
 app.post('/api/people/:id/identities', async (c) => {
   await assertSystemManager(who(c))
   assertCanChangeAccess(c.get('user'))
-  const body = (await c.req.json().catch(() => ({}))) as { method?: string; subject?: string; sign_in_name?: string; email?: string }
+  const body = (await c.req.json().catch(() => ({}))) as {
+    method?: string; subject?: string; sign_in_name?: string; email?: string; send_invitation_email?: boolean
+  }
   if (!body.method) throw new AppError('ValidationError', 'Expected { method }', { method: 'required' })
   const google = await methodOfKind('google')
-  const { created, ...identity } =
-    google && body.method === google.key && !body.subject && body.email
-      ? await inviteGoogle(c.req.param('id'), body.email, who(c))
-      : await linkIdentity(c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
+  if (google && body.method === google.key && !body.subject && body.email) {
+    const { created, ...identity } = await inviteGoogle(c.req.param('id'), body.email, who(c))
+    // #430: a new invite emails the address unless the inviter said not to; a
+    // re-invite sends nothing (Resend does). A failed send keeps the invite.
+    if (!created) return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'already_invited' } }, 200)
+    if (body.send_invitation_email === false)
+      return c.json({ ...identity, invitation_email: { status: 'not_sent', reason: 'not_requested' } }, 201)
+    // The invite is already committed: whatever happens to the email, answer 201.
+    const sent = await sendInvitation(identity.id, who(c), externalOrigin(c).origin).catch((err) => {
+      console.error(JSON.stringify({ level: 'error', event: 'invitation_email_error', type: err instanceof AppError ? err.type : 'InternalError' }))
+      return { invitation_email: { status: 'failed', error: 'The invitation email was not sent' }, invitation_sent_at: null }
+    })
+    return c.json({ ...identity, ...sent }, 201)
+  }
+  const { created, ...identity } = await linkIdentity(
+    c.req.param('id'), { method: body.method, subject: body.subject ?? '', sign_in_name: body.sign_in_name }, who(c))
   // Re-posting the same link is a no-op the roster sync can rely on: 200, not 409.
   return c.json(identity, created ? 201 : 200)
+})
+
+// #430: send a pending invite's email again, at most once in ten minutes. A
+// failed send is the answer here (503), since the email is all this does.
+app.post('/api/identities/:id/resend_invitation', async (c) => {
+  await assertSystemManager(who(c))
+  assertCanChangeAccess(c.get('user'))
+  const sent = await sendInvitation(c.req.param('id'), who(c), externalOrigin(c).origin)
+  if (sent.invitation_email.status === 'failed') throw new AppError('ServiceUnavailableError', sent.invitation_email.error)
+  return c.json(sent)
 })
 
 // person-resolution D3/D9: a person's identifiers. Reads follow the display
@@ -1408,30 +1453,6 @@ app.post('/api/permissions/:table', async (c) => {
   return c.json({ ok: true })
 })
 
-// RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
-// query is intentionally NOT returned here, so running a report never exposes
-// its SQL to the client. Read permission on the Report is enforced by getDoc.
-app.get('/api/query_report/:name', async (c) => {
-  const report = await getDoc('Report', c.req.param('name'), who(c))
-  if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
-  return c.json({
-    row_id: report.row_id,
-    ref_table: report.ref_table ?? null,
-    filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
-  })
-})
-
-// RPT-004: run a query report with bound filter params (read-only execution).
-app.post('/api/run_query_report', async (c) => {
-  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
-    report?: string
-    filters?: Record<string, unknown>
-  }
-  if (!report) throw new AppError('ValidationError', 'Expected { report }')
-  return c.json(await runQueryReport(report, filters ?? {}, who(c)))
-})
-
 // PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
 // endpoints resolve the target site from the request Host header, and every
 // query runs on that site's isolated schema — data never crosses sites.
@@ -1503,7 +1524,7 @@ for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upg
         (operation === 'upgrade_app' && typeof body.planId !== 'string'))
       throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
     if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
-    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId, who(c)))
     return c.json(await activateAppUpgrade(body.name, body.version))
   })
 }
@@ -1875,6 +1896,9 @@ app.post('/api/table/:table', async (c) => {
     const action = getCollectionAction(suffix)
     if (!action || action.effect !== 'write')
       throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
+    // #432: one gate for every write action, present and future (import,
+    // import-revert, …) — a system-written Table takes none of them.
+    assertNotSystemWritten(await getMeta(table), 'changed')
     const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await action.handler({ table, args, user }), 201)
   }
@@ -1911,6 +1935,8 @@ app.post('/api/table/:table/:name', async (c) => {
   const action = getRowAction(suffix)
   if (!action || action.effect !== 'write')
     throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
+  // #432: submit, cancel, amend, rename, workflow actions and any later one.
+  assertNotSystemWritten(await getMeta(table), 'changed')
   const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const result = await action.handler({ table, name, args, user })
   publishDocEvent(table, name, 'updated')

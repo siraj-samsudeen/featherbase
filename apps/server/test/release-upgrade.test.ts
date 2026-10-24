@@ -30,7 +30,7 @@ function run(name: string, cwd = server, script = 'src/release.ts'): string {
   try {
     return execFileSync(process.execPath, [tsx, script], {
       cwd, encoding: 'utf8', timeout: 120_000,
-      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '' },
+      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '', SITE_URL: 'https://featherbase.example.com' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   } catch (error) {
@@ -82,6 +82,9 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
     mkdirSync(resolve(oldServer, 'test/fixtures'), { recursive: true })
     cpSync(resolve(server, 'test/fixtures/legacy-release-seed.ts'), resolve(oldServer, 'test/fixtures/legacy-release-seed.ts'))
     run(name, oldServer, 'test/fixtures/legacy-release-seed.ts')
+    // #437: preflight refuses a release while everyone may read people, so the
+    // operator withdraws that grant first; the rows themselves stay.
+    await db`update public.permission set can_read = false where role = 'All' and ref_table = 'User'`
     const history = await db`select name, applied_at from public.migration order by name`
     const [before] = await db`select 'public.table_def'::regclass::oid as core,
       'public.team_task'::regclass::oid as task, 'public.site'::regclass::oid as site`
@@ -103,9 +106,18 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
     expect(await db`select distinct owner_app from featherbase.permission where row_id in
       (select jsonb_array_elements_text(perms) from featherbase.installed_app where name = 'tasker')`)
       .toEqual([{ owner_app: 'tasker' }])
-    expect(await db`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed,
-      has_schema_privilege('app_client', 'featherbase', 'usage') as usage`)
-      .toEqual([{ allowed: false, usage: true }])
+    // The production era's direct-client login role is retired (#451): nothing
+    // in this database references it, its policies now hold every non-owner
+    // role, and while the template still depends on it, it cannot sign in.
+    expect(await db`select count(*)::int as refs from pg_shdepend d join pg_roles r on r.oid = d.refobjid
+      where r.rolname = 'app_client' and d.dbid = (select oid from pg_database where datname = current_database())`)
+      .toEqual([{ refs: 0 }])
+    expect(await db`select rolcanlogin from pg_roles where rolname = 'app_client'`).toEqual([{ rolcanlogin: false }])
+    expect(await db`select p.polroles = '{0}'::oid[] as everyone from pg_policy p
+      where p.polrelid = 'tasker.task'::regclass and p.polname = 'fc_select'`).toEqual([{ everyone: true }])
+    expect(await db`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a
+      where c.oid = 'tasker.task'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
+    expect(await db`select has_schema_privilege('public', 'featherbase', 'usage') as usage`).toEqual([{ usage: true }])
     const ledger = await db`select * from featherbase.migration order by name`
     const grants = await db`select * from featherbase.permission order by row_id`
     expect(run(name)).not.toContain('applied ')

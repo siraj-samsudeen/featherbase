@@ -60,13 +60,15 @@ async function main() {
     process.exit(1)
   }
   console.log(`status        ${outcome.status}`)
-  console.log(`rows          ${outcome.rowCount?.toLocaleString('en-IN')}`)
+  console.log(`target rows   ${outcome.rowCount?.toLocaleString('en-IN')}`)
   console.log(`source as-of  ${outcome.sourceAsOf}`)
   console.log(`build time    ${(buildMs / 1000).toFixed(1)} s  (fetch from MotherDuck + load into Postgres)`)
 
   const [size] = await sql`
-    select pg_size_pretty(pg_total_relation_size('sales_target_snapshot_row')) as pretty,
-           pg_total_relation_size('sales_target_snapshot_row')                 as bytes`
+    select pg_size_pretty(pg_total_relation_size('sales_target_snapshot_row')
+                          + pg_total_relation_size('sales_target_snapshot_name')) as pretty,
+           pg_total_relation_size('sales_target_snapshot_row')
+             + pg_total_relation_size('sales_target_snapshot_name')               as bytes`
   console.log(`size in PG    ${size.pretty} (${Number(size.bytes).toLocaleString('en-IN')} bytes)`)
 
   const snap = await activeSnapshot(SALES_TARGET_DATASET)

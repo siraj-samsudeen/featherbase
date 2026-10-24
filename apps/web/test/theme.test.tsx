@@ -141,7 +141,7 @@ test('every sign-out follows the device, so the next person on a shared phone ne
 
 test('a stale mirror is corrected when whoami answers: light cached, device stored, dark phone', async ({ admin }) => {
   deviceSetTo(true)
-  // Before any React: the mirror still says light (written before 0109 moved
+  // Before any React: the mirror still says light (written before 0117 moved
   // the default to device), so the head script and lib/theme paint light.
   const { row_id } = (await admin.get('/api/whoami')) as { row_id: string }
   localStorage.setItem(`${THEME_MIRROR_PREFIX}${row_id}`, 'light')

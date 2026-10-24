@@ -41,6 +41,17 @@ COPY runtime-apps/tasker/featherbase.json runtime-apps/tasker/index.html runtime
 COPY runtime-apps/tasker/src src
 RUN npm run build
 
+# The installed predecessor, rebuilt from its retained source with the same
+# recipe, so an instance on 2.2.0 finds its exact artifact and can upgrade
+# (#437: 2.3.0 withdraws a grant). Upgrades refuse a predecessor they cannot find.
+FROM node:22-slim AS tasker-predecessor-build
+WORKDIR /app/runtime-apps/tasker
+COPY runtime-apps/fixtures/tasker-v2.2/package.json runtime-apps/fixtures/tasker-v2.2/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY runtime-apps/fixtures/tasker-v2.2/featherbase.json runtime-apps/fixtures/tasker-v2.2/index.html runtime-apps/fixtures/tasker-v2.2/tsconfig.json runtime-apps/fixtures/tasker-v2.2/vite.config.ts ./
+COPY runtime-apps/fixtures/tasker-v2.2/src src
+RUN npm run build
+
 # ---- Stage 3: the server image ---------------------------------------------
 FROM node:22-slim
 WORKDIR /app
@@ -65,8 +76,11 @@ COPY --from=web-build /app/apps/web/dist apps/web/dist
 COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
 COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
+COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/package.json runtime-apps/tasker-2.2.0/package.json
+COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker-2.2.0/featherbase.json
+COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/dist runtime-apps/tasker-2.2.0/dist
 
 ENV NODE_ENV=production
-ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker"]'
+ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker"]'
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
