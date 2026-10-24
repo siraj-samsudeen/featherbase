@@ -125,7 +125,7 @@ test('Tasker raw DELETE cannot bypass missing revision or retained discussion', 
   expect(await admin.post(discard, envelope(task, true))).toMatchObject({ result: { deleted: false, counts: { comments: 1 } } })
   expect(await admin.get(`/api/activity/tasker.task/${task.row_id}`)).toMatchObject({ comments: [{ content: 'Retain 37, not 83' }] })
   expect(await sql`select table_schema from information_schema.tables where table_name = 'runtime_action_result'`).toEqual([{ table_schema: 'featherbase' }])
-  expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
+  expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'featherbase.runtime_action_result'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
 })
 
 test('an attachment or shared access independently retains task identity across delete and promotion', async ({ admin, createUser }) => {

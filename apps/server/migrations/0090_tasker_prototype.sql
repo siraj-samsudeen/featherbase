@@ -51,10 +51,9 @@ begin
     update saved_view set ref_table = mapping.new_name where ref_table = mapping.old_name;
     delete from table_def where name = mapping.old_name;
     execute format('drop policy if exists fc_select on tasker.%I', mapping.new_relation);
-    execute format('create policy fc_select on tasker.%I for select to app_client using (fc_has_read(%L))',
+    execute format('create policy fc_select on tasker.%I for select using (fc_has_read(%L))',
       mapping.new_relation, mapping.new_name);
   end loop;
-  grant usage on schema tasker to app_client;
   update installed_app set name = 'tasker', tables = '["tasker.project", "tasker.task"]'::jsonb,
     runtime_package = true,
     manifest = '{"permissions":[

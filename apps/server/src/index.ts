@@ -65,7 +65,6 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
-import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -1416,30 +1415,6 @@ app.post('/api/permissions/:table', async (c) => {
     )
   else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
   return c.json({ ok: true })
-})
-
-// RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
-// query is intentionally NOT returned here, so running a report never exposes
-// its SQL to the client. Read permission on the Report is enforced by getDoc.
-app.get('/api/query_report/:name', async (c) => {
-  const report = await getDoc('Report', c.req.param('name'), who(c))
-  if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
-  return c.json({
-    row_id: report.row_id,
-    ref_table: report.ref_table ?? null,
-    filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
-  })
-})
-
-// RPT-004: run a query report with bound filter params (read-only execution).
-app.post('/api/run_query_report', async (c) => {
-  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
-    report?: string
-    filters?: Record<string, unknown>
-  }
-  if (!report) throw new AppError('ValidationError', 'Expected { report }')
-  return c.json(await runQueryReport(report, filters ?? {}, who(c)))
 })
 
 // PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
