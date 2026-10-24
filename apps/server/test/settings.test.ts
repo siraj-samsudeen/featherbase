@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from '../src/db'
 import { getSystemSettings } from '../src/settings'
-import { up as indianDisplayDefaults } from '../migrations/0103_indian_display_defaults'
+import { up as indianDisplayDefaults } from '../migrations/0116_indian_display_defaults'
 import { test } from './pg-test'
 
 // SET-004: global System Settings drive rendering and session lifetime.
