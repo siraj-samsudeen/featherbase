@@ -19,7 +19,7 @@ async function personEditor(admin: TestClient, createUser: Parameters<typeof cre
 }
 
 async function loaded(admin: TestClient, id: string) {
-  return admin.get<Record<string, unknown> & { roles: { role: string }[] }>(PERSON.rowUrl(id))
+  return admin.get<Record<string, unknown> & { roles: { row_id: string; role: string }[] }>(PERSON.rowUrl(id))
 }
 
 describe("#437: a Person's roles and enabled flag", () => {
@@ -100,6 +100,70 @@ describe("#437: a Person's roles and enabled flag", () => {
     // A new person with no roles, enabled by default, is an ordinary create.
     const created = await editor.post<{ row_id: string }>(PERSON.url, { full_name: 'Plain', roles: [] })
     expect((await loaded(admin, created.row_id)).enabled).toBe(true)
+  })
+
+  // The roles check judges the children as the save applies them: each
+  // stored row by its row_id, plus the rows it would insert or delete.
+  async function holderOfTwo(admin: TestClient) {
+    await grantRole(admin, { role: 'Second Role 437', table: [] })
+    const target = await makePerson({ full_name: 'Two Roles', roles: [{ role: 'System Manager' }, { role: 'Second Role 437' }] })
+    const doc = await loaded(admin, target)
+    const [a, b] = doc.roles
+    return { target, doc, a, b }
+  }
+
+  test('a payload that repeats a child row_id is refused, even with the same role values', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const { target, doc, a, b } = await holderOfTwo(admin)
+    await expectApiError(
+      patchDoc(editor, PERSON.rowUrl(target), {
+        updated_at: doc.updated_at,
+        roles: [{ row_id: b.row_id, role: a.role }, { row_id: b.row_id, role: b.role }],
+      }),
+      { status: 417 },
+    )
+    expect((await loaded(admin, target)).roles.map((r) => r.role).sort()).toEqual([a.role, b.role].sort())
+  })
+
+  test('a repeated child row_id is refused for a System Manager too', async ({ admin }) => {
+    const { target, doc, a } = await holderOfTwo(admin)
+    await expectApiError(
+      patchDoc(admin, PERSON.rowUrl(target), { updated_at: doc.updated_at, roles: [a, a] }),
+      { status: 417 },
+    )
+  })
+
+  test('dropping a stored child and inserting its role afresh is a change', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const { target, doc, a, b } = await holderOfTwo(admin)
+    await expectApiError(
+      patchDoc(editor, PERSON.rowUrl(target), { updated_at: doc.updated_at, roles: [a, { role: b.role }] }),
+      { status: 403 },
+    )
+    const after = (await loaded(admin, target)).roles
+    expect(after.map((r) => r.row_id).sort()).toEqual([a.row_id, b.row_id].sort())
+  })
+
+  test('swapping the roles between two stored row ids is a change', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const { target, doc, a, b } = await holderOfTwo(admin)
+    await expectApiError(
+      patchDoc(editor, PERSON.rowUrl(target), {
+        updated_at: doc.updated_at,
+        roles: [{ row_id: a.row_id, role: b.role }, { row_id: b.row_id, role: a.role }],
+      }),
+      { status: 403 },
+    )
+  })
+
+  test('the same roles in a different order still ride along', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const { target, doc, a, b } = await holderOfTwo(admin)
+    const saved = await patchDoc<Record<string, unknown>>(editor, PERSON.rowUrl(target), {
+      updated_at: doc.updated_at, full_name: 'Reordered', roles: [b, a],
+    })
+    expect(saved.full_name).toBe('Reordered')
+    expect((await loaded(admin, target)).roles.map((r) => r.role).sort()).toEqual([a.role, b.role].sort())
   })
 
   test('a System Manager changes roles and enabled', async ({ admin, createUser }) => {

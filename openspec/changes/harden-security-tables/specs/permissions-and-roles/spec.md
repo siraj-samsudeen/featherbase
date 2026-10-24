@@ -11,7 +11,10 @@ from anyone but a System Manager, whatever grants exist on them. Reading them
 SHALL stay governed by ordinary grants. A person's roles and whether their
 account is enabled SHALL likewise change only for a System Manager, through
 every way a row can be saved; values sent back unchanged SHALL NOT block an
-ordinary edit. The check SHALL judge the row as it will be written, after
+ordinary edit. Role rows count as unchanged only when each stored row comes
+back once, under its own id, with its own values; their order does not
+matter. A save that names the same child row twice SHALL be refused, for
+anyone. The check SHALL judge the row as it will be written, after
 every save hook and script has run. A workflow or assignment rule SHALL NOT
 target an access-control table or a person's roles or enabled flag, neither
 when it is saved nor when it acts. Deleting a person, which a delete grant
@@ -47,6 +50,12 @@ enabled with no roles.
 - **WHEN** that user edits a person's name and the form sends back the same
   roles and enabled flag
 - **THEN** the edit saves
+
+#### Scenario: Reusing a role row's id does not remove a role
+
+- **WHEN** that user saves a person holding two roles and sends both role
+  values under one of the two row ids
+- **THEN** the save is refused and the person keeps both roles
 
 ### Requirement: A release refuses an open access configuration
 

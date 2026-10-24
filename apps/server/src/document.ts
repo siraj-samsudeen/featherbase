@@ -325,6 +325,18 @@ function pickChildInputs(meta: TableMeta, values: RowValues) {
       throw new AppError('ValidationError', 'Invalid child table payload', {
         [f.column_name]: `${f.column_name} must be an array of rows`,
       })
+    // saveChildren applies child rows by row_id, so a repeated id would
+    // overwrite one stored row twice and delete another. Never valid.
+    const seen = new Set<string>()
+    const repeated: Record<string, string> = {}
+    for (const [i, r] of (raw as unknown[]).entries()) {
+      const id = r && typeof r === 'object' ? (r as RowValues)[ROW_KEY] : null
+      if (id == null) continue
+      if (seen.has(String(id))) repeated[`${f.column_name}.${i}.${ROW_KEY}`] = 'Repeated row id'
+      seen.add(String(id))
+    }
+    if (Object.keys(repeated).length)
+      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, repeated)
     out.push({ columnName: f.column_name, childTable: f.row_table!, rows: raw as RowValues[] })
   }
   return out
@@ -395,9 +407,19 @@ async function assertAccessColumnsUnchanged(
       select * from ${tx(await tableRelation(childMeta.name))}
       where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
         and parentfield = ${input.columnName}`
-    const before = current.map((r) => key(r as RowValues)).sort()
-    const after = input.rows.map((r) => key(applyDefaults(childMeta, { ...r }))).sort()
-    if (JSON.stringify(before) !== JSON.stringify(after)) changed.push(input.columnName)
+    // Judge the rows as saveChildren applies them: a payload row whose row_id
+    // names a stored row updates that row, any other row is an insert, and a
+    // stored row the payload does not name is deleted. Unchanged means every
+    // stored row is named once with its values as stored, and nothing else.
+    const stored = new Map(current.map((r) => [String(r[childMeta.row_key]), key(r as RowValues)]))
+    const named = new Set<string>()
+    const same = input.rows.every((r) => {
+      const id = r[ROW_KEY] == null ? null : String(r[ROW_KEY])
+      if (id === null || !stored.has(id) || named.has(id)) return false
+      named.add(id)
+      return stored.get(id) === key(applyDefaults(childMeta, { ...r }))
+    })
+    if (!same || named.size !== stored.size) changed.push(input.columnName)
   }
   if (meta.name === 'Person' && existing !== null && 'enabled' in values) {
     const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true'
