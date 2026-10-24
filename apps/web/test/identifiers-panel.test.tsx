@@ -110,6 +110,25 @@ test('revert to default puts back the kind’s setting', async ({ admin }) => {
   await waitFor(async () => expect((await sql`select normalise from identifier_system where row_id = 'badge-code'`)[0].normalise).toBe('upper'))
 })
 
+// Prod 24-Oct-2026: the list endpoint returns only row_id unless asked for
+// fields, so every option rendered blank. Assert the visible labels.
+test('Find a person lists each identifier system by name for a System Manager; no match explains the exact-value rule', async ({ createUser }) => {
+  await applySeedPack('jeyarama')
+  const manager = await createUser({ email: 'sm.find@example.com', roles: ['System Manager'] })
+  await renderApp('/featherbase/admin/find-person', manager)
+  const page = await screen.findByTestId('find-person')
+  const select = within(page).getByLabelText('Identifier')
+  await waitFor(() => expect(within(select).getByRole('option', { name: 'StyleHR employee code' })).toBeInTheDocument())
+  expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(expect.arrayContaining(['Email address', 'Mobile phone', 'StyleHR employee code']))
+  expect(within(select).getAllByRole('option').every((o) => (o.textContent ?? '').trim() !== '')).toBe(true)
+  expect(select).toHaveValue('stylehr-employee-code')
+  await userEvent.type(within(page).getByLabelText('Value'), 'rbchandran')
+  await userEvent.click(within(page).getByRole('button', { name: 'Find' }))
+  const none = await within(page).findByTestId('find-person-none')
+  expect(none).toHaveTextContent(/No exact match/)
+  expect(within(none).getByRole('link', { name: 'Person list' })).toHaveAttribute('href', '/featherbase/admin/Person')
+})
+
 test('the Person list links to Find by code; an old code finds the person, shown by name', async ({ admin, createUser }) => {
   await applySeedPack('jeyarama')
   const leaver = await createUser({ email: 'leaver.find@example.com', fullName: 'Leaving Latha' })
