@@ -218,7 +218,41 @@ describe('the check on a live instance', () => {
     }
     warehouse(TODAY, ['400', '401', '402'].map((k) => rec(k, `C-${k}`, { movement_active: false })))
     expect((await runLeaverCheck({ today: TODAY, acceptCount: 4 })).disabled).toEqual([])
+    expect((await runLeaverCheck({ today: TODAY, acceptCount: 2 })).disabled).toEqual([])
     expect((await runLeaverCheck({ today: TODAY, acceptCount: 3 })).disabled.map((l) => l.person).sort()).toEqual([...gone].sort())
+  })
+
+  test('an accepted count that no longer matches refuses, even under the limit', async () => {
+    await applySeedPack('jeyarama')
+    const p = await makePerson({ full_name: 'Gone' })
+    await link(p, 'stylehr-employee-id', '501')
+    warehouse(TODAY, [rec('501', 'C-501', { movement_active: false })])
+    const run = await runLeaverCheck({ today: TODAY, acceptCount: 10 })
+    expect(run.plan?.refused).toMatch(/not the 10 accepted/)
+    expect(await enabled(p)).toBe(true)
+  })
+
+  test('one failed save does not stop the others or the summary', async ({ createUser }) => {
+    await applySeedPack('jeyarama')
+    await createUser({ email: 'mgr.lc@example.com', roles: ['System Manager'] })
+    const a = await makePerson({ full_name: 'Gone A' })
+    const b = await makePerson({ full_name: 'Gone B' })
+    await link(a, 'stylehr-employee-id', '601')
+    await link(b, 'stylehr-employee-id', '602')
+    warehouse(TODAY, [rec('601', 'C-601', { movement_active: false }), rec('602', 'C-602', { movement_active: false })])
+    const sent: MailMessage[] = []
+    _setLeaverSummarySender(async (m) => sent.push(m))
+    // The save of the first person in row order fails; the other must still go through.
+    const [first, second] = [a, b].sort()
+    await sql.unsafe(`create function pg_temp.lc_fail() returns trigger language plpgsql as $$
+      begin if new.row_id = '${first}' and not new.enabled then raise exception 'blocked'; end if; return new; end $$`)
+    await sql.unsafe('create trigger lc_fail before update on featherbase.person for each row execute function pg_temp.lc_fail()')
+    await expect(runLeaverCheck({ today: TODAY })).rejects.toThrow(/could not disable 1/)
+    expect(await enabled(first)).toBe(true)
+    expect(await enabled(second)).toBe(false)
+    const mine = sent.filter((m) => m.to === 'mgr.lc@example.com')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].body).toContain('1 could not be disabled')
   })
 
   test('the schedule ships switched off', async () => {

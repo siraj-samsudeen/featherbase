@@ -302,10 +302,11 @@ export function _setLeaverSummarySender(fn: Sender | null): void {
 
 const line = (l: Leaver) => `- ${l.full_name || l.person}: ${l.reason}`
 
-export function summaryBody(plan: LeaverPlan, disabled: Leaver[]): string {
+export function summaryBody(plan: LeaverPlan, disabled: Leaver[], failedCount = 0): string {
   const out = [`The daily leaver check ran on ${displayDate(plan.today)} against the StyleHR record in the warehouse (latest day ${plan.latest_feed_day ? displayDate(plan.latest_feed_day) : 'none'}).`, '']
   if (plan.refused) out.push(`It disabled nobody: ${plan.refused}.`, 'Check the warehouse feed. To act on a large but genuine batch, run the check by hand with the count it reports.', '')
   if (disabled.length) out.push(`Disabled ${disabled.length} of ${plan.linked} linked people:`, ...disabled.map(line), '')
+  if (failedCount) out.push(`${failedCount} could not be disabled; the job's error in Job Execution names them. The next run tries again.`, '')
   if (plan.privileged_leavers.length)
     out.push('Not disabled, because they are System Managers. Decide by hand:', ...plan.privileged_leavers.map(line), '')
   if (plan.not_found.length) out.push(`${plan.not_found.length} linked people have no StyleHR record in the warehouse; they were left as they are.`)
@@ -313,14 +314,14 @@ export function summaryBody(plan: LeaverPlan, disabled: Leaver[]): string {
   return out.join('\n')
 }
 
-async function sendSummary(plan: LeaverPlan, disabled: Leaver[]): Promise<number> {
-  if (!plan.refused && !disabled.length && !plan.privileged_leavers.length) return 0
+async function sendSummary(plan: LeaverPlan, disabled: Leaver[], failed: string[]): Promise<number> {
+  if (!plan.refused && !disabled.length && !failed.length && !plan.privileged_leavers.length) return 0
   const managers = await sql`
     select distinct lower(trim(p.email)) as email from person p
     join has_role r on r.parent = p.row_id and r.parenttype = 'Person' and r.role = 'System Manager'
     where p.enabled and p.replaced_by is null and coalesce(trim(p.email), '') <> ''
     order by 1`
-  const body = summaryBody(plan, disabled)
+  const body = summaryBody(plan, disabled, failed.length)
   for (const m of managers) await sender({ to: String(m.email), subject: LEAVER_CHECK_SUBJECT, body })
   return managers.length
 }
@@ -336,14 +337,27 @@ export interface RunOpts {
 export async function runLeaverCheck(opts: RunOpts = {}): Promise<LeaverRun> {
   const plan = await planLeaverCheck(opts.today)
   if (!plan) return { plan: null, disabled: [], emailed: 0 }
-  // The override lifts only the size limit, and only for the exact count the
-  // operator saw; a stale or empty feed is never overridden.
-  if (opts.acceptCount !== undefined && plan.refused && plan.refused.startsWith('it would disable') && plan.to_disable.length === opts.acceptCount)
-    plan.refused = null
+  // The override is for the exact count the operator saw: any other count
+  // refuses, and a match lifts only the size limit, never a stale or empty feed.
+  if (opts.acceptCount !== undefined) {
+    if (plan.to_disable.length !== opts.acceptCount)
+      plan.refused ??= `it would disable ${plan.to_disable.length} people, not the ${opts.acceptCount} accepted`
+    else if (plan.refused?.startsWith('it would disable')) plan.refused = null
+  }
   const disabled: Leaver[] = []
-  if (!plan.refused) for (const l of plan.to_disable) if (await disableOne(l)) disabled.push(l)
+  const failed: string[] = []
+  // One person's failed save must not stop the rest, nor the summary that
+  // reports those already disabled: a retry would no longer see them.
+  if (!plan.refused)
+    for (const l of plan.to_disable)
+      try {
+        if (await disableOne(l)) disabled.push(l)
+      } catch (err) {
+        failed.push(`${l.person}: ${err instanceof Error ? err.message : String(err)}`)
+      }
   if (plan.refused) await logActivity(ACTOR, `leaver_check_refused: ${plan.refused}`.slice(0, 140))
-  const emailed = await sendSummary(plan, disabled)
+  const emailed = await sendSummary(plan, disabled, failed)
+  if (failed.length) throw new Error(`leaver check could not disable ${failed.length}: ${failed.join('; ')}`)
   return { plan, disabled, emailed }
 }
 
