@@ -81,7 +81,7 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   await runTransition(migration)
   await sql.unsafe(await readFile(resolve('migrations/0091_runtime_api_only.sql'), 'utf8'))
   await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
-  expect(await sql`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed`).toMatchObject([{ allowed: false }])
+  expect(await sql`select count(*)::int as grants from pg_class c, aclexplode(c.relacl) a where c.oid = 'tasker.task'::regclass and a.grantee <> c.relowner`).toEqual([{ grants: 0 }])
   expect(await sql`
     select distinct owner_app from permission
     where row_id in (select jsonb_array_elements_text(perms) from installed_app where name = 'tasker')`

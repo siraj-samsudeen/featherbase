@@ -50,9 +50,10 @@ const GRANDFATHERED_DUPLICATE_PREFIXES: readonly (readonly string[])[] = [
   ['0069_access_tokens.sql', '0069_import_upsert_log.ts'],
 ]
 
-// The "number" is everything before the first underscore, so `0010` and
-// `0010a` (a deliberate same-batch sub-ordering — see
-// 0010a_rename_rls_role.sql) are distinct; only an exact repeat collides.
+// The "number" is everything before the first underscore, so `0101` and
+// `0101a` (a deliberate same-batch sub-ordering — see
+// 0101a_service_account_name_unique.sql) are distinct; only an exact repeat
+// collides.
 function migrationPrefix(file: string): string {
   const prefix = file.split('_', 1)[0]
   if (!/^\d/.test(prefix)) throw new Error(`migration file "${file}" has no numeric prefix`)

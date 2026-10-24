@@ -3,7 +3,6 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getDoc } from './document'
 import { getList } from './query'
-import { runQueryReport } from './query-report'
 import { queueEmail } from './email'
 
 // EML-007: Auto Email Report — run a saved Report server-side and email the
@@ -14,16 +13,11 @@ interface ReportResult {
   rows: Record<string, unknown>[]
 }
 
-// Run any saved Report and return uniform columns+rows. Query Reports run their
-// admin SQL; Report Builder reports run a permission-scoped list query using the
-// saved columns/filters. The caller's permissions are enforced throughout.
+// Run a saved Report Builder report and return uniform columns+rows: a
+// permission-scoped list query using the saved columns/filters, so the
+// caller's permissions are enforced throughout.
 export async function runReportRows(reportName: string, user: string): Promise<ReportResult> {
   const report = await getDoc('Report', reportName, user)
-  if (report.report_type === 'Query Report') {
-    const { columns, rows } = await runQueryReport(reportName, {}, user)
-    return { columns, rows: rows as Record<string, unknown>[] }
-  }
-  // Report Builder (default): apply the saved view config over the Table.
   const cfg = (report.config as { columns?: string[]; filters?: [string, string, unknown][]; group_by?: string } | null) ?? {}
   const refTable = String(report.ref_table ?? '')
   if (!refTable) throw new AppError('ValidationError', `${reportName} has no ref_table`)

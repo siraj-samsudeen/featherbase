@@ -167,7 +167,7 @@ export async function isPrivileged(principal: string): Promise<boolean> {
 }
 
 // PERM-005: map of restricted Table -> allowed row names for a principal.
-// The ONLY reader of data_scope (person-rename R2): list, get, query/report,
+// The ONLY reader of data_scope (person-rename R2): list, get, reports,
 // search, export, realtime, sales-target and bound sources all come here, so
 // a scoped service account is narrowed exactly like a scoped person.
 export async function getScopeMap(

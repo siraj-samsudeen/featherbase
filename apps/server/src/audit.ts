@@ -42,7 +42,7 @@ export async function logActivity(
 export async function logAccess(
   user: string,
   operation: string,
-  ref: { table?: string; row_id?: string; method?: string; required?: boolean } = {},
+  ref: { table?: string; row_id?: string; method?: string; scope?: string; required?: boolean } = {},
   db: Sql | TxSql = sql,
 ): Promise<void> {
   if (!(await tableExists('access_log', db))) {
@@ -62,5 +62,7 @@ export async function logAccess(
     ref_table: ref.table ?? null,
     reference_name: ref.row_id ?? null,
     method: ref.method ?? null,
+    // What the read was limited to (`store=1501`), when it was (#409); the column arrives in 0109.
+    ...(ref.scope === undefined ? {} : { scope: ref.scope }),
   })}`
 }

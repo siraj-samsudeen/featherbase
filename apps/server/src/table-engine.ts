@@ -245,10 +245,11 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
   return `create table ${quoteRelation(relation)} (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
 }
 
-// PERM-004: new tables get RLS with a generated SELECT-only policy for the
-// direct-client role (app_client). Skipped while bootstrap migrations run
-// before 0010_rls.sql has created the role and fc_has_read(); that migration
-// sweeps every table that already exists.
+// PERM-004: new tables get RLS with a generated SELECT-only policy that holds
+// every role but the owner to the session user's read Permission. No role is
+// granted access, so the server (the owner) stays the only reader. Skipped
+// while bootstrap migrations run before 0010_rls.sql has created
+// fc_has_read(); that migration sweeps every table that already exists.
 async function applyRls(
   tx: { unsafe: (q: string) => Promise<unknown> },
   def: TableDef,
@@ -263,12 +264,7 @@ async function applyRls(
   const predicate = def.kind === 'sub_table'
     ? 'featherbase.fc_has_read(parenttype)'
     : `featherbase.fc_has_read('${def.name.replace(/'/g, "''")}')`
-  await tx.unsafe(
-    `create policy fc_select on ${table} for select to app_client using (${predicate})`,
-  )
-  // Runtime app data is API-only in this slice. A raw SQL session cannot
-  // participate in process-local package availability or validation hooks.
-  if (!def.name.includes('.')) await tx.unsafe(`grant select on ${table} to app_client`)
+  await tx.unsafe(`create policy fc_select on ${table} for select using (${predicate})`)
 }
 
 // META-004: sync an existing Table's columns to a new definition. Additions

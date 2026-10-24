@@ -32,7 +32,7 @@ describe('#101: GET /api/routine_suggestion', () => {
     admin,
   }) => {
     await seed('Administrator', 'list:Customer?', 'list', [1, 2, 3, 4, 5])
-    await seed('Administrator', 'page:query-report/Sales', 'page', [1, 2, 3, 5, 6, 8])
+    await seed('Administrator', 'page:script-report/Sales', 'page', [1, 2, 3, 5, 6, 8])
     await seed('Administrator', 'list:Item?', 'list', [1, 3]) // only 2 days
     await seed('Administrator', 'row:Customer/C-1', 'row', [1, 2, 3, 4, 5, 6]) // rows never count
 
@@ -41,7 +41,7 @@ describe('#101: GET /api/routine_suggestion', () => {
     )
     const keys = res.targets.map((t) => t.key)
     expect(keys).toContain('list:Customer?')
-    expect(keys).toContain('page:query-report/Sales')
+    expect(keys).toContain('page:script-report/Sales')
     expect(keys).not.toContain('list:Item?')
     expect(keys).not.toContain('row:Customer/C-1')
     const customer = res.targets.find((t) => t.key === 'list:Customer?')!

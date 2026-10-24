@@ -246,13 +246,13 @@ way only as long as it stays free of database access.
 
 One deliberate exception in the server suite:
 `apps/server/test/rls.test.ts` is *not* sandbox-isolated either. It verifies
-native Postgres row-level security through a second connection under the
-`app_client` role — and that connection could never see an uncommitted
-sandbox transaction, so the test commits for real and cleans up after
-itself. It connects to
-`postgres://app_client:app_client@127.0.0.1:5432/featherbase` by default;
-override with `RLS_TEST_URL` (the role is created by
-`apps/server/migrations/0010_rls.sql`).
+native Postgres row-level security through a second connection under a
+login role the file creates for the run, with a random name and password
+— and that connection could never see an uncommitted sandbox transaction,
+so the test commits for real and cleans up after itself, dropping the role.
+It reaches the same database as `DATABASE_URL`, whose user must be allowed
+to create roles. No role is granted access to a Table by default, so the
+suite grants its probe role SELECT on the Tables it reads.
 
 ### Committed workflow activation proof
 
@@ -361,12 +361,8 @@ is manager-only; `/api/app_catalog` is the signed-in user's accessible launch li
 The original prototype migration is automatic in the normal migration chain,
 but must not be run against an operator's development rows without authorization.
 
-Raw Query Reports use a separate database connection authenticated as `app_client`,
-never the owner pool or an owner session with `SET ROLE`. Local credentials come
-from migration 0010; set `QUERY_REPORT_DATABASE_URL` when those differ. The login
-is checked before executing report SQL. App-owned relations are API-only for now.
-The report's SQL sees committed data, not a test sandbox's uncommitted fixtures;
-the artifact proof supplies real committed rows for this boundary.
+App-owned relations are API-only for now: no database role but their owner holds
+any privilege on them, and the artifact proof checks that on its committed rows.
 
 ### Tasker development scenarios
 
