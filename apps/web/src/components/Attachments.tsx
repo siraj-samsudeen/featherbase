@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { cardClasses, iconButtonClasses } from './ui'
 
 interface FileRow {
   row_id: string
@@ -67,16 +68,16 @@ export function Attachments({ table, name }: { table: string; name: string }) {
   const href = (f: FileRow) => f.file_url
 
   return (
-    <div className="fc-card min-w-0 p-4 [overflow-wrap:anywhere]" data-testid="attachments-panel">
+    <div className={cardClasses('min-w-0 p-4 [overflow-wrap:anywhere]')} data-testid="attachments-panel">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
           Attachments
         </span>
         <button
           onClick={() => inputRef.current?.click()}
           disabled={busy}
           data-testid="attach-file"
-          className="text-xs font-medium text-[var(--color-brand)] hover:underline disabled:opacity-40"
+          className="text-xs font-medium text-action hover:underline disabled:opacity-40"
         >
           {busy ? 'Uploading…' : '+ Attach'}
         </button>
@@ -92,12 +93,12 @@ export function Attachments({ table, name }: { table: string; name: string }) {
         />
       </div>
       {error && (
-        <p className="mb-2 text-xs text-[var(--color-danger)]" data-testid="attach-error">
+        <p className="mb-2 text-xs text-negative" data-testid="attach-error">
           {error}
         </p>
       )}
       {files.data?.data.length === 0 && (
-        <p className="text-xs text-[var(--color-ink-faint)]">No attachments</p>
+        <p className="text-xs text-ink-subtle">No attachments</p>
       )}
       <ul className="space-y-1">
         {files.data?.data.map((f) => (
@@ -110,14 +111,14 @@ export function Attachments({ table, name }: { table: string; name: string }) {
               href={href(f)}
               target="_blank"
               rel="noreferrer"
-              className="flex min-w-0 items-center gap-2 text-[var(--color-brand)] hover:underline"
+              className="flex min-w-0 items-center gap-2 text-action hover:underline"
             >
               {f.thumbnail_url ? (
                 <img
                   src={f.thumbnail_url}
                   alt=""
                   data-testid="attachment-thumb"
-                  className="h-8 w-8 shrink-0 rounded border border-[var(--color-border)] object-cover"
+                  className="h-8 w-8 shrink-0 rounded border border-border object-cover"
                 />
               ) : null}
               <span className="min-w-0">{f.file_name}</span>
@@ -126,7 +127,7 @@ export function Attachments({ table, name }: { table: string; name: string }) {
               aria-label={`Remove ${f.file_name}`}
               onClick={() => remove(f.row_id)}
               data-testid="attachment-delete"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:text-[var(--color-danger)] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
+              className={iconButtonClasses('hover:text-negative')}
             >
               ×
             </button>

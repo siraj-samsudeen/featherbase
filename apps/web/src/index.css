@@ -1,5 +1,14 @@
 @import 'tailwindcss';
 
+/* recipe() (components/ui/cx.ts) keeps the 16px text and 48px control height on
+   touch screens and moves a call site's size override under `pointer-fine:`.
+   Those class names are built at runtime, so the scanner never sees them: list
+   every size a call site can pass. test/pointer-fine-css.test.ts fails when
+   src/ uses a size that is missing here. */
+@source inline("pointer-fine:text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl,control}");
+@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,{1..24},0.5,1.5,2.5,3.5}");
+@source inline("pointer-fine:min-h-{[26px],[44px],[70vh]}");
+
 /* Shop Floor design tokens (#380, OpenSpec change adopt-shop-floor-design-system).
    Every colour has one job. Chrome is neutral with one action blue, so the
    meaning colours (negative, caution, positive, opportunity, missing) are free
@@ -38,6 +47,18 @@
   --color-missing: #5b6472; /* no data, no target set */
   --color-missing-tint: #f1f5f9;
 
+  /* Behind a dialog: dims the page in either theme */
+  --color-scrim: #000000; /* darker than the canvas in every theme, so a dialog always dims the page */
+  --color-on-scrim: #ffffff; /* text and icons over the scrim, both themes */
+
+  /* Categorical series (charts, value dots): distinct hues that avoid the
+     meaning colours, so a series never reads as good or bad. */
+  --color-series-1: #2563eb;
+  --color-series-2: #0f766e;
+  --color-series-3: #be185d;
+  --color-series-4: #000000;
+  --color-series-5: #78350f;
+
   /* Shape */
   --radius-card: 14px;
   --radius-control: 10px;
@@ -45,261 +66,63 @@
   /* Density follows the pointer: thumb-sized on touch screens (and 16px text,
      so a phone never zooms on focus), compact under a mouse. */
   --spacing-control: 2.25rem;
+  --spacing-control-x: 0.75rem; /* a control's side padding */
   --spacing-touch: 3rem;
   --text-control: 0.875rem;
 }
 @media (pointer: coarse) {
   :root {
     --spacing-control: 3rem;
+    --spacing-control-x: 1rem;
     --text-control: 1rem;
   }
 }
 
-/* Dark mode: the same roles, re-valued. */
-[data-theme='dark'] {
-  --color-canvas: #0b1220;
-  --color-surface: #131c2e;
-  --color-subtle: #18233a;
-  --color-border: #24314a;
-  --color-border-control: #66768e;
-  --color-ink: #f1f5f9;
-  --color-ink-muted: #a8b3c4;
-  --color-ink-subtle: #94a3b8;
+/* Dark mode: the same roles, re-valued, on screen only, so a page printed in
+   dark mode comes out as dark ink on white paper. */
+@media screen {
+  [data-theme='dark'] {
+    --color-canvas: #0b1220;
+    --color-surface: #131c2e;
+    --color-subtle: #18233a;
+    --color-border: #24314a;
+    --color-border-control: #66768e;
+    --color-ink: #f1f5f9;
+    --color-ink-muted: #a8b3c4;
+    --color-ink-subtle: #94a3b8;
 
-  --color-action: #60a5fa;
-  --color-action-hover: #93c5fd;
-  --color-action-ink: #0b1220;
-  --color-action-tint: #16264a;
-  --color-focus: #93c5fd;
+    --color-action: #60a5fa;
+    --color-action-hover: #93c5fd;
+    --color-action-ink: #0b1220;
+    --color-action-tint: #16264a;
+    --color-focus: #93c5fd;
 
-  --color-negative: #f87171;
-  --color-negative-tint: #3a1717;
-  --color-caution: #fbbf24;
-  --color-caution-tint: #3a2a0c;
-  --color-positive: #4ade80;
-  --color-positive-tint: #0f2e1c;
-  --color-opportunity: #c084fc;
-  --color-opportunity-tint: #2c1844;
-  --color-missing: #94a3b8;
-  --color-missing-tint: #1c2740;
+    --color-negative: #f87171;
+    --color-negative-tint: #3a1717;
+    --color-caution: #fbbf24;
+    --color-caution-tint: #3a2a0c;
+    --color-positive: #4ade80;
+    --color-positive-tint: #0f2e1c;
+    --color-opportunity: #c084fc;
+    --color-opportunity-tint: #2c1844;
+    --color-missing: #94a3b8;
+    --color-missing-tint: #1c2740;
+
+    --color-series-1: #60a5fa;
+    --color-series-2: #2dd4bf;
+    --color-series-3: #f472b6;
+    --color-series-4: #cbd5e1;
+    --color-series-5: #e0a96d;
+  }
 }
 
 :root {
   color-scheme: light;
 }
-[data-theme='dark'] {
-  color-scheme: dark;
-}
-
-/* RETIRED names, still read by screens the sweep has not reached. Stage 3 of
-   #380 deletes this block, the [data-palette] blocks and the fc-* classes. */
-@theme {
-  --color-border-strong: #d1d8dd;
-  --color-ink-faint: #98a1a9;
-  --color-brand: #2490ef;
-  --color-brand-dark: #1579d0;
-  --color-brand-tint: #eef6fe;
-  --color-good: #38a160;
-  --color-good-tint: #e6f4ec;
-  --color-danger: #e24c4c;
-  --color-danger-tint: #fbecec;
-  --color-warn: #cb9a26;
-  --color-warn-tint: #fbf3e0;
-  --color-link: #1265a8;
-  --color-good-text: #247442;
-  --color-danger-text: #b52b2b;
-  --color-warn-text: #805800;
-  --color-primary-btn: #1265a8;
-  --color-primary-btn-hover: #0d548e;
-  --color-primary-btn-ink: #ffffff;
-}
-[data-theme='dark'] {
-  --color-border-strong: #3a424c;
-  --color-ink-faint: #6c7680;
-  --color-brand: #2490ef;
-  --color-brand-dark: #1579d0;
-  --color-brand-tint: #14304a;
-  --color-good: #45b06e;
-  --color-good-tint: #133024;
-  --color-danger: #f06a6a;
-  --color-danger-tint: #38201f;
-  --color-warn: #d6a634;
-  --color-warn-tint: #322915;
-  --color-link: #70baff;
-  --color-good-text: #76d399;
-  --color-danger-text: #ff9393;
-  --color-warn-text: #e9c363;
-}
-
-/* ============================================================ UI-025
-   Palettes: a second theming axis, orthogonal to light/dark. Each palette
-   overrides the same tokens; its [data-theme='dark'] companion (2 attributes,
-   higher specificity) beats the generic dark block above. `classic` is the
-   absence of an override — the Frappe-blue look defined in @theme. */
-
-/* Ivory — warm paper neutrals, clay accent (Anthropic-inspired). */
-[data-palette='ivory'] {
-  /* Shop Floor role the warm canvas would otherwise drop below 4.5:1; goes with the palette in stage 3. */
-  --color-positive: #13763a;
-  --color-canvas: #f2efe9;
-  --color-surface: #fbfaf7;
-  --color-subtle: #f5f2ec;
-  --color-border: #e5e0d5;
-  --color-border-strong: #d3ccbd;
-  --color-ink: #292520;
-  --color-ink-muted: #6e675c;
-  --color-ink-faint: #a29a8c;
-  --color-brand: #c15f3c;
-  --color-brand-dark: #a04d2f;
-  --color-brand-tint: #f0e2d8;
-  --color-good: #4a7c59;
-  --color-good-tint: #e4ecdf;
-  --color-danger: #c04f3e;
-  --color-danger-tint: #f6e5e1;
-  --color-warn: #9a6b1f;
-  --color-warn-tint: #f2e7cd;
-  --color-link: #98472d;
-  --color-good-text: #386344;
-  --color-danger-text: #9f382a;
-  --color-warn-text: #765014;
-  --color-primary-btn: #9f482b;
-  --color-primary-btn-hover: #873c23;
-  --radius-card: 0.75rem;
-  --radius-control: 0.5rem;
-}
-[data-palette='ivory'][data-theme='dark'] {
-  --color-positive: #4ade80; /* undo the light-only override above */
-  --color-canvas: #1f1c17;
-  --color-surface: #282420;
-  --color-subtle: #2e2a24;
-  --color-border: #38332b;
-  --color-border-strong: #4a4438;
-  --color-ink: #ece7dd;
-  --color-ink-muted: #a39b8d;
-  --color-ink-faint: #736c5f;
-  --color-brand: #d97757;
-  --color-brand-dark: #e08b6e;
-  --color-brand-tint: #3b2c23;
-  --color-good: #7fb08a;
-  --color-good-tint: #25321f;
-  --color-danger: #e0765f;
-  --color-danger-tint: #3b241e;
-  --color-warn: #d0a84f;
-  --color-warn-tint: #37301c;
-  --color-link: #f3a68c;
-  --color-good-text: #a0caaa;
-  --color-danger-text: #f5a08d;
-  --color-warn-text: #e8c77e;
-  --color-primary-btn: #d97757;
-  --color-primary-btn-hover: #e08b6e;
-  --color-primary-btn-ink: #211b16;
-}
-
-/* Graphite — pure neutrals, near-black primary buttons; blue survives as
-   link/focus/active color (Frappe v15 Espresso-inspired). */
-[data-palette='graphite'] {
-  --color-canvas: #f8f8f8;
-  --color-surface: #ffffff;
-  --color-subtle: #f3f3f3;
-  --color-border: #ededed;
-  --color-border-strong: #dcdcdc;
-  --color-ink: #171717;
-  --color-ink-muted: #525252;
-  --color-ink-faint: #999999;
-  --color-brand-tint: #eaf3fc;
-  --color-good: #20805f;
-  --color-good-tint: #e4f2ec;
-  --color-warn: #b0730a;
-  --color-warn-tint: #faf0dd;
-  --color-link: #1265a8;
-  --color-good-text: #216b4d;
-  --color-danger-text: #b52b2b;
-  --color-warn-text: #805800;
-  --radius-card: 0.625rem;
-  --radius-control: 0.4375rem;
-  --color-primary-btn: #171717;
-  --color-primary-btn-hover: #000000;
-  --color-primary-btn-ink: #ffffff;
-}
-[data-palette='graphite'][data-theme='dark'] {
-  --color-canvas: #141414;
-  --color-surface: #1d1d1d;
-  --color-subtle: #242424;
-  --color-border: #2c2c2c;
-  --color-border-strong: #3d3d3d;
-  --color-ink: #ededed;
-  --color-ink-muted: #a3a3a3;
-  --color-ink-faint: #6b6b6b;
-  --color-brand: #4aa3f2;
-  --color-brand-dark: #71b7f5;
-  --color-brand-tint: #15293c;
-  --color-good: #4dbd92;
-  --color-good-tint: #122b22;
-  --color-danger: #f06a6a;
-  --color-danger-tint: #38201f;
-  --color-warn: #d9a13f;
-  --color-warn-tint: #312613;
-  --color-link: #70baff;
-  --color-good-text: #76d399;
-  --color-danger-text: #ff9393;
-  --color-warn-text: #e9c363;
-  --color-primary-btn: #ededed;
-  --color-primary-btn-hover: #ffffff;
-  --color-primary-btn-ink: #141414;
-}
-
-/* Indigo — friendly app-builder look: indigo accent, pill controls, roomier
-   radii (Glide-inspired). */
-[data-palette='indigo'] {
-  --color-canvas: #f5f6fa;
-  --color-surface: #ffffff;
-  --color-subtle: #f2f3f9;
-  --color-border: #e6e8f0;
-  --color-border-strong: #d5d8e4;
-  --color-ink: #20222e;
-  --color-ink-muted: #5d6170;
-  --color-ink-faint: #989fb2;
-  --color-brand: #5b5bd6;
-  --color-brand-dark: #4747b8;
-  --color-brand-tint: #e8e8fb;
-  --color-good: #2f9e6e;
-  --color-good-tint: #e2f5ec;
-  --color-warn: #b57e10;
-  --color-warn-tint: #faf0d8;
-  --color-link: #4848b7;
-  --color-good-text: #216b4d;
-  --color-danger-text: #b52b2b;
-  --color-warn-text: #805800;
-  --color-primary-btn: #5b5bd6;
-  --color-primary-btn-hover: #4747b8;
-  --radius-card: 0.875rem;
-  --radius-control: 9999px;
-}
-[data-palette='indigo'][data-theme='dark'] {
-  --color-canvas: #171825;
-  --color-surface: #1f2130;
-  --color-subtle: #262838;
-  --color-border: #2d2f42;
-  --color-border-strong: #3d4058;
-  --color-ink: #e8e9f2;
-  --color-ink-muted: #a3a7ba;
-  --color-ink-faint: #696d84;
-  --color-brand: #7c7cf0;
-  --color-brand-dark: #9a9af4;
-  --color-brand-tint: #2a2a52;
-  --color-good: #4cc394;
-  --color-good-tint: #15301f;
-  --color-danger: #f06a6a;
-  --color-danger-tint: #38201f;
-  --color-warn: #d8a544;
-  --color-warn-tint: #33290f;
-  --color-link: #b4b4ff;
-  --color-good-text: #76d399;
-  --color-danger-text: #ff9393;
-  --color-warn-text: #e9c363;
-  --color-primary-btn: #7c7cf0;
-  --color-primary-btn-hover: #9a9af4;
-  --color-primary-btn-ink: #111125;
+@media screen {
+  [data-theme='dark'] {
+    color-scheme: dark;
+  }
 }
 
 html,
@@ -328,44 +151,4 @@ body {
 *::-webkit-scrollbar-thumb {
   background: var(--color-border-control);
   border-radius: 8px;
-}
-
-/* Shared component classes so every generic view inherits the Frappe look. */
-@layer components {
-  .fc-card {
-    @apply rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_1px_2px_rgba(25,39,52,0.04),0_1px_3px_rgba(25,39,52,0.03)];
-  }
-  .fc-input {
-    @apply w-full rounded-[var(--radius-control)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
-      placeholder:text-[var(--color-ink-faint)]
-      focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20
-      disabled:bg-[var(--color-subtle)] disabled:text-[var(--color-ink-muted)];
-  }
-  .fc-btn {
-    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
-  }
-  .fc-btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-primary-btn)] px-4 py-1.5 text-sm font-medium text-[var(--color-primary-btn-ink)] transition hover:bg-[var(--color-primary-btn-hover)] disabled:opacity-40;
-  }
-  .fc-label {
-    @apply mb-1 block text-xs font-medium text-[var(--color-ink-muted)];
-  }
-  .fc-pill {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
-  }
-}
-
-/* Existing text utilities are foreground roles, not accent fills. Map them
-   here so all existing links/statuses adopt the role tokens without changing
-   their borders, backgrounds, focus rings or charts. New UI can use the role
-   tokens directly. Keep these after Tailwind's generated utilities. */
-@layer utilities {
-  .text-\[var\(--color-brand\)\] { color: var(--color-link); }
-  .text-\[var\(--color-good\)\] { color: var(--color-good-text); }
-  .text-\[var\(--color-danger\)\] { color: var(--color-danger-text); }
-  .text-\[var\(--color-warn\)\] { color: var(--color-warn-text); }
-  @media (hover: hover) {
-    .hover\:text-\[var\(--color-brand\)\]:hover { color: var(--color-link); }
-    .hover\:text-\[var\(--color-danger\)\]:hover { color: var(--color-danger-text); }
-  }
 }

@@ -30,7 +30,7 @@ function run(name: string, cwd = server, script = 'src/release.ts'): string {
   try {
     return execFileSync(process.execPath, [tsx, script], {
       cwd, encoding: 'utf8', timeout: 120_000,
-      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '' },
+      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '', SITE_URL: 'https://featherbase.example.com' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   } catch (error) {
@@ -82,6 +82,9 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
     mkdirSync(resolve(oldServer, 'test/fixtures'), { recursive: true })
     cpSync(resolve(server, 'test/fixtures/legacy-release-seed.ts'), resolve(oldServer, 'test/fixtures/legacy-release-seed.ts'))
     run(name, oldServer, 'test/fixtures/legacy-release-seed.ts')
+    // #437: preflight refuses a release while everyone may read people, so the
+    // operator withdraws that grant first; the rows themselves stay.
+    await db`update public.permission set can_read = false where role = 'All' and ref_table = 'User'`
     const history = await db`select name, applied_at from public.migration order by name`
     const [before] = await db`select 'public.table_def'::regclass::oid as core,
       'public.team_task'::regclass::oid as task, 'public.site'::regclass::oid as site`

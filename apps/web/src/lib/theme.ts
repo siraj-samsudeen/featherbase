@@ -1,24 +1,31 @@
 import { getSessionUser } from './api'
 import { useAppearancePreference } from './appearance-preference'
+import { THEMES, followDevice, paintTheme, paintedChoice, type Theme } from './theme-paint'
 
-// UI-024: per-user dark/light theme. The authoritative value is stored on the
-// User (server); localStorage mirrors it so the theme applies instantly on load
-// with no flash before whoami resolves. The mirror key is scoped by user so
-// two accounts sharing a browser never see each other's theme (PR #92 review).
+// UI-024 / #380: the theme is light, dark, or whatever the device is set to.
+// The choice is stored on the person (server); localStorage mirrors it so it
+// applies before whoami resolves, under a per-person key so two accounts on
+// one browser never see each other's choice (PR #92 review). Signed out there
+// is no choice, so the page follows the device (clearSession calls
+// followDevice). Painting itself lives in theme-paint.ts.
 
-export type Theme = 'light' | 'dark'
+export { THEMES, followDevice, type Theme }
+export const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', device: 'Same as device' }
+/** The per-person mirror key; index.html's head script reads the same key. */
+export const THEME_MIRROR_PREFIX = 'fc_theme:'
 
 function isTheme(value: unknown): value is Theme {
-  return value === 'light' || value === 'dark'
+  return THEMES.includes(value as Theme)
 }
 
 function storageKey(): string | null {
   const user = getSessionUser()
-  return user ? `fc_theme:${user.row_id}` : null
+  return user ? `${THEME_MIRROR_PREFIX}${user.row_id}` : null
 }
 
+/** Apply a person's choice and remember it on this browser for them. */
 export function applyTheme(theme: Theme) {
-  document.documentElement.dataset.theme = theme
+  paintTheme(theme)
   try {
     const key = storageKey()
     if (key) localStorage.setItem(key, theme)
@@ -27,21 +34,17 @@ export function applyTheme(theme: Theme) {
   }
 }
 
-// Apply the last-known theme immediately at module load (before React renders).
+// Before React renders: the signed-in person's last choice, or the device.
+// whoami then repaints from the server value (a stale mirror is corrected).
 try {
   const key = storageKey()
   const saved = key ? localStorage.getItem(key) : null
-  if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved
+  paintTheme(isTheme(saved) ? saved : 'device')
 } catch {
-  /* ignore */
+  paintTheme('device')
 }
 
-export function useTheme(): { theme: Theme; toggle: () => void; set: (t: Theme) => void } {
-  const { value: theme, set } = useAppearancePreference(
-    'theme',
-    isTheme(document.documentElement.dataset.theme) ? document.documentElement.dataset.theme : 'light',
-    isTheme,
-    applyTheme,
-  )
-  return { theme, toggle: () => set((previous) => previous === 'dark' ? 'light' : 'dark'), set }
+export function useTheme(): { theme: Theme; set: (t: Theme) => void } {
+  const { value: theme, set } = useAppearancePreference('theme', paintedChoice(), isTheme, applyTheme)
+  return { theme, set }
 }

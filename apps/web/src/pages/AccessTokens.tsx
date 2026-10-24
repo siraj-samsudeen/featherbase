@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
+import { adminPageTitle } from 'shared'
 import { useIsSystemManager } from '../lib/session'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { fmtInstantIST } from '../lib/inr'
 
 // #131: automation credentials in one place — named access tokens (show-once
 // secret, optional expiry, one-click revoke) and the service accounts that
@@ -52,14 +55,14 @@ function tokenState(t: Token): 'active' | 'revoked' | 'expired' | 'owner disable
 }
 
 const STATE_STYLE: Record<string, string> = {
-  active: 'text-[var(--color-good)]',
-  revoked: 'text-[var(--color-danger)]',
-  expired: 'text-[var(--color-ink-faint)]',
-  'owner disabled': 'text-[var(--color-ink-faint)]',
+  active: 'text-positive',
+  revoked: 'text-negative',
+  expired: 'text-ink-subtle',
+  'owner disabled': 'text-ink-subtle',
 }
 
 function when(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—'
+  return fmtInstantIST(iso)
 }
 
 export function AccessTokens() {
@@ -141,20 +144,20 @@ export function AccessTokens() {
     <div data-testid="access-tokens" className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--color-ink)]">Access tokens</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">
+          <h1 className="text-lg font-semibold text-ink">{adminPageTitle('access-tokens')}</h1>
+          <p className="text-sm text-ink-muted">
             Bearer credentials for the API. The secret is shown once, at creation.
           </p>
         </div>
-        <button className="fc-btn fc-btn-primary" data-testid="issue-token" onClick={() => openIssue()}>
+        <button className={buttonClasses({ variant: 'primary' })} data-testid="issue-token" onClick={() => openIssue()}>
           Issue token
         </button>
       </div>
 
-      <div className="fc-card overflow-x-auto">
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-ink-muted)]">
+            <tr className="border-b border-border text-left text-ink-muted">
               <th className="px-3 py-2 font-medium">Label</th>
               {isSM && <th className="px-3 py-2 font-medium">Owner</th>}
               <th className="px-3 py-2 font-medium">Created</th>
@@ -168,14 +171,14 @@ export function AccessTokens() {
             {rows.map((t) => {
               const state = tokenState(t)
               return (
-                <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`token-${t.id}`}>
-                  <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{t.label}</td>
-                  {isSM && <td className="px-3 py-2 text-[var(--color-ink-muted)]" data-testid={`token-owner-${t.id}`}>{t.owner === me ? ownerName(t.owner) : t.owner_name ?? 'Unnamed person'}</td>}
-                  <td className="px-3 py-2 text-[var(--color-ink-muted)]">{when(t.created_at)}</td>
-                  <td className="px-3 py-2 text-[var(--color-ink-muted)]">
+                <tr key={t.id} className="border-b border-border last:border-0" data-testid={`token-${t.id}`}>
+                  <td className="px-3 py-2 font-medium text-ink">{t.label}</td>
+                  {isSM && <td className="px-3 py-2 text-ink-muted" data-testid={`token-owner-${t.id}`}>{t.owner === me ? ownerName(t.owner) : t.owner_name ?? 'Unnamed person'}</td>}
+                  <td className="px-3 py-2 text-ink-muted">{when(t.created_at)}</td>
+                  <td className="px-3 py-2 text-ink-muted">
                     {t.last_used_at ? when(t.last_used_at) : 'never'}
                   </td>
-                  <td className="px-3 py-2 text-[var(--color-ink-muted)]">
+                  <td className="px-3 py-2 text-ink-muted">
                     {t.expires_at ? when(t.expires_at) : 'never'}
                   </td>
                   <td className={`px-3 py-2 ${STATE_STYLE[state]}`} data-testid={`token-state-${t.id}`}>
@@ -186,7 +189,7 @@ export function AccessTokens() {
                         one whose owner is disabled must still be killable. */}
                     {!t.revoked_at && (
                       <button
-                        className="fc-btn"
+                        className={buttonClasses()}
                         data-testid={`revoke-${t.id}`}
                         disabled={revoke.isPending}
                         onClick={() => revoke.mutate(t.id)}
@@ -200,7 +203,7 @@ export function AccessTokens() {
             })}
             {!rows.length && (
               <tr>
-                <td colSpan={isSM ? 7 : 6} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td colSpan={isSM ? 7 : 6} className="px-3 py-8 text-center text-ink-subtle">
                   No tokens yet — issue one to authenticate scripts and integrations.
                 </td>
               </tr>
@@ -219,23 +222,23 @@ export function AccessTokens() {
       {/* Issue dialog */}
       {issueFor !== null && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
           onClick={() => !issue.isPending && setIssueFor(null)}
           onKeyDown={(e) => e.key === 'Escape' && !issue.isPending && setIssueFor(null)}
         >
           <div
             role="dialog"
             aria-modal="true"
-            className="fc-card w-full max-w-md space-y-3 p-4"
+            className={cardClasses('w-full max-w-md space-y-3 p-4')}
             data-testid="issue-dialog"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-base font-semibold text-[var(--color-ink)]">Issue access token</h2>
+            <h2 className="text-base font-semibold text-ink">Issue access token</h2>
             <div>
-              <label className="fc-label" htmlFor="token-label">Label</label>
+              <label className={labelClasses()} htmlFor="token-label">Label</label>
               <input
                 id="token-label"
-                className="fc-input w-full"
+                className={inputClasses('w-full')}
                 data-testid="token-label"
                 placeholder="e.g. rama installer"
                 value={label}
@@ -245,10 +248,10 @@ export function AccessTokens() {
             </div>
             {isSM && ownerChoices.length > 1 && (
               <div>
-                <label className="fc-label" htmlFor="token-owner">Owner</label>
+                <label className={labelClasses()} htmlFor="token-owner">Owner</label>
                 <select
                   id="token-owner"
-                  className="fc-input w-full"
+                  className={inputClasses('w-full')}
                   data-testid="token-owner"
                   value={owner}
                   onChange={(e) => setOwner(e.target.value)}
@@ -262,10 +265,10 @@ export function AccessTokens() {
               </div>
             )}
             <div>
-              <label className="fc-label" htmlFor="token-expiry">Expiry</label>
+              <label className={labelClasses()} htmlFor="token-expiry">Expiry</label>
               <select
                 id="token-expiry"
-                className="fc-input w-full"
+                className={inputClasses('w-full')}
                 data-testid="token-expiry"
                 value={expiryDays}
                 onChange={(e) => setExpiryDays(Number(e.target.value))}
@@ -275,13 +278,13 @@ export function AccessTokens() {
                 ))}
               </select>
             </div>
-            {error && <p className="text-sm text-[var(--color-danger)]" data-testid="issue-error">{error}</p>}
+            {error && <p className="text-sm text-negative" data-testid="issue-error">{error}</p>}
             <div className="flex justify-end gap-2">
-              <button className="fc-btn" onClick={() => setIssueFor(null)} disabled={issue.isPending}>
+              <button className={buttonClasses()} onClick={() => setIssueFor(null)} disabled={issue.isPending}>
                 Cancel
               </button>
               <button
-                className="fc-btn fc-btn-primary"
+                className={buttonClasses({ variant: 'primary' })}
                 data-testid="issue-confirm"
                 disabled={issue.isPending || !label.trim()}
                 onClick={() => issue.mutate()}
@@ -295,30 +298,30 @@ export function AccessTokens() {
 
       {/* Show-once secret */}
       {issued && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40">
           <div
             role="dialog"
             aria-modal="true"
-            className="fc-card w-full max-w-lg space-y-3 p-4"
+            className={cardClasses('w-full max-w-lg space-y-3 p-4')}
             data-testid="secret-dialog"
           >
-            <h2 className="text-base font-semibold text-[var(--color-ink)]">
+            <h2 className="text-base font-semibold text-ink">
               Token “{issued.label}” created
             </h2>
-            <p className="text-sm text-[var(--color-ink-muted)]">
+            <p className="text-sm text-ink-muted">
               Copy it now — this is the only time the secret is shown.
             </p>
             <code
-              className="block break-all rounded border border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-2 text-sm text-[var(--color-ink)]"
+              className="block break-all rounded border border-border bg-subtle px-3 py-2 text-sm text-ink"
               data-testid="secret-value"
             >
               {issued.token}
             </code>
             <div className="flex justify-end gap-2">
-              <button className="fc-btn" data-testid="copy-secret" onClick={() => void copyToken()}>
+              <button className={buttonClasses()} data-testid="copy-secret" onClick={() => void copyToken()}>
                 {copied ? 'Copied ✓' : 'Copy'}
               </button>
-              <button className="fc-btn fc-btn-primary" data-testid="secret-done" onClick={() => setIssued(null)}>
+              <button className={buttonClasses({ variant: 'primary' })} data-testid="secret-done" onClick={() => setIssued(null)}>
                 Done
               </button>
             </div>
@@ -366,20 +369,20 @@ function ServiceAccounts({
   return (
     <div className="space-y-3" data-testid="service-accounts">
       <div>
-        <h2 className="text-base font-semibold text-[var(--color-ink)]">Service accounts</h2>
-        <p className="text-sm text-[var(--color-ink-muted)]">
+        <h2 className="text-base font-semibold text-ink">Service accounts</h2>
+        <p className="text-sm text-ink-muted">
           Non-human principals for automation — no password, no sign-in, authenticate only by token.
           Disabling one dead-ends every token it owns.
         </p>
       </div>
 
-      <div className="fc-card space-y-3 p-4">
+      <div className={cardClasses('space-y-3 p-4')}>
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-56 flex-1">
-            <label className="fc-label" htmlFor="sa-name">Name</label>
+            <label className={labelClasses()} htmlFor="sa-name">Name</label>
             <input
               id="sa-name"
-              className="fc-input w-full"
+              className={inputClasses('w-full')}
               data-testid="sa-name"
               placeholder="svc-rama-installer"
               value={name}
@@ -387,7 +390,7 @@ function ServiceAccounts({
             />
           </div>
           <button
-            className="fc-btn fc-btn-primary"
+            className={buttonClasses({ variant: 'primary' })}
             data-testid="sa-create"
             disabled={create.isPending || !name.trim()}
             onClick={() => create.mutate()}
@@ -399,7 +402,7 @@ function ServiceAccounts({
           {(roleList.data?.data ?? [])
             .filter((r) => r.row_id !== 'All')
             .map((r) => (
-              <label key={r.row_id} className="flex items-center gap-1.5 text-sm text-[var(--color-ink)]">
+              <label key={r.row_id} className="flex items-center gap-1.5 text-sm text-ink">
                 <input
                   type="checkbox"
                   checked={roles.includes(r.row_id)}
@@ -414,13 +417,13 @@ function ServiceAccounts({
               </label>
             ))}
         </div>
-        {error && <p className="text-sm text-[var(--color-danger)]" data-testid="sa-error">{error}</p>}
+        {error && <p className="text-sm text-negative" data-testid="sa-error">{error}</p>}
       </div>
 
-      <div className="fc-card overflow-x-auto">
+      <div className={cardClasses('overflow-x-auto')}>
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-border)] text-left text-[var(--color-ink-muted)]">
+            <tr className="border-b border-border text-left text-ink-muted">
               <th className="px-3 py-2 font-medium">Name</th>
               <th className="px-3 py-2 font-medium">Roles</th>
               <th className="px-3 py-2 font-medium">Active tokens</th>
@@ -430,30 +433,30 @@ function ServiceAccounts({
           </thead>
           <tbody data-testid="sa-rows">
             {accounts.map((a) => (
-              <tr key={a.row_id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`sa-${a.row_id}`}>
-                <td className="px-3 py-2 font-medium text-[var(--color-ink)]" title={a.row_id}>{a.label}</td>
+              <tr key={a.row_id} className="border-b border-border last:border-0" data-testid={`sa-${a.row_id}`}>
+                <td className="px-3 py-2 font-medium text-ink" title={a.row_id}>{a.label}</td>
                 <td className="px-3 py-2">
                   <span className="flex flex-wrap gap-1">
                     {a.roles.filter((r) => r !== 'All').map((r) => (
-                      <span key={r} className="fc-pill">{r}</span>
+                      <span key={r} className={pillClasses()}>{r}</span>
                     ))}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-[var(--color-ink-muted)]">{a.token_count}</td>
+                <td className="px-3 py-2 text-ink-muted">{a.token_count}</td>
                 <td
-                  className={`px-3 py-2 ${a.enabled ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
+                  className={`px-3 py-2 ${a.enabled ? 'text-positive' : 'text-negative'}`}
                   data-testid={`sa-status-${a.row_id}`}
                 >
                   {a.enabled ? 'enabled' : 'disabled'}
                 </td>
                 <td className="space-x-2 px-3 py-2 text-right whitespace-nowrap">
                   {a.enabled && (
-                    <button className="fc-btn" data-testid={`sa-issue-${a.row_id}`} onClick={() => onIssueToken(a.row_id)}>
+                    <button className={buttonClasses()} data-testid={`sa-issue-${a.row_id}`} onClick={() => onIssueToken(a.row_id)}>
                       Issue token
                     </button>
                   )}
                   <button
-                    className="fc-btn"
+                    className={buttonClasses()}
                     data-testid={`sa-toggle-${a.row_id}`}
                     disabled={setEnabled.isPending}
                     onClick={() => setEnabled.mutate({ account: a.row_id, enabled: !a.enabled })}
@@ -465,7 +468,7 @@ function ServiceAccounts({
             ))}
             {!accounts.length && (
               <tr>
-                <td colSpan={5} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td colSpan={5} className="px-3 py-8 text-center text-ink-subtle">
                   No service accounts yet.
                 </td>
               </tr>

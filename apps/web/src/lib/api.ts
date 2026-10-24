@@ -1,4 +1,5 @@
 import type { SignInMethodKind } from 'shared'
+import { followDevice } from './theme-paint'
 // Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'
@@ -34,6 +35,9 @@ export function clearSession() {
   runtimeSnapshot = undefined
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  // #380: whoever uses this browser next sees their device's theme, not the
+  // departing person's choice. Every sign-out path ends here.
+  followDevice()
 }
 
 // The single place a session is written down. Both sign-in paths land here:

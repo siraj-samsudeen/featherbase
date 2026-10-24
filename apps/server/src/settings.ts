@@ -1,6 +1,7 @@
 // SET-004: global System Settings that drive rendering and session lifetime.
 // Values live in the `single_value` EAV store (SET-001); unset fields fall
 // back to these defaults, which mirror the seeded column_def defaults.
+import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from './db'
 
 export interface SystemSettings {
@@ -14,13 +15,9 @@ export interface SystemSettings {
 }
 
 const DEFAULTS: SystemSettings = {
-  app_name: 'Featherbase',
+  ...DISPLAY_DEFAULTS,
   time_zone: 'UTC',
-  date_format: 'yyyy-mm-dd',
   session_hours: 8,
-  currency: 'USD',
-  currency_precision: 2,
-  float_precision: 2,
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {

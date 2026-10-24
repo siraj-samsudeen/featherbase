@@ -6,7 +6,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, ShownName, isOpaqueId } from '../lib/people'
 import { useRealtime } from '../lib/realtime'
-import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -22,6 +22,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -123,9 +124,9 @@ export function FormView({
   }, [clientScripts.handlers, values])
 
   if (meta.isLoading || (!isNew && doc.isLoading))
-    return <p className="text-sm text-gray-400">Loading…</p>
+    return <p className="text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
-    return <p className="text-sm text-red-600">Cannot load {table} {name}</p>
+    return <p className="text-sm text-negative">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
@@ -168,6 +169,9 @@ export function FormView({
   // EDS-13: a bound Table on a read-only source renders with no write
   // affordance at all — every field read-only, Save/Rename absent.
   const sourceReadOnly = isSourceReadOnly(m)
+  // #432: also read-only when the platform alone writes the rows — the form
+  // opens for reading, with no Save, Delete or Rename, for everyone.
+  const rowsReadOnly = isRowsReadOnly(m)
   const boundSource = m.data_source ?? null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
@@ -296,7 +300,7 @@ export function FormView({
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
-      <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
+      <nav className="mb-2 text-xs text-ink-muted" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
@@ -308,19 +312,19 @@ export function FormView({
           {table}
         </RouterLink>
         <span className="mx-1">/</span>
-        <span className="text-gray-700">{isNew ? 'New' : <ShownName id={name} />}</span>
+        <span className="text-ink">{isNew ? 'New' : <ShownName id={name} />}</span>
       </nav>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">
+          <h1 className="text-xl font-semibold text-ink">
             {table}: {isNew ? 'New' : <ShownName id={name} />}
           </h1>
-          <span className="text-xs text-gray-500" data-testid="form-status">
+          <span className="text-xs text-ink-muted" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
           </span>
           {boundSource && (
             <span
-              className="fc-pill ml-2 align-middle text-[10px]"
+              className={pillClasses('ml-2 align-middle text-xs')}
               data-testid="source-badge"
               title={`Rows live on data source ${boundSource}`}
             >
@@ -334,7 +338,7 @@ export function FormView({
               to="/featherbase/admin/source/$name"
               params={{ name }}
               data-testid="form-source-browser"
-              className="fc-btn"
+              className={buttonClasses()}
             >
               Browse &amp; Reflect
             </RouterLink>
@@ -345,10 +349,10 @@ export function FormView({
               data-testid="status-badge"
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 status === 'submitted'
-                  ? 'bg-[var(--color-good-tint)] text-[var(--color-good)]'
+                  ? 'bg-positive-tint text-positive'
                   : status === 'cancelled'
-                    ? 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]'
-                    : 'bg-[var(--color-subtle)] text-[var(--color-ink-muted)]'
+                    ? 'bg-negative-tint text-negative'
+                    : 'bg-subtle text-ink-muted'
               }`}
             >
               {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
@@ -360,7 +364,7 @@ export function FormView({
               params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
-              className="fc-btn"
+              className={buttonClasses()}
             >
               Print
             </RouterLink>
@@ -372,20 +376,20 @@ export function FormView({
               params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
-              className="fc-btn"
+              className={buttonClasses()}
             >
               Map
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !isOpaqueId(name) && (
+          {!isNew && !renaming && !boundSource && !rowsReadOnly && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
                 setRenaming(true)
               }}
               data-testid="form-rename"
-              className="fc-btn"
+              className={buttonClasses()}
             >
               Rename
             </button>
@@ -396,12 +400,12 @@ export function FormView({
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
                 data-testid="rename-input"
-                className="fc-input w-40"
+                className={inputClasses('w-40')}
               />
-              <button onClick={doRename} data-testid="rename-confirm" className="fc-btn-primary">
+              <button onClick={doRename} data-testid="rename-confirm" className={buttonClasses({ variant: 'primary' })}>
                 Rename
               </button>
-              <button onClick={() => setRenaming(false)} className="fc-btn">
+              <button onClick={() => setRenaming(false)} className={buttonClasses()}>
                 Cancel
               </button>
             </span>
@@ -412,7 +416,7 @@ export function FormView({
               so an affordance here would only ever produce an error), and a
               read-only source, which owns its rows. */}
           {!isNew &&
-            !sourceReadOnly &&
+            !rowsReadOnly &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
               <button
@@ -421,17 +425,17 @@ export function FormView({
                   setConfirmingDelete(true)
                 }}
                 data-testid="form-delete"
-                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+                className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
               >
                 {t('Delete')}
               </button>
             )}
-          {!sourceReadOnly && (
+          {!rowsReadOnly && (
             <button
               onClick={save}
               disabled={saving || !dirty || (submittable && status !== 'draft')}
               data-testid="form-save"
-              className="fc-btn-primary disabled:opacity-40"
+              className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             >
               {saving ? t('Saving…') : t('Save')}
             </button>
@@ -440,7 +444,7 @@ export function FormView({
             <button
               onClick={() => runAction('submit')}
               data-testid="form-submit"
-              className="fc-btn-primary"
+              className={buttonClasses({ variant: 'primary' })}
             >
               Submit
             </button>
@@ -449,7 +453,7 @@ export function FormView({
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
-              className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+              className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint' })}
             >
               Cancel
             </button>
@@ -458,7 +462,7 @@ export function FormView({
             <button
               onClick={() => runAction('amend')}
               data-testid="form-amend"
-              className="fc-btn"
+              className={buttonClasses()}
             >
               Amend
             </button>
@@ -471,7 +475,7 @@ export function FormView({
           right — so a confirmation reads the same wherever it appears. */}
       {confirmingDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40"
           onClick={() => !deleteBusy && setConfirmingDelete(false)}
           onKeyDown={(e) => e.key === 'Escape' && !deleteBusy && setConfirmingDelete(false)}
         >
@@ -479,21 +483,21 @@ export function FormView({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-row-title"
-            className="fc-card w-full max-w-md p-4"
+            className={cardClasses('w-full max-w-md p-4')}
             data-testid="delete-row-dialog"
             onClick={(e) => e.stopPropagation()}
           >
             <h2
               id="delete-row-title"
-              className="mb-2 text-base font-semibold text-[var(--color-ink)]"
+              className="mb-2 text-base font-semibold text-ink"
             >
               Delete {table} {name}?
             </h2>
-            <p className="mb-3 text-sm text-[var(--color-ink-muted)]">
+            <p className="mb-3 text-sm text-ink-muted">
               This cannot be undone.
             </p>
             {deleteError && (
-              <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="delete-row-error">
+              <p className="mb-3 text-sm text-negative" data-testid="delete-row-error">
                 {deleteError}
               </p>
             )}
@@ -502,7 +506,7 @@ export function FormView({
                 autoFocus
                 onClick={() => setConfirmingDelete(false)}
                 disabled={deleteBusy}
-                className="fc-btn"
+                className={buttonClasses()}
                 data-testid="delete-row-cancel"
               >
                 Cancel
@@ -510,7 +514,7 @@ export function FormView({
               <button
                 onClick={deleteRow}
                 disabled={deleteBusy}
-                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-40"
+                className={buttonClasses({ className: 'border-negative text-negative hover:bg-negative-tint disabled:opacity-40' })}
                 data-testid="delete-row-confirm"
               >
                 {deleteBusy ? 'Deleting…' : 'Delete'}
@@ -521,7 +525,7 @@ export function FormView({
       )}
       {banner && (
         <p
-          className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
+          className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-positive' : 'text-negative'}`}
           data-testid="form-banner"
         >
           {banner}
@@ -529,7 +533,7 @@ export function FormView({
       )}
       {scriptError && (
         <div
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-caution"
           data-testid="client-script-error"
         >
           <span>{scriptError}</span>
@@ -540,10 +544,10 @@ export function FormView({
       )}
       {staleBanner && (
         <div
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm"
           data-testid="stale-banner"
         >
-          <span className="text-[var(--color-ink)]">
+          <span className="text-ink">
             This document was changed in another session.
           </span>
           <button
@@ -552,7 +556,7 @@ export function FormView({
               setStaleBanner(false)
             }}
             data-testid="stale-refresh"
-            className="fc-btn"
+            className={buttonClasses()}
           >
             Refresh
           </button>
@@ -564,7 +568,7 @@ export function FormView({
             <div
               key={si}
               data-testid={`form-section-${si}`}
-              className="fc-card mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2"
+              className={cardClasses('mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2')}
             >
               {fields.map((f) =>
                 f.column_type === 'Column Break' ? (
@@ -573,7 +577,7 @@ export function FormView({
                   <FieldControl
                     key={f.column_name}
                     field={
-                      sourceReadOnly || (submittable && status !== 'draft')
+                      rowsReadOnly || (submittable && status !== 'draft')
                         ? { ...f, read_only: true }
                         : f
                     }
@@ -628,14 +632,14 @@ function FieldControl({
 }) {
   const settings = useSettings()
   const { t } = useI18n()
-  const base = 'fc-input'
+  const base = inputClasses()
   const instanceId = useId()
   const controlId = `${instanceId}-${field.column_name}`
   const labelId = `${controlId}-label`
   const label = (
-    <label htmlFor={controlId} className="fc-label">
+    <label htmlFor={controlId} className={labelClasses()}>
       <span id={labelId}>{t(field.label ?? field.column_name)}</span>
-      {field.reqd && <span aria-hidden="true" className="text-red-500"> *</span>}
+      {field.reqd && <span aria-hidden="true" className="text-negative"> *</span>}
     </label>
   )
   // SET-004: below Date/Currency/Float inputs, show the value as it renders
@@ -643,12 +647,12 @@ function FieldControl({
   // reflects System Settings just like lists do.
   const preview =
     value != null && value !== '' && ['Date', 'Datetime', 'Currency', 'Float'].includes(field.column_type) ? (
-      <p className="mt-1 text-xs text-[var(--color-ink-faint)]" data-testid={`preview-${field.column_name}`}>
+      <p className="mt-1 text-xs text-ink-subtle" data-testid={`preview-${field.column_name}`}>
         {formatValue(field.column_type, value, settings)}
       </p>
     ) : null
   const err = error && (
-    <p className="mt-1 text-xs text-red-600" data-testid={`error-${field.column_name}`}>
+    <p className="mt-1 text-xs text-negative" data-testid={`error-${field.column_name}`}>
       {error}
     </p>
   )
@@ -750,7 +754,7 @@ function FieldControl({
           value={typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value, null, 2)}
           onChange={(e) => onChange(e.target.value)}
           rows={4}
-          className={`${base} font-mono`}
+          className={inputClasses('font-mono')}
           {...common}
         />,
       )
@@ -837,7 +841,7 @@ function ChildGrid({
     }
     return key
   }
-  if (!childMeta.data) return <p className="text-xs text-gray-400">Loading rows…</p>
+  if (!childMeta.data) return <p className="text-xs text-ink-subtle">Loading rows…</p>
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
@@ -857,21 +861,21 @@ function ChildGrid({
     onChange(next)
   }
   return (
-    <div id={id} role="group" aria-labelledby={labelledBy} className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.column_name}`}>
+    <div id={id} role="group" aria-labelledby={labelledBy} className="overflow-x-auto rounded-md border border-border" data-testid={`table-${field.column_name}`}>
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 text-left">
+        <thead className="bg-subtle text-left">
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
+              <th key={c.column_name} className="border-b border-border px-2 py-1 text-xs font-medium text-ink-muted">
                 {c.label ?? c.column_name}
               </th>
             ))}
-            <th className="w-20 border-b border-gray-200" />
+            <th className="w-20 border-b border-border" />
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
+            <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
                   <input
@@ -879,7 +883,7 @@ function ChildGrid({
                     aria-label={`${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`}
                     value={String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, e.target.value)}
-                    className="w-full rounded border border-transparent px-1 py-0.5 hover:border-gray-200 focus:border-gray-400"
+                    className="w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control"
                     data-childfield={c.column_name}
                   />
                 </td>
@@ -888,21 +892,21 @@ function ChildGrid({
                 <button
                   aria-label="Move row up"
                   onClick={() => move(i, -1)}
-                  className="px-0.5 text-gray-300 hover:text-gray-700"
+                  className="px-0.5 text-ink-subtle hover:text-ink"
                 >
                   ↑
                 </button>
                 <button
                   aria-label="Move row down"
                   onClick={() => move(i, 1)}
-                  className="px-0.5 text-gray-300 hover:text-gray-700"
+                  className="px-0.5 text-ink-subtle hover:text-ink"
                 >
                   ↓
                 </button>
                 <button
                   aria-label="Remove row"
                   onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                  className="px-0.5 text-gray-300 hover:text-red-600"
+                  className="px-0.5 text-ink-subtle hover:text-negative"
                 >
                   ×
                 </button>
@@ -914,7 +918,7 @@ function ChildGrid({
       <button
         onClick={() => onChange([...rows, {}])}
         data-testid={`add-row-${field.column_name}`}
-        className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
+        className="w-full border-t border-border px-2 py-1 text-left text-xs text-ink-muted hover:bg-subtle"
       >
         + Add row
       </button>
@@ -1015,7 +1019,7 @@ function LinkControl({
               }}
               title={`Peek at ${target} ${String(value)}`}
               data-testid={`link-peek-${field.column_name}`}
-              className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+              className="rounded px-1 text-sm text-ink-subtle hover:text-action"
             >
               ◎
             </button>
@@ -1033,7 +1037,7 @@ function LinkControl({
             }}
             title={`Open ${target} ${String(value)}`}
             data-testid={`link-open-${field.column_name}`}
-            className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+            className="rounded px-1 text-sm text-ink-subtle hover:text-action"
           >
             ↗
           </button>
@@ -1041,7 +1045,7 @@ function LinkControl({
       )}
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
+          className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
           data-testid={`link-options-${field.column_name}`}
         >
           {options.map((o) => (
@@ -1053,20 +1057,20 @@ function LinkControl({
                 setQuery(null)
                 setOpen(false)
               }}
-              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-subtle"
               data-testid="link-option"
             >
               {o.label}
             </button>
           ))}
           {!options.length && (
-            <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
+            <p className="px-3 py-1.5 text-sm text-ink-subtle">No matches</p>
           )}
           <RouterLink
             to="/featherbase/admin/$table/$name"
             params={{ table: target, name: 'new' }}
             search={{ prefill: undefined }}
-            className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+            className="block border-t border-border px-3 py-1.5 text-sm text-ink-muted hover:bg-subtle"
             data-testid="link-create-new"
           >
             + Create new {target}
@@ -1144,7 +1148,7 @@ function AttachControl({
               src={url}
               alt={field.label ?? field.column_name}
               data-testid={`attach-preview-${field.column_name}`}
-              className="mb-2 max-h-40 rounded-md border border-[var(--color-border)]"
+              className="mb-2 max-h-40 rounded-md border border-border"
             />
           )}
           <div className="flex items-center gap-2 text-sm">
@@ -1152,7 +1156,7 @@ function AttachControl({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="min-w-0 text-[var(--color-brand)] hover:underline"
+              className="min-w-0 text-action hover:underline"
               data-testid={`attach-link-${field.column_name}`}
             >
               {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
@@ -1163,7 +1167,7 @@ function AttachControl({
                 aria-label={`Clear ${fieldLabel}`}
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
-                className="shrink-0 text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
+                className="shrink-0 text-xs text-ink-subtle hover:text-negative"
               >
                 Clear
               </button>
@@ -1177,13 +1181,13 @@ function AttachControl({
           onClick={() => inputRef.current?.click()}
           disabled={Boolean(field.read_only) || busy}
           data-testid={`attach-btn-${field.column_name}`}
-          className="fc-btn text-sm"
+          className={buttonClasses({ className: 'text-sm' })}
         >
           {busy ? 'Uploading…' : `Attach ${isImage ? 'image' : 'file'}`}
         </button>
       )}
       {uploadError && (
-        <p className="mt-1 text-xs text-[var(--color-danger)]">{uploadError}</p>
+        <p className="mt-1 text-xs text-negative">{uploadError}</p>
       )}
     </div>
   )

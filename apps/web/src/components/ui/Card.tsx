@@ -1,8 +1,8 @@
 import { useId, type HTMLAttributes, type ReactNode } from 'react'
-import { cx } from './cx'
+import { cx, recipe } from './cx'
 
 export function cardClasses(className?: string): string {
-  return cx('rounded-card border border-border bg-surface shadow-sm', className)
+  return recipe('rounded-card border border-border bg-surface shadow-sm', className)
 }
 
 /** A surface for related content. A titled card is a named region. */

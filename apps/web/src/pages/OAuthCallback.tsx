@@ -37,7 +37,7 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
   }, [code, navigate])
 
   return (
-    <div className="flex min-h-screen items-center justify-center text-sm text-[var(--color-ink-muted)]" data-testid="oauth-callback">
+    <div className="flex min-h-screen items-center justify-center text-sm text-ink-muted" data-testid="oauth-callback">
       Signing you in…
     </div>
   )

@@ -6,6 +6,8 @@ import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection, type Filter } from '../lib/connections'
 import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
+import { cardClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 // Relational navigation (#100, patterns 1 + 2):
 //
@@ -24,32 +26,32 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
   const peek = usePeek()
   if (!cnx.data?.connections.length) return null
   return (
-    <div className="fc-card" data-testid="connections-panel">
-      <div className="border-b border-[var(--color-border)] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+    <div className={cardClasses()} data-testid="connections-panel">
+      <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
         Connections
       </div>
       {cnx.data.connections.map((c) => (
         <div
           key={`${c.table}:${c.column}:${c.via ?? ''}`}
-          className="flex items-center border-b border-[var(--color-border)] last:border-0"
+          className="flex items-center border-b border-border last:border-0"
         >
           <Link
             to="/featherbase/admin/$table"
             params={{ table: c.table }}
             search={{ filters: JSON.stringify(c.filters) }}
             data-testid={`connection-${c.table}`}
-            className="flex min-w-0 flex-1 items-center justify-between gap-2 px-4 py-2 text-sm hover:bg-[var(--color-subtle)]"
+            className="flex min-w-0 flex-1 items-center justify-between gap-2 px-4 py-2 text-sm hover:bg-subtle"
           >
             <span
-              className={`truncate ${c.count ? 'text-[var(--color-ink)]' : 'text-[var(--color-ink-faint)]'}`}
+              className={`truncate ${c.count ? 'text-ink' : 'text-ink-subtle'}`}
             >
               {connectionLabel(c)}
             </span>
             <span
-              className={`fc-pill ${c.count ? 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]' : 'bg-[var(--color-subtle)] text-[var(--color-ink-faint)]'}`}
+              className={pillClasses(`${c.count ? 'bg-action-tint text-action' : 'bg-subtle text-ink-subtle'}`)}
               data-testid={`connection-count-${c.table}`}
             >
-              {c.count}
+              {fmtCount(c.count)}
             </span>
           </Link>
           {peek.available && (
@@ -59,19 +61,19 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
               }
               title={`Peek at ${c.table}`}
               data-testid={`connection-peek-${c.table}`}
-              className="px-1.5 py-2 text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+              className="px-1.5 py-2 text-ink-subtle hover:text-action"
             >
               ◎
             </button>
           )}
-          {!c.via && (
+          {!c.via && !c.system_written && (
             <Link
               to="/featherbase/admin/$table/$name"
               params={{ table: c.table, name: 'new' }}
               search={{ prefill: JSON.stringify({ [c.column]: name }) }}
               title={`New ${c.table} with ${c.column} = ${name}`}
               data-testid={`connection-new-${c.table}`}
-              className="pr-3 text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+              className="pr-3 text-ink-subtle hover:text-action"
             >
               +
             </Link>
@@ -95,27 +97,29 @@ export function RelatedTabs({ table, name }: { table: string; name: string }) {
         {connections.map((c) => (
           <button
             key={key(c)}
+            type="button"
+            aria-expanded={open === key(c)}
             onClick={() => setOpen(open === key(c) ? null : key(c))}
             data-testid={`related-tab-${c.table}`}
             className={`flex flex-col items-start rounded-[var(--radius-control)] border px-3.5 py-1.5 text-left ${
               open === key(c)
-                ? 'border-[var(--color-brand)] bg-[var(--color-brand-tint)]'
-                : 'border-[var(--color-border-strong)] bg-[var(--color-surface)] hover:border-[var(--color-brand)]'
+                ? 'border-action bg-action-tint'
+                : 'border-border-control bg-surface hover:border-action'
             }`}
           >
             <span
               className={`text-base font-semibold leading-tight ${
                 open === key(c)
-                  ? 'text-[var(--color-brand)]'
+                  ? 'text-action'
                   : c.count
-                    ? 'text-[var(--color-ink)]'
-                    : 'text-[var(--color-ink-faint)]'
+                    ? 'text-ink'
+                    : 'text-ink-subtle'
               }`}
               data-testid={`related-count-${c.table}`}
             >
-              {c.count}
+              {fmtCount(c.count)}
             </span>
-            <span className="text-[11px] font-medium text-[var(--color-ink-muted)]">
+            <span className="text-xs font-medium text-ink-muted">
               {connectionLabel(c)}
             </span>
           </button>
@@ -144,19 +148,19 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
       }),
   })
   if (meta.isLoading || list.isLoading)
-    return <p className="mt-2 text-sm text-[var(--color-ink-faint)]">Loading…</p>
+    return <p className="mt-2 text-sm text-ink-subtle">Loading…</p>
   if (meta.isError || list.isError)
-    return <p className="mt-2 text-sm text-[var(--color-danger)]">Cannot load {connection.table}</p>
+    return <p className="mt-2 text-sm text-negative">Cannot load {connection.table}</p>
   const rows = list.data!.data
   return (
-    <div className="fc-card mt-2 overflow-x-auto" data-testid="embedded-list">
+    <div className={cardClasses('mt-2 overflow-x-auto')} data-testid="embedded-list">
       <table className="w-full text-sm">
-        <thead className="bg-[var(--color-subtle)]">
+        <thead className="bg-subtle">
           <tr>
             {columns.map((c) => (
               <th
                 key={c.column_name}
-                className="border-b border-[var(--color-border)] px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]"
+                className="border-b border-border px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-ink-muted"
               >
                 {c.label}
               </th>
@@ -165,7 +169,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={String(r.row_id)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+            <tr key={String(r.row_id)} className="border-b border-border last:border-0 hover:bg-subtle">
               {columns.map((c, i) => (
                 <td key={c.column_name} className="px-3 py-1.5">
                   {i === 0 ? (
@@ -173,7 +177,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
                       to="/featherbase/admin/$table/$name"
                       search={{ prefill: undefined }}
                       params={{ table: connection.table, name: String(r.row_id) }}
-                      className="font-medium text-[var(--color-brand)] hover:underline"
+                      className="font-medium text-action hover:underline"
                     >
                       {formatValue(c.column_type, r[c.column_name], settings) || String(r.row_id)}
                     </Link>
@@ -186,17 +190,17 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
           ))}
           {!rows.length && (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-5 text-center text-sm text-[var(--color-ink-faint)]">
+              <td colSpan={columns.length} className="px-3 py-5 text-center text-sm text-ink-subtle">
                 No rows
               </td>
             </tr>
           )}
         </tbody>
       </table>
-      <div className="flex items-center gap-4 border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1.5 text-xs">
+      <div className="flex items-center gap-4 border-t border-border bg-subtle px-3 py-1.5 text-xs">
         {list.data!.total > rows.length && (
-          <span className="text-[var(--color-ink-muted)]">
-            Showing {rows.length} of {list.data!.total}
+          <span className="text-ink-muted">
+            Showing {fmtCount(rows.length)} of {fmtCount(list.data!.total)}
           </span>
         )}
         <Link
@@ -204,17 +208,17 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
           params={{ table: connection.table }}
           search={{ filters: JSON.stringify(connection.filters) }}
           data-testid="embedded-open-list"
-          className="font-medium text-[var(--color-brand)] hover:underline"
+          className="font-medium text-action hover:underline"
         >
           Open as filtered list ↗
         </Link>
-        {!connection.via && (
+        {!connection.via && !connection.system_written && (
           <Link
             to="/featherbase/admin/$table/$name"
             params={{ table: connection.table, name: 'new' }}
             search={{ prefill: JSON.stringify({ [connection.column]: owner }) }}
             data-testid="embedded-new"
-            className="font-medium text-[var(--color-brand)] hover:underline"
+            className="font-medium text-action hover:underline"
           >
             + New {connection.table}
           </Link>

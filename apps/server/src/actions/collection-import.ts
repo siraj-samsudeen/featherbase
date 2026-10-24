@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
+import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
-import { checkRowForInsert, saveDoc, validateRowForUpdate } from '../document'
+import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
@@ -163,7 +164,7 @@ async function ensureKeyIndex(table: string, keyColumn: string): Promise<void> {
   const tbl = await tableRelation(table)
   const suffix = createHash('sha256').update(cacheKey).digest('hex').slice(0, 8)
   const idx = `${tbl}_${keyColumn}`.slice(0, 46) + `_${suffix}_ukidx`
-  await sql.unsafe(`create index if not exists "${idx}" on ${quoteRelation(tbl)} ((("${keyColumn}")::text))`)
+  await sql.unsafe(`create index if not exists ${quoteIdent(idx)} on ${quoteRelation(tbl)} (((${quoteIdent(keyColumn)})::text))`)
   ensuredKeyIndexes.add(cacheKey)
 }
 
@@ -319,7 +320,8 @@ registerCollectionAction('import', {
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
-    const runStart = new Date()
+    // The database's wall clock — the one that dates the version rows (#432).
+    const [{ runStart }] = await sql<{ runStart: Date }[]>`select clock_timestamp() as "runStart"`
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -429,9 +431,10 @@ function checkRowForUpdate(
 
 // IMP-011: one Import Log row per :import request, whatever the caller —
 // the wizard passes file/sheet/chunk context, a plain API import logs bare
-// counts. skipPermissions: the log is system-written; the importer needs no
-// grant on Import Log itself. Best-effort — a logging failure (e.g. a
-// database mid-upgrade without 0056) never breaks the import that happened.
+// counts. The log is system-written (#432): it goes through the trusted
+// saveSystemRow, and the importer needs no grant on Import Log itself.
+// Best-effort — a logging failure (e.g. a database mid-upgrade without 0056)
+// never breaks the import that happened.
 // UPS-R5: a keyed run also records its key_column and empty_cells choice —
 // that stored pair is what the wizard later offers back as the visible
 // "as last time" suggestion. A run with no key stores nothing (nulls).
@@ -449,7 +452,7 @@ async function writeImportLog(
   >
   const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 140) : undefined)
   const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : undefined)
-  await saveDoc(
+  await saveSystemRow(
     'Import Log',
     {
       ref_table: table,
@@ -478,7 +481,5 @@ async function writeImportLog(
       touched: touched.length ? touched : undefined,
     },
     user,
-    'insert',
-    { skipPermissions: true },
   ).catch(() => {})
 }

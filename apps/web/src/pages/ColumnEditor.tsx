@@ -23,6 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 interface NewColumn {
   label: string
@@ -89,7 +90,7 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
       <input
-        className="fc-input w-40 py-0.5"
+        className={inputClasses('w-40 py-0.5')}
         value={to}
         aria-label={`New name for ${column.column_name}`}
         data-testid={`ce-rename-input-${column.column_name}`}
@@ -97,19 +98,19 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
       />
       <button
         type="button"
-        className="fc-btn-primary py-0.5"
+        className={buttonClasses({ variant: 'primary', className: 'py-0.5' })}
         data-testid={`ce-rename-go-${column.column_name}`}
         disabled={rename.isPending || !to.trim() || to.trim() === column.column_name}
         onClick={() => rename.mutate()}
       >
         {rename.isPending ? 'Renaming…' : 'Rename'}
       </button>
-      <button type="button" className="fc-btn py-0.5" onClick={() => setOpen(false)}>
+      <button type="button" className={buttonClasses({ className: 'py-0.5' })} onClick={() => setOpen(false)}>
         Cancel
       </button>
       {rename.isError && (
         <span
-          className="text-[var(--color-danger)]"
+          className="text-negative"
           data-testid={`ce-rename-error-${column.column_name}`}
         >
           {rename.error instanceof ApiError ? rename.error.message : 'Could not rename'}
@@ -145,10 +146,10 @@ export function ColumnEditor() {
     },
   })
 
-  if (meta.isPending) return <p className="text-sm text-gray-500">Loading…</p>
+  if (meta.isPending) return <p className="text-sm text-ink-muted">Loading…</p>
   if (meta.isError || !meta.data)
     return (
-      <p className="text-sm text-[var(--color-danger)]" data-testid="ce-error">
+      <p className="text-sm text-negative" data-testid="ce-error">
         {meta.error instanceof ApiError ? meta.error.message : 'Could not load this Table'}
       </p>
     )
@@ -200,7 +201,7 @@ export function ColumnEditor() {
 
   return (
     <div data-testid="column-editor" className="max-w-4xl">
-      <h1 className="mb-1 text-xl font-semibold text-[var(--color-ink)]">
+      <h1 className="mb-1 text-xl font-semibold text-ink">
         Columns of{' '}
         <Link
           to="/featherbase/admin/$table"
@@ -211,14 +212,14 @@ export function ColumnEditor() {
           {def.name}
         </Link>
       </h1>
-      <p className="mb-4 text-xs text-gray-500">
+      <p className="mb-4 text-xs text-ink-muted">
         Add a column, change what it is called, or fix a misspelled name. Renaming keeps the rows
         that are already in it.
       </p>
 
       {def.system && (
         <p
-          className="fc-card mb-3 p-2 text-sm text-[var(--color-danger)]"
+          className={cardClasses('mb-3 p-2 text-sm text-negative')}
           data-testid="ce-system"
         >
           {def.name} is a system Table — its columns belong to the platform and cannot be changed
@@ -227,22 +228,22 @@ export function ColumnEditor() {
       )}
 
       {saved && (
-        <p className="fc-card mb-3 p-2 text-sm text-green-700" data-testid="ce-saved">
+        <p className={cardClasses('mb-3 p-2 text-sm text-positive')} data-testid="ce-saved">
           {saved}.
         </p>
       )}
       {put.isError && (
-        <p className="fc-card mb-3 p-2 text-sm text-[var(--color-danger)]" data-testid="ce-put-error">
+        <p className={cardClasses('mb-3 p-2 text-sm text-negative')} data-testid="ce-put-error">
           {put.error instanceof ApiError ? put.error.message : 'Could not save'}
         </p>
       )}
 
-      <div className="fc-card mb-4 p-3">
-        <div className="fc-label mb-1">Columns</div>
+      <div className={cardClasses('mb-4 p-3')}>
+        <div className={labelClasses('mb-1')}>Columns</div>
         <div className="overflow-x-auto" data-testid="ce-columns-table">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
+              <tr className="text-left text-xs uppercase tracking-wide text-ink-subtle">
                 <th className="py-1">Label</th>
                 <th>Column name</th>
                 <th>Type</th>
@@ -253,12 +254,12 @@ export function ColumnEditor() {
               {def.columns.map((column) => (
                 <tr
                   key={column.column_name}
-                  className="border-t border-[var(--color-border)]"
+                  className="border-t border-border"
                   data-testid={`ce-row-${column.column_name}`}
                 >
                   <td className="py-1 pr-2">
                     <input
-                      className="fc-input w-48 py-0.5"
+                      className={inputClasses('w-48 py-0.5')}
                       aria-label={`Label for ${column.column_name}`}
                       data-testid={`ce-label-${column.column_name}`}
                       disabled={def.system}
@@ -271,7 +272,7 @@ export function ColumnEditor() {
                       labels[column.column_name].trim() !== (column.label ?? '') && (
                         <button
                           type="button"
-                          className="fc-btn-primary ml-1 py-0.5"
+                          className={buttonClasses({ variant: 'primary', className: 'ml-1 py-0.5' })}
                           data-testid={`ce-label-save-${column.column_name}`}
                           disabled={put.isPending}
                           onClick={() => saveLabel(column.column_name)}
@@ -280,8 +281,8 @@ export function ColumnEditor() {
                         </button>
                       )}
                   </td>
-                  <td className="pr-2 font-mono text-xs text-gray-500">{column.column_name}</td>
-                  <td className="pr-2 text-xs text-gray-500">{column.column_type}</td>
+                  <td className="pr-2 font-mono text-xs text-ink-muted">{column.column_name}</td>
+                  <td className="pr-2 text-xs text-ink-muted">{column.column_type}</td>
                   <td className="text-xs">
                     {!def.system && <RenameRow table={def.name} column={column} />}
                   </td>
@@ -293,13 +294,13 @@ export function ColumnEditor() {
       </div>
 
       {!def.system && (
-        <div className="fc-card p-3" data-testid="ce-add">
-          <div className="fc-label mb-1">Add a column</div>
+        <div className={cardClasses('p-3')} data-testid="ce-add">
+          <div className={labelClasses('mb-1')}>Add a column</div>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="text-xs text-gray-500">
+            <label className="text-xs text-ink-muted">
               Label
               <input
-                className="fc-input mt-0.5 block w-48 py-1"
+                className={inputClasses('mt-0.5 block w-48 py-1')}
                 data-testid="ce-add-label"
                 value={adding.label}
                 onChange={(e) =>
@@ -313,10 +314,10 @@ export function ColumnEditor() {
                 }
               />
             </label>
-            <label className="text-xs text-gray-500">
+            <label className="text-xs text-ink-muted">
               Column name
               <input
-                className="fc-input mt-0.5 block w-48 py-1 font-mono"
+                className={inputClasses('mt-0.5 block w-48 py-1 font-mono')}
                 data-testid="ce-add-name"
                 value={adding.column_name}
                 onChange={(e) =>
@@ -324,10 +325,10 @@ export function ColumnEditor() {
                 }
               />
             </label>
-            <label className="text-xs text-gray-500">
+            <label className="text-xs text-ink-muted">
               Type
               <select
-                className="fc-input mt-0.5 block w-40 py-1"
+                className={inputClasses('mt-0.5 block w-40 py-1')}
                 data-testid="ce-add-type"
                 value={adding.column_type}
                 onChange={(e) => setAdding((a) => ({ ...a, column_type: e.target.value }))}
@@ -340,10 +341,10 @@ export function ColumnEditor() {
               </select>
             </label>
             {TARGET_REQUIRED_TYPES.includes(adding.column_type) && (
-              <label className="text-xs text-gray-500">
+              <label className="text-xs text-ink-muted">
                 {adding.column_type === 'Choice' ? 'Choices (one per line)' : 'Target Table'}
                 <input
-                  className="fc-input mt-0.5 block w-48 py-1"
+                  className={inputClasses('mt-0.5 block w-48 py-1')}
                   data-testid="ce-add-target"
                   value={adding.target}
                   onChange={(e) => setAdding((a) => ({ ...a, target: e.target.value }))}
@@ -352,7 +353,7 @@ export function ColumnEditor() {
             )}
             <button
               type="button"
-              className="fc-btn-primary disabled:opacity-40"
+              className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
               data-testid="ce-add-go"
               disabled={put.isPending || Boolean(problem)}
               onClick={addColumn}
@@ -363,11 +364,11 @@ export function ColumnEditor() {
           {/* Only once something has been typed — nobody is scolded for an
               empty form they have not started filling in. */}
           {problem && (adding.label || adding.column_name) && (
-            <p className="mt-1 text-xs text-[var(--color-danger)]" data-testid="ce-add-problem">
+            <p className="mt-1 text-xs text-negative" data-testid="ce-add-problem">
               {problem}
             </p>
           )}
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-ink-muted">
             The new column is empty on every row that already exists. A column's type cannot be
             changed after it is made, and columns are not deleted here — delete the Table if that
             is what you mean.

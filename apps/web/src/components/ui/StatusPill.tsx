@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { cx } from './cx'
+import { recipe } from './cx'
 
 export type StatusTone = 'negative' | 'caution' | 'positive' | 'opportunity' | 'missing' | 'neutral'
 
@@ -12,8 +12,13 @@ const TONE: Record<StatusTone, string> = {
   neutral: 'bg-action-tint text-action',
 }
 
+/** The pill shape only; the call site brings the colour. */
+export function pillClasses(className?: string): string {
+  return recipe('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold', className)
+}
+
 export function statusClasses(tone: StatusTone = 'neutral', className?: string): string {
-  return cx('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold', TONE[tone], className)
+  return pillClasses(`${TONE[tone]}${className ? ` ${className}` : ''}`)
 }
 
 /** A status in words; the colour only repeats what the words say. */

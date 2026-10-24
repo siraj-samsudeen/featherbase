@@ -5,7 +5,10 @@ import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { achievementTone, DataList, Headline, type DataColumn } from '../src/components/ui'
-import { fmtCount, fmtINR } from '../src/lib/inr'
+import { fmtCount, fmtDay, fmtINR, fmtNumber, fmtShowing } from '../src/lib/inr'
+import { formatNumber } from '../src/lib/settings'
+import { indicatorColor, pageRange } from '../src/components/ListView'
+import { previewValue } from '../src/pages/TableBuilder'
 
 describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
   test.each([
@@ -35,6 +38,89 @@ describe('fmtINR — the readable lakh/crore ladder (ADR 750)', () => {
     expect(fmtINR(undefined)).toBe('—')
     expect(fmtINR(Number.NaN)).toBe('—')
   })
+})
+
+describe('fmtNumber — Float and Currency list cells', () => {
+  test('groups the Indian way at the configured precision, above a lakh where the two systems differ', () => {
+    expect(fmtNumber(1234567.5, 2)).toBe('12,34,567.50')
+    expect(fmtNumber(-98765432.1, 1)).toBe('-9,87,65,432.1')
+    expect(fmtNumber(1234.5, 2)).toBe('1,234.50') // under a lakh, the same as western grouping
+  })
+
+  test('list cells use it: formatNumber of 1234567.5 at precision 2 is 12,34,567.50', () => {
+    expect(formatNumber(1234567.5, 2)).toBe('12,34,567.50')
+    expect(formatNumber('', 2)).toBe('')
+  })
+})
+
+describe('fmtDay — dates read from a spreadsheet keep their calendar day on any clock', () => {
+  // A Date built from local parts is local midnight; a date-only string parses to UTC midnight.
+  const inZone = (tz: string, fn: () => void) => {
+    const before = process.env.TZ
+    process.env.TZ = tz
+    try {
+      fn()
+    } finally {
+      if (before === undefined) delete process.env.TZ
+      else process.env.TZ = before
+    }
+  }
+
+  test.each(['Asia/Kolkata', 'America/New_York', 'UTC'])('in %s, a local-midnight day reads as itself', (tz) =>
+    inZone(tz, () => {
+      expect(fmtDay(new Date(2026, 9, 21))).toBe('21-Oct-2026')
+      expect(fmtDay(new Date(2024, 1, 29))).toBe('29-Feb-2024')
+      expect(fmtDay(new Date(2026, 0, 1))).toBe('01-Jan-2026') // month is zero-based in Date: no off-by-one
+    }),
+  )
+
+  test.each(['Asia/Kolkata', 'America/New_York'])('in %s, a UTC-midnight day (from "2026-01-15") reads as that day too', (tz) =>
+    inZone(tz, () => {
+      expect(fmtDay(new Date('2026-01-15'))).toBe('15-Jan-2026')
+    }),
+  )
+})
+
+describe('the table builder preview shows days as DD-Mon-YYYY', () => {
+  test('from YYYY-MM-DD text (what the workbook parser hands over since #387) or a Date', () => {
+    expect(previewValue('2024-10-21')).toBe('21-Oct-2024')
+    expect(previewValue(new Date(2024, 9, 21))).toBe('21-Oct-2024')
+    expect(previewValue('2024-10-21T05:30:00')).toBe('2024-10-21T05:30:00')
+    expect(previewValue(null)).toBe('')
+  })
+})
+
+describe('list counts', () => {
+  test('the pager groups a lakh-scale table the Indian way', () => {
+    expect(pageRange(0, 20, 123456)).toBe('1–20 of 1,23,456')
+    expect(pageRange(123440, 20, 123456)).toBe('1,23,441–1,23,456 of 1,23,456')
+    expect(pageRange(0, 20, 0)).toBe('0–0 of 0')
+  })
+
+  test('a partial preview names both numbers the Indian way', () => {
+    expect(fmtShowing(50, 123456)).toBe('50 of 1,23,456')
+    expect(fmtShowing(123456, 123456)).toBe('1,23,456')
+  })
+})
+
+describe('status dots: meaning colours for verdicts only', () => {
+  test.each([
+    ['Done', 'var(--color-positive)'],
+    ['Approved', 'var(--color-positive)'],
+    ['Overdue', 'var(--color-negative)'],
+    ['Failed', 'var(--color-negative)'],
+    ['Not set', 'var(--color-missing)'],
+  ])('%s is a verdict: %s', (word, colour) => {
+    expect(indicatorColor(word)).toBe(colour)
+  })
+
+  test.each(['Open', 'Urgent', 'High', 'Pending', 'In progress', 'Draft'])(
+    '%s is a state, not a verdict: an identity colour, never a meaning colour',
+    (word) => {
+      expect(indicatorColor(word)).toMatch(/^var\(--color-series-[1-5]\)$/)
+      expect(indicatorColor(word)).toBe(indicatorColor(word))
+    },
+  )
 })
 
 describe('fmtCount', () => {

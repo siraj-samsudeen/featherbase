@@ -10,6 +10,7 @@ export type ErrorType =
   | 'MethodNotAllowedError'
   | 'DataSourceError'
   | 'ServiceUnavailableError'
+  | 'RateLimitError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -27,6 +28,8 @@ const STATUS: Record<ErrorType, number> = {
   // sign-in provider) did not answer usably — "try again later", not a
   // verdict on what the caller sent.
   ServiceUnavailableError: 503,
+  // The same type the request-rate limiters answer with: try again later.
+  RateLimitError: 429,
   InternalError: 500,
 }
 

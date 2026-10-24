@@ -1,6 +1,7 @@
 import postgres from 'postgres'
 import { AppError } from '../errors'
 import { fkKey } from './fk'
+import { assertNotPlatformDatabase } from './platform-guard'
 import type {
   Binding,
   IntrospectedTable,
@@ -17,6 +18,22 @@ import type {
 // test-sandbox delegate) is never used for foreign rows.
 
 const pools = new Map<string, ReturnType<typeof postgres>>()
+// #432: each pool proves once, before its first query, that it does not
+// reach the platform's own database (platform-guard.ts).
+const vetted = new Map<string, Promise<void>>()
+
+function vet(cfg: SourceConfig, client: ReturnType<typeof postgres>): Promise<void> {
+  let check = vetted.get(cfg.name)
+  if (!check) {
+    check = assertNotPlatformDatabase(cfg, client).catch((err) => {
+      // Not proven either way (the server was unreachable): ask again next time.
+      if (vetted.get(cfg.name) === check) vetted.delete(cfg.name)
+      throw err
+    })
+    vetted.set(cfg.name, check)
+  }
+  return check
+}
 
 function pool(cfg: SourceConfig): ReturnType<typeof postgres> {
   const cached = pools.get(cfg.name)
@@ -128,7 +145,9 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
 
 async function run(cfg: SourceConfig, text: string, values: unknown[]): Promise<SourceRow[]> {
   try {
-    return (await pool(cfg).unsafe(text, values as never[])) as unknown as SourceRow[]
+    const client = pool(cfg)
+    await vet(cfg, client)
+    return (await client.unsafe(text, values as never[])) as unknown as SourceRow[]
   } catch (err) {
     wrapError(cfg, err)
   }
@@ -353,6 +372,7 @@ export const postgresDriver: SourceDriver = {
   dispose(sourceName) {
     const p = pools.get(sourceName)
     pools.delete(sourceName)
+    vetted.delete(sourceName)
     void p?.end({ timeout: 1 }).catch(() => {})
   },
 }

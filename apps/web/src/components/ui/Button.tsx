@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
-import { cx } from './cx'
+import { cx, recipe } from './cx'
 import { LoaderCircle } from './icons'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
@@ -20,13 +20,15 @@ export function buttonClasses({
   block = false,
   className,
 }: { variant?: ButtonVariant; block?: boolean; className?: string } = {}): string {
-  return cx(
-    'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-4',
-    'text-control font-semibold transition-colors',
-    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
-    'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
-    VARIANT[variant],
-    block && 'w-full',
+  return recipe(
+    cx(
+      'inline-flex min-h-control select-none items-center justify-center gap-2 rounded-control border px-control-x',
+      'text-control font-semibold transition-colors',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+      'disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none',
+      VARIANT[variant],
+      block && 'w-full',
+    ),
     className,
   )
 }
@@ -51,5 +53,29 @@ export function Button({ variant, block, loading = false, icon, className, disab
       {loading ? <LoaderCircle aria-hidden size={18} className="animate-spin motion-reduce:animate-none" /> : icon}
       {children}
     </button>
+  )
+}
+
+/**
+ * A button that is only an icon or a glyph (×, ←, ↗): a square of the control
+ * size, so it is as easy to hit as any other control. Give it an aria-label.
+ */
+export function iconButtonClasses(className?: string): string {
+  return recipe(
+    'inline-flex size-control shrink-0 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none',
+    className,
+  )
+}
+
+/**
+ * For a small glyph that must stay inside a chip (a tag's ×): an invisible 32px
+ * hit area centred on it, so a thumb can hit it without the chip growing. Kept
+ * below the control size so it cannot reach a neighbouring chip; chips that
+ * carry one sit at least 8px apart (gap-2).
+ */
+export function touchTargetClasses(className?: string): string {
+  return recipe(
+    "relative before:absolute before:left-1/2 before:top-1/2 before:size-8 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']",
+    className,
   )
 }
