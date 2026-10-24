@@ -1,5 +1,5 @@
 import type { TableController } from '../controllers'
-import { applyCustomField, removeCustomField } from '../custom-fields'
+import { applyCustomField, assertCustomFieldName, removeCustomField } from '../custom-fields'
 import { assertTargetNotSystemWritten } from '../system-written'
 import type { CustomFieldRec } from '../custom-fields'
 
@@ -9,7 +9,10 @@ const controller: TableController = {
   table: 'Custom Field',
   hooks: {
     // #432: refuse before anything is written, not mid-transaction.
-    validate: ({ row }) => assertTargetNotSystemWritten(row.dt, 'changed'),
+    validate: async ({ row }) => {
+      assertCustomFieldName(row.column_name)
+      await assertTargetNotSystemWritten(row.dt, 'changed')
+    },
     after_insert: async ({ row, tx }) => {
       await applyCustomField(row as unknown as CustomFieldRec, tx)
     },

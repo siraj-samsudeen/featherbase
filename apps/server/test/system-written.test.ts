@@ -21,6 +21,8 @@ import { getMeta } from '../src/meta'
 import { applyWorkflowAction, ensureStateField } from '../src/workflow'
 import { invalidateSources } from '../src/sources/registry'
 import { EXTERNAL_DATABASE_URL } from './external-database'
+import { readIdentity, sameDatabase } from '../src/sources/platform-guard'
+import { applyCustomField } from '../src/custom-fields'
 
 const AL = 'Activity Log'
 const ENC = encodeURIComponent(AL)
@@ -645,6 +647,39 @@ describe('#432: a Data Source never reaches platform storage', () => {
     invalidateSources()
   })
 
+  test("a source session with another TimeZone is still the platform's own database", async ({ admin }) => {
+    const alias = new URL(config.databaseUrl)
+    alias.hostname = alias.hostname === 'localhost' ? '127.0.0.1' : 'localhost'
+    alias.searchParams.set('TimeZone', 'Pacific/Chatham')
+    process.env.AUDIT_TZ_URL = alias.toString()
+    await saveSource(admin, { row_id: 'audit-tz-db', url_env: 'AUDIT_TZ_URL', default_schema: 'public' })
+    const tested = await admin.post<{ ok: boolean; error?: string }>('/api/table/Data%20Source/audit-tz-db:test_connection', {})
+    expect(tested).toMatchObject({ ok: false, error: expect.stringMatching(/platform's own database/) })
+    invalidateSources()
+  })
+
+  test('the database identity survives a server restart and names no session setting', async () => {
+    const tz = postgres(config.databaseUrl, { max: 1, onnotice: () => {}, connection: { TimeZone: 'Asia/Kolkata' } })
+    try {
+      const platform = await readIdentity(sql)
+      const source = await readIdentity(tz)
+      expect(platform.system_id).toMatch(/^\d+$/)
+      expect(sameDatabase(platform, source)).toBe(true)
+      // A restart changes the postmaster start time and nothing else.
+      expect(sameDatabase(platform, { ...source, started: '1' })).toBe(true)
+      // Another cluster, or another database in this one, is not the platform's.
+      expect(sameDatabase(platform, { ...source, system_id: '1' })).toBe(false)
+      expect(sameDatabase(platform, { ...source, oid: '1' })).toBe(false)
+      // Where pg_control_system is not granted, the start time (as epoch
+      // seconds, so no TimeZone) stands in, read fresh on both sides.
+      const noSys = { ...platform, system_id: null }
+      expect(sameDatabase(noSys, { ...source, system_id: null })).toBe(true)
+      expect(sameDatabase(noSys, { ...source, system_id: null, started: '1' })).toBe(false)
+    } finally {
+      await tz.end({ timeout: 2 })
+    }
+  })
+
   test('no Table may be bound to a relation in the platform schema, on any database', async ({ admin }) => {
     const ext = postgres(EXTERNAL_DATABASE_URL, { max: 1, onnotice: () => {} })
     try {
@@ -690,5 +725,37 @@ describe('#432: every queued email about a deleted Table fails', () => {
     const [row] = await sql`select send_status, error from email_queue where row_id = ${queued}`
     expect(row).toMatchObject({ send_status: 'error', error: expect.stringMatching(/Audit Plain Mail was deleted/) })
     expect(await sql`select 1 from email_sink where subject = 'Plain about P-1'`).toHaveLength(0)
+  })
+})
+
+describe('#432: a Custom Field column name is an identifier, never SQL', () => {
+  const CANARY = 'audit_injected_canary'
+  const MALICIOUS = `x" text; create table ${CANARY} (); --`
+
+  test('a column name carrying SQL is refused before anything is written or run', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit CF Target', columns: ['title'] })
+    await expectApiError(
+      admin.post('/api/save_row', { table: 'Custom Field', row: { row_id: 'audit-cf-inject', dt: 'Audit CF Target', column_name: MALICIOUS, column_type: 'Data' } }),
+      { status: 417, type: 'ValidationError', message: expect.stringMatching(/column_name/) },
+    )
+    expect(await sql`select 1 from custom_field where row_id = 'audit-cf-inject'`).toHaveLength(0)
+    expect(await sql`select 1 from column_def where parent = 'Audit CF Target' and column_name = ${MALICIOUS}`).toHaveLength(0)
+    const [{ canary }] = await sql`select to_regclass(${CANARY}) as canary`
+    expect(canary).toBeNull()
+  })
+
+  test('applying a stored record with such a name runs no SQL', async ({ admin }) => {
+    await makeTable(admin, { name: 'Audit CF Stored', columns: ['title'] })
+    // A recording transaction: anything the field would run lands here.
+    const ran: string[] = []
+    const tx = Object.assign(
+      (strings: TemplateStringsArray) => { ran.push(strings.join('?')); return Promise.resolve([]) },
+      { unsafe: (q: string) => { ran.push(q); return Promise.resolve([]) } },
+    ) as unknown as typeof sql
+    await expect(applyCustomField({ dt: 'Audit CF Stored', column_name: MALICIOUS, column_type: 'Data' }, tx)).rejects.toMatchObject({ type: 'ValidationError' })
+    await expect(applyCustomField({ dt: 'Audit CF Stored', column_name: 'row_id', column_type: 'Data' }, tx)).rejects.toMatchObject({ type: 'ValidationError' })
+    expect(ran).toEqual([])
+    const [{ canary }] = await sql`select to_regclass(${CANARY}) as canary`
+    expect(canary).toBeNull()
   })
 })

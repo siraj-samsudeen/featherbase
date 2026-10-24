@@ -15,35 +15,41 @@ import type { SourceConfig } from './types'
 //   2. A bound Table never names a relation in the platform schema, on any
 //      database. Checked from the binding alone, so it needs no connection.
 
-// Who the connected server says it is. The postmaster start time tells
-// clusters apart; the database oid and name tell databases apart within one.
-const IDENTITY_SQL = `select current_database() as db,
+// Who the connected server says it is. `system_identifier` is fixed when a
+// cluster is initialised (a physical replica shares it, and is the same data)
+// and the database oid is fixed when a database is created, so the pair
+// survives restarts and is the same in every session whatever its settings.
+// Where pg_control_system is not granted, the postmaster start time stands in,
+// as epoch seconds so the session TimeZone cannot change it. Both sides are
+// read on every check: nothing cached can go stale across a restart.
+const IDENTITY_SQL = `select
   (select oid::text from pg_database where datname = current_database()) as oid,
-  pg_postmaster_start_time()::text as started`
+  case when has_function_privilege('pg_catalog.pg_control_system()', 'execute')
+    then (select system_identifier::text from pg_catalog.pg_control_system()) end as system_id,
+  extract(epoch from pg_postmaster_start_time())::text as started`
 
-type Identity = { db: string; oid: string; started: string }
-const key = (r: Identity) => `${r.started}|${r.oid}|${r.db}`
+export type Identity = { oid: string; system_id: string | null; started: string }
 
-let platformIdentity: Promise<string> | null = null
-function platformKey(): Promise<string> {
-  platformIdentity ??= sql
-    .unsafe(IDENTITY_SQL)
-    .then((rows) => key(rows[0] as unknown as Identity))
-    .catch((err) => {
-      platformIdentity = null
-      throw err
-    })
-  return platformIdentity
+type Queryable = { unsafe: (q: string) => PromiseLike<readonly unknown[]> }
+
+export async function readIdentity(client: Queryable): Promise<Identity> {
+  const [row] = (await client.unsafe(IDENTITY_SQL)) as Identity[]
+  return { oid: String(row.oid), system_id: row.system_id == null ? null : String(row.system_id), started: String(row.started) }
+}
+
+export function sameDatabase(a: Identity, b: Identity): boolean {
+  if (a.oid !== b.oid) return false
+  if (a.system_id != null && b.system_id != null) return a.system_id === b.system_id
+  return a.started === b.started
 }
 
 export async function assertNotPlatformDatabase(
   cfg: SourceConfig,
   client: ReturnType<typeof postgres>,
 ): Promise<void> {
-  let theirs: string
+  let theirs: Identity
   try {
-    const [row] = await client.unsafe(IDENTITY_SQL)
-    theirs = key(row as unknown as Identity)
+    theirs = await readIdentity(client)
   } catch (err) {
     // A server that speaks the protocol but lacks these catalog functions
     // (SQLSTATE class 42) is not this platform's PostgreSQL. Anything else,
@@ -51,7 +57,7 @@ export async function assertNotPlatformDatabase(
     if (/^42/.test(String((err as { code?: string }).code ?? ''))) return
     throw err
   }
-  if (theirs === (await platformKey()))
+  if (sameDatabase(await readIdentity(sql), theirs))
     throw new AppError(
       'PermissionError',
       `Data source ${cfg.name} connects to the platform's own database; a data source must point at another database`,

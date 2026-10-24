@@ -2,7 +2,8 @@ import { assertNotSystemWritten } from './system-written'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
-import { pgType, tableRelation, quoteRelation } from './table-engine'
+import { STANDARD_COLUMNS, pgType, tableRelation, quoteRelation } from './table-engine'
+import { isColumnName, quoteIdent } from './sql-identifier'
 
 // CUST-001: apply a Custom Field record to its target Table — add the
 // column (if the column_type has one) and a column_def row marked custom.
@@ -20,10 +21,20 @@ export interface CustomFieldRec {
   in_list_view?: boolean | null
 }
 
+// The same rule a Table's own columns pass (table-engine columnSchema): the
+// name becomes DDL, so it is refused before anything is read or run.
+export function assertCustomFieldName(columnName: unknown): asserts columnName is string {
+  if (!isColumnName(columnName))
+    throw new AppError('ValidationError', 'column_name must be snake_case', { column_name: 'snake_case' })
+  if ((STANDARD_COLUMNS as readonly string[]).includes(columnName))
+    throw new AppError('ValidationError', `'${columnName}' is a reserved column name`, { column_name: 'reserved' })
+}
+
 export async function applyCustomField(
   rec: CustomFieldRec,
   tx: typeof sql = sql,
 ): Promise<void> {
+  assertCustomFieldName(rec.column_name)
   const columnType = rec.column_type || 'Data'
   const meta = await getMeta(rec.dt)
   // #432: a system-written Table's columns are the platform's alone.
@@ -32,7 +43,7 @@ export async function applyCustomField(
   const col = pgType(columnType)
   if (col)
     await tx.unsafe(
-      `alter table ${quoteRelation(await tableRelation(rec.dt))} add column if not exists "${rec.column_name}" ${col}`,
+      `alter table ${quoteRelation(await tableRelation(rec.dt))} add column if not exists ${quoteIdent(rec.column_name)} ${col}`,
     )
   // column_def row: insert or update, always marked custom.
   const existing = meta.columns.find((f) => f.column_name === rec.column_name)

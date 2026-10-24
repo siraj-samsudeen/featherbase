@@ -5,6 +5,7 @@ import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
+import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
 
 export { tableName }
@@ -67,7 +68,7 @@ const optionalString = z
 const columnSchema = z.object({
   column_name: z
     .string()
-    .regex(/^[a-z][a-z0-9_]{0,63}$/, 'column_name must be snake_case'),
+    .regex(COLUMN_NAME_RE, 'column_name must be snake_case'),
   label: optionalString,
   column_type: z.enum(COLUMN_TYPE_VALUES),
   // Type-specific target, replacing the old overloaded "options" key:
@@ -207,7 +208,7 @@ export async function tableRelation(name: string): Promise<string> {
 }
 
 export function quoteRelation(relation: string): string {
-  return relation.split('.').map((part) => `"${part.replaceAll('"', '""')}"`).join('.')
+  return relation.split('.').map(quoteIdent).join('.')
 }
 
 // META-003: generate the CREATE TABLE statement for a Table definition.
@@ -235,10 +236,10 @@ function createTableDDL(def: TableDef, relation = tableName(def.name)): string |
   for (const f of def.columns) {
     const type = pgType(f.column_type)
     if (!type) continue
-    cols.push(`"${f.column_name}" ${type}`)
+    cols.push(`${quoteIdent(f.column_name)} ${type}`)
     if (f.unique)
       constraints.push(
-        `constraint "${tableName(def.name)}_${f.column_name}_uq" unique ("${f.column_name}")`,
+        `constraint ${quoteIdent(`${tableName(def.name)}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
       )
   }
   return `create table ${quoteRelation(relation)} (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
@@ -375,10 +376,10 @@ export async function updateTable(
         })}`
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound)
-          await tx.unsafe(`alter table ${relation} add column if not exists "${f.column_name}" ${type}`)
+          await tx.unsafe(`alter table ${relation} add column if not exists ${quoteIdent(f.column_name)} ${type}`)
         if (f.unique && type && !isBound)
           await tx.unsafe(
-            `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+            `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
           )
       } else {
         await tx`update column_def set ${tx(row)}
@@ -387,11 +388,11 @@ export async function updateTable(
         if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
           if (f.unique)
             await tx.unsafe(
-              `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+              `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
             )
           else
             await tx.unsafe(
-              `alter table ${relation} drop constraint if exists "${table}_${f.column_name}_uq"`,
+              `alter table ${relation} drop constraint if exists ${quoteIdent(`${table}_${f.column_name}_uq`)}`,
             )
         }
       }
@@ -402,7 +403,7 @@ export async function updateTable(
       await tx`delete from column_def where parent = ${name} and column_name = ${column_name}`
       const type = pgType(old.column_type)
       if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
-        await tx.unsafe(`alter table ${relation} drop column if exists "${column_name}"`)
+        await tx.unsafe(`alter table ${relation} drop column if exists ${quoteIdent(column_name)}`)
       // without drop_columns the column (and its data) is retained
     }
   })
@@ -577,7 +578,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       await tx.unsafe(ddl)
       if (def.kind === 'sub_table')
         await tx.unsafe(
-          `create index "${tableName(def.name)}_parent_idx" on ${quoteRelation(relation)} ("parent", "position")`,
+          `create index ${quoteIdent(`${tableName(def.name)}_parent_idx`)} on ${quoteRelation(relation)} ("parent", "position")`,
         )
       await applyRls(tx, def, relation)
     }
@@ -710,7 +711,7 @@ export async function renameColumn(
 
   const target = to.trim()
   if (target === from) return meta
-  if (!/^[a-z][a-z0-9_]{0,63}$/.test(target))
+  if (!COLUMN_NAME_RE.test(target))
     throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
   if ((STANDARD_COLUMNS as readonly string[]).includes(target))
     throw new AppError('ValidationError', `${target} is a standard column name`)
@@ -723,7 +724,7 @@ export async function renameColumn(
 
   await sql.begin(async (tx) => {
     if (hasStorage)
-      await tx.unsafe(`alter table ${relation} rename column "${from}" to "${target}"`)
+      await tx.unsafe(`alter table ${relation} rename column ${quoteIdent(from)} to ${quoteIdent(target)}`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
     // A Sub-table's children name their column on every row, in
@@ -743,7 +744,7 @@ export async function renameColumn(
     // find it. Rename it to match.
     if (column.unique && hasStorage)
       await tx.unsafe(
-        `alter table ${relation} rename constraint "${physical}_${from}_uq" to "${physical}_${target}_uq"`,
+        `alter table ${relation} rename constraint ${quoteIdent(`${physical}_${from}_uq`)} to ${quoteIdent(`${physical}_${target}_uq`)}`,
       )
     // The two places this Table names its own column. Left stale, the id
     // pattern would stop resolving and the list would lose its title.

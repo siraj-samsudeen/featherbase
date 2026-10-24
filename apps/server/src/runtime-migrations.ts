@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { quoteIdent } from './sql-identifier'
 import { z } from 'zod'
 import { AppError } from './errors'
 import { sql } from './db'
@@ -83,7 +84,7 @@ export async function applyAdditions(migrations: PackageMigration[], owner: stri
     const [{ position }] = await sql`select coalesce(max(position), 0) + 1 as position from column_def where parent = ${op.table}`
     await sql`insert into column_def ${sql({ parent: op.table, position, ...op.column })}`
     // No IF NOT EXISTS: a physical-only collision is drift, not successful migration.
-    await sql.unsafe(`alter table ${relation} add column "${op.column.column_name}" ${pgType(op.column.column_type)}`)
+    await sql.unsafe(`alter table ${relation} add column ${quoteIdent(op.column.column_name)} ${pgType(op.column.column_type)}`)
   }
   invalidateMeta()
 }

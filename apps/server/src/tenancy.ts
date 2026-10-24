@@ -1,4 +1,5 @@
 import postgres from 'postgres'
+import { quoteIdent } from './sql-identifier'
 import { sql } from './db'
 import { config } from './config'
 import { AppError } from './errors'
@@ -46,7 +47,7 @@ export async function closeSiteClients(): Promise<void> {
 // gets, independent of every other site.
 export async function siteMigrate(site: string): Promise<void> {
   const schema = siteSchema(site)
-  await sql.unsafe(`create schema if not exists "${schema}"`)
+  await sql.unsafe(`create schema if not exists ${quoteIdent(schema)}`)
   const c = siteClient(site)
   await c.unsafe(`
     create table if not exists table_def (
@@ -104,7 +105,7 @@ export async function siteCreateTableDef(
   await c.begin(async (tx) => {
     await tx`insert into table_def ${tx({ name, module: 'Site' })}`
     for (const f of columns) await tx`insert into column_def ${tx({ parent: name, column_name: f.column_name, column_type: f.column_type })}`
-    const cols = columns.map((f) => `"${f.column_name.replace(/[^a-z0-9_]/gi, '_')}" text`).join(', ')
+    const cols = columns.map((f) => `${quoteIdent(f.column_name.replace(/[^a-z0-9_]/gi, '_'))} text`).join(', ')
     await tx.unsafe(`create table if not exists ${tableFor(name)} (row_id text primary key${cols ? ', ' + cols : ''})`)
   })
   return { name }

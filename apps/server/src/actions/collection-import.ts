@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, saveSystemRow, validateRowForUpdate } from '../document'
 import { ROW_KEY, getMeta, type TableMeta } from '../meta'
@@ -163,7 +164,7 @@ async function ensureKeyIndex(table: string, keyColumn: string): Promise<void> {
   const tbl = await tableRelation(table)
   const suffix = createHash('sha256').update(cacheKey).digest('hex').slice(0, 8)
   const idx = `${tbl}_${keyColumn}`.slice(0, 46) + `_${suffix}_ukidx`
-  await sql.unsafe(`create index if not exists "${idx}" on ${quoteRelation(tbl)} ((("${keyColumn}")::text))`)
+  await sql.unsafe(`create index if not exists ${quoteIdent(idx)} on ${quoteRelation(tbl)} (((${quoteIdent(keyColumn)})::text))`)
   ensuredKeyIndexes.add(cacheKey)
 }
 
