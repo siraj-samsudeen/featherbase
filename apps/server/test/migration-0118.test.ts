@@ -1,4 +1,4 @@
-// Migration 0114 (24-Oct-2026): the Desk calls the Sales Target Assignment's
+// Migration 0118 (24-Oct-2026): the Desk calls the Sales Target Assignment's
 // material_group column "Subcategory". A Table created before its definition
 // carried the label is relabelled; a label someone set by hand is kept.
 import { readFileSync } from 'node:fs'
@@ -7,7 +7,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { ASSIGNMENT_TABLE, seedSalesTarget } from '../src/sales-target'
 
-const MIGRATION = readFileSync(new URL('../migrations/0114_sales_target_subcategory_label.sql', import.meta.url), 'utf8')
+const MIGRATION = readFileSync(new URL('../migrations/0118_sales_target_subcategory_label.sql', import.meta.url), 'utf8')
 const PASSWORDS = { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }
 
 async function label(): Promise<string> {
@@ -15,7 +15,7 @@ async function label(): Promise<string> {
   return row.label
 }
 
-describe('0114: the material_group column reads "Subcategory"', () => {
+describe('0118: the material_group column reads "Subcategory"', () => {
   test('a newly seeded Table carries the label', async ({ admin }) => {
     await seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, [])
     expect(await label()).toBe('Subcategory')
