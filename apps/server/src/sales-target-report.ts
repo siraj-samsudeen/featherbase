@@ -224,7 +224,7 @@ async function fromLive(a: Assignment, period: Period): Promise<{ grouped: Group
   const read = _liveReader()
   // DuckDB text, built here: refuse anything but the exact code shapes, whatever the caller checked.
   if (!PLANT_CODE.test(a.plant_code) || !a.material_groups.every((c) => MATERIAL_GROUP.test(c)))
-    throw new Error('sales-target live read: refusing a store or material group code that is not all digits')
+    throw new Error('sales-target live read: refusing a store or subcategory code that is not all digits')
   const codes = a.material_groups.map((c) => `'${c}'`).join(', ')
   const scoped = `
     with base as (${definitionSql(period.period_start, period.period_end)})
