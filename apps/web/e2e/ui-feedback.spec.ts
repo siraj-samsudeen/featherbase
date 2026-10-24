@@ -28,7 +28,7 @@ test('Table collision describes four destinations without changing Enter precede
     await expect(page.getByTestId('awesomebar-cmd-new-table')).toHaveText('› New Table')
     await expect(page.getByTestId('awesomebar-table').filter({ hasText: /^TableCore module/ })).toHaveCount(1)
     await expect(page.getByTestId('awesomebar-new').filter({ hasText: 'New Table row' })).toHaveCount(1)
-    await expect(page.getByTestId('awesomebar-doc').filter({ hasText: /row in Table/ }).first()).toBeVisible()
+    await expect(page.getByTestId('awesomebar-doc').filter({ hasText: /Table definition/ }).first()).toBeVisible()
     await capture(page, 'awesomebar-destinations')
     await input.press('Enter')
     await expect(page).toHaveURL(/\/admin\/Table$/)

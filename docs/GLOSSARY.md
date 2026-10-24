@@ -164,13 +164,11 @@ generic FormView), served role-scoped and permission-filtered by
 `GET /api/home_pages` (`apps/server/src/home-pages.ts`), rendered by
 `apps/web/src/components/HomePageView.tsx`.
 
-**Summary View / SQL Report / Code Report** (formerly Frappe's "Report
-View" / "Query Report" / "Script Report") — the three saved-report kinds. A
-Summary View is a saved list configuration (filters, columns, sort) over one
-Table; a SQL Report runs a stored, parameterized SQL query
-(`apps/server/src/sql-report.ts`); a Code Report runs admin-authored code
-against the database and returns a table/chart
-(`apps/server/src/code-report.ts`).
+**Summary View / Code Report** (formerly Frappe's "Report View" / "Script
+Report") — the two saved-report kinds. A Summary View is a saved list
+configuration (filters, columns, sort) over one Table; a Code Report runs
+admin-authored code against the database and returns a table/chart
+(`apps/server/src/script-report.ts`).
 
 **PDF Template** (formerly Frappe's "Print Format") — a per-Table layout
 used to render a Row as a PDF, generated server-side via Playwright

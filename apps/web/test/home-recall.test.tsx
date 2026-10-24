@@ -32,10 +32,10 @@ function habit(days: number) {
     })
     events.push({
       kind: 'page',
-      key: 'page:query-report/Sales Register',
+      key: 'page:script-report/Sales Register',
       label: 'Sales Register',
       sub: 'Report',
-      path: '/featherbase/admin/query-report/Sales%20Register',
+      path: '/featherbase/admin/script-report/Sales%20Register',
       at: now - d * DAY,
     })
   }

@@ -38,16 +38,16 @@ describe('findDuplicateMigrationPrefixes', () => {
     const errors = findDuplicateMigrationPrefixes([
       '0001_init.sql',
       '0002_table.sql',
-      '0010_rls.sql',
-      '0010a_rename_rls_role.sql',
+      '0101_person_rename.ts',
+      '0101a_service_account_name_unique.sql',
     ])
     expect(errors).toEqual([])
   })
 
-  it('treats 0010 and 0010a as distinct numbers, not a collision', () => {
-    // Same-batch sub-ordering (0010, 0010a, 0010b, ...) is a deliberate,
+  it('treats 0101 and 0101a as distinct numbers, not a collision', () => {
+    // Same-batch sub-ordering (0101, 0101a, 0101b, ...) is a deliberate,
     // pre-existing convention — not what this guard exists to catch.
-    const errors = findDuplicateMigrationPrefixes(['0010_rls.sql', '0010a_rename_rls_role.sql'])
+    const errors = findDuplicateMigrationPrefixes(['0101_person_rename.ts', '0101a_service_account_name_unique.sql'])
     expect(errors).toEqual([])
   })
 

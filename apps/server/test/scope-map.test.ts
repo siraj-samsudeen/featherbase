@@ -79,7 +79,7 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     expect(results.filter((h) => h.table === STORE).map((h) => h.row_id)).toEqual(['ATK'])
   })
 
-  test('query report', async ({ admin }) => {
+  test('report chart', async ({ admin }) => {
     const { id } = await world(admin)
     await admin.post('/api/save_row', {
       table: 'Report',

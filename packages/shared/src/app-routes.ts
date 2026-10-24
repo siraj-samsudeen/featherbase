@@ -35,7 +35,6 @@ export const ADMIN_UNRECORDED_ROOTS = [
 
 /** Admin first segments whose second segment names the page (`/dashboard/Sales`). */
 export const ADMIN_NAMED_PAGE_KINDS: Record<string, string> = {
-  'query-report': 'Report',
   'script-report': 'Report',
   dashboard: 'Dashboard',
 }

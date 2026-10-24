@@ -23,15 +23,20 @@ import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
+import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 import { ShownName, isOpaqueId } from '../lib/people'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
+import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
+import { StatusPill } from '../components/ui'
+import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
   table: string
   row_id: string
   title: string
+  kind_label?: string
 }
 
 const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
@@ -168,6 +173,12 @@ function AdminShell() {
   const tables = useShellTables()
   const caps = useCapabilities()
   const canManage = caps?.manage === true
+  // #429: the count beside "Waiting for access"; asked only by a System Manager.
+  const waiting = useQuery({
+    queryKey: WAITING_COUNT_QUERY_KEY,
+    queryFn: () => api.get<{ count: number }>('/api/people/waiting_for_access/count'),
+    enabled: canManage,
+  })
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -559,7 +570,7 @@ function AdminShell() {
                   {h.title !== h.row_id && (
                     <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">row in {h.table}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{searchHitKind(h)}</span>
                 </button>
               ))}
             </div>
@@ -851,6 +862,25 @@ function AdminShell() {
             >
               Sign-in methods
             </Link>
+            {canManage && (
+              <Link
+                to="/featherbase/admin/waiting-for-access"
+                data-testid="waiting-for-access-link"
+                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
+                activeProps={{
+                  className: 'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
+                }}
+              >
+                Waiting for access
+                {(waiting.data?.count ?? 0) > 0 && (
+                  <StatusPill tone="caution">
+                    <span data-testid="waiting-for-access-count" aria-label={`${waiting.data!.count} waiting`}>
+                      {fmtCount(waiting.data!.count)}
+                    </span>
+                  </StatusPill>
+                )}
+              </Link>
+            )}
           </div>
         </aside>
 

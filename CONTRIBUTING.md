@@ -66,28 +66,29 @@ pnpm --filter server typecheck
 Two suites have extra environment hooks:
 
 - **RLS suite** (`apps/server/test/rls.test.ts`) opens a second connection
-  as the `app_client` Postgres role (created by
-  `apps/server/migrations/0010_rls.sql`, password `app_client`). Default
-  URL `postgres://app_client:app_client@127.0.0.1:5432/featherbase`;
-  override with `RLS_TEST_URL`.
+  to the same database as a login role it creates for the run, with a
+  random name and password, and drops it afterwards. The `DATABASE_URL`
+  user must be allowed to create roles (a superuser, as in CI and a local
+  Homebrew cluster).
 - **e2e** targets `http://localhost:5173` (override with `WEB_URL`), so run
   `./init.sh` first.
 
 ## Working conventions
 
 The repo is developed session-by-session with a standing protocol (the full
-version is in `CLAUDE.md`; `PROGRESS.md` is the running log):
+version is in `CLAUDE.md`; work history lives in pull requests, issues and
+OpenSpec changes — `PROGRESS.md` is a frozen log, not updated since 23-Oct-2026):
 
-1. **Orient** — read the newest `PROGRESS.md` entry and recent git log
-   before starting.
+1. **Orient** — read the issue you are picking up, its OpenSpec change if any,
+   and recent git log before starting.
 2. **Boot and smoke-test first** — `./init.sh`, verify login → list → form
    works before writing code. If the app is broken, fixing it is the task.
 3. **One piece of work per session**, implemented fully — small, complete,
    working — then verified end-to-end (real HTTP calls, real browser), not
    just unit tests.
-4. **Record it** — append a dated entry to `PROGRESS.md` (what, how
-   verified, what's next), commit at every stable point, and leave the tree
-   clean and the app booting.
+4. **Record it** — in the pull request body (what, how verified, what's
+   next); commit at every stable point, and leave the tree clean and the app
+   booting.
 
 A few hard rules worth knowing before your first PR:
 
@@ -99,8 +100,8 @@ A few hard rules worth knowing before your first PR:
   [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)'s addendum). Don't
   reintroduce Frappe-specific wire shapes (`exc_type`, `frappe.client.*`,
   dotted `/api/method/<path>` RPC naming) for compatibility's sake.
-- New UI must inherit the Admin look — the design tokens and `.fc-*`
-  component classes (rules at the top of `PROGRESS.md`).
+- New UI uses the Shop Floor design system — its tokens and shared components
+  (see "Visual identity" in `CLAUDE.md`; `design-guards` enforces it).
 - `feather-testing-postgres` lives in its own repo; fix it there and bump
   the dependency, never vendor it back in.
 

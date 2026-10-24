@@ -103,7 +103,7 @@ describe('actionForLocation', () => {
 
   it('treats list view modes as lists and reports/dashboards as pages', () => {
     expect(actionForLocation('/featherbase/admin/Task/view/kanban', {})).toMatchObject({ kind: 'list', sub: 'kanban' })
-    expect(actionForLocation('/featherbase/admin/query-report/Sales%20Register', {})).toMatchObject({
+    expect(actionForLocation('/featherbase/admin/script-report/Sales%20Register', {})).toMatchObject({
       kind: 'page',
       label: 'Sales Register',
       sub: 'Report',

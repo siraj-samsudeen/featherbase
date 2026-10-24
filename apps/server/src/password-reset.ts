@@ -3,10 +3,10 @@ import { config } from './config'
 import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { findPasswordAccount, setUserPassword } from './auth'
-import { deliverToSink } from './email'
+import { deliverWithoutWaiting } from './email'
 
 // SET-002: password reset via an emailed link. A request mints a single-use,
-// time-limited token and mails a reset link to the user (the dev sink). The
+// time-limited token and mails a reset link to the user. The
 // reset endpoint consumes the token and sets the new password.
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -14,7 +14,7 @@ const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 export const MIN_PASSWORD_LENGTH = 6
 // One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
 // never be told two different things about where this instance lives.
-const SITE_URL = config.siteUrl || 'http://localhost:5173'
+export const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
 // Never reveal whether an account exists; only a real, enabled user with both
 // an email and a password gets a mail (person-identities): resetting never
@@ -35,11 +35,18 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
   })}`
 
   const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
-  await deliverToSink({
-    to: user.email as string,
-    subject: 'Reset your password',
-    body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
-  })
+  // The caller is anonymous and the route answers ok either way, so neither a
+  // failed send nor the time an SMTP server takes may tell an existing account
+  // from an unknown one (#395): the send is not awaited, and a failure is
+  // logged without the address.
+  await deliverWithoutWaiting(
+    {
+      to: user.email as string,
+      subject: 'Reset your password',
+      body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
+    },
+    'password_reset',
+  )
   return token
 }
 

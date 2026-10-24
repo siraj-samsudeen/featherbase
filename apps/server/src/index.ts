@@ -20,6 +20,7 @@ import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
+import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -64,7 +65,6 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
-import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -949,6 +949,19 @@ app.get('/api/people/:id/identities', async (c) => {
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
+// #429: people who signed in but hold no role yet. System Manager only; the
+// list carries an address's domain, never the address.
+app.get('/api/people/waiting_for_access', async (c) => {
+  await assertSystemManager(who(c))
+  const people = await listWaitingForAccess()
+  return c.json({ people, count: people.length })
+})
+
+app.get('/api/people/waiting_for_access/count', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ count: await countWaitingForAccess() })
+})
+
 // person-rename: ids are opaque, so screens ask for names (batch), and the
 // Person picker searches what people know someone by.
 app.post('/api/people/names', async (c) => {
@@ -1424,30 +1437,6 @@ app.post('/api/permissions/:table', async (c) => {
   return c.json({ ok: true })
 })
 
-// RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
-// query is intentionally NOT returned here, so running a report never exposes
-// its SQL to the client. Read permission on the Report is enforced by getDoc.
-app.get('/api/query_report/:name', async (c) => {
-  const report = await getDoc('Report', c.req.param('name'), who(c))
-  if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
-  return c.json({
-    row_id: report.row_id,
-    ref_table: report.ref_table ?? null,
-    filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
-  })
-})
-
-// RPT-004: run a query report with bound filter params (read-only execution).
-app.post('/api/run_query_report', async (c) => {
-  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
-    report?: string
-    filters?: Record<string, unknown>
-  }
-  if (!report) throw new AppError('ValidationError', 'Expected { report }')
-  return c.json(await runQueryReport(report, filters ?? {}, who(c)))
-})
-
 // PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
 // endpoints resolve the target site from the request Host header, and every
 // query runs on that site's isolated schema — data never crosses sites.
@@ -1693,8 +1682,8 @@ app.delete('/api/tags/:table/:name/:tag', async (c) => {
   return c.json({ ok: true })
 })
 
-// EML-001: send a test email from the configured account (delivered to the
-// dev sink). EML-002: queue an email for background delivery.
+// EML-001: send a test email from the configured account (through SMTP when
+// SMTP_HOST is set, otherwise the Email Sink). EML-002: queue an email for background delivery.
 app.post('/api/send_test_email', async (c) => {
   await assertSystemManager(who(c))
   const { to } = (await c.req.json()) as { to?: string }

@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
 import { applySeedPack } from 'server/src/seed-packs'
+import { quoteRelation, tableRelation } from 'server/src/table-engine'
 import { test, expect, renderApp } from './pg-test'
 
 const saved = { ...process.env }
@@ -145,6 +146,8 @@ test('three Sections or fewer are named outright, with nothing to expand', async
   await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
   await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
   expect(screen.queryByTestId('identity-sections')).not.toBeInTheDocument()
+  // #409: one store, nothing to switch.
+  expect(screen.queryByTestId('store-switcher')).not.toBeInTheDocument()
 })
 
 // A person who has no username is shown by name; the opaque id is never put on the screen (#405).
@@ -167,26 +170,141 @@ test('a person with no viewer role is told plainly, with no API wording and no i
   expect(note).not.toHaveTextContent('session could not be created')
 })
 
-// #404: a two-store account gets the server's sentence in a neutral card, not the red developer frame.
-test('a person set up for two stores sees the server\'s sentence, not "Report unavailable"', async ({ admin, createUser }) => {
+// #409: a person whose sections span two stores reads one store at a time and switches with a dropdown.
+// The page's own fetches are recorded (signal dropped — the jsdom AbortSignal is not Node fetch's, #417).
+async function twoStoreReader(admin: { fetch: (path: string, init?: RequestInit) => Promise<Response> }, createUser: (o: { email: string; roles: string[] }) => Promise<{ user?: string }>) {
   await viewer(admin)
   const reader = await createUser({ email: 'two.stores@example.com', roles: ['Sales Target Viewer'] })
-  for (const [plant, group] of [['1501', '010101003'], ['1515', '010101002']])
+  for (const [plant, label, group] of [['1501', 'ATK', '010101003'], ['1515', 'Kattakada', '010101002']])
     await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: reader.user, plant_code: plant, store_label: 'S', material_group: group } }),
+      body: JSON.stringify({ table: 'Sales Target Assignment', row: { employee: reader.user, plant_code: plant, store_label: label, material_group: group } }),
     })
-  await renderApp('/featherbase/sales-target', reader)
-  const note = await screen.findByTestId('embed-refused')
-  expect(note).toHaveTextContent('more than one store (1501, 1515)')
-  expect(note).toHaveTextContent('Ask your administrator')
-  expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
-  expect(screen.queryByText(/This is not a sales figure/)).not.toBeInTheDocument()
-  expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
+  return reader
+}
+
+// With `signal` dropped, nothing aborts the page's requests when a test ends; `done()` waits for every
+// one still in flight, so none lands in the next test's sandbox.
+function recordFetches(onResponse?: (url: string) => Promise<void>) {
+  const real = globalThis.fetch
+  const urls: string[] = []
+  const pending = new Set<Promise<unknown>>()
+  const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const { signal: _signal, ...rest } = (init ?? {}) as RequestInit
+    urls.push(String(input))
+    const p = (async () => {
+      const res = await real(input, rest)
+      await onResponse?.(String(input))
+      return res
+    })()
+    pending.add(p)
+    void p.finally(() => pending.delete(p)).catch(() => {})
+    return p
+  })
+  const done = async () => {
+    for (let i = 0; i < 20 && pending.size; i++) {
+      await Promise.allSettled([...pending])
+      await new Promise((r) => setTimeout(r, 20))
+    }
+    spy.mockRestore()
+  }
+  return { urls, spy: { mockRestore: done }, reportsFor: (store: string) => urls.filter((u) => u.includes('/api/sales_target/report') && u.includes(`store=${store}`)) }
+}
+
+test('a two-store person gets a store dropdown, opened on the default store', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  const { urls, spy } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const picker = (await screen.findByTestId('store-switcher')) as HTMLSelectElement
+    expect([...picker.options].map((o) => o.textContent)).toEqual(['1501 — ATK', '1515 — Kattakada'])
+    // Neither store has a Section: the tie goes to the lowest store code.
+    expect(picker.value).toBe('1501')
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
+    await waitFor(() => expect(urls.some((u) => u.includes('/api/sales_target/embed_session?store=1501'))).toBe(true))
+    expect(screen.queryByText('Report unavailable')).not.toBeInTheDocument()
+  } finally {
+    await spy.mockRestore()
+  }
 })
 
-// Only the two-store refusal gets the neutral card; any other validation failure keeps the generic "unavailable" frame.
-test('another validation refusal keeps the generic frame, not the neutral card', async ({ admin, createUser }) => {
+test('switching stores reloads the report for that store and remembers the choice', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  const { urls, spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const picker = await screen.findByTestId('store-switcher')
+    await waitFor(() => expect(reportsFor('1501')).toHaveLength(1))
+    await userEvent.selectOptions(picker, '1515')
+    await waitFor(() => expect(reportsFor('1515')).toHaveLength(1))
+    await waitFor(() => expect(urls.some((u) => u.includes('/api/sales_target/embed_session?store=1515'))).toBe(true))
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1515 — Kattakada'))
+    expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBe('1515')
+  } finally {
+    await spy.mockRestore()
+  }
+})
+
+test('a remembered store opens first', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1515')
+  const { spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    await waitFor(() => expect(reportsFor('1515')).toHaveLength(1))
+    expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1515')
+    expect(reportsFor('1501')).toHaveLength(0)
+  } finally {
+    await spy.mockRestore()
+  }
+})
+
+test('a remembered store the person no longer has is ignored for the default', async ({ admin, createUser }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1999')
+  const { spy, reportsFor } = recordFetches()
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    await waitFor(() => expect(reportsFor('1501')).toHaveLength(1))
+    expect(reportsFor('1999')).toHaveLength(0)
+    expect(((await screen.findByTestId('store-switcher')) as HTMLSelectElement).value).toBe('1501')
+    expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
+  } finally {
+    await spy.mockRestore()
+  }
+})
+
+// A 403 after a store is chosen may mean that store is no longer theirs, not that the role went:
+// the page asks /me, falls back to the default store with a note, and forgets the stale choice.
+test('a store that is no longer theirs falls back to the default store with a note, not the no-access card', async ({ admin, createUser, db }) => {
+  const reader = await twoStoreReader(admin, createUser as never)
+  localStorage.setItem(`featherbase.sales-target.store.${reader.user}`, '1515')
+  let first = true
+  const { urls, spy } = recordFetches(async (url) => {
+    // Right after the page learnt its stores, an administrator removes the 1515 assignment.
+    if (first && url.includes('/api/sales_target/me')) {
+      first = false
+      const rel = quoteRelation(await tableRelation('Sales Target Assignment'))
+      await (db as Sql).unsafe(`delete from ${rel} where employee = $1 and plant_code = '1515'`, [reader.user!])
+    }
+  })
+  try {
+    await renderApp('/featherbase/sales-target', reader as never)
+    const note = await screen.findByTestId('store-notice')
+    expect(note).toHaveTextContent('1515 — Kattakada is no longer assigned to you')
+    await waitFor(() => expect(screen.getByTestId('identity')).toHaveTextContent('1501 — ATK'))
+    expect(screen.queryByText("You don't have access to this report")).not.toBeInTheDocument()
+    // One store left: no dropdown, and the report reloaded for the default store.
+    await waitFor(() => expect(urls.filter((u) => u.endsWith('/api/sales_target/report')).length).toBeGreaterThan(0))
+    expect(screen.queryByTestId('store-switcher')).not.toBeInTheDocument()
+    expect(localStorage.getItem(`featherbase.sales-target.store.${reader.user}`)).toBeNull()
+  } finally {
+    await spy.mockRestore()
+  }
+})
+
+// A validation refusal of /me is a failure the page cannot explain: the generic "unavailable" frame.
+test('a validation refusal of the identity call keeps the generic frame', async ({ admin, createUser }) => {
   await viewer(admin)
   const reader = await createUser({ email: 'other.refusal@example.com', roles: ['Sales Target Viewer'] })
   const real = globalThis.fetch
@@ -198,7 +316,6 @@ test('another validation refusal keeps the generic frame, not the neutral card',
   try {
     await renderApp('/featherbase/sales-target', reader)
     await screen.findByText('Report unavailable')
-    expect(screen.queryByTestId('embed-refused')).not.toBeInTheDocument()
   } finally {
     spy.mockRestore()
   }
@@ -267,4 +384,40 @@ test('a person with no viewer role gets a neutral header, not "Opening your repo
   await renderApp('/featherbase/sales-target', outsider)
   await screen.findByText("You don't have access to this report")
   expect(screen.getByTestId('identity')).not.toHaveTextContent('Opening your report')
+})
+
+// data-warehouse #4344: a group with ₹0 target and ₹0 sales is hidden by default, behind a toggle
+// that names how many there are; a group that sold without a target shows by its hierarchy name.
+test('groups with no target or sales are hidden until the reader asks for them', async ({ admin, api }) => {
+  await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
+    { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101002', '010101003'] },
+  ])
+  delete process.env.DIVE_ID
+  // The live path (no snapshot yet): the scoped day query, the hierarchy names, the as-of day.
+  _setSourceReader(async (text: string) => {
+    if (/with base as/.test(text)) return [
+      ['010101001', 'Store A', 'STA', 100, 60, 1, 1],
+      ['010101003', 'Store A', 'STA', null, 25.5, 1, 1], // sold, with no target
+    ]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts'], ['010101002', 'Trousers'], ['010101003', 'Belts']]
+    return [['2026-09-17', 2]] // the as-of day and the period's target rows
+  })
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+
+  const toggle = await screen.findByTestId('show-no-target-no-sale')
+  expect(toggle.closest('label')).toHaveTextContent('Show groups with no target or sales (1)')
+  expect(toggle).not.toBeChecked()
+  const codes = () => screen.getAllByTestId('snapshot-row').map((r) => r.getAttribute('data-code'))
+  expect(codes()).toEqual(['010101001', '010101003'])
+  expect(screen.getAllByTestId('snapshot-row')[1]).toHaveTextContent('Belts')
+  expect(screen.getAllByTestId('snapshot-row')[1]).not.toHaveTextContent('name not in hierarchy')
+  expect(screen.getByTestId('snapshot-total')).toHaveTextContent('Total · 2 subcategories')
+
+  await userEvent.click(toggle)
+  expect(codes()).toEqual(['010101001', '010101002', '010101003'])
+  expect(screen.getAllByTestId('snapshot-row')[1]).toHaveTextContent('Trousers')
+  // The hidden group adds ₹0, so the total's figures do not move — only the count of rows shown.
+  expect(screen.getByTestId('snapshot-total')).toHaveTextContent('Total · 3 subcategories')
 })

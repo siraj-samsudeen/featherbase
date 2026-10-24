@@ -25,7 +25,6 @@ export const PENDING_SWEEP: Record<string, number> = {
   'src/components/PasteColumns.tsx': 13,
   'src/components/Peek.tsx': 23,
   'src/components/PermissionManager.tsx': 9,
-  'src/components/QueryReportView.tsx': 12,
   'src/components/ReportView.tsx': 27,
   'src/components/ScriptReportView.tsx': 13,
   'src/components/TableNaming.tsx': 11,
