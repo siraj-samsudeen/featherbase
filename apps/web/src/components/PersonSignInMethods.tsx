@@ -24,7 +24,15 @@ interface AdminIdentity {
   ended_reason?: string | null
   /** `employee-code` until the roster supplies the HR record number (C4). */
   subject_kind?: string
+  /** #430: when a pending invite's email last went out; null = never. */
+  invitation_sent_at?: string | null
 }
+
+/** #430: what became of the invitation email for an invite or a resend. */
+type InvitationEmail =
+  | { status: 'sent' }
+  | { status: 'not_sent'; reason: string }
+  | { status: 'failed'; error: string }
 
 interface MethodInfo {
   key: string
@@ -53,19 +61,40 @@ export function PersonSignInMethods({ user }: { user: string }) {
     queryFn: () => api.get<{ methods: MethodInfo[] }>('/api/me/sign_in_methods'),
   })
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const done = () => {
     setError(null)
+    setNotice(null)
     void qc.invalidateQueries({ queryKey: key })
   }
-  const fail = (err: unknown) => setError(err instanceof ApiError ? err.message : 'That did not work')
+  const fail = (err: unknown) => {
+    setNotice(null)
+    setError(err instanceof ApiError ? err.message : 'That did not work')
+  }
+  // #430: say what became of the invitation email. A failed send is an
+  // error even though the invite itself was made.
+  const reportEmail = (address: string, email: InvitationEmail | undefined) => {
+    if (email?.status === 'sent') setNotice(`Invitation emailed to ${address}.`)
+    if (email?.status === 'failed') setError(`Invited ${address}, but ${email.error.charAt(0).toLowerCase()}${email.error.slice(1)}.`)
+  }
   // The form is cleared only when the server accepted it, so a refused link
   // (a clash, a typo) keeps what was typed for correcting.
   const add = useMutation({
-    mutationFn: ({ body }: { body: Record<string, string>; form: HTMLFormElement }) =>
-      api.post(`/api/people/${encodeURIComponent(user)}/identities`, body),
-    onSuccess: (_res, { form }) => {
+    mutationFn: ({ body }: { body: Record<string, string | boolean>; form: HTMLFormElement }) =>
+      api.post<{ invitation_email?: InvitationEmail }>(`/api/people/${encodeURIComponent(user)}/identities`, body),
+    onSuccess: (res, { body, form }) => {
       form.reset()
       done()
+      if (typeof body.email === 'string') reportEmail(body.email, res.invitation_email)
+    },
+    onError: fail,
+  })
+  const resend = useMutation({
+    mutationFn: (i: AdminIdentity) =>
+      api.post<{ invitation_email: InvitationEmail }>(`/api/identities/${encodeURIComponent(i.id)}/resend_invitation`, {}),
+    onSuccess: (res, i) => {
+      done()
+      reportEmail(i.pending_email ?? '', res.invitation_email)
     },
     onError: fail,
   })
@@ -97,7 +126,10 @@ export function PersonSignInMethods({ user }: { user: string }) {
   function onInvite(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
-    add.mutate({ body: { method: google!.key, email: String(f.get('email')).trim() }, form: e.currentTarget })
+    add.mutate({
+      body: { method: google!.key, email: String(f.get('email')).trim(), send_invitation_email: f.get('send_invitation_email') === 'on' },
+      form: e.currentTarget,
+    })
   }
 
   return (
@@ -112,21 +144,32 @@ export function PersonSignInMethods({ user }: { user: string }) {
               <span className="text-sm text-ink-muted">
                 {i.subject == null ? `invited: ${i.pending_email}` : [i.subject, i.sign_in_name, i.email].filter(Boolean).join(' · ')}
               </span>
+              {i.subject == null && i.invitation_sent_at && (
+                <span className="block text-sm text-ink-muted" data-testid={`invitation-sent-${i.id}`}>
+                  invitation emailed {fmtInstantIST(i.invitation_sent_at)}
+                </span>
+              )}
               {i.subject_kind === 'employee-code' && (
                 <span className="block text-sm text-ink-muted" data-testid={`unresolved-${i.id}`}>
                   Awaiting its record number — signs in by employee code until the roster supplies it.
                 </span>
               )}
             </span>
-            <Button
-              variant="danger"
-              className="shrink-0"
-              onClick={() => {
-                if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${who}?`)) unlink.mutate(i.id)
-              }}
-            >
-              Unlink
-            </Button>
+            <span className="flex shrink-0 flex-col gap-1">
+              {i.subject == null && (
+                <Button variant="secondary" disabled={resend.isPending} onClick={() => resend.mutate(i)}>
+                  Resend invitation
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (window.confirm(`Remove this ${labelOf(i.method)} sign-in from ${who}?`)) unlink.mutate(i.id)
+                }}
+              >
+                Unlink
+              </Button>
+            </span>
           </li>
         ))}
         {data?.identities.filter((i) => i.ended_at).map((i) => (
@@ -154,8 +197,17 @@ export function PersonSignInMethods({ user }: { user: string }) {
       {google && (
         <form className="mt-3 space-y-2" onSubmit={onInvite} data-testid="invite-google-form">
           <TextInput name="email" type="email" aria-label="Google address to invite" placeholder="Google address to invite" required />
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" name="send_invitation_email" defaultChecked className="shrink-0 accent-action" />
+            Email an invitation to this address
+          </label>
           <Button type="submit" block>Invite {google.label} address</Button>
         </form>
+      )}
+      {notice && (
+        <p className="mt-2 text-sm text-positive" role="status" data-testid="user-method-notice">
+          {notice}
+        </p>
       )}
       {error && (
         <p className="mt-2 text-sm text-negative" data-testid="user-method-error">
