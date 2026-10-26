@@ -175,7 +175,7 @@ export function FirstRunSetup() {
             {error && !Object.keys(problems).length && <Notice tone="negative" className="mt-3">{error}</Notice>}
             <div className="mt-4 space-y-4">
               {rows.map((r, i) => (
-                <fieldset key={i} className="grid gap-3 sm:grid-cols-2" data-testid="setup-person">
+                <fieldset key={i} className={`grid gap-3 sm:grid-cols-2${i > 0 ? ' border-t border-border pt-4' : ''}`} data-testid="setup-person">
                   <legend className="sr-only">Person {i + 1}</legend>
                   <Field label="Full name">
                     <TextInput value={r.full_name} autoComplete="off" onChange={(e) => update(i, 'full_name', e.target.value)} className="max-sm:min-h-11" />

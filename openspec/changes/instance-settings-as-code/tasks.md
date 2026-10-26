@@ -34,7 +34,7 @@
 
 ## 6. First-run setup
 
-- [ ] 6.1 Offer the setup screen to the built-in Administrator while the email check fails: create System Managers and invite them, show links when email is the sink, and "Not now" reaches the Admin screen. Verify: Playwright test on a fresh database, both with the email sink and with the setup skipped.
+- [x] 6.1 Offer the setup screen to the built-in Administrator while the email check fails: create System Managers and invite them, show links when email is the sink, and "Not now" reaches the Admin screen. Verify: Playwright test on a fresh database, both with the email sink and with the setup skipped.
 
 ## 7. Environment comparison
 
