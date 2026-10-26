@@ -94,9 +94,23 @@ export function takeLoginNext(): string | undefined {
 
 /** Go to a checked return path: a Featherbase page inside the SPA, anything
  *  else (a runtime app) by a full page load. */
-export function openReturnPath(path: string, push: (path: string) => void): void {
+export function openReturnPath(
+  path: string,
+  push: (path: string) => void,
+  load: (path: string) => void = (p) => window.location.assign(p),
+): void {
   if (path.startsWith('/featherbase/')) push(path)
-  else window.location.assign(path)
+  else load(path)
+}
+
+/** Go to where a signed-in person lands (#488): a Featherbase page inside the
+ *  SPA, an app's root (on an app's own address) by a full page load. */
+export function openLanding(
+  user: SessionUser,
+  push: (path: string) => void,
+  load: (path: string) => void = (p) => window.location.assign(p),
+): void {
+  openReturnPath(landingPath(user), push, load)
 }
 
 export function LoginPage() {
@@ -179,7 +193,7 @@ export function LoginPage() {
         openReturnPath(returnTo, (path) => router.history.push(path))
         return
       }
-      navigate({ to: landingPath(user) })
+      openLanding(user, (path) => router.history.push(path))
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable
       // service and a person who has left apart; nothing raw gets through.

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate, useRouter } from '@tanstack/react-router'
-import { openReturnPath, takeLoginNext } from './Login'
-import { api, landingPath, rememberLogin, type SessionUser } from '../lib/api'
+import { openLanding, openReturnPath, takeLoginNext } from './Login'
+import { api, rememberLogin, type SessionUser } from '../lib/api'
 
 // PLAT-006: the OAuth callback landing. The server redirects here with a
 // one-time handoff code — never the session token itself (#150), which used to
@@ -45,7 +45,7 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
         // #488: this person belongs on another address; go and sign in there.
         if (user.handoff) window.location.assign(user.handoff)
         else if (returnTo) openReturnPath(returnTo, (path) => router.history.push(path))
-        else navigate({ to: landingPath(user) })
+        else openLanding(user, (path) => router.history.push(path))
       })
       .catch(() => {
         if (live) navigate({ to: '/featherbase/login' })
