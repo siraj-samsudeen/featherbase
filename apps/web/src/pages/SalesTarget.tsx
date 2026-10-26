@@ -69,7 +69,8 @@ type Embed =
   | { kind: 'no-assignment' }
   | { kind: 'not-configured' }
   | { kind: 'no-access' }
-  | { kind: 'error'; message: string }
+  // #500: no message — the reader is told in plain words; the detail is in the server log.
+  | { kind: 'error' }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
 // snapshot instead of MotherDuck. It lands in milliseconds, so it paints while
@@ -201,7 +202,7 @@ function SalesTargetReport() {
         if (!current()) return
         // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        else setEmbed({ kind: 'error' })
       }
     })()
     return () => controller.abort()
@@ -236,11 +237,11 @@ function SalesTargetReport() {
           setMe(fresh)
           return
         }
-        setEmbed({ kind: 'error', message: 'HTTP 403' })
+        setEmbed({ kind: 'error' })
       } catch (err) {
         if (!current()) return
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        else setEmbed({ kind: 'error' })
       }
     }
     ;(async () => {
@@ -276,7 +277,6 @@ function SalesTargetReport() {
           session?: string
           no_assignment?: boolean
           not_configured?: boolean
-          error?: { message?: string; upstream_status?: number }
         }
         if (!current()) return
         if (res.status === 401) {
@@ -290,10 +290,10 @@ function SalesTargetReport() {
         else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
           setEmbed({ kind: 'frame', src: `${me.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
-        else setEmbed({ kind: 'error', message: body.error?.message ?? `HTTP ${res.status}` })
+        else setEmbed({ kind: 'error' })
       } catch (err) {
         if (!current()) return
-        setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        setEmbed({ kind: 'error' })
       }
     })()
     return () => controller.abort()
@@ -575,9 +575,7 @@ function SalesTargetReport() {
             {embed.kind === 'error' && (
               <>
                 <p className="font-medium text-negative">Report unavailable</p>
-                <p className="mt-1 text-ink-muted">
-                  The report session could not be created ({embed.message}). This is not a sales figure.
-                </p>
+                <p className="mt-1 text-ink-muted">The report couldn't load right now. Try again in a few minutes.</p>
               </>
             )}
           </div>

@@ -452,3 +452,31 @@ test('the rendered report says subcategory, never material group or a bare group
   expect(screen.getAllByTestId('snapshot-row')).toHaveLength(3)
   wording()
 })
+
+// #500: when the live report cannot be opened, store managers read one plain sentence and can try
+// again; the server's own words (status, upstream message) stay in the server log.
+const PLAIN_UNAVAILABLE = "The report couldn't load right now. Try again in a few minutes."
+const failingUpstream = () => Response.json({ message: 'upstream detail xyz', code: 'INTERNAL' }, { status: 500 })
+
+type Fetcher = Parameters<typeof viewer>[0]
+async function openAsViewer(admin: Fetcher, api: Fetcher) {
+  await viewer(admin)
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+}
+async function unavailableCard() {
+  const card = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(card).toHaveAttribute('data-state', 'error'))
+  return card
+}
+
+test('a report that cannot be opened says so in one plain sentence, without the server wording', async ({ admin, api }) => {
+  _setEmbedFetch(async () => failingUpstream())
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  expect(card).toHaveTextContent('Report unavailable')
+  expect(card).toHaveTextContent(PLAIN_UNAVAILABLE)
+  expect(card).not.toHaveTextContent(/HTTP|500|upstream|session|embed|sales figure/i)
+})
