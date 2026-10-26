@@ -144,13 +144,26 @@ describe('POST /api/open_admin', () => {
  *  session the admin address minted for this browser. */
 type Session = { token: string; user: { sign_in: { expires_at: number } } }
 
-async function handedOverAfter(api: TestClient, admin: TestClient, name: string, minutesAgo: number) {
+/** `between` runs after the source sign-in and before the hand-off is redeemed.
+ *  `cookieSeconds` is the Max-Age of the sid cookie the target set. */
+async function handedOverAfter(api: TestClient, admin: TestClient, name: string, minutesAgo: number, between?: () => Promise<unknown>) {
   const both = await signedIn(api, admin, name, ['System Manager', 'Sales Target Viewer'], DASH, minutesAgo)
+  await between?.()
   const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
   const res = await follow(api, handoff!, both.sid)
   const source = (await (await api.fetch(`${DASH}/api/whoami`, { headers: { authorization: `Bearer ${both.token}` } })).json()) as Session['user']
-  return { target: (await res!.json()) as Session, source }
+  const sid = res!.headers.getSetCookie().find((c) => c.startsWith('sid=')) ?? ''
+  const cookieSeconds = Number(/max-age=(\d+)/i.exec(sid)?.[1])
+  return { target: (await res!.json()) as Session, source, cookieSeconds }
 }
+
+/** System Settings → session_hours, as an administrator would change it. */
+const sessionHours = (hours: number) =>
+  sql`insert into single_value (table_name, field, value) values ('System Settings', 'session_hours', ${String(hours)})
+      on conflict (table_name, field) do update set value = excluded.value`
+
+/** Seconds from now until a session's expiry. */
+const secondsLeft = (expiresAt: number) => expiresAt - Date.now() / 1000
 
 const startLinkingGoogle = (api: TestClient, token: string) =>
   api.fetch(`${ADMIN}/api/oauth/google/link`, { headers: { authorization: `Bearer ${token}` }, redirect: 'manual' })
@@ -171,6 +184,20 @@ describe('a handed-over session keeps the time its person signed in', () => {
   test('the handed-over session expires when the original sign-in would', async ({ api, admin }) => {
     const { target, source } = await handedOverAfter(api, admin, 'expiry.keeper', 60)
     expect(target.user.sign_in.expires_at).toBe(source.sign_in.expires_at)
+  })
+
+  // Codex round 2 on #495: the source's expiry itself travels, so a change to
+  // session_hours after the sign-in neither lengthens nor shortens it.
+  test('raising session_hours after the sign-in does not lengthen the handed-over session', async ({ api, admin }) => {
+    const { target, source, cookieSeconds } = await handedOverAfter(api, admin, 'hours.raised', 60, () => sessionHours(24))
+    expect(target.user.sign_in.expires_at).toBe(source.sign_in.expires_at)
+    expect(Math.abs(cookieSeconds - secondsLeft(source.sign_in.expires_at))).toBeLessThanOrEqual(2)
+  })
+
+  test('lowering session_hours after the sign-in does not shorten the handed-over session', async ({ api, admin }) => {
+    const { target, source, cookieSeconds } = await handedOverAfter(api, admin, 'hours.lowered', 60, () => sessionHours(1))
+    expect(target.user.sign_in.expires_at).toBe(source.sign_in.expires_at)
+    expect(Math.abs(cookieSeconds - secondsLeft(source.sign_in.expires_at))).toBeLessThanOrEqual(2)
   })
 })
 

@@ -103,6 +103,9 @@ export interface SessionOptions {
   preview?: boolean
   /** A hand-off's source sign-in time (seconds); absent means "now". */
   authenticatedAt?: number
+  /** A hand-off's source expiry (seconds), verified on the source token: the
+   *  handed-over session ends exactly then, whatever session_hours says now. */
+  expiresAt?: number
 }
 
 export interface IssuedSession {
@@ -117,11 +120,14 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const iat = Math.floor(Date.now() / 1000)
-  // Codex round 1 on #495: a handed-over session keeps the time its person
-  // signed in (`at`), and ends when that sign-in's session would have.
+  // Codex rounds 1 and 2 on #495: a handed-over session keeps the time its
+  // person signed in (`at`) and its source's own expiry, so a hand-off never
+  // makes a sign-in younger and a later change to session_hours neither
+  // lengthens nor shortens it. A fresh sign-in gets session_hours from now.
   const at = Math.min(opts.authenticatedAt ?? iat, iat)
-  const exp = at + hours * 3600
-  const maxAgeSeconds = Math.max(exp - iat, 0)
+  const exp = opts.expiresAt ?? at + hours * 3600
+  if (exp <= iat) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  const maxAgeSeconds = exp - iat
   // #411: a unique id per session, so sign-out can revoke exactly this one.
   const jti = randomBytes(16).toString('base64url')
   // m = sign-in method, idn = linked identity, tm = test mode (design D8).

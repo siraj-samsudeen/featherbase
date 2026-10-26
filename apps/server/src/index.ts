@@ -659,6 +659,8 @@ function sessionOptionsOf(user: SessionUser): SessionOptions {
     ...(claims?.preview ? { preview: true } : {}),
     // The source's sign-in time travels with it (Codex round 1 on #495).
     ...(claims?.authenticated_at ? { authenticatedAt: claims.authenticated_at } : {}),
+    // ...and its expiry, verified on the source token (Codex round 2 on #495).
+    ...(claims?.expires_at ? { expiresAt: claims.expires_at } : {}),
   }
 }
 
