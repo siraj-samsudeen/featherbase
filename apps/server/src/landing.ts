@@ -70,8 +70,9 @@ export async function landingAfterSignIn(user: SessionUser, host: string, { hand
     for (const entry of list)
       if (entry.opens !== ADMIN && (await canOpenApp(person, entry.opens))) return handTo(user, entry)
 
-  // No list, or a host it does not name (development and test): one address
-  // serves everything, so a report viewer opens the report right here.
+  // No list (development and test), or a host the list does not name: that
+  // host is served as one address holding everything, as before #488, so a
+  // report viewer opens the report right here.
   if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash') }
   return {}
 }
