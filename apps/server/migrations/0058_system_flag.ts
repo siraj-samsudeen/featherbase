@@ -3,7 +3,7 @@
 // infer "engine table" from the magic string module = 'Core', which broke
 // the moment the Table Builder filed a user table under the default module.
 // The flag is the discriminator now: system = true means "created by the
-// migration chain", and the Desk sidebar GROUPS those under one collapsed
+// migration chain", and the Admin sidebar GROUPS those under one collapsed
 // System section (grouping, never hiding — every table stays reachable, and
 // global search still spans them).
 //

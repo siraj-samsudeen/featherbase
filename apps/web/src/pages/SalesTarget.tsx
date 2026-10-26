@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Notice, Select, buttonClasses } from '../components/ui'
+import { Notice, Select, buttonClasses, cardClasses } from '../components/ui'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, getToken, signOut } from '../lib/api'
 import { Logo } from '../components/Logo'
@@ -150,7 +150,7 @@ function QuickTable({ collapsed, refreshedAt, children }: {
   if (!collapsed) return <>{children}</>
   return (
     <details className="mb-3" data-testid="snapshot-quick">
-      <summary className="cursor-pointer text-xs text-[var(--color-ink-muted)]">
+      <summary className="cursor-pointer text-xs text-ink-muted">
         Quick table from the cache{refreshedAt ? ` · refreshed ${fmtInstantIST(refreshedAt)}` : ''} — the live
         report below is current
       </summary>
@@ -327,13 +327,13 @@ export function SalesTargetPage() {
   const basisLine = SCOPE_BASES.filter((b) => basis.includes(b)).map((b) => BASIS_LABEL[b]).join(' · ')
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--color-canvas)]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2">
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
         <div className="flex items-center gap-3">
           <Logo className="h-7 w-7 rounded-md" />
           <div>
             {/* Polite live region: a store switch is announced, not only repainted. */}
-            <div className="text-sm font-semibold text-[var(--color-ink)]" data-testid="identity" aria-live="polite">
+            <div className="text-sm font-semibold text-ink" data-testid="identity" aria-live="polite">
               {me ? (
                 <>
                   {me.display_name} · {storeName}
@@ -343,7 +343,7 @@ export function SalesTargetPage() {
                       {' · '}
                       <details data-testid="identity-sections" className="inline-block align-top">
                         <summary className="cursor-pointer underline decoration-dotted">{sectionLabel}</summary>
-                        <span data-testid="identity-section-list" className="block font-normal text-[var(--color-ink-muted)]">
+                        <span data-testid="identity-section-list" className="block font-normal text-ink-muted">
                           {sections.join(' · ')}
                         </span>
                       </details>
@@ -356,7 +356,7 @@ export function SalesTargetPage() {
                 embed.kind === 'loading' ? 'Opening your report…' : 'Sales target report'
               )}
             </div>
-            <p className="text-xs text-[var(--color-ink-muted)]" data-testid="identity-sub">
+            <p className="text-xs text-ink-muted" data-testid="identity-sub">
               {me ? `${me.username ? `Signed in as ${me.username} · ` : ''}${basisLine ? `${basisLine} · ` : ''}Sales before tax, net of returns` : ''}
             </p>
           </div>
@@ -383,7 +383,7 @@ export function SalesTargetPage() {
           <a href="/featherbase/admin/sign-in-methods" className={buttonClasses()} data-testid="sign-in-methods-link">
             Sign-in methods
           </a>
-          <button type="button" className="fc-btn" data-testid="logout" onClick={() => void logout()}>
+          <button type="button" className={buttonClasses()} data-testid="logout" onClick={() => void logout()}>
             Log out
           </button>
         </div>
@@ -405,27 +405,27 @@ export function SalesTargetPage() {
       {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
       {me && embed.kind !== 'no-access' && (
       <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
-      <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
+      <section className={cardClasses('mb-3 overflow-x-auto p-0')} data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
-          <p className="p-4 text-sm text-[var(--color-ink-muted)]">Reading your numbers…</p>
+          <p className="p-4 text-sm text-ink-muted">Reading your numbers…</p>
         )}
         {pre.kind === 'no-assignment' && (
-          <p className="p-4 text-sm text-[var(--color-ink-muted)]">
+          <p className="p-4 text-sm text-ink-muted">
             No store–subcategory assignment, so there are no numbers to show.
           </p>
         )}
         {pre.kind === 'error' && (
-          <p className="p-4 text-sm text-[var(--color-danger)]" data-testid="snapshot-error">
+          <p className="p-4 text-sm text-negative" data-testid="snapshot-error">
             Numbers unavailable ({pre.message}). This is not a sales figure.
           </p>
         )}
         {pre.kind === 'ready' && (
           <>
-            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2">
-              <p className="text-sm font-semibold text-[var(--color-ink)]">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-2">
+              <p className="text-sm font-semibold text-ink">
                 {pre.report.store_name ?? 'Store'} · month to date
               </p>
-              <p className="text-xs text-[var(--color-ink-muted)]" data-testid="snapshot-freshness">
+              <p className="text-xs text-ink-muted" data-testid="snapshot-freshness">
                 {/* Two different facts, both shown on purpose. "Data as of" is the
                     WAREHOUSE's own cutoff — is this figure complete. "Refreshed" is when
                     we last materialised it — how stale is this page. A snapshot built
@@ -444,31 +444,31 @@ export function SalesTargetPage() {
               </p>
             </div>
             {(pre.report.total.no_target_no_sale ?? 0) > 0 && (
-              <label className="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-2 text-xs text-[var(--color-ink-muted)]">
+              <label className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-ink-muted">
                 <input
                   type="checkbox"
                   data-testid="show-no-target-no-sale"
                   checked={showNoTargetNoSale}
                   onChange={(e) => setShowNoTargetNoSale(e.target.checked)}
                 />
-                Show groups with no target or sales ({pre.report.total.no_target_no_sale})
+                Show subcategories with no target or sales ({pre.report.total.no_target_no_sale})
               </label>
             )}
             {pre.report.targets_unavailable && !pre.report.no_data_yet && (
-              <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-targets-unavailable">
+              <p className="border-b border-border px-4 py-2 text-sm text-ink" data-testid="snapshot-targets-unavailable">
                 Targets are not available right now, so sales are shown without them. A blank target is not a
                 target of zero.
               </p>
             )}
             {pre.report.no_data_yet && (
-              <p className="border-b border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-ink)]" data-testid="snapshot-no-data-yet">
+              <p className="border-b border-border px-4 py-2 text-sm text-ink" data-testid="snapshot-no-data-yet">
                 No sales recorded for this month yet — the warehouse has data through {fmtDay(pre.report.source_as_of)}.
                 The figures below fill in after the morning load. This is not a sales figure of zero.
               </p>
             )}
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                <tr className="text-left text-xs uppercase tracking-wide text-ink-muted">
                   <th className="px-4 py-2 font-medium">Subcategory</th>
                   <th className="px-4 py-2 font-medium">Code</th>
                   <th className="px-4 py-2 text-right font-medium">Target</th>
@@ -482,35 +482,35 @@ export function SalesTargetPage() {
               {sectionGroups(pre.report).map((g) => (
                 <tbody key={g.section ?? '(unmapped)'} data-testid="snapshot-section" data-section={g.section ?? ''}>
                   {g.titled && (
-                    <tr className="border-t-2 border-[var(--color-border)] bg-[var(--color-canvas)] font-semibold" data-testid="snapshot-section-total">
-                      <td className="px-4 py-2 text-[var(--color-ink)]" colSpan={2}>
+                    <tr className="border-t-2 border-border bg-canvas font-semibold" data-testid="snapshot-section-total">
+                      <td className="px-4 py-2 text-ink" colSpan={2}>
                         {g.section ?? 'Not mapped to a Section'} · {shownCount(g.total, showNoTargetNoSale)} subcategor{shownCount(g.total, showNoTargetNoSale) === 1 ? 'y' : 'ies'}
                         {!showNoTargetNoSale && (g.total.no_target_no_sale ?? 0) > 0 && (
-                          <span className="font-normal text-[var(--color-ink-muted)]" data-testid="snapshot-section-hidden">
+                          <span className="font-normal text-ink-muted" data-testid="snapshot-section-hidden">
                             {' '}· {g.total.no_target_no_sale} with no target or sales hidden
                           </span>
                         )}
                         {g.total.missing > 0 && (
-                          <span className="font-normal text-[var(--color-ink-muted)]" data-testid="snapshot-section-missing">
+                          <span className="font-normal text-ink-muted" data-testid="snapshot-section-missing">
                             {' '}· {g.total.missing} without actuals
                           </span>
                         )}
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtExact(g.total.target)}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtExact(g.total.actual)}</td>
-                      <td className={`px-4 py-2 text-right tabular-nums ${g.total.gap != null && g.total.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                      <td className={`px-4 py-2 text-right tabular-nums ${g.total.gap != null && g.total.gap < 0 ? 'text-negative' : ''}`}>
                         {fmtSigned(g.total.gap)}
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtPct(g.total.achievement)}</td>
                     </tr>
                   )}
                   {g.rows.filter((r) => showNoTargetNoSale || !r.noTargetNoSale).map((r) => (
-                    <tr key={r.code} className={`border-t border-[var(--color-border)] ${r.noTargetNoSale ? 'text-[var(--color-ink-muted)]' : ''}`} data-testid="snapshot-row" data-code={r.code}>
-                      <td className="px-4 py-2 text-[var(--color-ink)]">{r.subcategory}</td>
-                      <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">{r.code}</td>
+                    <tr key={r.code} className={`border-t border-border ${r.noTargetNoSale ? 'text-ink-muted' : ''}`} data-testid="snapshot-row" data-code={r.code}>
+                      <td className="px-4 py-2 text-ink">{r.subcategory}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-ink-muted">{r.code}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.target)}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.actual)}</td>
-                      <td className={`px-4 py-2 text-right tabular-nums ${r.gap != null && r.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                      <td className={`px-4 py-2 text-right tabular-nums ${r.gap != null && r.gap < 0 ? 'text-negative' : ''}`}>
                         {fmtSigned(r.gap)}
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtPct(r.achievement)}</td>
@@ -519,13 +519,13 @@ export function SalesTargetPage() {
                 </tbody>
               ))}
               <tfoot>
-                <tr className="border-t-2 border-[var(--color-border)] font-semibold" data-testid="snapshot-total">
+                <tr className="border-t-2 border-border font-semibold" data-testid="snapshot-total">
                   <td className="px-4 py-2" colSpan={2}>
                     Total · {shownCount(pre.report.total, showNoTargetNoSale)} subcategor{shownCount(pre.report.total, showNoTargetNoSale) === 1 ? 'y' : 'ies'}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.target)}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.actual)}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${pre.report.total.gap != null && pre.report.total.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                  <td className={`px-4 py-2 text-right tabular-nums ${pre.report.total.gap != null && pre.report.total.gap < 0 ? 'text-negative' : ''}`}>
                     {fmtSigned(pre.report.total.gap)}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">{fmtPct(pre.report.total.achievement)}</td>
@@ -533,7 +533,7 @@ export function SalesTargetPage() {
               </tfoot>
             </table>
             {pre.report.total.missing > 0 && (
-              <p className="px-4 py-2 text-xs text-[var(--color-ink-muted)]" data-testid="snapshot-missing">
+              <p className="px-4 py-2 text-xs text-ink-muted" data-testid="snapshot-missing">
                 {/* A day never observed is missing, never zero — the two must not look alike. */}
                 {pre.report.total.missing} subcategor{pre.report.total.missing === 1 ? 'y has' : 'ies have'} no actuals
                 in this period and show “—” rather than ₹0.00.
@@ -551,23 +551,23 @@ export function SalesTargetPage() {
             title="Sales target vs actual report"
             sandbox="allow-scripts allow-same-origin"
             src={embed.src}
-            className="min-h-[70vh] w-full flex-1 rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+            className="min-h-[70vh] w-full flex-1 rounded-[var(--radius-card)] border border-border bg-surface"
           />
         ) : (
-          <div className="fc-card mx-auto mt-6 max-w-xl p-5 text-sm" data-testid="embed-state" data-state={embed.kind}>
-            {embed.kind === 'loading' && <p className="text-[var(--color-ink-muted)]">Opening your report…</p>}
+          <div className={cardClasses('mx-auto mt-6 max-w-xl p-5 text-sm')} data-testid="embed-state" data-state={embed.kind}>
+            {embed.kind === 'loading' && <p className="text-ink-muted">Opening your report…</p>}
             {embed.kind === 'no-assignment' && (
               <>
-                <p className="font-medium text-[var(--color-ink)]">No subcategories assigned</p>
-                <p className="mt-1 text-[var(--color-ink-muted)]">
+                <p className="font-medium text-ink">No subcategories assigned</p>
+                <p className="mt-1 text-ink-muted">
                   This account has no store–subcategory assignment. Ask your manager to assign your subcategories.
                 </p>
               </>
             )}
             {embed.kind === 'no-access' && (
               <>
-                <p className="font-medium text-[var(--color-ink)]">You don't have access to this report</p>
-                <p className="mt-1 text-[var(--color-ink-muted)]">
+                <p className="font-medium text-ink">You don't have access to this report</p>
+                <p className="mt-1 text-ink-muted">
                   Ask your manager or administrator to give you access.
                 </p>
               </>
@@ -575,15 +575,15 @@ export function SalesTargetPage() {
             {embed.kind === 'not-configured' && (
               // Quiet, not red: this deployment simply has no live Dive. The numbers
               // above came from the snapshot and are unaffected.
-              <p className="text-[var(--color-ink-muted)]">
+              <p className="text-ink-muted">
                 The live MotherDuck report is not configured on this deployment. The figures above
                 are served from the dataset snapshot and are unaffected.
               </p>
             )}
             {embed.kind === 'error' && (
               <>
-                <p className="font-medium text-[var(--color-danger)]">Report unavailable</p>
-                <p className="mt-1 text-[var(--color-ink-muted)]">
+                <p className="font-medium text-negative">Report unavailable</p>
+                <p className="mt-1 text-ink-muted">
                   The report session could not be created ({embed.message}). This is not a sales figure.
                 </p>
               </>

@@ -27,7 +27,7 @@ on top.
    principal sources, on the client).
 2. **Code-first composition, not metadata.** A resource's screens are JSX
    you write. No schema drives the UI — the developer is the interpreter.
-   This is the opposite bet from Featherbase's generic Desk, chosen
+   This is the opposite bet from Featherbase's generic Admin, chosen
    because react-admin's customer is a developer building a *bespoke*
    admin, not an end user creating DocTypes.
 3. **Guessers: generation as a one-way suggestion.** `<ListGuesser>`
@@ -72,17 +72,17 @@ on top.
 
 ## What Featherbase should adopt
 
-- **Guessers, verbatim (D19's missing UX):** the Desk's generic
+- **Guessers, verbatim (D19's missing UX):** the Admin's generic
   ListView/FormView *is* the guesser; add the "eject this view" button
   that emits the equivalent explicit layout (or component code, tier-1)
   for the case where a screen needs to become bespoke. One-way, copy-out,
   no round-trip — react-admin proved users understand this contract
   instantly.
-- **Headless separation for the Desk (Axis D):** keep view logic in
+- **Headless separation for the Admin (Axis D):** keep view logic in
   hooks/services separate from the `.fc-*`-styled components, so UI
   contributions (D11) can reuse logic without inheriting markup, and a
   future design-system swap doesn't touch behavior.
-- **Optimistic-with-undo** as the Desk's mutation UX for low-risk edits —
+- **Optimistic-with-undo** as the Admin's mutation UX for low-risk edits —
   it's the best-feeling answer to server-mediated writes (invariant 2)
   without lying about latency.
 - **dataProvider ecosystem mechanics (D7/D15):** a small, stable,
@@ -90,7 +90,7 @@ on top.
   backends into a strength; the driver conformance suite is Featherbase's
   version of that contract made executable.
 
-**Do not adopt:** code-as-the-only-authoring-mode (the generic Desk is
+**Do not adopt:** code-as-the-only-authoring-mode (the generic Admin is
 the product); UI-side data drivers as the *primary* integration (drivers
 belong server-side behind permissions — invariant 2 — with react-admin's
 pattern reserved for the client talking to *our* API).

@@ -388,7 +388,7 @@ test('a person with no viewer role gets a neutral header, not "Opening your repo
 
 // data-warehouse #4344: a group with ₹0 target and ₹0 sales is hidden by default, behind a toggle
 // that names how many there are; a group that sold without a target shows by its hierarchy name.
-test('groups with no target or sales are hidden until the reader asks for them', async ({ admin, api }) => {
+test('subcategories with no target or sales are hidden until the reader asks for them', async ({ admin, api }) => {
   await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
     { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101002', '010101003'] },
   ])
@@ -407,7 +407,7 @@ test('groups with no target or sales are hidden until the reader asks for them',
   await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
 
   const toggle = await screen.findByTestId('show-no-target-no-sale')
-  expect(toggle.closest('label')).toHaveTextContent('Show groups with no target or sales (1)')
+  expect(toggle.closest('label')).toHaveTextContent('Show subcategories with no target or sales (1)')
   expect(toggle).not.toBeChecked()
   const codes = () => screen.getAllByTestId('snapshot-row').map((r) => r.getAttribute('data-code'))
   expect(codes()).toEqual(['010101001', '010101003'])
@@ -420,4 +420,35 @@ test('groups with no target or sales are hidden until the reader asks for them',
   expect(screen.getAllByTestId('snapshot-row')[1]).toHaveTextContent('Trousers')
   // The hidden group adds ₹0, so the total's figures do not move — only the count of rows shown.
   expect(screen.getByTestId('snapshot-total')).toHaveTextContent('Total · 3 subcategories')
+})
+
+// Siraj, 24-Oct-2026: a reader never sees "material group" — it is always "subcategory". The
+// code and the SAP column (material_group, MATKL) keep their name; no word a person reads does.
+test('the rendered report says subcategory, never material group or a bare group', async ({ admin, api }) => {
+  await seedSalesTarget((path, init) => admin.fetch(path, init), { test_employee_1: 'pw-1', test_employee_2: 'pw-2', test_employee_3: 'pw-3', test_employee_4: 'pw-4' }, [
+    { username: 'test_employee_1', display_name: 'Employee 1', plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101002', '010101003'] },
+  ])
+  delete process.env.DIVE_ID
+  _setSourceReader(async (text: string) => {
+    if (/with base as/.test(text)) return [
+      ['010101001', 'Store A', 'STA', 100, 60, 1, 1],
+      ['010101003', 'Store A', 'STA', null, 25.5, 1, 1],
+    ]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts'], ['010101003', 'Belts']] // 010101002 unnamed
+    return [['2026-09-17', 2]]
+  })
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+
+  const toggle = await screen.findByTestId('show-no-target-no-sale')
+  const wording = () => {
+    const text = document.body.textContent ?? ''
+    expect(text).not.toMatch(/material[ _-]?groups?/i)
+    expect(text).not.toMatch(/\bgroups?\b/i)
+  }
+  wording()
+  await userEvent.click(toggle) // the hidden rows, and their hierarchy-gap label, render too
+  expect(screen.getAllByTestId('snapshot-row')).toHaveLength(3)
+  wording()
 })

@@ -20,7 +20,7 @@ Two questions are not settled:
 2. **Can an app be put on top of a database Featherbase did not create?** The
    motivating case: a control schema on a managed remote Postgres (Railway),
    already carrying real data, written continuously by CLIs that are not going
-   away. The ask is a management Desk over that schema, ideally with no
+   away. The ask is a management Admin screen over that schema, ideally with no
    schema change at all.
 
 Frappe answers (1) with "only per site" and (2) with "Virtual DocTypes or

@@ -3,6 +3,7 @@
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
+import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { SITE_URL } from './password-reset'
 import type { SignInMethod } from './identities'
 
@@ -100,8 +101,10 @@ export function _setAlertSender(fn: Sender | null): void {
  *  a sign-in rule creates `person`. Never throws: a sign-in must not fail
  *  because mail did. The cap is best-effort: arrivals at the same moment can
  *  pass it by a few. An arrival past the cap is recorded as alerted and is
- *  never mailed later; the page still lists them. */
-export async function alertNewArrival(person: string, method: SignInMethod): Promise<void> {
+ *  never mailed later; the page still lists them. Returns how many System
+ *  Managers were mailed, or 'no recipients' when none has an address. */
+export async function alertNewArrival(person: string, method: SignInMethod): Promise<number | 'no recipients'> {
+  let delivered: number | 'no recipients' = 0
   try {
     // Runs after the sign-in's own transaction committed, in one of its own:
     // the activity row, the queued emails and their jobs commit together, or
@@ -121,11 +124,12 @@ export async function alertNewArrival(person: string, method: SignInMethod): Pro
           console.warn(JSON.stringify({ event: 'waiting_for_access_alert_cap', cap: DAILY_ALERT_CAP, note: 'further alerts today are not emailed; see the Waiting for access page' }))
         return
       }
-      const managers = await sql`
-        select distinct lower(trim(p.email)) as email from person p
-        join has_role r on r.parent = p.row_id and r.parenttype = 'Person' and r.role = 'System Manager'
-        where p.enabled and p.replaced_by is null and coalesce(trim(p.email), '') <> ''
-        order by 1`
+      const managers = await systemManagerEmails()
+      if (!managers.length) {
+        await recordUndeliveredNotice('waiting-for-access alert')
+        delivered = 'no recipients'
+        return
+      }
       const domain = String(p.email ?? '').split('@')[1] || 'no address'
       const body = [
         'Someone signed in for the first time and has no access yet.',
@@ -136,10 +140,13 @@ export async function alertNewArrival(person: string, method: SignInMethod): Pro
         '',
         `Give them roles from the Waiting for access page: ${SITE_URL}${WAITING_PATH}`,
       ].join('\n')
-      for (const m of managers)
-        await sender({ to: String(m.email), subject: ALERT_SUBJECT, body, ref_table: 'Person', reference_name: person })
+      for (const to of managers)
+        await sender({ to, subject: ALERT_SUBJECT, body, ref_table: 'Person', reference_name: person })
+      delivered = managers.length
     })
   } catch (err) {
     console.warn(JSON.stringify({ event: 'waiting_for_access_alert_failed', person, method: method.key, error: err instanceof Error ? err.message : String(err) }))
+    return 0
   }
+  return delivered
 }

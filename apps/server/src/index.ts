@@ -8,13 +8,14 @@ import { config } from './config'
 import { sql, withTransaction } from './db'
 import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
+import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
-import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
+import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
@@ -406,7 +407,7 @@ app.on(
       ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
-    await next()
+    await runInSession('sign_in' in user ? user.sign_in : null, () => next())
   },
   rateLimit,
   async (c) => {
@@ -481,8 +482,26 @@ function clearLoginChallengeCookies(c: Context) {
   deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
 }
 
+// A browser navigation (the address bar, a redirect) asks for a page;
+// fetch/XHR does not. A refused navigation sign-in goes back to the sign-in
+// page with a short reason code instead of showing raw JSON; an API caller
+// keeps the JSON error.
+function isPageNavigation(c: Context): boolean {
+  return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
+}
+
+function refusedToLoginPage(c: Context, err: unknown) {
+  // Unexpected faults are still worth a server-side line; refusals are not.
+  if (!(err instanceof AppError)) console.error('[sign-in] google callback failed', err)
+  return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
+}
+
 app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
-  if (!(await googleAvailable())) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!(await googleAvailable())) {
+    const off = new AppError('AuthenticationError', GOOGLE_OFF)
+    if (isPageNavigation(c)) return refusedToLoginPage(c, off)
+    throw off
+  }
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
@@ -517,8 +536,13 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   } catch (err) {
     // A link attempt that fails before its state is verified (expired, another
     // browser, Google turned off) still lands on a page that explains it,
-    // never raw JSON. Sign-in failures keep their status (pinned by tests).
-    if (claimedPurpose(c.req.query('state')) !== 'link') throw err
+    // never raw JSON. A refused sign-in does the same for a browser, on the
+    // sign-in page; an API caller keeps the JSON error and its status.
+    if (claimedPurpose(c.req.query('state')) !== 'link') {
+      if (!isPageNavigation(c)) throw err
+      clearLoginChallengeCookies(c)
+      return refusedToLoginPage(c, err)
+    }
     clearLoginChallengeCookies(c)
     const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
     return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
@@ -527,7 +551,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
 
 async function googleCallback(c: Context) {
   const google = await googleAvailable()
-  if (!google) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!google) throw new AppError('AuthenticationError', GOOGLE_OFF)
   const clientId = google.client_id
   assertSignInAvailable(clientId)
   // The state must match the cookie this browser got at login. Without that
@@ -612,7 +636,9 @@ app.get('/preview', async (c) => {
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
   c.set('user', user)
-  await next()
+  // #473: a test-mode or preview session cannot add a lasting way in, even
+  // through the generic save path (document.ts).
+  await runInSession(user.sign_in, () => next())
 })
 
 // API-007: throttle authenticated requests per user (runs after auth so it can
@@ -720,7 +746,7 @@ app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, palette, language from person where row_id = ${user.row_id}`
+  const [row] = await sql`select theme, language from person where row_id = ${user.row_id}`
   const roles = await getRoles(user.row_id)
   // #410: what the shell may draw. Computed here, from current roles and
   // grants, never from role names the browser holds; display only — every
@@ -734,8 +760,7 @@ app.get('/api/whoami', async (c) => {
     ...user,
     roles,
     capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
-    theme: (row?.theme as string) || 'light',
-    palette: (row?.palette as string) || 'classic',
+    theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
     // know the data is disposable and that they are signed in as someone.
@@ -870,23 +895,14 @@ app.get('/api/activity_feed', async (c) => {
   return c.json({ items })
 })
 
-// UI-024: persist the caller's theme preference (light/dark), per user.
+// UI-024 / #380: persist the caller's theme — light, dark, or follow the device.
+const THEMES = ['light', 'dark', 'device'] as const
 app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
-  if (theme !== 'light' && theme !== 'dark')
-    throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update person set theme = ${theme} where row_id = ${who(c)}`
+  if (!THEMES.includes(theme as (typeof THEMES)[number]))
+    throw new AppError('ValidationError', `theme must be one of ${THEMES.join(', ')}`)
+  await sql`update person set theme = ${theme!} where row_id = ${who(c)}`
   return c.json({ ok: true, theme })
-})
-
-// UI-025: persist the caller's palette preference, per user.
-const PALETTES = ['classic', 'ivory', 'graphite', 'indigo'] as const
-app.post('/api/set_palette', async (c) => {
-  const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
-  if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
-    throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
-  await sql`update person set palette = ${palette!} where row_id = ${who(c)}`
-  return c.json({ ok: true, palette })
 })
 
 // I18N-001/002: per-user language + the translation catalog for a language.

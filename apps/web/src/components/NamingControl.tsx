@@ -1,3 +1,4 @@
+import { inputClasses } from './ui'
 // NAM-001: edit a Table's id_pattern — the rule that names new rows. The four
 // kinds mirror resolveName() in apps/server/src/document.ts; a series is split
 // here into a prefix and a digit count so nobody has to type ".###".
@@ -90,7 +91,7 @@ export function NamingControl({
             set({ kind, prefix: kind === 'series' && !p.prefix ? defaultPrefix : p.prefix })
           }}
           data-testid={`${idPrefix}-naming`}
-          className="fc-input w-52"
+          className={inputClasses('w-52')}
         >
           {KINDS.map((k) => (
             <option key={k.value} value={k.value}>
@@ -114,13 +115,13 @@ export function NamingControl({
               onChange={(e) => set({ prefix: e.target.value })}
               data-testid={`${idPrefix}-naming-prefix`}
               placeholder="Prefix, e.g. ZONE-"
-              className="fc-input w-40"
+              className={inputClasses('w-40')}
             />
             <select
               value={p.digits}
               onChange={(e) => set({ digits: Number(e.target.value) })}
               data-testid={`${idPrefix}-naming-digits`}
-              className="fc-input w-32"
+              className={inputClasses('w-32')}
             >
               {[1, 2, 3, 4, 5, 6].map((d) => (
                 <option key={d} value={d}>
@@ -131,7 +132,7 @@ export function NamingControl({
           </>
         )}
       </div>
-      <p className="text-xs text-gray-500" data-testid={`${idPrefix}-naming-preview`}>
+      <p className="text-xs text-ink-muted" data-testid={`${idPrefix}-naming-preview`}>
         {namingPreview(value)}
       </p>
     </>

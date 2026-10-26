@@ -3,7 +3,7 @@
 - **Status:** learning-slice implementation plus provisional follow-on direction; see spec 0011 for executable obligations
 - **Recorded:** 2026-09-21
 - **Product:** Tasker
-- **Initial users:** the Ramachandran data warehouse team
+- **Initial users:** the client's data team
 
 This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior lives in the [Tasker OpenSpec contract](../../openspec/TASKER.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
 
@@ -177,8 +177,8 @@ Tasker; Help Desk for internal DW issue reporting/triage; Report Server with
 role-based access and the signed-in person's store/section mapped to permitted
 subcategories passed as secure MotherDuck Dive filters; Learning Management for
 team/client-project onboarding; and a business Data Catalog over MotherDuck/dbt
-metadata, sample rows and freshness, able to flag data-quality issues into Help
-Desk. Together this integrated product is the **Data Warehouse Operating System
+metadata, sample rows and freshness, able to flag data-quality issues into
+Help Desk. Together this integrated product is the **Data Warehouse Operating System
 (DWOS)**. These are future proof cases, not additions to this implementation.
 Help Desk is the next UI-boundary experiment: issue → Tasker task links, distinct
 actors, notifications, switching, recents and disabled-Tasker behavior must be tested.

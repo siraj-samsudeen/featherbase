@@ -324,7 +324,7 @@ export const postgresDriver: SourceDriver = {
     const sets = entries.map(([c], i) => `${quoteIdent(c)} = $${i + 1}`)
     const params: unknown[] = entries.map(([, v]) => v)
     // The revision must ADVANCE on every Featherbase write — a plain
-    // DEFAULT now() column changes only on insert, so without this two Desk
+    // DEFAULT now() column changes only on insert, so without this two Admin
     // editors would silently overwrite each other (review finding 3). This
     // also makes the empty payload go through the same statement, so its
     // revision check still runs.

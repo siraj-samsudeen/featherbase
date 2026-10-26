@@ -4,6 +4,9 @@
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-person <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli create-person <email> [--full-name "Name"] [--roles "..."] --expects-google-sign-in
+//                                     #473: no password; their first Google sign-in with this address
+//                                     links to them (when Google sign-in admits its domain)
 //   cli set-password <person-id> --stdin
 //                                     break-glass reset (#391): the password is read from stdin, never argv;
 //                                     ends the person's sessions and logs the actor `cli`
@@ -25,6 +28,11 @@
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
+//   cli leavers:check [--apply [--accept <n>]]
+//                                     the daily warehouse exit-date check (leaver-check.ts): with no flag a
+//                                     dry run that changes nothing and prints counts only; --apply acts on
+//                                     it; --accept <n> lifts the size limit for exactly n people (a large but
+//                                     genuine batch), never a stale feed
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
@@ -91,7 +99,12 @@ async function cmdCreatePerson(
   flags: Record<string, string | string[] | boolean>,
 ) {
   const [name, password] = positional
-  if (!name || !password) throw new Error('create-person requires <username-or-email> <password>')
+  const expectsGoogle = flags['expects-google-sign-in']
+  // A bare flag: written before the password it would swallow it as its value.
+  if (typeof expectsGoogle === 'string')
+    throw new Error('--expects-google-sign-in takes no value; put it after the other arguments')
+  if (!name || (!password && expectsGoogle !== true)) throw new Error('create-person requires <username-or-email> <password>')
+  if (expectsGoogle === true && !name.includes('@')) throw new Error('--expects-google-sign-in needs an email address')
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const fullName = typeof flags['full-name'] === 'string' ? (flags['full-name'] as string) : name
   // #135: say plainly that the person exists. Case-insensitive on id,
@@ -110,12 +123,14 @@ async function cmdCreatePerson(
       full_name: fullName,
       enabled: true,
       ...(roles.length ? { roles: roles.map((role) => ({ role })) } : {}),
+      ...(expectsGoogle === true ? { expects_google_sign_in: true } : {}),
     },
     'Administrator',
     'insert',
   )
-  await setUserPassword(String(created.row_id), password)
-  console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}`)
+  if (password) await setUserPassword(String(created.row_id), password)
+  const marked = expectsGoogle === true ? '; expects Google sign-in' : ''
+  console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}${marked}`)
 }
 
 // #391: argv lands in shell history and the process list, so a password is
@@ -406,11 +421,30 @@ async function main() {
       console.log(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
+    case 'leavers:check': {
+      const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
+      if (!rest.includes('--apply')) {
+        if (flags.accept !== undefined) throw new Error('--accept only means something with --apply')
+        console.log(formatLeaverPlan(await planLeaverCheck()))
+        console.log('leaver check: dry run; nothing was changed')
+        break
+      }
+      // A bare --accept parses as `true`; Number(true) is 1, so demand digits.
+      if (flags.accept !== undefined && !(typeof flags.accept === 'string' && /^[1-9]\d*$/.test(flags.accept)))
+        throw new Error('--accept takes the number of people the dry run reported')
+      const accept = flags.accept === undefined ? undefined : Number(flags.accept)
+      const { assertDatabaseEnvironment } = await import('./db-environment')
+      await assertDatabaseEnvironment()
+      const run = await runLeaverCheck({ acceptCount: accept })
+      console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
+      console.log(formatSummaryDelivery(run))
+      break
+    }
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|settings:set|mail:test|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|mail:test|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

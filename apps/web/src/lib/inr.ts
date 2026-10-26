@@ -69,6 +69,76 @@ export function fmtCount(x: number | null | undefined, decimals = 0): string {
   return rounded.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
+/**
+ * A value exactly as stored: Indian grouping and every significant digit it has,
+ * never rounded, however small (1e-21 stays 0.000000000000000000001). ADR 750 evidence rule.
+ */
+export function fmtAsStored(x: number): string {
+  return (x || 0).toLocaleString('en-IN', { maximumSignificantDigits: 21 })
+}
+
+/**
+ * A number at a fixed precision with Indian digit grouping: list cells for Float
+ * and Currency columns. The currency symbol is added by the caller.
+ */
+export function fmtNumber(x: number, precision: number): string {
+  return x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })
+}
+
+/** "1,23,456", or "50 of 1,23,456" when only part of a set is shown. */
+export function fmtShowing(shown: number, total: number): string {
+  return shown === total ? fmtCount(total) : `${fmtCount(shown)} of ${fmtCount(total)}`
+}
+
+// Where each currency's readers live. Rupees are always ₹ with Indian grouping;
+// any other currency is written as its own locale writes it (EUR: 1.234.567,50 €).
+const CURRENCY_LOCALE: Record<string, string> = { USD: 'en-US', GBP: 'en-GB', EUR: 'de-DE', JPY: 'ja-JP' }
+
+/**
+ * An amount with its currency at the precision setting, capped at the currency's
+ * ISO 4217 minor unit (JPY 0; INR, USD, EUR 2) as Intl.NumberFormat resolves it:
+ * the setting may show fewer decimals, never more (decision 23-Oct-2026, #4332).
+ */
+export function fmtCurrency(x: number, precision: number, currency: string): string {
+  try {
+    const minorUnit = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? precision
+    const digits = Math.min(precision, minorUnit)
+    if (currency === 'INR') {
+      // The sign leads the symbol (-₹1,234.00, as fmtExact); round first so -0.001 is ₹0.00.
+      const rounded = Number(x.toFixed(digits))
+      const grouped = Math.abs(rounded).toLocaleString('en-IN', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+      return `${rounded < 0 ? '-' : ''}₹${grouped}`
+    }
+    const locale = CURRENCY_LOCALE[currency] ?? 'en-US'
+    return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(x)
+  } catch {
+    // Not an ISO 4217 code: show the amount with the code beside it.
+    return `${x.toLocaleString('en-IN', { minimumFractionDigits: precision, maximumFractionDigits: precision })} ${currency}`.trim()
+  }
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** A calendar heading: "October 2026". */
+export function fmtMonthYear(d: Date): string {
+  return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`
+}
+
+/**
+ * A Date that stands for a day as DD-Mon-YYYY, read off whichever clock says
+ * midnight: a Date built from local parts is local midnight, "2026-01-15" parses
+ * to UTC midnight. The same rule as shared calendarDay(); never toISOString(),
+ * which moves a local day east of UTC. (Since #387 the workbook parser hands
+ * days over as YYYY-MM-DD text, which fmtDate formats directly.)
+ */
+export function fmtDay(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const localMidnight = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0
+  const utcMidnight = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0
+  if (!localMidnight && utcMidnight) return fmtDate(`${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`)
+  return fmtDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** ISO day -> DD-Mon-YYYY (ADR 844). Slash forms are ambiguous and never used. */

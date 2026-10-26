@@ -1,4 +1,4 @@
-// CUST-003: Client Scripts — user JS that hooks into form events in the Desk
+// CUST-003: Client Scripts — user JS that hooks into form events in the Admin
 // (onload, field change, before save). Runs in the browser.
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'

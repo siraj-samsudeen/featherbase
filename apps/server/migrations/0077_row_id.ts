@@ -57,7 +57,7 @@ export async function up() {
   await sql`update table_def set id_pattern = 'field:row_id' where id_pattern = 'field:name'`
 
   // Stored, data-driven references to the key: Saved View filters are
-  // [field, op, value] triples authored by the Desk, and print/email templates
+  // [field, op, value] triples authored by the Admin, and print/email templates
   // interpolate {{ name }} / {{ doc.name }}.
   // filters is jsonb, so the rewrite goes through its text form and back.
   await sql`

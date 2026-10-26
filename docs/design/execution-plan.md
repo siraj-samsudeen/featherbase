@@ -50,10 +50,10 @@ function.
   native DocTypes and their whole engine already exist.
 - **B. The external CRUD manager retires** — tables currently managed
   through a separate CRUD tool move into DocTypes (import → edit in
-  Desk → retire the tool). Also native; a second low-risk write case
+  Admin → retire the tool). Also native; a second low-risk write case
   that grows the MDM's real content.
 - **C. Warehouse browser** — the MotherDuck warehouse (bronze/silver/
-  gold), currently SQL-only, becomes browsable read-only in the Desk.
+  gold), currently SQL-only, becomes browsable read-only in the Admin.
   First *foreign* source: needs the read-only half of the storage seam.
 - **D. Report-feedback API** — already live: main records a report
   server POSTing feedback over REST as the first external consumer
@@ -72,17 +72,17 @@ milestone, not the verification.
 
 **M1 — seeds become master data (use case A; no framework change).**
 Pick 2–3 real dbt seed tables. Recreate as native DocTypes (audit
-columns on), import current rows, edit in the Desk; a D19/D20 generator
+columns on), import current rows, edit in the Admin; a D19/D20 generator
 emits the seed CSVs (byte-stable format) into the dbt repo via
 branch + PR. *Verify: `dbt build` consumes the generated seeds with
-zero diff-noise; a Desk edit arrives as a reviewable PR authored as the
+zero diff-noise; an Admin edit arrives as a reviewable PR authored as the
 acting user; the old hand-edited files are retired.*
 
 **M2 — the CRUD manager's tables come home (use case B).**
 Inventory what the external CRUD tool manages; recreate (or, if the
 tables live outside our Postgres, adopt) as DocTypes; import; permission
 them; retire the tool for those tables. *Verify: every workflow the CRUD
-tool served is demonstrated in the Desk or over the REST API; row counts
+tool served is demonstrated in the Admin or over the REST API; row counts
 and spot-checked values match post-import; the tool is switched off for
 the migrated tables.*
 
@@ -95,9 +95,9 @@ engine. **The browser must not repeat that.** So M3 introduces the
 introspect` dispatched per-DocType — with the postgres driver as the
 default and a `duckdb`/MotherDuck driver (env-var token) as the second
 implementation; Data Source registry + reflection of one bronze schema
-into read-only DocTypes grouped as a Desk module; spec 0001's read-only
+into read-only DocTypes grouped as an Admin module; spec 0001's read-only
 and allowlist rules. *Verify: browse a real client bronze table in the
-Desk; permission-less user gets 403; a dbt reshape shows in drift
+Admin; permission-less user gets 403; a dbt reshape shows in drift
 re-sync; schema snapshot of the warehouse before == after (no DDL
 ever); existing suite still green (the read path of local DocTypes now
 flows through the same seam).*

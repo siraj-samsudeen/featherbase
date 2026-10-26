@@ -3,6 +3,8 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { fmtCount } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -39,10 +41,10 @@ export function ChecklistView({
   const meta = useMeta(table)
   const shape = useChecklistShape(meta.data)
   if (meta.isLoading || (shape.pending && !shape.binding))
-    return <p className="text-sm text-gray-400">Loading…</p>
+    return <p className="text-sm text-ink-subtle">Loading…</p>
   if (!shape.binding)
     return (
-      <p className="text-sm text-[var(--color-ink-muted)]" data-testid="checklist-no-shape">
+      <p className="text-sm text-ink-muted" data-testid="checklist-no-shape">
         This Table has no checklist-shaped Sub-table (a row table with a Check column named
         “done”).
       </p>
@@ -66,7 +68,7 @@ export function ChecklistSwitch({ table, meta }: { table: string; meta?: TableMe
       to="/featherbase/admin/$table/view/checklist"
       params={{ table }}
       search={{ run: undefined }}
-      className="fc-btn"
+      className={buttonClasses()}
       data-testid="open-checklist"
     >
       Checklist
@@ -210,8 +212,8 @@ function RunList({
     <div data-testid="checklist-view" className="mx-auto flex max-w-xl flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table}</h1>
-          <span className="text-xs text-[var(--color-ink-muted)]">{data.length} runs</span>
+          <h1 className="text-xl font-semibold text-ink">{table}</h1>
+          <span className="text-xs text-ink-muted">{fmtCount(data.length)} runs</span>
         </div>
         <div className="flex items-center gap-2">
           {!binding.readOnly && (
@@ -219,22 +221,22 @@ function RunList({
               to="/featherbase/admin/$table/$name"
               params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
-              className="fc-btn fc-btn-primary"
+              className={buttonClasses({ variant: 'primary' })}
               data-testid="checklist-new"
             >
               + New
             </RouterLink>
           )}
-          <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn">
+          <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()}>
             List
           </RouterLink>
         </div>
       </div>
-      {rows.isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+      {rows.isLoading && <p className="text-sm text-ink-subtle">Loading…</p>}
       {[...groups.entries()].map(([day, rowsOfDay]) => (
         <div key={day || 'undated'} className="flex flex-col gap-2">
           {binding.dateCol && (
-            <div className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+            <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
               {dayLabel(day)}
             </div>
           )}
@@ -246,18 +248,18 @@ function RunList({
                 key={String(row.row_id)}
                 type="button"
                 onClick={() => onOpen(String(row.row_id))}
-                className="fc-card flex w-full flex-col gap-2 p-3 text-left"
+                className={cardClasses('flex w-full flex-col gap-2 p-3 text-left')}
                 data-testid="checklist-run-card"
               >
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="font-semibold text-[var(--color-ink)]">
+                  <span className="font-semibold text-ink">
                     {String(row[binding.titleCol] ?? row.row_id)}
                   </span>
-                  {status && <span className="fc-pill">{status}</span>}
+                  {status && <span className={pillClasses()}>{status}</span>}
                 </div>
                 {parts && (
                   <>
-                    <span className="text-xs tabular-nums text-[var(--color-ink-muted)]">
+                    <span className="text-xs tabular-nums text-ink-muted">
                       {parts.done}/{parts.total}
                     </span>
                     <ProgressBar done={parts.done} total={parts.total} />
@@ -269,7 +271,7 @@ function RunList({
         </div>
       ))}
       {!rows.isLoading && !data.length && (
-        <p className="text-sm text-[var(--color-ink-muted)]">No runs yet.</p>
+        <p className="text-sm text-ink-muted">No runs yet.</p>
       )}
     </div>
   )
@@ -278,10 +280,10 @@ function RunList({
 function ProgressBar({ done, total }: { done: number; total: number }) {
   const pct = total ? Math.round((done / total) * 100) : 0
   return (
-    <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-border)]">
+    <div className="h-1.5 overflow-hidden rounded-full bg-border">
       <div
         className="h-full rounded-full transition-[width]"
-        style={{ width: `${pct}%`, background: done === total && total > 0 ? 'var(--color-good)' : 'var(--color-brand)' }}
+        style={{ width: `${pct}%`, background: done === total && total > 0 ? 'var(--color-positive)' : 'var(--color-action)' }}
       />
     </div>
   )
@@ -381,10 +383,10 @@ function RunPane({
   const locked = binding.readOnly || terminal
   const parts = binding.progressCol ? progressParts(doc.data?.[binding.progressCol]) : null
 
-  if (doc.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (doc.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   if (doc.isError)
     return (
-      <p className="text-sm text-[var(--color-danger)]">
+      <p className="text-sm text-negative">
         {doc.error instanceof ApiError ? doc.error.message : 'Could not load this run.'}{' '}
         <button type="button" className="underline" onClick={onBack}>Back</button>
       </p>
@@ -393,19 +395,19 @@ function RunPane({
   return (
     <div data-testid="checklist-run-view" className="mx-auto flex max-w-xl flex-col gap-3">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onBack} className="fc-btn" aria-label="Back to runs">‹</button>
+        <button type="button" onClick={onBack} className={buttonClasses()} aria-label="Back to runs">‹</button>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold text-[var(--color-ink)]">
+          <h1 className="truncate text-lg font-semibold text-ink">
             {String(doc.data?.[binding.titleCol] ?? name)}
           </h1>
-          <span className="text-xs text-[var(--color-ink-muted)]">
+          <span className="text-xs text-ink-muted">
             {name}
             {currentStatus ? ` · ${currentStatus}` : ''}
           </span>
         </div>
         {parts && (
           <span
-            className="ml-auto text-sm font-semibold tabular-nums text-[var(--color-ink)]"
+            className="ml-auto text-sm font-semibold tabular-nums text-ink"
             data-testid="checklist-progress"
           >
             {parts.done}/{parts.total}
@@ -415,14 +417,14 @@ function RunPane({
       {parts && <ProgressBar done={parts.done} total={parts.total} />}
       {terminal && (
         <p
-          className="rounded border border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-2 text-xs text-[var(--color-ink-muted)]"
+          className="rounded border border-border bg-subtle px-3 py-2 text-xs text-ink-muted"
           data-testid="checklist-locked"
         >
           {currentStatus} — this run is final and can no longer be changed.
         </p>
       )}
 
-      <div className="fc-card divide-y divide-[var(--color-border)]" data-testid="checklist-items">
+      <div className={cardClasses('divide-y divide-border')} data-testid="checklist-items">
         {items.map((item) => {
           const itemName = String(item.row_id)
           const done = Boolean(item[binding.doneCol])
@@ -443,24 +445,24 @@ function RunPane({
                 <span
                   className={`mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full border-2 text-sm ${
                     done
-                      ? 'border-[var(--color-good)] bg-[var(--color-good)] text-white'
-                      : 'border-[var(--color-border-strong)] text-transparent'
+                      ? 'border-positive bg-positive text-action-ink'
+                      : 'border-border-control text-transparent'
                   }`}
                 >
                   ✓
                 </span>
                 <span className="flex flex-col gap-1">
-                  <span className={done ? 'text-[var(--color-ink-muted)] line-through' : 'text-[var(--color-ink)]'}>
+                  <span className={done ? 'text-ink-muted line-through' : 'text-ink'}>
                     {String(item[binding.labelCol] ?? '')}
                   </span>
-                  <span className="flex flex-wrap items-center gap-2 text-[10px] font-semibold tracking-wide">
+                  <span className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-wide">
                     {binding.mustCol && Boolean(item[binding.mustCol]) && (
-                      <span className="rounded border border-current px-1 text-[var(--color-danger)] opacity-75">
+                      <span className="rounded border border-current px-1 text-negative opacity-75">
                         MUST DO
                       </span>
                     )}
                     {done && item.done_at != null && (
-                      <span className="font-normal text-[var(--color-good)]">
+                      <span className="font-normal text-positive">
                         ✓ {String(item.done_at).slice(11, 16)}
                       </span>
                     )}
@@ -488,14 +490,14 @@ function RunPane({
                 <div className="ml-9">
                   {locked ? (
                     note && (
-                      <span className="inline-block rounded bg-[var(--color-warn-tint)] px-2 py-1 text-xs text-[var(--color-warn)]">
+                      <span className="inline-block rounded bg-caution-tint px-2 py-1 text-xs text-caution">
                         Note: {note}
                       </span>
                     )
                   ) : noteDraft?.item === itemName ? (
                     <input
                       autoFocus
-                      className="fc-input w-full max-w-sm text-sm"
+                      className={inputClasses('w-full max-w-sm text-sm')}
                       defaultValue={note}
                       placeholder="Why not?"
                       onBlur={(e) => saveNote(itemName, e.target.value)}
@@ -508,7 +510,7 @@ function RunPane({
                   ) : note ? (
                     <button
                       type="button"
-                      className="rounded bg-[var(--color-warn-tint)] px-2 py-1 text-left text-xs text-[var(--color-warn)]"
+                      className="rounded bg-caution-tint px-2 py-1 text-left text-xs text-caution"
                       onClick={() => setNoteDraft({ item: itemName, text: note })}
                       title="Edit note"
                     >
@@ -518,7 +520,7 @@ function RunPane({
                     !done && (
                       <button
                         type="button"
-                        className="text-xs text-[var(--color-ink-muted)] underline"
+                        className="text-xs text-ink-muted underline"
                         onClick={() => setNoteDraft({ item: itemName, text: '' })}
                         data-testid="checklist-add-note"
                       >
@@ -532,12 +534,12 @@ function RunPane({
           )
         })}
         {!items.length && (
-          <p className="p-4 text-sm text-[var(--color-ink-muted)]">This run has no items.</p>
+          <p className="p-4 text-sm text-ink-muted">This run has no items.</p>
         )}
       </div>
 
       {error && (
-        <p className="text-sm text-[var(--color-danger)]" data-testid="checklist-error">
+        <p className="text-sm text-negative" data-testid="checklist-error">
           {error}
         </p>
       )}
@@ -545,7 +547,7 @@ function RunPane({
       {binding.statusCol && nextStatus && !binding.readOnly && (
         <button
           type="button"
-          className="fc-btn fc-btn-primary w-full py-3"
+          className={buttonClasses({ variant: 'primary', className: 'w-full py-3' })}
           disabled={saving}
           onClick={() => saveItems(items, { [binding.statusCol!.column_name]: nextStatus })}
           data-testid="checklist-submit"
@@ -567,7 +569,7 @@ function PhotoLightbox({ fileUrl, onClose }: { fileUrl: string; onClose: () => v
   })
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/80 p-4"
       onClick={onClose}
       role="dialog"
       aria-label="Photo viewer"
@@ -580,13 +582,13 @@ function PhotoLightbox({ fileUrl, onClose }: { fileUrl: string; onClose: () => v
           className="max-h-full max-w-full rounded object-contain"
         />
       ) : (
-        <span className="text-sm text-white">Loading…</span>
+        <span className="text-sm text-on-scrim">Loading…</span>
       )}
       <button
         type="button"
         onClick={onClose}
         aria-label="Close photo"
-        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-lg text-white"
+        className="absolute right-4 top-4 flex size-control items-center justify-center rounded-full bg-scrim/60 text-lg text-on-scrim"
       >
         ×
       </button>
@@ -648,7 +650,7 @@ function PhotoRow({
           type="button"
           onClick={() => onView(String(p.file_url))}
           aria-label={`View ${String(p.file_name)}`}
-          className="overflow-hidden rounded border border-[var(--color-border-strong)]"
+          className="overflow-hidden rounded border border-border-control"
           data-testid="checklist-photo-thumb"
         >
           {p.thumbnail_url ? (
@@ -666,7 +668,7 @@ function PhotoRow({
         <>
           <button
             type="button"
-            className={`fc-btn px-3 py-2 text-sm ${failed ? 'text-[var(--color-danger)]' : ''}`}
+            className={buttonClasses({ className: `px-3 py-2 text-sm ${failed ? 'text-negative' : ''}` })}
             disabled={busy}
             onClick={() => inputRef.current?.click()}
             data-testid="checklist-photo-add"

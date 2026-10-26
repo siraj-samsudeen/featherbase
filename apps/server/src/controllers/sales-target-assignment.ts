@@ -15,7 +15,7 @@ const controller: TableController = {
       const code = String(row.material_group ?? '').trim()
       const fields: Record<string, string> = {}
       if (!/^\d{4}$/.test(plant)) fields.plant_code = 'plant_code must be exactly four digits'
-      if (!/^\d{9}$/.test(code)) fields.material_group = 'material_group must be exactly nine digits'
+      if (!/^\d{9}$/.test(code)) fields.material_group = 'Subcategory code must be exactly nine digits'
       if (Object.keys(fields).length) throw new AppError('ValidationError', Object.values(fields).join('; '), fields)
       row.plant_code = plant
       row.material_group = code

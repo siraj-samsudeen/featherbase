@@ -3,8 +3,8 @@
 ## Purpose
 
 A user's language follows them, not the device they're on, so switching
-computers never means switching languages. Theme and colour palette are
-covered in admin-ui-feedback and not repeated here.
+computers never means switching languages. The theme is covered in
+admin-ui-feedback and not repeated here.
 
 ## Requirements
 

@@ -60,7 +60,9 @@ const on = (typeColumn: string): ColumnSpec => ({ class: 'conditional-id', typeC
 const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   person: {
     row_id: id, email: code, username: code, full_name: text, password_hash: code, language: code,
-    user_image: code, theme: code, palette: code,
+    user_image: code, theme: code,
+    // 0117 drops it; the person migrations (0100–0102) still see it on a fresh database.
+    palette: code,
     // Codes, declared "not a person reference" (R3): left alone, never scanned.
     // 0107 drops both columns; 0101 still runs before it on a dev database.
     employee_code: code, stylehr_username: code,
@@ -100,7 +102,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   import_log: { '*': code, error_summary: text, touched: text },
   installed_app: { '*': code },
   internal_metadata: { '*': code },
-  job_execution: { job: code, method: code, outcome: code, error: text },
+  job_execution: { job: code, method: code, outcome: code, error: text, result: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },
   migration: { '*': code },

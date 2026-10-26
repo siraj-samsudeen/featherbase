@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { useMeta } from '../lib/meta'
+import { buttonClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -50,10 +51,10 @@ export function GanttView({ table }: { table: string }) {
       }),
   })
 
-  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (meta.isLoading) return <p className="text-sm text-ink-subtle">Loading…</p>
   if (!startField || !endField)
     return (
-      <p className="text-sm text-[var(--color-ink-muted)]" data-testid="gantt-no-dates">
+      <p className="text-sm text-ink-muted" data-testid="gantt-no-dates">
         This Table needs two Date columns (start and end) for a Gantt view.
       </p>
     )
@@ -110,30 +111,30 @@ export function GanttView({ table }: { table: string }) {
   return (
     <div data-testid="gantt-view" onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Gantt</h1>
-        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="gantt-to-list">
+        <h1 className="text-xl font-semibold text-ink">{table} — Gantt</h1>
+        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className={buttonClasses()} data-testid="gantt-to-list">
           List view
         </RouterLink>
       </div>
 
-      {error && <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="gantt-error">{error}</p>}
+      {error && <p className="mb-3 text-sm text-negative" data-testid="gantt-error">{error}</p>}
 
       {bars.length === 0 ? (
-        <p className="text-sm text-[var(--color-ink-faint)]" data-testid="gantt-empty">
+        <p className="text-sm text-ink-subtle" data-testid="gantt-empty">
           No rows with both dates set.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <div style={{ width: totalDays * DAY_W + 200 }}>
             {/* Day header */}
-            <div className="flex border-b border-[var(--color-border)] bg-[var(--color-subtle)]">
-              <div className="shrink-0 px-2 py-1 text-xs font-medium text-[var(--color-ink-muted)]" style={{ width: 200 }}>
+            <div className="flex border-b border-border bg-subtle">
+              <div className="shrink-0 px-2 py-1 text-xs font-medium text-ink-muted" style={{ width: 200 }}>
                 Task
               </div>
               {days.map((d) => (
                 <div
                   key={d}
-                  className="shrink-0 border-l border-[var(--color-border)] py-1 text-center text-[10px] text-[var(--color-ink-faint)]"
+                  className="shrink-0 border-l border-border py-1 text-center text-xs text-ink-subtle"
                   style={{ width: DAY_W }}
                 >
                   {fromDayNum(d).slice(5)}
@@ -146,8 +147,8 @@ export function GanttView({ table }: { table: string }) {
               const leftDays = b.s - rangeStart
               const spanDays = b.e - b.s + 1
               return (
-                <div key={b.row_id} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.row_id}`}>
-                  <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
+                <div key={b.row_id} className="flex items-center border-b border-border" data-testid={`gantt-row-${b.row_id}`}>
+                  <div className="shrink-0 truncate px-2 py-1 text-xs text-ink" style={{ width: 200 }}>
                     <RouterLink to="/featherbase/admin/$table/$name" params={{ table, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
                       {String(b.row[titleColumn] ?? b.row_id)}
                     </RouterLink>
@@ -158,7 +159,7 @@ export function GanttView({ table }: { table: string }) {
                       data-start={fromDayNum(b.s)}
                       data-end={fromDayNum(b.e)}
                       data-days={spanDays}
-                      className="absolute top-1.5 flex h-4 items-center rounded bg-[var(--color-brand)]"
+                      className="absolute top-1.5 flex h-4 items-center rounded bg-action"
                       style={{ left: leftDays * DAY_W, width: spanDays * DAY_W }}
                     >
                       <span className="sr-only">{spanDays} days</span>
@@ -169,8 +170,7 @@ export function GanttView({ table }: { table: string }) {
                           e.preventDefault()
                           setResize({ row_id: b.row_id, startX: e.clientX, origEnd: b.e, end: b.e })
                         }}
-                        className="absolute right-0 top-0 h-4 w-2 cursor-ew-resize rounded-r bg-[var(--color-brand-strong,#1b6fd0)]"
-                        style={{ background: 'rgba(0,0,0,0.35)' }}
+                        className="absolute right-0 top-0 h-4 w-2 cursor-ew-resize rounded-r bg-scrim/35"
                       />
                     </div>
                   </div>

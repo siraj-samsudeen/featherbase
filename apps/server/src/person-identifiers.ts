@@ -266,10 +266,23 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
   if (s.tier === 'restricted') await logActivity(viewer, `identifier_search ${system.row_id}`)
   const rows = await sql`
     select i.person_id, coalesce(p.replaced_by, i.person_id) as resolved_to, p.replaced_by is not null as replaced,
-      upper_inf(i.valid) as current, i.assigner
+      upper_inf(i.valid) as current, i.assigner, false as pending_invite
     from person_identifier i join person p on p.row_id = i.person_id
     where i.system = ${system.row_id} and i.value = ${value}
     order by upper_inf(i.valid) desc, lower(i.valid) desc`
+  // An invitee holds no email identifier until their first sign-in, so an
+  // email search also matches an open invite's address (stored folded).
+  if (system.row_id === 'email') {
+    const invites = await sql`
+      select s.person_id, coalesce(p.replaced_by, s.person_id) as resolved_to, p.replaced_by is not null as replaced,
+        true as current, '' as assigner, true as pending_invite
+      from sign_in_identity s join person p on p.row_id = s.person_id
+      where s.subject is null and s.ended_at is null and s.pending_email = ${value}`
+    // Only a current holder hides the invite: a former holder re-invited at
+    // the same address is still waiting to sign in.
+    const held = new Set(rows.filter((r) => r.current === true).map((r) => String(r.person_id)))
+    rows.push(...invites.filter((r) => !held.has(String(r.person_id))))
+  }
   // Only people this viewer may read: the Person permission and Data Scope
   // apply to search results as to any read (Codex review on #385).
   const { getDoc } = await import('./document')
@@ -288,6 +301,7 @@ export async function findByIdentifier(systemKey: string, raw: string, viewer: s
     replaced: r.replaced === true,
     current: r.current === true,
     assigner: String(r.assigner ?? ''),
+    pending_invite: r.pending_invite === true,
   }))
 }
 

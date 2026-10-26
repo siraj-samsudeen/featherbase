@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api } from '../lib/api'
+import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 
 // EDS-2: the Data Source browser — introspect a source, pick tables, reflect
 // them into bound Tables. Admin tooling (System Manager only server-side),
@@ -116,33 +117,33 @@ export default function SourceBrowser({ name }: { name: string }) {
   return (
     <div data-testid="source-browser">
       <div className="mb-4">
-        <div className="text-xs text-[var(--color-ink-faint)]">
-          <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">Home</Link>
+        <div className="text-xs text-ink-subtle">
+          <Link to="/featherbase/admin" className="hover:text-ink">Home</Link>
           {' / '}
           <Link
             to="/featherbase/admin/$table/$name"
             params={{ table: 'Data Source', name }}
             search={{ prefill: undefined }}
-            className="hover:text-[var(--color-ink)]"
+            className="hover:text-ink"
           >
             Data Source
           </Link>
           {' / '}
           {name}
         </div>
-        <h1 className="text-xl font-semibold text-[var(--color-ink)]">Source browser: {name}</h1>
+        <h1 className="text-xl font-semibold text-ink">Source browser: {name}</h1>
         {introspect.data && (
-          <span className="text-xs text-[var(--color-ink-muted)]">
+          <span className="text-xs text-ink-muted">
             {introspect.data.engine} · {introspect.data.access.replace('_', '-')}
           </span>
         )}
       </div>
 
-      <div className="fc-card mb-4 flex flex-wrap items-end gap-3 p-4">
+      <div className={cardClasses('mb-4 flex flex-wrap items-end gap-3 p-4')}>
         <label className="flex flex-col gap-1">
-          <span className="fc-label">Schema (optional)</span>
+          <span className={labelClasses()}>Schema (optional)</span>
           <input
-            className="fc-input w-48"
+            className={inputClasses('w-48')}
             value={schema}
             onChange={(e) => setSchema(e.target.value)}
             placeholder="e.g. control or gold.main"
@@ -150,9 +151,9 @@ export default function SourceBrowser({ name }: { name: string }) {
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="fc-label">Name prefix (optional)</span>
+          <span className={labelClasses()}>Name prefix (optional)</span>
           <input
-            className="fc-input w-36"
+            className={inputClasses('w-36')}
             value={prefix}
             onChange={(e) => setPrefix(e.target.value)}
             placeholder="e.g. Gold"
@@ -160,9 +161,9 @@ export default function SourceBrowser({ name }: { name: string }) {
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="fc-label">Module (optional)</span>
+          <span className={labelClasses()}>Module (optional)</span>
           <input
-            className="fc-input w-40"
+            className={inputClasses('w-40')}
             value={module}
             onChange={(e) => setModule(e.target.value)}
             placeholder={`defaults to ${name}`}
@@ -170,19 +171,19 @@ export default function SourceBrowser({ name }: { name: string }) {
           />
         </label>
         <button
-          className="fc-btn"
+          className={buttonClasses()}
           onClick={() => setLoadKey((k) => k + 1)}
           disabled={busy || introspect.isFetching}
           data-testid="sb-load"
         >
           {introspect.isFetching ? 'Loading…' : 'Load tables'}
         </button>
-        <button className="fc-btn" onClick={testConnection} disabled={busy} data-testid="sb-test">
+        <button className={buttonClasses()} onClick={testConnection} disabled={busy} data-testid="sb-test">
           Test connection
         </button>
         {testResult && (
           <span
-            className={`text-sm ${testResult === 'Connection OK' ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
+            className={`text-sm ${testResult === 'Connection OK' ? 'text-positive' : 'text-negative'}`}
             data-testid="sb-test-result"
           >
             {testResult}
@@ -191,14 +192,14 @@ export default function SourceBrowser({ name }: { name: string }) {
       </div>
 
       {introspect.isError && (
-        <p className="mb-3 text-sm text-[var(--color-danger)]">
+        <p className="mb-3 text-sm text-negative">
           {introspect.error instanceof ApiError ? introspect.error.message : 'Introspection failed'}
         </p>
       )}
-      {error && <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="sb-error">{error}</p>}
+      {error && <p className="mb-3 text-sm text-negative" data-testid="sb-error">{error}</p>}
 
       {reflectResult && (
-        <div className="fc-card mb-4 p-4 text-sm" data-testid="sb-result">
+        <div className={cardClasses('mb-4 p-4 text-sm')} data-testid="sb-result">
           {reflectResult.created.length > 0 && (
             <p>
               Created:{' '}
@@ -209,7 +210,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                     to="/featherbase/admin/$table"
                     params={{ table: c.name }}
                     search={{ filters: undefined }}
-                    className="text-[var(--color-brand)] hover:underline"
+                    className="text-action hover:underline"
                   >
                     {c.name}
                   </Link>
@@ -218,7 +219,7 @@ export default function SourceBrowser({ name }: { name: string }) {
             </p>
           )}
           {reflectResult.skipped.length > 0 && (
-            <p className="text-[var(--color-ink-muted)]">
+            <p className="text-ink-muted">
               Skipped: {reflectResult.skipped.map((s) => `${s.table} (${s.reason})`).join('; ')}
             </p>
           )}
@@ -226,15 +227,15 @@ export default function SourceBrowser({ name }: { name: string }) {
       )}
 
       {tables.length > 0 && (
-        <div className="fc-card overflow-x-auto p-0">
+        <div className={cardClasses('overflow-x-auto p-0')}>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-ink-muted)]">
+              <tr className="border-b border-border text-left text-xs text-ink-muted">
                 <th className="w-8 px-3 py-2" />
                 <th className="px-3 py-2">Source table</th>
                 <th className="px-3 py-2">Primary key</th>
                 <th className="px-3 py-2">Columns</th>
-                <th className="px-3 py-2">Desk Table</th>
+                <th className="px-3 py-2">Admin Table</th>
               </tr>
             </thead>
             <tbody>
@@ -247,7 +248,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                 return (
                   <tr
                     key={`${t.schema}.${t.table}`}
-                    className="border-b border-[var(--color-border)] last:border-0"
+                    className="border-b border-border last:border-0"
                     data-testid={`sb-row-${t.table}`}
                   >
                     <td className="px-3 py-2">
@@ -271,9 +272,9 @@ export default function SourceBrowser({ name }: { name: string }) {
                       {t.table}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{t.pk ?? '—'}</td>
-                    <td className="px-3 py-2 text-xs text-[var(--color-ink-muted)]">
+                    <td className="px-3 py-2 text-xs text-ink-muted">
                       <details>
-                        <summary className="cursor-pointer text-[var(--color-link)]">
+                        <summary className="cursor-pointer text-action">
                           {t.columns.length} columns · preview
                         </summary>
                         <ul className="mt-2 space-y-2" aria-label={`Columns of ${key}`}>
@@ -283,7 +284,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                             const fk = column.references
                             return (
                               <li key={column.name}>
-                                <span className="font-mono text-[var(--color-ink)]">{column.name}</span>{' '}
+                                <span className="font-mono text-ink">{column.name}</span>{' '}
                                 <span>({column.data_type}) → {rowId ? 'Row ID' : target ? `Reference → ${target}` : column.column_type}</span>
                                 {fk && (
                                   <div>
@@ -305,14 +306,14 @@ export default function SourceBrowser({ name }: { name: string }) {
                           to="/featherbase/admin/$table"
                           params={{ table: t.already_reflected }}
                           search={{ filters: undefined }}
-                          className="text-[var(--color-brand)] hover:underline"
+                          className="text-action hover:underline"
                         >
                           {t.already_reflected}
                         </Link>
                       ) : t.bindable ? (
                         t.proposed_name
                       ) : (
-                        <span className="text-[var(--color-danger)]">{t.reason}</span>
+                        <span className="text-negative">{t.reason}</span>
                       )}
                     </td>
                   </tr>
@@ -326,7 +327,7 @@ export default function SourceBrowser({ name }: { name: string }) {
       {tables.length > 0 && (
         <div className="mt-4">
           <button
-            className="fc-btn-primary disabled:opacity-40"
+            className={buttonClasses({ variant: 'primary', className: 'disabled:opacity-40' })}
             onClick={reflect}
             disabled={busy || !selected.size}
             data-testid="sb-reflect"

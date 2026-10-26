@@ -124,6 +124,90 @@ test('PLAT-006: an invited Google address links the existing User (no duplicate)
   expect(listed.data[0].row_id).toBe(existingId)
 })
 
+// A refused Google sign-in is a browser navigation: it lands back on the
+// sign-in page with a plain message, never a raw JSON error page.
+test('a Google account nobody set up lands on the sign-in page with a plain message', async ({ session, request }) => {
+  // Its own never-seen address and account ID, so no earlier spec's person or
+  // link can let it in.
+  const stranger = `oauth.e2e.stranger.${Date.now()}@gmail.com`
+  await session.visit('/login')
+  await session.step('sign in through the mock OAuth flow with an address nobody invited', async ({ page }) => {
+    await page.getByTestId('google-login').click()
+    await page.getByTestId('mock-email').fill(stranger)
+    await page.getByTestId('mock-approve').click()
+  })
+
+  // #474: a panel of next steps, not an empty form.
+  await session.step('back on the sign-in page, told what to do, with no form to type into', async ({ page }) => {
+    await page.waitForURL(/\/featherbase\/login\?error=not_provisioned$/)
+    const panel = page.getByTestId('sign-in-refused-panel')
+    await expect(panel.getByRole('heading', { name: "We couldn't sign you in" })).toBeVisible()
+    await expect(page.getByTestId('sign-in-refused')).toContainText("This Google account isn't set up for")
+    await expect(page.getByTestId('sign-in-refused')).toContainText('Ask your manager or IT to invite you')
+    await expect(page.getByText('Access not provisioned')).toHaveCount(0)
+    await expect(page.locator('input:visible')).toHaveCount(0)
+    await expect(page.getByTestId('login-form')).toHaveCount(0)
+  })
+
+  await session.step('"Other ways to sign in" reveals the usual methods', async ({ page }) => {
+    await page.getByTestId('refused-other-ways').click()
+    await expect(page.getByTestId('login-form')).toBeVisible()
+    await expect(page.getByTestId('google-login')).toBeVisible()
+    await expect(page.getByTestId('sign-in-refused-panel')).toHaveCount(0)
+    // The choice drops `error` from the address, so a reload stays on the form.
+    expect(new URL(page.url()).searchParams.get('error')).toBeNull()
+    await page.reload()
+    await expect(page.getByTestId('login-form')).toBeVisible()
+    await expect(page.getByTestId('sign-in-refused-panel')).toHaveCount(0)
+  })
+
+  const headers = await adminAuth(request)
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', stranger]]))
+  expect(((await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()) as { data: unknown[] }).data).toEqual([])
+})
+
+// #474: "Try another Google account" starts Google sign-in again with the
+// account picker forced, and a second, invited account then gets in.
+test('after a refusal, "Try another Google account" starts Google again and another account signs in', async ({ session, request }) => {
+  const stamp = Date.now()
+  const refused = `oauth.e2e.refused.${stamp}@gmail.com`
+  const invited = `oauth.e2e.retry.${stamp}@gmail.com`
+  const headers = await adminAuth(request)
+  const made = await request.post('/api/save_row', {
+    headers,
+    data: { table: 'Person', row: { email: invited, full_name: 'Retry Person', enabled: true, roles: [] } },
+  })
+  if (made.status() !== 201) throw new Error(`create person: ${made.status()} ${await made.text()}`)
+  const invitedId = ((await made.json()) as { row_id: string }).row_id
+  await request.post(`/api/people/${encodeURIComponent(invitedId)}/identities`, { headers, data: { method: 'google', email: invited } })
+
+  const starts: string[] = []
+  await session.visit('/login')
+  await session.step('the first Google account is refused', async ({ page }) => {
+    page.on('request', (r) => {
+      if (r.url().includes('/api/oauth/google/login')) starts.push(r.url())
+    })
+    await page.getByTestId('google-login').click()
+    await page.getByTestId('mock-email').fill(refused)
+    await page.getByTestId('mock-approve').click()
+    await page.waitForURL(/\/featherbase\/login\?error=not_provisioned$/)
+    await expect(page.getByTestId('sign-in-refused-panel')).toBeVisible()
+  })
+
+  await session.step('try another Google account: the sign-in starts again with the picker forced', async ({ page }) => {
+    await page.getByTestId('refused-google-retry').click()
+    await expect(page.getByTestId('mock-approve')).toBeVisible()
+    expect(starts.at(-1)).toContain('/api/oauth/google/login?prompt=select_account')
+    // The refused address is not carried into the new attempt.
+    await expect(page.getByTestId('mock-email')).not.toHaveValue(refused)
+    await page.getByTestId('mock-email').fill(invited)
+    await page.getByTestId('mock-approve').click()
+    await page.waitForURL(/\/admin/)
+  })
+
+  await request.delete(`/api/table/Person/${encodeURIComponent(invitedId)}`, { headers })
+})
+
 test('PLAT-006: a tampered OAuth state is rejected', async ({ request }) => {
   // The callback must reject a forged/blank state (CSRF protection).
   const res = await request.get('/api/oauth/google/callback?code=abc&state=forged.signature', {

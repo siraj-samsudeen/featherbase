@@ -1,6 +1,6 @@
 import { test, expect, adminToken } from './fixtures'
 
-// UI-024, browser-only remainder. The toggle's DOM effect, its per-user
+// UI-024, browser-only remainder. The theme choice's DOM effect, its per-person
 // server storage, and a fresh load reading it back are all component tests
 // now (apps/web/test/theme.test.tsx, #223 batch 1). What no jsdom test can
 // see is the payoff: jsdom loads no stylesheet and computes no cascade, so
@@ -26,7 +26,10 @@ test('UI-024: switching to dark actually repaints the canvas', async ({ session 
     lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   })
   await session
-    .click('🌙')
+    .step('choose dark in the account menu', async ({ page }) => {
+      await page.getByTestId('session-user').click()
+      await page.getByTestId('theme-dark').click()
+    })
     .within('html', (root) => root.assertAttribute('data-theme', 'dark'))
     .step('compare the repainted dark canvas background', async ({ page }) => {
       const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)

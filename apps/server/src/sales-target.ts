@@ -139,7 +139,7 @@ const ASSIGNMENT_TABLE_DEF = {
     { column_name: 'employee', column_type: 'Reference', reference_table: 'Person', reqd: true, in_list_view: true },
     { column_name: 'plant_code', column_type: 'Data', reqd: true, in_list_view: true },
     { column_name: 'store_label', column_type: 'Data', in_list_view: true },
-    { column_name: 'material_group', column_type: 'Data', reqd: true, in_list_view: true },
+    { column_name: 'material_group', label: 'Subcategory', column_type: 'Data', reqd: true, in_list_view: true },
     // Set by the controller from plant_code + material_group; unique makes one
     // employee per store–subcategory pair a database fact, not a convention.
     { column_name: 'store_subcategory', column_type: 'Data', unique: true, read_only: true, in_list_view: true },

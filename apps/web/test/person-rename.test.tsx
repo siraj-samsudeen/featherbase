@@ -71,7 +71,7 @@ test('names, not ids: a comment by a person shows their name and initials', asyn
   await waitFor(() => expect(author).toHaveTextContent('Asha Kumar'))
   expect(screen.getByTestId('comment-initials')).toHaveTextContent('AK')
   // An address is not highlighted as a mention.
-  const highlighted = [...screen.getByTestId('comment-list').querySelectorAll('span[class*="color-brand"]')]
+  const highlighted = [...screen.getByTestId('comment-list').querySelectorAll('span[class*="text-action"]')]
   expect(highlighted.some((e) => e.textContent?.includes('@'))).toBe(false)
   expect(screen.getByTestId('comment-list')).toHaveTextContent('sm.atk@jeyarama.com')
   expect(screen.getByTestId('comment-list').textContent).not.toContain(asha.user!)

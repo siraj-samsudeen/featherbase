@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
-import { Button, Field, TextInput } from '../components/ui'
+import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 import { Logo } from '../components/Logo'
 
 export function safeLoginNext(
@@ -23,6 +23,37 @@ export function safeLoginNext(
   } catch {
     return undefined
   }
+}
+
+// A refused browser sign-in (the Google callback) comes back as
+// `?error=<code>`. Only these codes are explained; anything else reads as the
+// generic failure, and the query text itself is never shown.
+const REFUSALS: Record<string, (p: { appName: string; google: string; service: string | null }) => string> = {
+  not_provisioned: ({ appName, google, service }) =>
+    `This ${google} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
+  not_allowed: ({ google }) => `This account can't sign in with ${google}. Ask your manager or IT for help.`,
+  address_in_use: ({ google }) => `Another account already uses this ${google} account's email address. Ask your manager or IT to link it for you.`,
+  google_off: ({ google }) => `${google} sign-in isn't available right now. Use another way to sign in.`,
+  expired: () => 'The sign-in took too long or was started in another window. Please try again.',
+  google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
+}
+
+// #474: "Try another Google account" restarts Google sign-in with the account
+// picker forced, so the account just refused is never silently reused.
+export const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+
+const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
+// Server messages a person may read as they are: refusals the server already
+// words for people (a wrong password, an outage, someone who has left).
+const SHOWN_AS_SENT = new Set(['AuthenticationError', 'PermissionError', 'ServiceUnavailableError', 'ConflictError', 'RateLimitError'])
+
+/** What the page says about a failed sign-in. A validation message from the
+ *  server is a request shape ("Expected { usr, pwd }"), never shown on the
+ *  sign-in forms; sign-up's validation messages are worded for people. */
+export function signInErrorText(err: unknown, opts: { blank: string; showValidation?: boolean }): string {
+  if (!(err instanceof ApiError)) return SIGN_IN_FAILED
+  if (err.type === 'ValidationError') return opts.showValidation ? err.message : opts.blank
+  return SHOWN_AS_SENT.has(err.type) ? err.message : SIGN_IN_FAILED
 }
 
 export function LoginPage() {
@@ -52,8 +83,6 @@ export function LoginPage() {
   const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'delegated_password')
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
-  // Test mode (#3783): the server skips the provider, so there is no password to ask for.
-  const delegatedTestMode = delegated?.test_mode === true
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Until the brand answers, and if it cannot, the password form stays.
@@ -61,6 +90,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [forgot, setForgot] = useState(false)
+  // #474: after a refused Google sign-in the card shows a panel of next steps,
+  // and no inputs, until the person picks one.
+  const [refusalAnswered, setRefusalAnswered] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
@@ -71,7 +103,7 @@ export function LoginPage() {
   }
 
   // Both sign-in forms end here: back to a safe deep link, else the landing.
-  async function signIn(attempt: () => Promise<SessionUser>) {
+  async function signIn(attempt: () => Promise<SessionUser>, blank: string, showValidation = false) {
     setError(null)
     setBusy(true)
     try {
@@ -84,8 +116,8 @@ export function LoginPage() {
       navigate({ to: landingPath(user) })
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable
-      // service and a person who has left apart.
-      setError(err instanceof ApiError ? err.message : 'Login failed')
+      // service and a person who has left apart; nothing raw gets through.
+      setError(signInErrorText(err, { blank, showValidation }))
     } finally {
       setBusy(false)
     }
@@ -93,8 +125,17 @@ export function LoginPage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // Read from the form, not from React state, so values the browser's
+    // autofill wrote into the boxes are what is sent.
     const form = new FormData(e.currentTarget)
-    await signIn(() => login(String(form.get('email')), String(form.get('password'))))
+    const usr = String(form.get('email') ?? '').trim()
+    const pwd = String(form.get('password') ?? '')
+    const blank = 'Enter your email or username and your password.'
+    if (!usr || !pwd) {
+      setError(blank)
+      return
+    }
+    await signIn(() => login(usr, pwd), blank)
   }
 
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -103,66 +144,126 @@ export function LoginPage() {
     const id = String(form.get('delegated_id') ?? '').trim()
     const password = String(form.get('delegated_password') ?? '')
     // Nothing typed is the person's slip, not an API validation failure (#406).
-    if (!id || (!delegatedTestMode && !password)) {
-      setError(delegatedTestMode ? 'Enter your employee code.' : `Enter your ${delegatedLabel} ID and password.`)
+    // Test mode asks the same: the page never advertises it.
+    const blank = `Enter your ${delegatedLabel} ID and password.`
+    if (!id || !password) {
+      setError(blank)
       return
     }
-    await signIn(() => loginDelegated(id, password, delegated!.key))
+    await signIn(() => loginDelegated(id, password, delegated!.key), blank)
   }
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))))
+    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))), 'Choose a username and a password.', true)
   }
 
   function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
     setError(null)
     setDelegatedKey(key)
     setMode(next)
+    if (refusal && !refusalAnswered) {
+      // Once the person has chosen, a reload must not bring the panel back:
+      // drop `error` from the address bar, keeping everything else (#474).
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    setRefusalAnswered(true)
   }
 
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
+  const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
+  const refusalText = (service: string | null) =>
+    refusalCode
+      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+          appName,
+          google: google?.label ?? 'Google',
+          service,
+        })
+      : null
+  // The notice names the connected service as a way in; the panel does not,
+  // because its own button already says "Sign in with <service>".
+  const refusal = refusalText(delegatedMethods[0]?.label ?? null)
+  const panelRefusal = refusalText(null)
+  const panelShowing = Boolean(refusal) && !refusalAnswered
 
   const errorLine = error && (
-    <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
+    <p className="text-sm text-negative" data-testid="login-error">
       {error}
     </p>
   )
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
-          <h1 className="text-lg font-semibold text-[var(--color-ink)]">{appName}</h1>
-          <p className="text-sm text-[var(--color-ink-muted)]">
+          <h1 className="text-lg font-semibold text-ink">{appName}</h1>
+          {/* The refusal panel's own heading takes the subtitle's place. */}
+          {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
-          </p>
+          </p>}
         </div>
         {sessionEnded && (
-          <p className="mb-3 text-center text-sm text-[var(--color-ink-muted)]" data-testid="session-ended">
+          <p className="mb-3 text-center text-sm text-ink-muted" data-testid="session-ended">
             Your session has ended. Please sign in again.
           </p>
         )}
-        <div className="fc-card p-6">
-          {mode === 'delegated' && delegatedLabel ? (
+        {refusal && refusalAnswered && (
+          <div className="mb-3" data-testid="sign-in-refused">
+            <Notice tone="caution">{refusal}</Notice>
+          </div>
+        )}
+        <div className={cardClasses('p-6')}>
+          {panelShowing ? (
+            <div className="space-y-5" data-testid="sign-in-refused-panel">
+              <div className="space-y-2">
+                <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
+                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
+              </div>
+              <div className="space-y-3">
+                {delegatedMethods[0] && (
+                  <button
+                    type="button"
+                    data-testid="refused-delegated"
+                    className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
+                    onClick={() => switchMode('delegated', delegatedMethods[0].key)}
+                  >
+                    Sign in with {delegatedMethods[0].label}
+                  </button>
+                )}
+                {/* A full-page navigation, as the ordinary Google button is. */}
+                {google && (
+                  <a
+                    href={GOOGLE_RETRY_HREF}
+                    data-testid="refused-google-retry"
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
+                  >
+                    Try another {google.label} account
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                data-testid="refused-other-ways"
+                className="inline-flex min-h-10 items-center text-sm text-action hover:underline"
+                onClick={() => switchMode('password')}
+              >
+                Other ways to sign in
+              </button>
+            </div>
+          ) : mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
-                {delegatedTestMode ? (
-                  <p role="status" data-testid="delegated-test-mode"
-                    className="rounded border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                    Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
-                  </p>
-                ) : (
-                  <p className="text-sm text-[var(--color-ink-muted)]">
-                    Use the same ID and password you use for {delegatedLabel}.
-                  </p>
-                )}
+                <p className="text-sm text-ink-muted">
+                  Use the same ID and password you use for {delegatedLabel}.
+                </p>
                 <div>
-                  <label className="fc-label" htmlFor="delegated-id">{delegatedTestMode ? 'Employee code' : `${delegatedLabel} ID`}</label>
+                  <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
                   <input
                     id="delegated-id"
                     type="text"
@@ -171,25 +272,25 @@ export function LoginPage() {
                     autoCapitalize="none"
                     autoCorrect="off"
                     spellCheck={false}
-                    className="fc-input"
+                    className={inputClasses()}
                   />
                 </div>
-                {!delegatedTestMode && <div>
-                  <label className="fc-label" htmlFor="delegated-password">Password</label>
+                <div>
+                  <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
                     id="delegated-password"
                     type="password"
                     name="delegated_password"
                     autoComplete="current-password"
-                    className="fc-input"
+                    className={inputClasses()}
                   />
-                </div>}
+                </div>
                 {errorLine}
                 <button
                   type="submit"
                   disabled={busy}
                   data-testid="delegated-login-submit"
-                  className="fc-btn-primary w-full justify-center py-2"
+                  className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
                 >
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
@@ -198,7 +299,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   data-testid="password-login-toggle"
-                  className="mt-4 text-sm text-[var(--color-brand)] hover:underline"
+                  className="mt-4 text-sm text-action hover:underline"
                   onClick={() => switchMode('password')}
                 >
                   Use email and password instead
@@ -229,29 +330,30 @@ export function LoginPage() {
           {passwordOn && (
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
             <div>
-              <label className="fc-label" htmlFor="login-email">Email or username</label>
+              <label className={labelClasses()} htmlFor="login-email">Email or username</label>
               <input
                 id="login-email"
                 type="text"
                 name="email"
                 autoComplete="username"
-                placeholder="Administrator"
-                className="fc-input"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className={inputClasses()}
               />
             </div>
             <div>
-              <label className="fc-label" htmlFor="login-password">Password</label>
+              <label className={labelClasses()} htmlFor="login-password">Password</label>
               <input
                 id="login-password"
                 type="password"
                 name="password"
                 autoComplete="current-password"
-                placeholder="••••••••"
-                className="fc-input"
+                className={inputClasses()}
               />
             </div>
             {errorLine}
-            <button type="submit" disabled={busy} className="fc-btn-primary w-full justify-center py-2">
+            <button type="submit" disabled={busy} data-testid="login-submit" className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
@@ -263,7 +365,7 @@ export function LoginPage() {
             <a
               href="/api/oauth/google/login"
               data-testid="google-login"
-              className="fc-btn mt-3 flex w-full justify-center py-2"
+              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
             >
               Sign in with {google.label}
             </a>
@@ -275,7 +377,7 @@ export function LoginPage() {
               key={m.key}
               type="button"
               data-testid={delegatedMethods.length === 1 ? 'delegated-login-toggle' : `delegated-login-toggle-${m.key}`}
-              className="fc-btn mt-3 flex w-full justify-center py-2"
+              className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
               onClick={() => switchMode('delegated', m.key)}
             >
               Sign in with {m.label}
@@ -286,18 +388,18 @@ export function LoginPage() {
               Create an account
             </Button>
           )}
-          <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+          <div className="mt-4 border-t border-border pt-4">
             {!forgot ? (
               <button
                 type="button"
-                className="text-sm text-[var(--color-brand)] hover:underline"
+                className="text-sm text-action hover:underline"
                 data-testid="forgot-password"
                 onClick={() => setForgot(true)}
               >
                 Forgot password?
               </button>
             ) : resetSent ? (
-              <p className="text-sm text-[var(--color-ink-muted)]" data-testid="reset-sent">
+              <p className="text-sm text-ink-muted" data-testid="reset-sent">
                 If that account exists, a reset link has been emailed.
               </p>
             ) : (
@@ -307,9 +409,9 @@ export function LoginPage() {
                     {delegatedMethods.map((m) => `${m.label} users reset their password in ${m.label}.`).join(' ')}
                   </p>
                 )}
-                <label className="fc-label">Email or username</label>
-                <input type="text" name="usr" className="fc-input" data-testid="forgot-usr" />
-                <button type="submit" className="fc-btn w-full justify-center py-2" data-testid="forgot-submit">
+                <label className={labelClasses()} htmlFor="forgot-usr">Email or username</label>
+                <input id="forgot-usr" type="text" name="usr" autoComplete="username" className={inputClasses()} data-testid="forgot-usr" />
+                <button type="submit" className={buttonClasses({ className: 'w-full justify-center py-2' })} data-testid="forgot-submit">
                   Send reset link
                 </button>
               </form>

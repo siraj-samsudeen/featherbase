@@ -18,12 +18,14 @@ interface Found {
   replaced: boolean
   current: boolean
   assigner: string
+  pending_invite?: boolean
 }
 
 export function FindPerson() {
   const systems = useQuery({
     queryKey: ['identifier-systems-for-find'],
-    queryFn: () => api.get<{ data: { row_id: string; label: string }[] }>(`/api/table/${encodeURIComponent('Identifier System')}?limit=100`),
+    // A list read returns only row_id unless asked for fields.
+    queryFn: () => api.get<{ data: { row_id: string; label: string }[] }>(`/api/table/${encodeURIComponent('Identifier System')}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'label']))}&order_by=label&limit_page_length=500`),
   })
   const options = systems.data?.data ?? []
   const [system, setSystem] = useState<string | null>(null)
@@ -54,7 +56,7 @@ export function FindPerson() {
       <form className="flex flex-wrap gap-2" onSubmit={onFind}>
         <Select aria-label="Identifier" value={chosen ?? ''} onChange={(e) => setSystem(e.target.value)}>
           {options.map((s) => (
-            <option key={s.row_id} value={s.row_id}>{s.label}</option>
+            <option key={s.row_id} value={s.row_id}>{s.label || s.row_id}</option>
           ))}
         </Select>
         <TextInput name="value" className="min-w-0 flex-1" aria-label="Value" placeholder="e.g. RR-0104" required />
@@ -65,16 +67,21 @@ export function FindPerson() {
           <Notice tone="negative">{error}</Notice>
         </div>
       )}
-      {found && found.length === 0 && <p className="text-sm text-ink-muted" data-testid="find-person-none">Nobody you can see holds that value.</p>}
+      {found && found.length === 0 && (
+        <p className="text-sm text-ink-muted" data-testid="find-person-none">
+          No exact match among the people you can see. Use the full value, e.g. name@example.com or RR-0101. To search by name, use the{' '}
+          <Link to="/featherbase/admin/$table" params={{ table: 'Person' }} search={{ filters: undefined }} className="text-action hover:underline">Person list</Link>.
+        </p>
+      )}
       {found && found.length > 0 && (
         <ul className="space-y-1" data-testid="find-person-results">
           {found.map((f) => (
-            <li key={`${f.person_id}-${f.assigner}-${String(f.current)}`} className="text-sm">
+            <li key={`${f.person_id}-${f.assigner}-${String(f.current)}-${String(f.pending_invite)}`} className="text-sm">
               <Link to="/featherbase/admin/$table/$name" params={{ table: 'Person', name: f.resolved_to }} search={{ prefill: undefined }} className="font-medium text-action hover:underline">
                 <PrincipalName id={f.resolved_to} />
               </Link>
               <span className="text-sm text-ink-muted">
-                {f.current ? ' · holds it now' : ' · held it before'}
+                {f.pending_invite ? ' · invited, not signed in yet' : f.current ? ' · holds it now' : ' · held it before'}
                 {f.assigner ? ` · firm ${f.assigner}` : ''}
                 {f.replaced ? ' · found through a merged-away record' : ''}
               </span>

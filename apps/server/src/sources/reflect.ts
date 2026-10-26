@@ -45,7 +45,7 @@ function titleWords(raw: string): string {
   )
 }
 
-// Proposed Desk name: "<Prefix> <Table>", legal per the Table name rule.
+// Proposed Admin name: "<Prefix> <Table>", legal per the Table name rule.
 function proposeName(cfg: SourceConfig, t: IntrospectedTable, prefix?: string): string {
   const defaultPrefix =
     cfg.engine === 'csv-folder'

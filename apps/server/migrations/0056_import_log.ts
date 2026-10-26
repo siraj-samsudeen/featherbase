@@ -1,6 +1,6 @@
 // IMP-011: every bulk import (:import collection action) records what it did
 // — which file/sheet, into which Table, how many rows landed or failed — so
-// "what did that import just create?" is answerable from the Desk instead of
+// "what did that import just create?" is answerable from the Admin instead of
 // archaeology over created_at timestamps.
 import { sql } from '../src/db'
 import { createTable } from '../src/table-engine'

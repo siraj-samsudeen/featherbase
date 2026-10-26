@@ -14,18 +14,32 @@
 
 ## 2. Sweep of every screen not owned by #371 (PR 2)
 
-- [ ] 2.1 Move every such screen onto the primitives and final token names; replace browser-locale formatting and text
-  under 12 px; remove each cleaned file from the pending list.
-- [ ] 2.2 Before/after screenshots of a list, a form and a Checklist at 375 px and 1280 px; web suite, typecheck and
-  the affected e2e specs.
+- [x] 2.1 Move every such screen onto the primitives and final token names; replace browser-locale formatting and text
+  under 12 px; remove each cleaned file from the pending list. (36 files. AccessTokens, PermissionManager, Assignments,
+  ActivityFeed and ActivityTimeline wait for the person-rename change, #384, and move to 3.1.)
+- [x] 2.2 Before/after screenshots of the swept screens at 375 px and 1280 px, light and dark; web suite and typecheck;
+  the e2e suite in CI.
 
 ## 3. After #371 merges (PR 3)
 
-- [ ] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout, router, Comments, FormView and #371's new
-  screens.
-- [ ] 3.2 Remove the palette: picker, client preference, server endpoint and stored column (migration), and its tests.
-- [ ] 3.3 Theme choice of light, dark or follow-the-device, and follow-the-device before sign-in.
-- [ ] 3.4 Delete every old token name and the six `fc-*` classes; delete the pending list so every rule is a hard zero.
-- [ ] 3.5 Update the visual-identity directive in `CLAUDE.md`/`AGENTS.md` and the Purpose lines of
-  `admin-ui-feedback` and `personal-preferences` that mention palettes; archive this change after
-  `/openspec-verify-change`.
+- [x] 3.1 Sweep Login, ResetPassword, Portal, SalesTarget, AdminLayout (using `useMediaQuery`), router, Comments,
+  FormView and #371's new screens; after person-rename (#384), AccessTokens, PermissionManager, Assignments,
+  ActivityFeed and ActivityTimeline.
+- [x] 3.2 Remove the palette: picker, client preference, server endpoint and stored column (migration), and its tests.
+- [x] 3.3 Theme choice of light, dark or follow-the-device, and follow-the-device before sign-in.
+- [x] 3.4 Delete every old token name and the six `fc-*` classes; delete the pending list so every rule is a hard zero.
+- [x] 3.5 Update the visual-identity directive in `CLAUDE.md`/`AGENTS.md` and the Purpose lines of
+  `admin-ui-feedback` and `personal-preferences` that mention palettes. (Archiving waits for section 4, which is
+  still in this change.)
+- [x] 3.6 Remove the language picker from the header and the account menu (Siraj, 24-Oct-2026: no translation
+  ships). Keep the stored language and the translation catalog, so a picker can return with a translation.
+
+## 4. Page adoption (after stage 3)
+
+- [ ] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
+  sorting working in both shapes. This delivers "Lists fit a phone".
+- [ ] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
+- [ ] 4.3 Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).
+- [ ] 4.4 A tab bar for staff roles on phones.
+- [ ] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
+  check that measures controls at phone width.

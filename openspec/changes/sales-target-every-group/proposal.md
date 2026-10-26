@@ -8,7 +8,7 @@ A reader's Sections list every material group the store's merchandise map gives 
 
 - Every group's name comes from the merchandise hierarchy, keyed by material group code.
 - Actuals come from every sale of the store × group × month, target or not. A group with a target keeps the target's own actual, so a store's figures for its targeted groups do not move. A group with no target reads a ₹0 target.
-- A group with ₹0 target and ₹0 sales this month is classed "no target, no sale". It is hidden by default behind a "Show groups with no target or sales" toggle. It adds ₹0, so every subtotal and the total read the same either way.
+- A group with ₹0 target and ₹0 sales this month is classed "no target, no sale". It is hidden by default behind a "Show subcategories with no target or sales" toggle. It adds ₹0, so every subtotal and the total read the same either way.
 - The snapshot stores the hierarchy's names beside its day rows; its definition revision moves to 2, so the next refresh rebuilds it. The day rows' old name column stays for this release, unwritten, so the previous build and a rollback keep working; #447 drops it.
 - A month with no targets in the warehouse is never shown as ₹0 targets: a refresh from it is refused, and a live read leaves targets blank and says so.
 
@@ -16,7 +16,7 @@ A reader's Sections list every material group the store's merchandise map gives 
 
 ### Modified Capabilities
 
-- `sales-target-report`: every listed group is named and counted (change `sales-target-section-scope`).
+- `sales-target-report`: every listed subcategory is named and counted (change `sales-target-section-scope`).
 
 ## Impact
 

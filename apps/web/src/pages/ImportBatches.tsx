@@ -14,6 +14,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { adminPageTitle } from 'shared'
 import { PrincipalName } from '../lib/people'
+import { buttonClasses, cardClasses, pillClasses } from '../components/ui'
+import { fmtCount, fmtInstantIST } from '../lib/inr'
 
 interface BatchTarget {
   table: string
@@ -40,17 +42,16 @@ interface ImportBatch {
 }
 
 function when(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+  return Number.isNaN(new Date(iso).getTime()) ? iso : fmtInstantIST(iso)
 }
 
 function Counts({ batch }: { batch: ImportBatch }) {
   return (
-    <span className="text-gray-500">
-      {batch.updated > 0 && `${batch.updated} updated · `}
-      {batch.inserted} rows added
+    <span className="text-ink-muted">
+      {batch.updated > 0 && `${fmtCount(batch.updated)} updated · `}
+      {fmtCount(batch.inserted)} rows added
       {batch.failed > 0 && (
-        <span className="text-[var(--color-danger)]"> · {batch.failed} failed</span>
+        <span className="text-negative"> · {fmtCount(batch.failed)} failed</span>
       )}
     </span>
   )
@@ -88,13 +89,13 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
   })
 
   return (
-    <div className="fc-card mb-3 p-3" data-testid={`ib-batch-${batch.batch_id}`}>
+    <div className={cardClasses('mb-3 p-3')} data-testid={`ib-batch-${batch.batch_id}`}>
       <div className="mb-2 flex flex-wrap items-baseline gap-2">
-        <span className="font-semibold text-[var(--color-ink)]">
+        <span className="font-semibold text-ink">
           {batch.file_name ?? 'Imported data'}
         </span>
-        <span className="text-xs text-gray-500">{when(batch.started_at)}</span>
-        {batch.user && <span className="text-xs text-gray-500">by <PrincipalName id={batch.user} /></span>}
+        <span className="text-xs text-ink-muted">{when(batch.started_at)}</span>
+        {batch.user && <span className="text-xs text-ink-muted">by <PrincipalName id={batch.user} /></span>}
         <span className="ml-auto text-sm">
           <Counts batch={batch} />
         </span>
@@ -106,7 +107,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
         {batch.targets.map((target) => (
           <div
             key={target.table}
-            className="flex flex-wrap items-baseline gap-2 border-t border-[var(--color-border)] py-1 first:border-t-0"
+            className="flex flex-wrap items-baseline gap-2 border-t border-border py-1 first:border-t-0"
             data-testid={`ib-target-${target.table}`}
           >
             {target.exists ? (
@@ -119,31 +120,31 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
                 {target.table}
               </Link>
             ) : (
-              <span className="text-gray-400 line-through">{target.table}</span>
+              <span className="text-ink-subtle line-through">{target.table}</span>
             )}
             {target.created ? (
               <span
-                className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand-dark)]"
+                className={pillClasses('bg-action-tint text-action-hover')}
                 data-testid={`ib-created-${target.table}`}
               >
                 created by this import
               </span>
             ) : (
-              <span className="fc-pill" data-testid={`ib-appended-${target.table}`}>
+              <span className={pillClasses()} data-testid={`ib-appended-${target.table}`}>
                 rows added to an existing Table
               </span>
             )}
             {target.sheets.length > 0 && (
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-ink-muted">
                 from {target.sheets.length === 1 ? 'sheet' : `${target.sheets.length} sheets`}{' '}
                 {target.sheets.join(', ')}
               </span>
             )}
-            <span className="ml-auto text-xs text-gray-500">
-              {target.updated > 0 && `${target.updated} updated · `}
-              {target.inserted} added
+            <span className="ml-auto text-xs text-ink-muted">
+              {target.updated > 0 && `${fmtCount(target.updated)} updated · `}
+              {fmtCount(target.inserted)} added
               {target.failed > 0 && (
-                <span className="text-[var(--color-danger)]"> · {target.failed} failed</span>
+                <span className="text-negative"> · {fmtCount(target.failed)} failed</span>
               )}
               {target.reverted_at && ' · reverted'}
             </span>
@@ -158,7 +159,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
         {removable.length > 0 && !confirming && (
           <button
             type="button"
-            className="fc-btn py-1 text-[var(--color-danger)]"
+            className={buttonClasses({ className: 'py-1 text-negative' })}
             data-testid={`ib-delete-${batch.batch_id}`}
             onClick={() => setConfirming(true)}
           >
@@ -168,14 +169,14 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
         )}
         {confirming && (
           <span
-            className="rounded bg-[var(--color-danger-tint)] px-2 py-1"
+            className="rounded bg-negative-tint px-2 py-1"
             data-testid={`ib-confirm-${batch.batch_id}`}
           >
             Delete <strong>{removable.map((t) => t.table).join(', ')}</strong> and every row in
             them? This also removes their import records, and cannot be undone.{' '}
             <button
               type="button"
-              className="fc-btn-primary ml-1 py-0.5"
+              className={buttonClasses({ variant: 'primary', className: 'ml-1 py-0.5' })}
               data-testid={`ib-confirm-go-${batch.batch_id}`}
               disabled={remove.isPending}
               onClick={() => remove.mutate()}
@@ -184,7 +185,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
             </button>
             <button
               type="button"
-              className="fc-btn ml-1 py-0.5"
+              className={buttonClasses({ className: 'ml-1 py-0.5' })}
               data-testid={`ib-cancel-${batch.batch_id}`}
               onClick={() => setConfirming(false)}
             >
@@ -193,7 +194,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
           </span>
         )}
         {remove.isError && (
-          <span className="text-[var(--color-danger)]" data-testid={`ib-error-${batch.batch_id}`}>
+          <span className="text-negative" data-testid={`ib-error-${batch.batch_id}`}>
             {remove.error instanceof ApiError ? remove.error.message : 'Could not delete'}
           </span>
         )}
@@ -211,8 +212,8 @@ export function ImportBatches() {
 
   return (
     <div data-testid="import-batches" className="max-w-4xl">
-      <h1 className="mb-1 text-xl font-semibold text-[var(--color-ink)]">{adminPageTitle('imports')}</h1>
-      <p className="mb-4 text-xs text-gray-500">
+      <h1 className="mb-1 text-xl font-semibold text-ink">{adminPageTitle('imports')}</h1>
+      <p className="mb-4 text-xs text-ink-muted">
         Every file you have imported, and what each one did.{' '}
         <Link
           to="/featherbase/admin/$table"
@@ -227,14 +228,14 @@ export function ImportBatches() {
       </p>
 
       {outcome && (
-        <p className="fc-card mb-3 p-2 text-sm" data-testid="ib-outcome">
+        <p className={cardClasses('mb-3 p-2 text-sm')} data-testid="ib-outcome">
           {outcome.deleted.length > 0 && (
-            <span className="text-green-700">Deleted {outcome.deleted.join(', ')}. </span>
+            <span className="text-positive">Deleted {outcome.deleted.join(', ')}. </span>
           )}
           {/* A refusal is named with its reason — never a silently smaller
               count than the button promised. */}
           {outcome.refused.map((r) => (
-            <span key={r.table} className="text-[var(--color-danger)]">
+            <span key={r.table} className="text-negative">
               Kept {r.table}: {r.message}.{' '}
             </span>
           ))}
@@ -243,14 +244,14 @@ export function ImportBatches() {
         </p>
       )}
 
-      {batches.isPending && <p className="text-sm text-gray-500">Loading…</p>}
+      {batches.isPending && <p className="text-sm text-ink-muted">Loading…</p>}
       {batches.isError && (
-        <p className="text-sm text-[var(--color-danger)]" data-testid="ib-error">
+        <p className="text-sm text-negative" data-testid="ib-error">
           {batches.error instanceof ApiError ? batches.error.message : 'Could not load imports'}
         </p>
       )}
       {batches.data?.batches.length === 0 && (
-        <p className="text-sm text-gray-500" data-testid="ib-empty">
+        <p className="text-sm text-ink-muted" data-testid="ib-empty">
           Nothing imported yet.{' '}
           <Link to="/featherbase/admin/import" search={{ table: undefined }} className="underline">
             Import a file

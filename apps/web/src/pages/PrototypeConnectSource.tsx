@@ -4,6 +4,7 @@
 // mutations: test/introspect are simulated.
 import { useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
 
 // ---- shared mock data & simulated backend ---------------------------------
 
@@ -63,9 +64,9 @@ function useSimulatedTest() {
 function OutcomeBanner({ outcome, port }: { outcome: TestOutcome; port: string }) {
   if (outcome.kind === 'timeout')
     return (
-      <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2.5 text-sm">
-        <div className="font-medium text-red-800">No answer from the server (timeout after 8s)</div>
-        <p className="mt-1 text-red-700">
+      <div className="rounded-md bg-negative-tint border border-negative px-3 py-2.5 text-sm">
+        <div className="font-medium text-negative">No answer from the server (timeout after 8s)</div>
+        <p className="mt-1 text-negative">
           The host resolved but port {port} didn&apos;t answer. This is almost always a firewall — on AWS
           RDS, check the security group&apos;s inbound rules. Your password was not checked yet.
         </p>
@@ -73,9 +74,9 @@ function OutcomeBanner({ outcome, port }: { outcome: TestOutcome; port: string }
     )
   if (outcome.kind === 'auth')
     return (
-      <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm">
-        <div className="font-medium text-amber-800">The server refused the login</div>
-        <p className="mt-1 text-amber-700">
+      <div className="rounded-md bg-caution-tint border border-caution px-3 py-2.5 text-sm">
+        <div className="font-medium text-caution">The server refused the login</div>
+        <p className="mt-1 text-caution">
           The network path works — the database rejected user <code className="font-mono">analyst</code>.
           Check the password, and that the user exists on the target database.
         </p>
@@ -83,9 +84,9 @@ function OutcomeBanner({ outcome, port }: { outcome: TestOutcome; port: string }
     )
   if (outcome.kind === 'ok')
     return (
-      <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2.5 text-sm">
-        <div className="font-medium text-emerald-800">Connected — MySQL 8.4.10, TLS on, 142 ms</div>
-        <p className="mt-1 text-emerald-700">
+      <div className="rounded-md bg-positive-tint border border-positive px-3 py-2.5 text-sm">
+        <div className="font-medium text-positive">Connected — MySQL 8.4.10, TLS on, 142 ms</div>
+        <p className="mt-1 text-positive">
           Role <code className="font-mono">analyst</code> can read 2 schemas, 7 tables.
         </p>
       </div>
@@ -153,9 +154,9 @@ function CredFields({ form }: { form: ConnForm }) {
   return (
     <div className="space-y-4">
       <div>
-        <label className="fc-label">Connection URL <span className="font-normal text-[var(--color-ink-faint)]">— paste to fill the form; password stays masked</span></label>
+        <label className={labelClasses()}>Connection URL <span className="font-normal text-ink-subtle">— paste to fill the form; password stays masked</span></label>
         <input
-          className="fc-input font-mono"
+          className={inputClasses('font-mono')}
           value={urlFocused ? urlDraft : maskedUrl}
           onFocus={() => {
             setUrlDraft(maskedUrl)
@@ -167,29 +168,29 @@ function CredFields({ form }: { form: ConnForm }) {
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2">
-          <label className="fc-label">Host</label>
-          <input className="fc-input font-mono" value={f.host} onChange={set('host')} />
+          <label className={labelClasses()}>Host</label>
+          <input className={inputClasses('font-mono')} value={f.host} onChange={set('host')} />
         </div>
         <div>
-          <label className="fc-label">Port</label>
-          <input className="fc-input font-mono" value={f.port} onChange={set('port')} />
+          <label className={labelClasses()}>Port</label>
+          <input className={inputClasses('font-mono')} value={f.port} onChange={set('port')} />
         </div>
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="fc-label">Database</label>
-          <input className="fc-input font-mono" value={f.database} onChange={set('database')} />
+          <label className={labelClasses()}>Database</label>
+          <input className={inputClasses('font-mono')} value={f.database} onChange={set('database')} />
         </div>
         <div>
-          <label className="fc-label">User</label>
-          <input className="fc-input font-mono" value={f.user} onChange={set('user')} />
+          <label className={labelClasses()}>User</label>
+          <input className={inputClasses('font-mono')} value={f.user} onChange={set('user')} />
         </div>
         <div>
-          <label className="fc-label">Password</label>
-          <input className="fc-input" type="password" value={f.password} onChange={set('password')} />
+          <label className={labelClasses()}>Password</label>
+          <input className={inputClasses()} type="password" value={f.password} onChange={set('password')} />
         </div>
       </div>
-      <div className="flex items-center gap-6 text-sm text-[var(--color-ink-muted)]">
+      <div className="flex items-center gap-6 text-sm text-ink-muted">
         <label className="flex items-center gap-2"><input type="checkbox" defaultChecked /> Require TLS</label>
         <label className="flex items-center gap-2"><input type="checkbox" defaultChecked /> Read-only</label>
       </div>
@@ -212,28 +213,30 @@ function ConnectConsole({ goTables }: { goTables: () => void }) {
   }
   return (
     <div className="mx-auto max-w-5xl py-8 grid grid-cols-5 gap-6">
-      <div className="fc-card col-span-3 p-6">
+      <div className={cardClasses('col-span-3 p-6')}>
         <h2 className="text-base font-semibold mb-1">Connect to {f.engine}</h2>
-        <p className="text-sm text-[var(--color-ink-muted)] mb-4">Credentials are encrypted and never shown again.</p>
-        <div className="mb-4 inline-flex rounded-[var(--radius-control)] border border-[var(--color-border-strong)] p-0.5">
+        <p className="text-sm text-ink-muted mb-4">Credentials are encrypted and never shown again.</p>
+        <div className="mb-4 inline-flex rounded-[var(--radius-control)] border border-border-control p-0.5">
           {ENGINES.map((e) => (
             <button
               key={e}
+              type="button"
+              aria-pressed={e === f.engine}
               onClick={() => setEngine(e)}
-              className={`rounded px-3 py-1 text-sm ${e === f.engine ? 'bg-[var(--color-brand)] text-white font-medium' : 'text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]'}`}
+              className={`min-h-control rounded px-3 py-1 text-sm ${e === f.engine ? 'bg-action text-action-ink font-medium' : 'text-ink-muted hover:bg-subtle'}`}
             >
               {e}
             </button>
           ))}
         </div>
         <div className="mb-4">
-          <label className="fc-label">Source name <span className="font-normal text-[var(--color-ink-faint)]">— how this connection appears in Featherbase</span></label>
-          <input className="fc-input font-mono !w-56" value={f.name} onChange={(e) => setF((p) => ({ ...p, name: e.target.value }))} />
+          <label className={labelClasses()}>Source name <span className="font-normal text-ink-subtle">— how this connection appears in Featherbase</span></label>
+          <input className={inputClasses('font-mono !w-56')} value={f.name} onChange={(e) => setF((p) => ({ ...p, name: e.target.value }))} />
         </div>
         {sqlEngine ? (
           <CredFields form={form} />
         ) : (
-          <div className="rounded-md border border-dashed border-[var(--color-border-strong)] px-4 py-6 text-sm text-[var(--color-ink-muted)]">
+          <div className="rounded-md border border-dashed border-border-control px-4 py-6 text-sm text-ink-muted">
             {f.engine === 'DuckDB'
               ? 'DuckDB connects with a MotherDuck token or a .duckdb file path — different form, out of scope for this prototype.'
               : 'A CSV folder needs only a server-side directory path — different form, out of scope for this prototype.'}
@@ -241,14 +244,14 @@ function ConnectConsole({ goTables }: { goTables: () => void }) {
         )}
         {sqlEngine && (
           <div className="mt-5 flex justify-end">
-            <button className="fc-btn-primary" onClick={run} disabled={outcome.kind === 'running'}>
+            <button className={buttonClasses({ variant: 'primary' })} onClick={run} disabled={outcome.kind === 'running'}>
               {outcome.kind === 'idle' ? 'Test connection' : outcome.kind === 'ok' ? 'Re-test' : 'Retry'}
             </button>
           </div>
         )}
       </div>
       <div className="col-span-2 space-y-4">
-        <div className="fc-card p-4">
+        <div className={cardClasses('p-4')}>
           <h3 className="text-sm font-semibold mb-3">Live checks</h3>
           <ol className="space-y-2">
             {CHECK_PHASES.map((p, i) => {
@@ -256,13 +259,13 @@ function ConnectConsole({ goTables }: { goTables: () => void }) {
               return (
                 <li key={p} className="flex items-center gap-2 text-sm">
                   <span
-                    className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                      st === 'ok' ? 'bg-emerald-500 text-white' : st === 'fail' ? 'bg-red-500 text-white' : st === 'running' ? 'bg-[var(--color-brand)] text-white animate-pulse' : 'border border-[var(--color-border-strong)]'
+                    className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-xs ${
+                      st === 'ok' ? 'bg-positive text-action-ink' : st === 'fail' ? 'bg-negative text-action-ink' : st === 'running' ? 'bg-action text-action-ink animate-pulse' : 'border border-border-control'
                     }`}
                   >
                     {st === 'ok' ? '✓' : st === 'fail' ? '✕' : ''}
                   </span>
-                  <span className={st === 'pending' ? 'text-[var(--color-ink-faint)]' : ''}>{p}</span>
+                  <span className={st === 'pending' ? 'text-ink-subtle' : ''}>{p}</span>
                 </li>
               )
             })}
@@ -270,7 +273,7 @@ function ConnectConsole({ goTables }: { goTables: () => void }) {
         </div>
         <OutcomeBanner outcome={outcome} port={f.port} />
         {outcome.kind === 'ok' && (
-          <button className="fc-btn-primary w-full justify-center" onClick={goTables}>
+          <button className={buttonClasses({ variant: 'primary', className: 'w-full justify-center' })} onClick={goTables}>
             Save &amp; choose tables →
           </button>
         )}
@@ -296,22 +299,22 @@ function TablesPage({ goBack }: { goBack: () => void }) {
   return (
     <div className="mx-auto max-w-5xl py-8 flex gap-6">
       <div className="w-48 shrink-0">
-        <button className="fc-btn mb-4 w-full justify-center" onClick={goBack}>← Connection</button>
-        <div className="fc-card p-2">
+        <button className={buttonClasses({ className: 'mb-4 w-full justify-center' })} onClick={goBack}>← Connection</button>
+        <div className={cardClasses('p-2')}>
           {MOCK_SCHEMAS.map((s) => (
             <button
               key={s.schema}
               onClick={() => setSchema(s.schema)}
-              className={`w-full rounded px-3 py-1.5 text-left text-sm font-mono ${s.schema === schema ? 'bg-[var(--color-subtle)] font-medium' : 'hover:bg-[var(--color-subtle)]'}`}
+              className={`w-full rounded px-3 py-1.5 text-left text-sm font-mono ${s.schema === schema ? 'bg-subtle font-medium' : 'hover:bg-subtle'}`}
             >
               {s.schema}
-              <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{s.tables.length}</span>
+              <span className="ml-2 text-xs text-ink-subtle">{s.tables.length}</span>
             </button>
           ))}
         </div>
       </div>
       <div className="flex-1">
-        <div className="fc-card divide-y divide-[var(--color-border)]">
+        <div className={cardClasses('divide-y divide-border')}>
           {tables.map((t) => {
             const key = `${schema}.${t.name}`
             return (
@@ -321,17 +324,17 @@ function TablesPage({ goBack }: { goBack: () => void }) {
                   <button className="font-mono hover:underline" onClick={() => setOpen(open === key ? null : key)}>
                     {t.name}
                   </button>
-                  <span className="ml-auto text-xs text-[var(--color-ink-faint)]">
+                  <span className="ml-auto text-xs text-ink-subtle">
                     {t.cols} columns · {t.pk ? `pk: ${t.pk}` : 'no pk'}
                   </span>
                 </div>
                 {open === key && (
-                  <div className="bg-[var(--color-subtle)] px-11 py-2 flex flex-wrap gap-1.5">
+                  <div className="bg-subtle px-11 py-2 flex flex-wrap gap-1.5">
                     {t.preview.map((c) => (
-                      <span key={c} className="fc-pill border border-[var(--color-border)] bg-[var(--color-surface)] font-mono">{c}</span>
+                      <span key={c} className={pillClasses('border border-border bg-surface font-mono')}>{c}</span>
                     ))}
                     {t.cols > t.preview.length && (
-                      <span className="fc-pill text-[var(--color-ink-faint)]">+{t.cols - t.preview.length} more</span>
+                      <span className={pillClasses('text-ink-subtle')}>+{t.cols - t.preview.length} more</span>
                     )}
                   </div>
                 )}
@@ -340,7 +343,7 @@ function TablesPage({ goBack }: { goBack: () => void }) {
           })}
         </div>
         <div className="mt-4 flex justify-end">
-          <button className="fc-btn-primary">Reflect {selected.size} tables</button>
+          <button className={buttonClasses({ variant: 'primary' })}>Reflect {selected.size} tables</button>
         </div>
       </div>
     </div>
@@ -357,7 +360,7 @@ export function PrototypeConnectSourcePage() {
   return (
     <div className="min-h-full px-6" data-testid="prototype-connect-source">
       <div className="mx-auto max-w-5xl pt-4">
-        <span className="fc-pill bg-amber-100 text-amber-800">Prototype — throwaway. Test button cycles: timeout → bad password → success</span>
+        <span className={pillClasses('bg-caution-tint text-caution')}>Prototype — throwaway. Test button cycles: timeout → bad password → success</span>
       </div>
       {step === 'tables' ? <TablesPage goBack={() => go('connect')} /> : <ConnectConsole goTables={() => go('tables')} />}
     </div>

@@ -10,7 +10,7 @@
 
 ## Context
 
-The Ramachandran DWT team needs a real task surface to learn from actual work rather than continuing to design from imagined cases. Featherbase already owns native metadata-backed Tables, generic Row CRUD, comments, history, users, permissions and server-side per-user settings. This change combines those primitives into one installable sample app and one task-focused Admin surface.
+The client's data team needs a real task surface to learn from actual work rather than continuing to design from imagined cases. Featherbase already owns native metadata-backed Tables, generic Row CRUD, comments, history, users, permissions and server-side per-user settings. This change combines those primitives into one installable sample app and one task-focused Admin surface.
 
 The prototype is deliberately a complete vertical slice: quick capture, Inbox triage, project entry, personal tasks, single responsibility, task state, shared urgency and private ordered focus. It does not turn Featherbase into a general project-planning suite.
 

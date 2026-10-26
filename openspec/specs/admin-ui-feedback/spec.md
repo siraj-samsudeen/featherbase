@@ -4,7 +4,7 @@
 
 Admin UI Feedback covers Admin behavior that doesn't belong to a more
 specific capability: how the search bar opens what it matches, how a user's
-theme and colour palette follow them, and how turning on a data source's
+theme follows them, and how turning on a data source's
 table completes its foreign keys into References. Building a table from a
 dropped file is covered by Tables and Fields; recent search history and
 Explore are covered by Search and Explore; language preference is covered by
