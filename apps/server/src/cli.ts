@@ -4,6 +4,9 @@
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-person <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli create-person <email> [--full-name "Name"] [--roles "..."] --expects-google-sign-in
+//                                     #473: no password; their first Google sign-in with this address
+//                                     links to them (when Google sign-in admits its domain)
 //   cli set-password <person-id> --stdin
 //                                     break-glass reset (#391): the password is read from stdin, never argv;
 //                                     ends the person's sessions and logs the actor `cli`
@@ -96,7 +99,12 @@ async function cmdCreatePerson(
   flags: Record<string, string | string[] | boolean>,
 ) {
   const [name, password] = positional
-  if (!name || !password) throw new Error('create-person requires <username-or-email> <password>')
+  const expectsGoogle = flags['expects-google-sign-in']
+  // A bare flag: written before the password it would swallow it as its value.
+  if (typeof expectsGoogle === 'string')
+    throw new Error('--expects-google-sign-in takes no value; put it after the other arguments')
+  if (!name || (!password && expectsGoogle !== true)) throw new Error('create-person requires <username-or-email> <password>')
+  if (expectsGoogle === true && !name.includes('@')) throw new Error('--expects-google-sign-in needs an email address')
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const fullName = typeof flags['full-name'] === 'string' ? (flags['full-name'] as string) : name
   // #135: say plainly that the person exists. Case-insensitive on id,
@@ -115,12 +123,14 @@ async function cmdCreatePerson(
       full_name: fullName,
       enabled: true,
       ...(roles.length ? { roles: roles.map((role) => ({ role })) } : {}),
+      ...(expectsGoogle === true ? { expects_google_sign_in: true } : {}),
     },
     'Administrator',
     'insert',
   )
-  await setUserPassword(String(created.row_id), password)
-  console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}`)
+  if (password) await setUserPassword(String(created.row_id), password)
+  const marked = expectsGoogle === true ? '; expects Google sign-in' : ''
+  console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}${marked}`)
 }
 
 // #391: argv lands in shell history and the process list, so a password is

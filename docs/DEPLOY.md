@@ -61,6 +61,16 @@ Manager has a password. Provision a named manager on the production box:
 pnpm --filter server cli create-person <email> <password> --roles "System Manager"
 ```
 
+Or, for a manager who will sign in with Google and needs no password (#473):
+
+```sh
+pnpm --filter server cli create-person <email> --roles "System Manager" --expects-google-sign-in
+```
+
+Their first Google sign-in with that verified address links to them, provided
+the Google method's `allowed_email_domains` admits its domain; the mark is then
+used up. Put `--expects-google-sign-in` last: it takes no value.
+
 Use a protected operator shell; do not put real passwords in shared logs or
 shell history. Administrator is a break-glass account, not a daily login.
 
@@ -495,6 +505,13 @@ Google's account ID, the StyleHR employee code — never by email:
   — the first Google sign-in with that verified address links it for good.
   **Any change to the person's email cancels every unused invite they hold**;
   invite again after changing an email.
+- Instead of an invite, tick **Expects Google sign-in** on the Person (System
+  Manager only, #473). The first Google sign-in links to them only if Google
+  verified the address, it is the person's own email, its domain is in the
+  Google method's `allowed_email_domains`, the person is enabled and has no
+  Google sign-in yet. The link clears the mark and is logged as a `system`
+  activity; any other Google link clears it too. Otherwise the sign-in gets
+  today's answer (refused as an address already in use).
 - `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
   ID (sessions survive) or `{"person_id": …}` moves a link to another person in
   one step (a store mailbox at a Store Manager handover).
