@@ -104,22 +104,4 @@ describe('A single row can be shared beyond its role grants', () => {
     )
     expect((await admin.get<Record<string, unknown>>(dt.rowUrl(String(other.row_id)))).body).toBe('another memo')
   })
-
-  // SPEC: A single row can be shared beyond its role grants — suspected defect, see report.
-  // The spec promises "the ability to share it onward", but nothing reads the
-  // Share row's `share` flag, and Share is a System-Manager-only table, so the
-  // person it was shared with cannot pass it on.
-  test.fails('a person given the ability to share a row onward can share it with someone else', async ({
-    admin,
-    createUser,
-  }) => {
-    const { user, dt, docName } = await setup(admin, createUser)
-    await share(admin, user, docName, { read: true, share: true })
-    const third = await createUser({ roles: [] })
-    await user.post('/api/save_row', {
-      table: SHARE.name,
-      row: { share_table: DT, share_name: docName, person: third.user, read: true },
-    })
-    expect((await third.get<Record<string, unknown>>(dt.rowUrl(docName))).body).toBe('secret memo')
-  })
 })

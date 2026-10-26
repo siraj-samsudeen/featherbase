@@ -464,8 +464,29 @@ export async function touchIdentity(id: string, attrs: { email?: string | null; 
       display_name = coalesce(${attrs.display_name ?? null}, display_name)
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
-  if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase())
+  if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {
     await reconcileIdentityEmail(id, (before.email as string | null) ?? null)
+    await followGoogleAddress(id, (before.email as string | null) ?? null, attrs.email)
+  }
+}
+
+/** A person whose contact address was their Google address keeps it in step
+ *  when Google reports a new verified one. An address someone set by hand, or
+ *  one another person already uses, is left alone. A normal row save, so the
+ *  change is versioned. */
+async function followGoogleAddress(id: string, oldEmail: string | null, newEmail: string) {
+  if (!oldEmail) return
+  const [i] = await sql`
+    select i.person_id, m.kind, p.email, p.updated_at
+    from sign_in_identity i
+    join sign_in_method m on m.row_id = i.method
+    join person p on p.row_id = i.person_id
+    where i.id = ${id} and i.ended_at is null`
+  if (!i || i.kind !== 'google') return
+  if (String(i.email ?? '').toLowerCase() !== oldEmail.toLowerCase()) return
+  const [taken] = await sql`select 1 from person where lower(email) = lower(${newEmail}) and row_id <> ${i.person_id}`
+  if (taken) return
+  await saveDoc('Person', { row_id: i.person_id, updated_at: i.updated_at, email: newEmail }, 'Administrator')
 }
 
 // ------------------------------------------------------------ eligibility

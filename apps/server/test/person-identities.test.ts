@@ -3,7 +3,7 @@
 // sessions remember how they were opened.
 import { afterEach, describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
 import { issueSession } from '../src/auth'
@@ -238,5 +238,26 @@ describe("An account's permanent reference is never an address or a code", () =>
     const [link] = await sql`select person_id, email from sign_in_identity where method = 'google' and subject = 'g-asha' and ended_at is null`
     expect(link).toMatchObject({ person_id: person, email: 'asha.new@gmail.com' })
     expect((await sql`select count(*)::int as n from person where row_id = ${person}`)[0].n).toBe(1)
+    // Their contact address follows the new Google address.
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('asha.new@gmail.com')
+  })
+
+  test('a contact address set by hand stays put when the Google address changes', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const first = await redeemSession(api, await googleSignIn(api, 'ravi.old@gmail.com', { subject: 'g-ravi' }))
+    const person = first.user.row_id
+    const [row] = await sql`select updated_at from person where row_id = ${person}`
+    await patchDoc(admin, `/api/table/Person/${person}`, { updated_at: row.updated_at, email: 'ravi@store.example' })
+    await redeemSession(api, await googleSignIn(api, 'ravi.new@gmail.com', { subject: 'g-ravi' }))
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('ravi@store.example')
+  })
+
+  test('a new Google address another person already uses does not move onto this person', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const first = await redeemSession(api, await googleSignIn(api, 'mina.old@gmail.com', { subject: 'g-mina' }))
+    const person = first.user.row_id
+    await makePerson({ email: 'taken@gmail.com' })
+    await redeemSession(api, await googleSignIn(api, 'taken@gmail.com', { subject: 'g-mina' }))
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('mina.old@gmail.com')
   })
 })

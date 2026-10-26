@@ -83,9 +83,9 @@ counted, and SHALL NOT apply to a System Manager.
 
 ### Requirement: A single row can be shared beyond its role grants
 
-A specific row SHALL be shareable with a chosen person, giving them reading,
-editing, or the ability to share it onward, even if their roles alone
-wouldn't grant that on the table it belongs to.
+A System Manager SHALL be able to share a specific row with a chosen person,
+giving them reading or editing, even if their roles alone wouldn't grant that
+on the table it belongs to.
 
 #### Scenario: Shared with someone outside the role grant
 

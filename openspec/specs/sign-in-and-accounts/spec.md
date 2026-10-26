@@ -668,7 +668,8 @@ can change or be reused; the reference cannot.
 - **WHEN** someone's account was created by their first Google sign-in and
   they later move to a new Google address
 - **THEN** their account, its history and everything that refers to it are
-  unchanged; only their contact address is updated
+  unchanged; only their contact address is updated, unless it was set by hand
+  or another person already uses the new address
 
 #### Scenario: Renaming is refused
 
