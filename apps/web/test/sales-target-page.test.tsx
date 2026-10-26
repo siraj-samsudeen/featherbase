@@ -3,7 +3,7 @@
 // there, the cached table is the report and stays open. Server in-process; MotherDuck stubbed.
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { Sql } from 'postgres'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
@@ -479,4 +479,15 @@ test('a report that cannot be opened says so in one plain sentence, without the 
   expect(card).toHaveTextContent('Report unavailable')
   expect(card).toHaveTextContent(PLAIN_UNAVAILABLE)
   expect(card).not.toHaveTextContent(/HTTP|500|upstream|session|embed|sales figure/i)
+})
+
+test('Try again opens the report once the live report answers', async ({ admin, api }) => {
+  let answers = 0
+  _setEmbedFetch(async () => (++answers === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
 })

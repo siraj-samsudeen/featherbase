@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Notice, Select, cardClasses } from '../components/ui'
+import { Button, Notice, Select, cardClasses } from '../components/ui'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
@@ -180,6 +180,17 @@ function SalesTargetReport() {
   const [pre, setPre] = useState<Pre>({ kind: 'loading' })
   const [showNoTargetNoSale, setShowNoTargetNoSale] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  // #500: Try again re-runs whichever opening failed — the identity call, or the store's opening —
+  // without a page reload. While it runs the card stays up with a busy button, so it cannot be
+  // pressed twice; the next answer, success or failure, settles it.
+  const [identityAttempt, setIdentityAttempt] = useState(0)
+  const [openingAttempt, setOpeningAttempt] = useState(0)
+  const [retrying, setRetrying] = useState(false)
+  const retryingRef = useRef(false)
+  retryingRef.current = retrying
+  useEffect(() => {
+    if (embed.kind !== 'loading') setRetrying(false)
+  }, [embed])
 
   const [store, setStore] = useState<string | null>(null)
   // Said once when a store the reader had open is no longer theirs and the report fell back (#409).
@@ -206,7 +217,7 @@ function SalesTargetReport() {
       }
     })()
     return () => controller.abort()
-  }, [user?.row_id])
+  }, [user?.row_id, identityAttempt])
 
   // One opening per store: the cached table and a fresh embed session, for the store on show.
   useEffect(() => {
@@ -215,8 +226,10 @@ function SalesTargetReport() {
     const controller = new AbortController()
     abortRef.current = controller
     const current = () => seq === openingSeq && !controller.signal.aborted
-    setPre({ kind: 'loading' })
-    setEmbed({ kind: 'loading' })
+    if (!retryingRef.current) {
+      setPre({ kind: 'loading' })
+      setEmbed({ kind: 'loading' })
+    }
     // Named only when there is a choice to make; the server re-checks it against the reader's own stores.
     const query = store && me.stores.length > 1 ? `?store=${encodeURIComponent(store)}` : ''
     // A 403 means the role was taken away OR the store named is no longer theirs. Ask /me which:
@@ -297,7 +310,15 @@ function SalesTargetReport() {
       }
     })()
     return () => controller.abort()
-  }, [me, store])
+  }, [me, store, openingAttempt])
+
+  function tryAgain() {
+    if (retryingRef.current) return
+    retryingRef.current = true
+    setRetrying(true)
+    if (me) setOpeningAttempt((n) => n + 1)
+    else setIdentityAttempt((n) => n + 1)
+  }
 
   function switchStore(next: string) {
     rememberStore(user?.row_id, next)
@@ -576,6 +597,9 @@ function SalesTargetReport() {
               <>
                 <p className="font-medium text-negative">Report unavailable</p>
                 <p className="mt-1 text-ink-muted">The report couldn't load right now. Try again in a few minutes.</p>
+                <Button variant="secondary" className="mt-3" loading={retrying} onClick={tryAgain}>
+                  Try again
+                </Button>
               </>
             )}
           </div>
