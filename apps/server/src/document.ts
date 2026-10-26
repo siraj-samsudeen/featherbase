@@ -443,6 +443,16 @@ async function assertAccessColumnsUnchanged(
       throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { enabled: 'must be true or false' })
     if (existing !== null && values.enabled !== stored) changed.push('enabled')
   }
+  if (meta.name === 'Person' && 'expects_google_sign_in' in values) {
+    // #473: lets the first Google sign-in with the person's own address link
+    // to them, so it is access like `enabled` — judged the same way, and on a
+    // new person too (switching it on there is the whole point).
+    const value = values.expects_google_sign_in
+    const stored = existing === null ? false : existing.expects_google_sign_in === true
+    if (value != null && typeof value !== 'boolean')
+      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { expects_google_sign_in: 'must be true or false' })
+    if ((value === true) !== stored) changed.push('expects_google_sign_in')
+  }
   if (!changed.length) return
   if (!trusted && (await isPrivileged(user))) return
   throw securityRefusal(`a ${meta.name}'s ${changed.join(' or ')}`)
