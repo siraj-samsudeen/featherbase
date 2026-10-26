@@ -10,7 +10,7 @@
 //
 // Run as its own process so DATABASE_URL can point at the rehearsal target
 // before the connection pool is created.
-import { _getRootSql, _setSqlDelegate, sql, type TxSql } from './db'
+import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
 import { applyMigrationFile, pendingMigrations } from './migrate'
 import { invalidateMeta } from './meta'
@@ -24,21 +24,17 @@ export interface PlanOptions {
   checkSignIn: string[]
 }
 
+/** Where the rehearsal's report goes: the terminal, or a test's buffer. */
+export type PlanOutput = (line: string) => void
+
 const ROLLBACK = new Error('people:plan rollback')
 
-/** A hook for later migrations (0102) to print their own plan. */
-export type PlanStep = (file: string, opts: PlanOptions) => Promise<boolean>
-const steps: PlanStep[] = []
-export function registerPlanStep(step: PlanStep) {
-  steps.push(step)
-}
-
-async function runFile(file: string, opts: PlanOptions) {
+async function runFile(file: string, opts: PlanOptions, out: PlanOutput) {
   if (file === '0101_person_rename.ts') {
     await sql.begin(async () => {
       await sql.unsafe('set local search_path = featherbase, pg_temp')
       const report = await migratePersonRename()
-      console.log(formatPersonRenameReport(report, { map: opts.map, columns: opts.columns }))
+      out(formatPersonRenameReport(report, { map: opts.map, columns: opts.columns }))
       await sql`insert into featherbase.migration (name) values (${file})`
     })
     invalidateMeta()
@@ -47,34 +43,31 @@ async function runFile(file: string, opts: PlanOptions) {
   if (file === '0102_person_resolution.ts') {
     await sql.begin(async () => {
       await sql.unsafe('set local search_path = featherbase, pg_temp')
-      console.log(formatResolutionPlan(await migratePersonResolution()))
+      out(formatResolutionPlan(await migratePersonResolution()))
       await sql`insert into featherbase.migration (name) values (${file})`
     })
     invalidateMeta()
     return
   }
-  for (const step of steps) if (await step(file, opts)) return
   await sql.begin(() => applyMigrationFile(file))
-  console.log(`applied ${file}`)
+  out(`applied ${file}`)
 }
 
 /** On a database the re-id has already run on: classify again and scan the
  *  recorded map, so a regression (an old id written back) is visible. */
-async function rescan(opts: PlanOptions) {
+async function rescan(opts: PlanOptions, out: PlanOutput) {
   const classification = await classifyColumns()
-  const [have] = await sql`select to_regclass('featherbase.person_id_map') as r`
-  const map: IdMapEntry[] = have?.r
-    ? ((await sql`select old_id, new_id, kind from person_id_map`) as unknown as IdMapEntry[])
-    : []
+  // 0101 created person_id_map, and this runs only once 0101 is applied.
+  const map = (await sql`select old_id, new_id, kind from person_id_map`) as unknown as IdMapEntry[]
   await stageRewriteMap(sql, map)
   const hits = await scanForOldIds(sql, classification.classified)
-  console.log(`person_id_map: ${map.length} entries`)
-  console.log(`scan: ${hits.length ? hits.map((h) => `${h.column} ${h.rows}`).join('; ') : 'no old id in any registered column'}`)
-  console.log(`text columns: ${classification.classified.length} classified, ${classification.unclassified.length} unclassified`)
-  if (classification.unclassified.length || opts.columns) console.log(formatClassification(classification))
+  out(`person_id_map: ${map.length} entries`)
+  out(`scan: ${hits.length ? hits.map((h) => `${h.column} ${h.rows}`).join('; ') : 'no old id in any registered column'}`)
+  out(`text columns: ${classification.classified.length} classified, ${classification.unclassified.length} unclassified`)
+  if (classification.unclassified.length || opts.columns) out(formatClassification(classification))
 }
 
-async function checkSignIns(codes: string[]) {
+async function checkSignIns(codes: string[], out: PlanOutput) {
   if (!codes.length) return
   const { TEST_MODE_PHRASE, delegatedMethods, linkedUser } = await import('./delegated-login')
   const { assertEligible } = await import('./sign-in')
@@ -87,28 +80,29 @@ async function checkSignIns(codes: string[]) {
         try {
           const found = await linkedUser(cfg, code)
           await assertEligible(cfg.method, found.user)
-          console.log(`test-mode sign-in by code ${code} via ${m.key}: OK → ${found.user}`)
+          out(`test-mode sign-in by code ${code} via ${m.key}: OK → ${found.user}`)
         } catch (err) {
-          console.log(`test-mode sign-in by code ${code} via ${m.key}: REFUSED (${(err as Error).message})`)
+          out(`test-mode sign-in by code ${code} via ${m.key}: REFUSED (${(err as Error).message})`)
         }
       }
     }
   })
 }
 
-export async function rehearse(opts: PlanOptions): Promise<void> {
+/** The rehearsal: one transaction, always rolled back. Every query in it,
+ *  the migrations' own included, runs on that transaction (`withTransaction`
+ *  scopes the platform's `sql` to it). */
+export async function rehearse(opts: PlanOptions, out: PlanOutput = console.log): Promise<void> {
   await assertDatabaseEnvironment()
   const pending = await pendingMigrations()
-  console.log(`people:plan — rehearsal in a rolled-back transaction; pending: ${pending.length ? pending.join(', ') : 'none'}`)
+  out(`people:plan — rehearsal in a rolled-back transaction; pending: ${pending.length ? pending.join(', ') : 'none'}`)
   try {
-    await _getRootSql().begin(async (tx) => {
-      _setSqlDelegate(tx as unknown as TxSql)
+    await withTransaction(async () => {
       try {
-        for (const file of pending) await runFile(file, opts)
-        if (!pending.includes('0101_person_rename.ts')) await rescan(opts)
-        await checkSignIns(opts.checkSignIn)
+        for (const file of pending) await runFile(file, opts, out)
+        if (!pending.includes('0101_person_rename.ts')) await rescan(opts, out)
+        await checkSignIns(opts.checkSignIn, out)
       } finally {
-        _setSqlDelegate(null)
         invalidateMeta()
       }
       throw ROLLBACK
@@ -116,7 +110,7 @@ export async function rehearse(opts: PlanOptions): Promise<void> {
   } catch (err) {
     if (err !== ROLLBACK) throw err
   }
-  console.log('people:plan — rolled back; nothing was changed')
+  out('people:plan — rolled back; nothing was changed')
 }
 
 export function parsePlanOptions(argv: string[]): PlanOptions & { rehearse: string | null } {
@@ -135,6 +129,7 @@ export function parsePlanOptions(argv: string[]): PlanOptions & { rehearse: stri
 }
 
 // Entry point when spawned by `cli people:plan`.
+/* v8 ignore next 11 -- entry-point guard; it runs only as its own process (cli people:plan spawns it), which in-process coverage cannot see */
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? '')
 if (isMain && process.argv[1]?.endsWith('people-plan.ts')) {
   const opts = parsePlanOptions(process.argv.slice(2))

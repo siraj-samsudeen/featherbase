@@ -8,14 +8,18 @@ import { sql } from '../src/db'
 import { normaliseValue, verhoeffValid } from '../src/identifiers'
 import { addIdentifier, deleteIdentifier, listIdentifiers, updateIdentifier } from '../src/person-identifiers'
 import { applySeedPack } from '../src/seed-packs'
-import { makePerson } from './fixtures'
-import { inviteGoogleRaw } from './identity-fixtures'
+import { expectApiError, makePerson } from './fixtures'
+import { configureDelegated, inviteGoogleRaw } from './identity-fixtures'
+import { saveIdentifierSystem } from '../src/seed-packs'
 
 const ROSTER = { internal: { source: 'stylehr-roster-sync', verified: true } }
 
 describe('normalising', () => {
   test('codes are upper-cased, addresses lower-cased, Indian mobiles canonical; national IDs need a valid check digit', () => {
     expect(normaliseValue(' rr-0102 ', 'upper')).toBe('RR-0102')
+    expect(normaliseValue(' Mixed Case ', 'none')).toBe(' Mixed Case ')
+    expect(normaliseValue(' Mixed Case ', 'trim')).toBe('Mixed Case')
+    expect(() => normaliseValue('   ', 'none')).toThrow(/value is required/)
     expect(normaliseValue(' Owner@Jeyarama.COM', 'lower')).toBe('owner@jeyarama.com')
     for (const typed of ['98470 12345', '+91 98470-12345', '098470 12345', '919847012345'])
       expect(normaliseValue(typed, 'indian-mobile')).toBe('+919847012345')
@@ -319,3 +323,32 @@ describe('the Person picker finds people by their current employee code (review 
     expect(await pick('RR-41003')).toEqual([])
   })
 })
+
+describe('who may change a value follows its system (D9)', () => {
+  test('a person without System Manager cannot add their own value to a system edited by System Managers, or by reviewers', async ({ createUser }) => {
+    await saveIdentifierSystem({ row_id: 'badge-sm', label: 'Locker', kind: 'contact', source: 'self', match: 'Off', sensitivity: 'Normal', edited_by: 'system-manager' })
+    await saveIdentifierSystem({ row_id: 'badge-rv', label: 'Uniform', kind: 'contact', source: 'self', match: 'Off', sensitivity: 'Normal', edited_by: 'reviewers' })
+    const clerk = await createUser({ email: 'clerk.badges@x.test' })
+    await expectApiError(clerk.post(`/api/people/${clerk.user}/identifiers`, { system: 'badge-sm', value: 'L-1' }), {
+      status: 403, type: 'PermissionError', message: expect.stringContaining('You may not change Locker values'), fields: { code: 'not_allowed' },
+    })
+    await expectApiError(clerk.post(`/api/people/${clerk.user}/identifiers`, { system: 'badge-rv', value: 'U-1' }), {
+      status: 403, type: 'PermissionError', message: expect.stringContaining('You may not change Uniform values'), fields: { code: 'not_allowed' },
+    })
+    expect(await sql`select 1 from person_identifier where person_id = ${clerk.user} and system in ('badge-sm', 'badge-rv')`).toEqual([])
+  })
+})
+
+describe('write-through skips a provider value that does not fit its system', () => {
+  test('a link whose subject the method’s system cannot read writes no row, and unlinking it still ends it', async ({ admin }) => {
+    await configureDelegated()
+    // An administrator pointed StyleHR at the phone system by mistake.
+    await sql`update sign_in_method set identifier_system = 'phone' where row_id = 'stylehr'`
+    const p = await makePerson({ full_name: 'Misfit Link' })
+    const { id } = await admin.post<{ id: string }>(`/api/people/${p}/identities`, { method: 'stylehr', subject: '900001', sign_in_name: 'misfit' })
+    expect(await sql`select 1 from person_identifier where person_id = ${p} and system = 'phone'`).toEqual([])
+    expect((await admin.fetch(`/api/identities/${id}`, { method: 'DELETE' })).status).toBe(200)
+    expect(await sql`select ended_reason from sign_in_identity where id = ${id}`).toEqual([{ ended_reason: 'unlinked' }])
+  })
+})
+

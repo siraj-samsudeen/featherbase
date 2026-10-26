@@ -265,11 +265,9 @@ interface Moved {
  *  lost; a scope or share row naming no principal aborts (never fail-open). */
 export async function splitPrincipals(): Promise<Moved> {
   await createServiceAccountTable()
-  const hasType = await columnExists('person', 'user_type')
-  const services = hasType
-    ? await sql`select row_id, full_name, enabled, api_rate_limit, created_at, created_by, updated_at, updated_by
-        from person where user_type = 'service' order by row_id`
-    : []
+  // 0069 gave every account a user_type; 0101 runs only where it is still there.
+  const services = await sql`select row_id, full_name, enabled, api_rate_limit, created_at, created_by, updated_at, updated_by
+    from person where user_type = 'service' order by row_id`
   const serviceIds = services.map((s) => String(s.row_id))
   const serviceLabels = new Map(services.map((s) => [String(s.row_id), String(s.row_id)]))
   for (const s of services)
@@ -338,7 +336,7 @@ export async function splitPrincipals(): Promise<Moved> {
     await sql`delete from password_reset where "user" in ${sql(serviceIds)}`
     await sql`delete from person where row_id in ${sql(serviceIds)}`
   }
-  if (hasType) await sql.unsafe(`alter table ${Q('person')} drop column user_type`)
+  await sql.unsafe(`alter table ${Q('person')} drop column user_type`)
   invalidateMeta()
   return { serviceIds, serviceLabels }
 }

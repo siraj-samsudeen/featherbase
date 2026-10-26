@@ -11,7 +11,8 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { classifyColumns, type ClassifiedColumn } from '../src/person-registry'
-import { migratePersonRename, reidPrincipals, splitPrincipals } from '../src/person-rename-migration'
+import { formatPersonRenameReport, migratePersonRename, reidPrincipals, splitPrincipals } from '../src/person-rename-migration'
+import { pre0101Shape } from './person-migration-fixtures'
 
 const USR = 'usr_0123456789abcdef0123'
 
@@ -206,4 +207,101 @@ describe('migration 0101: person-rename', () => {
     const again = await migratePersonRename()
     expect(again.alreadyApplied).toBe(true)
   })
+
+  test('running it again changes nothing, and says so', async () => {
+    const again = await migratePersonRename()
+    expect(formatPersonRenameReport(again)).toBe('person-rename: already applied')
+  })
 })
+
+// The whole of 0101 from the database it ran on: `user` and `user_identity`
+// still under their old names, the Table still "User", service accounts in it.
+async function preRenameShape() {
+  await preSplitShape()
+  await pre0101Shape()
+  await sql`insert into saved_view (row_id, created_by, updated_by, ref_table, label, filters) values
+    ('sv-user', 'Administrator', 'Administrator', 'User', 'people', '[]')`
+  await sql`insert into custom_field (row_id, dt, column_name, label) values ('User-probe_col', 'User', 'probe_col', 'Probe')`
+}
+
+describe('migration 0101 from the pre-rename database', () => {
+  test('User becomes Person: the table, its keys, triggers and metadata, and every stored Table name', async () => {
+    await preRenameShape()
+    const report = await migratePersonRename()
+    expect(report.alreadyApplied).toBe(false)
+    const rel = async (name: string) => (await sql`select to_regclass(${'featherbase.' + name}) as r`)[0].r
+    expect(await rel('person')).toBeTruthy()
+    expect(await rel('"user"')).toBeNull()
+    expect(await rel('user_identity')).toBeNull()
+    expect(await sql`select 1 from sign_in_identity where person_id = (select person_id from sign_in_identity where id = 'uid_rr')`).toHaveLength(1)
+    for (const name of ['person_pkey', 'sign_in_identity_pkey', 'sign_in_identity_person_id_fkey', 'sign_in_identity_method_fkey', 'person_id_namespace', 'service_account_id_namespace'])
+      expect(await sql`select 1 from pg_constraint where conname = ${name}`, name).toHaveLength(1)
+    expect((await sql`select tgname from pg_trigger where tgrelid = 'featherbase.person'::regclass and not tgisinternal order by tgname`).map((r) => r.tgname))
+      .toEqual(expect.arrayContaining(['person_cancel_email_invites', 'person_id_is_permanent']))
+    expect(await sql`select 1 from pg_trigger where tgname like 'user\_%' and tgrelid = 'featherbase.person'::regclass`).toHaveLength(0)
+    expect(await sql`select indexname from pg_indexes where schemaname = 'featherbase'
+      and (indexname like 'user\_identity%' or indexname in ('user_email_lower_uq', 'user_username_lower_uq'))`).toEqual([])
+    // A person's id is permanent again, under the new name.
+    await expect(sql.begin(() => sql`update person set row_id = 'psn_bbbbbbbbbbbbbbbbbbbb' where row_id = 'Guest'`)).rejects.toThrow(/person Guest cannot be renamed/)
+
+    expect(await sql`select label, id_pattern from table_def where name in ('Person', 'User')`).toEqual([{ label: 'Person', id_pattern: 'opaque:psn_' }])
+    expect(await sql`select 1 from column_def where parent = 'User' or reference_table = 'User'`).toHaveLength(0)
+    expect(await sql`select column_type, read_only from column_def where parent = 'Person' and column_name = 'built_in'`).toEqual([{ column_type: 'Check', read_only: true }])
+    expect(await sql`select built_in from person where row_id = 'Administrator'`).toEqual([{ built_in: true }])
+    expect(await sql`select ref_table from saved_view where row_id = 'sv-user'`).toEqual([{ ref_table: 'Person' }])
+    expect(await sql`select row_id, dt from custom_field where column_name = 'probe_col'`).toEqual([{ row_id: 'Person-probe_col', dt: 'Person' }])
+    expect(await sql`select label from home_page_link where link_to = 'Person'`).toEqual([{ label: 'Person' }])
+    expect(await sql`select 1 from permission where ref_table = 'User'`).toHaveLength(0)
+    expect(await sql`select 1 from has_role where parenttype = 'User'`).toHaveLength(0)
+  })
+
+  test('the report counts what moved and prints the id map and the classification on request', async () => {
+    await preRenameShape()
+    const report = await migratePersonRename()
+    const bot = report.serviceAccounts.find((s) => s.old_id === 'svc-bot')!
+    expect(bot).toMatchObject({ label: 'svc-bot', new_id: expect.stringMatching(/^svc_/) })
+    expect(report.persons.map((p) => p.old_id)).toEqual(expect.arrayContaining(['RR-0101', '30654', 'owner@jeyarama.com', USR]))
+    expect(report.builtIns).toEqual(['Administrator', 'Guest'])
+    expect(report.tokens).toEqual({ person: 1, service_account: 1 })
+    expect(report.scopeRows.service_account).toBe(1)
+    expect(report.shareRows.service_account).toBe(1)
+    expect(report.roleRows.service_account).toBe(1)
+    expect(report.conditionalRewritten).toMatchObject({ 'featherbase.data_scope.for_value': 1, 'featherbase.share.share_name': 1 })
+    expect(report.rewritten['featherbase.comment.created_by']).toBe(1)
+    expect(report.scan).toEqual([])
+
+    const text = formatPersonRenameReport(report, { map: true, columns: true })
+    expect(text).toContain(`  persons re-keyed: ${report.persons.length} (built-ins kept: Administrator, Guest)`)
+    expect(text).toContain(`    svc-bot: svc-bot → ${bot.new_id}`)
+    expect(text).toContain('  tokens: 1 person, 1 service account')
+    expect(text).toContain('featherbase.data_scope.for_value 1')
+    expect(text).toContain('    featherbase.comment.created_by: 1')
+    expect(text).toContain('  scan: no old id survives in any registered column')
+    expect(text).toContain('  assignment-rule conditions naming an old id (rewrite by hand): ar-1: 30654')
+    expect(text).toContain('  id map:')
+    expect(text).toContain(`    RR-0101 → ${report.persons.find((p) => p.old_id === 'RR-0101')!.new_id}`)
+    expect(text).toMatch(/text columns: \d+ classified, 0 unclassified/)
+    expect(text).toContain('  featherbase.data_scope.for_value: conditional-id (allow_table in Person, Service Account) — declared')
+    expect(text).toContain('  featherbase.saved_view.filters: json-with-ids (filters on the Table in ref_table)')
+    expect(text).toContain('  featherbase.has_role.person: id [generated]')
+
+    // Without the options, and with nothing to list, the report says "none".
+    const bare = formatPersonRenameReport({ ...report, serviceAccounts: [], rewritten: {}, conditionalRewritten: {}, conditionsNamingOldIds: [],
+      scan: [{ column: 'featherbase.comment.created_by', rows: 2 }] })
+    expect(bare).toContain('  service accounts moved and re-keyed: 0\n')
+    expect(bare).toContain('  conditional ids rewritten: none')
+    expect(bare).toContain('  rows rewritten per column: none')
+    expect(bare).toContain('  scan: featherbase.comment.created_by 2')
+    expect(bare).toContain('(rewrite by hand): none')
+    expect(bare).not.toContain('id map:')
+  })
+
+  test('an unclassified text column stops the migration before the re-id, naming the column', async () => {
+    await preRenameShape()
+    await sql`alter table featherbase.access_token add column mystery_principal varchar(140)`
+    await expect(sql.begin(() => migratePersonRename())).rejects.toThrow(
+      /unclassified text columns; classify them in src\/person-registry\.ts first:\ntext columns: 0 classified, 1 unclassified\n {2}featherbase\.access_token\.mystery_principal \(character varying\): UNCLASSIFIED/,
+    )
+  })
+})
+

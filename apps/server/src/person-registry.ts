@@ -335,6 +335,7 @@ async function loadRewriteMap(db: Sql | TxSql): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [String(r.old_id), String(r.new_id)]))
 }
 
+/** A json-with-ids column is jsonb (saved_view.filters), so its text always parses. */
 async function jsonRows(db: Sql | TxSql, c: ClassifiedColumn) {
   return db.unsafe(
     `select ctid::text as ctid, "${c.column}"::text as v, "${c.typeColumn}" as tbl from ${qualified(c)} where "${c.column}" is not null`,
@@ -347,14 +348,8 @@ async function rewriteJsonColumn(db: Sql | TxSql, c: ClassifiedColumn): Promise<
   const cache = new Map<string, Set<string>>()
   let n = 0
   for (const r of await jsonRows(db, c)) {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(String(r.v))
-    } catch {
-      continue
-    }
     const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
-    const { value, changed } = mapFilterValues(parsed, columns, (v) => map.get(v) ?? null)
+    const { value, changed } = mapFilterValues(JSON.parse(String(r.v)), columns, (v) => map.get(v) ?? null)
     if (!changed) continue
     await db.unsafe(`update ${qualified(c)} set "${c.column}" = $1::text::jsonb where ctid = $2::text::tid`, [JSON.stringify(value), String(r.ctid)])
     n++
@@ -390,12 +385,8 @@ export async function scanForOldIds(db: Sql | TxSql, columns: ClassifiedColumn[]
       const cache = new Map<string, Set<string>>()
       let n = 0
       for (const r of await jsonRows(db, c)) {
-        try {
-          const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
-          if (mapFilterValues(JSON.parse(String(r.v)), columns, (v) => (old.has(v) ? v : null)).changed) n++
-        } catch {
-          /* not JSON: nothing to hold */
-        }
+        const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
+        if (mapFilterValues(JSON.parse(String(r.v)), columns, (v) => (old.has(v) ? v : null)).changed) n++
       }
       if (n) hits.push({ column: key, rows: n })
     }
