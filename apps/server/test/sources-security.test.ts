@@ -208,7 +208,7 @@ describe('finding 2: credential-named source columns never surface', () => {
 })
 
 describe('finding 3: optimistic locking advances the revision', () => {
-  test('two Desk clients: the second stale save conflicts', async ({ admin }) => {
+  test('two Admin clients: the second stale save conflicts', async ({ admin }) => {
     await bindAccount(admin)
     const path = `/api/table/${encodeURIComponent(BOUND)}/ACC-A`
     // Both editors load the same revision.

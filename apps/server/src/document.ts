@@ -531,7 +531,7 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
-  // line — API responses, the Desk, tests — sees `row_id` and nothing else.
+  // line — API responses, the Admin, tests — sees `row_id` and nothing else.
   if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
@@ -855,7 +855,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Desk shows that state).
+// Without one, updates are last-write-wins (the Admin shows that state).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
@@ -886,7 +886,7 @@ async function updateBoundDoc(
   await runHooks('validate', hctx)
   await runHooks('before_save', hctx)
   // BV2!: write only fields present in the payload — plus any a hook
-  // actually changed — so CLI-owned columns the Desk never touched survive.
+  // actually changed — so CLI-owned columns the Admin never touched survive.
   const toWrite: RowValues = {}
   const norm = (v: unknown) => JSON.stringify(v instanceof Date ? v.toISOString() : (v ?? null))
   for (const f of meta.columns) {

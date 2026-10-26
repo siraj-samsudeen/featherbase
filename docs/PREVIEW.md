@@ -147,7 +147,7 @@ and the route stays off. It does not quietly run with a weak key.
 
 ## What you land in
 
-Click the link and you are in the Desk, signed in, with a **Preview
+Click the link and you are in the Admin, signed in, with a **Preview
 deployment** banner across the top. The session lasts as long as any other, so
 the link is needed once per browser.
 

@@ -67,7 +67,7 @@ run on selected records) — all from those Ruby declarations, at runtime.
   every generated surface, define the named next step — metadata tweak →
   layout override → custom fieldtype → custom view component → custom
   page ("custom tool") — each staying inside the platform's nav, auth,
-  and theme. Write this ladder into the Desk's contribution-point spec
+  and theme. Write this ladder into the Admin's contribution-point spec
   explicitly; "you can't get stuck" is a testable product property, not a
   slogan.
 - **Fields as small, generatable component packages:** Avo's custom-field

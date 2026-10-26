@@ -192,7 +192,7 @@ describe.skipIf(!MYSQL_URL)('mysql: introspection and reflection', () => {
 })
 
 // Reflect the given source tables, asserting all were created; returns the
-// created Desk names keyed by source table name.
+// created Admin names keyed by source table name.
 async function reflect(
   admin: { fetch: (p: string, i?: RequestInit) => Promise<Response> },
   tables: string[],
