@@ -250,6 +250,12 @@ an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
 `openspec/config.yaml`. The CLI is pinned to an exact version in root
 `package.json` and bumped by the weekly `openspec-update` workflow.
 
+**Archive in the PR that finishes the change.** The PR that ticks a change's
+last task also runs `pnpm exec openspec archive <name> --yes`, so the delta
+reaches `openspec/specs/` in the same merge. `pnpm check:specs` fails while a
+change with every task ticked is still active. A change that stays open
+(later stages, or a step only the owner can take) keeps that task unticked.
+
 The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md).
 
 ## Agent skills
