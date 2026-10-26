@@ -630,11 +630,21 @@ salesTargetRoutes.post('/embed_session', async (c) => {
   // was; the reverse — hiding a real outage behind that same quiet marker —
   // is just as wrong.
   if (!r.ok && r.kind === 'not_configured') return c.json({ not_configured: true, reason: r.error })
-  if (!r.ok)
+  if (!r.ok) {
+    // #500: the page tells the reader only that the report couldn't load; the detail is here,
+    // for whoever runs the instance. The person's opaque id, never the token or a password.
+    console.error(JSON.stringify({
+      event: 'sales_target_embed_session_failed',
+      person: user.row_id,
+      call: 'POST /v1/dives/:dive/embed-session',
+      status: r.status,
+      message: r.error,
+    }))
     return c.json(
       { error: { type: 'EmbedSessionError', message: r.error, upstream_status: r.status } },
       502,
     )
+  }
   return c.json({ session: r.session })
 })
 
