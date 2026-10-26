@@ -78,11 +78,18 @@ async function systemManagerEmail(): Promise<HealthCheck> {
 async function recommendedVariables(environment: string): Promise<HealthCheck> {
   const { settingsRequirements } = await import('./release-preflight')
   const report = checkVariables({ environment, ...(await settingsRequirements()) })
-  const missing = report.warnings.map((w) => w.replace(/^WARNING:\s*/, ''))
+  // A refusal here is a variable the stored settings made required after the
+  // server started (Google sign-in turned on in Admin without its secret):
+  // the release would refuse it, so it is an error, not a warning (Codex review).
+  // Only those the settings added: the server cannot be running without the
+  // ones every server needs.
+  const always = new Set(checkVariables({ environment }).refusals)
+  const refused = report.refusals.filter((r) => !always.has(r))
+  const missing = [...refused, ...report.warnings.map((w) => w.replace(/^WARNING:\s*/, ''))]
   const base = {
     key: 'recommended-variables',
     title: 'Recommended deployment variables',
-    severity: 'warning' as const,
+    severity: (refused.length ? 'error' : 'warning') as HealthSeverity,
     why: 'A missing recommended variable does not stop the server, but the part that needs it falls back to a default that may not suit a hosted instance.',
   }
   if (!missing.length) return { ...base, ok: true, message: 'Every recommended variable is set.', fix: null }
@@ -246,13 +253,31 @@ export function formatHealthReport(checks: HealthCheck[]): { text: string; faili
 
 const HISTORY_LOCK = 'featherbase.instance_health'
 
+async function holdHistory(): Promise<void> {
+  await sql`select pg_advisory_xact_lock(hashtext(${HISTORY_LOCK}))`
+}
+
+/** Run the checks and record what changed, as one step under the history
+ *  lock, timed after the lock is held: an observation that started earlier
+ *  can never be recorded after a later one (Codex review). The scheduled job
+ *  and the health page both observe through here. */
+export async function observeHealth(opts: HealthCheckOptions = {}): Promise<{ checks: HealthCheck[]; recorded: number; at: Date }> {
+  return withTransaction(async () => {
+    await holdHistory()
+    const at = opts.now ?? new Date()
+    const checks = await runHealthChecks({ ...opts, now: at })
+    const recorded = await recordHealthTransitions(checks, at)
+    return { checks, recorded, at }
+  })
+}
+
 /** Record each check whose state differs from its last recorded one (or that
  *  has none yet). Returns how many rows were written. */
 export async function recordHealthTransitions(checks: HealthCheck[], at: Date = new Date()): Promise<number> {
   if (!checks.length) return 0
   return withTransaction(async () => {
     // One writer at a time, so two readers seeing the same flip write it once.
-    await sql`select pg_advisory_xact_lock(hashtext(${HISTORY_LOCK}))`
+    await holdHistory()
     const keys = checks.map((c) => c.key)
     const last = await sql`
       select distinct on (check_key) check_key, ok from health_check_event
@@ -292,9 +317,11 @@ const HISTORY_LIMIT = 20
 /** Run the checks, record what changed (unless `record` is false), and
  *  return them with their history: failing first, errors before warnings. */
 export async function instanceHealth(opts: HealthCheckOptions & { record?: boolean } = {}): Promise<InstanceHealth> {
-  const now = opts.now ?? new Date()
-  const checks = await runHealthChecks({ ...opts, now })
-  if (opts.record !== false) await recordHealthTransitions(checks, now)
+  const observed = opts.record === false
+    ? { checks: await runHealthChecks({ ...opts, now: opts.now ?? new Date() }), at: opts.now ?? new Date() }
+    : await observeHealth(opts)
+  const { checks } = observed
+  const now = observed.at
   const rows = await sql`
     select check_key, ok, severity, message, at from (
       select *, row_number() over (partition by check_key order by at desc, id desc) as n

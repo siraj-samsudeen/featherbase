@@ -4,7 +4,7 @@
 // transaction through saveDoc as the actor `instance-settings`, and exports an
 // environment's settings in the file's own shape, never with a secret in it.
 import { z } from 'zod'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { tableRelation } from './table-engine'
@@ -13,7 +13,7 @@ import { logActivity } from './audit'
 import { appOperation } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
-import { INSTANCE_SETTINGS_ACTOR, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
+import { INSTANCE_SETTINGS_ACTOR, holdManagedSet, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
 import { config } from './config'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
@@ -485,6 +485,16 @@ export interface SettingDrift {
  *  or when nothing differs; null when that apply kept no values (an apply
  *  recorded before 0123), so nothing can be compared. */
 export async function settingsDrift(): Promise<SettingDrift[] | null> {
+  // The baseline and the values it is compared with are read under the
+  // managed-settings lock, so an apply committing between the two reads can
+  // never look like drift (Codex review).
+  return withTransaction(async () => {
+    await holdManagedSet(sql, null)
+    return driftNow()
+  })
+}
+
+async function driftNow(): Promise<SettingDrift[] | null> {
   const apply = await lastApply()
   if (!apply) return []
   if (apply.managed_values === null) return null

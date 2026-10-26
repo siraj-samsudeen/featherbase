@@ -70,6 +70,15 @@ describe('the checks (5.1)', () => {
     })
   })
 
+  test('a variable the settings made required is an error on production, not a pass (Codex review)', async () => {
+    await sql`update sign_in_method set enabled = true, client_id = 'a-client-id' where kind = 'google'`
+    await withVariable('GOOGLE_CLIENT_SECRET', '', async () => {
+      const check = byKey(await runHealthChecks({ environment: 'production' }), 'recommended-variables')
+      expect(check).toMatchObject({ ok: false, severity: 'error' })
+      expect(check.message).toContain('GOOGLE_CLIENT_SECRET')
+    })
+  })
+
   test('settings file applied: failing and saying how to apply it before the first apply, passing after', async () => {
     await sql`delete from instance_settings_apply`
     const never = byKey(await runHealthChecks(), 'settings-applied')
