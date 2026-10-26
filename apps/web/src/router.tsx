@@ -14,9 +14,9 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState } from './components/ui'
+import { EmptyState, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
-import { getToken, landingPath, loginHref } from './lib/api'
+import { ApiError, getToken, landingPath, loginHref } from './lib/api'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -169,7 +169,28 @@ const adminRoute = createRoute({
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: AdminLayout,
+  // Verifier, round 2 on #495: a path no Admin page matches.
+  notFoundComponent: AdminPageNotFound,
 })
+
+/** An Admin path that is neither a known page nor an existing Table: said
+ *  plainly, with the way back. Never the Table loader's own error. */
+function AdminPageNotFound() {
+  return (
+    <div data-testid="page-not-found">
+      <EmptyState
+        title="Page not found"
+        body="There is no page at this address in the Admin."
+        action={<Link to="/featherbase/admin" className={buttonClasses()}>Go to the Admin home</Link>}
+      />
+    </div>
+  )
+}
+
+/** The Table a path names does not exist (its metadata answered 404). */
+function noSuchTable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404
+}
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
@@ -316,6 +337,7 @@ function TableListPage() {
   const { filters } = tableRoute.useSearch()
   const navigate = tableRoute.useNavigate()
   const meta = useMeta(table)
+  if (noSuchTable(meta.error)) return <AdminPageNotFound />
   // SET-001: a Settings Table has no list — open its one row directly.
   if (meta.data?.kind === 'settings') {
     return (
@@ -657,6 +679,8 @@ function TableFormPage() {
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  const meta = useMeta(table)
+  if (noSuchTable(meta.error)) return <AdminPageNotFound />
   return (
     <div data-testid="doc-page">
       <FormView
