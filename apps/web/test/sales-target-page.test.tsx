@@ -491,3 +491,55 @@ test('Try again opens the report once the live report answers', async ({ admin, 
   expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
   expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
 })
+
+test('a Try again that fails again shows the same card, ready to press again', async ({ admin, api }) => {
+  let answers = 0
+  _setEmbedFetch(async () => (++answers, failingUpstream()))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(answers).toBe(2))
+  const again = await unavailableCard()
+  await waitFor(() => expect(within(again).getByRole('button', { name: 'Try again' })).toBeEnabled())
+  expect(again).toHaveTextContent(`Report unavailable${PLAIN_UNAVAILABLE}Try again`)
+})
+
+test('while Try again runs, the button shows it is working and a second press asks nothing more', async ({ admin, api }) => {
+  let answers = 0
+  let release: (r: Response) => void = () => {}
+  _setEmbedFetch(async () =>
+    ++answers === 1 ? failingUpstream() : new Promise<Response>((resolve) => (release = resolve)),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  const button = within(card).getByRole('button', { name: 'Try again' })
+  await userEvent.click(button)
+  await waitFor(() => expect(answers).toBe(2))
+  // Always let the held answer go: a request left open would hold the sandbox's connection.
+  try {
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    await userEvent.click(button)
+    expect(answers).toBe(2)
+  } finally {
+    release(Response.json({ session: 'stub-session' }))
+  }
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+})
+
+test('Try again after the identity call failed asks again and opens the report', async ({ admin, api }) => {
+  const real = globalThis.fetch
+  let refusals = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('/api/sales_target/me') && refusals++ === 0)
+      return Response.json({ error: { type: 'ServerError', message: 'internal detail' } }, { status: 500 })
+    return real(input, init)
+  })
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  expect(card).not.toHaveTextContent('internal detail')
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+})
