@@ -18,6 +18,8 @@ export interface ColumnDef {
   hidden: boolean
   in_list_view: boolean
   tier: 'basic' | 'restricted'
+  /** One plain line shown under the control (#473). */
+  description?: string | null
   created_by: string
   updated_by: string
   created_at: string

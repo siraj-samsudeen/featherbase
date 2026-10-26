@@ -43,6 +43,8 @@ export interface ColumnDef {
   hidden: boolean
   in_list_view: boolean
   tier: 'basic' | 'restricted'
+  // #473: one plain line shown under the control on every form (0121).
+  description?: string | null
   // EDS-3: on a source-bound Table, the true column name on the source when
   // it differs from column_name (reserved/illegal names). Null = same name.
   source_column: string | null

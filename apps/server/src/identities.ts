@@ -184,6 +184,18 @@ export function newIdentityId(): string {
   return 'uid_' + randomBytes(9).toString('base64url')
 }
 
+/** #473: once a person has a Google sign-in, by any path, they no longer
+ *  expect one — clear the mark so a later unlink cannot reopen linking by
+ *  address. `updated_at` moves, so a form loaded before is told to reload
+ *  rather than echo the mark back. A no-op for any other kind. */
+export async function consumeExpectedSignIn(person: string, method: Pick<SignInMethod, 'kind'>, db: Sql | TxSql = sql): Promise<boolean> {
+  if (method.kind !== 'google') return false
+  const rows = await db`
+    update person set expects_google_sign_in = false, updated_at = now()
+    where row_id = ${person} and expects_google_sign_in returning row_id`
+  return rows.length > 0
+}
+
 /** Who did what to whom, with the actor first (review B-M1). */
 export async function auditIdentity(actor: string, verb: string, target: string, method: string, id: string) {
   await logActivity(actor, `identity_${verb} ${method} for ${target} (${id})`.slice(0, 140))
@@ -282,6 +294,7 @@ export async function linkIdentity(
       })} returning ${identityFields()}`
       // person-resolution D5: the identity also becomes an identifier row.
       await writeThroughIdentity(String(rows[0].id), t)
+      await consumeExpectedSignIn(user, method, t)
       return rows
     },
     () => clash(method, { subject, sign_in_name: signInName }),
@@ -356,6 +369,7 @@ export async function updateIdentity(
           linked_by: actor,
         })} returning ${identityFields()}`
         await writeThroughIdentity(String(row.id), t)
+        if (locked.subject != null) await consumeExpectedSignIn(change.person_id!, method, t)
         // Logged against the identity that moved; the new link carries on as its own id.
         await auditIdentity(actor, 'moved', `${locked.person_id} to ${change.person_id}`, String(locked.method), id)
         return row as unknown as Identity

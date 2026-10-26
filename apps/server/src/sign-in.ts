@@ -15,6 +15,7 @@ import {
   KINDS,
   auditIdentity,
   candidate,
+  consumeExpectedSignIn,
   disableLeaver,
   domainAllowed,
   foldName,
@@ -128,6 +129,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
         where id = ${String(invite.id)}`
       await writeThroughIdentity(String(invite.id))
+      await consumeExpectedSignIn(String(invite.person_id), method)
       return { user: String(invite.person_id), identity: String(invite.id) }
     })
     if (claimed) await auditIdentity(claimed.user, 'claimed', claimed.user, method.key, claimed.identity!)
@@ -139,7 +141,58 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
   }
 }
 
-/** The method's rule for a person it does not know (design D4). */
+/** #473: link the first Google sign-in to the person a System Manager marked
+ *  as expecting it — only when ALL hold: the mark is set; Google verified the
+ *  address; the address is admitted by the method's domains (and, for a
+ *  company domain, Google's hosted-domain claim agrees — domainAdmitted); it
+ *  is that person's own address, compared folded; the person is enabled and
+ *  eligible; and they have no current Google sign-in, linked or invited. The
+ *  mark is consumed in the same transaction. Null when any fails, so the
+ *  caller falls through to today's answer (refused, or a new person). */
+async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): Promise<Found | null> {
+  if (method.kind !== 'google' || !v.subject || !v.email_verified || !v.email) return null
+  if (!domainAdmitted(method, v).ok) return null
+  const address = foldName(v.email)
+  try {
+    return await withTransaction(async () => {
+      const people = await sql`
+        select row_id, email, enabled, replaced_by, expects_google_sign_in from person
+        where lower(email) = ${address} limit 2 for update`
+      // One holder only: two people on one address is for an administrator.
+      if (people.length !== 1) return null
+      const [p] = people
+      const person = String(p.row_id)
+      if (p.expects_google_sign_in !== true || p.enabled !== true || p.replaced_by != null) return null
+      if (foldName(String(p.email ?? '')) !== address) return null
+      const [held] = await sql`
+        select 1 from sign_in_identity where person_id = ${person} and method = ${method.key} and ended_at is null limit 1`
+      if (held) return null
+      const c = await candidate(person)
+      if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged)) return null
+      if (!(await consumeExpectedSignIn(person, method))) return null
+      const id = newIdentityId()
+      await sql`insert into sign_in_identity ${sql({
+        id,
+        person_id: person,
+        method: method.key,
+        subject: v.subject!,
+        email: v.email!,
+        display_name: v.display_name ?? null,
+        linked_by: 'expected-sign-in',
+        last_used_at: new Date(),
+      })}`
+      await writeThroughIdentity(id)
+      // A system action: no person did it in that moment; the method is named.
+      await auditIdentity('system', 'linked_on_expected_sign_in', person, method.key, id)
+      return { user: person, identity: id }
+    })
+  } catch (err) {
+    // The same Google account linked a moment ago by a concurrent sign-in.
+    if ((err as { code?: string })?.code === '23505') return linkedBySubject(method, v.subject)
+    throw err
+  }
+}
+
 /** A new person's starting name: their display name, or the part of the
  *  address before the @ — never the address itself (#429). An administrator
  *  can correct it. */
@@ -212,13 +265,16 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
 }
 
 /** Resolve a verified outside identity to a person: linked subject, then a
- *  one-time invite, then the method's rule. Never by email match alone. */
+ *  one-time invite, then a person marked as expecting it (#473), then the
+ *  method's rule. Never by email match alone. */
 export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
   if (linked) return linked
   const claimed = await claimInvite(method, v)
   if (claimed) return claimed
+  const expected = await claimExpectedSignIn(method, v)
+  if (expected) return expected
   // A concurrent claim may have linked it a moment ago.
   return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v, opts)
 }
@@ -283,6 +339,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
         linked_by: 'self',
       })}`
       await writeThroughIdentity(id)
+      await consumeExpectedSignIn(user, method)
       await auditIdentity(user, 'linked', user, method.key, id)
       return id
     })
