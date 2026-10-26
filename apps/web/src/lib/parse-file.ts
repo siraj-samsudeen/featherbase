@@ -245,8 +245,3 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
     throw new Error('The file has no sheet with a header row and data')
   return sheets
 }
-
-export async function parseTabularFile(file: File): Promise<ParsedSheet> {
-  const sheets = await parseWorkbook(file)
-  return sheets[0]
-}

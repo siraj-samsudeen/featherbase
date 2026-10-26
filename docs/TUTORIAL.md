@@ -162,13 +162,13 @@ Create one at `/admin/Server Script/new` (or via `save_row`):
 
   ```js
   if (!doc.title || doc.title.length < 5) {
-    frappe.throw('Title must be at least 5 characters')
+    featherbase.throw('Title must be at least 5 characters')
   }
   ```
 
 - **enabled**: checked
 
-The script sees the row as `doc` and can call `frappe.throw(message)`
+The script sees the row as `doc` and can call `featherbase.throw(message)`
 to abort the save (the sandbox exposes nothing else — no `process`, no
 `fetch`). Now try saving a task titled "x": the save fails with a 417
 validation error, in the Admin UI and over HTTP alike, because the script runs

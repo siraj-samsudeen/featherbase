@@ -68,7 +68,7 @@ connectEventSink({
   },
 })
 
-// Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
+// Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
@@ -113,7 +113,7 @@ function AdminShell() {
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
   // SET-004: the instance brand (System Settings → app_name) names the
-  // browser tab — "Frappe Clone" is only the default.
+  // browser tab.
   const { app_name } = useSettings()
   useEffect(() => {
     document.title = app_name
@@ -655,7 +655,7 @@ function AdminShell() {
             </Link>
           </div>
           )}
-          {/* #80: the sidebar is Home Pages only (Frappe parity). Every
+          {/* #80: the sidebar is Home Pages only. Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
           {/* The sidebar scrolls as ONE column: the Home Pages keep their full

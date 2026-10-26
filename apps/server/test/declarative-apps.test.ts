@@ -68,7 +68,7 @@ describe('PLAT-005: declarative app install over the API', () => {
     }
   })
 
-  test.for(['doc_events', 'scheduler_events', 'override_whitelisted_methods'])(
+  test.for(['doc_events', 'scheduler_events'])(
     'a manifest declaring %s is rejected with a pointer at registerApp',
     async (key, { admin }) => {
       const res = await admin.fetch('/api/install_app', {

@@ -88,7 +88,7 @@ the migrated tables.*
 
 **M3 — warehouse browser MVP (use case C; the seam arrives, half-size).**
 This milestone cannot be built honestly without a seam — and the repo
-already contains the cautionary tale: PLAT-008's `tenancy.ts` bolted on
+contained the cautionary tale until 2026-10-26: PLAT-008's `tenancy.ts` bolted on
 a parallel path that reimplements table creation instead of reusing the
 engine. **The browser must not repeat that.** So M3 introduces the
 **read-only adapter seam only** — `getList / getDoc / count /

@@ -87,14 +87,6 @@ export async function isSharedWith(
   return Boolean(row)
 }
 
-// Names of rows of a table shared with the user (for list widening).
-export async function sharedNames(user: string, table: string): Promise<string[]> {
-  const rows = await sql`
-    select share_name from share
-    where share_table = ${table} and (person = ${user} or service_account = ${user}) and read = true`
-  return rows.map((r) => r.share_name as string)
-}
-
 // For operations on a specific existing row: own-rows-scoped grants
 // require created_by to match.
 export async function assertDocPermission(

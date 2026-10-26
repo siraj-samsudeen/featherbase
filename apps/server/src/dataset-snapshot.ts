@@ -58,10 +58,6 @@ export function registerDataset(def: DatasetDefinition): void {
   registry.set(def.name, def)
 }
 
-export function getDataset(name: string): DatasetDefinition | undefined {
-  return registry.get(name)
-}
-
 export function registeredDatasets(): string[] {
   return [...registry.keys()]
 }

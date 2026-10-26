@@ -2,7 +2,7 @@
 
 A free and open-source, agent-first, self-hostable application framework and runtime in TypeScript — built by replicating [Frappe Framework](https://frappe.io/framework)'s core ideas on React + Hono + Postgres, with tests that run against a real database. That replication phase is complete; the project is now deliberately diverging from Frappe's design — including its vocabulary and wire format — where it doesn't serve this platform's own users.
 
-Define a Table once and get storage, a REST/RPC API, and a working UI from the same definition — the idea that makes Frappe productive, on a stack you can host anywhere.
+Define a Table once and get storage, a REST API, and a working UI from the same definition — the idea that makes Frappe productive, on a stack you can host anywhere.
 
 **Status:** active development. The Table engine, the API surface, auth, and the metadata-driven Admin UI are working, exercised by a large server suite run against a real Postgres, plus component and Playwright e2e suites. Current work lives in the GitHub issues and pull requests; see [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going. ([PROGRESS.md](PROGRESS.md) is a frozen history log, not updated since 23-Oct-2026.)
 
@@ -76,7 +76,7 @@ Featherbase began by replicating Frappe's core ideas on React, Hono, and Postgre
 
 | Workspace | Role |
 |---|---|
-| `apps/server` | Hono API — Table engine, REST/RPC API, sessions |
+| `apps/server` | Hono API — Table engine, REST API, sessions |
 | `apps/web` | React Admin UI — metadata-driven grid, form, and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
 

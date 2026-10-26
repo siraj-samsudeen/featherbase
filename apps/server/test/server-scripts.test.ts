@@ -36,7 +36,7 @@ function saveTarget(admin: TestClient, row: Record<string, unknown>) {
 describe('CUST-004: server scripts', () => {
   test('rejects a save conditionally (validate event)', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) frappe.throw("no negatives")', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) featherbase.throw("no negatives")', enabled: true })
     const bad = await saveTarget(admin, { amount: -1 })
     expect(bad.status).toBe(417)
     expect(((await bad.json()) as { error: { message: string } }).error.message).toContain('no negatives')
@@ -68,7 +68,7 @@ describe('CUST-004: server scripts', () => {
 
   test('does not run a disabled script', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'frappe.throw("should not fire")', enabled: false })
+    await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'featherbase.throw("should not fire")', enabled: false })
     const res = await saveTarget(admin, { amount: 1 })
     expect(res.status).toBe(201)
   })

@@ -1444,10 +1444,23 @@ by code.
   stops seeing them, and the right one sees them. A code recorded by hand by mistake on the same
   day can be removed instead.
 
+## Script API rename: `featherbase` (0124)
+
+The object Server Scripts and Client Scripts call is now `featherbase`
+(`featherbase.throw(msg)`, `featherbase.ui.form.on(table, handlers)`); the
+runtimes no longer define `frappe`. Migration **0124** rewrites the stored
+`script` source of every Server Script and Client Script, replacing `frappe.`
+member access with `featherbase.` (other names that contain the word are left
+alone). It rewrites the trial's data, so rehearse it like any other
+data-rewriting release: on a restored snapshot of the target, with its real
+environment variables, then compare each changed script before and after
+(`select row_id, script from server_script` / `client_script`). A script that
+still fails afterwards with "frappe is not defined" builds the name some other
+way (for example `var f = frappe`) and needs editing by hand.
+
 ## Smoke check
 
 After a deploy: `SERVER_URL=https://... pnpm --filter server test:smoke`
 asserts `GET /api/ping` answers `pong` with a live DB connection. Then
-`POST /api/method/login` with valid credentials should return Frappe's
-login shape (`{"message":"Logged In", ...}`), and in a single-origin
-deployment `GET /` should answer the SPA's `index.html`.
+`POST /api/login` with valid credentials should sign in, and in a
+single-origin deployment `GET /` should answer the SPA's `index.html`.

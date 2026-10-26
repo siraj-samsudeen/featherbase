@@ -1,4 +1,4 @@
-// #80: Home Pages — Frappe-style curated navigation. The Admin sidebar lists
+// #80: Home Pages — curated navigation. The Admin sidebar lists
 // Home Pages (one per user module + a seeded System page); each page renders
 // grouped link cards from its `links` sub-table. This module owns the two
 // server-side halves of that:
@@ -173,7 +173,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     for (const r of rows) existing.add(r.name as string)
   }
 
-  // Mirror Frappe's is_item_allowed: a user who cannot read a Table does not
+  // A user who cannot read a Table does not
   // see its link. Cached per table — the same target appears on many pages.
   const readable = new Map<string, boolean>()
   async function canRead(table: string): Promise<boolean> {

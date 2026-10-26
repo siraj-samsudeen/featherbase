@@ -791,8 +791,8 @@ async function writeDoc(
     })
     .catch((err) => mapDbError(meta, err, attemptedRow.ref_table)))
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
-  // EML-004: fire matching email rules post-commit. Frappe's Save event covers
-  // inserts too, so both on_create and on_save rules are evaluated here.
+  // EML-004: fire matching email rules post-commit. A save covers inserts too,
+  // so both on_create and on_save rules are evaluated here.
   await afterDocumentCommit(async () => {
     await evaluateEmailRules('on_create', meta.name, insertResult)
     await evaluateEmailRules('on_save', meta.name, insertResult)
@@ -1154,7 +1154,7 @@ async function setStatus(
         'ValidationError',
         `${table} ${name} has status ${existing.status}; expected ${from}`,
       )
-    // Frappe order: before_submit/before_cancel run BEFORE the write and may
+    // Order: before_submit/before_cancel run BEFORE the write and may
     // abort it; on_update fires after the write, then on_submit/on_cancel.
     const preCtx: HookContext = {
       row: { ...(existing as RowValues) },

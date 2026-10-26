@@ -107,6 +107,25 @@ describe('DOC-007: submittable documents', () => {
       message: expect.stringMatching(/not submittable/),
     })
   })
+
+  // #62: a write-effect action is reached by POST only. A GET carries no
+  // CSRF protection (the sid cookie is sameSite: 'Lax'), so GET :submit must
+  // be refused before the handler runs — the row stays a draft.
+  test('GET on a write action is refused and does not submit the row', async ({ admin }) => {
+    await setup(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { amount: 5 },
+    })
+    const res = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`)
+    expect(res.status).toBe(404)
+    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('NotFoundError')
+
+    const after = await admin.get<Record<string, unknown>>(
+      `/api/table/${encodeURIComponent(DT)}/${doc.row_id}`,
+    )
+    expect(after.status).toBe('draft')
+  })
 })
 
 describe('A submitted row must be cancelled first', () => {

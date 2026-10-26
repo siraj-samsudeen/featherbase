@@ -36,7 +36,7 @@ test.beforeAll(async ({ request }) => {
     request,
     'cs-e2e-autofill',
     DT,
-    `frappe.ui.form.on('${DT}', { qty: function(frm){ frm.set_value('total', (frm.get_value('qty') || 0) * 10) } })`,
+    `featherbase.ui.form.on('${DT}', { qty: function(frm){ frm.set_value('total', (frm.get_value('qty') || 0) * 10) } })`,
   )
   // A deliberately broken script (throws at load).
   await makeClientScript(request, 'cs-e2e-broken', DT_BAD, `throw new Error('boom in client script')`)

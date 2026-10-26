@@ -97,8 +97,8 @@ functionality arrives and evolves*; E *how data moves through time*; F
 *how metadata moves through environments*; G *who is acting*. E and F are
 deliberate mirrors: E is time for data, F is time for definitions.
 
-Multi-tenancy (PLAT-008 sites) is parked: orthogonal to all seven, already
-works, not a key requirement.
+Multi-tenancy (the PLAT-008 sites prototype, removed 2026-10-26) is parked:
+orthogonal to all seven, not a key requirement.
 
 ---
 

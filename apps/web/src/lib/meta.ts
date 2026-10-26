@@ -111,7 +111,7 @@ export function useMeta(table: string, enabled = true) {
 }
 
 // Columns for a list view: name first, then flagged columns (or the first
-// two data columns when nothing is flagged), matching Frappe's behavior.
+// two data columns when nothing is flagged).
 export function listColumns(
   meta: TableMeta,
 ): { column_name: string; label: string; column_type: string; reference_table?: string | null }[] {

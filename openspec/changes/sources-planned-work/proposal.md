@@ -60,5 +60,5 @@ carried into the delta spec.
 - Affected areas when implemented: `apps/server/src/sources/`,
   `apps/server/src/document.ts`, `apps/server/src/controllers/data-source.ts`,
   `apps/web/src/pages/SourceBrowser.tsx` and a new connect-source page
-  (today's `apps/web/src/pages/PrototypeConnectSource.tsx` is a throwaway
-  mock of the intended design, not a starting implementation).
+  (the throwaway `PrototypeConnectSource.tsx` mock was removed on
+  2026-10-26; the console will be built fresh).

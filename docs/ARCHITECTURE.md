@@ -275,11 +275,11 @@ a goal going forward. Concretely, this project no longer:
 - Shapes login/session responses to match Frappe's `{ message, home_page,
   full_name }` convention.
 - Carries `exc_type` in error bodies.
-- Dispatches a `frappe.client.*` RPC namespace, or any other dotted
-  Frappe method namespace. (The `/api/method/:path` dispatcher itself
-  stays — it is this project's own whitelisted-method surface, API-003,
-  serving plainly-named methods like `ping` and `count_docs`. What was
-  removed is Frappe's *vocabulary* on top of it, not RPC as a feature.)
+- Dispatches an RPC surface of whitelisted methods at `/api/method/:path`
+  — neither Frappe's `frappe.client.*` namespace nor a plainly-named one.
+  Anything a client calls is a generated Table route or a row/collection
+  action on `/api/table/:table`; apps no longer override methods
+  (`override_whitelisted_methods` is gone with the dispatcher).
 - Exposes a `/api/resource/:doctype[/:name]` REST shape — the equivalent
   surface is the `/api/table/:table[/:name]` action registry described
   above (tracked in #61).
@@ -310,7 +310,6 @@ decision record.
 | `password-reset.ts` | Reset request + token redemption |
 | `rate-limit.ts` | Per-user request throttling |
 | `errors.ts` | `AppError`, status mapping, the error envelope |
-| `methods.ts` + `methods/` | Free-standing RPC-style methods |
 | `workflow.ts` | Workflow states/transitions, role-gated actions |
 | `server-scripts.ts` | Sandboxed (node:vm) Server Scripts + workflow condition evaluation |
 | `custom-fields.ts` | Apply Custom Field records (column + column-definition row) |
@@ -332,7 +331,6 @@ decision record.
 | `i18n.ts` | Translation catalogs |
 | `audit.ts` | Access/activity logging |
 | `apps.ts`, `sample-apps/` | Installable app registry (e.g. `hello-crm`) |
-| `tenancy.ts` | Multi-site provisioning, schema-per-site isolation |
 | `migrate.ts`, `patches.ts`, `run-patches.ts` | Migration and patch runners |
 | `cli.ts` | Command-line entry (`pnpm --filter server cli`) |
 | `smoke.ts` | The server smoke test (`pnpm --filter server test:smoke`) |

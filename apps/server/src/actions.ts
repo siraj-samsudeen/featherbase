@@ -1,6 +1,6 @@
 import type { SessionUser } from './auth'
 
-// API surface design (#61): one registry, one dispatcher, four cases.
+// API surface design (#61): one registry, one dispatcher, three cases.
 //
 //   Generated         GET/POST /api/table/:table, GET/PATCH/DELETE
 //                     /api/table/:table/:name, plus :count/:meta/:actions —
@@ -11,8 +11,6 @@ import type { SessionUser } from './auth'
 //   Collection action registerCollectionAction() — scoped to a Table as a
 //                     whole (not a specific row), reached at
 //                     /api/table/:table:action.
-//   Method            methods.ts's existing whitelist() — not addressed by
-//                     any Table at all, reached at /api/method/:path.
 //
 // Every case shares the same rule: the HTTP verb is derived from a declared
 // `effect: 'read' | 'write'`, never chosen ad hoc by the handler (#62).

@@ -14,7 +14,7 @@ export type ErrorType =
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
-  ValidationError: 417, // Frappe convention for business validation
+  ValidationError: 417, // business validation (a rule the row breaks); see #528
   BadRequestError: 400, // malformed request (bad JSON, bad params)
   AuthenticationError: 401,
   PermissionError: 403,

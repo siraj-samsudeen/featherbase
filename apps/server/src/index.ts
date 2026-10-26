@@ -35,7 +35,6 @@ import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
-import { callMethod, loadMethods, methodAllowsGuest, methodEffect } from './methods'
 import {
   getCollectionAction,
   getRowAction,
@@ -80,7 +79,6 @@ import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTE
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
-import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import { assertServerStart, readVariable } from './env'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -92,7 +90,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 await loadControllers()
-await loadMethods()
 await loadJobs()
 await loadScriptReports()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
@@ -184,10 +181,10 @@ app.get('/api/brand', async (c) => {
   })
 })
 
-// Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
-// Frappe) in addition to the Bearer token the SPA stores. Either credential
-// authenticates a request; the cookie lets Frappe-style clients work
-// unchanged and keeps the token out of reach of page scripts.
+// Sessions ride an HttpOnly `sid` cookie in addition to the Bearer token the
+// SPA stores. Either credential authenticates a request; the cookie keeps the
+// token out of reach of page scripts and lets plain browser requests (file
+// links, the print page) carry the session.
 function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
@@ -401,40 +398,6 @@ app.get('/web/:route{.+}', async (c) => {
   const page = await renderWebPage(c.req.param('route'))
   return c.html(page.html, page.found ? 200 : 404)
 })
-
-// API-003: RPC for whitelisted server methods. Registered before the global
-// auth middleware so guest-allowed methods work without a session — but that
-// means it must resolve auth AND apply rate limiting itself (#62 bug 1: this
-// route used to return before ever reaching the global `rateLimit` use()
-// registered below, so API-007 was silently unenforced on the whole RPC
-// surface). Each registered method declares effect: 'read' | 'write'
-// (methods.ts); the dispatcher requires POST for 'write' instead of accepting
-// either verb (#62 bug 2: GET on frappe.client.delete/insert/set_value used to
-// execute the mutation straight from the query string — a live CSRF vector
-// given the sid cookie is sameSite: 'Lax'). Path may contain slashes.
-app.on(
-  ['GET', 'POST'],
-  '/api/method/:path{.+}',
-  async (c, next) => {
-    const path = c.req.param('path') as string
-    const user = methodAllowsGuest(path)
-      ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
-      : await resolveToken(authCredential(c))
-    c.set('user', user)
-    await runInSession('sign_in' in user ? user.sign_in : null, () => next())
-  },
-  rateLimit,
-  async (c) => {
-    const path = c.req.param('path') as string
-    if (methodEffect(path) === 'write' && c.req.method !== 'POST')
-      throw new AppError('MethodNotAllowedError', `Method ${path} mutates and requires POST`)
-    const args =
-      c.req.method === 'POST'
-        ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
-        : c.req.query()
-    return c.json({ message: await callMethod(path, args, c.get('user')) })
-  },
-)
 
 // The origin a browser reaches this instance on. INSTANCE_ADDRESSES is
 // configuration and therefore authoritative (#488): the request's Host only
@@ -1720,44 +1683,6 @@ app.post('/api/permissions/:table', async (c) => {
     )
   else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
   return c.json({ ok: true })
-})
-
-// PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
-// endpoints resolve the target site from the request Host header, and every
-// query runs on that site's isolated schema — data never crosses sites.
-app.post('/api/tenancy/sites', async (c) => {
-  await assertSystemManager(who(c))
-  const { site, host } = (await c.req.json().catch(() => ({}))) as { site?: string; host?: string }
-  if (!site) throw new AppError('ValidationError', 'Expected { site }')
-  return c.json(await createSite(site, host), 201)
-})
-app.get('/api/tenancy/sites', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json({ sites: await listSites() })
-})
-app.post('/api/tenancy/table_def', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  const { name, columns } = (await c.req.json().catch(() => ({}))) as { name?: string; columns?: { column_name: string; column_type: string }[] }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await siteCreateTableDef(site, name, columns ?? []), 201)
-})
-app.get('/api/tenancy/table_defs', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  return c.json({ site, table_defs: await siteListTableDefs(site) })
-})
-app.post('/api/tenancy/user', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  const { email, full_name } = (await c.req.json().catch(() => ({}))) as { email?: string; full_name?: string }
-  if (!email) throw new AppError('ValidationError', 'Expected { email }')
-  return c.json(await siteCreateUser(site, email, full_name), 201)
-})
-app.get('/api/tenancy/users', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  return c.json({ site, users: await siteListUsers(site) })
 })
 
 // PLAT-001: app management (System Manager only). Apps are code-defined; these

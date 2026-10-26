@@ -440,7 +440,3 @@ registerJob('send_email', async (payload, ctx) => {
     throw err
   }
 })
-
-export function assertRecipient(to: string | undefined): asserts to is string {
-  if (!to) throw new AppError('ValidationError', 'Expected a recipient', { to: 'Required' })
-}

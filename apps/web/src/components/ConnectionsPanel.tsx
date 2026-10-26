@@ -11,7 +11,7 @@ import { fmtCount } from '../lib/inr'
 
 // Relational navigation (#100, patterns 1 + 2):
 //
-// ConnectionsPanel — Frappe's "Connections" dashboard section, derived
+// ConnectionsPanel — the form's "Connections" section, derived
 // entirely from metadata (every Reference column pointing at this table),
 // with live permission-scoped counts. Click → the target's filtered list;
 // ◎ → peek without leaving; + → a new row pre-filled with this reference.

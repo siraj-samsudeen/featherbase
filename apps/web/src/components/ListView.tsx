@@ -1012,7 +1012,7 @@ function InlineChildGrid({
 }
 
 
-// Frappe's standard filters (adopted from PR 2's Admin screen): typed per-column
+// Standard filters (adopted from PR 2's Admin screen): typed per-column
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.

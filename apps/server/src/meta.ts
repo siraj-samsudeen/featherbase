@@ -156,8 +156,8 @@ export function invalidateMeta(name?: string) {
 
 // A table that points at `target` via a Reference column. When the Reference
 // lives in a sub-table, `table` is the OWNING table (the one with a list to
-// navigate to) and `via` names the sub-table holding the column — Frappe's
-// "internal links" shape (Item is reached from Purchase Order via PO Line).
+// navigate to) and `via` names the sub-table holding the column (Item is
+// reached from Purchase Order via PO Line).
 export interface Backlink {
   table: string
   column: string

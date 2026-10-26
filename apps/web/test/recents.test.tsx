@@ -119,9 +119,9 @@ describe('actionForLocation', () => {
     expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/Customer/new', {})).toBeNull()
-    // #440: browsers and prototypes are not Tables named "source" / "prototype".
+    // #440: the browser and the jobs monitor are not Tables named "source" / "jobs".
     expect(actionForLocation('/featherbase/admin/source/Warehouse', {})).toBeNull()
-    expect(actionForLocation('/featherbase/admin/prototype/connect-source', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/jobs', {})).toBeNull()
   })
 
   it('#440: a static admin page is remembered as a page under its title', () => {
