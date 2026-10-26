@@ -3,6 +3,7 @@ import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
+import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
@@ -451,7 +452,13 @@ async function assertAccessColumnsUnchanged(
     const stored = existing === null ? false : existing.expects_google_sign_in === true
     if (value != null && typeof value !== 'boolean')
       throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { expects_google_sign_in: 'must be true or false' })
-    if ((value === true) !== stored) changed.push('expects_google_sign_in')
+    if ((value === true) !== stored) {
+      // Turning it on adds a way in; so does turning it off and on again. A
+      // test-mode or preview session may do neither, whoever it belongs to.
+      if (!sessionMayAddWayIn())
+        throw new AppError('PermissionError', 'Not allowed from this sign-in. Sign in again normally to change how this account signs in.')
+      changed.push('expects_google_sign_in')
+    }
   }
   if (!changed.length) return
   if (!trusted && (await isPrivileged(user))) return

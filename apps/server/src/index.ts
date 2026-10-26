@@ -8,6 +8,7 @@ import { config } from './config'
 import { sql, withTransaction } from './db'
 import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
+import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
@@ -406,7 +407,7 @@ app.on(
       ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
-    await next()
+    await runInSession('sign_in' in user ? user.sign_in : null, () => next())
   },
   rateLimit,
   async (c) => {
@@ -635,7 +636,9 @@ app.get('/preview', async (c) => {
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
   c.set('user', user)
-  await next()
+  // #473: a test-mode or preview session cannot add a lasting way in, even
+  // through the generic save path (document.ts).
+  await runInSession(user.sign_in, () => next())
 })
 
 // API-007: throttle authenticated requests per user (runs after auth so it can

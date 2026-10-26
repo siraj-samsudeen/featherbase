@@ -9,6 +9,23 @@ export async function up() {
   const [person] = await sql`select 1 from table_def where name = 'Person'`
   if (!person) return
   await sql`alter table featherbase.person add column if not exists expects_google_sign_in boolean not null default false`
+  // The mark approves ONE address. Changing the email, by any path, clears it
+  // (as person_cancel_email_invites cancels invites), so whoever may edit an
+  // email cannot point an approval at an address of their own. Only the same
+  // statement turning the mark on keeps it, and only a System Manager may.
+  await sql.unsafe(`
+    create or replace function featherbase.fc_clear_expected_sign_in() returns trigger
+    language plpgsql set search_path = pg_catalog as $$
+    begin
+      if lower(trim(coalesce(old.email, ''))) is distinct from lower(trim(coalesce(new.email, '')))
+         and not (new.expects_google_sign_in and not old.expects_google_sign_in) then
+        new.expects_google_sign_in := false;
+      end if;
+      return new;
+    end $$`)
+  await sql.unsafe(`drop trigger if exists person_clear_expected_sign_in on featherbase.person`)
+  await sql.unsafe(`create trigger person_clear_expected_sign_in before update of email on featherbase.person
+    for each row execute function featherbase.fc_clear_expected_sign_in()`)
   const [have] = await sql`select 1 from column_def where parent = 'Person' and column_name = 'expects_google_sign_in'`
   if (have) return
   // Beside the email it applies to; everything after it moves down one.

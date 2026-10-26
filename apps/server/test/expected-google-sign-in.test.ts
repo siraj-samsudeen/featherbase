@@ -10,6 +10,7 @@ import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
 import { resolveVerified } from '../src/sign-in'
 import { methodOfKind } from '../src/identities'
+import { issueSession } from '../src/auth'
 
 const DOMAIN = 'example.com'
 const enc = encodeURIComponent
@@ -188,5 +189,44 @@ describe('who may set the flag', () => {
     const res = await admin.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ expects_google_sign_in: 'yes', updated_at: a.updated_at }) })
     expect(res.status).toBe(417)
     expect(await flagOf(asha)).toBe(false)
+  })
+
+  // Codex review: the mark approves one address. Whoever may edit an email
+  // must not be able to point it at an address of their own.
+  test('changing the email clears the mark, so it cannot be pointed at another address', async ({ api, admin, createUser }) => {
+    await configureGoogle({ allowed_email_domains: DOMAIN, new_person: 'refuse' })
+    const clerk = await createUserWithRole(admin, createUser, { role: 'People Clerk 473b', table: 'Person', can_read: true, can_write: true })
+    const asha = await expectedPerson()
+    const [a] = await sql`select updated_at from person where row_id = ${asha}`
+    const res = await clerk.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ email: `intruder@${DOMAIN}`, expects_google_sign_in: true, updated_at: a.updated_at }) })
+    expect(res.status).toBe(200)
+    expect(await flagOf(asha)).toBe(false)
+    expect((await googleSignIn(api, `intruder@${DOMAIN}`, { subject: 'g-intruder' })).status).toBe(401)
+    expect(await googleLinks(asha)).toHaveLength(0)
+  })
+
+  test('a System Manager who changes the email and ticks the mark in one save keeps it', async ({ admin }) => {
+    const asha = await expectedPerson({ expects_google_sign_in: false })
+    const [a] = await sql`select updated_at from person where row_id = ${asha}`
+    const res = await admin.fetch(`/api/table/Person/${enc(asha)}`, { method: 'PATCH', body: JSON.stringify({ email: `asha.new@${DOMAIN}`, expects_google_sign_in: true, updated_at: a.updated_at }) })
+    expect(res.status).toBe(200)
+    expect(await flagOf(asha)).toBe(true)
+  })
+
+  test('a preview session cannot set it, even for a System Manager', async ({ api }) => {
+    const manager = await makePerson({ username: 'preview.manager', roles: [{ role: 'System Manager' }] })
+    const { token } = await issueSession(manager, { preview: true })
+    const res = await api.fetch('/api/table/Person', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email: `planted@${DOMAIN}`, expects_google_sign_in: true, enabled: true }),
+    })
+    expect(res.status).toBe(403)
+    expect(await sql`select 1 from person where email = ${`planted@${DOMAIN}`}`).toHaveLength(0)
+    // An ordinary save from the same session still works.
+    const plain = await api.fetch('/api/table/Person', {
+      method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ email: `plain.preview@${DOMAIN}`, enabled: true }),
+    })
+    expect(plain.status).toBe(201)
   })
 })
