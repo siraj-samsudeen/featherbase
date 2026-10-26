@@ -1,13 +1,13 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer, type AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { SMTPServer, type SMTPServerOptions } from 'smtp-server'
-import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { test } from './pg-test'
+import { runMain } from './command-io'
+import { main as cliMain } from '../src/cli'
 import { sql } from '../src/db'
 import { drainJobs, loadJobs } from '../src/jobs'
 import {
@@ -184,6 +184,10 @@ describe('EHLO name: never the container hostname', () => {
   test('with none of them, the sender address supplies it at send time; it is never left to nodemailer', () => {
     expect(name({})).toBeUndefined()
     expect(smtpTransportOptions({ host: 'h', port: 587, name: 'jeyarama.com' }).name).toBe('jeyarama.com')
+  })
+
+  test('an INSTANCE_ADDRESSES that cannot be read offers no name rather than failing the send', () => {
+    expect(name({ INSTANCE_ADDRESSES: 'not a list' })).toBeUndefined()
   })
 
   test('an SMTP_NAME that is not a hostname is a configuration error', () => {
@@ -659,16 +663,17 @@ describe('#395: STARTTLS + AUTH on a real socket', () => {
 })
 
 // `cli mail:test <to>`: the operator's one-message check of a deployment's
-// mail settings. Spawned asynchronously so this process's SMTP server can
-// answer while the CLI runs.
+// mail settings, run in this process through the CLI's main (ADR 0012); the
+// test certificate is trusted through the same override as the sends above.
 describe('#395: cli mail:test', () => {
-  const serverDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
-  const run = (args: string[], env: Record<string, string>) =>
-    promisify(execFile)(path.join(serverDir, 'node_modules', '.bin', 'tsx'), [path.join(serverDir, 'src', 'cli.ts'), ...args], {
-      cwd: serverDir,
-      timeout: 60_000,
-      env: { ...process.env, SMTP_USER: '', SMTP_PASSWORD: '', SMTP_NAME: '', NODE_EXTRA_CA_CERTS: path.join(certDir, 'cert.pem'), ...env },
-    })
+  // The CLI's result in the shape of a process's: stdout on success, or a
+  // rejection carrying the exit code and stderr.
+  const run = async (args: string[], env: Partial<Record<(typeof SMTP_VARS)[number], string>>) => {
+    setSmtpEnv(env)
+    const r = await runMain(cliMain, args)
+    if (r.code !== 0) throw { code: r.code, stdout: r.stdout, stderr: r.stderr }
+    return { stdout: r.stdout, stderr: r.stderr }
+  }
 
   it('sends one test message through the configured SMTP server', async () => {
     const smtp = await startSmtp()
@@ -754,6 +759,11 @@ describe('#395: cli mail:test', () => {
     } finally {
       await relay.close()
     }
+  })
+
+  test('with SMTP_HOST unset, sends to the Email Sink and says so', async () => {
+    const { stdout } = await run(['mail:test', 'ops@example.test'], {})
+    expect(stdout).toBe('mail:test: SMTP_HOST is unset; the test message went to the Email Sink\n')
   })
 
   it('needs a recipient', async () => {

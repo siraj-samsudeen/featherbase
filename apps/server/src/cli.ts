@@ -47,7 +47,11 @@
 //                                     it; --accept <n> lifts the size limit for exactly n people (a large but
 //                                     genuine batch), never a stale feed
 //   cli console                       REPL with the row API in scope
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { format } from 'node:util'
 import { sql } from './db'
+import { processIO, type CommandIO } from './command-io'
 import { formatPlan, planPersonIdentities } from './person-identities-migration'
 import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
@@ -90,7 +94,7 @@ function asArray(v: string | string[] | boolean | undefined): string[] {
   return Array.isArray(v) ? v : [v]
 }
 
-async function cmdCreateTable(flags: Record<string, string | string[] | boolean>) {
+async function cmdCreateTable(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   const name = flags.name
   if (typeof name !== 'string') throw new Error('create-table requires --name')
   const columns = asArray(flags.field).map((spec) => {
@@ -104,10 +108,11 @@ async function cmdCreateTable(flags: Record<string, string | string[] | boolean>
     }
   })
   const meta = await createTable({ name, kind: flags.single === true ? 'settings' : 'table', columns })
-  console.log(`created Table ${meta.name} with ${meta.columns.length} column(s)`)
+  io.out(`created Table ${meta.name} with ${meta.columns.length} column(s)`)
 }
 
 async function cmdCreatePerson(
+  io: CommandIO,
   positional: string[],
   flags: Record<string, string | string[] | boolean>,
 ) {
@@ -143,46 +148,46 @@ async function cmdCreatePerson(
   )
   if (password) await setUserPassword(String(created.row_id), password)
   const marked = expectsGoogle === true ? '; expects Google sign-in' : ''
-  console.log(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}${marked}`)
+  io.out(`created person ${String(created.row_id)} (${name})${roles.length ? ` with roles: ${roles.join(', ')}` : ''}${marked}`)
 }
 
 // #391: argv lands in shell history and the process list, so a password is
 // taken from stdin only, and a second positional is refused unread.
-async function cmdSetPassword(argv: string[]) {
+async function cmdSetPassword(io: CommandIO, argv: string[]) {
   const positional = argv.filter((a) => !a.startsWith('--'))
   if (positional.length > 1)
     throw new Error('set-password never takes the password as an argument; pipe it in with --stdin')
   const [person] = positional
   if (!person || !argv.includes('--stdin')) throw new Error('usage: cli set-password <person-id> --stdin  (password piped on stdin)')
   // A terminal would echo what is typed; ask for a pipe instead.
-  if (process.stdin.isTTY) throw new Error('set-password --stdin wants the password piped in, not typed')
+  if (io.stdinIsTTY()) throw new Error('set-password --stdin wants the password piped in, not typed')
   // One trailing newline is the pipe's (`echo`, a heredoc), not the password's.
-  const password = (await readStdin()).replace(/\r?\n$/, '')
+  const password = (await io.readStdin()).replace(/\r?\n$/, '')
   // The sign-up and reset minimum (index.ts, password-reset.ts).
   if (password.length < MIN_PASSWORD_LENGTH) throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
   await setPasswordFromShell(person, password)
-  console.log(`password set for ${person}; their sessions are ended`)
+  io.out(`password set for ${person}; their sessions are ended`)
   // Access tokens are a separate credential and survive by design.
-  console.log(`access tokens still work — on a suspected compromise: cli list-tokens ${person}, then cli revoke-token <id>`)
+  io.out(`access tokens still work — on a suspected compromise: cli list-tokens ${person}, then cli revoke-token <id>`)
 }
 
 /** Spawn the rehearsal as its own process, so --rehearse can point
  *  DATABASE_URL at another database before any connection exists. */
-async function cmdPeoplePlan(argv: string[]) {
+async function cmdPeoplePlan(argv: string[]): Promise<number> {
   const { parsePlanOptions } = await import('./people-plan')
   const opts = parsePlanOptions(argv)
   const { spawnSync } = await import('node:child_process')
-  const { fileURLToPath } = await import('node:url')
   const script = fileURLToPath(new URL('./people-plan.ts', import.meta.url))
   const { childEnvironment } = await import('./env')
   const env = childEnvironment(opts.rehearse ? { DATABASE_URL: opts.rehearse } : {})
   const args = argv.flatMap((a, i, all) => (a === '--rehearse' || all[i - 1] === '--rehearse' ? [] : [a]))
   const result = spawnSync(process.execPath, ['--import', 'tsx', script, ...args], { stdio: 'inherit', env })
-  if (result.status !== 0) process.exitCode = result.status ?? 1
+  return result.status ?? 1
 }
 
 // #131: automation credentials, shell-access-is-auth (like create-person).
 async function cmdCreateServiceAccount(
+  io: CommandIO,
   positional: string[],
   flags: Record<string, string | string[] | boolean>,
 ) {
@@ -191,12 +196,13 @@ async function cmdCreateServiceAccount(
   // person-rename: <name> is the account's label; its id is minted (`svc_…`).
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const account = await createServiceAccount(name, roles, 'Administrator')
-  console.log(
+  io.out(
     `created service account ${account.row_id} ("${account.label}")${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
   )
 }
 
 async function cmdIssueToken(
+  io: CommandIO,
   positional: string[],
   flags: Record<string, string | string[] | boolean>,
 ) {
@@ -210,16 +216,16 @@ async function cmdIssueToken(
     expiresAt = new Date(Date.now() + days * 86_400_000)
   }
   const issued = await issueAccessToken(principal, label, expiresAt)
-  console.log(`issued token ${issued.id} ("${issued.label}") for ${issued.owner}`)
-  if (issued.expires_at) console.log(`expires ${new Date(issued.expires_at).toISOString()}`)
-  console.log('the secret below is shown ONCE — store it now:')
-  console.log(issued.token)
+  io.out(`issued token ${issued.id} ("${issued.label}") for ${issued.owner}`)
+  if (issued.expires_at) io.out(`expires ${new Date(issued.expires_at).toISOString()}`)
+  io.out('the secret below is shown ONCE — store it now:')
+  io.out(issued.token)
 }
 
-async function cmdListTokens(positional: string[]) {
+async function cmdListTokens(io: CommandIO, positional: string[]) {
   const tokens = await listAccessTokens(positional[0])
   if (!tokens.length) {
-    console.log('no tokens')
+    io.out('no tokens')
     return
   }
   for (const t of tokens) {
@@ -230,15 +236,15 @@ async function cmdListTokens(positional: string[]) {
         : 'active'
     const lastUsed = t.last_used_at ? new Date(t.last_used_at).toISOString() : 'never used'
     const expiry = t.expires_at ? `expires ${new Date(t.expires_at).toISOString()}` : 'no expiry'
-    console.log(`${t.id}  ${state.padEnd(7)}  ${t.owner}  "${t.label}"  ${expiry}  ${lastUsed}`)
+    io.out(`${t.id}  ${state.padEnd(7)}  ${t.owner}  "${t.label}"  ${expiry}  ${lastUsed}`)
   }
 }
 
-async function cmdRevokeToken(positional: string[]) {
+async function cmdRevokeToken(io: CommandIO, positional: string[]) {
   const [id] = positional
   if (!id) throw new Error('revoke-token requires <token-id>')
   await revokeAccessToken(id)
-  console.log(`revoked ${id}`)
+  io.out(`revoked ${id}`)
 }
 
 /** person-rename: after 0101 the shipped 0005 seed would recreate a `User`
@@ -260,31 +266,17 @@ async function seedBuiltInPersons() {
   }
 }
 
-async function cmdSeed() {
-  const [renamed] = await sql`select to_regclass('featherbase.person') as r`
-  if (renamed?.r) await seedBuiltInPersons()
-  // Core seed migrations are written idempotently (ensureTable/ensureDoc),
-  // so re-running them is a safe "seed" that repairs missing core data.
-  for (const file of renamed?.r ? [] : ['0005_core_seeds.ts']) {
-    const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-    await mod.up()
-    console.log(`seeded ${file}`)
-  }
+async function cmdSeed(io: CommandIO) {
+  await seedBuiltInPersons()
   const { bootstrapAdministrator, diagnoseAdminBootstrap } = await import('./admin-bootstrap')
   await bootstrapAdministrator()
   await diagnoseAdminBootstrap()
-  console.log('seed complete')
+  io.out('seed complete')
 }
 
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
 ) => (...args: unknown[]) => Promise<unknown>
-
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-  return Buffer.concat(chunks).toString('utf8')
-}
 
 // stdin is text, taken unchanged: typed fields (Check, Int, Choice …) and
 // layout or child-table columns are set in the System Settings form instead.
@@ -299,7 +291,7 @@ const TYPED_TYPES = new Set(['Check', 'Choice'])
 // a field the instance settings file locked, and is recorded in the Activity
 // Log with actor `cli`. The value is the whole of stdin, unchanged, so a
 // reviewed file applies as is.
-async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
+async function cmdSettingsSet(io: CommandIO, positional: string[], flags: Record<string, string | string[] | boolean>) {
   const [field] = positional
   if (!field || flags.stdin !== true || positional.length !== 1)
     throw new Error('usage: cli settings:set <field> --stdin [--table <Table> --row <row id>]')
@@ -317,7 +309,7 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   if (!column) throw new Error(`${table} has no field ${field}`)
   if (!TEXT_TYPES.has(column.column_type) && !TYPED_TYPES.has(column.column_type))
     throw new Error(`${table} field ${field} is ${column.column_type}; settings:set writes text, Check and Choice fields only`)
-  const raw = await readStdin()
+  const raw = await io.readStdin()
   // Text is taken unchanged; a switch is exactly true or false, and a choice
   // is one of the field's choices (the save checks it), each without the
   // trailing newline a shell adds.
@@ -342,7 +334,7 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   })
   const where = row === undefined ? (table === 'System Settings' ? '' : `${table} `) : `${table} ${row} `
   await logActivity(BREAK_GLASS_ACTOR, `settings_set ${where}${field}`)
-  console.log(`${row === undefined ? table : `${table} ${row}`} ${field} set (${typeof value === 'boolean' ? value : `${value.length} characters`})`)
+  io.out(`${row === undefined ? table : `${table} ${row}`} ${field} set (${typeof value === 'boolean' ? value : `${value.length} characters`})`)
 }
 
 /** Every { "file": name } value in a settings file, read from the folder
@@ -367,7 +359,7 @@ async function referencedFiles(value: unknown, folder: string, out: Record<strin
   return out
 }
 
-async function cmdSettingsApply(flags: Record<string, string | string[] | boolean>) {
+async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   const file = flags.file
   if (typeof file !== 'string') throw new Error('usage: cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]')
   for (const key of ['environment', 'revision', 'run'] as const)
@@ -394,19 +386,19 @@ async function cmdSettingsApply(flags: Record<string, string | string[] | boolea
     files: await referencedFiles(settings, path.dirname(path.resolve(file))),
   })
   for (const c of result.changes)
-    console.log(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
-  for (const w of result.warnings) console.log(w)
-  console.log(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
+    io.out(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
+  for (const w of result.warnings) io.out(w)
+  io.out(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
 }
 
-async function cmdSettingsExport(flags: Record<string, string | string[] | boolean>) {
+async function cmdSettingsExport(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   if (flags.dir !== undefined && typeof flags.dir !== 'string') throw new Error('--dir takes a folder')
   const { exportInstanceSettings } = await import('./instance-settings')
   const { file, withheld } = await exportInstanceSettings()
   // Never on stdout, which may be redirected into the settings file.
-  for (const w of withheld) console.error(`settings:export: left out ${w}`)
+  for (const w of withheld) io.err(`settings:export: left out ${w}`)
   if (typeof flags.dir !== 'string') {
-    console.log(JSON.stringify(file, null, 2))
+    io.out(JSON.stringify(file, null, 2))
     return
   }
   const { mkdir, writeFile } = await import('node:fs/promises')
@@ -418,16 +410,16 @@ async function cmdSettingsExport(flags: Record<string, string | string[] | boole
     system.privacy_notice = { file: 'privacy-notice.md' }
   }
   await writeFile(path.join(flags.dir, 'instance-settings.json'), `${JSON.stringify(file, null, 2)}\n`)
-  console.log(`settings:export: wrote ${path.join(flags.dir, 'instance-settings.json')}`)
+  io.out(`settings:export: wrote ${path.join(flags.dir, 'instance-settings.json')}`)
 }
 
-async function cmdConsole() {
+async function cmdConsole(io: CommandIO) {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
   // row API in scope and AWAIT it, so async work finishes before the
   // connection closes. Interactive: a normal REPL.
-  if (!process.stdin.isTTY) {
-    const code = await readStdin()
+  if (!io.stdinIsTTY()) {
+    const code = await io.readStdin()
     if (code.trim()) {
       const fn = new AsyncFunction(...Object.keys(context), code)
       await fn(...Object.values(context))
@@ -435,14 +427,26 @@ async function cmdConsole() {
     return
   }
   const repl = await import('node:repl')
-  console.log('featherbase console — row API in scope: sql, getDoc, saveDoc, getList, getMeta, createTable')
-  const server = repl.start({ prompt: 'fc> ', useGlobal: true })
+  io.out('featherbase console — row API in scope: sql, getDoc, saveDoc, getList, getMeta, createTable')
+  const server = repl.start({ prompt: 'fc> ', useGlobal: true, input: io.input(), output: io.output() })
   Object.assign(server.context, context)
   await new Promise<void>((resolve) => server.on('exit', resolve))
 }
 
-async function main() {
-  const [cmd, ...rest] = process.argv.slice(2)
+/** Run one command; resolves to the process's exit code. Errors are printed
+ *  (`error: <message>`) and give 1. The caller owns the database connection:
+ *  the entry point below ends it. */
+export async function main(argv: string[], io: CommandIO = processIO): Promise<number> {
+  try {
+    return await runCommand(argv, io)
+  } catch (err) {
+    io.err(format('error:', err instanceof Error ? err.message : err))
+    return 1
+  }
+}
+
+async function runCommand(argv: string[], io: CommandIO): Promise<number> {
+  const [cmd, ...rest] = argv
   const { flags, positional } = parseArgs(rest)
 
   switch (cmd) {
@@ -451,42 +455,41 @@ async function main() {
       break
     case 'patches': {
       const newly = await runPatches(patches)
-      if (newly.length) for (const n of newly) console.log(`applied patch ${n}`)
-      console.log(`patches up to date (${patches.length} total)`)
+      if (newly.length) for (const n of newly) io.out(`applied patch ${n}`)
+      io.out(`patches up to date (${patches.length} total)`)
       break
     }
     case 'seed':
-      await cmdSeed()
+      await cmdSeed(io)
       break
     case 'create-table':
-      await cmdCreateTable(flags)
+      await cmdCreateTable(io, flags)
       break
     case 'create-person':
-      await cmdCreatePerson(positional, flags)
+      await cmdCreatePerson(io, positional, flags)
       break
     case 'set-password':
-      await cmdSetPassword(rest)
+      await cmdSetPassword(io, rest)
       break
     case 'create-service-account':
-      await cmdCreateServiceAccount(positional, flags)
+      await cmdCreateServiceAccount(io, positional, flags)
       break
     case 'issue-token':
-      await cmdIssueToken(positional, flags)
+      await cmdIssueToken(io, positional, flags)
       break
     case 'list-tokens':
-      await cmdListTokens(positional)
+      await cmdListTokens(io, positional)
       break
     case 'revoke-token':
-      await cmdRevokeToken(positional)
+      await cmdRevokeToken(io, positional)
       break
     case 'identities:plan':
       // Read-only (review minor 10): computes what migration 0100 would do from
       // the data as it is, with the parity check, and changes nothing.
-      console.log(formatPlan(await planPersonIdentities()))
+      io.out(formatPlan(await planPersonIdentities()))
       break
     case 'people:plan':
-      await cmdPeoplePlan(rest)
-      break
+      return cmdPeoplePlan(rest)
     case 'people:resolve': {
       // The flag may come before or after the file.
       const file = rest.find((a) => !a.startsWith('--'))
@@ -495,7 +498,7 @@ async function main() {
       const { assertDatabaseEnvironment } = await import('./db-environment')
       await assertDatabaseEnvironment()
       const { formatResolveReport, runPeopleResolve } = await import('./people-resolve')
-      console.log(formatResolveReport(await runPeopleResolve(file, { dryRun }), { dryRun }))
+      io.out(formatResolveReport(await runPeopleResolve(file, { dryRun }), { dryRun }))
       break
     }
     case 'boot-check': {
@@ -510,10 +513,10 @@ async function main() {
       const { delegatedTestMode } = await import('./delegated-login')
       const { config } = await import('./config')
       const { settingsRequirements } = await import('./release-preflight')
-      for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.log(`boot-check: ${line}`)
-      console.log(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
+      for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) io.out(`boot-check: ${line}`)
+      io.out(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
       const { preflightRelease } = await import('./release-preflight')
-      for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)
+      for (const line of await preflightRelease()) io.out(`boot-check: release preflight — ${line}`)
       break
     }
     case 'mail:test': {
@@ -532,38 +535,38 @@ async function main() {
           let reply = err.serverReply
           if (smtp?.password) reply = reply.split(smtp.password).join('[password]')
           reply = reply.replace(/[^\s<>()\[\],;:"']+@[^\s<>()\[\],;:"']+/g, '[address]')
-          console.error(`mail:test: server reply: ${reply}`)
+          io.err(`mail:test: server reply: ${reply}`)
         }
         throw err
       }
       // The recipient is not echoed: the operator typed it, and output may be
       // captured in deploy logs.
-      console.log(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
+      io.out(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
       break
     }
     case 'settings:set':
-      await cmdSettingsSet(positional, flags)
+      await cmdSettingsSet(io, positional, flags)
       break
     case 'settings:apply':
-      await cmdSettingsApply(flags)
+      await cmdSettingsApply(io, flags)
       break
     case 'settings:export':
-      await cmdSettingsExport(flags)
+      await cmdSettingsExport(io, flags)
       break
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
       const { applySeedPack } = await import('./seed-packs')
       const r = await applySeedPack(name)
-      console.log(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
+      io.out(`seed pack ${name}: added ${r.added.join(', ') || 'none'}; kept ${r.kept.join(', ') || 'none'}; sign-in methods linked ${r.methodsLinked.join(', ') || 'none'}; people_review ${r.peopleReview}`)
       break
     }
     case 'leavers:check': {
       const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
       if (!rest.includes('--apply')) {
         if (flags.accept !== undefined) throw new Error('--accept only means something with --apply')
-        console.log(formatLeaverPlan(await planLeaverCheck()))
-        console.log('leaver check: dry run; nothing was changed')
+        io.out(formatLeaverPlan(await planLeaverCheck()))
+        io.out('leaver check: dry run; nothing was changed')
         break
       }
       // A bare --accept parses as `true`; Number(true) is 1, so demand digits.
@@ -573,22 +576,25 @@ async function main() {
       const { assertDatabaseEnvironment } = await import('./db-environment')
       await assertDatabaseEnvironment()
       const run = await runLeaverCheck({ acceptCount: accept })
-      console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
-      console.log(formatSummaryDelivery(run))
+      io.out(formatLeaverPlan(run.plan, { applied: run.disabled }))
+      io.out(formatSummaryDelivery(run))
       break
     }
     case 'console':
-      await cmdConsole()
+      await cmdConsole(io)
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
-      process.exitCode = cmd ? 1 : 0
+      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
+      return cmd ? 1 : 0
   }
-  await sql.end()
+  return 0
 }
 
-main().catch(async (err) => {
-  console.error('error:', err instanceof Error ? err.message : err)
+// Run as a process (`tsx src/cli.ts …`), not when imported by a test.
+/* v8 ignore next 6 -- entry-point guard; proven by the subprocess test in test/cli.test.ts */
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const code = await main(process.argv.slice(2))
   await sql.end().catch(() => {})
-  process.exit(1)
-})
+  process.exitCode = code
+  if (code !== 0) process.exit(code)
+}
