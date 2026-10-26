@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { migrationBatches } from '../src/migrate'
 import { NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { makePerson } from './fixtures'
@@ -144,15 +145,16 @@ describe('release preflight: access configuration', () => {
   const SIGNUP_OK = 'no sign-in method creates new people for anyone here'
   const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
 
-  // These cases run preflight as production; give it the SITE_URL a production
-  // server must have (#430) so they reach the access checks they are about.
-  let siteUrlBefore = ''
+  // These cases run preflight as production; give it the INSTANCE_ADDRESSES a
+  // production server must have (#430, #488) so they reach the access checks
+  // they are about.
+  let addressesBefore: typeof config.instanceAddresses = null
   beforeEach(() => {
-    siteUrlBefore = config.siteUrl
-    ;(config as { siteUrl: string }).siteUrl = 'https://featherbase.example.test'
+    addressesBefore = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses('[{"address":"https://featherbase.example.test","opens":"admin","emails":true}]', 'production')
   })
   afterEach(() => {
-    ;(config as { siteUrl: string }).siteUrl = siteUrlBefore
+    config.instanceAddresses = addressesBefore
   })
 
   async function grant(role: string, refTable: string, flags: Record<string, boolean>) {

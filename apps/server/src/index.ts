@@ -26,6 +26,7 @@ import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-acces
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { sendInvitation } from './invitation-email'
+import { linkAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -309,7 +310,7 @@ app.post('/api/logout', async (c) => {
 app.post('/api/reset_password_request', async (c) => {
   const { usr } = (await c.req.json().catch(() => ({}))) as { usr?: string }
   if (!usr) throw new AppError('ValidationError', 'Expected { usr }')
-  await requestPasswordReset(usr)
+  await requestPasswordReset(usr, externalOrigin(c).origin)
   return c.json({ ok: true })
 })
 
@@ -422,18 +423,20 @@ app.on(
   },
 )
 
-// The origin a browser reaches this instance on. `SITE_URL` is configuration
-// and therefore authoritative: a request header cannot steer it. Only a
-// checkout that has not been told where it lives falls back to the request,
-// and then `x-forwarded-proto` is read as what it is — a LIST. A proxy chain
-// APPENDS its hop rather than overwriting, so a request that reached the edge
-// over TLS arrives as `https,http`; comparing that whole string to 'https'
-// read false and set the login cookies without `Secure`, and interpolated
+// The origin a browser reaches this instance on. INSTANCE_ADDRESSES is
+// configuration and therefore authoritative (#488): the request's Host only
+// SELECTS one of its entries, and an unlisted host gets the Admin entry, so a
+// header can never create an origin. Only a checkout with no list at all
+// (development and test) falls back to the request, and then
+// `x-forwarded-proto` is read as what it is — a LIST. A proxy chain APPENDS
+// its hop rather than overwriting, so a request that reached the edge over TLS
+// arrives as `https,http`; comparing that whole string to 'https' read false
+// and set the login cookies without `Secure`, and interpolated
 // `https,http://host` into the redirect_uri. Only the first hop is the
 // client's, and anything that is not http/https is not a protocol we will
 // paste into an origin.
 function externalOrigin(c: Context): URL {
-  if (config.siteUrl) return new URL(config.siteUrl)
+  if (config.instanceAddresses) return new URL(linkAddress(config.instanceAddresses, requestHost(c.req.url)).address)
   const url = new URL(c.req.url)
   const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0].trim().toLowerCase()
   const proto = forwarded === 'http' || forwarded === 'https' ? forwarded : url.protocol.slice(0, -1)
@@ -505,7 +508,7 @@ app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
-  const { state, verifier } = newLoginChallenge()
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url))
   setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name') }
   return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
@@ -524,7 +527,7 @@ app.get('/api/oauth/mock/approve', async (c) => {
   assertMockProviderAllowed(await oauthClientId())
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
-  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE))
+  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const email = c.req.query('email') ?? ''
   const name = c.req.query('name') ?? ''
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
@@ -557,7 +560,7 @@ async function googleCallback(c: Context) {
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
-  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
+  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
@@ -1132,7 +1135,7 @@ app.get('/api/oauth/google/link', async (c) => {
   const google = await googleAvailable()
   if (!google || !google.self_link) throw new AppError('PermissionError', 'Linking Google is not available')
   const clientId = google.client_id
-  const { state, verifier } = newLoginChallenge({ purpose: 'link', uid: me.row_id })
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), { purpose: 'link', uid: me.row_id })
   setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }
   return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))

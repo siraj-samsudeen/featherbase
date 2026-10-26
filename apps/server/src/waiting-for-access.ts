@@ -4,7 +4,8 @@ import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
-import { SITE_URL } from './password-reset'
+import { config } from './config'
+import { emailOrigin } from './instance-addresses'
 import type { SignInMethod } from './identities'
 
 export const ALERT_SUBJECT = 'New sign-in waiting for access'
@@ -138,7 +139,7 @@ export async function alertNewArrival(person: string, method: SignInMethod): Pro
         `Email domain: ${domain}`,
         `Signed in with: ${method.label || method.key}`,
         '',
-        `Give them roles from the Waiting for access page: ${SITE_URL}${WAITING_PATH}`,
+        `Give them roles from the Waiting for access page: ${emailOrigin(config.instanceAddresses, config.environment) ?? ''}${WAITING_PATH}`,
       ].join('\n')
       for (const to of managers)
         await sender({ to, subject: ALERT_SUBJECT, body, ref_table: 'Person', reference_name: person })

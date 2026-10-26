@@ -96,12 +96,16 @@ function unpack(token: string): Record<string, unknown> {
 // The PKCE verifier rides the same trip. It proves the browser that finishes
 // the exchange is the one that started it, so a stolen authorization code
 // cannot be redeemed by anyone else.
-export function newLoginChallenge(extra: { purpose?: 'link'; uid?: string } = {}): { state: string; verifier: string } {
+//
+// #488: the state also signs the host the sign-in started on (lowercased, no
+// port). Each address has its own redirect_uri, and a callback arriving on any
+// other host is refused, so a sign-in can only finish where it began.
+export function newLoginChallenge(host: string, extra: { purpose?: 'link'; uid?: string } = {}): { state: string; verifier: string } {
   return {
     // Math.random() is not a CSPRNG — its output is predictable enough to
     // forge. The nonce is security-bearing, so it comes from crypto. A link
     // flow also signs who started it (person-identities D6).
-    state: pack({ nonce: randomBytes(32).toString('base64url'), ...extra }),
+    state: pack({ nonce: randomBytes(32).toString('base64url'), host, ...extra }),
     verifier: randomBytes(32).toString('base64url'),
   }
 }
@@ -112,8 +116,9 @@ export function codeChallengeFor(verifier: string): string {
 }
 
 // `cookieState` is the value of the state cookie set at login. Both must be
-// present and identical, and the state must still carry a valid signature.
-export function verifyState(state: string | undefined, cookieState: string | undefined): { purpose?: string; uid?: string } {
+// present and identical, and the state must still carry a valid signature and
+// name the host this request arrived on.
+export function verifyState(state: string | undefined, cookieState: string | undefined, host: string): { purpose?: string; uid?: string } {
   if (!state) throw new AppError('AuthenticationError', 'Missing OAuth state')
   if (!cookieState)
     throw new AppError('AuthenticationError', 'Missing OAuth state cookie — start sign-in again')
@@ -122,6 +127,8 @@ export function verifyState(state: string | undefined, cookieState: string | und
   if (a.length !== b.length || !timingSafeEqual(a, b))
     throw new AppError('AuthenticationError', 'OAuth state does not match this browser')
   const obj = unpack(state) // throws if invalid/expired
+  if (obj.host !== host)
+    throw new AppError('AuthenticationError', 'This sign-in was started on another address — start it again here')
   return { purpose: typeof obj.purpose === 'string' ? obj.purpose : undefined, uid: typeof obj.uid === 'string' ? obj.uid : undefined }
 }
 

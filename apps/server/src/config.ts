@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { parseInstanceAddresses, type InstanceAddress } from './instance-addresses'
 
 // EDS-1/BV7: data-source credentials live in environment variables. For dev
 // convenience an optional apps/server/.env (gitignored) is loaded once at
@@ -56,11 +57,13 @@ export const config = {
   allowedOrigins: (
     process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173'
   ).split(','),
-  // The deployment's own absolute URL, as a browser sees it (`https://app.example.com`).
-  // Used for links the server hands out — password-reset emails, and the OAuth
-  // `redirect_uri`. Configuration, so it cannot be steered by a request header;
-  // empty means "derive it from the request", which is what a dev checkout does.
-  siteUrl: (process.env.SITE_URL ?? '').trim().replace(/\/+$/, ''),
+  // #488: what each web address of this instance opens, and which one emailed
+  // links use (src/instance-addresses.ts). Configuration, so a request header
+  // can only select an entry, never create one. null (unset) is allowed only
+  // in development and test, where links fall back to the request's origin;
+  // the release preflight refuses it anywhere else. An invalid list stops
+  // the boot here, naming the rule it breaks.
+  instanceAddresses: parseInstanceAddresses(process.env.INSTANCE_ADDRESSES, environment) as InstanceAddress[] | null,
 }
 
 /** True when this process was told its environment (FEATHERBASE_ENV or
@@ -70,6 +73,6 @@ export function environmentDeclared(env: Record<string, string | undefined> = pr
 }
 
 // The only environments where a link the server emails may be built from the
-// request's own origin when SITE_URL is unset (#430). Everywhere else SITE_URL
-// is required: release-preflight refuses without it.
+// request's own origin when INSTANCE_ADDRESSES is unset (#430, #488).
+// Everywhere else the list is required: release-preflight refuses without it.
 export const ORIGIN_FALLBACK_ENVIRONMENTS: readonly string[] = ['development', 'test']

@@ -11,6 +11,7 @@ import { assertTestModeAllowed, delegatedTestMode, TEST_MODE_ENVIRONMENTS } from
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
+import { validateInstanceAddresses } from './instance-addresses'
 
 export interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -22,7 +23,7 @@ export interface PreflightOptions {
 export async function preflightRelease(opts: PreflightOptions = {}): Promise<string[]> {
   // 0. A release declares what it is. Unset, the environment defaults to
   //    development, which would wave through every production-only check
-  //    below (SITE_URL among them). A local dev server never runs this.
+  //    below (INSTANCE_ADDRESSES among them). A local dev server never runs this.
   if (!opts.environment && !environmentDeclared())
     throw new Error(
       'Neither FEATHERBASE_ENV nor NODE_ENV is set. A release must declare its environment (FEATHERBASE_ENV=production, staging, …) rather than default to development (docs/DEPLOY.md, "Configuration").',
@@ -48,13 +49,21 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)
 
-  // 2b. Links the server emails (sign-in invitations, #430) must name the
-  //     instance from configuration, never from a request's Host header.
-  if (!config.siteUrl && !ORIGIN_FALLBACK_ENVIRONMENTS.includes(environment))
-    throw new Error(
-      `SITE_URL is not set on a "${environment}" server. Emailed links (sign-in invitations, password resets) need this instance's own address, which a request must not be able to steer. Set SITE_URL (https://…) first (docs/DEPLOY.md, "Configuration").`,
-    )
-  passed.push(config.siteUrl ? 'SITE_URL set' : `SITE_URL unset, allowed on a "${environment}" server`)
+  // 2b. Links the server emails (sign-in invitations, #430) and builds (Google
+  //     sign-in, #488) must name the instance from configuration, never from a
+  //     request's Host header. The list was validated at boot for this
+  //     process's environment; it is checked again for the release's own.
+  const addresses = config.instanceAddresses
+  if (!addresses) {
+    if (!ORIGIN_FALLBACK_ENVIRONMENTS.includes(environment))
+      throw new Error(
+        `INSTANCE_ADDRESSES is not set on a "${environment}" server. Emailed links (sign-in invitations, password resets) and Google sign-in need this instance's own addresses, which a request must not be able to steer. Set INSTANCE_ADDRESSES first (docs/DEPLOY.md, "Configuration").`,
+      )
+    passed.push(`INSTANCE_ADDRESSES unset, allowed on a "${environment}" server`)
+  } else {
+    validateInstanceAddresses(addresses, environment)
+    passed.push(`INSTANCE_ADDRESSES: ${addresses.map((a) => `${a.address} opens ${a.opens}${a.emails ? ' (emails)' : ''}`).join(', ')}`)
+  }
 
   // 3. 0102 creates btree_gist (person_identifier's history constraint).
   const pending = await pendingMigrations()
