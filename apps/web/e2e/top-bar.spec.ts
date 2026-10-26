@@ -206,3 +206,107 @@ test.describe('at 375px', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/admin-375-light.png` })
   })
 })
+
+// #501: a page is named for where the person belongs, and the bar never
+// offers to go where the person already is. Each check runs at both widths;
+// with TOP_BAR_SHOTS set it also saves a screenshot and the tab's title.
+async function shot(page: Page, name: string) {
+  if (!SHOTS) return
+  const { appendFile } = await import('node:fs/promises')
+  const width = page.viewportSize()?.width
+  await page.screenshot({ path: `${SHOTS}/${name}-${width}-light.png` })
+  await appendFile(`${SHOTS}/titles.txt`, `${name}-${width}-light.png\t${await page.title()}\n`)
+}
+
+/** The Account menu's contents at phone width, the bar's at desktop width. */
+async function openAdminShown(page: Page, phone: boolean) {
+  if (!phone) return page.getByTestId('top-bar-right').getByTestId('open-admin').count()
+  await page.getByTestId('session-user').click()
+  await expect(page.getByTestId('account-menu')).toBeVisible()
+  const count = await page.getByTestId('account-menu').getByTestId('open-admin').count()
+  await page.keyboard.press('Escape')
+  return count
+}
+
+for (const width of [1280, 375]) {
+  const phone = width < 640
+  test.describe(`#501 at ${width}px`, () => {
+    test.use({ viewport: { width, height: phone ? 812 : 800 }, colorScheme: 'light' })
+
+    test('the Admin screens are titled Featherbase Admin', async ({ session, page, request }) => {
+      const manager = await person(request, `Admin Title ${width}`, ['System Manager'])
+      await signInAt(page, ADMIN, manager)
+      await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
+      await expect(page.getByTestId('session-user')).toBeVisible()
+      await session.step('the tab and the logo say Featherbase Admin', async () => {
+        await expect(page).toHaveTitle('Featherbase Admin')
+        await expect(page.getByRole('link', { name: 'Featherbase Admin' })).toHaveAttribute('title', 'Featherbase Admin')
+      })
+      await shot(page, 'item1-admin-address-admin')
+    })
+
+    test('the Sales Target page on the Admin address offers no Open Admin', async ({ session, page, request }) => {
+      const both = await person(request, `Admin Report ${width}`, ['System Manager', VIEWER_ROLE])
+      await signInAt(page, ADMIN, both)
+      await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
+      await page.goto(`${ADMIN}/featherbase/sales-target`)
+      await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+      await expect(page.getByTestId('session-user')).toBeVisible()
+      await session.step('no Open Admin, in the bar or the Account menu', async () => {
+        expect(await openAdminShown(page, phone)).toBe(0)
+      })
+      await shot(page, 'item2-admin-address-sales-target')
+    })
+
+    test("on the app's address Open Admin is offered, and the account page keeps the app's name", async ({ session, page, request }) => {
+      await onDash(page, request, `Dash Both ${width}`)
+      await session.step('Open Admin is offered on the report', async () => {
+        expect(await openAdminShown(page, phone)).toBe(1)
+      })
+      await shot(page, 'item2-dash-address-sales-target')
+      await page.goto(`${DASH}/featherbase/account/sign-in-methods`)
+      await session.step('the account page is named Feather Dash', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+        await expect(page).toHaveTitle('Feather Dash')
+      })
+      await shot(page, 'item3-dash-address-account')
+    })
+
+    test('on the Admin address the account page is Featherbase Admin for someone who can use Admin', async ({ session, page, request }) => {
+      const manager = await person(request, `Account Admin ${width}`, ['System Manager'])
+      await signInAt(page, ADMIN, manager)
+      await expect(page).toHaveURL(new RegExp(`^${ADMIN}/featherbase/admin`), { timeout: 15_000 })
+      await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
+      await session.step('bar and tab say Featherbase Admin, with no Open Admin', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
+        await expect(page).toHaveTitle('Featherbase Admin')
+        expect(await openAdminShown(page, phone)).toBe(0)
+      })
+      await shot(page, 'item3-admin-address-account-admin')
+    })
+
+    test("on the Admin address the account page names the app for someone who can open it but not Admin", async ({ session, page, request }) => {
+      const viewer = await person(request, `Account Viewer ${width}`, [VIEWER_ROLE])
+      await signInAt(page, ADMIN, viewer)
+      await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
+      await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
+      await session.step('bar and tab say Feather Dash', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Feather Dash')
+        await expect(page).toHaveTitle('Feather Dash')
+      })
+      await shot(page, 'item3-admin-address-account-viewer')
+    })
+
+    test('on the Admin address the account page is Featherbase for someone who can open nothing', async ({ session, page, request }) => {
+      const nobody = await person(request, `Account Nobody ${width}`, [])
+      await signInAt(page, ADMIN, nobody)
+      await expect(page.getByTestId('no-access')).toBeVisible({ timeout: 15_000 })
+      await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
+      await session.step('bar and tab say Featherbase', async () => {
+        await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase')
+        await expect(page).toHaveTitle('Featherbase')
+      })
+      await shot(page, 'item3-admin-address-account-nobody')
+    })
+  })
+}
