@@ -54,6 +54,23 @@ test('a System Manager signing in on the admin address stays on it', async ({ se
   })
 })
 
+test("the app's address sends / and Admin pages to the app's root, as a production server does", async ({ session, page, request }) => {
+  // Someone the Admin would let in, so only the address keeps them out of it.
+  const both = await person(request, 'Dash Admin Too', ['System Manager', VIEWER_ROLE])
+  await session.step('signed in on the app address', async () => {
+    await signInAt(page, DASH, both)
+    await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
+  })
+  await session.step('an Admin page goes to the report', async () => {
+    await page.goto(`${DASH}/featherbase/admin/home`)
+    await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`)
+  })
+  await session.step('/ goes to the report', async () => {
+    await page.goto(`${DASH}/`)
+    await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`)
+  })
+})
+
 test('signing out on one address ends only that address’s session', async ({ session, page, request }) => {
   // Both: they can use Admin and open the app, so each address keeps them.
   const both = await person(request, 'Both Addresses', ['System Manager', VIEWER_ROLE])
