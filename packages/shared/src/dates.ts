@@ -65,3 +65,24 @@ export function wallTimeToInstant(s: string): string {
   const iso = d.toISOString()
   return fraction ? `${iso.slice(0, 19)}.${fraction}Z` : iso
 }
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/**
+ * An instant as `DD-Mon-YYYY HH:MM IST`, the form report_server's
+ * `data_as_of()` uses. Rendered in IST because that is where the readers are;
+ * the servers run UTC and a bare UTC clock time would be read as local and be
+ * five and a half hours wrong. The web and the server's own messages (instance
+ * health) use this one definition.
+ */
+export function fmtInstantIST(value: string | Date | null | undefined): string {
+  if (!value) return '—'
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${pad(ist.getUTCDate())}-${SHORT_MONTHS[ist.getUTCMonth()]}-${ist.getUTCFullYear()} ` +
+    `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())} IST`
+  )
+}

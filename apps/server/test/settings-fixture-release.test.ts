@@ -93,12 +93,20 @@ it('a release over a database seeded from the old System Settings fixture change
       name: 'instance_manifest', fixtures: [{ table: 'System Settings', row_id: 'System Settings' }],
     })])
 
+    // A later migration may add a scheduled job (0123 adds the health check,
+    // #465 D8); that is not a setting changing, so only the jobs that were
+    // there before are compared.
+    const existing = new Set(before.jobs.map((j) => String(j.row_id)))
+    const settled = async () => {
+      const now = await live()
+      return { ...now, jobs: now.jobs.filter((j) => existing.has(String(j.row_id))) }
+    }
     expect(run(server, 'src/release.ts')).toContain('migrations up to date')
-    expect(await live()).toEqual(before)
+    expect(await settled()).toEqual(before)
 
     // A server start, and uninstalling that app, leave the settings too.
     run(server, 'test/fixtures/settings-fixture-after.ts')
-    expect({ ...(await live()), apps: [] }).toEqual({ ...before, apps: [] })
+    expect({ ...(await settled()), apps: [] }).toEqual({ ...before, apps: [] })
   } finally {
     await db.end()
   }

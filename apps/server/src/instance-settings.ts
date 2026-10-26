@@ -4,7 +4,7 @@
 // transaction through saveDoc as the actor `instance-settings`, and exports an
 // environment's settings in the file's own shape, never with a secret in it.
 import { z } from 'zod'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getMeta, ROW_KEY, type TableMeta } from './meta'
 import { tableRelation } from './table-engine'
@@ -13,7 +13,7 @@ import { logActivity } from './audit'
 import { appOperation } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
-import { INSTANCE_SETTINGS_ACTOR, holdManagedSetExclusive, recordApply, type ManagedPath } from './managed-settings'
+import { INSTANCE_SETTINGS_ACTOR, holdManagedSet, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
 import { config } from './config'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
@@ -373,6 +373,9 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     await holdManagedSetExclusive(sql)
     const changes: SettingChange[] = []
     const warnings: string[] = []
+    // What each managed field holds once the saves are done: the "settings
+    // match the file" health check compares against it (D8).
+    const appliedValues: ManagedValue[] = []
     for (const { entry, meta, rows } of plan) {
       const stamps = new Map<string, unknown>()
       const before = entry.shape === 'settings'
@@ -407,6 +410,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
         const old = before.get(row_id)
         const now = after.get(row_id)
         if (!now) continue
+        for (const field of Object.keys(values)) appliedValues.push({ table: meta.name, row_id, field, value: now[field] ?? null })
         for (const field of Object.keys(values)) {
           const was = old ? (old[field] ?? null) : null
           if (old && old[field] !== undefined && same(was, now[field])) continue
@@ -450,6 +454,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
       revision: opts.source?.revision ?? null,
       run: opts.source?.run ?? null,
       managed_paths: managed,
+      managed_values: appliedValues,
     })
     const source = [opts.source?.revision && `revision ${opts.source.revision}`, opts.source?.run && `run ${opts.source.run}`].filter(Boolean).join(' ')
     const section = opts.environment ? ` ${opts.environment}` : ''
@@ -465,6 +470,49 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
     if (err instanceof DryRun) return err.result
     throw err
   }
+}
+
+// ---------------------------------------------------------------- drift (D8)
+
+/** A locked field whose value is no longer what the last apply left. */
+export interface SettingDrift {
+  table: string
+  row_id: string
+  field: string
+}
+
+/** The managed fields that differ from the last apply: [] before any apply
+ *  or when nothing differs; null when that apply kept no values (an apply
+ *  recorded before 0123), so nothing can be compared. */
+export async function settingsDrift(): Promise<SettingDrift[] | null> {
+  // The baseline and the values it is compared with are read under the
+  // managed-settings lock, so an apply committing between the two reads can
+  // never look like drift (Codex review).
+  return withTransaction(async () => {
+    await holdManagedSet(sql, null)
+    return driftNow()
+  })
+}
+
+async function driftNow(): Promise<SettingDrift[] | null> {
+  const apply = await lastApply()
+  if (!apply) return []
+  if (apply.managed_values === null) return null
+  const drift: SettingDrift[] = []
+  const tables = [...new Set(apply.managed_values.map((v) => v.table))]
+  for (const table of tables) {
+    const recorded = apply.managed_values.filter((v) => v.table === table)
+    const meta = await getMeta(table)
+    const fields = [...new Set(recorded.map((v) => v.field))]
+    const current = meta.kind === 'settings'
+      ? new Map([[meta.name, await storedSettings(meta, fields)]])
+      : await storedRows(meta, fields)
+    for (const v of recorded) {
+      const row = current.get(v.row_id)
+      if (!row || !same(v.value, row[v.field] ?? null)) drift.push({ table: v.table, row_id: v.row_id, field: v.field })
+    }
+  }
+  return drift
 }
 
 // ---------------------------------------------------------------- export (D9)

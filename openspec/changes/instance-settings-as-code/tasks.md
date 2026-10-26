@@ -27,10 +27,10 @@
 
 ## 5. Health checks and history
 
-- [ ] 5.1 Add the check functions (System Manager email, recommended variables, settings applied, matches last apply, scheduled job last run, Administrator default password) and print them in the release step. Verify: unit test per check, with failing and passing cases.
-- [ ] 5.2 Add the state-change table and a 15-minute scheduled job that records transitions only. Verify: a test that a steady check writes nothing and a flip writes one row.
-- [ ] 5.3 Add the Instance health page (state, why, fix, history, link to Activity Log around each change). Verify: Playwright test that opens the page on an instance where the settings were never applied.
-- [ ] 5.4 Add the System Manager banner in `AdminLayout`, not dismissable, coloured by worst severity. Verify: Playwright tests that a System Manager sees it and another person does not, and that it disappears once fixed.
+- [x] 5.1 Add the check functions (System Manager email, recommended variables, settings applied, matches last apply, scheduled job last run, Administrator default password) and print them in the release step. Verify: unit test per check, with failing and passing cases.
+- [x] 5.2 Add the state-change table and a 15-minute scheduled job that records transitions only. Verify: a test that a steady check writes nothing and a flip writes one row.
+- [x] 5.3 Add the Instance health page (state, why, fix, history, link to Activity Log around each change). Verify: Playwright test that opens the page on an instance where the settings were never applied.
+- [x] 5.4 Add the System Manager banner in `AdminLayout`, not dismissable, coloured by worst severity. Verify: Playwright tests that a System Manager sees it and another person does not, and that it disappears once fixed.
 
 ## 6. First-run setup
 

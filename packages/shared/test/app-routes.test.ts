@@ -33,11 +33,19 @@ test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
     expect(app.test(path)).toBe(false)
 })
 
-import { ADMIN_STATIC_PAGES, adminPageTitle } from '../src/index'
+import { ADMIN_STATIC_PAGES, adminPageNeedsManage, adminPageTitle } from '../src/index'
 
 test('every static admin page has a unique slug and a title', () => {
   const slugs = ADMIN_STATIC_PAGES.map((p) => p.slug)
   expect(new Set(slugs).size).toBe(slugs.length)
   expect(adminPageTitle('access-tokens')).toBe('Access tokens')
   expect(adminPageTitle('nope')).toBeUndefined()
+})
+
+test('only the System Manager pages need manage (#465, #476 recents rule)', () => {
+  expect(adminPageNeedsManage('instance-health')).toBe(true)
+  expect(adminPageNeedsManage('waiting-for-access')).toBe(true)
+  expect(adminPageNeedsManage('imports')).toBe(true)
+  expect(adminPageNeedsManage('access-tokens')).toBe(false)
+  expect(adminPageNeedsManage('no-such-page')).toBe(false)
 })
