@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_HOME_DESTINATION } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION } from 'shared'
 import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -551,7 +551,7 @@ function AdminShell() {
         home="admin"
         left={
           <>
-            <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
+            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
               <Logo className="h-7 w-7" />
             </Link>
             <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
@@ -560,13 +560,13 @@ function AdminShell() {
             <Select
               id="admin-app-switcher"
               aria-label="Switch application"
-              value={FEATHERBASE_HOME_DESTINATION.href}
+              value={FEATHERBASE_ADMIN_DESTINATION.href}
               onChange={(event) => { window.location.assign(event.target.value) }}
               wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
               className="truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11"
               data-testid="top-bar-name"
             >
-              <option value={FEATHERBASE_HOME_DESTINATION.href}>{ADMIN_NAME}</option>
+              <option value={FEATHERBASE_ADMIN_DESTINATION.href}>{ADMIN_NAME}</option>
               {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
             </Select>
           </>

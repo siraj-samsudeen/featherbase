@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_HOME_DESTINATION, INTERIM_APPS, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useIsPreview, useWhoAmI } from '../lib/session'
@@ -29,7 +29,7 @@ import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
 /** Below Tailwind's `sm`: one row has room for the name and the avatar only. */
 export const PHONE_QUERY = '(max-width: 639.98px)'
 
-export const ADMIN_NAME = 'Featherbase Admin'
+export const ADMIN_NAME = FEATHERBASE_ADMIN_DESTINATION.label
 const ADMIN = 'admin'
 
 interface Brand {
@@ -67,7 +67,7 @@ function nameOf(context: string, brand: Brand | undefined): string {
 }
 
 function homeHref(context: string): string {
-  if (context === ADMIN) return FEATHERBASE_HOME_DESTINATION.href
+  if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
@@ -164,7 +164,7 @@ function useOpenAdmin() {
     try {
       const to = await api.post<{ handoff?: string; landing?: string }>('/api/open_admin', {})
       if (to.handoff) window.location.assign(to.handoff)
-      else await navigate({ to: to.landing ?? FEATHERBASE_HOME_DESTINATION.href })
+      else await navigate({ to: to.landing ?? FEATHERBASE_ADMIN_DESTINATION.href })
     } catch {
       setBusy(false)
     }
