@@ -54,6 +54,7 @@ export async function assertNotPlatformDatabase(
     // A server that speaks the protocol but lacks these catalog functions
     // (SQLSTATE class 42) is not this platform's PostgreSQL. Anything else,
     // a connection failure above all, is the caller's to report.
+    /* v8 ignore next -- a server that speaks the PostgreSQL protocol without its catalog functions cannot be stood up in the test stack */
     if (/^42/.test(String((err as { code?: string }).code ?? ''))) return
     throw err
   }
