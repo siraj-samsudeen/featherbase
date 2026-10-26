@@ -15,9 +15,12 @@ const SETUP = '/api/setup/system-managers'
 
 // readSmtpConfig reads the process environment itself.
 const SMTP_HOST = process.env.SMTP_HOST
+const SMTP_USER = process.env.SMTP_USER
 afterEach(() => {
   if (SMTP_HOST === undefined) delete process.env.SMTP_HOST
   else process.env.SMTP_HOST = SMTP_HOST
+  if (SMTP_USER === undefined) delete process.env.SMTP_USER
+  else process.env.SMTP_USER = SMTP_USER
   _setInvitationDeliveryForTests(null)
 })
 
@@ -76,6 +79,17 @@ describe('first-run setup (6.1)', () => {
     expect(res.email_can_send).toBe(true)
     expect(res.people[0].invitation.status).toBe('sent')
     expect(sent.map((m) => m.to)).toEqual(['asha@example.com'])
+  })
+
+  test('an incomplete SMTP configuration still returns what was committed, each invitation with its link (Codex review)', async ({ admin }) => {
+    await noManagerEmails()
+    await googleOn()
+    process.env.SMTP_HOST = 'smtp.example.com'
+    process.env.SMTP_USER = 'relay@example.com' // and no SMTP_PASSWORD
+    const res = await admin.post<{ people: Outcome[]; email_can_send: boolean }>(SETUP, { people: [{ full_name: 'Asha', email: 'asha@example.com' }] })
+    expect(res.email_can_send).toBe(false)
+    expect(res.people[0].invitation).toMatchObject({ status: 'failed', link: expect.stringMatching(/\/featherbase\/login$/) })
+    expect(await rolesOf('asha@example.com')).toContain('System Manager')
   })
 
   test('an existing person with that address is given the role, not created again', async ({ admin, createUser }) => {

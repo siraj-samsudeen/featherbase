@@ -71,19 +71,28 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
     else if (seen.has(p.email)) problems[`people.${i}.email`] = `The same address as person ${(seen.get(p.email) ?? 0) + 1}`
     else seen.set(p.email, i)
   }
-  const existing = new Map<string, { row_id: string; enabled: boolean }>()
-  for (const [i, p] of people.entries()) {
-    if (problems[`people.${i}.email`]) continue
-    const found = await sql`
-      select row_id, enabled from person
-      where lower(trim(email)) = ${p.email} and replaced_by is null and row_id <> 'Administrator'
-      order by enabled desc, created_at limit 1`
-    if (!found.length) continue
-    if (!found[0].enabled) problems[`people.${i}.email`] = 'This address belongs to a disabled person. Enable them on their Person page first.'
-    else existing.set(p.email, { row_id: String(found[0].row_id), enabled: true })
-  }
   if (Object.keys(problems).length)
     throw new AppError('ValidationError', 'Some people could not be set up; nothing was changed', problems)
+
+  /** The person who holds each address now, locked until the commit, so an
+   *  edit to that person's email cannot slip between the lookup and the
+   *  grant (Codex review). A problem found here rolls the whole setup back. */
+  async function holders(): Promise<Map<string, string>> {
+    const found = new Map<string, string>()
+    const late: Record<string, string> = {}
+    for (const [i, p] of people.entries()) {
+      const rows = await sql`
+        select row_id, enabled from person
+        where lower(trim(email)) = ${p.email} and replaced_by is null and row_id <> 'Administrator'
+        order by enabled desc, created_at limit 1 for update`
+      if (!rows.length) continue
+      if (!rows[0].enabled) late[`people.${i}.email`] = 'This address belongs to a disabled person. Enable them on their Person page first.'
+      else found.set(p.email, String(rows[0].row_id))
+    }
+    if (Object.keys(late).length)
+      throw new AppError('ValidationError', 'Some people could not be set up; nothing was changed', late)
+    return found
+  }
 
   // 2. One transaction: each person a System Manager, with a pending Google
   //    invitation when Google sign-in is on.
@@ -91,12 +100,13 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
   const invites = Boolean(google?.enabled)
   const made = await actionTransaction(async () => {
     const out: { person: string; full_name: string; email: string; created: boolean; identity: string | null; invited: boolean }[] = []
+    const existing = await holders()
     for (const p of people) {
       const found = existing.get(p.email)
       let person: string
       let full_name = p.full_name
       if (found) {
-        person = found.row_id
+        person = found
         const doc = await getDoc('Person', person, actor) as { roles?: { role: string }[]; updated_at?: unknown; full_name?: string }
         const roles = (doc.roles ?? []).map((r) => r.role)
         full_name = doc.full_name?.trim() || p.full_name
@@ -119,7 +129,15 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
   })
 
   // 3. After the commit: send each new invitation, or hand back its link.
-  const canSend = emailCanSend()
+  // A broken SMTP configuration must not hide what was already committed:
+  // every invitation then counts as not sent, with its link to copy.
+  let canSend = false
+  let smtpBroken = false
+  try {
+    canSend = emailCanSend()
+  } catch {
+    smtpBroken = true
+  }
   const site = invitationSiteUrl(requestOrigin)
   const link = site ? signInLink(site) : null
   const method_label = google?.label || 'Google'
@@ -127,7 +145,9 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
   for (const m of made) {
     let invitation: SetupInvitation
     if (!m.identity) invitation = { status: 'no_method' }
-    else if (!canSend || !m.invited) {
+    else if (smtpBroken && m.invited) {
+      invitation = { status: 'failed', error: 'The invitation email was not sent: the email settings on this server are incomplete', link, method_label }
+    } else if (!canSend || !m.invited) {
       invitation = link ? { status: 'link', link, method_label } : { status: 'failed', error: SITE_URL_MISSING, link: null, method_label }
     } else {
       const sent = await sendInvitation(m.identity, actor, requestOrigin).catch(() => null)
