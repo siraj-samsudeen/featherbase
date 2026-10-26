@@ -30,7 +30,7 @@ function run(name: string, cwd = server, script = 'src/release.ts'): string {
   try {
     return execFileSync(process.execPath, [tsx, script], {
       cwd, encoding: 'utf8', timeout: 120_000,
-      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '', SITE_URL: 'https://featherbase.example.com' },
+      env: { ...process.env, DATABASE_URL: urlFor(name), FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ADMIN_PASSWORD: '', SITE_URL: 'https://featherbase.example.com', JWT_SECRET: 'a-production-secret', ALLOW_MOCK_OAUTH: '' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
   } catch (error) {

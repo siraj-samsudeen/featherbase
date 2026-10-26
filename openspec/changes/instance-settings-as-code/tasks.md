@@ -2,14 +2,14 @@
 
 ## 1. Variable registry
 
-- [ ] 1.1 Add `apps/server/src/env.ts` with every variable the server reads (secret, required, purpose, cross-environment rule) and move all reads into it. Verify: `pnpm --filter server typecheck` and `pnpm test` pass, and `grep -rn "process.env" apps/server/src` finds only `env.ts`.
-- [ ] 1.2 Add a lint rule banning `process.env` outside `env.ts`. Verify: a test file that reads `process.env` fails lint.
-- [ ] 1.3 Generate the DEPLOY.md variable table and `.env.example` from the registry, with a CI check that fails when they are stale. Verify: editing a registry entry without regenerating fails the check.
+- [x] 1.1 Add `apps/server/src/env.ts` with every variable the server reads (secret, required, purpose, cross-environment rule) and move all reads into it. Verify: `pnpm --filter server typecheck` and `pnpm test` pass, and `grep -rn "process.env" apps/server/src` finds only `env.ts`.
+- [x] 1.2 Add a lint rule banning `process.env` outside `env.ts`. Verify: a test file that reads `process.env` fails lint.
+- [x] 1.3 Generate the DEPLOY.md variable table and `.env.example` from the registry, with a CI check that fails when they are stale. Verify: editing a registry entry without regenerating fails the check.
 
 ## 2. Release, boot and apply checks
 
-- [ ] 2.1 Evaluate the registry in release preflight and at server boot: refuse on a missing required variable, warn on a recommended one, and replace the hand-written `SITE_URL` step. Verify: preflight tests for `SITE_URL` still pass, plus new ones for `JWT_SECRET` (refuse) and `FILE_STORAGE_DIR` (warn).
-- [ ] 2.2 Support settings-dependent requirements (Google enabled requires `GOOGLE_CLIENT_SECRET`, a manifest source requires its `url_env`). Verify: a test enabling a Google method without the secret refuses at release.
+- [x] 2.1 Evaluate the registry in release preflight and at server boot: refuse on a missing required variable, warn on a recommended one, and replace the hand-written `SITE_URL` step. Verify: preflight tests for `SITE_URL` still pass, plus new ones for `JWT_SECRET` (refuse) and `FILE_STORAGE_DIR` (warn).
+- [x] 2.2 Support settings-dependent requirements (Google enabled requires `GOOGLE_CLIENT_SECRET`, a manifest source requires its `url_env`). Verify: a test enabling a Google method without the secret refuses at release.
 
 ## 3. Apply, dry run and export
 

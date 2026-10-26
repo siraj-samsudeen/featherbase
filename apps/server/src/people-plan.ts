@@ -76,11 +76,10 @@ async function rescan(opts: PlanOptions) {
 
 async function checkSignIns(codes: string[]) {
   if (!codes.length) return
-  const previous = process.env.DELEGATED_LOGIN_TEST_MODE
   const { TEST_MODE_PHRASE, delegatedMethods, linkedUser } = await import('./delegated-login')
   const { assertEligible } = await import('./sign-in')
-  process.env.DELEGATED_LOGIN_TEST_MODE = TEST_MODE_PHRASE
-  try {
+  const { withVariable } = await import('./env')
+  await withVariable('DELEGATED_LOGIN_TEST_MODE', TEST_MODE_PHRASE, async () => {
     const methods = await delegatedMethods()
     for (const code of codes) {
       for (const cfg of methods) {
@@ -94,10 +93,7 @@ async function checkSignIns(codes: string[]) {
         }
       }
     }
-  } finally {
-    if (previous === undefined) delete process.env.DELEGATED_LOGIN_TEST_MODE
-    else process.env.DELEGATED_LOGIN_TEST_MODE = previous
-  }
+  })
 }
 
 export async function rehearse(opts: PlanOptions): Promise<void> {

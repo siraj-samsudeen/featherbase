@@ -146,6 +146,15 @@ jobs:
       - name: Typecheck server
         run: pnpm --filter server typecheck
 
+      # src/env.ts is the only server module that reads process.env, and the
+      # DEPLOY.md variable table and apps/server/.env.example are generated
+      # from it (instance-settings-as-code D6, #465).
+      - name: Only env.ts reads process.env
+        run: pnpm --filter server lint:env
+
+      - name: Generated variable docs are current
+        run: pnpm --filter server check:env
+
       - name: Typecheck web
         run: pnpm --filter web typecheck
 

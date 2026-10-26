@@ -161,7 +161,8 @@ async function cmdPeoplePlan(argv: string[]) {
   const { spawnSync } = await import('node:child_process')
   const { fileURLToPath } = await import('node:url')
   const script = fileURLToPath(new URL('./people-plan.ts', import.meta.url))
-  const env = { ...process.env, ...(opts.rehearse ? { DATABASE_URL: opts.rehearse } : {}) }
+  const { childEnvironment } = await import('./env')
+  const env = childEnvironment(opts.rehearse ? { DATABASE_URL: opts.rehearse } : {})
   const args = argv.flatMap((a, i, all) => (a === '--rehearse' || all[i - 1] === '--rehearse' ? [] : [a]))
   const result = spawnSync(process.execPath, ['--import', 'tsx', script, ...args], { stdio: 'inherit', env })
   if (result.status !== 0) process.exitCode = result.status ?? 1
@@ -372,14 +373,16 @@ async function main() {
     }
     case 'boot-check': {
       // Read-only. Exactly these, with the target's real variables:
-      //  1. the server's one start-up refusal (index.ts): test mode outside
-      //     development/test/staging;
-      //  2. the release preflight (release-preflight.ts): the database's
-      //     environment stamp matches, its label allows test mode, and
-      //     btree_gist can be created when 0102 is pending.
-      const { assertTestModeAllowed, delegatedTestMode } = await import('./delegated-login')
+      //  1. the server's start-up refusal (index.ts): the variable registry
+      //     (env.ts) — a missing required variable, or a switch on that only
+      //     development, test or staging may have;
+      //  2. the release preflight (release-preflight.ts): the same registry
+      //     with the settings-dependent variables, the database's environment
+      //     stamp, its label for test mode, and the access configuration.
+      const { assertServerStart } = await import('./env')
+      const { delegatedTestMode } = await import('./delegated-login')
       const { config } = await import('./config')
-      assertTestModeAllowed()
+      for (const line of assertServerStart()) if (line.startsWith('WARNING')) console.log(`boot-check: ${line}`)
       console.log(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
       const { preflightRelease } = await import('./release-preflight')
       for (const line of await preflightRelease()) console.log(`boot-check: release preflight — ${line}`)

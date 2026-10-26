@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { processEnvironment } from './env'
 import type { ConnectionOptions } from 'node:tls'
 import { createTransport } from 'nodemailer'
 import { sql } from './db'
@@ -94,7 +95,7 @@ function activeSmtpConfig(): SmtpConfig | null {
 
 // Read per send, not at import, so a changed environment needs no restart of
 // this module (and the tests can switch transports). Blank means unset.
-export function readSmtpConfig(env: Record<string, string | undefined> = process.env): SmtpConfig | null {
+export function readSmtpConfig(env: Record<string, string | undefined> = processEnvironment()): SmtpConfig | null {
   const val = (k: string) => env[k]?.trim() || undefined
   const host = val('SMTP_HOST')
   if (!host) return null

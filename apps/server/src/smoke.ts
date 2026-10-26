@@ -1,6 +1,7 @@
 // Asserts the RUNNING server is healthy. Does not boot anything itself.
+import { readVariable } from './env'
 export {}
-const base = process.env.SERVER_URL ?? 'http://localhost:8000'
+const base = readVariable('SERVER_URL') ?? 'http://localhost:8000'
 
 const res = await fetch(`${base}/api/ping`)
 if (!res.ok) {

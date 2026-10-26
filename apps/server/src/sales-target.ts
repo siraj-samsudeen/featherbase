@@ -3,7 +3,7 @@
 // store–subcategory pair; on every report opening the server reads the caller's
 // rows and mints a fresh MotherDuck embed session with that assignment as the
 // Dive's starting state. The creation token (MOTHERDUCK_TOKEN) is read from
-// process.env on the server and never returned, logged or stored.
+// the environment (env.ts) on the server and never returned, logged or stored.
 //
 // Grain of the assignment Table: one row per (plant_code, material_group);
 // `store_subcategory` is that pair as a single unique column, populated by the
@@ -11,6 +11,7 @@
 // itself refuses a second employee on the same pair. Transfers are ordinary
 // row edits (change `employee`), read at request time — no cache, no restart.
 import { existsSync, readFileSync } from 'node:fs'
+import { readVariable } from './env'
 import { Hono } from 'hono'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -43,7 +44,7 @@ export const PLANT_CODE = /^\d{4}$/
 export const MATERIAL_GROUP = /^\d{9}$/
 
 export function currentPeriod(now: Date = new Date()): Period {
-  const pinned = process.env.SALES_TARGET_TODAY?.trim()
+  const pinned = readVariable('SALES_TARGET_TODAY')?.trim()
   // A real calendar day or nothing: 2026-02-30 passes a shape check and then fails deep in
   // Postgres or DuckDB. A bad pin is the server's misconfiguration, so it is a 500, not a 4xx.
   if (pinned && !(isoDay(pinned) && new Date(`${pinned}T00:00:00Z`).toISOString().slice(0, 10) === pinned))
@@ -54,7 +55,7 @@ export function currentPeriod(now: Date = new Date()): Period {
 // The sandbox origin the page frames and the CSP allows. Overridable only so
 // a browser-level test can point both at a local stub; the page never
 // chooses it — the server hands it out with the identity chrome.
-export const EMBED_ORIGIN = (process.env.MOTHERDUCK_EMBED_ORIGIN ?? 'https://embed-motherduck.com').replace(/\/+$/, '')
+export const EMBED_ORIGIN = (readVariable('MOTHERDUCK_EMBED_ORIGIN') ?? 'https://embed-motherduck.com').replace(/\/+$/, '')
 
 // The shared experiment inputs live in the sibling data-warehouse checkout;
 // SALES_TARGET_SHARED_ENV names the gitignored .env.local that holds the
@@ -63,7 +64,7 @@ export const DEFAULT_SHARED_ENV =
   '/home/user/data-warehouse/experiments/issue_3755/shared/.env.local'
 
 export function sharedEnvPath(): string {
-  return process.env.SALES_TARGET_SHARED_ENV ?? DEFAULT_SHARED_ENV
+  return readVariable('SALES_TARGET_SHARED_ENV') ?? DEFAULT_SHARED_ENV
 }
 
 /** KEY=VALUE lines of the shared .env.local; {} when the file is absent. */
@@ -88,9 +89,9 @@ export interface EmbedConfig {
 // .env.local second (this experiment). The token is NEVER read from a file.
 export function embedConfig(): EmbedConfig {
   const shared = readSharedEnv()
-  const pick = (key: string) => process.env[key] ?? shared[key] ?? ''
+  const pick = (key: 'DIVE_ID' | 'DIVE_VERSION' | 'SERVICE_ACCOUNT') => readVariable(key) ?? shared[key] ?? ''
   return {
-    apiBase: (process.env.MOTHERDUCK_API_BASE ?? 'https://api.motherduck.com').replace(/\/+$/, ''),
+    apiBase: (readVariable('MOTHERDUCK_API_BASE') ?? 'https://api.motherduck.com').replace(/\/+$/, ''),
     diveId: pick('DIVE_ID'),
     version: Number(pick('DIVE_VERSION') || 0),
     serviceAccount: pick('SERVICE_ACCOUNT'),
@@ -522,7 +523,7 @@ export async function createEmbedSession(
   initialState: ReturnType<typeof initialStateFor>,
   cfg: EmbedConfig = embedConfig(),
 ): Promise<EmbedResult> {
-  const token = process.env.MOTHERDUCK_TOKEN
+  const token = readVariable('MOTHERDUCK_TOKEN')
   if (!token) return { ok: false, status: 0, error: 'MOTHERDUCK_TOKEN is not set on the server', kind: 'not_configured' }
   if (!cfg.diveId || !cfg.version || !cfg.serviceAccount)
     return {

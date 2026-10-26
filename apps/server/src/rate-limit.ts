@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono'
+import { readVariable } from './env'
 import { sql } from './db'
 
 // API-007: per-user request rate limiting. A fixed window per user; when the
@@ -7,8 +8,8 @@ import { sql } from './db'
 // User's `api_rate_limit` (0/unset = the global default), so a single user can
 // be throttled without affecting anyone else.
 
-const WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000)
-const GLOBAL_MAX = Number(process.env.RATE_LIMIT_MAX ?? 100_000)
+const WINDOW_MS = Number(readVariable('RATE_LIMIT_WINDOW_MS') ?? 60_000)
+const GLOBAL_MAX = Number(readVariable('RATE_LIMIT_MAX') ?? 100_000)
 
 interface Bucket {
   windowStart: number
