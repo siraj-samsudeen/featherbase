@@ -87,7 +87,7 @@ or leave it off.
 
 ### Requirement: A print format can name its letterhead
 
-A print format MAY name the letterhead it prints with. That letterhead is
+A print format MAY name the letterhead it prints with. That letterhead SHALL be
 used instead of the default, unless the user chooses another or leaves it off.
 
 #### Scenario: A format with its own letterhead
