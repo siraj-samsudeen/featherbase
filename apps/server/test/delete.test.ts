@@ -86,3 +86,31 @@ describe('DOC-006: delete with referential integrity', () => {
     })
   })
 })
+
+describe('A refusal changes nothing', () => {
+  test('a deletion refused because another row links to it leaves the row and its nested rows as they were', async ({ admin }) => {
+    await setup(admin)
+    const inv = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: INVOICE,
+      row: { customer: 'Acme', lines: [{ supplier: 'Globex' }] },
+    })
+    const before = await admin.get(docPath(INVOICE, String(inv.row_id)))
+    // Linked from the invoice: refused.
+    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 417 })
+    expect(await admin.get(docPath(CUSTOMER, 'Acme'))).toMatchObject({ row_id: 'Acme' })
+    expect(await admin.get(docPath(INVOICE, String(inv.row_id)))).toEqual(before)
+  })
+})
+
+describe('Nested rows and settings are deleted only through what holds them', () => {
+  test('a nested row cannot be deleted on its own; its parent keeps it', async ({ admin }) => {
+    await setup(admin)
+    const inv = await admin.post<{ row_id: string; lines: { row_id: string }[] }>('/api/save_row', {
+      table: INVOICE,
+      row: { lines: [{ supplier: 'Globex' }] },
+    })
+    await expect(admin.delete(docPath(ROW, inv.lines[0].row_id))).rejects.toMatchObject({ status: 417 })
+    const after = await admin.get<{ lines: unknown[] }>(docPath(INVOICE, inv.row_id))
+    expect(after.lines).toHaveLength(1)
+  })
+})

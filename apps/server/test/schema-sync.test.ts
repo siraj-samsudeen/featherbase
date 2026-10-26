@@ -124,3 +124,19 @@ describe('META-004: schema sync', () => {
     expect((await badType.json()).error.fields.title).toMatch(/column_type cannot change/)
   })
 })
+
+describe('Removing a column keeps its values', () => {
+  test('a column taken out and later put back brings its old values with it', async ({ admin }) => {
+    await setup(admin)
+    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: [baseColumns[0]] })
+    const hidden = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title']))}`,
+    )
+    expect(hidden.data).toHaveLength(2)
+    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: baseColumns })
+    const back = await admin.get<{ data: { title: string; points: number }[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title', 'points']))}&order_by=title%20asc`,
+    )
+    expect(back.data.map((r) => [r.title, Number(r.points)])).toEqual([['a', 1], ['b', 1]])
+  })
+})

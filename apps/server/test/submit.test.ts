@@ -108,3 +108,16 @@ describe('DOC-007: submittable documents', () => {
     })
   })
 })
+
+describe('A submitted row must be cancelled first', () => {
+  test('deleting a submitted row is refused with word to cancel it first, and the row stays', async ({ admin }) => {
+    await setup(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row: { amount: 7 } })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`)
+    await expect(admin.delete(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringMatching(/cancel it first/),
+    })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)).toMatchObject({ status: 'submitted' })
+  })
+})

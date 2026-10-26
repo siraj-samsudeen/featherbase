@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
+import { createUserWithRole } from './fixtures'
 
 const DT = 'Upd Test Note'
 const TABLE = 'featherbase.upd_test_note'
@@ -108,5 +109,26 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
         row: { row_id: 'ghost', updated_at: new Date().toISOString(), title: 'z' },
       }),
     ).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+describe('Every row records who made it and who last changed it', () => {
+  test('an edit by another person names them as the last change and keeps the creator', async ({ admin, createUser }) => {
+    await makeDT(admin)
+    const created = await admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row: { title: 'v1' } })
+    const editor = await createUserWithRole(admin, createUser, {
+      role: 'Upd Editor',
+      table: DT,
+      can_read: true,
+      can_write: true,
+    })
+    const edited = await editor.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { row_id: created.row_id, updated_at: created.updated_at, title: 'v2' },
+    })
+    expect(edited.created_by).toBe('Administrator')
+    expect(edited.created_at).toEqual(created.created_at)
+    expect(edited.updated_by).toBe(editor.user)
+    expect(edited.updated_by).not.toBe('Administrator')
   })
 })
