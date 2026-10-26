@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
+import { APP_ROOT_PATTERN, FEATHERBASE_ADMIN_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
 
-test('the canonical Featherbase Home destination has its product label and path', () => {
-  expect(FEATHERBASE_HOME_DESTINATION).toEqual({
-    label: 'Featherbase Home',
+test('the canonical Featherbase Admin destination has its product label and path', () => {
+  expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
+    label: 'Featherbase Admin',
     href: '/featherbase/admin',
   })
 })
@@ -33,11 +33,19 @@ test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
     expect(app.test(path)).toBe(false)
 })
 
-import { ADMIN_STATIC_PAGES, adminPageTitle } from '../src/index'
+import { ADMIN_STATIC_PAGES, adminPageNeedsManage, adminPageTitle } from '../src/index'
 
 test('every static admin page has a unique slug and a title', () => {
   const slugs = ADMIN_STATIC_PAGES.map((p) => p.slug)
   expect(new Set(slugs).size).toBe(slugs.length)
-  expect(adminPageTitle('sign-in-methods')).toBe('Sign-in methods')
+  expect(adminPageTitle('access-tokens')).toBe('Access tokens')
   expect(adminPageTitle('nope')).toBeUndefined()
+})
+
+test('only the System Manager pages need manage (#465, #476 recents rule)', () => {
+  expect(adminPageNeedsManage('instance-health')).toBe(true)
+  expect(adminPageNeedsManage('waiting-for-access')).toBe(true)
+  expect(adminPageNeedsManage('imports')).toBe(true)
+  expect(adminPageNeedsManage('access-tokens')).toBe(false)
+  expect(adminPageNeedsManage('no-such-page')).toBe(false)
 })

@@ -115,3 +115,20 @@ test('someone without the System Manager role sees no banner, no link and never 
   expect(screen.queryByTestId('instance-health-link')).not.toBeInTheDocument()
   expect(urls.filter((u) => u.includes('instance-health'))).toEqual([])
 })
+
+test('a page the person cannot open is never remembered, so Last view and Recently opened never offer it (#476 rule)', async ({ admin, createUser }) => {
+  const { recentActions } = await import('../src/lib/recents')
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
+  await admin.post('/api/table_def', { name: 'Shelf Note', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Shelf Note', role: 'Shelf Clerk', can_read: true } })
+  const clerk = await createUser({ email: 'clerk.recents@example.com', roles: ['Shelf Clerk'] })
+  await renderApp('/featherbase/admin/instance-health', clerk)
+  await screen.findByTestId('all-tables-link')
+  await waitFor(() => expect(screen.queryByTestId('instance-health')).not.toBeInTheDocument())
+  expect(recentActions(clerk.user!, 50).map((e) => e.key)).not.toContain('page:instance-health')
+
+  // A System Manager's visit is remembered as before.
+  await renderApp('/featherbase/admin/instance-health', admin)
+  await screen.findByTestId('instance-health')
+  await waitFor(() => expect(recentActions(admin.user!, 50).map((e) => e.key)).toContain('page:instance-health'))
+})

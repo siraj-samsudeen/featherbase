@@ -1,32 +1,72 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { request } from 'node:http'
+import { defineConfig, type Plugin } from 'vite'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN } from '../../packages/shared/src/app-routes'
 
 // Parallel checkouts (git worktrees) each need their own ports: WEB_PORT
 // moves the dev server, API_PORT points the proxy at that checkout's API.
 // Defaults match ./init.sh — nothing changes for a single-checkout setup.
 const apiPort = Number(process.env.API_PORT ?? 8000)
+// The browser's own Host header reaches the API unchanged: the server matches
+// it against INSTANCE_ADDRESSES to know which address a request came in on
+// (#488). Vite's string shorthand would rewrite it to localhost:<API_PORT>.
+const api = { target: `http://localhost:${apiPort}`, changeOrigin: false }
+
+// #488: in production the server answers every page, so on an address that
+// opens an app it redirects `/` and the other Featherbase pages to the app's
+// root before the SPA loads. In dev, Vite serves those pages itself. So for a
+// page navigation to `/` or `/featherbase/*` (never a path the proxy already
+// forwards) ask the API the same question, with the browser's Host, and follow
+// a redirect it gives; anything else is served as before. The API runs no
+// handler for these paths but that redirect, so asking has no side effects.
+const SHELL_ASSETS = /^\/featherbase\/runtime-shell\.(css|js)$/
+function addressRedirects(): Plugin {
+  return {
+    name: 'featherbase-address-redirects',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = (req.url ?? '').split('?')[0]
+        const page = req.method === 'GET' && (req.headers.accept ?? '').includes('text/html')
+        if (!page || !(path === '/' || path.startsWith('/featherbase/')) || SHELL_ASSETS.test(path)) return next()
+        const ask = request(
+          { host: 'localhost', port: apiPort, path: req.url, method: 'GET', headers: { host: req.headers.host ?? '', accept: 'text/html' } },
+          (answer) => {
+            answer.resume()
+            const location = answer.headers.location
+            if (answer.statusCode && answer.statusCode >= 300 && answer.statusCode < 400 && location) {
+              res.statusCode = answer.statusCode
+              res.setHeader('location', location)
+              res.end()
+            } else next()
+          },
+        )
+        ask.on('error', () => next()) // API not up yet: serve the page as before
+        ask.end()
+      })
+    },
+  }
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), addressRedirects()],
   server: {
     port: Number(process.env.WEB_PORT ?? 5173),
     strictPort: true,
     proxy: {
-      '/api': `http://localhost:${apiPort}`,
-      '/featherbase/runtime-shell.css': `http://localhost:${apiPort}`,
-      '/featherbase/runtime-shell.js': `http://localhost:${apiPort}`,
-      [APP_ROOT_PATTERN]: `http://localhost:${apiPort}`,
-      [LEGACY_HUMAN_ROOT_PATTERN]: `http://localhost:${apiPort}`,
-      '/files': `http://localhost:${apiPort}`,
-      '/private/files': `http://localhost:${apiPort}`,
-      '/web': `http://localhost:${apiPort}`,
+      '/api': api,
+      '/featherbase/runtime-shell.css': api,
+      '/featherbase/runtime-shell.js': api,
+      [APP_ROOT_PATTERN]: api,
+      [LEGACY_HUMAN_ROOT_PATTERN]: api,
+      '/files': api,
+      '/private/files': api,
+      '/web': api,
       // The dev-preview sign-in link. In production one container answers
       // both the SPA and the API, so this path needs no help; in dev the
       // vite server would otherwise serve index.html for it and the redirect
       // that establishes the session would never happen.
-      '/preview': `http://localhost:${apiPort}`,
+      '/preview': api,
       '/ws': { target: `ws://localhost:${apiPort}`, ws: true },
     },
   },

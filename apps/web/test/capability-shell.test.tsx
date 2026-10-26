@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { VIEWER_ROLE } from 'server/src/sales-target'
+import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { shellKindOf } from '../src/lib/session'
 import { test, expect, renderApp } from './pg-test'
 
@@ -64,18 +65,18 @@ test('a viewer-only person is taken to the report: no Admin chrome, no Admin cal
   await renderApp('/featherbase/admin/home/home', tl)
   await screen.findByTestId('identity')
   for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
-  const adminCalls = urls.filter((u) => !/^\/api\/(whoami|runtime_app_versions|sales_target\/)/.test(u))
+  // /api/brand is the shared top bar asking what this address opens (#489).
+  const adminCalls = urls.filter((u) => !/^\/api\/(whoami|brand|runtime_app_versions|sales_target\/)/.test(u))
   expect(adminCalls).toEqual([])
 })
 
-test('a viewer-only person reaches their sign-in methods in a bare shell, still without Admin calls', async ({ admin, createUser }) => {
+test('a viewer-only person reaches their sign-in methods on the account page, still without Admin calls', async ({ admin, createUser }) => {
   await seed(admin)
   const tl = await createUser({ email: 'tl2@example.com', roles: [VIEWER_ROLE] })
   const urls = recordCalls()
-  await renderApp('/featherbase/admin/sign-in-methods', tl)
-  expect(await screen.findByTestId('report-only-shell')).toBeInTheDocument()
-  expect(screen.getByRole('link', { name: /back to your report/i })).toHaveAttribute('href', '/featherbase/sales-target')
-  expect(screen.getByTestId('logout')).toBeInTheDocument()
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, tl)
+  expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
+  expect(screen.getByTestId('top-bar')).toBeInTheDocument()
   for (const id of [...ADMIN_ONLY_TESTIDS, 'all-tables-link', 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events|navigable_tables)/.test(u))).toEqual([])
 })
@@ -88,9 +89,10 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
   const page = await screen.findByTestId('no-access')
   expect(page).toHaveTextContent("You don't have access to anything here yet")
   expect(page).toHaveTextContent(/ask your administrator/i)
-  expect(screen.getByTestId('logout')).toBeInTheDocument()
   for (const id of [...ADMIN_ONLY_TESTIDS, 'admin-sidebar']) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
   expect(urls.filter((u) => /^\/api\/(table|home_pages|app_catalog|unread_count|events)/.test(u))).toEqual([])
+  // #489: signing out is in the shared top bar's Account menu.
+  await userEvent.click(await screen.findByTestId('session-user'))
   await userEvent.click(screen.getByTestId('logout'))
   await waitFor(() => expect(screen.queryByTestId('no-access')).not.toBeInTheDocument())
 })

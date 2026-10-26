@@ -9,6 +9,8 @@ import { sql } from '../src/db'
 import { _setInvitationDeliveryForTests } from '../src/invitation-email'
 import type { MailMessage } from '../src/email'
 import { runHealthChecks } from '../src/instance-health'
+import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { expectApiError } from './fixtures'
 
 const SETUP = '/api/setup/system-managers'
@@ -67,6 +69,20 @@ describe('first-run setup (6.1)', () => {
     // The health check now passes.
     const check = (await runHealthChecks()).find((c) => c.key === 'system-manager-email')!
     expect(check.ok).toBe(true)
+  })
+
+  test('the link is built from the instance address marked for emails, never the request (#492)', async ({ admin }) => {
+    await noManagerEmails()
+    await googleOn()
+    const before = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses(
+      '[{"address":"https://dash.example.com","opens":"admin","emails":true},{"address":"https://api.example.com:8092","opens":"admin"}]', 'test')
+    try {
+      const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Asha', email: 'asha@example.com' }] })
+      expect(res.people[0].invitation).toMatchObject({ status: 'link', link: 'https://dash.example.com/featherbase/login' })
+    } finally {
+      config.instanceAddresses = before
+    }
   })
 
   test('with outbound email: the invitation is sent through the existing flow', async ({ admin }) => {

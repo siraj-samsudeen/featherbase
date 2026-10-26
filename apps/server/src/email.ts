@@ -4,6 +4,7 @@ import type { ConnectionOptions } from 'node:tls'
 import { createTransport } from 'nodemailer'
 import { sql } from './db'
 import { AppError } from './errors'
+import { emailsAddress, parseInstanceAddresses } from './instance-addresses'
 import { registerJob, enqueue } from './jobs'
 import { getDoc } from './document'
 import { renderPdf, renderPrintHtml } from './print'
@@ -71,7 +72,7 @@ export interface SmtpConfig {
   password?: string
   /** MAIL_FROM: the deployment's one sender (e.g. `Feather Dash <noreply@…>`). */
   from?: string
-  /** The EHLO name: SMTP_NAME, else the MAIL_FROM domain, else the SITE_URL
+  /** The EHLO name: SMTP_NAME, else the MAIL_FROM domain, else the emails address's
    *  host. Unset here, the sender's domain is used at send time. */
   name?: string
   /** Extra TLS options. Never read from the environment: tests use it to
@@ -114,7 +115,7 @@ export function readSmtpConfig(env: Record<string, string | undefined> = process
   const explicitName = val('SMTP_NAME')
   if (explicitName && !HOSTNAME.test(explicitName))
     throw new MailDeliveryError('ECONFIG', undefined, 'SMTP_NAME must be a hostname such as jeyarama.com')
-  const name = explicitName ?? (from && senderDomain(from)) ?? siteHost(val('SITE_URL'))
+  const name = explicitName ?? (from && senderDomain(from)) ?? emailsHost(val('INSTANCE_ADDRESSES'))
   return { host, port, user, password, from, ...(name ? { name } : {}) }
 }
 
@@ -130,11 +131,13 @@ function senderDomain(sender: string): string | undefined {
   return domain && HOSTNAME.test(domain) ? domain : undefined
 }
 
-function siteHost(siteUrl: string | undefined): string | undefined {
-  if (!siteUrl) return undefined
+// The host of the INSTANCE_ADDRESSES entry marked for emails (#488). The boot
+// already refused an invalid list; here an unusable one just offers no name.
+function emailsHost(raw: string | undefined): string | undefined {
   try {
-    const host = new URL(siteUrl).hostname.toLowerCase()
-    return HOSTNAME.test(host) ? host : undefined
+    const list = parseInstanceAddresses(raw, 'development')
+    const host = list ? emailsAddress(list).host : undefined
+    return host && HOSTNAME.test(host) ? host : undefined
   } catch {
     return undefined
   }

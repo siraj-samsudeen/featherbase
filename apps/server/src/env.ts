@@ -83,9 +83,9 @@ export const VARIABLES = [
   { name: 'PORT', secret: false, required: 'optional', default: '`8000`', purpose: 'HTTP and WebSocket port' },
   { name: 'WEB_ORIGINS', secret: false, required: 'optional', default: '`http://localhost:5173,http://127.0.0.1:5173`',
     purpose: 'comma-separated CORS allowlist; needed only when the SPA is served from another origin' },
-  { name: 'SITE_URL', secret: false, required: 'outside-dev',
-    purpose: 'this instance\'s absolute external URL (`https://app.example.com`): password-reset and invitation links, and the OAuth `redirect_uri`/cookie-`Secure` decision. Set, no request header can steer either; unset (development and test only), the server falls back to the request, trusting the first `x-forwarded-proto` hop',
-    fix: 'Emailed links (sign-in invitations, password resets) need this instance\'s own address, which a request must not be able to steer. Set SITE_URL (https://…) first (docs/DEPLOY.md, "Configuration").' },
+  { name: 'INSTANCE_ADDRESSES', secret: false, required: 'outside-dev',
+    purpose: 'a JSON array saying what each web address of this instance opens (`admin` or an app) and which one emailed links use. See [Instance addresses](#instance-addresses). Unset (development and test only), the server falls back to the request, trusting the first `x-forwarded-proto` hop',
+    fix: 'Emailed links (sign-in invitations, password resets) and Google sign-in need this instance\'s own addresses, which a request must not be able to steer. Set INSTANCE_ADDRESSES first (docs/DEPLOY.md, "Instance addresses").' },
   // ---- Secrets
   { name: 'JWT_SECRET', secret: true, required: 'outside-dev', crossEnvironment: 'must-differ', default: '`dev-secret-change-me`',
     purpose: 'session and token signing. Must differ between environments, or one environment\'s sessions are valid on another',
@@ -116,7 +116,7 @@ export const VARIABLES = [
   { name: 'MAIL_FROM', secret: false, required: 'optional',
     purpose: 'the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account\'s address is used' },
   { name: 'SMTP_NAME', secret: false, required: 'optional',
-    purpose: 'the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the sender\'s domain' },
+    purpose: 'the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender\'s domain' },
   // ---- Abuse limits (see "Public-route abuse limits")
   { name: 'PREAUTH_WINDOW_MS', secret: false, required: 'optional', default: '`900000`', purpose: 'pre-auth fixed window, in milliseconds' },
   { name: 'PREAUTH_LOGIN_MAX', secret: false, required: 'optional', default: '`60`', purpose: 'password and delegated sign-in submissions per source and window' },
@@ -125,6 +125,7 @@ export const VARIABLES = [
   { name: 'PREAUTH_OAUTH_CALLBACK_MAX', secret: false, required: 'optional', default: '`30`', purpose: 'OAuth callbacks per source and window' },
   { name: 'PREAUTH_FORM_MAX', secret: false, required: 'optional', default: '`30`', purpose: 'public web-form POSTs per source and window' },
   { name: 'PREAUTH_SIGNUP_MAX', secret: false, required: 'optional', default: '`10`', purpose: 'sign-ups per source and window' },
+  { name: 'PREAUTH_HANDOFF_MAX', secret: false, required: 'optional', default: '`200`', purpose: 'steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets' },
   { name: 'TRUSTED_PROXY_IPS', secret: false, required: 'optional', purpose: 'comma-separated exact socket IPs trusted to append `X-Forwarded-For`' },
   { name: 'RATE_LIMIT_WINDOW_MS', secret: false, required: 'optional', default: '`60000`', purpose: 'per-user API rate-limit window' },
   { name: 'RATE_LIMIT_MAX', secret: false, required: 'optional', default: '`100000`', purpose: 'per-user API requests per window, unless the person has their own limit' },
@@ -169,7 +170,7 @@ export function variableEntry(name: VariableName): Variable {
   return BY_NAME.get(name)!
 }
 
-// In-process values set through `config`'s setters (tests point SITE_URL at
+// In-process values set through `config`'s setters (tests point INSTANCE_ADDRESSES at
 // a value without touching the real environment). They win over process.env.
 const overrides = new Map<string, string>()
 

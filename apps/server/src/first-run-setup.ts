@@ -12,7 +12,9 @@ import { getDoc, saveDoc } from './document'
 import { actionTransaction } from './action-transaction'
 import { readSmtpConfig } from './email'
 import { inviteGoogle, looksLikeEmail, methodOfKind } from './identities'
-import { invitationSiteUrl, sendInvitation, signInLink, SITE_URL_MISSING } from './invitation-email'
+import { ADDRESS_MISSING, sendInvitation, signInLink } from './invitation-email'
+import { config } from './config'
+import { emailOrigin } from './instance-addresses'
 
 import { SETUP_MAX_PEOPLE as MAX_PEOPLE } from 'shared'
 
@@ -161,7 +163,10 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
   } catch {
     smtpBroken = true
   }
-  const site = invitationSiteUrl(requestOrigin)
+  // The instance's address marked for emails (#492), as the invitation email
+  // itself uses: the request's origin only on a development or test server
+  // with no INSTANCE_ADDRESSES.
+  const site = emailOrigin(config.instanceAddresses, config.environment, requestOrigin)
   const link = site ? signInLink(site) : null
   const method_label = google?.label || 'Google'
   const result: SetupOutcome[] = []
@@ -171,7 +176,7 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
     else if (smtpBroken && m.invited) {
       invitation = { status: 'failed', error: 'The invitation email was not sent: the email settings on this server are incomplete', link, method_label }
     } else if (!canSend || !m.invited) {
-      invitation = link ? { status: 'link', link, method_label } : { status: 'failed', error: SITE_URL_MISSING, link: null, method_label }
+      invitation = link ? { status: 'link', link, method_label } : { status: 'failed', error: ADDRESS_MISSING, link: null, method_label }
     } else {
       const sent = await sendInvitation(m.identity, actor, requestOrigin).catch(() => null)
       invitation = sent?.invitation_email.status === 'sent'

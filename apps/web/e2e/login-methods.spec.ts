@@ -32,7 +32,7 @@ test.afterEach(async ({ request }) => reset(request))
 
 test('#275: link Google while signed in, then sign in with it after its address changed', async ({ session, page, request }) => {
   await loginAs(page, USER, PW)
-  await session.visit('/admin/sign-in-methods').assertHas('[data-testid="sign-in-methods"]')
+  await session.visit('/featherbase/account/sign-in-methods').assertHas('[data-testid="sign-in-methods"]')
 
   await session.step('link a Google account through the mock consent screen', async ({ page }) => {
     await page.getByTestId('link-google').click()

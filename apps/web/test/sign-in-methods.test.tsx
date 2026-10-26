@@ -7,8 +7,8 @@ import { configureDelegated, linkDelegated } from 'server/test/identity-fixtures
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { test, expect, renderApp } from './pg-test'
 
-// A Team Leader holds the Sales Target Viewer role (#410): their Admin is the
-// bare shell, and sign-in methods is the one page in it.
+// A Team Leader holds the Sales Target Viewer role (#410): their sign-in
+// methods are an account page outside the Admin screens (#489).
 async function viewerRole(admin: Parameters<typeof renderApp>[1]) {
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
   return [VIEWER_ROLE]
@@ -20,7 +20,7 @@ test('lists the password and a linked service; the last one cannot be removed', 
   await admin.post('/api/set_password', { user: tl.user, password: 'methods-pw-1' })
   const identity = await linkDelegated(tl.user!, 'tl_methods')
 
-  await renderApp('/featherbase/admin/sign-in-methods', tl)
+  await renderApp('/featherbase/account/sign-in-methods', tl)
   const password = await screen.findByTestId('method-password')
   const hr = await screen.findByTestId(`method-${identity}`)
   expect(hr).toHaveTextContent('StyleHR')
@@ -36,8 +36,8 @@ test('lists the password and a linked service; the last one cannot be removed', 
 
 test('says how a Google link went', async ({ admin, createUser }) => {
   const person = await createUser({ email: 'linked.person@example.com', roles: await viewerRole(admin) })
-  window.history.replaceState(null, '', '/featherbase/admin/sign-in-methods?link=taken')
-  await renderApp('/featherbase/admin/sign-in-methods?link=taken', person)
+  window.history.replaceState(null, '', '/featherbase/account/sign-in-methods?link=taken')
+  await renderApp('/featherbase/account/sign-in-methods?link=taken', person)
   expect(await screen.findByTestId('link-outcome')).toHaveTextContent('belongs to another account')
 })
 
@@ -80,7 +80,7 @@ test('a person without the System Manager role sees no admin panel on a Person f
 test('the account menu leads to sign-in methods', async ({ admin }) => {
   await renderApp('/featherbase/admin', admin)
   await userEvent.click(await screen.findByTestId('session-user'))
-  expect(await screen.findByTestId('account-sign-in-methods')).toHaveAttribute('href', '/featherbase/admin/sign-in-methods')
+  expect(await screen.findByTestId('account-sign-in-methods')).toHaveAttribute('href', '/featherbase/account/sign-in-methods')
 })
 
 // Third review round: a refused link keeps what was typed; a link on a

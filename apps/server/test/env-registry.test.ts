@@ -14,7 +14,7 @@ function production(extra: Record<string, string> = {}) {
   const base: Record<string, string> = {
     DATABASE_URL: 'postgres://u:p@db.internal:5432/featherbase',
     JWT_SECRET: 'a-long-random-production-secret',
-    SITE_URL: 'https://app.example.test',
+    INSTANCE_ADDRESSES: '[{"address":"https://app.example.test","opens":"admin","emails":true}]',
     FILE_STORAGE_DIR: '/data/files',
     ALLOW_MOCK_OAUTH: '',
     DELEGATED_LOGIN_TEST_MODE: '',
@@ -34,7 +34,7 @@ describe('the registry', () => {
   it('marks the secrets, and gives the rule-bearing ones a cross-environment rule', () => {
     const secret = (n: string) => VARIABLES.find((v) => v.name === n)!.secret
     expect(['JWT_SECRET', 'DATABASE_URL', 'GOOGLE_CLIENT_SECRET', 'SMTP_PASSWORD', 'MOTHERDUCK_TOKEN', 'PREVIEW_LOGIN_KEY'].every(secret)).toBe(true)
-    expect(['SITE_URL', 'FILE_STORAGE_DIR', 'SMTP_HOST'].some(secret)).toBe(false)
+    expect(['INSTANCE_ADDRESSES', 'FILE_STORAGE_DIR', 'SMTP_HOST'].some(secret)).toBe(false)
     const rule = (n: string) => (VARIABLES.find((v) => v.name === n) as { crossEnvironment?: string }).crossEnvironment
     expect(rule('JWT_SECRET')).toBe('must-differ')
     expect(rule('FILE_URL_SECRET')).toBe('must-differ')
@@ -49,7 +49,7 @@ describe('required variables', () => {
     expect(report.forbidden).toEqual([])
     expect(report.refusals).toEqual([])
     expect(report.warnings).toEqual([])
-    expect(report.passed).toEqual(expect.arrayContaining(['JWT_SECRET set', 'SITE_URL set', 'DATABASE_URL set']))
+    expect(report.passed).toEqual(expect.arrayContaining(['JWT_SECRET set', 'INSTANCE_ADDRESSES set', 'DATABASE_URL set']))
   })
 
   it('a missing JWT_SECRET refuses outside development and test, naming it', () => {
@@ -59,7 +59,7 @@ describe('required variables', () => {
   })
 
   it('development and test pass without it: their defaults are for a checkout', () => {
-    production({ JWT_SECRET: '', DATABASE_URL: '', SITE_URL: '' })
+    production({ JWT_SECRET: '', DATABASE_URL: '', INSTANCE_ADDRESSES: '' })
     for (const environment of ['development', 'test'])
       expect(assertVariables({ environment })).toEqual(expect.arrayContaining([`JWT_SECRET unset, allowed on a "${environment}" server`]))
   })
@@ -78,15 +78,15 @@ describe('required variables', () => {
   })
 
   it('reads at call time: a variable set after import is seen', () => {
-    production({ SITE_URL: '' })
-    expect(checkVariables({ environment: 'production' }).refusals.join()).toMatch(/SITE_URL/)
-    vi.stubEnv('SITE_URL', 'https://later.example.test')
+    production({ INSTANCE_ADDRESSES: '' })
+    expect(checkVariables({ environment: 'production' }).refusals.join()).toMatch(/INSTANCE_ADDRESSES/)
+    vi.stubEnv('INSTANCE_ADDRESSES', '[{"address":"https://later.example.test","opens":"admin","emails":true}]')
     expect(checkVariables({ environment: 'production' }).refusals).toEqual([])
   })
 
   it('every refusal is named at once', () => {
-    production({ JWT_SECRET: '', SITE_URL: '' })
-    expect(() => assertVariables({ environment: 'production' })).toThrow(/SITE_URL is not set[\s\S]*JWT_SECRET is not set/)
+    production({ JWT_SECRET: '', INSTANCE_ADDRESSES: '' })
+    expect(() => assertVariables({ environment: 'production' })).toThrow(/INSTANCE_ADDRESSES is not set[\s\S]*JWT_SECRET is not set/)
   })
 })
 

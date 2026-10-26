@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Notice, Select, buttonClasses, cardClasses } from '../components/ui'
-import { useNavigate } from '@tanstack/react-router'
-import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, getToken, signOut } from '../lib/api'
-import { Logo } from '../components/Logo'
+import { Notice, Select, cardClasses } from '../components/ui'
+import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
+import { TopBar } from '../components/TopBar'
+import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
 import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
 
@@ -163,8 +163,16 @@ function QuickTable({ collapsed, refreshedAt, children }: {
 // belongs to an earlier opening (or an earlier account) and is dropped.
 let openingSeq = 0
 
+// #489: the signed-in person's theme choice outlives the bar's toggle.
 export function SalesTargetPage() {
-  const navigate = useNavigate()
+  return (
+    <ThemeChoiceProvider>
+      <SalesTargetReport />
+    </ThemeChoiceProvider>
+  )
+}
+
+function SalesTargetReport() {
   const user = getSessionUser()
   const [me, setMe] = useState<Me | null>(null)
   const [embed, setEmbed] = useState<Embed>({ kind: 'loading' })
@@ -297,20 +305,9 @@ export function SalesTargetPage() {
     setStore(next)
   }
 
-  async function logout() {
-    // Expire the cookie and end the session before local state goes. #411: a
-    // sign-out the server could not complete is said, and the page stays.
-    if (!(await signOut())) {
-      window.alert(SIGN_OUT_INCOMPLETE)
-      return
-    }
-    // Drop this opening so nothing still in flight renders after the account
-    // changes.
-    openingSeq++
-    abortRef.current?.abort()
-    clearSession()
-    await navigate({ to: '/featherbase/login' })
-  }
+  // Signing out is the shared top bar's (#489). Leaving the page drops this
+  // opening: each effect's cleanup aborts its own requests, so nothing still
+  // in flight renders after the account changes.
 
   // #3783: when the assignment was derived from the Store Sections maps, name the Sections —
   // that is the fact the store maintains, and what a reader recognises.
@@ -328,9 +325,12 @@ export function SalesTargetPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2">
-        <div className="flex items-center gap-3">
-          <Logo className="h-7 w-7 rounded-md" />
+      {/* #489: the shared top bar. The identity line and the store switcher
+          sit below it, inside the page (Stage B moves the switcher into the
+          bar as a declared control). */}
+      <TopBar home="feather_dash" />
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3 pt-3" data-testid="report-identity">
+        <div className="flex min-w-0 items-center gap-3">
           <div>
             {/* Polite live region: a store switch is announced, not only repainted. */}
             <div className="text-sm font-semibold text-ink" data-testid="identity" aria-live="polite">
@@ -378,16 +378,8 @@ export function SalesTargetPage() {
               ))}
             </Select>
           )}
-          {/* person-identities: a Team Leader reaches their sign-in methods
-              (e.g. to link Google) from the report they land on. */}
-          <a href="/featherbase/admin/sign-in-methods" className={buttonClasses()} data-testid="sign-in-methods-link">
-            Sign-in methods
-          </a>
-          <button type="button" className={buttonClasses()} data-testid="logout" onClick={() => void logout()}>
-            Log out
-          </button>
         </div>
-      </header>
+      </div>
 
       <main className="flex flex-1 flex-col p-3">
       {storeNotice && (

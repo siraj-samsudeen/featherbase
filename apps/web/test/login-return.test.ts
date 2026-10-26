@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { safeLoginNext } from '../src/pages/Login'
+import { openLanding, safeLoginNext } from '../src/pages/Login'
 
 describe('login return path', () => {
   test('accepts canonical and application paths, preserving explicit or inherited state', () => {
@@ -25,5 +25,25 @@ describe('login return path', () => {
     '/tasker/?filter=%E0%A4%A',
   ])('refuses an external or ambiguous return path: %s', (next) => {
     expect(safeLoginNext(next, '#task=TASK-00001')).toBeUndefined()
+  })
+})
+
+// #488 (Codex round 1): a landing outside the SPA, such as an installed
+// app's root on its own address, needs a full page load, as a return path does.
+describe('opening the landing after sign-in', () => {
+  const user = (landing: string) => ({ row_id: 'p', email: null, full_name: null, landing })
+
+  test("an app's root is opened by a full page load", () => {
+    const pushed: string[] = []
+    const loaded: string[] = []
+    openLanding(user('/tasker/'), (p) => pushed.push(p), (p) => loaded.push(p))
+    expect([pushed, loaded]).toEqual([[], ['/tasker/']])
+  })
+
+  test('a Featherbase page is opened inside the SPA', () => {
+    const pushed: string[] = []
+    const loaded: string[] = []
+    openLanding(user('/featherbase/sales-target'), (p) => pushed.push(p), (p) => loaded.push(p))
+    expect([pushed, loaded]).toEqual([['/featherbase/sales-target'], []])
   })
 })

@@ -38,14 +38,14 @@ that PR's environment.
 
 ### The one variable that must not be copied verbatim
 
-Everything else copies fine. `SITE_URL` does not: a PR environment that
-inherits the base environment's literal domain will mint password-reset links
-and cookie settings pointing at the wrong host.
+Everything else copies fine. `INSTANCE_ADDRESSES` does not: a PR environment
+that inherits the base environment's literal domains will mint password-reset
+links and cookie settings pointing at the wrong host.
 
 So in the **base environment**, set it by reference rather than by value:
 
 ```
-SITE_URL = https://${{RAILWAY_PUBLIC_DOMAIN}}
+INSTANCE_ADDRESSES = [{"address":"https://${{RAILWAY_PUBLIC_DOMAIN}}","opens":"admin","emails":true}]
 ```
 
 Railway resolves `RAILWAY_PUBLIC_DOMAIN` per environment, so each PR
@@ -129,7 +129,7 @@ the `dev-preview` service if you run one.
 | --- | --- | --- |
 | `DATABASE_URL` | Base environment: `${{<database>.DATABASE_URL}}`. `dev-preview`: `${{<the database service you created>.DATABASE_URL}}` | Railway's reference syntax is `${{<service name>.VAR}}`, so name the database that belongs to *this* service. **Check it points at this environment's Postgres.** |
 | `JWT_SECRET` | a long random string | Session signing. Must differ from any other environment. |
-| `SITE_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Absolute external URL, resolved per environment. See above. |
+| `INSTANCE_ADDRESSES` | `[{"address":"https://${{RAILWAY_PUBLIC_DOMAIN}}","opens":"admin","emails":true}]` | The one address of a PR environment, resolved per environment. See above. |
 | `FILE_STORAGE_DIR` | `/data/files` | Uploaded files. Attach a Railway **Volume** mounted at `/data` or uploads vanish on each deploy. |
 | `PREVIEW_LOGIN_USER` | `preview@featherbase.dev` | The account the link signs in as. |
 | `PREVIEW_LOGIN_KEY` | 32+ random characters | The link's secret. |
