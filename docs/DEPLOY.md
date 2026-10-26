@@ -82,6 +82,7 @@ app works, and every query against the source refuses, naming the variable.
 | `PREAUTH_OAUTH_CALLBACK_MAX` | no | no | `30` | OAuth callbacks per source and window |
 | `PREAUTH_FORM_MAX` | no | no | `30` | public web-form POSTs per source and window |
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
+| `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
@@ -309,6 +310,7 @@ limiter is separate. Successful forms still consume admission budget.
 | `PREAUTH_OAUTH_LOGIN_MAX` | 30 | initiation, independent of callback |
 | `PREAUTH_OAUTH_CALLBACK_MAX` | 30 | callback, checked before challenge clearing or code exchange |
 | `PREAUTH_FORM_MAX` | 30 | all public web-form POSTs |
+| `PREAUTH_HANDOFF_MAX` | 200 | the hand-off between instance addresses (#488): both legs, `/api/handoff/start` and `/api/handoff/bind`, so 100 hand-offs. Its own bucket, so a store whose staff share one public IP and sign in at once is not stopped by the Google buckets doubling |
 | `TRUSTED_PROXY_IPS` | empty | comma-separated exact socket IPs trusted to append `X-Forwarded-For`; no wildcard, hostname, or CIDR |
 
 Numeric values must be positive integers no greater than 2147483647; invalid

@@ -125,6 +125,7 @@ export const VARIABLES = [
   { name: 'PREAUTH_OAUTH_CALLBACK_MAX', secret: false, required: 'optional', default: '`30`', purpose: 'OAuth callbacks per source and window' },
   { name: 'PREAUTH_FORM_MAX', secret: false, required: 'optional', default: '`30`', purpose: 'public web-form POSTs per source and window' },
   { name: 'PREAUTH_SIGNUP_MAX', secret: false, required: 'optional', default: '`10`', purpose: 'sign-ups per source and window' },
+  { name: 'PREAUTH_HANDOFF_MAX', secret: false, required: 'optional', default: '`200`', purpose: 'steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets' },
   { name: 'TRUSTED_PROXY_IPS', secret: false, required: 'optional', purpose: 'comma-separated exact socket IPs trusted to append `X-Forwarded-For`' },
   { name: 'RATE_LIMIT_WINDOW_MS', secret: false, required: 'optional', default: '`60000`', purpose: 'per-user API rate-limit window' },
   { name: 'RATE_LIMIT_MAX', secret: false, required: 'optional', default: '`100000`', purpose: 'per-user API requests per window, unless the person has their own limit' },

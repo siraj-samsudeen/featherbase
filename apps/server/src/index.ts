@@ -509,7 +509,18 @@ function refusedToLoginPage(c: Context, err: unknown) {
   return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
 }
 
-app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
+// #488: with a list set, a host it does not name gets the admin address's
+// redirect_uri, so the callback would land on another host than the state
+// records. Start over on the admin address instead, before any challenge or
+// cookie is minted here (and before this host's budget is charged).
+function startGoogleOnAdmin(c: Context, next: () => Promise<void>) {
+  const list = config.instanceAddresses
+  if (!list || matchAddress(list, requestHost(c.req.url))) return next()
+  const url = new URL(c.req.url)
+  return c.redirect(`${linkAddress(list, url.hostname.toLowerCase()).address}${url.pathname}${url.search}`)
+}
+
+app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), async (c) => {
   if (!(await googleAvailable())) {
     const off = new AppError('AuthenticationError', GOOGLE_OFF)
     if (isPageNavigation(c)) return refusedToLoginPage(c, off)
@@ -655,7 +666,7 @@ function listedAddress(host: string) {
 
 // Step 2, on the target: this browser gets the nonce cookie, and goes back to
 // the source with only its hash.
-app.get('/api/handoff/start', publicLimit('OAUTH_LOGIN'), (c) => {
+app.get('/api/handoff/start', publicLimit('HANDOFF'), (c) => {
   const id = c.req.query('ticket')
   const ticket = ticketForTarget(id, requestHost(c.req.url))
   const source = listedAddress(ticket.sourceHost)
@@ -673,7 +684,7 @@ app.get('/api/handoff/start', publicLimit('OAUTH_LOGIN'), (c) => {
 
 // Step 3, on the source: only the browser holding the ticket's own session
 // gets a code, bound to the nonce the target gave it.
-app.get('/api/handoff/bind', publicLimit('OAUTH_CALLBACK'), async (c) => {
+app.get('/api/handoff/bind', publicLimit('HANDOFF'), async (c) => {
   const sid = getCookie(c, 'sid')
   const { code, targetHost } = bindHandoffTicket(c.req.query('ticket'), sid, requestHost(c.req.url), c.req.query('nonce'))
   await resolveToken(`Bearer ${sid}`) // the source session must still be live

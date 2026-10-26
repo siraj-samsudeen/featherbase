@@ -165,6 +165,9 @@ const SERVED_EVERYWHERE = [
   '/featherbase/login',
   '/featherbase/reset-password',
   '/featherbase/oauth-callback',
+  // Interim, until A2 moves it out of the Admin (#489 item 13): the report
+  // links here, and the Google link flow returns here.
+  '/featherbase/admin/sign-in-methods',
   '/featherbase/runtime-shell.css',
   '/featherbase/runtime-shell.js',
 ]
