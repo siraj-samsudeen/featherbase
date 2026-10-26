@@ -258,6 +258,7 @@ export const csvFolderDriver: SourceDriver = {
       try {
         model = (await loadModel(cfg, rel)).model
       } catch {
+        /* v8 ignore next 2 -- a .csv that vanished or became unreadable between the folder scan and the read; an OS failure that cannot be produced reliably (chmod does not stop root) without mocks */
         continue
       }
       if (!model.headers.length || model.headers.every((h) => !h.trim())) continue

@@ -468,6 +468,46 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 417 })
   })
 
+  test('a credential-named primary key written behind the API refuses to query', async ({ admin }) => {
+    await bindAccount(admin)
+    await sql`update table_def set external_pk = 'api_key' where name = ${BOUND}`
+    invalidateMeta()
+    const enc = encodeURIComponent(BOUND)
+    await expect(admin.get(`/api/table/${enc}`)).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringContaining('credential-named primary key (api_key)'),
+    })
+  })
+
+  test('a Data Scope on a Reference column narrows the list to the allowed values and unset ones', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', {
+      name: 'Sec Region',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'label', column_type: 'Data' }],
+    })
+    for (const r of ['north', 'south'])
+      await admin.post('/api/save_row', { table: 'Sec Region', row: { row_id: r } })
+    await sql`
+      update column_def set column_type = 'Reference', reference_table = 'Sec Region'
+      where parent = ${BOUND} and column_name = 'region'`
+    invalidateMeta()
+    await cli.unsafe(`insert into sec_fixture.account (id, label, region) values ('ACC-C', 'Gamma', null)`)
+    const user = await userWith(admin, createUser, { can_read: true })
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { person: user.user, allow_table: 'Sec Region', for_value: 'north' },
+    })
+    const list = (await user.get(
+      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id"]')}&order_by=row_id asc`,
+    )) as { data: { row_id: string }[]; total: number }
+    expect(list.data.map((r) => r.row_id)).toEqual(['ACC-A', 'ACC-C'])
+    expect(list.total).toBe(2)
+  })
+
   test('round 3: bulk import refuses bound Tables — real run and dry run agree', async ({
     admin,
   }) => {

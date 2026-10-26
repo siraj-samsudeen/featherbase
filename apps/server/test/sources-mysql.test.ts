@@ -12,6 +12,8 @@ import { afterAll, beforeAll, describe, expect } from 'vitest'
 import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
+import { mysqlDriver } from '../src/sources/mysql-driver'
+import type { Binding } from '../src/sources/types'
 
 const MYSQL_URL = process.env.MYSQL_TEST_URL
 const EXT_URL_ENV = 'EXT_MYSQL_URL'
@@ -81,6 +83,53 @@ beforeAll(async () => {
   await cli.query(`
     insert into ext_mysql.accident (severity, vehicle_id, driver_id, garage_id)
     values ('minor', 1, 1, 1), ('major', 1, null, null)`)
+  // One column of every MySQL type the driver maps.
+  await cli.query(`
+    create table ext_mysql.kitchen (
+      id int auto_increment primary key,
+      flag tinyint(1),
+      small tinyint,
+      big bigint,
+      price decimal(8,2),
+      ratio float,
+      precise_ratio double,
+      born date,
+      seen datetime,
+      stamped timestamp null,
+      meta json,
+      kind enum('a','b'),
+      picks set('x','y'),
+      code varchar(20),
+      story varchar(300),
+      body text,
+      yr year,
+      initial char(1),
+      raw blob
+    )`)
+  await cli.query(`
+    create table ext_mysql.plain (
+      id int auto_increment primary key,
+      note varchar(50),
+      qty int
+    )`)
+  await cli.query(`insert into ext_mysql.plain (note, qty) values ('alpha', 1), ('beta', 2), ('gamma', 3)`)
+  // A text primary key with a default: an insert that gives no key succeeds
+  // but LAST_INSERT_ID() stays 0, so the row cannot be addressed afterwards.
+  await cli.query(`
+    create table ext_mysql.nokey (
+      code varchar(20) not null default 'dflt' primary key,
+      label varchar(50)
+    )`)
+  // A trigger rewrites the key on insert, so the row is not where the driver
+  // looks for it when it reads the insert back.
+  await cli.query(`
+    create table ext_mysql.shifty (
+      code varchar(20) not null primary key,
+      label varchar(50)
+    )`)
+  await cli.query(`
+    create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
+    for each row set new.code = concat('x-', new.code)`)
 })
 
 afterAll(async () => {
@@ -451,5 +500,369 @@ describe.skipIf(!MYSQL_URL)('mysql: read-only sources', () => {
     ).rejects.toMatchObject({ status: 403 })
     const meta = (await admin.get('/api/table/Ext%20Tenant:meta')) as Record<string, unknown>
     expect(meta.source_access).toBe('read_only')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Parity with sources-postgres.test.ts (and the postgres-driver paths its
+// tests reach): column-type mapping, every filter operator, defaults-only
+// writes, conflicts, failure naming, allowlist, and the mysql-only
+// dialect paths (errno mapping, read-back after insert, TLS URL options).
+// ---------------------------------------------------------------------------
+const bindFor = (table: string, pk: string, modified: string | null = null): Binding => ({
+  source: {
+    name: 'ext-mysql-direct',
+    engine: 'mysql',
+    url_env: EXT_URL_ENV,
+    root_path: null,
+    default_schema: 'ext_mysql',
+    access: 'read_write',
+    pool_max: 2,
+    statement_timeout_ms: 10000,
+    allowlist: null,
+  },
+  schema: 'ext_mysql',
+  table,
+  pk,
+  modified,
+  columns: [],
+})
+
+const reflectOne = async (
+  admin: { post: <T = Record<string, unknown>>(p: string, b?: unknown) => Promise<T> },
+  table: string,
+): Promise<string> => {
+  const res = await admin.post<{ created: { name: string }[]; skipped: { reason: string }[] }>(
+    '/api/table/Data%20Source/ext-mysql:reflect',
+    { schema: 'ext_mysql', tables: [table] },
+  )
+  expect(res.skipped).toEqual([])
+  return res.created[0].name
+}
+
+describe.skipIf(!MYSQL_URL)('mysql: column types and browsing', () => {
+  afterAll(() => mysqlDriver.dispose('ext-mysql-direct'))
+
+  test('database column types map to the closest Featherbase type', async ({ admin }) => {
+    await makeSource(admin)
+    const res = (await admin.get(
+      '/api/table/Data%20Source/ext-mysql:introspect?schema=ext_mysql',
+    )) as { tables: { table: string; columns: { name: string; column_type: string }[] }[] }
+    const kitchen = res.tables.find((t) => t.table === 'kitchen')!
+    expect(Object.fromEntries(kitchen.columns.map((c) => [c.name, c.column_type]))).toEqual({
+      id: 'Int',
+      flag: 'Check',
+      small: 'Int',
+      big: 'Int',
+      price: 'Float',
+      ratio: 'Float',
+      precise_ratio: 'Float',
+      born: 'Date',
+      seen: 'Datetime',
+      stamped: 'Datetime',
+      meta: 'JSON',
+      kind: 'Data',
+      picks: 'Data',
+      code: 'Data',
+      story: 'Text',
+      body: 'Text',
+      yr: 'Int',
+      initial: 'Data',
+      raw: 'Text',
+    })
+  })
+
+  test('with no default schema, introspection covers every user database', async ({ admin }) => {
+    await makeSource(admin, { default_schema: undefined })
+    const res = (await admin.get('/api/table/Data%20Source/ext-mysql:introspect')) as {
+      tables: { schema: string; table: string }[]
+    }
+    expect(res.tables).toContainEqual(expect.objectContaining({ schema: 'ext_mysql', table: 'tenant' }))
+    expect(res.tables.some((t) => ['mysql', 'sys', 'information_schema', 'performance_schema'].includes(t.schema))).toBe(false)
+  })
+
+  test('pages come back in the requested order with the full total', async () => {
+    const { rows, total } = await mysqlDriver.getList(bindFor('plain', 'id'), {
+      filters: [{ column: 'qty', op: '>=', value: 1 }],
+      columns: ['note'],
+      order: { column: 'qty', dir: 'desc' },
+      limit: 2,
+      offset: 1,
+    })
+    expect(rows.map((r) => r.note)).toEqual(['beta', 'alpha'])
+    expect(total).toBe(3)
+  })
+})
+
+describe.skipIf(!MYSQL_URL)('mysql: filtering rows', () => {
+  afterAll(() => mysqlDriver.dispose('ext-mysql-direct'))
+
+  const notes = async (
+    admin: { get: (p: string) => Promise<unknown> },
+    name: string,
+    filters: unknown[],
+  ) => {
+    const res = (await admin.get(
+      `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["note"]')}&order_by=qty asc&filters=${encodeURIComponent(JSON.stringify(filters))}`,
+    )) as { data: { note: string }[] }
+    return res.data.map((r) => r.note)
+  }
+
+  test('exclusion, comparison, pattern and list filters narrow the rows', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'plain')
+    expect(await notes(admin, name, [['qty', '!=', '2']])).toEqual(['alpha', 'gamma'])
+    expect(await notes(admin, name, [['qty', '>', '1']])).toEqual(['beta', 'gamma'])
+    expect(await notes(admin, name, [['qty', '<', '3']])).toEqual(['alpha', 'beta'])
+    expect(await notes(admin, name, [['qty', '<=', '2']])).toEqual(['alpha', 'beta'])
+    expect(await notes(admin, name, [['qty', '>=', '2']])).toEqual(['beta', 'gamma'])
+    expect(await notes(admin, name, [['note', 'like', 'AL%']])).toEqual(['alpha'])
+    expect(await notes(admin, name, [['note', 'not like', 'AL%']])).toEqual(['beta', 'gamma'])
+    expect(await notes(admin, name, [['qty', 'in', ['1', '3']]])).toEqual(['alpha', 'gamma'])
+    expect(await notes(admin, name, [['qty', 'not in', ['1', '3']]])).toEqual(['beta'])
+    // An empty list: nothing is "in" it, everything is "not in" it.
+    expect(await notes(admin, name, [['qty', 'in', []]])).toEqual([])
+    expect(await notes(admin, name, [['qty', 'not in', []]])).toHaveLength(3)
+  })
+
+  test('a Data Scope filter lets unset values through as well as the allowed ones', async () => {
+    await cli.query(`insert into ext_mysql.plain (note, qty) values ('unset-scope', null)`)
+    try {
+      const bind = bindFor('plain', 'id')
+      expect(await mysqlDriver.count(bind, [{ column: 'qty', op: 'in_or_null', value: [1, 2] }])).toBe(3)
+      expect(await mysqlDriver.count(bind, [{ column: 'qty', op: 'in_or_null', value: [] }])).toBe(1)
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where note = 'unset-scope'`)
+    }
+  })
+
+  test('rows can be counted by a column, read straight from the source', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const res = await admin.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
+      table: 'Ext Tenant',
+      group_by: 'plan',
+      filters: [['slug', 'in', ['acme', 'globex']]],
+    })
+    const [direct] = await cli.query(
+      `select plan as label, count(*) as n from ext_mysql.tenant where slug in ('acme', 'globex') group by plan`,
+    )
+    expect(Object.fromEntries(res.data.map((d) => [d.label, Number(d.value)]))).toEqual(
+      Object.fromEntries((direct as { label: string; n: number }[]).map((d) => [d.label, Number(d.n)])),
+    )
+  })
+})
+
+describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
+  afterAll(() => mysqlDriver.dispose('ext-mysql-direct'))
+
+  test('creating a row with no values lets the database fill everything in', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'plain')
+    const created = await admin.post<Record<string, unknown>>(`/api/table/${encodeURIComponent(name)}`, {})
+    try {
+      expect(created.note).toBeNull()
+      expect(String(created.row_id)).toMatch(/^\d+$/)
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [Number(created.row_id)])
+    }
+  })
+
+  test('saving changes to a table with no last-changed time overwrites what is there', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'plain')
+    const [rows] = await cli.query(`select id from ext_mysql.plain where note = 'beta'`)
+    const id = (rows as { id: number }[])[0].id
+    const res = await admin.fetch(`/api/table/${encodeURIComponent(name)}/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ qty: 20 }),
+    })
+    expect(res.status).toBe(200)
+    const [after] = await cli.query(`select qty from ext_mysql.plain where id = ?`, [id])
+    expect((after as { qty: number }[])[0].qty).toBe(20)
+    await cli.query(`update ext_mysql.plain set qty = 2 where id = ?`, [id])
+  })
+
+  test('saving a row with no changes returns it as it is, and a missing row is not found', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'plain')
+    const enc = encodeURIComponent(name)
+    const [rows] = await cli.query(`select id from ext_mysql.plain where note = 'alpha'`)
+    const id = (rows as { id: number }[])[0].id
+    const saved = await admin.fetch(`/api/table/${enc}/${id}`, { method: 'PATCH', body: JSON.stringify({}) })
+    expect(saved.status).toBe(200)
+    expect(await saved.json()).toMatchObject({ row_id: String(id), note: 'alpha' })
+    const missing = await admin.fetch(`/api/table/${enc}/999999`, { method: 'PATCH', body: JSON.stringify({}) })
+    expect(missing.status).toBe(404)
+  })
+
+  test('an update or delete of a row that is gone reports it missing', async () => {
+    const bind = bindFor('plain', 'id')
+    expect(await mysqlDriver.update(bind, '999999', { note: 'x' }, null)).toBe('missing')
+    expect(await mysqlDriver.remove(bind, '999999', null)).toBe('missing')
+  })
+
+  test('a stale revision conflicts on update and on delete, and the row stays', async () => {
+    const bind = bindFor('tenant', 'id', 'updated_at')
+    const [rows] = await cli.query(`select id from ext_mysql.tenant where slug = 'acme'`)
+    const id = String((rows as { id: number }[])[0].id)
+    const stale = '2000-01-01T00:00:00.000Z'
+    expect(await mysqlDriver.update(bind, id, { plan: 'stale-write' }, stale)).toBe('conflict')
+    expect(await mysqlDriver.remove(bind, id, stale)).toBe('conflict')
+    const [after] = await cli.query(`select plan from ext_mysql.tenant where id = ?`, [id])
+    expect((after as { plan: string }[])[0].plan).not.toBe('stale-write')
+  })
+
+  test('a delete without a revision removes the row', async () => {
+    const bind = bindFor('plain', 'id')
+    const row = await mysqlDriver.insert(bind, { note: 'short-lived', qty: 9 }, null)
+    expect(await mysqlDriver.remove(bind, String(row.id), null)).toBeUndefined()
+    expect(await mysqlDriver.getDoc(bind, String(row.id))).toBeNull()
+  })
+
+  test('an insert that gives no key to a table that cannot generate one says the row cannot be addressed', async () => {
+    try {
+      await expect(mysqlDriver.insert(bindFor('nokey', 'code'), { label: 'orphan' }, null)).rejects.toMatchObject({
+        type: 'DataSourceError',
+        message: expect.stringContaining('cannot address it'),
+      })
+    } finally {
+      await cli.query(`delete from ext_mysql.nokey`)
+    }
+  })
+
+  test('an insert with an explicit key reads that row back', async () => {
+    try {
+      const row = await mysqlDriver.insert(bindFor('nokey', 'code'), { label: 'given' }, 'K1')
+      expect(row).toMatchObject({ code: 'K1', label: 'given' })
+    } finally {
+      await cli.query(`delete from ext_mysql.nokey`)
+    }
+  })
+
+  test('an insert whose row cannot be found again is reported', async () => {
+    try {
+      await expect(mysqlDriver.insert(bindFor('shifty', 'code'), { label: 'moved' }, 'k1')).rejects.toMatchObject({
+        type: 'DataSourceError',
+        message: expect.stringContaining('inserted row k1 not found on re-read'),
+      })
+    } finally {
+      await cli.query(`delete from ext_mysql.shifty`)
+    }
+  })
+
+  test('constraint errors from MySQL arrive shaped like the Postgres ones', async () => {
+    const plain = bindFor('plain', 'id')
+    // 1406: data too long for the column.
+    await expect(mysqlDriver.insert(plain, { note: 'x'.repeat(60) }, null)).rejects.toMatchObject({ code: '22001' })
+    // 1264: value out of range.
+    await expect(mysqlDriver.insert(plain, { qty: '99999999999' }, null)).rejects.toMatchObject({ code: '22003' })
+    // 1366: incorrect value for the column type.
+    await expect(mysqlDriver.insert(plain, { qty: 'abc' }, null)).rejects.toMatchObject({ code: '22003' })
+    // 1062 on the PRIMARY key names no column to blame.
+    const nokey = bindFor('nokey', 'code')
+    try {
+      await mysqlDriver.insert(nokey, { label: 'first' }, 'DUP')
+      const dup = await mysqlDriver.insert(nokey, { label: 'second' }, 'DUP').catch((e) => e)
+      expect(dup).toMatchObject({ code: '23505' })
+      expect(dup.detail).toBeUndefined()
+    } finally {
+      await cli.query(`delete from ext_mysql.nokey`)
+    }
+  })
+
+  test('read_only also rejects updates and deletes', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const src = (await admin.get('/api/table/Data%20Source/ext-mysql')) as Record<string, unknown>
+    await patchDoc(admin, '/api/table/Data%20Source/ext-mysql', {
+      access: 'read_only',
+      updated_at: src.updated_at,
+    })
+    const list = (await admin.get('/api/table/Ext%20Tenant')) as { data: { row_id: string }[] }
+    const id = list.data[0].row_id
+    const patch = await admin.fetch(`/api/table/Ext%20Tenant/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ plan: 'nope' }),
+    })
+    expect(patch.status).toBe(403)
+    const del = await admin.fetch(`/api/table/Ext%20Tenant/${id}`, { method: 'DELETE' })
+    expect(del.status).toBe(403)
+  })
+})
+
+describe.skipIf(!MYSQL_URL)('mysql: connection settings and failures', () => {
+  test('a connected table says the source cannot be reached while other tables keep working', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    process.env.EXT_MYSQL_DEAD_URL = 'mysql://nobody:nothing@127.0.0.1:59998/nope'
+    const src = (await admin.get('/api/table/Data%20Source/ext-mysql')) as Record<string, unknown>
+    await patchDoc(admin, '/api/table/Data%20Source/ext-mysql', {
+      url_env: 'EXT_MYSQL_DEAD_URL',
+      updated_at: src.updated_at,
+    })
+    const down = await admin.fetch('/api/table/Ext%20Tenant')
+    expect(down.status).toBe(502)
+    const body = (await down.json()) as { error: { type: string; message: string } }
+    expect(body.error.type).toBe('DataSourceError')
+    expect(body.error.message).toContain('ext-mysql')
+    expect(body.error.message).not.toContain('nothing@')
+    expect((await admin.fetch('/api/table/Role')).status).toBe(200)
+  })
+
+  test('testing the connection names an unset variable, and a value that is not a mysql URL', async ({ admin }) => {
+    await makeSource(admin, { row_id: 'ext-mysql-unset', url_env: 'EXT_MYSQL_NEVER_SET' })
+    const unset = await admin.post<{ ok: boolean; error: string }>(
+      '/api/table/Data%20Source/ext-mysql-unset:test_connection',
+      {},
+    )
+    expect(unset.ok).toBe(false)
+    expect(unset.error).toContain('EXT_MYSQL_NEVER_SET')
+
+    process.env.EXT_MYSQL_BAD_URL = 'not a url'
+    await makeSource(admin, { row_id: 'ext-mysql-bad', url_env: 'EXT_MYSQL_BAD_URL' })
+    const bad = await admin.post<{ ok: boolean; error: string }>(
+      '/api/table/Data%20Source/ext-mysql-bad:test_connection',
+      {},
+    )
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toContain('is not a valid mysql:// URL')
+  })
+
+  test('encrypted connections: required and preferred modes connect, verifying modes refuse a self-signed server', async ({ admin }) => {
+    const base = `${MYSQL_URL!.replace(/\/$/, '')}/ext_mysql`
+    const attempts: [string, boolean][] = [
+      ['sslmode=REQUIRED', true],
+      ['sslmode=PREFERRED', true],
+      ['ssl=true', true],
+      ['ssl=1', true],
+      ['sslmode=VERIFY_CA', false],
+      ['ssl-mode=VERIFY_IDENTITY', false],
+    ]
+    for (const [i, [query, expectOk]] of attempts.entries()) {
+      const env = `EXT_MYSQL_TLS_${i}_URL`
+      process.env[env] = `${base}?${query}`
+      await makeSource(admin, { row_id: `ext-mysql-tls-${i}`, url_env: env })
+      const res = await admin.post<{ ok: boolean }>(
+        `/api/table/Data%20Source/ext-mysql-tls-${i}:test_connection`,
+        {},
+      )
+      expect([query, res.ok]).toEqual([query, expectOk])
+    }
+  })
+
+  test('a data source with a list of allowed tables connects only those', async ({ admin }) => {
+    await makeSource(admin, { table_allowlist: 'ext_mysql.tenant\next_mysql.vehicle' })
+    const reflect = (tables: string[]) =>
+      admin.fetch('/api/table/Data%20Source/ext-mysql:reflect', {
+        method: 'POST',
+        body: JSON.stringify({ schema: 'ext_mysql', tables }),
+      })
+    const refused = await reflect(['plain'])
+    expect(refused.status).toBe(403)
+    expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('not in the allowlist')
+    const allowed = await reflect(['tenant'])
+    expect(allowed.status).toBe(200)
+    expect(((await allowed.json()) as { created: { name: string }[] }).created.map((c) => c.name)).toEqual(['Ext Tenant'])
   })
 })
