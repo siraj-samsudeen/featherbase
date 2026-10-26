@@ -70,6 +70,23 @@ whatever it's attached to before it opens.
 - **WHEN** anyone follows a public file's link
 - **THEN** it opens without needing to sign in
 
+### Requirement: An uploaded file never runs as part of Featherbase
+
+A file SHALL open in place only when it is a kind the browser shows without
+running anything, such as a picture, a PDF or plain text. Any other file, a
+web page or a drawing that can carry script among them, SHALL download
+instead.
+
+#### Scenario: An uploaded web page
+
+- **WHEN** someone uploads a web page and another user opens its link
+- **THEN** the file downloads; nothing in it runs inside Featherbase
+
+#### Scenario: A picture still shows
+
+- **WHEN** a user opens an uploaded photo or PDF
+- **THEN** it shows in the browser as before
+
 ### Requirement: A private file opens through a short-lived link
 
 Opening a private file SHALL check the viewer's access at that moment and

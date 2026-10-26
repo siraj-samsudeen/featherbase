@@ -39,6 +39,18 @@ downloaded.
 - **WHEN** a user who can't open a row asks for its PDF
 - **THEN** it is refused and no print is recorded
 
+### Requirement: Values print as text
+
+A value in a row SHALL print exactly as typed, even when it looks like
+markup; it never becomes part of the page, on the print page or in a
+downloaded PDF.
+
+#### Scenario: A customer name with markup in it
+
+- **WHEN** a row whose customer name contains a picture tag is printed with a
+  print format that shows the customer
+- **THEN** the page shows the tag as text, and no picture or script is added
+
 ### Requirement: A print format fixes the layout and wording
 
 A print format SHALL replace the plain layout with the one its builder wrote
