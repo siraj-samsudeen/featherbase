@@ -41,6 +41,16 @@ list, and they can open it but not rename, unshare or delete it.
 - **THEN** the teammate can apply it, but has no way to rename, unshare or
   delete it
 
+#### Scenario: A private view stays private
+
+- **WHEN** a user saves "My open items" and does not share it
+- **THEN** a teammate does not see it on that table's list
+
+#### Scenario: The owner takes a share back
+
+- **WHEN** the owner of a shared view makes it private again
+- **THEN** teammates no longer see it, and the owner still does
+
 ### Requirement: Changing a saved view means saving over it
 
 A saved view SHALL NOT be edited or renamed in place; getting an updated
@@ -64,3 +74,8 @@ looking for that option.
   a week
 - **THEN** the list offers to save that combination as a view, which the
   user can accept or dismiss
+
+#### Scenario: Decline the offer
+
+- **WHEN** the user declines the offer for a combination of filters
+- **THEN** the offer does not come back for that combination

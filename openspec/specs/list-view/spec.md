@@ -20,6 +20,11 @@ count, and opening a row SHALL take the user to its full form.
 - **THEN** the next set of rows appears, and the total count still shows how
   many rows the whole table has
 
+#### Scenario: Open a row
+
+- **WHEN** the user clicks a row's link in the list
+- **THEN** that row's full form opens
+
 ### Requirement: Sort by any column
 
 Clicking a column's heading SHALL sort the list by that column, and clicking
@@ -43,6 +48,23 @@ carry a quick filter box above the list, for the filters used most.
 - **THEN** only Open rows show while the filter is on, and removing it
   brings back every row
 
+#### Scenario: Use a quick filter
+
+- **WHEN** the user picks "Closed" in the quick filter above the list
+- **THEN** only Closed rows show, and picking "All" brings every row back
+
+### Requirement: Filters live in the page address
+
+The filters on a list SHALL be kept in the page's address, so reloading the
+page, using the browser's back button, or sharing the link shows the same
+narrowed list.
+
+#### Scenario: Open a filtered link
+
+- **WHEN** the user opens a link to a table's list that carries a filter on
+  "Stage"
+- **THEN** the list opens already narrowed, with that filter shown
+
 ### Requirement: The list remembers how it's arranged
 
 Sorting the list and choosing which columns show SHALL be remembered for
@@ -55,6 +77,19 @@ back in — shows it the same way.
 - **THEN** the column is still hidden and the list is still sorted the way
   they left it
 
+### Requirement: The list offers what the user recently opened from it
+
+Above a table's list, the user SHALL see the rows and filter combinations
+they most recently opened from that table, each reachable in one click. The
+trail is private to them.
+
+#### Scenario: Return to a recent filter
+
+- **WHEN** the user filtered the table by "note = searchable", opened a row,
+  and later comes back to the table's list
+- **THEN** that row and that filter appear as recent, and clicking the filter
+  applies it again
+
 ### Requirement: Act on many rows at once
 
 The user SHALL be able to change or delete several selected rows from one
@@ -65,6 +100,11 @@ place.
 - **WHEN** the user selects five rows and sets their "Status" to "Closed"
 - **THEN** all five rows show "Closed"
 
+#### Scenario: Delete several rows
+
+- **WHEN** the user selects two rows and deletes them
+- **THEN** both rows leave the list and the total count drops by two
+
 ### Requirement: See a row's nested rows without opening it
 
 A row that holds its own nested rows, such as an order's line items, SHALL
@@ -74,6 +114,29 @@ let the user expand it in place to see them, without leaving the list.
 
 - **WHEN** the user expands a row that has nested order lines
 - **THEN** its lines appear beneath it, and collapsing it hides them again
+
+### Requirement: Nested rows are only as visible as the rows they belong to
+
+A list of nested rows, such as order lines, SHALL show only the lines that
+belong to rows the user may see. If the user cannot see the owning table at
+all, the list of its lines is empty.
+
+#### Scenario: Only my own orders' lines
+
+- **WHEN** a salesperson who may see only the orders they created lists the
+  order lines
+- **THEN** they see lines from their own orders and none from anyone else's
+
+### Requirement: A list stays current while it is open
+
+A list SHALL refresh on its own when another person adds, changes or deletes
+a row of that table, without the user reloading.
+
+#### Scenario: A colleague adds a row
+
+- **WHEN** the user has a table's list open and someone else adds a row to
+  that table
+- **THEN** the new row appears in the user's list without a reload
 
 ### Requirement: A read-only connected table can be browsed but not changed here
 

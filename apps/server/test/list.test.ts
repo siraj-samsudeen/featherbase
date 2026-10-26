@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { createUserWithRole, grantRole, expectApiError } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'List Test Item'
@@ -97,5 +98,81 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     await expect(admin.get(listPath({ filters: 'not-json' }))).rejects.toMatchObject({
       status: 417,
     })
+  })
+})
+
+describe('Browse a table\'s rows: child rows and counts follow what the caller may see', () => {
+  const LINE = 'Lst Line'
+  const ORDER = 'Lst Order'
+
+  async function orders(admin: TestClient) {
+    await admin.post('/api/table_def', {
+      name: LINE,
+      kind: 'sub_table',
+      columns: [{ column_name: 'item', column_type: 'Data' }],
+    })
+    await admin.post('/api/table_def', {
+      name: ORDER,
+      columns: [
+        { column_name: 'customer', column_type: 'Data' },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: LINE },
+      ],
+    })
+  }
+
+  test('a nested-row list shows only rows hanging off orders the caller may read', async ({ admin, createUser }) => {
+    await orders(admin)
+    // Alice may read only the orders she created, and every line.
+    const alice = await createUserWithRole(admin, createUser, {
+      role: 'Lst Seller',
+      table: ORDER,
+      own_rows_only: true,
+      can_read: true,
+      can_create: true,
+    })
+    await grantRole(admin, { role: 'Lst Seller', table: LINE, can_read: true })
+    await alice.post('/api/save_row', { table: ORDER, row: { customer: 'mine', lines: [{ item: 'bolt' }] } })
+    await admin.post('/api/save_row', { table: ORDER, row: { customer: 'theirs', lines: [{ item: 'nut' }] } })
+
+    const seen = await alice.get<{ data: { item: string }[]; total: number }>(
+      `/api/table/${encodeURIComponent(LINE)}?fields=${encodeURIComponent(JSON.stringify(['item']))}`,
+    )
+    expect(seen.data.map((r) => r.item)).toEqual(['bolt'])
+    expect(seen.total).toBe(1)
+    const all = await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(LINE)}`)
+    expect(all.total).toBe(2)
+  })
+
+  test('a nested-row list shows nothing when the caller cannot read the owning Table', async ({ admin, createUser }) => {
+    await orders(admin)
+    const clerk = await createUserWithRole(admin, createUser, { role: 'Lst Line Clerk', table: LINE, can_read: true })
+    await admin.post('/api/save_row', { table: ORDER, row: { customer: 'x', lines: [{ item: 'bolt' }] } })
+    const seen = await clerk.get<{ total: number }>(`/api/table/${encodeURIComponent(LINE)}`)
+    expect(seen.total).toBe(0)
+  })
+
+  test('a count without a sum reports just the number of matching rows', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.get<{ count: number; sum: unknown }>(
+      `/api/table/${encodeURIComponent(DT)}:aggregate?filters=${encodeURIComponent(JSON.stringify([['stage', '=', 'Open']]))}`,
+    )
+    expect(res.count).toBe(2)
+    expect(res.sum).toBeNull()
+  })
+
+  test('a parent filter is refused on a Table that is not nested rows', async ({ admin }) => {
+    await setup(admin)
+    await orders(admin)
+    await expectApiError(
+      admin.get(listPath({ filters: JSON.stringify([['parent', 'related', { table: ORDER }]]) })),
+      { status: 417 },
+    )
+    // And on nested rows, the named owner must actually hold them.
+    await expectApiError(
+      admin.get(
+        `/api/table/${encodeURIComponent(LINE)}?filters=${encodeURIComponent(JSON.stringify([['parent', 'related', { table: DT }]]))}`,
+      ),
+      { status: 417 },
+    )
   })
 })
