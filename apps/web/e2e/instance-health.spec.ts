@@ -89,7 +89,7 @@ test('the banner leads to the page, and disappears once every check passes (5.4)
   await patch(request, 'Person', keeperId, { enabled: true })
   const applied = await request.post('/api/instance-settings/apply', { headers, data: { file: { settings: {} } } })
   if (applied.status() !== 200) throw new Error(`apply: ${applied.status()} ${await applied.text()}`)
-  const jobs = (await (await request.get('/api/table/Scheduled%20Job?limit=100', { headers })).json()) as { data: { row_id: string; enabled: boolean | number }[] }
+  const jobs = (await (await request.get('/api/table/Scheduled%20Job?limit_page_length=100', { headers })).json()) as { data: { row_id: string; enabled: boolean | number }[] }
   for (const job of jobs.data.filter((j) => j.enabled)) {
     await patch(request, 'Scheduled Job', job.row_id, { enabled: false })
     switchedOff.push({ table: 'Scheduled Job', row: job.row_id })
