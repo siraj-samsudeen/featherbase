@@ -5,6 +5,7 @@ import { adminPageTitle } from 'shared'
 import { api } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { Button, Card, Notice, Skeleton, StatusPill, cx, type StatusTone } from '../components/ui'
+import { ChevronRight } from '../components/ui/icons'
 
 // Instance health (#465, design D8; spec instance-health). One page listing
 // every check with its state, why it matters, how to fix it and its history,
@@ -119,6 +120,18 @@ function historyLine(h: HistoryEntry): string {
     : `${state} since ${fmtInstantIST(h.from)}`
 }
 
+/** A check's text with `commands` set as code. */
+function Prose({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(`[^`]+`)/).map((part, i) =>
+        part.startsWith('`') && part.endsWith('`') && part.length > 2
+          ? <code key={i} className="rounded bg-subtle px-0.5 font-mono text-xs text-ink">{part.slice(1, -1)}</code>
+          : part)}
+    </>
+  )
+}
+
 function CheckCard({ check }: { check: HealthCheckView }) {
   const state = stateOf(check.ok, check.severity)
   return (
@@ -129,7 +142,7 @@ function CheckCard({ check }: { check: HealthCheckView }) {
           <StatusPill tone={state.tone}>{state.label}</StatusPill>
         </span>
       </div>
-      <p className="mt-1 text-sm text-ink [overflow-wrap:anywhere]" data-testid="health-message">{check.message}</p>
+      <p className="mt-1 text-sm text-ink [overflow-wrap:anywhere]" data-testid="health-message"><Prose text={check.message} /></p>
       {check.since && <p className="mt-0.5 text-xs text-ink-subtle">Since {fmtInstantIST(check.since)}</p>}
       <dl className="mt-3 space-y-2 text-sm">
         <div data-testid="health-why">
@@ -139,13 +152,16 @@ function CheckCard({ check }: { check: HealthCheckView }) {
         {!check.ok && check.fix && (
           <div data-testid="health-fix">
             <dt className="font-medium text-ink">How to fix</dt>
-            <dd className="text-ink-muted [overflow-wrap:anywhere]">{check.fix}</dd>
+            <dd className="text-ink-muted [overflow-wrap:anywhere]"><Prose text={check.fix} /></dd>
           </div>
         )}
       </dl>
       {check.history.length > 0 && (
-        <details className="mt-3 text-sm" open={!check.ok}>
-          <summary className="flex min-h-8 cursor-pointer items-center font-medium text-ink max-sm:min-h-11">History</summary>
+        <details className="group mt-3 text-sm" open={!check.ok}>
+          <summary className="flex min-h-8 cursor-pointer list-none items-center gap-1 font-medium text-ink max-sm:min-h-11 [&::-webkit-details-marker]:hidden">
+            <ChevronRight aria-hidden size={16} className="shrink-0 transition-transform group-open:rotate-90" />
+            History ({check.history.length})
+          </summary>
           <ol className="mt-1 space-y-2 border-l border-border pl-3">
             {check.history.map((h) => (
               <li key={h.from} data-testid="health-history-entry">
