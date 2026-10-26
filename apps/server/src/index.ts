@@ -2026,7 +2026,8 @@ if (webDist && existsSync(webDist)) {
 if (readVariable('NODE_ENV') !== 'test') {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
-  for (const line of assertServerStart()) if (line.startsWith('WARNING')) console.warn(line)
+  const { settingsRequirements } = await import('./release-preflight')
+  for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })

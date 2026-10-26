@@ -432,5 +432,22 @@ describe('where a missing variable refuses', () => {
     const release = runTsx(['src/release.ts'], env)
     expect(release.ok).toBe(false)
     expect(release.output).toMatch(/release failed — aborting: JWT_SECRET is not set on a "production" server/)
+
+    // The start reads the stored settings too: an enabled Google method with
+    // a client id, and a Data Source, need their variables at boot as well.
+    const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    try {
+      await db`update featherbase.sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
+      await db`insert into featherbase.data_source (row_id, engine, url_env) values ('fb_boot_warehouse', 'postgres', 'FB_BOOT_WAREHOUSE_URL')`
+    } finally {
+      await db.end()
+    }
+    const withJwt = { ...env, JWT_SECRET: 'a-production-secret', GOOGLE_CLIENT_SECRET: '', FB_BOOT_WAREHOUSE_URL: '' }
+    const settingsBoot = runTsx(['src/index.ts'], withJwt)
+    expect(settingsBoot.ok).toBe(false)
+    expect(settingsBoot.output).toMatch(/GOOGLE_CLIENT_SECRET is not set on a "production" server/)
+    expect(settingsBoot.output).toMatch(/FB_BOOT_WAREHOUSE_URL is not set on a "production" server \(the url_env of data source fb_boot_warehouse\)/)
+    expect(settingsBoot.output).not.toMatch(/server listening/)
+    expect(runTsx(['src/cli.ts', 'list-tokens', 'Administrator'], withJwt).ok).toBe(true)
   }, 180_000)
 })

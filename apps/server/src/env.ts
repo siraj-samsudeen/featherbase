@@ -338,11 +338,15 @@ function loadDotEnv() {
 }
 loadDotEnv()
 
-/** The HTTP server's start-up refusal (index.ts): the registry without the
- *  settings-dependent entries, which need the database and are the release's
- *  to check. CLI commands never call this, so `cli settings:set` and
- *  `cli create-person` over `railway ssh` still run while a variable is
- *  missing (break-glass). Returns the warnings and passes to print. */
-export function assertServerStart(environment: string = currentEnvironment()): string[] {
-  return assertVariables({ environment })
+/** The HTTP server's start-up refusal (index.ts): the same registry the
+ *  release checks, with the settings-dependent requirements index.ts reads
+ *  from the database (release-preflight.ts settingsRequirements). CLI commands
+ *  never call this, so `cli settings:set` and `cli create-person` over
+ *  `railway ssh` still run while a variable is missing (break-glass). Returns
+ *  the warnings and passes to print. */
+export function assertServerStart(
+  environment: string = currentEnvironment(),
+  fromSettings: Pick<CheckVariablesOptions, 'conditions' | 'named'> = {},
+): string[] {
+  return assertVariables({ environment, ...fromSettings })
 }

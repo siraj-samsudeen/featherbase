@@ -48,7 +48,7 @@ a variable is missing.
 Beyond the table, two kinds of variable are required by the instance's data:
 a Data Source needs the variable its `url_env` names while the source exists,
 and an enabled Google sign-in method with a client id needs
-`GOOGLE_CLIENT_SECRET`. The release checks both; in development and test they
+`GOOGLE_CLIENT_SECRET`. The release and the server start check both; in development and test they
 only warn.
 
 <!-- generated:variables:start — from apps/server/src/env.ts by `pnpm --filter server generate:env`; do not edit -->

@@ -80,7 +80,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
  *  without them has nothing to require. Before 0100 there is no Sign In
  *  Method yet, but 0100 turns a legacy `google_client_id` setting into an
  *  enabled Google method, so that setting counts. */
-async function settingsRequirements(pending: string[]): Promise<Pick<CheckVariablesOptions, 'conditions' | 'named'>> {
+export async function settingsRequirements(pending: string[] = []): Promise<Pick<CheckVariablesOptions, 'conditions' | 'named'>> {
   const conditions = new Set<SettingsCondition>()
   const method = await locate('sign_in_method')
   if (method && ['kind', 'enabled', 'client_id'].every((c) => method.columns.has(c))) {
