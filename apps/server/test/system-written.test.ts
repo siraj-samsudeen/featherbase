@@ -267,7 +267,7 @@ describe('#432: every write entry point is covered', () => {
 
   // Every exported function of the document engine is either a reader, the
   // trusted internal writer, or a public writer that refuses audit tables.
-  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'getDoc', 'validateRowForUpdate']
+  const READERS = ['assertUserPermissions', 'checkRowForInsert', 'duplicateValueFields', 'getDoc', 'validateRowForUpdate']
   const TRUSTED = ['saveSystemRow']
   const PUBLIC_WRITERS: Record<string, (id: string) => Promise<unknown>> = {
     saveDoc: () => documentModule.saveDoc(AL, { user: 'Administrator', operation: 'forged' }),

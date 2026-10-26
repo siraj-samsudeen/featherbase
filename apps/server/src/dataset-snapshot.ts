@@ -68,10 +68,8 @@ export function registeredDatasets(): string[] {
  * which is neither ISO nor ADR 844's DD-Mon-YYYY. Normalising here means every
  * caller gets one shape from one place.
  */
-function isoDay(v: unknown): string | null {
-  if (v == null) return null
-  if (v instanceof Date) return v.toISOString().slice(0, 10)
-  return String(v).slice(0, 10)
+function isoDay(v: Date | null): string | null {
+  return v == null ? null : v.toISOString().slice(0, 10)
 }
 
 /**
@@ -86,22 +84,17 @@ function isoDay(v: unknown): string | null {
  * second code path for it.
  */
 export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | null> {
-  const version = registry.get(dataset)?.version
-  const [row] = version
-    ? await sql`
-        select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
-               bytes, fetch_ms, load_ms, triggered_by
-        from dataset_snapshot
-        where dataset = ${dataset} and state = 'active' and definition_version = ${version}`
-    : await sql`
-        select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
-               bytes, fetch_ms, load_ms, triggered_by
-        from dataset_snapshot
-        where dataset = ${dataset} and state = 'active'`
+  // A dataset with no registered definition has no current version, so no
+  // snapshot qualifies (`= null` matches nothing).
+  const [row] = await sql`
+    select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
+           bytes, fetch_ms, load_ms, triggered_by
+    from dataset_snapshot
+    where dataset = ${dataset} and state = 'active' and definition_version = ${registry.get(dataset)?.version ?? null}`
   if (!row) return null
   return {
     ...(row as unknown as SnapshotRecord),
-    source_as_of: isoDay(row.source_as_of),
+    source_as_of: isoDay(row.source_as_of as Date | null),
     row_count: row.row_count == null ? null : Number(row.row_count),
     bytes: row.bytes == null ? null : Number(row.bytes),
     fetch_ms: row.fetch_ms == null ? null : Number(row.fetch_ms),

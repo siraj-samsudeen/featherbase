@@ -330,7 +330,7 @@ decision record.
 | `instance-settings.ts` | Instance settings as code: the managed scope, apply, dry run and export (#465) |
 | `i18n.ts` | Translation catalogs |
 | `audit.ts` | Access/activity logging |
-| `apps.ts`, `sample-apps/` | Installable app registry (e.g. `hello-crm`) |
+| `apps.ts`, `sample-apps/` | Installable app registry (e.g. the Helpdesk and Checklists samples) |
 | `migrate.ts`, `patches.ts`, `run-patches.ts` | Migration and patch runners |
 | `cli.ts` | Command-line entry (`pnpm --filter server cli`) |
 | `smoke.ts` | The server smoke test (`pnpm --filter server test:smoke`) |

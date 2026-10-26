@@ -44,12 +44,8 @@ export async function loadScriptReports() {
   if (loaded) return
   loaded = true
   const dir = join(dirname(fileURLToPath(import.meta.url)), 'reports')
-  let files: string[] = []
-  try {
-    files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
-  } catch {
-    return
-  }
+  // The directory ships with the source (the server runs src/ through tsx).
+  const files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
   for (const file of files) {
     const mod = await import(pathToFileURL(join(dir, file)).href)
     const report = mod.default as ScriptReport | undefined

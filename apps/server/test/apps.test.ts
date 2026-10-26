@@ -210,10 +210,25 @@ describe('app registry: legacy row tolerance', () => {
   test('listInstalledApps survives double-encoded and malformed tables columns, loadInstalledApps skips unknown apps', async () => {
     await sql`insert into installed_app (name, tables) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
     await sql`insert into installed_app (name, tables) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-obj', ${sql.json({ x: 1 })})`
     const apps = await listInstalledApps()
     expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
     expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
+    expect(apps.find((a) => a.name === 'cov-legacy-obj')?.tables).toEqual([])
     // Neither name has a registered manifest — loadInstalledApps must skip them.
     await loadInstalledApps()
+  })
+
+  test('each installed runtime package says how to recover it when it cannot run as recorded', async () => {
+    const row = (name: string, version: string | null, pending: boolean) =>
+      sql`insert into installed_app (name, tables, runtime_package, package_version, activation_pending)
+          values (${name}, ${sql.json([])}, true, ${version}, ${pending})`
+    await row('cov-unversioned', null, false)
+    await row('cov-pending', '1.0.0', true)
+    await row('cov-missing-artifact', '1.0.0', false)
+    const recovery = Object.fromEntries((await listInstalledApps()).map((a) => [a.name, a.recovery]))
+    expect(recovery['cov-unversioned']).toMatch(/^Unversioned legacy installation/)
+    expect(recovery['cov-pending']).toBe('Activate the committed version after restoring its exact artifact')
+    expect(recovery['cov-missing-artifact']).toMatch(/^Restore the exact installed artifact/)
   })
 })

@@ -101,12 +101,8 @@ export async function loadControllers() {
   if (loaded) return
   loaded = true
   const dir = join(dirname(fileURLToPath(import.meta.url)), 'controllers')
-  let files: string[] = []
-  try {
-    files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
-  } catch {
-    return
-  }
+  // The directory ships with the source (the server runs src/ through tsx).
+  const files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
   for (const file of files) {
     const mod = await import(pathToFileURL(join(dir, file)).href)
     const controller = mod.default as TableController | undefined

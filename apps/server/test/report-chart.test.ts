@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { runReportChart, pinChartToDashboard } from '../src/report-chart'
 import { getDoc } from '../src/document'
+import { expectApiError } from './fixtures'
 
 // RPT-006: a chart series derived from a saved report's rows, and pinning it
 // onto a dashboard.
@@ -43,10 +44,9 @@ async function setup(admin: TestClient) {
 describe('RPT-006: report charts', () => {
   test('derives a per-row chart using explicit label/value fields', async ({ admin }) => {
     await setup(admin)
-    const { data } = await runReportChart(
-      { report: REPORT, label_field: 'region', value_field: 'amount' },
-      'Administrator',
-    )
+    const { data } = await admin.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
+      report: REPORT, label_field: 'region', value_field: 'amount',
+    })
     // Order follows list order (modified desc); assert as a set of pairs.
     const pairs = data.map((d) => `${d.label}:${d.value}`).sort()
     expect(pairs).toEqual(['North:100', 'North:25', 'South:50'])
@@ -67,13 +67,26 @@ describe('RPT-006: report charts', () => {
     expect(data.reduce((s, d) => s + d.value, 0)).toBe(175)
   })
 
+  test('a report that shows no columns charts each row by its id with a value of zero', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: 'Rc Srv Ids', ref_table: DT, report_type: 'Report Builder', config: { columns: [], filters: [] } },
+    })
+    const { data } = await admin.post<{ data: { label: string; value: number }[] }>('/api/report_chart', { report: 'Rc Srv Ids' })
+    expect(data.map((d) => `${d.label}:${d.value}`).sort()).toEqual(['s1:0', 's2:0', 's3:0'])
+  })
+
+  test('a chart with no report named is refused', async ({ admin }) => {
+    await expectApiError(admin.post('/api/report_chart', {}), { status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { report }') })
+  })
+
   test('pins the chart onto the dashboard config (idempotent on label)', async ({ admin }) => {
     await setup(admin)
-    await pinChartToDashboard(
-      DASH,
-      { label: REPORT, report: REPORT, group_by: 'region' },
-      'Administrator',
-    )
+    await admin.post('/api/pin_chart_to_dashboard', {
+      dashboard: DASH,
+      chart: { label: REPORT, report: REPORT, group_by: 'region' },
+    })
     let dash = await getDoc('Dashboard', DASH, 'Administrator')
     let charts = (dash.config as { charts: { label: string; report: string }[] }).charts
     expect(charts).toHaveLength(1)
@@ -89,6 +102,12 @@ describe('RPT-006: report charts', () => {
     charts = (dash.config as { charts: { label: string; report: string }[] }).charts
     expect(charts).toHaveLength(1)
     expect(charts[0]).toMatchObject({ value_field: 'amount' })
+  })
+
+  test('pinning without a dashboard or a chart is refused', async ({ admin }) => {
+    await expectApiError(admin.post('/api/pin_chart_to_dashboard', { dashboard: DASH }), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { dashboard, chart }'),
+    })
   })
 
   test('a pinned chart recomputes from live rows: a new row shows the next time it is drawn', async ({ admin }) => {

@@ -63,3 +63,18 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   await expect(save('File', { file_name: 'disabled', ref_table: 'actionproof.work', ref_name: 'linked' })).rejects.toMatchObject({ status: 403 })
   await expect(save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator' })).rejects.toMatchObject({ status: 403 })
 })
+
+test('a row another Table refers to is retained, and a reference from a Settings Table refuses the delete it cannot prove', async ({ admin }) => {
+  await discoverPackages([resolve('../..', 'runtime-apps/other')])
+  await admin.post('/api/install_app', { name: 'other' })
+  const source = await admin.post<any>('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 23 } })
+  await admin.post('/api/table_def', { name: 'Rrd Pointer', columns: [{ column_name: 'task', column_type: 'Reference', reference_table: 'other.task' }] })
+  await admin.post('/api/save_row', { table: 'Rrd Pointer', row: { task: 'kept' } })
+  await expect(deleteDoc('other.task', 'kept', 'Administrator', { expectUpdatedAt: source.updated_at }))
+    .rejects.toMatchObject({ type: 'ValidationError', fields: { references: '1' } })
+
+  await admin.post('/api/table_def', { name: 'Rrd Settings', kind: 'settings', columns: [{ column_name: 'default_task', column_type: 'Reference', reference_table: 'other.task' }] })
+  await expect(deleteDoc('other.task', 'kept', 'Administrator', { expectUpdatedAt: source.updated_at }))
+    .rejects.toMatchObject({ type: 'ValidationError', message: 'Deletion cannot prove references from nonlocal Tables' })
+  expect(await sql`select row_id from other.task where row_id = 'kept'`).toHaveLength(1)
+})

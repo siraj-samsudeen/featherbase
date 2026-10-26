@@ -53,6 +53,15 @@ describe('realtime event bus', () => {
     })
   })
 
+  test('a listener that throws does not stop delivery to the others', () => {
+    const stopBroken = onEvent(() => { throw new Error('broken listener') })
+    const { events, stop } = collect()
+    publishDocEvent('Task', 'TASK-3', 'updated')
+    stop()
+    stopBroken()
+    expect(events).toContainEqual({ channel: 'list:Task', event: 'updated', payload: { table: 'Task', row_id: 'TASK-3' } })
+  })
+
   test('unsubscribed listeners stop receiving events', () => {
     const { events, stop } = collect()
     stop()
@@ -126,6 +135,36 @@ describe('subscription acknowledgment', () => {
         event: 'subscribed',
         payload: { channels: ['list:User'] },
       })
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
+  test('a frame that is not JSON is ignored and the socket keeps serving', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+    const frames: RealtimeEvent[] = []
+    socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+    const frame = async (event: string): Promise<RealtimeEvent> => {
+      const deadline = Date.now() + 5_000
+      for (;;) {
+        const hit = frames.find((f) => f.event === event)
+        if (hit) return hit
+        if (Date.now() > deadline) throw new Error(`no '${event}' frame arrived; saw ${JSON.stringify(frames)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+    try {
+      await frame('ready')
+      socket.send('{not json')
+      socket.send(JSON.stringify({ subscribe: ['list:User'] }))
+      expect((await frame('subscribed')).payload).toEqual({ channels: ['list:User'] })
+      expect(socket.readyState).toBe(WebSocket.OPEN)
     } finally {
       socket.terminate()
       server.closeAllConnections()

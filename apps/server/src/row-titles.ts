@@ -33,13 +33,11 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
   for (const r of refs) byTable.set(r.table, (byTable.get(r.table) ?? new Set()).add(r.row_id))
   const out: RowTitle[] = []
   for (const [table, ids] of byTable) {
-    let scoped: Awaited<ReturnType<typeof scopedWhere>>
-    try {
-      scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
-    } catch (err) {
-      if (err instanceof AppError) continue
-      throw err
-    }
+    // A Table this caller cannot read here (an AppError) is left out; any
+    // other failure propagates.
+    const scoped = await scopedWhere(table, user, [['row_id', 'in', [...ids]]])
+      .catch((err: unknown) => (err instanceof AppError ? null : Promise.reject(err)))
+    if (!scoped) continue
     const { meta, table: relation, where, cols } = scoped
     const rows = await sql`select * from ${sql(relation)} where ${where}`
     // Only the columns this caller may read take part in the title.

@@ -7,7 +7,7 @@
 // warehouse's arithmetic (baseline agreement is measured separately by
 // scripts/measure-sales-target-snapshot.ts against real data).
 import { randomUUID } from 'node:crypto'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
@@ -137,6 +137,24 @@ describe('snapshot lifecycle', () => {
     expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(good.snapshotId)
     const [r] = await sql`select state, error from dataset_snapshot where row_id = ${bad.snapshotId!}`
     expect(r.state).toBe('failed')
+  })
+
+  test('with no stub and no MotherDuck token the build fails naming the missing token', async () => {
+    vi.stubEnv('MOTHERDUCK_TOKEN', undefined)
+    try {
+      const out = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(out.status).toBe('failed')
+      expect(out.reason).toContain('MOTHERDUCK_TOKEN is not set (required to refresh sales_target_mtd)')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  test('a dataset with no registered definition has no snapshot a reader may use', async () => {
+    stub(sampleRows())
+    const built = await buildSnapshot(SALES_TARGET_DATASET)
+    await sql`update dataset_snapshot set dataset = 'unregistered_probe' where row_id = ${built.snapshotId!}`
+    expect(await activeSnapshot('unregistered_probe')).toBeNull()
   })
 
   test('an interrupted build is never resolved by a reader', async () => {

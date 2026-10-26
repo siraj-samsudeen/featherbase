@@ -143,12 +143,32 @@ describe('Browse a table\'s rows: child rows and counts follow what the caller m
     expect(all.total).toBe(2)
   })
 
+  test('a nested-row list shows every row for a caller who may read every owning row', async ({ admin, createUser }) => {
+    await orders(admin)
+    const auditor = await createUserWithRole(admin, createUser, { role: 'Lst Auditor', table: ORDER, can_read: true })
+    await grantRole(admin, { role: 'Lst Auditor', table: LINE, can_read: true })
+    await admin.post('/api/save_row', { table: ORDER, row: { customer: 'one', lines: [{ item: 'bolt' }] } })
+    await admin.post('/api/save_row', { table: ORDER, row: { customer: 'two', lines: [{ item: 'nut' }] } })
+    const seen = await auditor.get<{ data: { item: string }[]; total: number }>(
+      `/api/table/${encodeURIComponent(LINE)}?fields=${encodeURIComponent(JSON.stringify(['item']))}`,
+    )
+    expect(seen.data.map((r) => r.item).sort()).toEqual(['bolt', 'nut'])
+    expect(seen.total).toBe(2)
+  })
+
   test('a nested-row list shows nothing when the caller cannot read the owning Table', async ({ admin, createUser }) => {
     await orders(admin)
     const clerk = await createUserWithRole(admin, createUser, { role: 'Lst Line Clerk', table: LINE, can_read: true })
     await admin.post('/api/save_row', { table: ORDER, row: { customer: 'x', lines: [{ item: 'bolt' }] } })
     const seen = await clerk.get<{ total: number }>(`/api/table/${encodeURIComponent(LINE)}`)
     expect(seen.total).toBe(0)
+  })
+
+  test('an aggregate whose filters are not JSON is refused', async ({ admin }) => {
+    await setup(admin)
+    await expectApiError(admin.get(`/api/table/${encodeURIComponent(DT)}:aggregate?filters=not-json`), {
+      status: 400, type: 'BadRequestError', message: expect.stringContaining('filters must be valid JSON'),
+    })
   })
 
   test('a count without a sum reports just the number of matching rows', async ({ admin }) => {

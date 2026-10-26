@@ -93,4 +93,13 @@ describe('PLAT-007: audit logs', () => {
     expect(b.created_by).toBe(ID)
     expect(b.reference_name).toBe(ID)
   })
+
+  test('a required access record is refused while the access log is missing, even with a same-named table in another schema (#520)', async () => {
+    await sql.unsafe('alter table featherbase.access_log rename to access_log_hidden')
+    await sql.unsafe('create table public.access_log (row_id text)')
+    await expect(logAccess('Administrator', 'audit_probe', { required: true })).rejects.toThrow('Required access audit is unavailable')
+    // A record that is not required is skipped, and nothing lands in the stray table.
+    await logAccess('Administrator', 'audit_probe')
+    expect(await sql.unsafe('select count(*)::int as n from public.access_log')).toEqual([{ n: 0 }])
+  })
 })

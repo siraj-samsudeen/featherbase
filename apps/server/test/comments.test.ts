@@ -43,6 +43,16 @@ describe('UI-018: comment @mention notifications', () => {
     expect(notifs[0].subject).not.toContain('psn_')
   })
 
+  test('a comment that mentions someone only by full name notifies that person', async ({ admin }) => {
+    const dana = await makePerson({ full_name: 'Dana Cmt Only' })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: 'Person', ref_name: dana, content: 'thanks @[Dana Cmt Only]' },
+    })
+    const notifs = await sql`select for_user from notification_log where ref_name = ${dana}`
+    expect(notifs.map((n) => n.for_user)).toEqual([dana])
+  })
+
   test('a comment with no mentions creates no notifications', async ({ admin }) => {
     const before = (await sql`select count(*)::int as c from notification_log`)[0].c as number
     const res = await admin.fetch('/api/save_row', {

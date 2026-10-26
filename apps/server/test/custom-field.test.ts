@@ -111,4 +111,15 @@ describe('CUST-001: custom fields', () => {
     const [row] = await sql.unsafe(`select ${FIELD} from person where row_id = 'Administrator'`)
     expect(row[FIELD]).toBe('vip')
   })
+
+  test('re-applying skips a record whose Table no longer exists and still applies the rest', async ({ admin }) => {
+    await addCustomField(admin)
+    await sql`insert into custom_field ${sql({ row_id: 'Gone-tag', dt: 'Cf Gone Table', column_name: 'tag', label: 'Tag', column_type: 'Data' })}`
+    await sql`delete from column_def where parent = 'Person' and column_name = ${FIELD}`
+    invalidateMeta('Person')
+    const [{ n }] = await sql`select count(*)::int as n from custom_field`
+    expect(await reapplyCustomFields()).toBe(n)
+    expect((await getMeta('Person')).columns.some((f) => f.column_name === FIELD)).toBe(true)
+    expect(await sql`select 1 from column_def where parent = 'Cf Gone Table'`).toHaveLength(0)
+  })
 })

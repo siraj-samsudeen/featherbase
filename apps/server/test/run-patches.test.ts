@@ -24,9 +24,13 @@ describe('run-patches', () => {
     expect(await sql`select 1 from patch_log where patch = '0001_file_ref_index'`).toHaveLength(0)
   })
 
-  it('runs as a process: an up-to-date database applies nothing', () => {
+  // A fresh test database is migrated by the suite's global setup but never
+  // patched, so the first real run may apply the patch before it reports.
+  // Either way the process ends up to date, and a second run applies nothing.
+  it('runs as a process: it brings the database up to date, then applies nothing', () => {
     const server = fileURLToPath(new URL('..', import.meta.url))
-    const out = execFileSync(process.execPath, ['--import', 'tsx', 'src/run-patches.ts'], { cwd: server, encoding: 'utf8', timeout: 60_000 })
-    expect(out).toBe('patches up to date (1 total)\n')
-  }, 60_000)
+    const run = () => execFileSync(process.execPath, ['--import', 'tsx', 'src/run-patches.ts'], { cwd: server, encoding: 'utf8', timeout: 60_000 })
+    expect(run()).toMatch(/patches up to date \(1 total\)\n$/)
+    expect(run()).toBe('patches up to date (1 total)\n')
+  }, 120_000)
 })

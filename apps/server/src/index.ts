@@ -52,7 +52,7 @@ import './actions/collection-aggregate'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
-import { enqueue, loadJobs, retryJob, startWorker, syncScheduledJobs } from './jobs'
+import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
@@ -80,7 +80,6 @@ import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
-import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -94,7 +93,6 @@ await loadJobs()
 await loadScriptReports()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their Tables persist in the DB).
-registerApp(helloCrm)
 // Registered, NOT installed: a fresh deployment has zero helpdesk tables
 // until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
 registerApp(helpdesk)
@@ -2180,32 +2178,44 @@ app.delete('/api/table/:table/:name', async (c) => {
 // carries the file: scheme — the web test environment loads this module with
 // a realm-foreign URL that fileURLToPath rejects as an object, and such
 // environments never serve the SPA anyway.)
-const webDist = import.meta.url.startsWith('file:')
-  ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist')
-  : ''
-if (webDist && existsSync(webDist)) {
+// (The '' arm is the web suite's, which imports this module under jsdom.)
+const webDist = import.meta.url.startsWith('file:') ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist') : ''
+
+/** Serve a built web app from `dir` on `target`, when the directory exists:
+ *  its files as they are, and index.html for any other GET a server-owned
+ *  prefix does not claim. Answers whether it mounted anything. */
+export function serveWebDist(target: Hono<Env>, dir: string): boolean {
+  if (!dir || !existsSync(dir)) return false
   // serveStatic resolves `root` against process.cwd() (apps/server under
   // `pnpm --filter server start`), so the path must be expressed relative
   // to that, not absolute.
-  const webRoot = path.relative(process.cwd(), webDist)
-  app.use('*', serveStatic({ root: webRoot }))
+  const webRoot = path.relative(process.cwd(), dir)
+  target.use('*', serveStatic({ root: webRoot }))
   // SPA fallback: any GET the API and asset handlers didn't claim gets
   // index.html so client-side routes deep-link. Server-owned prefixes pass
   // through and keep their JSON 404 envelope (API-006).
   const serverOwned = /^\/(api|apps|files|private\/files|web|ws)(\/|$)/
-  app.get('*', (c, next) => {
+  target.get('*', (c, next) => {
     if (serverOwned.test(c.req.path)) return next()
     return serveStatic({ root: webRoot, path: 'index.html' })(c, next)
   })
+  return true
 }
+serveWebDist(app, webDist)
 
-if (readVariable('NODE_ENV') !== 'test') {
+/** Boot this process as the server: refuse a bad configuration, listen on
+ *  `port`, attach realtime, run the job worker and sync the recurring jobs.
+ *  Resolves once it listens, with the port and a way to stop it again. */
+export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
   const { settingsRequirements } = await import('./release-preflight')
   for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
-  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(`server listening on :${info.port}`)
+  const { server, listening } = await new Promise<{ server: ReturnType<typeof serve>; listening: number }>((resolve) => {
+    const server = serve({ fetch: app.fetch, port }, (info) => {
+      console.log(`server listening on :${info.port}`)
+      resolve({ server, listening: info.port })
+    })
   })
   // An auth bypass nobody noticed being enabled is the failure mode worth a
   // log line: say once whether preview sign-in is live, or why it was refused.
@@ -2221,4 +2231,14 @@ if (readVariable('NODE_ENV') !== 'test') {
   // sync makes the queue agree with the rows. Idempotent, so a restart never
   // stacks a duplicate recurrence.
   await syncScheduledJobs()
+  return {
+    port: listening,
+    stop: async () => {
+      stopWorker()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    },
+  }
 }
+
+/* v8 ignore next -- entry-point guard: the process boots unless Vitest imported it; startServer() itself is driven in-process by test/server-start.test.ts */
+if (readVariable('NODE_ENV') !== 'test') await startServer()

@@ -138,6 +138,10 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_row', { table: RUN_DT, row: { section: 'Kurti' } }),
       ).rejects.toMatchObject({ status: 417 })
+      // A template that does not exist is refused too, and no run is left behind.
+      await expect(
+        admin.post('/api/save_row', { table: RUN_DT, row: { template: 'No Such Template' } }),
+      ).rejects.toMatchObject({ status: 417, fields: { template: expect.any(String) } })
     } finally {
       await unwire()
     }

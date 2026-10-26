@@ -188,6 +188,33 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
   return out
 }
 
+// The columns a unique violation (23505) is about.
+//
+// Postgres names the offending columns in `detail`:
+//   Key (language, source_text)=(fr, Save) already exists.
+// Prefer that over the constraint name. Naming the constraint only works
+// for our generated `x_column_uq` singles, and everything else — a
+// plain unique INDEX, a composite, the primary key — used to fall back to
+// reporting `name`, blaming a field that was not the problem. That cost
+// real debugging time on `translation_lang_src` (issue #42). Postgres
+// leaves `detail` out when the connecting role may not see the key (row
+// security, column privileges); the constraint name is then all there is.
+export function duplicateValueFields(table: string, e: { constraint_name?: string; detail?: string }): string[] {
+  const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
+  const prefix = `${tableName(table)}_`
+  // An expression index names an expression, not a column, in its detail
+  // (`lower(email::text)`): map the case-insensitive rules by name.
+  return e.constraint_name === 'person_email_lower_uq'
+    ? ['email']
+    : e.constraint_name === 'person_username_lower_uq'
+    ? ['username']
+    : detailCols
+    ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
+    : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
+      ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]
+      : [ROW_KEY]
+}
+
 // META-010: translate Postgres constraint violations into field-wise
 // ValidationErrors instead of opaque 500s.
 async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Promise<never> {
@@ -199,26 +226,7 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
     detail?: string
   }
   if (e?.code === '23505') {
-    // Postgres names the offending columns in `detail`:
-    //   Key (language, source_text)=(fr, Save) already exists.
-    // Prefer that over the constraint name. Naming the constraint only works
-    // for our generated `x_column_uq` singles, and everything else — a
-    // plain unique INDEX, a composite, the primary key — used to fall back to
-    // reporting `name`, blaming a field that was not the problem. That cost
-    // real debugging time on `translation_lang_src` (issue #42).
-    const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
-    const prefix = `${tableName(meta.name)}_`
-    // An expression index names an expression, not a column, in its detail
-    // (`lower(email::text)`): map the case-insensitive email rule by name.
-    const fields = e.constraint_name === 'person_email_lower_uq'
-      ? ['email']
-      : e.constraint_name === 'person_username_lower_uq'
-      ? ['username']
-      : detailCols
-      ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
-      : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
-        ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]
-        : [ROW_KEY]
+    const fields = duplicateValueFields(meta.name, e)
     const label = fields.join(', ')
     throw new AppError('ValidationError', `Duplicate value for ${label}`, {
       ...Object.fromEntries(fields.map((f) => [f, `${label} must be unique`])),
@@ -427,9 +435,10 @@ async function assertAccessColumnsUnchanged(
       let written: RowValues
       try {
         written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update') }
-      } catch (err) {
-        if (err instanceof AppError) return false
-        throw err
+      } catch {
+        // A row that fails validation counts as a change; the save that
+        // follows meets the same failure and reports it.
+        return false
       }
       return key(stored.get(id)!) === key(written)
     })
@@ -496,10 +505,10 @@ async function saveChildren(
     try {
       fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert')
     } catch (err) {
-      if (err instanceof AppError && err.fields)
-        for (const [k, v] of Object.entries(err.fields))
-          errors[`${input.columnName}.${i}.${k}`] = v
-      else throw err
+      // childFieldValues refuses only field by field; anything else is a bug.
+      if (!(err instanceof AppError) || !err.fields) throw err
+      for (const [k, v] of Object.entries(err.fields))
+        errors[`${input.columnName}.${i}.${k}`] = v
       continue
     }
     await validateLinks(tx, childMeta, fieldValues, `${input.columnName}.${i}.`)
@@ -580,12 +589,8 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // provided/required name would hit, with no writes. Automation triggers and
 // tier stripping do not run here, so a trigger can still reject at real
 // import time; the dry run catches everything schema-level.
+// The import action refuses source-bound Tables before it gets here.
 export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
-  if (isBound(meta))
-    throw new AppError(
-      'ValidationError',
-      `${meta.name} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
-    )
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   // #231: the real import inserts through saveDoc, so the dry run has to
   // apply the same required-children rule or it would pass rows the import

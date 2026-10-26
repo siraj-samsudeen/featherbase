@@ -136,6 +136,12 @@ describe('IMP-005: bulk import', () => {
     })
     expect(res.inserted).toBe(1)
     expect(res.failed.map((f) => f.index)).toEqual([1, 2, 3])
+    // A dry run reports them the same way.
+    const dry = await admin.post<{ valid: number; failed: { index: number; message: string }[] }>(PATH, {
+      dry_run: true, rows: [{ title: 'ok' }, 'just a string'],
+    })
+    expect(dry.valid).toBe(1)
+    expect(dry.failed).toEqual([{ index: 1, message: 'row must be an object' }])
   })
 
   test('refuses settings and sub_table kinds', async ({ admin }) => {

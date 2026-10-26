@@ -8,10 +8,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
+import { expectApiError } from './fixtures'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 import { invalidateSources } from '../src/sources/registry'
+import { tableRelation } from '../src/table-engine'
 
 const EXT_URL_ENV = 'SEC_FIXTURE_URL'
 process.env[EXT_URL_ENV] = EXTERNAL_DATABASE_URL
@@ -525,6 +527,13 @@ describe('re-review findings', () => {
     // Nothing landed on the source.
     const [{ n }] = await cli`select count(*)::int as n from sec_fixture.account`
     expect(Number(n)).toBe(2)
+    // An import there can never have run, so there is nothing to revert either.
+    const revert = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}:import-revert`, {
+      method: 'POST',
+      body: JSON.stringify({ run_id: 'any-run' }),
+    })
+    expect(revert.status).toBe(417)
+    expect(await revert.json()).toMatchObject({ error: { message: expect.stringContaining('imports there are not revertable') } })
   })
 
   test('finding 10: a hand-written binding is validated against the source', async ({ admin }) => {
@@ -617,5 +626,73 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
     await expect(admin.get(`/api/table/${enc}:aggregate?sum=label`)).rejects.toMatchObject({
       status: 417,
     })
+  })
+})
+
+describe('a bound Table keeps its binding', () => {
+  test('a definition edit cannot move the binding, and a column is renamed at the source, not here', async ({ admin }) => {
+    await bindAccount(admin)
+    const meta = await admin.get<{ columns: Record<string, unknown>[]; external_table: string }>(`/api/table/${encodeURIComponent(BOUND)}:meta`)
+    const put = await admin.fetch(`/api/table_def/${encodeURIComponent(BOUND)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: meta.columns, data_source: 'elsewhere', external_table: 'sec_archive.account' }),
+    })
+    expect(put.status).toBe(200)
+    const [stored] = await sql`select data_source, external_table from table_def where name = ${BOUND}`
+    expect(stored).toEqual({ data_source: 'sec-fixture', external_table: meta.external_table })
+
+    const rename = await admin.fetch(`/api/table_def/${encodeURIComponent(BOUND)}/rename_column`, {
+      method: 'POST', body: JSON.stringify({ from: 'label', to: 'title' }),
+    })
+    expect(rename.status).toBe(417)
+    expect(await rename.json()).toMatchObject({ error: { message: `${BOUND} is bound to a data source; rename the column at the source` } })
+  })
+
+  test('a row that does not exist on the source cannot be updated, and an update must carry the loaded stamp', async ({ admin }) => {
+    await bindAccount(admin)
+    await expectApiError(
+      admin.post('/api/save_row', { table: BOUND, mode: 'update', row: { row_id: 'ACC-Z', label: 'ghost' } }),
+      { status: 404 },
+    )
+    await expectApiError(admin.post('/api/save_row', { table: BOUND, row: { row_id: 'ACC-A', label: 'unstamped' } }), {
+      status: 417, message: expect.stringContaining('Updates must include the updated_at timestamp of the loaded row'),
+    })
+    const [row] = await cli`select label from sec_fixture.account where id = 'ACC-A'`
+    expect(row.label).toBe('Alpha')
+  })
+
+  test('a bound row a local Table refers to cannot be deleted; a reference from a Settings Table does not hold it', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { name: 'Sec Prefs', kind: 'settings', columns: [{ column_name: 'home_account', column_type: 'Reference', reference_table: BOUND }] })
+    // Written straight to storage: saving such a row through the API is the defect pinned below.
+    await sql`insert into ${sql(await tableRelation('Sec Holder'))} ${sql({ row_id: 'holder-1', account: 'ACC-A' })}`
+    const holder = { row_id: 'holder-1' }
+    const stamp = async (id: string) => ((await admin.get(`/api/table/${encodeURIComponent(BOUND)}/${id}`)) as { updated_at: string }).updated_at
+    const refused = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-A?updated_at=${encodeURIComponent(await stamp('ACC-A'))}`, { method: 'DELETE' })
+    expect(refused.status).toBe(417)
+    expect(await refused.json()).toMatchObject({ error: { message: `Cannot delete ${BOUND} ACC-A: it is linked from Sec Holder ${holder.row_id}` } })
+    const freed = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}/ACC-B?updated_at=${encodeURIComponent(await stamp('ACC-B'))}`, { method: 'DELETE' })
+    expect(freed.status).toBe(200)
+    expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
+  })
+
+  // SPEC: a Reference column may point at a source-bound Table (the bound delete path
+  // checks such references) — suspected defect: saving a local row that refers to a
+  // bound row fails with a 500, because the link check reads a local table the bound
+  // Table does not have ("relation featherbase.sec_account does not exist").
+  test.fails('a local row can refer to a bound row', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    const saved = await admin.post<{ account: string }>('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } })
+    expect(saved.account).toBe('ACC-A')
+  })
+
+  test('a bound row shared with someone can be read by them without any grant on the Table', async ({ admin, createUser }) => {
+    await bindAccount(admin)
+    const guest = await createUser({ roles: [] })
+    await expectApiError(guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`), { status: 403 })
+    await admin.post('/api/save_row', { table: 'Share', row: { share_table: BOUND, share_name: 'ACC-A', person: guest.user, read: true } })
+    expect(await guest.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`)).toMatchObject({ row_id: 'ACC-A', label: 'Alpha' })
   })
 })
