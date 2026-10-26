@@ -33,6 +33,7 @@ import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
+import { useSetupOffer } from './FirstRunSetup'
 import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, useMediaQuery } from '../components/ui'
 import { Bell, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
@@ -196,6 +197,10 @@ function AdminShell() {
     queryFn: () => api.get<{ count: number }>('/api/people/waiting_for_access/count'),
     enabled: canManage,
   })
+
+  // #465 D9: right after the Administrator signs in, ask who looks after the
+  // instance while no System Manager has an email address.
+  useSetupOffer(canManage)
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
