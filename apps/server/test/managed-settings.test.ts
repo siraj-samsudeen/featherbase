@@ -123,6 +123,16 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     expect(await google()).toMatchObject({ label: 'Google (company)', allowed_email_domains: DOMAINS })
   })
 
+  test('a locked JSON field: echoing the object is no change; a JSON string with the same text is (Codex review)', async ({ admin }) => {
+    await apply({ settings: { 'Sign In Method': [{ row_id: 'google', settings: { a: 1 } }] } })
+    const stamp = async () => (await google()).updated_at
+    await patchDoc(admin, '/api/table/Sign%20In%20Method/google', { settings: { a: 1 }, label: 'Google', updated_at: await stamp() })
+    // jsonb keeps a string as a JSON string, a different value from the object.
+    await expectApiError(patchDoc(admin, '/api/table/Sign%20In%20Method/google', { settings: '{"a":1}', updated_at: await stamp() }), LOCKED)
+    const [row] = await sql`select settings from sign_in_method where row_id = 'google'`
+    expect(row.settings).toEqual({ a: 1 })
+  })
+
   test('a locked scheduled job switch cannot be flipped from Admin', async ({ admin }) => {
     await apply()
     const [job] = await sql`select updated_at from scheduled_job where row_id = 'disable_leavers'`

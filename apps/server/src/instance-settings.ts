@@ -13,7 +13,7 @@ import { logActivity } from './audit'
 import { appOperation } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
-import { INSTANCE_SETTINGS_ACTOR, recordApply, type ManagedPath } from './managed-settings'
+import { INSTANCE_SETTINGS_ACTOR, holdManagedSetExclusive, recordApply, type ManagedPath } from './managed-settings'
 import { config } from './config'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
@@ -368,6 +368,9 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
   // 2. Compare, save what differs, and read back what was written — in one
   //    transaction that a problem, or a dry run, rolls back whole.
   const run = async (): Promise<ApplyResult> => {
+    // D5: no save of a lockable Table runs between this read and the commit
+    // that publishes the new locked set (managed-settings.ts).
+    await holdManagedSetExclusive(sql)
     const changes: SettingChange[] = []
     const warnings: string[] = []
     for (const { entry, meta, rows } of plan) {

@@ -426,8 +426,10 @@ describe('#401: cli settings:set', () => {
       const [after] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
       expect(after.enabled).toBe(target)
     } finally {
+      // Back through the same path, so the job queue is re-timed back too and
+      // no queued run leaks into the job tests.
+      cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], String(before.enabled))
       await sql`delete from instance_settings_apply`
-      await sql`update scheduled_job set enabled = ${before.enabled} where row_id = 'disable_leavers'`
       await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Scheduled Job%'`
     }
   }, 60_000)

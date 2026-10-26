@@ -18,7 +18,7 @@ import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
-import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged } from './managed-settings'
+import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
@@ -734,6 +734,7 @@ async function writeDoc(
   const [saved] = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
+      await holdManagedSet(stx, meta.name)
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -993,6 +994,7 @@ async function updateDoc(
   const saved = await afterCommitOf(() => sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
+      await holdManagedSet(stx, meta.name)
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1257,6 +1259,7 @@ async function deleteDocImpl(
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
+    await holdManagedSet(stx, meta.name)
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1432,6 +1435,7 @@ async function renameDocImpl(
 
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
+    await holdManagedSet(tx as unknown as typeof sql, null)
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
@@ -1589,6 +1593,7 @@ async function saveSingleImpl(
     const stx = tx as unknown as typeof sql
     const stored = async () => Object.fromEntries(
       (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
+    await holdManagedSet(stx, table)
     const before = await stored()
     for (const [field, value] of Object.entries(clean)) {
       const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : String(value)

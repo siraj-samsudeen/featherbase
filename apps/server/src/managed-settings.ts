@@ -60,6 +60,25 @@ export async function recordApply(db: typeof sql, apply: Omit<LastApply, 'applie
   await db`insert into instance_settings_apply ${db(row as unknown as Record<string, never>)}`
 }
 
+// One advisory lock orders an apply against the saves it locks out: an apply
+// holds it exclusively from before it reads any value until it commits; a save
+// of a lockable Table holds it shared from before its write until it commits.
+// So a save is judged either wholly before an apply or wholly after it, never
+// against a locked set the apply is about to replace (Codex review).
+const LOCK_KEY = 'featherbase.instance_settings_lock'
+
+/** In an apply's transaction, before anything is read. */
+export async function holdManagedSetExclusive(db: typeof sql): Promise<void> {
+  await db`select pg_advisory_xact_lock(hashtext(${LOCK_KEY}))`
+}
+
+/** In a save's transaction, before the write. `table` null: any Table (a
+ *  rename, whose cascade may reach a locked Reference). */
+export async function holdManagedSet(db: typeof sql, table: string | null): Promise<void> {
+  if (table !== null && !LOCKABLE.has(table)) return
+  await db`select pg_advisory_xact_lock_shared(hashtext(${LOCK_KEY}))`
+}
+
 async function pathsOf(db: typeof sql, table: string): Promise<ManagedPath[]> {
   if (!LOCKABLE.has(table)) return []
   const apply = await lastApply(db)
@@ -98,7 +117,7 @@ function lockedError(meta: Pick<TableMeta, 'name' | 'columns'>, rowId: string, f
 
 /** A value as stored, in one comparable form: a Date as its instant, blank
  *  text as null, JSON (or JSON text) key-order-free, numbers as numbers. */
-function comparable(columnType: string, v: unknown): string {
+function comparable(columnType: string, v: unknown, jsonAsText: boolean): string {
   if (v === undefined || v === null || v === '') return 'null'
   if (columnType === 'Check') return String(v === true || v === 1 || v === '1' || v === 'true')
   if (['Int', 'Float', 'Currency', 'Percent'].includes(columnType)) {
@@ -108,7 +127,9 @@ function comparable(columnType: string, v: unknown): string {
   if (v instanceof Date) return JSON.stringify(v.toISOString())
   if (columnType === 'JSON') {
     let parsed = v
-    if (typeof v === 'string') {
+    // A jsonb column arrives decoded, so a string there is a JSON string;
+    // only the Settings store keeps JSON as text (Codex review).
+    if (typeof v === 'string' && jsonAsText) {
       try {
         parsed = JSON.parse(v)
       } catch {
@@ -134,7 +155,7 @@ function canonical(v: unknown): string {
  *  transaction, after the write, so a refusal rolls it back. */
 export async function assertManagedUnchanged(
   db: typeof sql,
-  meta: Pick<TableMeta, 'name' | 'columns'>,
+  meta: Pick<TableMeta, 'name' | 'columns' | 'kind'>,
   rowId: string,
   before: Record<string, unknown> | null,
   after: Record<string, unknown>,
@@ -143,10 +164,11 @@ export async function assertManagedUnchanged(
   if (mayChangeManaged(user)) return
   const fields = await managedFieldsOf(meta.name, rowId, db)
   if (!fields.length) return
+  const jsonAsText = meta.kind === 'settings'
   const type = (f: string) => meta.columns.find((c) => c.column_name === f)?.column_type ?? 'Data'
   const changed = before === null
     ? fields
-    : fields.filter((f) => comparable(type(f), before[f]) !== comparable(type(f), after[f]))
+    : fields.filter((f) => comparable(type(f), before[f], jsonAsText) !== comparable(type(f), after[f], jsonAsText))
   if (changed.length) throw lockedError(meta, rowId, changed)
 }
 
