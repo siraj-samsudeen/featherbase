@@ -52,6 +52,8 @@ export async function makeThumbnailDataUrl(
   } catch {
     return null
   } finally {
-    await page.close()
+    // A browser that died mid-resize has already taken the page with it;
+    // closing it then fails, and that must not fail the upload either.
+    await page.close().catch(() => {})
   }
 }
