@@ -43,6 +43,14 @@ export class AppError extends Error {
   }
 }
 
+/** The HTTP status errorResponse answers `err` with — for a log line that names it. */
+export function statusOf(err: unknown): number {
+  if (err instanceof AppError) return STATUS[err.type]
+  if ((err as { code?: string })?.code === '23P01') return 409
+  if (err instanceof SyntaxError) return 400
+  return 500
+}
+
 export function errorResponse(c: Context, err: unknown) {
   if (err instanceof AppError) {
     return c.json(

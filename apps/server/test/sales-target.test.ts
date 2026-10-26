@@ -386,6 +386,35 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       _setSourceReader(null)
     }
   })
+
+  // #500: the page now says only "The numbers couldn't load right now"; the detail lives here.
+  test('a report read that fails on the server is logged at error level with the call, its status, its message and the person, never the token', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    _setSourceReader(async () => {
+      throw new Error('source read failed: connection reset')
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(res.status).toBe(500)
+      const lines = error.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes('sales_target_report_failed'))
+      expect(lines).toHaveLength(1)
+      expect(JSON.parse(lines[0])).toEqual({
+        event: 'sales_target_report_failed',
+        person: await idOf('test_employee_1'),
+        call: 'GET /api/sales_target/report',
+        status: 500,
+        message: 'source read failed: connection reset',
+      })
+      expect(lines[0]).not.toContain(SENTINEL_TOKEN)
+      expect(lines[0]).not.toContain(PASSWORDS.test_employee_1)
+    } finally {
+      error.mockRestore()
+      _setSourceReader(null)
+    }
+  })
 })
 
 describe('#3783 sales-target host: the assignment is derived from the Store Sections maps', () => {

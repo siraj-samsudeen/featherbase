@@ -12,9 +12,9 @@
 // row edits (change `employee`), read at request time — no cache, no restart.
 import { existsSync, readFileSync } from 'node:fs'
 import { readVariable } from './env'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { sql } from './db'
-import { AppError } from './errors'
+import { AppError, statusOf } from './errors'
 import { getRoles } from './permissions'
 import { logAccess } from './audit'
 import type { SessionUser } from './auth'
@@ -655,6 +655,24 @@ salesTargetRoutes.post('/embed_session', async (c) => {
 salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
   await requireViewerRole(user.row_id)
+  try {
+    return await readReport(c, user)
+  } catch (err) {
+    // #500: the page tells the reader only that the numbers couldn't load; the detail is here.
+    // A refusal (a store that is no longer theirs) is not a failure and is not logged.
+    if (!(err instanceof AppError && err.type === 'PermissionError'))
+      console.error(JSON.stringify({
+        event: 'sales_target_report_failed',
+        person: user.row_id,
+        call: 'GET /api/sales_target/report',
+        status: statusOf(err),
+        message: err instanceof Error ? err.message : String(err),
+      }))
+    throw err
+  }
+})
+
+async function readReport(c: Context<{ Variables: { user: SessionUser } }>, user: SessionUser) {
   const period = currentPeriod()
   const { chosen: a } = await assignmentFor(user.row_id, requestedStore(c.req.queries('store')), period)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
@@ -675,4 +693,4 @@ salesTargetRoutes.get('/report', async (c) => {
     scope: `store=${a.plant_code}`,
   })
   return c.json(report)
-})
+}
