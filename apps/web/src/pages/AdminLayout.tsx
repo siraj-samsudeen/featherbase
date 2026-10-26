@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, adminPageNeedsManage } from 'shared'
 import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -139,6 +139,9 @@ function AdminShell() {
     // A list or row names a Table; it is remembered only once that Table's
     // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
     // and is never offered back.
+    // The same rule for a page only a System Manager can open: anyone else is
+    // sent home, so the page is never offered back to them (#476).
+    if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
     const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
     if (!table) {
       recordAction(user.row_id, action)
