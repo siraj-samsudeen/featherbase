@@ -154,6 +154,11 @@ test('a Google account nobody set up lands on the sign-in page with a plain mess
     await expect(page.getByTestId('login-form')).toBeVisible()
     await expect(page.getByTestId('google-login')).toBeVisible()
     await expect(page.getByTestId('sign-in-refused-panel')).toHaveCount(0)
+    // The choice drops `error` from the address, so a reload stays on the form.
+    expect(new URL(page.url()).searchParams.get('error')).toBeNull()
+    await page.reload()
+    await expect(page.getByTestId('login-form')).toBeVisible()
+    await expect(page.getByTestId('sign-in-refused-panel')).toHaveCount(0)
   })
 
   const headers = await adminAuth(request)

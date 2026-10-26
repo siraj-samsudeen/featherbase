@@ -17,11 +17,18 @@ const loginCalls = (spy: { mock: { calls: unknown[][] } }) =>
 test('a Google account nobody set up reads plainly and offers the connected service', async () => {
   await configureDelegated()
   await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-  const notice = await screen.findByTestId('sign-in-refused')
-  // The connected service is named once the page has read the sign-in options.
-  await waitFor(() => expect(notice).toHaveTextContent('Ask your manager or IT to invite you, or sign in with StyleHR.'))
-  expect(notice).toHaveTextContent("This Google account isn't set up for")
-  expect(notice).not.toHaveTextContent('Access not provisioned')
+  // #474: on the panel the service is offered by its own button, so the
+  // sentence does not repeat it.
+  const button = await screen.findByTestId('refused-delegated')
+  expect(button).toHaveTextContent('Sign in with StyleHR')
+  const sentence = screen.getByTestId('sign-in-refused')
+  expect(sentence).toHaveTextContent("This Google account isn't set up for")
+  expect(sentence).toHaveTextContent(/Ask your manager or IT to invite you\.$/)
+  expect(sentence).not.toHaveTextContent('sign in with StyleHR')
+  expect(sentence).not.toHaveTextContent('Access not provisioned')
+  // Where no panel button offers it, the notice still names the service.
+  await userEvent.click(screen.getByTestId('refused-other-ways'))
+  expect(screen.getByTestId('sign-in-refused')).toHaveTextContent('Ask your manager or IT to invite you, or sign in with StyleHR.')
 })
 
 test('without a connected service the refusal does not point at one', async () => {
@@ -207,6 +214,44 @@ describe('the "We couldn\'t sign you in" panel (#474)', () => {
       expect(within(panel).getByRole('heading', { name: "We couldn't sign you in" })).toBeInTheDocument()
       expect(within(panel).getByTestId('sign-in-refused')).toHaveTextContent("Google sign-in didn't finish. Please try again.")
       expect(panel).not.toHaveTextContent(/made-up|onerror|proto|toString/)
+      view.unmount()
+    }
+  })
+
+  test('the panel heading replaces the subtitle, which comes back once the person chooses', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    await screen.findByTestId('refused-delegated')
+    expect(screen.queryByText('Sign in to your account')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('refused-other-ways'))
+    expect(screen.getByText('Sign in to your account')).toBeInTheDocument()
+  })
+
+  test('panel buttons are the same size as the form buttons, and the quiet link is an easy tap', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const stylehr = await screen.findByTestId('refused-delegated')
+    const retry = screen.getByTestId('refused-google-retry')
+    // The form's buttons are sized `w-full justify-center py-2`.
+    for (const el of [stylehr, retry]) expect(el.className).toMatch(/(^|\s)py-2(\s|$)/)
+    // At least 40px tall to tap, though it still looks like a link.
+    expect(screen.getByTestId('refused-other-ways').className).toMatch(/(^|\s)min-h-10(\s|$)/)
+    await userEvent.click(screen.getByTestId('refused-other-ways'))
+    expect(screen.getByTestId('login-submit').className).toMatch(/(^|\s)py-2(\s|$)/)
+  })
+
+  test('choosing a way in drops the error from the address, so a reload does not bring the panel back', async () => {
+    await configureDelegated()
+    const path = '/featherbase/login?error=not_provisioned&next=%2Ffeatherbase%2Fadmin'
+    for (const choice of ['refused-other-ways', 'refused-delegated']) {
+      // The test router keeps its own history; a browser's address bar holds
+      // the same URL, so put it there as the browser would.
+      window.history.replaceState(null, '', path)
+      const view = await renderApp(path, anonymous)
+      await userEvent.click(await screen.findByTestId(choice))
+      expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
+      expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
+      expect(window.location.pathname).toBe('/featherbase/login')
       view.unmount()
     }
   })

@@ -163,6 +163,13 @@ export function LoginPage() {
     setError(null)
     setDelegatedKey(key)
     setMode(next)
+    if (refusal && !refusalAnswered) {
+      // Once the person has chosen, a reload must not bring the panel back:
+      // drop `error` from the address bar, keeping everything else (#474).
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    }
     setRefusalAnswered(true)
   }
 
@@ -170,13 +177,19 @@ export function LoginPage() {
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
   const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
-  const refusal = refusalCode
-    ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
-        appName,
-        google: google?.label ?? 'Google',
-        service: delegatedMethods[0]?.label ?? null,
-      })
-    : null
+  const refusalText = (service: string | null) =>
+    refusalCode
+      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+          appName,
+          google: google?.label ?? 'Google',
+          service,
+        })
+      : null
+  // The notice names the connected service as a way in; the panel does not,
+  // because its own button already says "Sign in with <service>".
+  const refusal = refusalText(delegatedMethods[0]?.label ?? null)
+  const panelRefusal = refusalText(null)
+  const panelShowing = Boolean(refusal) && !refusalAnswered
 
   const errorLine = error && (
     <p className="text-sm text-negative" data-testid="login-error">
@@ -190,9 +203,10 @@ export function LoginPage() {
         <div className="mb-6 flex flex-col items-center gap-2">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
           <h1 className="text-lg font-semibold text-ink">{appName}</h1>
-          <p className="text-sm text-ink-muted">
+          {/* The refusal panel's own heading takes the subtitle's place. */}
+          {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
-          </p>
+          </p>}
         </div>
         {sessionEnded && (
           <p className="mb-3 text-center text-sm text-ink-muted" data-testid="session-ended">
@@ -205,29 +219,29 @@ export function LoginPage() {
           </div>
         )}
         <div className={cardClasses('p-6')}>
-          {refusal && !refusalAnswered ? (
+          {panelShowing ? (
             <div className="space-y-5" data-testid="sign-in-refused-panel">
               <div className="space-y-2">
                 <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
-                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{refusal}</p>
+                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
               </div>
               <div className="space-y-3">
                 {delegatedMethods[0] && (
-                  <Button
-                    variant="primary"
-                    block
+                  <button
+                    type="button"
                     data-testid="refused-delegated"
+                    className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
                     onClick={() => switchMode('delegated', delegatedMethods[0].key)}
                   >
                     Sign in with {delegatedMethods[0].label}
-                  </Button>
+                  </button>
                 )}
                 {/* A full-page navigation, as the ordinary Google button is. */}
                 {google && (
                   <a
                     href={GOOGLE_RETRY_HREF}
                     data-testid="refused-google-retry"
-                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', block: true })}
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
                   >
                     Try another {google.label} account
                   </a>
@@ -236,7 +250,7 @@ export function LoginPage() {
               <button
                 type="button"
                 data-testid="refused-other-ways"
-                className="text-sm text-action hover:underline"
+                className="inline-flex min-h-10 items-center text-sm text-action hover:underline"
                 onClick={() => switchMode('password')}
               >
                 Other ways to sign in

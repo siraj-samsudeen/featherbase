@@ -22,7 +22,9 @@ picker forced, so the refused account is never reused without the person
 choosing it; and a quiet "Other ways to sign in" link that shows the usual
 ways in. The panel SHALL show no input fields until the person picks one of
 these. Without a connected service, "Try another Google account" is the main
-action.
+action. The panel's sentence SHALL NOT repeat the connected service its button
+already offers. Once the person chooses, the reason code SHALL leave the
+address, so a reload shows the usual sign-in, not the panel again.
 
 #### Scenario: A Google account nobody set up
 
