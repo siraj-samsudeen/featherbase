@@ -61,7 +61,7 @@ export function sourceAddress(socket: string | undefined, forwarded: string | un
   return address
 }
 
-export function bucketKey(parts: string[]): string {
+function bucketKey(parts: string[]): string {
   return createHash('sha256').update(JSON.stringify(parts)).digest('hex')
 }
 

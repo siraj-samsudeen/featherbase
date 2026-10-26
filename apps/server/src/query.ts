@@ -9,7 +9,7 @@ import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './source
 
 export type Filter = [string, string, unknown]
 
-export interface ListArgs {
+interface ListArgs {
   filters?: Filter[]
   fields?: string[]
   order_by?: string

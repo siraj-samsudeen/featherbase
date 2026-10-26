@@ -65,7 +65,7 @@ export function renderTemplate(
 
 // --- SMTP transport (#395) -------------------------------------------------
 
-export interface SmtpConfig {
+interface SmtpConfig {
   host: string
   port: number
   user?: string
@@ -225,7 +225,7 @@ function toDeliveryError(err: unknown): MailDeliveryError {
 
 /** One structured log line per failed delivery: what the mail was for and
  *  why it failed, never who it was to or what it said. */
-export function logMailFailure(purpose: string, err: unknown): void {
+function logMailFailure(purpose: string, err: unknown): void {
   const e = toDeliveryError(err)
   console.error(
     JSON.stringify({

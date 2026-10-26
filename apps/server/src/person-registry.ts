@@ -21,11 +21,11 @@
 import { sql, type Sql, type TxSql } from './db'
 import { PLATFORM_SCHEMA } from './platform-schema'
 
-export type ColumnClass = 'id' | 'json-with-ids' | 'conditional-id' | 'code' | 'free-text'
+type ColumnClass = 'id' | 'json-with-ids' | 'conditional-id' | 'code' | 'free-text'
 
-export const PRINCIPAL_TABLES = ['Person', 'Service Account'] as const
+const PRINCIPAL_TABLES = ['Person', 'Service Account'] as const
 
-export interface ColumnSpec {
+interface ColumnSpec {
   class: ColumnClass
   /** conditional-id: the sibling column naming the row's Table. */
   typeColumn?: string

@@ -166,7 +166,7 @@ export type VariableName = (typeof VARIABLES)[number]['name']
 
 const BY_NAME = new Map<string, Variable>(VARIABLES.map((v) => [v.name, v]))
 
-export function variableEntry(name: VariableName): Variable {
+function variableEntry(name: VariableName): Variable {
   return BY_NAME.get(name)!
 }
 
@@ -238,7 +238,7 @@ export function environmentDeclared(env: Record<string, string | undefined> = pr
 
 // ---------------------------------------------------------------- checks
 
-export interface VariableReport {
+interface VariableReport {
   /** A switch on that this environment must never have. Each one stops a
    *  release and a server start. */
   forbidden: string[]

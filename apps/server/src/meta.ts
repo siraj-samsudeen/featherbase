@@ -24,7 +24,7 @@ export const COLUMN_TYPE_VALUES = [
   'Section Break',
   'Column Break',
 ] as const
-export type ColumnType = (typeof COLUMN_TYPE_VALUES)[number]
+type ColumnType = (typeof COLUMN_TYPE_VALUES)[number]
 
 export interface ColumnDef {
   row_id: string
@@ -158,7 +158,7 @@ export function invalidateMeta(name?: string) {
 // lives in a sub-table, `table` is the OWNING table (the one with a list to
 // navigate to) and `via` names the sub-table holding the column (Item is
 // reached from Purchase Order via PO Line).
-export interface Backlink {
+interface Backlink {
   table: string
   column: string
   via: string | null

@@ -51,7 +51,7 @@ export type HookEvent = (typeof HOOK_EVENTS)[number]
 
 // Hooks registered under this Table key run for
 // EVERY Table's lifecycle (framework-wide extensions like audit trails).
-export const WILDCARD_TABLE = '*'
+const WILDCARD_TABLE = '*'
 
 export interface TableController {
   table: string

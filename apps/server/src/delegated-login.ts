@@ -21,7 +21,7 @@ import { config } from './config'
 import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
-import { checkVariables, switchedOn, TEST_MODE_ENVIRONMENTS, TEST_MODE_PHRASE } from './env'
+import { checkVariables, switchedOn, TEST_MODE_PHRASE } from './env'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -143,7 +143,7 @@ export async function delegatedLoginConfig(key: string): Promise<DelegatedLoginC
 // phrase, not a boolean, so a stray "1" never opens it; environment-only, so
 // no Admin edit can. linkedUser still runs first: it decides WHOSE account,
 // and never yields a disabled or privileged one.
-export { TEST_MODE_PHRASE, TEST_MODE_ENVIRONMENTS }
+export { TEST_MODE_PHRASE }
 export function delegatedTestMode(): boolean {
   return switchedOn('DELEGATED_LOGIN_TEST_MODE')
 }
@@ -170,7 +170,7 @@ export function _setDelegatedFetch(f: typeof fetch | null) {
 
 const TIMEOUT_MS = 10_000
 
-export type ProviderOutcome = 'verified' | 'rejected' | 'unavailable' | 'left'
+type ProviderOutcome = 'verified' | 'rejected' | 'unavailable' | 'left'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => Boolean(v) && typeof v === 'object' && !Array.isArray(v)

@@ -28,7 +28,7 @@ const IDENTITY_SQL = `select
     then (select system_identifier::text from pg_catalog.pg_control_system()) end as system_id,
   extract(epoch from pg_postmaster_start_time())::text as started`
 
-export type Identity = { oid: string; system_id: string | null; started: string }
+type Identity = { oid: string; system_id: string | null; started: string }
 
 type Queryable = { unsafe: (q: string) => PromiseLike<readonly unknown[]> }
 

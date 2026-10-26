@@ -39,8 +39,8 @@ export const migrationSchema = z.object({
   toVersion: packageVersion,
   operations: z.array(addition),
 }).strict()
-export type PackageMigration = z.infer<typeof migrationSchema>
-export type MigrationEntry = { id: string; checksum: string }
+type PackageMigration = z.infer<typeof migrationSchema>
+type MigrationEntry = { id: string; checksum: string }
 export const migrationLedger = (migrations: PackageMigration[]): MigrationEntry[] =>
   migrations.map(m => ({ id: m.id, checksum: checksum(m) }))
 

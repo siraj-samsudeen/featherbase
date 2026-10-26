@@ -27,7 +27,7 @@ const eventSchema = z.object({
 })
 const batchSchema = z.object({ events: z.array(eventSchema).min(1).max(50) })
 
-export type IncomingEvent = z.infer<typeof eventSchema>
+type IncomingEvent = z.infer<typeof eventSchema>
 
 export function validateEventBatch(body: unknown): IncomingEvent[] {
   const parsed = batchSchema.safeParse(body)
@@ -82,7 +82,7 @@ export function listKeyHasFilter(refKey: string): boolean {
   return q >= 0 && parseFilters(refKey.slice(q + 1)).length > 0
 }
 
-export interface WhoLabel {
+interface WhoLabel {
   name: string
   /** Main role: System Manager if held, else the first other role by name.
    *  Absent for someone holding no role beyond the implicit All/Guest. */
@@ -121,7 +121,7 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
   return labels
 }
 
-export interface EventSummaryEntry {
+interface EventSummaryEntry {
   kind: string
   key: string
   label: string
@@ -140,7 +140,7 @@ export interface EventSummaryEntry {
 const ROUTINE_WINDOW_DAYS = 14
 const ROUTINE_MIN_DAYS = 5
 
-export interface RoutineTarget {
+interface RoutineTarget {
   key: string
   label: string
   sub?: string

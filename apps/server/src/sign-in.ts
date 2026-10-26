@@ -6,7 +6,6 @@
 // leaver, issue the session with its method and identity, and audit.
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
-import { logActivity } from './audit'
 import { saveDoc } from './document'
 import { writeThroughIdentity } from './person-identifiers'
 import { alertNewArrival, isMockProvider } from './waiting-for-access'
@@ -41,7 +40,7 @@ export interface VerifiedIdentity {
 }
 
 /** A person found from what they typed, before credentials were checked. */
-export interface Found {
+interface Found {
   user: string
   identity: string | null
 }
@@ -55,7 +54,7 @@ export const GOOGLE_OFF = 'Google sign-in is not configured'
 /** The reasons a browser-navigation sign-in (the Google callback) can be
  *  refused, as the short code the sign-in page explains. Only the code
  *  travels — never the address, the domain or the server's message. */
-export type SignInRefusal = 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'google_off' | 'expired' | 'google_failed'
+type SignInRefusal = 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'google_off' | 'expired' | 'google_failed'
 
 export function signInRefusal(err: unknown): SignInRefusal {
   if (!(err instanceof AppError)) return 'google_failed'
@@ -71,14 +70,14 @@ export function signInRefusal(err: unknown): SignInRefusal {
   return 'google_failed'
 }
 
-export function unavailableError(method: SignInMethod): AppError {
+function unavailableError(method: SignInMethod): AppError {
   return new AppError(
     'ServiceUnavailableError',
     `${method.label || method.key} is not responding right now. This is not your password — please try again in a few minutes.`,
   )
 }
 
-export function leftError(method: SignInMethod): AppError {
+function leftError(method: SignInMethod): AppError {
   return new AppError('PermissionError', `${method.label || method.key} shows this account as no longer active. Contact your administrator.`)
 }
 
@@ -94,7 +93,7 @@ export async function assertEligible(method: SignInMethod, user: string): Promis
 /** Domain admission (design D4): a verified email on an allowed domain; for a
  *  kind that reports a hosted domain, a company domain must also match it, so
  *  a personal account registered on a company address is not that company's. */
-export function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolean; reason: string } {
+function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolean; reason: string } {
   if (!v.email_verified || !v.email) return { ok: false, reason: 'no verified email' }
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
   if (!KINDS[method.kind].hostedDomain) return { ok: true, reason: 'allowed domain' }

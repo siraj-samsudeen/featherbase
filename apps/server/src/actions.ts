@@ -19,22 +19,22 @@ import type { SessionUser } from './auth'
 // genuinely ambiguous with a row literally named ".../submit"; the colon is
 // the disambiguator, not a style preference.
 
-export type ActionEffect = 'read' | 'write'
+type ActionEffect = 'read' | 'write'
 
-export interface RowActionContext {
+interface RowActionContext {
   table: string
   name: string
   args: Record<string, unknown>
   user: SessionUser
 }
 
-export interface CollectionActionContext {
+interface CollectionActionContext {
   table: string
   args: Record<string, unknown>
   user: SessionUser
 }
 
-export interface ActionDef<Ctx> {
+interface ActionDef<Ctx> {
   effect: ActionEffect
   handler: (ctx: Ctx) => unknown | Promise<unknown>
   // Surfaced by the discovery endpoint (GET /api/table/:table:actions) so a

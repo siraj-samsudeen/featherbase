@@ -35,7 +35,7 @@ interface SeedPack {
   people_review?: unknown
 }
 
-export interface SeedPackResult {
+interface SeedPackResult {
   added: string[]
   kept: string[]
   methodsLinked: string[]

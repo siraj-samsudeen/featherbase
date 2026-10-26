@@ -44,7 +44,7 @@ export function toCsv(columns: string[], rows: Record<string, unknown>[]): strin
   return body ? `${header}\n${body}` : header
 }
 
-export function toHtmlTable(columns: string[], rows: Record<string, unknown>[]): string {
+function toHtmlTable(columns: string[], rows: Record<string, unknown>[]): string {
   const esc = (v: unknown) =>
     v == null ? '' : String(v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string)
   const head = columns.map((c) => `<th>${esc(c)}</th>`).join('')

@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 
-export type ErrorType =
+type ErrorType =
   | 'ValidationError'
   | 'BadRequestError'
   | 'AuthenticationError'

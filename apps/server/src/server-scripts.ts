@@ -110,7 +110,7 @@ export function evalCondition(
   return (context as { __outResultJson: string | null }).__outResultJson === 'true'
 }
 
-export type RowEvent = 'validate' | 'before_save' | 'after_save'
+type RowEvent = 'validate' | 'before_save' | 'after_save'
 
 // Runs every enabled Row-Event script for this table+event, inside the
 // save transaction. A script that throws (or calls featherbase.throw) aborts the

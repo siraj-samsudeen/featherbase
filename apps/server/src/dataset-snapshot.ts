@@ -22,7 +22,7 @@ import { enqueue, type JobTrigger } from './jobs'
 // history — while the per-dataset ROWS tables stay raw and app-internal, because
 // they hold every store's figures and generic row scoping is fail-open (#246).
 
-export interface DatasetDefinition {
+interface DatasetDefinition {
   name: string
   /** Bump when the SQL changes: it is part of snapshot identity, so a redefinition never silently reuses old rows. */
   version: string
@@ -144,7 +144,7 @@ export async function pendingMisses(): Promise<string[]> {
   return rows.map((r) => String(r.dataset))
 }
 
-export interface BuildOutcome {
+interface BuildOutcome {
   status: 'activated' | 'refused' | 'failed'
   snapshotId?: string
   rowCount?: number
@@ -155,7 +155,7 @@ export interface BuildOutcome {
   bytes?: number | null
 }
 
-export interface BuildOpts {
+interface BuildOpts {
   /** What caused this build: the job's trigger, or 'script' for a build run by hand. */
   trigger?: JobTrigger | 'script'
 }

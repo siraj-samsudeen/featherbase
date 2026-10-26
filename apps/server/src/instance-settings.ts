@@ -37,7 +37,7 @@ const SCOPE = [
 /** Column types that hold no value, or a secret: never in scope. */
 const UNMANAGED_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break', 'Tab Break', 'Password'])
 
-export interface ScopeEntry {
+interface ScopeEntry {
   table: string
   shape: 'settings' | 'rows'
   fields: string[]
@@ -217,7 +217,7 @@ function columnType(meta: TableMeta, field: string): string {
 
 // ---------------------------------------------------------------- apply (D4)
 
-export interface SettingChange {
+interface SettingChange {
   table: string
   row_id: string
   field: string
@@ -229,7 +229,7 @@ export interface SettingChange {
   was_default?: true
 }
 
-export interface ApplyResult {
+interface ApplyResult {
   dry_run: boolean
   /** The file's environment section that was applied, if any. */
   environment: string | null
@@ -240,7 +240,7 @@ export interface ApplyResult {
   warnings: string[]
 }
 
-export interface ApplyOptions {
+interface ApplyOptions {
   /** The principal that sent the file, recorded in the Activity Log. */
   by: string
   /** Which of the file's `environments` sections to apply on top. */
@@ -475,7 +475,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
 // ---------------------------------------------------------------- drift (D8)
 
 /** A locked field whose value is no longer what the last apply left. */
-export interface SettingDrift {
+interface SettingDrift {
   table: string
   row_id: string
   field: string
@@ -517,7 +517,7 @@ async function driftNow(): Promise<SettingDrift[] | null> {
 
 // ---------------------------------------------------------------- export (D9)
 
-export interface ExportResult {
+interface ExportResult {
   file: InstanceSettingsFile
   /** Fields left out because their value looks like a secret, with why. */
   withheld: string[]

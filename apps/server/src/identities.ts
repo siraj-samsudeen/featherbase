@@ -152,7 +152,7 @@ export function domainAllowed(method: SignInMethod, email: string): boolean {
 
 // ------------------------------------------------------------- identities
 
-export interface Identity {
+interface Identity {
   id: string
   person_id: string
   method: string
@@ -394,7 +394,7 @@ const usableWhere = (mock: boolean) =>
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
-export async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
   const mock = mockOAuthEnabled()
   const [row] = await db`
     with p as (
@@ -412,7 +412,7 @@ export async function waysIn(user: string, db: Sql | TxSql, excluding?: string):
 }
 
 /** An administrator who can sign in now must still be able to afterwards. */
-export async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
+async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
   const c = await candidate(user, db)
   if (!c?.privileged || !c.enabled) return
   if ((await waysIn(user, db)) > 0 && (await waysIn(user, db, excluding)) === 0)
@@ -492,7 +492,7 @@ async function followGoogleAddress(id: string, oldEmail: string | null, newEmail
 
 // ------------------------------------------------------------ eligibility
 
-export interface Candidate {
+interface Candidate {
   row_id: string
   enabled: boolean
   privileged: boolean

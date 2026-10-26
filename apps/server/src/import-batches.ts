@@ -16,7 +16,7 @@ import { platformRelation } from './platform-schema'
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
 
-export interface BatchTarget {
+interface BatchTarget {
   table: string
   /** This import CREATED the Table, rather than adding rows to an existing one. */
   created: boolean
@@ -31,7 +31,7 @@ export interface BatchTarget {
   exists: boolean
 }
 
-export interface ImportBatch {
+interface ImportBatch {
   batch_id: string
   file_name: string | null
   started_at: string
@@ -198,7 +198,7 @@ export async function getBatch(user: string, batchId: string): Promise<ImportBat
   return batch
 }
 
-export interface BatchDeletion {
+interface BatchDeletion {
   deleted: string[]
   /** Named with the reason, never silently dropped from the count. */
   refused: { table: string; message: string }[]

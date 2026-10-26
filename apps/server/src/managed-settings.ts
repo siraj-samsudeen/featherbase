@@ -27,7 +27,7 @@ export interface ManagedValue extends ManagedPath {
   value: unknown
 }
 
-export interface LastApply {
+interface LastApply {
   applied_at: Date
   applied_by: string
   environment: string | null

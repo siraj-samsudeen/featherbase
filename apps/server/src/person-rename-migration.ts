@@ -23,7 +23,7 @@ import {
   type ScanHit,
 } from './person-registry'
 
-export interface PersonRenameReport {
+interface PersonRenameReport {
   alreadyApplied: boolean
   persons: IdMapEntry[]
   builtIns: string[]
@@ -368,7 +368,7 @@ async function counts() {
   }
 }
 
-export interface ReidResult {
+interface ReidResult {
   personMap: IdMapEntry[]
   serviceMap: (IdMapEntry & { label: string })[]
   touched: Map<string, number>

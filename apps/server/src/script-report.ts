@@ -35,7 +35,7 @@ export function registerScriptReport(report: ScriptReport) {
   registry.set(report.name, report)
 }
 
-export function getScriptReport(name: string): ScriptReport | undefined {
+function getScriptReport(name: string): ScriptReport | undefined {
   return registry.get(name)
 }
 

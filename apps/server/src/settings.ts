@@ -4,7 +4,7 @@
 import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from './db'
 
-export interface SystemSettings {
+interface SystemSettings {
   app_name: string
   time_zone: string
   date_format: string

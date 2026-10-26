@@ -12,16 +12,16 @@ import { getSystemSettings } from './settings'
 import { auditIdentity, getIdentity, getSignInMethod } from './identities'
 
 /** A pending invite's email is sent at most once in this many minutes. */
-export const RESEND_WAIT_MINUTES = 10
+const RESEND_WAIT_MINUTES = 10
 
-export type InvitationEmail =
+type InvitationEmail =
   | { status: 'sent' }
   | { status: 'not_sent'; reason: 'not_requested' | 'already_invited' }
   | { status: 'failed'; error: string }
 
 /** How long one send may take before it counts as failed. SMTP's own
  *  timeouts are per connection step; this bounds the whole send. */
-export const SEND_DEADLINE_MS = 20_000
+const SEND_DEADLINE_MS = 20_000
 
 interface Hooks {
   deliver: (msg: MailMessage) => Promise<void>

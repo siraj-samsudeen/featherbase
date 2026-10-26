@@ -49,7 +49,7 @@ async function addColumnDef(table: string, column: Record<string, unknown>) {
 
 // ------------------------------------------------------------------- DDL
 
-export async function createIdentifierSystemTable() {
+async function createIdentifierSystemTable() {
   const [have] = await sql`select 1 from table_def where name = 'Identifier System'`
   if (!have)
     await createTable({
@@ -244,13 +244,13 @@ async function genericSystems() {
 
 // ------------------------------------------------------------------ data
 
-export interface Listed {
+interface Listed {
   person: string
   full_name: string | null
   detail: string
 }
 
-export interface PersonResolutionPlan {
+interface PersonResolutionPlan {
   seedPackApplied: boolean
   codeRows: number
   emailRows: number

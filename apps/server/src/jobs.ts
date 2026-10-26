@@ -65,7 +65,7 @@ function jobName(): string {
   return randomBytes(6).toString('hex')
 }
 
-export interface EnqueueOpts {
+interface EnqueueOpts {
   maxAttempts?: number
   runAt?: Date
   repeatEvery?: number // seconds; recurring jobs re-enqueue after each run

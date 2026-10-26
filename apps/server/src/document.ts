@@ -75,7 +75,7 @@ function validateValues(
   return parsed
 }
 
-export type RowValues = Record<string, unknown>
+type RowValues = Record<string, unknown>
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
@@ -617,7 +617,7 @@ export function validateRowForUpdate(meta: TableMeta, values: RowValues): void {
   validateValues(meta, pickFieldValues(meta, values), 'update')
 }
 
-export interface SaveOptions {
+interface SaveOptions {
   // WEB-002/003: the web-form surface is server-controlled (whitelisted columns
   // on one configured Table), so it may insert on behalf of a session user
   // who holds no create Permission — the row still gets that user as

@@ -24,14 +24,14 @@ import { VIEWER_ROLE } from './sales-target'
  *  to open (`landing`), or a URL on another address to go to (`handoff`).
  *  Neither means the Admin, which shows the no-access page to someone who
  *  cannot use it. */
-export interface Landing {
+interface Landing {
   landing?: string
   handoff?: string
 }
 
 /** Can this person use Admin at all: manage it, or reach some Table in it.
  *  The same facts /api/whoami's capabilities draw the shell from. */
-export async function canUseAdmin(person: string): Promise<boolean> {
+async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
   if (person === 'Administrator' || roles.includes('System Manager')) return true
   return (await tableAccessFor(person, roles)).any
@@ -40,7 +40,7 @@ export async function canUseAdmin(person: string): Promise<boolean> {
 /** Can this person open the app an address opens. Feather Dash's interim
  *  gate is today's report gate (design D8); an installed app is open to
  *  whoever its catalog lists. */
-export async function canOpenApp(person: string, app: string): Promise<boolean> {
+async function canOpenApp(person: string, app: string): Promise<boolean> {
   if (app === 'feather_dash') return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
@@ -51,7 +51,7 @@ function handTo(session: SignedInSession, here: InstanceAddress, target: Instanc
 }
 
 /** The session a sign-in just issued on this address. */
-export interface SignedInSession {
+interface SignedInSession {
   token: string
   user: SessionUser
 }

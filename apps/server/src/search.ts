@@ -17,7 +17,7 @@ export interface SearchHit {
 // #431: rows of these engine registries describe structure, not business data.
 // Without a label, "Activity Log · row in Table" read like a duplicate of the
 // Tables entry for Activity Log. They also rank after ordinary records.
-export const REGISTRY_LABELS: Record<string, string> = {
+const REGISTRY_LABELS: Record<string, string> = {
   Table: 'Table definition',
   Column: 'Column definition',
   'Custom Field': 'Custom field definition',

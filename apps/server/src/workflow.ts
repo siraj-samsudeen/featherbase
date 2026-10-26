@@ -32,7 +32,7 @@ export interface WorkflowTransition {
   // available and applied. Empty = always allowed.
   condition?: string | null
 }
-export interface Workflow {
+interface Workflow {
   row_id: string
   ref_table: string
   // The column on the target Table that carries the state. Defaults to the

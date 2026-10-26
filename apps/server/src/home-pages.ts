@@ -23,18 +23,18 @@ import { sql } from './db'
 import { getRoles, permissionScope } from './permissions'
 
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
-export interface HomePageShortcut {
+interface HomePageShortcut {
   label: string
   type?: string // table | report | dashboard | url
   link_to: string
 }
 
-export interface HomePageCard {
+interface HomePageCard {
   label: string | null
   links: { label: string; link_to: string }[]
 }
 
-export interface VisibleHomePage {
+interface VisibleHomePage {
   row_id: string
   label: string
   icon: string | null
@@ -47,7 +47,7 @@ export interface VisibleHomePage {
 // under the default module (created before the Table Builder grew its module
 // field, e.g. a pre-#74 production table) go on a plain "Home" page rather
 // than a page literally named Core among the platform vocabulary.
-export function homePageForModule(module: string): { name: string; label: string } {
+function homePageForModule(module: string): { name: string; label: string } {
   if (module === 'Core') return { name: 'home', label: 'Home' }
   const slug = module
     .toLowerCase()
@@ -59,7 +59,7 @@ export function homePageForModule(module: string): { name: string; label: string
 // Find the module's home page, creating it on demand. Direct SQL on purpose:
 // these are engine-seeded navigation rows (the 0005 core-seeds discipline),
 // not user mutations — nothing in the save lifecycle applies to them.
-export async function ensureModuleHomePage(module: string): Promise<string> {
+async function ensureModuleHomePage(module: string): Promise<string> {
   const [existing] = await sql`
     select row_id from home_page where module = ${module} order by row_id limit 1`
   if (existing) return existing.row_id as string

@@ -5,7 +5,6 @@ import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from 
 import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
 import { readVariable } from './env'
 
-export { mockOAuthEnabled }
 
 // PLAT-006: social login (Google OAuth) mapped to the User Table. The client
 // id and the login-domain allowlist are instance configuration (the Google
@@ -18,7 +17,7 @@ const secret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
 // Google is the Sign In Method row of kind `google` (person-identities). Real
 // Google is used only when that row carries a client id; otherwise the mock.
-export async function googleMethod(): Promise<SignInMethod | null> {
+async function googleMethod(): Promise<SignInMethod | null> {
   return methodOfKind('google')
 }
 
@@ -339,7 +338,7 @@ interface HandoffSession {
 type Handoff =
   | { kind: 'session'; session: HandoffSession }
   | { kind: 'address'; host: string; nonceHash: string; sourceToken: string }
-export type RedeemedHandoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; sourceToken: string }
+type RedeemedHandoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; sourceToken: string }
 
 const handoffs = new Map<string, { entry: Handoff; expires: number }>()
 

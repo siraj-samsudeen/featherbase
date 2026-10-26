@@ -10,11 +10,11 @@ import { scopedWhere } from './query'
 // source-bound, Settings) is simply left out, and the caller falls back to
 // what it already had.
 
-export interface RowRef {
+interface RowRef {
   table: string
   row_id: string
 }
-export interface RowTitle extends RowRef {
+interface RowTitle extends RowRef {
   title: string
 }
 

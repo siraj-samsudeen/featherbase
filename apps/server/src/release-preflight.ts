@@ -14,12 +14,12 @@ import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 
-export interface PreflightOptions {
+interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
   environment?: string
 }
 
-export interface BtreeGistStatus { installed: boolean; available: boolean; can_create: boolean }
+interface BtreeGistStatus { installed: boolean; available: boolean; can_create: boolean }
 
 /** 0102 needs btree_gist: installed, or installable by this role. */
 export function assertBtreeGist(ext: BtreeGistStatus): void {
@@ -167,7 +167,7 @@ async function assertPublicationsPublishGeneratedColumns(pending: string[]): Pro
   return 'no publication blocks updates on a table with stored generated columns'
 }
 
-export interface BlockingPublication { pubname: string; schemaname: string; tablename: string; has_column_list: boolean }
+interface BlockingPublication { pubname: string; schemaname: string; tablename: string; has_column_list: boolean }
 
 /** The refusal text for publications that would make updates fail, with the fix for each. */
 export function publicationRefusal(blocking: BlockingPublication[]): string {

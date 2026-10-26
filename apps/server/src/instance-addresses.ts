@@ -27,7 +27,7 @@ export interface InstanceAddress {
 }
 
 /** The environments where plain http, and an unset list, are allowed. */
-export const RELAXED_ENVIRONMENTS = DEV_ENVIRONMENTS
+const RELAXED_ENVIRONMENTS = DEV_ENVIRONMENTS
 
 // An app name, as an app root is spelled (shared/app-routes APP_ROOT_PATTERN).
 const APP_NAME = /^[a-z][a-z0-9_]{0,30}$/
@@ -115,7 +115,7 @@ export function emailsAddress(list: readonly InstanceAddress[]): InstanceAddress
 }
 
 /** Where a development checkout's web app answers when nothing else says. */
-export const DEV_WEB_ORIGIN = 'http://localhost:5173'
+const DEV_WEB_ORIGIN = 'http://localhost:5173'
 
 /** The origin an emailed link (an invitation, a password reset, the
  *  waiting-for-access alert) is built on: the entry marked for emails. With no

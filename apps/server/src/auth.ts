@@ -217,7 +217,7 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-export interface AccessTokenRow {
+interface AccessTokenRow {
   id: string
   label: string
   /** The principal the token authenticates as: a person or a service account. */
@@ -238,7 +238,7 @@ const tokenFields = () => sql`id, label, coalesce(person, service_account) as ow
   created_at, expires_at, last_used_at, revoked_at`
 
 /** A principal id → its kind and enabled flag; null when it names nobody. */
-export async function findPrincipal(id: string): Promise<{ row_id: string; kind: PrincipalKind; enabled: boolean } | null> {
+async function findPrincipal(id: string): Promise<{ row_id: string; kind: PrincipalKind; enabled: boolean } | null> {
   const [row] = await sql`
     select row_id, 'person' as kind, enabled from person where row_id = ${id}
     union all
@@ -443,7 +443,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
  *  hold but expiry is NOT checked: signing out an expired session still has
  *  to end it (its sockets may be open). Access tokens and anything not
  *  correctly signed name no session and return null. */
-export interface SessionToRevoke { jti: string; person: string; expiresAt: number }
+interface SessionToRevoke { jti: string; person: string; expiresAt: number }
 export async function sessionToRevoke(authorization?: string): Promise<SessionToRevoke | null> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token || token.startsWith(TOKEN_PREFIX)) return null
@@ -478,7 +478,7 @@ export async function revokeSession(session: SessionToRevoke): Promise<void> {
  *  the sign-in time a hand-off keeps) before the person's sessions were ended (#391;
  *  whole seconds, as resolveToken). One
  *  query for all of them. */
-export interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
+interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
 export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
   if (!sessions.length) return new Set()
   const rows = await sql`
@@ -497,7 +497,7 @@ export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<stri
 
 /** Linking another sign-in method needs a recent sign-in (design D6): a
  *  token without `iat` (minted before the upgrade) counts as stale. */
-export const LINK_FRESHNESS_SECONDS = 15 * 60
+const LINK_FRESHNESS_SECONDS = 15 * 60
 export function assertFreshForLinking(user: SessionUser): void {
   assertCanChangeAccess(user)
   // When the person signed in, not when this session was minted: a hand-off

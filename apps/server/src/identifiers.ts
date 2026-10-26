@@ -22,11 +22,11 @@ export const EDITED_BY = ['source', 'system-manager', 'reviewers', 'self'] as co
 export type EditedBy = (typeof EDITED_BY)[number]
 
 export const MATCH = ['Off', 'Suggest'] as const
-export type Match = (typeof MATCH)[number]
+type Match = (typeof MATCH)[number]
 
-export type Storage = 'plain' | 'fingerprint'
-export type Display = 'full' | 'hidden' | 'last4'
-export type Tier = 'basic' | 'restricted'
+type Storage = 'plain' | 'fingerprint'
+type Display = 'full' | 'hidden' | 'last4'
+type Tier = 'basic' | 'restricted'
 
 /** Sensitivity → how a value is stored, shown, and who may read it (D2). */
 export const SENSITIVITY: Record<Sensitivity, { storage: Storage; display: Display; tier: Tier }> = {
@@ -36,7 +36,7 @@ export const SENSITIVITY: Record<Sensitivity, { storage: Storage; display: Displ
   Secret: { storage: 'fingerprint', display: 'last4', tier: 'restricted' },
 }
 
-export interface SystemSettings {
+interface SystemSettings {
   kind: IdentifierKind
   normalise: NormaliseRule
   one_holder_at_a_time: boolean
