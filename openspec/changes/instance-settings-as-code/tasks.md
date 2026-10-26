@@ -22,7 +22,7 @@
 
 ## 4. Managed fields locked
 
-- [ ] 4.1 Store the managed paths of the last successful apply, and refuse Desk saves to them from actors other than `instance-settings` and `cli`. Verify: server test where a System Manager's save of a managed field is refused and a `cli settings:set` succeeds and is logged.
+- [ ] 4.1 Store the managed paths of the last successful apply, and refuse Admin saves to them from actors other than `instance-settings` and `cli`. Verify: server test where a System Manager's save of a managed field is refused and a `cli settings:set` succeeds and is logged.
 - [ ] 4.2 Render managed fields read-only in `FormView` with a note naming the settings file. Verify: Playwright test on the Google sign-in method form.
 
 ## 5. Health checks and history
@@ -34,7 +34,7 @@
 
 ## 6. First-run setup
 
-- [ ] 6.1 Offer the setup screen to the built-in Administrator while the email check fails: create System Managers and invite them, show links when email is the sink, and "Not now" reaches the Desk. Verify: Playwright test on a fresh database, both with the email sink and with the setup skipped.
+- [ ] 6.1 Offer the setup screen to the built-in Administrator while the email check fails: create System Managers and invite them, show links when email is the sink, and "Not now" reaches the Admin screen. Verify: Playwright test on a fresh database, both with the email sink and with the setup skipped.
 
 ## 7. Environment comparison
 
@@ -43,4 +43,4 @@
 
 ## 8. Integration
 
-- [ ] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in the Desk, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.
+- [ ] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in Admin, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.

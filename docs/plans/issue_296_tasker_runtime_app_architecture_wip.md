@@ -177,8 +177,8 @@ Tasker; Help Desk for internal DW issue reporting/triage; Report Server with
 role-based access and the signed-in person's store/section mapped to permitted
 subcategories passed as secure MotherDuck Dive filters; Learning Management for
 team/client-project onboarding; and a business Data Catalog over MotherDuck/dbt
-metadata, sample rows and freshness, able to flag data-quality issues into Help
-Desk. Together this integrated product is the **Data Warehouse Operating System
+metadata, sample rows and freshness, able to flag data-quality issues into
+Help Desk. Together this integrated product is the **Data Warehouse Operating System
 (DWOS)**. These are future proof cases, not additions to this implementation.
 Help Desk is the next UI-boundary experiment: issue → Tasker task links, distinct
 actors, notifications, switching, recents and disabled-Tasker behavior must be tested.

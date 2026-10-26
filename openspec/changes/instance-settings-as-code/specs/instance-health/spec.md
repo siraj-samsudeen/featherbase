@@ -87,7 +87,7 @@ health banner stays while the problem remains.
 #### Scenario: Skipped in an emergency
 
 - **WHEN** the Administrator skips the setup
-- **THEN** they reach the Desk at once, and the banner keeps showing the
+- **THEN** they reach the Admin screen at once, and the banner keeps showing the
   problem
 
 ### Requirement: Compare environments without revealing secrets

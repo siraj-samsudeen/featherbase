@@ -19,8 +19,8 @@ missing or broken, they need to be told without having to go looking.
   operation that applies the file to an environment, a dry run of it, and an
   export of an environment's current settings in the same shape. The
   instance repository applies the file on merge, and on demand.
-- **Managed fields are locked in the Desk.** A setting the file manages is
-  read-only in the Desk and says where it is changed. An operator's emergency
+- **Managed fields are locked in Admin.** A setting the file manages is
+  read-only in Admin and says where it is changed. An operator's emergency
   command-line edit is still possible, is recorded, and is flagged as
   differing from the file.
 - **A declared list of every deployment variable.** Featherbase declares each
@@ -51,7 +51,7 @@ missing or broken, they need to be told without having to go looking.
 ### New Capabilities
 
 - `instance-settings`: an instance's settings kept in a file, applied to each
-  environment, locked in the Desk, and checked against a declared list of
+  environment, locked in Admin, and checked against a declared list of
   deployment variables.
 - `instance-health`: the health page, banner, state-change timeline, first-run
   System Manager setup, and the side-by-side comparison of environments.

@@ -66,7 +66,7 @@ converging.
 - **Data**: MariaDB/Postgres; Redis ×3 (cache, job queue, realtime pub/sub)
 - **Jobs**: RQ workers + cron-like scheduler
 - **Realtime**: Node.js Socket.IO server bridged via Redis
-- **Frontend**: Desk SPA (custom JS framework); Frappe UI (Vue 3 + Tailwind) for newer apps
+- **Frontend**: Desk SPA (custom JS framework); Frappe UI (Vue 3 + Tailwind) for newer apps <!-- vocabulary-allow: Frappe's own frontend -->
 - **Platform**: `bench` CLI, multi-tenant sites, installable apps via `hooks.py`
 
 ## Chosen stack: JS/TS — React + Supabase
