@@ -2,6 +2,9 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 
 const DT = 'Recents DT'
 const DOC = 'quokka-recent-doc'
+// The row as a person reads it (#476): the Table has no title column, so its
+// title is its first readable value — never the id above.
+const DOC_TITLE = 'searchable'
 
 // #101 Phase 1: the command bar remembers what the operator visited — rows,
 // filtered lists, searches — per user, and its empty focused state replays
@@ -45,7 +48,8 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
     const bar = page.getByTestId('awesomebar').locator('input')
     await bar.click()
     const recents = page.getByTestId('awesomebar-recent')
-    await expect(recents.first()).toContainText(DOC)
+    await expect(recents.first()).toContainText(DOC_TITLE)
+    await expect(recents.first()).not.toContainText(DOC)
     await expect(recents.nth(1)).toContainText(DT)
     await expect(recents.nth(1)).toContainText('note = searchable')
 
@@ -77,7 +81,8 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
 
     // Sidebar recall, zero keystrokes: the row we're on tops the group.
     const sidebar = page.getByTestId('sidebar-recents')
-    await expect(sidebar.getByTestId('sidebar-recent').first()).toContainText(DOC)
+    await expect(sidebar.getByTestId('sidebar-recent').first()).toContainText(DOC_TITLE)
+    await expect(sidebar.getByTestId('sidebar-recent').first()).not.toContainText(DOC)
 
     // Its filtered-view entry carries the filter summary and replays the URL.
     await sidebar
@@ -91,7 +96,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ s
     // The strip above the grid shows this table's recent row + filter set.
     await page.goto(`/admin/${encodeURIComponent(DT)}`)
     const strip = page.getByTestId('recent-strip')
-    await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC)
+    await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC_TITLE)
     await expect(strip.getByTestId('recent-strip-view').first()).toContainText('note = searchable')
 
     // A view chip re-applies the whole filter set; a row chip opens the form.
@@ -140,7 +145,8 @@ test('#101 P5: resume tiles put yesterday one click away', async ({ session }) =
 
     const strip = page.getByTestId('resume-strip')
     await expect(strip).toBeVisible()
-    await expect(strip.getByTestId('resume-tile-row')).toContainText(DOC)
+    await expect(strip.getByTestId('resume-tile-row')).toContainText(DOC_TITLE)
+    await expect(strip.getByTestId('resume-tile-row')).not.toContainText(DOC)
 
     // The search tile hands its query back to the command bar.
     await strip.getByTestId('resume-tile-search').click()

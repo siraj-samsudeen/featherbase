@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { readVariable } from './env'
 import { readFile, unlink, writeFile } from 'node:fs/promises'
 import { join, dirname, basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,7 +13,7 @@ import { AppError } from './errors'
 // unregistered path is never readable.
 
 const ROOT =
-  process.env.FILE_STORAGE_DIR ??
+  readVariable('FILE_STORAGE_DIR') ??
   join(dirname(fileURLToPath(import.meta.url)), '..', 'storage')
 
 for (const bucket of ['public', 'private']) mkdirSync(join(ROOT, bucket), { recursive: true })
@@ -65,11 +66,11 @@ export async function deleteStored(fileUrl: string): Promise<void> {
 // linked document, we mint a short-lived HMAC signature bound to the exact
 // file path and an expiry, so the URL works in an <img>/<a> with no session
 // header and cannot be reused for a different file or after it expires.
-const URL_SECRET = process.env.FILE_URL_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me'
+const urlSecret = () => readVariable('FILE_URL_SECRET') ?? readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 const DEFAULT_TTL_SECONDS = 300
 
 function signature(fileUrl: string, expires: number): string {
-  return createHmac('sha256', URL_SECRET).update(`${fileUrl}:${expires}`).digest('hex')
+  return createHmac('sha256', urlSecret()).update(`${fileUrl}:${expires}`).digest('hex')
 }
 
 export function signFileUrl(fileUrl: string, ttlSeconds = DEFAULT_TTL_SECONDS): string {

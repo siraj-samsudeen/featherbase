@@ -10,6 +10,7 @@
 // never add one, and every absolute URL the server builds comes from here.
 
 import { APP_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from 'shared'
+import { DEV_ENVIRONMENTS } from './env'
 
 /** What an address opens: the Admin screens, or one app by name. */
 export const ADMIN = 'admin'
@@ -26,7 +27,7 @@ export interface InstanceAddress {
 }
 
 /** The environments where plain http, and an unset list, are allowed. */
-export const RELAXED_ENVIRONMENTS: readonly string[] = ['development', 'test']
+export const RELAXED_ENVIRONMENTS = DEV_ENVIRONMENTS
 
 // An app name, as an app root is spelled (shared/app-routes APP_ROOT_PATTERN).
 const APP_NAME = /^[a-z][a-z0-9_]{0,30}$/

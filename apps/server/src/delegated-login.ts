@@ -21,6 +21,7 @@ import { config } from './config'
 import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
+import { checkVariables, switchedOn, TEST_MODE_ENVIRONMENTS, TEST_MODE_PHRASE } from './env'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -142,23 +143,17 @@ export async function delegatedLoginConfig(key: string): Promise<DelegatedLoginC
 // phrase, not a boolean, so a stray "1" never opens it; environment-only, so
 // no Admin edit can. linkedUser still runs first: it decides WHOSE account,
 // and never yields a disabled or privileged one.
-export const TEST_MODE_PHRASE = 'trust-any-password'
+export { TEST_MODE_PHRASE, TEST_MODE_ENVIRONMENTS }
 export function delegatedTestMode(): boolean {
-  return (process.env.DELEGATED_LOGIN_TEST_MODE ?? '').trim() === TEST_MODE_PHRASE
+  return switchedOn('DELEGATED_LOGIN_TEST_MODE')
 }
 
-/** The environments test mode may run in (person-resolution D5):
- *  development and test, and `staging` — a hosted trial instance, which is
- *  production in every other respect (no default Administrator password, no
- *  development seed data; mock Google stays behind ALLOW_MOCK_OAUTH). */
-export const TEST_MODE_ENVIRONMENTS = ['development', 'test', 'staging'] as const
-
-/** Any other server refuses to start with test mode set, and says why. */
+/** Any other server refuses to start with test mode set, and says why. The
+ *  rule is the registry's `forbidden-in-production` tier (env.ts); this is
+ *  that tier for the one variable. */
 export function assertTestModeAllowed(environment: string = config.environment): void {
-  if (delegatedTestMode() && !(TEST_MODE_ENVIRONMENTS as readonly string[]).includes(environment))
-    throw new Error(
-      `DELEGATED_LOGIN_TEST_MODE is set on a "${environment}" server. Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "The person release").`,
-    )
+  const refusal = checkVariables({ environment }).forbidden.find((r) => r.startsWith('DELEGATED_LOGIN_TEST_MODE '))
+  if (refusal) throw new Error(refusal)
 }
 
 /** Say once, at boot, that the provider is being skipped — same reasoning as announcePreviewLogin. */

@@ -5,6 +5,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { sql } from './db'
 import { publishUserEvent } from './realtime'
 import { appOperation } from './app-lifecycle'
+import { readVariable } from './env'
 
 // JOB-001/002/003: durable job queue with an in-process worker.
 //
@@ -350,7 +351,7 @@ export async function drainJobs(limit = 1000): Promise<number> {
 }
 
 let timer: ReturnType<typeof setInterval> | null = null
-export function startWorker(intervalMs = Number(process.env.JOB_POLL_MS ?? 500)): void {
+export function startWorker(intervalMs = Number(readVariable('JOB_POLL_MS') ?? 500)): void {
   if (timer) return
   let ticking = false
   timer = setInterval(async () => {

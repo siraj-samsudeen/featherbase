@@ -4,11 +4,12 @@ import { sql, type Sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { getSystemSettings } from './settings'
 import { logActivity } from './audit'
+import { readVariable } from './env'
 
 // API-004: email/password login issuing a JWT; every API call (except
 // /api/ping and /api/login) must carry it. Passwords are scrypt-hashed.
 
-const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
+const jwtSecret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
 // 32-byte key + 16-byte salt fits the varchar(140) Data column (97 chars).
 export function hashPassword(password: string): string {
@@ -124,7 +125,7 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
       ...(opts.testMode ? { tm: true } : {}),
       ...(opts.preview ? { pv: true } : {}),
     },
-    JWT_SECRET,
+    jwtSecret(),
   )
   return { token, maxAgeSeconds, iat, jti }
 }
@@ -355,7 +356,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
   let payload: { sub?: unknown; iat?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
-    payload = (await verify(token, JWT_SECRET, 'HS256')) as typeof payload
+    payload = (await verify(token, jwtSecret(), 'HS256')) as typeof payload
   } catch {
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
@@ -425,7 +426,7 @@ export async function sessionToRevoke(authorization?: string): Promise<SessionTo
   if (!token || token.startsWith(TOKEN_PREFIX)) return null
   let payload: { sub?: unknown; jti?: unknown; exp?: unknown }
   try {
-    payload = (await verify(token, JWT_SECRET, { alg: 'HS256', exp: false })) as typeof payload
+    payload = (await verify(token, jwtSecret(), { alg: 'HS256', exp: false })) as typeof payload
   } catch {
     return null
   }

@@ -1,4 +1,5 @@
 import postgres from 'postgres'
+import { readNamedVariable } from '../env'
 import { AppError } from '../errors'
 import { fkKey } from './fk'
 import { assertNotPlatformDatabase } from './platform-guard'
@@ -54,7 +55,7 @@ function requireUrl(cfg: SourceConfig): string {
   // Local import to avoid a registry<->driver cycle at module load.
   if (!cfg.url_env)
     throw new AppError('ValidationError', `Data source ${cfg.name} has no url_env configured`)
-  const value = process.env[cfg.url_env]
+  const value = readNamedVariable(cfg.url_env)
   if (!value)
     throw new AppError(
       'ValidationError',

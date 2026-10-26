@@ -1,4 +1,5 @@
 import { sql } from '../db'
+import { readNamedVariable } from '../env'
 import { AppError } from '../errors'
 import type { SourceConfig, SourceDriver, SourceEngine } from './types'
 import { postgresDriver } from './postgres-driver'
@@ -78,8 +79,8 @@ export function getDriver(cfg: SourceConfig): SourceDriver {
 export function resolveUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
     throw new AppError('ValidationError', `Data source ${cfg.name} has no url_env configured`)
-  const value = process.env[cfg.url_env]
-  if (!value)
+  const value = readNamedVariable(cfg.url_env)
+  if (!value?.trim())
     throw new AppError(
       'ValidationError',
       `Environment variable ${cfg.url_env} is not set (required by data source ${cfg.name})`,
@@ -118,7 +119,7 @@ export async function testSource(name: string): Promise<{ ok: boolean; error?: s
 }
 
 function scrubSecrets(cfg: SourceConfig, message: string): string {
-  const secret = cfg.url_env ? process.env[cfg.url_env] : undefined
+  const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   if (!secret) return message
   let out = message.split(secret).join(`$${cfg.url_env}`)
   // Also scrub the password portion of a URL-shaped secret on its own.

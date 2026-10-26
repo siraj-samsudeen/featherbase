@@ -133,7 +133,7 @@ the `dev-preview` service if you run one.
 | `FILE_STORAGE_DIR` | `/data/files` | Uploaded files. Attach a Railway **Volume** mounted at `/data` or uploads vanish on each deploy. |
 | `PREVIEW_LOGIN_USER` | `preview@featherbase.dev` | The account the link signs in as. |
 | `PREVIEW_LOGIN_KEY` | 32+ random characters | The link's secret. |
-| `NODE_ENV` | `production` | |
+| `FEATHERBASE_ENV` | `staging` | A preview is a hosted trial: production in every other respect, but the one environment besides development and test where preview sign-in may be on. A release as `production` refuses `PREVIEW_LOGIN_*` (docs/DEPLOY.md, "Configuration"). |
 
 Generate the key with:
 

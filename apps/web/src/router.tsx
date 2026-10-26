@@ -16,7 +16,7 @@ import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
 import { EmptyState } from './components/ui'
 import { useCapabilities } from './lib/session'
-import { getToken, landingPath } from './lib/api'
+import { getToken, landingPath, loginHref } from './lib/api'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -116,8 +116,8 @@ function OAuthCallbackRouteComponent() {
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table',
-  beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: PortalListRouteComponent,
 })
@@ -129,8 +129,8 @@ function PortalListRouteComponent() {
 const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/portal/$table/$name',
-  beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: PortalDocRouteComponent,
 })
@@ -145,8 +145,8 @@ function PortalDocRouteComponent() {
 const salesTargetRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/sales-target',
-  beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: SalesTargetPage,
 })
@@ -164,8 +164,8 @@ const resetPasswordRoute = createRoute({
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/admin',
-  beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: AdminLayout,
 })
@@ -177,8 +177,8 @@ const printRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
-  beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: PrintPage,
 })

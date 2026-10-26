@@ -33,6 +33,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   config.instanceAddresses = null
+  vi.unstubAllEnvs()
 })
 
 const redirectUriOf = (res: Response) =>
@@ -291,7 +292,11 @@ describe('the brand', () => {
 
 describe('the release preflight', () => {
   // A test database is stamped `test`; these cases ask about other environments.
+  // A production release also needs the rest of a production environment
+  // (env.ts): its own JWT_SECRET, and no mock Google provider.
   const asRelease = async <T>(run: () => Promise<T>) => {
+    vi.stubEnv('JWT_SECRET', 'a-production-secret')
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     const before = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
     process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'
     try {

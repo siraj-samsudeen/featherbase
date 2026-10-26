@@ -27,7 +27,7 @@ describe('#130 production bootstrap', () => {
       const url = new URL(adminUrl)
       url.pathname = `/${name}`
       const db = postgres(url.toString(), { onnotice: () => {} })
-      const env = { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: environment, ADMIN_PASSWORD: password, INSTANCE_ADDRESSES: '[{"address":"https://featherbase.example.com","opens":"admin","emails":true}]' }
+      const env = { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: environment, ADMIN_PASSWORD: password, INSTANCE_ADDRESSES: '[{"address":"https://featherbase.example.com","opens":"admin","emails":true}]', JWT_SECRET: 'a-production-secret', ALLOW_MOCK_OAUTH: '' }
       const run = (args: string[], overrides = {}) => exec(tsx, args, { cwd, env: { ...env, ...overrides }, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 })
       try {
         await control.unsafe(`create database "${name}"`)

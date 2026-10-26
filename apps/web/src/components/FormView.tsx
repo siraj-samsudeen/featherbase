@@ -4,7 +4,8 @@ import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
-import { principalLabel, usePrincipalName, ShownName, isOpaqueId } from '../lib/people'
+import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
+import { RowTitle } from '../lib/row-titles'
 import { useRealtime } from '../lib/realtime'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
@@ -270,6 +271,7 @@ export function FormView({
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
       if (!isNew && isOpaqueId(name)) await queryClient.invalidateQueries({ queryKey: ['principal-name', name] })
+      if (!isNew) await queryClient.invalidateQueries({ queryKey: ['row-title', table, name] })
       if (isNew) {
         navigate({
           to: '/featherbase/admin/$table/$name',
@@ -312,12 +314,14 @@ export function FormView({
           {table}
         </RouterLink>
         <span className="mx-1">/</span>
-        <span className="text-ink">{isNew ? 'New' : <ShownName id={name} />}</span>
+        <span className="text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
       </nav>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-ink">
-            {table}: {isNew ? 'New' : <ShownName id={name} />}
+            {/* The row's title (title column, or a readable stand-in from its
+                values) — the same one Home and the activity feed show. */}
+            {table}: {isNew ? 'New' : <RowTitle table={table} rowId={name} />}
           </h1>
           <span className="text-xs text-ink-muted" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}

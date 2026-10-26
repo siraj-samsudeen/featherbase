@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouter } from '@tanstack/react-router'
+import { openReturnPath, takeLoginNext } from './Login'
 import { api, landingPath, rememberLogin, type SessionUser } from '../lib/api'
 
 // PLAT-006: the OAuth callback landing. The server redirects here with a
@@ -25,19 +26,34 @@ function redeemOnce(code: string) {
 
 export function OAuthCallbackPage({ code }: { code?: string }) {
   const navigate = useNavigate()
+  const router = useRouter()
   useEffect(() => {
     if (!code) {
       navigate({ to: '/featherbase/login' })
       return
     }
+    // StrictMode runs this effect twice against the one memoised redemption.
+    // Only the effect still mounted finishes the sign-in, so the saved deep
+    // link is taken once and no stale handler then overrides it.
+    let live = true
     redeemOnce(code)
       .then((redeemed) => {
+        if (!live) return
         const user = rememberLogin(redeemed)
+        // A deep link the person was headed to before Google (see Login).
+        const returnTo = takeLoginNext()
+        // #488: this person belongs on another address; go and sign in there.
         if (user.handoff) window.location.assign(user.handoff)
+        else if (returnTo) openReturnPath(returnTo, (path) => router.history.push(path))
         else navigate({ to: landingPath(user) })
       })
-      .catch(() => navigate({ to: '/featherbase/login' }))
-  }, [code, navigate])
+      .catch(() => {
+        if (live) navigate({ to: '/featherbase/login' })
+      })
+    return () => {
+      live = false
+    }
+  }, [code, navigate, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center text-sm text-ink-muted" data-testid="oauth-callback">

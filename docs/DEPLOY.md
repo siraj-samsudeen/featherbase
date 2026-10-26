@@ -29,21 +29,80 @@ release retries it.
 
 ## Configuration
 
-Everything comes from the environment; every variable has a dev default in
-`apps/server/src/config.ts` (or at its point of use).
+Everything comes from the environment. Every variable the server reads is
+declared once, in `apps/server/src/env.ts`, with whether it is a secret and
+when it is required; the table below and `apps/server/.env.example` are
+generated from it, and CI fails when they are out of date. To add a variable,
+declare it there and run `pnpm --filter server generate:env`; `pnpm --filter
+server lint:env` refuses a `process.env` read anywhere else in the server.
 
-| Variable | Required in production | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | **yes** | Postgres connection string |
-| `FEATHERBASE_ENV` / `NODE_ENV` | **yes** | set to `production` for release and serve; `FEATHERBASE_ENV` takes precedence. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
-| `ADMIN_PASSWORD` | optional | provisions a null Administrator password hash; missing/blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
-| `PORT` | no (8000) | HTTP + WebSocket port |
-| `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
-| `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
-| `INSTANCE_ADDRESSES` | **yes, outside development and test** (the release preflight refuses without it, #430, #488) | what each web address of this instance opens, and which one emailed links use. See [Instance addresses](#instance-addresses) |
-| `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
-| `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `SMTP_NAME` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
+The release (and the server start) refuses while a required variable is
+missing — an empty or blank value counts as missing — or while a switch that
+only development, test and staging may have is on, and names each one. A
+missing recommended variable is printed as a `WARNING:` line and the release
+goes ahead. `cli boot-check` runs the same checks read-only. CLI commands
+themselves never refuse, so the break-glass commands over `railway ssh`
+(`cli set-password`, `cli settings:set`, `cli create-person`) still work while
+a variable is missing.
+
+Beyond the table, the instance's data asks for two more. An enabled Google
+sign-in method with a client id needs `GOOGLE_CLIENT_SECRET`: the release and
+the server start refuse without it (in development and test they warn). A Data
+Source needs the variable its `url_env` names: without it the release and the
+start only warn, because that one source is unusable while the rest of the
+app works, and every query against the source refuses, naming the variable.
+
+<!-- generated:variables:start — from apps/server/src/env.ts by `pnpm --filter server generate:env`; do not edit -->
+
+| Variable | Required | Secret | Default | Purpose |
+| --- | --- | --- | --- | --- |
+| `FEATHERBASE_ENV` | **yes**, this or `NODE_ENV`, for a release | no | `NODE_ENV`, then `development` | which environment this process is: `production`, `staging`, `development` or `test`; it wins over `NODE_ENV`. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
+| `NODE_ENV` | no | no | `development` | read only when `FEATHERBASE_ENV` is unset (Vitest sets it to `test`) |
+| `DATABASE_URL` | **yes**, outside development and test | yes | local `featherbase` (`featherbase_test` under test) | Postgres connection string. `db.ts` sets `prepare: false`, which transaction-mode poolers (such as Supabase on port 6543) require (must differ across environments) |
+| `PORT` | no | no | `8000` | HTTP and WebSocket port |
+| `WEB_ORIGINS` | no | no | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated CORS allowlist; needed only when the SPA is served from another origin |
+| `INSTANCE_ADDRESSES` | **yes**, outside development and test | no |  | a JSON array saying what each web address of this instance opens (`admin` or an app) and which one emailed links use. See [Instance addresses](#instance-addresses). Unset (development and test only), the server falls back to the request, trusting the first `x-forwarded-proto` hop |
+| `JWT_SECRET` | **yes**, outside development and test | yes | `dev-secret-change-me` | session and token signing. Must differ between environments, or one environment's sessions are valid on another (must differ across environments) |
+| `FILE_URL_SECRET` | no | yes | `JWT_SECRET` | signs the short-lived URLs of private files (must differ across environments) |
+| `ADMIN_PASSWORD` | no | yes |  | provisions a null Administrator password hash; missing or blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
+| `GOOGLE_CLIENT_SECRET` | **yes**, while a Google sign-in method is enabled with a client id | yes |  | the Google OAuth client secret; the client id and allowed domains live on the Google sign-in method (must match across environments) |
+| `FILE_STORAGE_DIR` | recommended (warns when missing outside development and test) | no | `apps/server/storage` | uploaded-file directory; it must persist across deploys (on Railway, a Volume) |
+| `CHROMIUM_PATH` | no | no |  | Chromium binary for PDF printing; unset, Playwright resolves its own. Never hardcoded |
+| `PLAYWRIGHT_BROWSERS_PATH` | no | no | `/opt/pw-browsers` | where PDF printing also looks for a Playwright-installed Chromium |
+| `SMTP_HOST` | no | no |  | turns real delivery on (`smtp-relay.gmail.com`); unset or blank keeps the Email Sink. See [Email](#email) |
+| `SMTP_PORT` | no | no | `587` | `587` = STARTTLS, `465` = implicit TLS. On every port but 465, STARTTLS is required |
+| `SMTP_USER` | no | no |  | a Workspace user in the domain; turns on SMTP AUTH |
+| `SMTP_PASSWORD` | no | yes |  | that user's **app password**; required when `SMTP_USER` is set. Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed |
+| `MAIL_FROM` | no | no |  | the From of every SMTP message (`Feather Dash <noreply@example.com>`); it wins over any Email Account address. Unset, the default Email Account's address is used |
+| `SMTP_NAME` | no | no |  | the `EHLO` hostname. Unset, the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the sender's domain |
+| `PREAUTH_WINDOW_MS` | no | no | `900000` | pre-auth fixed window, in milliseconds |
+| `PREAUTH_LOGIN_MAX` | no | no | `60` | password and delegated sign-in submissions per source and window |
+| `PREAUTH_PASSWORD_MAX` | no | no | `5` | per provider, username and source |
+| `PREAUTH_OAUTH_LOGIN_MAX` | no | no | `30` | OAuth initiations per source and window |
+| `PREAUTH_OAUTH_CALLBACK_MAX` | no | no | `30` | OAuth callbacks per source and window |
+| `PREAUTH_FORM_MAX` | no | no | `30` | public web-form POSTs per source and window |
+| `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
+| `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
+| `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
+| `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
+| `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
+| `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
+| `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
+| `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
+| `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
+| `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot |
+| `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
+| `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
+| `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
+| `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
+| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin; overridable only for a local stub |
+| `DIVE_ID` | no | no |  | the sales-target Dive |
+| `DIVE_VERSION` | no | no |  | the sales-target Dive version |
+| `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
+| `SALES_TARGET_TODAY` | no | no |  | pins "today" (YYYY-MM-DD) for the sales target; for tests and rehearsals |
+| `SALES_TARGET_SHARED_ENV` | no | no |  | path of a local `.env.local` the sales-target experiment reads `DIVE_ID`, `DIVE_VERSION` and `SERVICE_ACCOUNT` from |
+
+<!-- generated:variables:end -->
 
 ### Instance addresses
 
@@ -967,9 +1026,10 @@ Dev today has `FEATHERBASE_ENV=production`, `DELEGATED_LOGIN_TEST_MODE` set
 and a database stamped `production`: deployed as is, the release refuses at
 its preflight. Prod (no test mode) skips the re-stamp.
 
-**`cli boot-check`** (read-only) runs exactly: (1) the server's one start-up
-refusal — test mode outside `development`/`test`/`staging`; (2) the release
-preflight above against `DATABASE_URL`. It prints one line per check; any
+**`cli boot-check`** (read-only) runs exactly: (1) the server's start-up
+refusal — the variable registry ([Configuration](#configuration)), test mode
+outside `development`/`test`/`staging` among it; (2) the release preflight
+above against `DATABASE_URL`. It prints one line per check; any
 refusal is an error and a non-zero exit.
 
 **Consequences.** Every session ends (the JWT subject changes): everyone signs

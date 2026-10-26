@@ -1,23 +1,32 @@
-// #440: the homepage activity feed is readable — initials come from the
-// person's name, "filtered" only when a filter was applied, fixed admin pages
+// #440: the homepage activity feed is readable — rows never show an opaque
+// id, "filtered" only when a filter was applied, fixed admin pages
 // show their title, and the Team tab names the person with their main role.
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 import { sql } from 'server/src/db'
 import { logActivity } from 'server/src/audit'
-import { feedVerb, initials } from '../src/components/ActivityFeed'
+import { feedVerb, groupByDay } from '../src/components/ActivityFeed'
+import { fmtTimelineDay } from '../src/lib/inr'
 
-test('initials come from the display name, verbs from whether a filter exists', () => {
-  expect(initials('Feed Tester')).toBe('FT')
-  expect(initials('jo.nameless')).toBe('JN')
+test('verbs come from whether a filter exists', () => {
   expect(feedVerb({ kind: 'list', filtered: false })).toBe('opened')
   expect(feedVerb({ kind: 'list' })).toBe('opened')
   expect(feedVerb({ kind: 'list', filtered: true })).toBe('filtered')
   expect(feedVerb({ kind: 'row' })).toBe('opened')
 })
 
-test('My activity: initials from the name, honest verbs, page titles, "List" pill, no name column', async ({
+test('day headings: Today, Yesterday, then weekday and DD-Mon-YYYY', () => {
+  const now = new Date(2026, 9, 26, 10, 0)
+  expect(fmtTimelineDay(new Date(2026, 9, 26, 0, 5), now)).toBe('Today')
+  expect(fmtTimelineDay(new Date(2026, 9, 25, 23, 59), now)).toBe('Yesterday')
+  expect(fmtTimelineDay(new Date(2026, 9, 13, 9, 0), now)).toBe('Tue, 13-Oct-2026')
+  const at = (d: number, h: number) => new Date(2026, 9, d, h).toISOString()
+  const groups = groupByDay([{ at: at(26, 9) }, { at: at(26, 8) }, { at: at(13, 9) }], now)
+  expect(groups.map((g) => [g.heading, g.items.length])).toEqual([['Today', 2], ['Tue, 13-Oct-2026', 1]])
+})
+
+test('My activity: honest verbs, page titles, a List icon, "You" as the subject', async ({
   createUser,
 }) => {
   const me = await createUser({ roles: ['System Manager'], fullName: 'Sample Person' })
@@ -39,11 +48,11 @@ test('My activity: initials from the name, honest verbs, page titles, "List" pil
   expect(text.some((t) => t.includes('Sign-in methods'))).toBe(true)
   expect(text.some((t) => t.includes('sign-in-methods'))).toBe(false)
   for (const r of rows) {
-    expect(r.textContent).toContain('SP') // initials of "Sample Person", not "P" from psn_…
+    expect(r.textContent).not.toContain('psn_')
     expect(r.textContent).not.toMatch(/\bVIEW\b/i)
-    expect(within(r).queryByTestId('feed-who')).toBeNull()
+    expect(within(r).getByTestId('feed-who')).toHaveTextContent(/^You$/)
   }
-  expect(text.some((t) => /list/i.test(t))).toBe(true)
+  expect(within(feed).getAllByRole('img', { name: 'List' }).length).toBeGreaterThan(0)
 })
 
 test('Team tab: name, then main role; nameless person falls back to the email local part', async ({
@@ -73,12 +82,13 @@ test('Team tab: name, then main role; nameless person falls back to the email lo
   const whos = within(feed).getAllByTestId('feed-who').map((e) => e.textContent)
   expect(whos).toContain('Team Lead')
   expect(whos).toContain('jo.nameless')
-  const leadRow = within(feed).getAllByTestId('feed-item').find((r) => r.textContent?.includes('w-mgr'))!
+  // Rows show the row's title now ("v2" for both), so find them by person.
+  const rowOf = (who: string) =>
+    within(feed).getAllByTestId('feed-item').find((r) => within(r).queryByTestId('feed-who')?.textContent === who && r.textContent?.includes('changed'))!
+  const leadRow = rowOf('Team Lead')
   expect(within(leadRow).getByTestId('feed-role')).toHaveTextContent('System Manager')
-  const bareRow = within(feed).getAllByTestId('feed-item').find((r) => r.textContent?.includes('w-bare'))!
+  const bareRow = rowOf('jo.nameless')
   expect(within(bareRow).queryByTestId('feed-role')).toBeNull()
-  expect(leadRow.textContent).toContain('TL')
-  expect(bareRow.textContent).toContain('JN')
   expect(whos.every((w) => !w?.startsWith('psn_'))).toBe(true)
   expect(feed.textContent).not.toContain('@x.com')
 })

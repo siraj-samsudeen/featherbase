@@ -21,6 +21,7 @@
 // named user's own roles decide what the visitor can do, so the preview shows
 // the real permission surface rather than a privileged illusion of it.
 import { timingSafeEqual } from 'node:crypto'
+import { readVariable } from './env'
 
 // 32 characters of base64url is ~192 bits. The point is not the exact number
 // but that a human-chosen word cannot reach it.
@@ -54,8 +55,8 @@ export function resolvePreviewLogin(): {
   login: PreviewLogin | null
   refusal: PreviewRefusal | null
 } {
-  const key = (process.env.PREVIEW_LOGIN_KEY ?? '').trim()
-  const user = (process.env.PREVIEW_LOGIN_USER ?? '').trim()
+  const key = (readVariable('PREVIEW_LOGIN_KEY') ?? '').trim()
+  const user = (readVariable('PREVIEW_LOGIN_USER') ?? '').trim()
 
   // Neither set: previews are simply not in use here. Not a refusal.
   if (!key && !user) return { login: null, refusal: null }

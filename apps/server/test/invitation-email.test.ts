@@ -241,6 +241,11 @@ describe('hardening', () => {
   })
 
   test('the release preflight refuses a production server without INSTANCE_ADDRESSES', async () => {
+    // A production release also needs the rest of a production environment
+    // (env.ts): its own JWT_SECRET, and no mock Google provider, which this
+    // suite turns on for itself (vitest.config.ts).
+    vi.stubEnv('JWT_SECRET', 'a-production-secret')
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     await withConfig({ instanceAddresses: null }, async () => {
       const prev = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
       process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'

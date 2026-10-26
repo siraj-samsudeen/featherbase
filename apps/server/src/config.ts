@@ -1,37 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { currentEnvironment, environmentDeclared, overrideVariable, readVariable } from './env'
 import { parseInstanceAddresses, type InstanceAddress } from './instance-addresses'
 
-// EDS-1/BV7: data-source credentials live in environment variables. For dev
-// convenience an optional apps/server/.env (gitignored) is loaded once at
-// boot — KEY=VALUE lines only, never overriding variables already set by the
-// shell. Values stay in process.env; nothing is persisted or logged.
-function loadDotEnv() {
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url))
-    const file = path.resolve(here, '../.env')
-    if (!existsSync(file)) return
-    for (const line of readFileSync(file, 'utf8').split('\n')) {
-      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)
-      if (!m || line.trim().startsWith('#')) continue
-      const value = m[2].replace(/^(['"])(.*)\1$/, '$2')
-      if (process.env[m[1]] === undefined) process.env[m[1]] = value
-    }
-  } catch {
-    // A malformed .env never blocks boot.
-  }
-}
-loadDotEnv()
+export { environmentDeclared }
 
-// Which environment this process is running as. Vitest sets NODE_ENV=test
-// itself, so the test suites land on 'test' without configuring anything.
-// FEATHERBASE_ENV wins when set, for the cases NODE_ENV cannot express.
-export const environment = (
-  process.env.FEATHERBASE_ENV ??
-  process.env.NODE_ENV ??
-  'development'
-).trim()
+// Which environment this process is running as (env.ts currentEnvironment).
+// Vitest sets NODE_ENV=test itself, so the test suites land on 'test' without
+// configuring anything. Fixed for the life of the process.
+export const environment = currentEnvironment()
 
 // The default database is derived from the environment, never shared across
 // them. Rails (`app_development` / `app_test`), Phoenix (`app_dev` /
@@ -46,33 +21,41 @@ export const environment = (
 // that explicit value is wrong.
 const defaultDatabase = environment === 'test' ? 'featherbase_test' : 'featherbase'
 
+// The list parsed once per distinct value: it is read on every request.
+let parsed: { raw: string | undefined; list: InstanceAddress[] | null } | null = null
+function addressesFrom(raw: string | undefined): InstanceAddress[] | null {
+  if (parsed?.raw !== raw || !parsed) parsed = { raw, list: parseInstanceAddresses(raw, environment) }
+  return parsed.list
+}
+
 export const config = {
-  port: Number(process.env.PORT ?? 8000),
+  port: Number(readVariable('PORT') ?? 8000),
   environment,
   databaseUrl:
-    process.env.DATABASE_URL ??
+    readVariable('DATABASE_URL') ??
     `postgres://postgres:postgres@127.0.0.1:5432/${defaultDatabase}`,
   // API-008: origins allowed to call the API cross-origin (the Admin dev
   // server by default; comma-separated WEB_ORIGINS overrides).
   allowedOrigins: (
-    process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173'
+    readVariable('WEB_ORIGINS') ?? 'http://localhost:5173,http://127.0.0.1:5173'
   ).split(','),
   // #488: what each web address of this instance opens, and which one emailed
   // links use (src/instance-addresses.ts). Configuration, so a request header
   // can only select an entry, never create one. null (unset) is allowed only
   // in development and test, where links fall back to the request's origin;
-  // the release preflight refuses it anywhere else. An invalid list stops
-  // the boot here, naming the rule it breaks.
-  instanceAddresses: parseInstanceAddresses(process.env.INSTANCE_ADDRESSES, environment) as InstanceAddress[] | null,
+  // the release and the server start refuse it anywhere else (env.ts). Read
+  // at call time; assigning it sets INSTANCE_ADDRESSES for this process only,
+  // which the release checks see too (env.ts overrideVariable).
+  get instanceAddresses(): InstanceAddress[] | null {
+    return addressesFrom(readVariable('INSTANCE_ADDRESSES'))
+  },
+  set instanceAddresses(list: InstanceAddress[] | null) {
+    overrideVariable(
+      'INSTANCE_ADDRESSES',
+      list ? JSON.stringify(list.map(({ address, opens, emails }) => ({ address, opens, emails }))) : '',
+    )
+  },
 }
 
-/** True when this process was told its environment (FEATHERBASE_ENV or
- *  NODE_ENV) rather than defaulting to development. Read at call time. */
-export function environmentDeclared(env: Record<string, string | undefined> = process.env): boolean {
-  return Boolean(env.FEATHERBASE_ENV?.trim() || env.NODE_ENV?.trim())
-}
-
-// The only environments where a link the server emails may be built from the
-// request's own origin when INSTANCE_ADDRESSES is unset (#430, #488).
-// Everywhere else the list is required: release-preflight refuses without it.
-export const ORIGIN_FALLBACK_ENVIRONMENTS: readonly string[] = ['development', 'test']
+// An invalid INSTANCE_ADDRESSES stops the boot here, naming the rule it breaks.
+void config.instanceAddresses

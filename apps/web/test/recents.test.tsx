@@ -6,6 +6,8 @@ import {
   ago,
   connectEventSink,
   describeFilters,
+  displayEntry,
+  uniqueByDisplay,
   flushPendingEvents,
   frecency,
   frequentActions,
@@ -213,5 +215,33 @@ describe('helpers', () => {
     expect(ago(NOW - 5 * 60_000, NOW)).toBe('5m')
     expect(ago(NOW - 3 * 3_600_000, NOW)).toBe('3h')
     expect(ago(NOW - 2 * DAY, NOW)).toBe('2d')
+  })
+})
+
+// Home cleanup: decided at render time, so entries recorded before a rule
+// existed read the same as new ones.
+describe('displayEntry', () => {
+  it('reads an old slug-labelled page as its catalog title', () => {
+    expect(displayEntry({ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore' }))
+      .toEqual({ kind: 'page', label: 'Explore' })
+  })
+  it('reads a row by reference, with its Table as the sub-line', () => {
+    expect(displayEntry(row('1517|040802006'))).toEqual({
+      kind: 'row', label: '1517|040802006', sub: 'Customer', row: { table: 'Customer', rowId: '1517|040802006' },
+    })
+  })
+  it('takes the kind from the key when a pinned target carries none', () => {
+    expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Explore')
+    expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/Task' }))
+      .toEqual({ kind: 'list', label: 'Task', sub: 'kanban' })
+  })
+})
+
+describe('uniqueByDisplay', () => {
+  it('folds an old slug entry and a new page entry for the same page into one', () => {
+    const old = { kind: 'list' as const, key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore', visits: [1] }
+    const now = { kind: 'page' as const, key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', visits: [2] }
+    expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:explore'])
+    expect(uniqueByDisplay([{ ...row('A'), visits: [1] }, { ...row('B'), visits: [1] }])).toHaveLength(2)
   })
 })

@@ -14,6 +14,7 @@ import { logActivity } from './audit'
 import { saveDoc } from './document'
 import { endIdentityIdentifiers, reconcileIdentityEmail, writeThroughIdentity } from './person-identifiers'
 import { SIGN_IN_METHOD_KINDS, type NewPersonRule as SharedNewPersonRule, type SignInMethodKind } from 'shared'
+import { switchedOn } from './env'
 
 // ---------------------------------------------------------------- folding
 
@@ -95,7 +96,7 @@ export const METHOD_TABLE = 'Sign In Method'
 // The mock Google provider mints a session for ANY typed email from a
 // pre-auth endpoint, so only ALLOW_MOCK_OAUTH=1 turns it on (see oauth.ts).
 export function mockOAuthEnabled(): boolean {
-  return process.env.ALLOW_MOCK_OAUTH === '1'
+  return switchedOn('ALLOW_MOCK_OAUTH')
 }
 
 /** Can a method actually sign anyone in? Google also needs a client id (or

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser } from '../lib/api'
-import { ago } from '../lib/recents'
+import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '../lib/inr'
+import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
 import { cardClasses } from './ui'
@@ -16,9 +17,13 @@ interface FeedItem {
   filtered?: boolean
   kind: string
   label: string
+  /** A row's display title for this viewer, when the server could read it. */
+  title?: string
   sub?: string
   path: string
   at: string
+  /** Back-to-back repeats collapsed into this row (server-side); 1 = single. */
+  count?: number
 }
 
 // #101 Phase 4: the homepage activity feed. Two tabs with a deliberate
@@ -28,29 +33,13 @@ interface FeedItem {
 // comes from the role-gated endpoint; the websocket 'feed' channel is just
 // an invalidation ping.
 
-const KIND_STYLE: Record<string, string> = {
-  row: 'bg-subtle text-ink-muted',
-  list: 'bg-action-tint text-action',
-  page: 'bg-subtle text-ink-muted',
-  search: 'bg-action-tint text-action',
-  change: 'bg-caution-tint text-caution',
-  login: 'bg-positive-tint text-positive',
-}
-const KIND_LABEL: Record<string, string> = {
-  row: 'row',
-  list: 'list',
-  page: 'page',
-  search: 'search',
-  change: 'change',
-  login: 'login',
-}
 const KIND_VERB: Record<string, string> = {
   row: 'opened',
   list: 'opened', // 'filtered' only when a filter was applied — see feedVerb
   page: 'opened',
   search: 'searched',
   change: 'changed',
-  login: '',
+  login: 'signed in',
 }
 
 /** The verb for a row: a list open says "filtered" only if a filter existed. */
@@ -59,13 +48,18 @@ export function feedVerb(item: Pick<FeedItem, 'kind' | 'filtered'>): string {
   return KIND_VERB[item.kind] ?? ''
 }
 
-export function initials(who: string): string {
-  return who
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase())
-    .join('')
+/** Newest-first feed rows under one heading per day: Today, Yesterday,
+ *  then "Tue, 13-Oct-2026". */
+export function groupByDay<T extends { at: string }>(items: T[], now = new Date()) {
+  const groups: Array<{ key: string; heading: string; items: T[] }> = []
+  for (const item of items) {
+    const at = new Date(item.at)
+    const key = timelineDayKey(at)
+    const last = groups[groups.length - 1]
+    if (last?.key === key) last.items.push(item)
+    else groups.push({ key, heading: fmtTimelineDay(at, now), items: [item] })
+  }
+  return groups
 }
 
 export function ActivityFeed() {
@@ -106,49 +100,68 @@ export function ActivityFeed() {
           {feed.isLoading ? 'Loading…' : 'Nothing here yet — activity shows up as you work.'}
         </p>
       )}
-      {items.map((item, i) => (
-        <div
-          key={`${item.at}-${i}`}
-          className="flex items-center gap-2.5 border-b border-border px-3 py-1.5 text-sm last:border-b-0"
-          data-testid="feed-item"
-        >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-tint text-xs font-bold text-action">
-            {initials(item.who_name)}
-          </span>
-          <span
-            className={`w-14 shrink-0 rounded-full px-0 py-0.5 text-center text-xs font-semibold uppercase tracking-wide ${KIND_STYLE[item.kind] ?? KIND_STYLE.row}`}
-          >
-            {KIND_LABEL[item.kind] ?? item.kind}
-          </span>
-          <span className="min-w-0 flex-1 truncate">
-            {scope === 'team' && (
-              <>
-                <span className="font-medium" data-testid="feed-who">{item.who_name}</span>
-                {item.who_role && (
-                  <span className="ml-1 text-xs text-ink-subtle" data-testid="feed-role">
+      {groupByDay(items).map((group) => (
+        <section key={group.key} data-testid="feed-day-group">
+          <h3 className="bg-subtle px-3 py-1 text-xs font-semibold text-ink-muted" data-testid="feed-day">
+            {group.heading}
+          </h3>
+          {group.items.map((item, i) => (
+            // One sentence on both tabs — subject, action, object — led by the
+            // kind's icon, with the clock time trailing.
+            <div
+              key={`${item.at}-${i}`}
+              className="flex items-center gap-2.5 border-t border-border px-3 py-1.5 text-sm"
+              data-testid="feed-item"
+            >
+              <KindIcon kind={item.kind} />
+              {/* One line that keeps its shape when narrow: who, the verb and
+                  the count never shrink; only the object's text truncates (it
+                  keeps its first few letters), and the Table name gives way
+                  first, hidden on a phone. */}
+              <span className="flex min-w-0 flex-1 items-baseline gap-x-1 whitespace-nowrap" data-testid="feed-sentence">
+                <span className="max-w-[45%] shrink-0 truncate font-medium" data-testid="feed-who">
+                  {scope === 'team' ? item.who_name : 'You'}
+                </span>
+                {scope === 'team' && item.who_role && (
+                  <span className="hidden shrink-0 text-xs text-ink-subtle sm:inline" data-testid="feed-role">
                     {item.who_role}
                   </span>
+                )}{' '}
+                <span className="shrink-0 text-ink-muted" data-testid="feed-verb">{feedVerb(item)}</span>{' '}
+                {item.path ? (
+                  <button
+                    type="button"
+                    onClick={() => router.history.push(item.path)}
+                    title={item.title ? item.label : undefined}
+                    className="min-w-[4ch] truncate text-left font-medium text-action hover:underline"
+                    data-testid="feed-object"
+                  >
+                    {item.title ?? item.label}
+                  </button>
+                ) : (
+                  (item.title ?? item.label) && (
+                    <span className="min-w-[4ch] truncate font-medium" data-testid="feed-object">{item.title ?? item.label}</span>
+                  )
                 )}
-              </>
-            )}{' '}
-            <span className="text-ink-muted">{feedVerb(item)}</span>{' '}
-            {item.path ? (
-              <button
-                type="button"
-                onClick={() => router.history.push(item.path)}
-                className="font-medium text-action hover:underline"
+                {item.sub && (
+                  <span className="hidden min-w-0 shrink-[4] truncate text-xs text-ink-subtle sm:inline">{item.sub}</span>
+                )}
+                {(item.count ?? 1) > 1 && (
+                  <span className="shrink-0 text-xs text-ink-subtle" data-testid="feed-count">
+                    · {item.count}×
+                  </span>
+                )}
+              </span>
+              <time
+                dateTime={item.at}
+                className="shrink-0 text-xs tabular-nums text-ink-subtle"
+                data-testid="feed-time"
               >
-                {item.label}
-              </button>
-            ) : (
-              <span className="font-medium">{item.label}</span>
-            )}
-            {item.sub && <span className="ml-1.5 text-xs text-ink-subtle">{item.sub}</span>}
-          </span>
-          <span className="shrink-0 text-xs tabular-nums text-ink-subtle">
-            {ago(new Date(item.at).getTime())}
-          </span>
-        </div>
+                {fmtClockTime(new Date(item.at))}
+              </time>
+            </div>
+          ))}
+        </section>
       ))}
       <div className="bg-subtle px-3 py-1.5 text-xs text-ink-muted">
         {scope === 'mine'

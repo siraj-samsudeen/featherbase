@@ -3,6 +3,7 @@ import type { SessionOptions, SessionUser } from './auth'
 import { AppError } from './errors'
 import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
 import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
+import { readVariable } from './env'
 
 export { mockOAuthEnabled }
 
@@ -13,7 +14,7 @@ export { mockOAuthEnabled }
 // stand in for Google in development: a local consent page returns a signed
 // authorization `code` that the callback exchanges for the user's identity.
 
-const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
+const secret = () => readVariable('JWT_SECRET') ?? 'dev-secret-change-me'
 
 // Google is the Sign In Method row of kind `google` (person-identities). Real
 // Google is used only when that row carries a client id; otherwise the mock.
@@ -53,7 +54,7 @@ export function assertSignInAvailable(clientId: string): void {
 
 // --- signed, stateless tokens (state + mock code) ---------------------------
 function hmac(body: string): string {
-  return createHmac('sha256', SECRET).update(body).digest('base64url')
+  return createHmac('sha256', secret()).update(body).digest('base64url')
 }
 function pack(obj: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify({ ...obj, exp: Math.floor(Date.now() / 1000) + 600 })).toString('base64url')
@@ -253,7 +254,7 @@ export async function exchangeCode(
     body: new URLSearchParams({
       code,
       client_id: clientId,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+      client_secret: readVariable('GOOGLE_CLIENT_SECRET') ?? '',
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
       // PKCE: Google checks this against the code_challenge sent at authorize.

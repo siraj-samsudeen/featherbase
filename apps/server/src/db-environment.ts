@@ -12,6 +12,7 @@
 // mistyped variable points the reset at a developer's own data.
 import { sql } from './db'
 import { config, environment } from './config'
+import { readVariable } from './env'
 
 export const ENVIRONMENT_KEY = 'environment'
 
@@ -61,7 +62,7 @@ export async function storedEnvironment(): Promise<string | null> {
  * database passes: it has no owner to contradict.
  */
 export async function assertDatabaseEnvironment(expected: string = environment): Promise<void> {
-  if (process.env[OVERRIDE] === '1') return
+  if (readVariable(OVERRIDE) === '1') return
   const stored = await storedEnvironment()
   if (stored === null || stored === expected) return
   throw new Error(

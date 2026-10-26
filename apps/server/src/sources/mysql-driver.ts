@@ -1,4 +1,5 @@
 import mysql from 'mysql2'
+import { readNamedVariable } from '../env'
 import type { Pool } from 'mysql2/promise'
 import { AppError } from '../errors'
 import { fkKey, singleColumnFks } from './fk'
@@ -24,7 +25,7 @@ const pools = new Map<string, Pool>()
 function requireUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
     throw new AppError('ValidationError', `Data source ${cfg.name} has no url_env configured`)
-  const value = process.env[cfg.url_env]
+  const value = readNamedVariable(cfg.url_env)
   if (!value)
     throw new AppError(
       'ValidationError',
@@ -183,7 +184,7 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
     throw shaped
   }
   const message = e?.message ?? String(err)
-  const secret = cfg.url_env ? process.env[cfg.url_env] : undefined
+  const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   const pwd = secret ? /^[a-z+]+:\/\/[^:/@]+:([^@]+)@/i.exec(secret)?.[1] : undefined
   let scrubbed = secret ? message.split(secret).join(`$${cfg.url_env}`) : message
   if (pwd) scrubbed = scrubbed.split(pwd).join('****')

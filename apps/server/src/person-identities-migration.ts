@@ -6,6 +6,9 @@
 // computes the same plan first, then applies it, so the rehearsal and the
 // real run cannot disagree.
 import { sql } from './db'
+import { switchedOn } from './env'
+
+const mockOAuth = () => switchedOn('ALLOW_MOCK_OAUTH')
 import { createTable, pgType } from './table-engine'
 import { saveDoc } from './document'
 import { invalidateMeta } from './meta'
@@ -102,7 +105,7 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
 
   const methods = [
     { key: 'password', kind: 'password', label: 'Password', enabled: true },
-    { key: 'google', kind: 'google', label: 'Google', enabled: Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1' },
+    { key: 'google', kind: 'google', label: 'Google', enabled: Boolean(setting('google_client_id')) || mockOAuth() },
     ...(delegated ? [{ key: delegated.key, kind: 'delegated_password', label: delegated.label, enabled: delegated.enabled }] : []),
   ].map((m) => {
     const have = existingMethods.find((r) => r.row_id === m.key)
@@ -202,8 +205,8 @@ export async function planPersonIdentities(): Promise<PersonIdentitiesPlan> {
   }
 
   // Parity: everyone who can sign in today keeps a way in, or is named.
-  const googleOn = Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1' ||
-    existingMethods.some((m) => m.kind === 'google' && m.enabled && (m.client_id || process.env.ALLOW_MOCK_OAUTH === '1'))
+  const googleOn = Boolean(setting('google_client_id')) || mockOAuth() ||
+    existingMethods.some((m) => m.kind === 'google' && m.enabled && (m.client_id || mockOAuth()))
   const delegatedOn = Boolean(delegated?.enabled && columnOk)
   const linkedAfter = new Set([...plan.delegatedLinks.map((d) => d.row_id), ...linkedDelegated])
   const invitedAfter = new Set([...plan.googleInvites.map((g) => g.row_id), ...linkedGoogle])
@@ -311,7 +314,7 @@ export async function migratePersonIdentities(): Promise<PersonIdentitiesPlan> {
   }
   await ensureMethod({ row_id: 'password', kind: 'password', label: 'Password', enabled: true, new_person: 'refuse', self_link: true })
   // On only when it can work: a client id, or the dev mock (Codex P2 on #371).
-  const googleUsable = Boolean(setting('google_client_id')) || process.env.ALLOW_MOCK_OAUTH === '1'
+  const googleUsable = Boolean(setting('google_client_id')) || mockOAuth()
   await ensureMethod({
     row_id: 'google',
     kind: 'google',
