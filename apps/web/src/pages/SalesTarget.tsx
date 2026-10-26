@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Notice, Select, cardClasses } from '../components/ui'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { TopBar } from '../components/TopBar'
+import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { SCOPE_BASES, type ScopeBasis } from 'shared'
 import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
 
@@ -162,7 +163,16 @@ function QuickTable({ collapsed, refreshedAt, children }: {
 // belongs to an earlier opening (or an earlier account) and is dropped.
 let openingSeq = 0
 
+// #489: the signed-in person's theme choice outlives the bar's toggle.
 export function SalesTargetPage() {
+  return (
+    <ThemeChoiceProvider>
+      <SalesTargetReport />
+    </ThemeChoiceProvider>
+  )
+}
+
+function SalesTargetReport() {
   const user = getSessionUser()
   const [me, setMe] = useState<Me | null>(null)
   const [embed, setEmbed] = useState<Embed>({ kind: 'loading' })

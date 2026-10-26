@@ -21,7 +21,7 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
-import { useThemeChoice } from '../lib/theme-choice'
+import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { ADMIN_NAME, PHONE_QUERY, TopBar } from '../components/TopBar'
@@ -71,6 +71,15 @@ connectEventSink({
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
 export function AdminLayout() {
+  // #489: the signed-in person's theme choice outlives every toggle on the page.
+  return (
+    <ThemeChoiceProvider>
+      <AdminLayoutForKind />
+    </ThemeChoiceProvider>
+  )
+}
+
+function AdminLayoutForKind() {
   const kind = useShellKind()
   // #489 item 10: while whoami loads, the bar's frame and name are drawn and
   // its right side stays empty — no flash of the wrong items.

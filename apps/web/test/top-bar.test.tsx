@@ -14,6 +14,7 @@ import { VIEWER_ROLE } from 'server/src/sales-target'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { recordAction } from '../src/lib/recents'
 import { followDevice } from '../src/lib/theme'
+import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
@@ -220,6 +221,63 @@ test('at phone width a theme chosen in the Account menu sticks after the menu cl
   const reopened = await openAccountMenu()
   expect(within(reopened).getByTestId('theme-dark')).toHaveAttribute('aria-checked', 'true')
   expect(document.documentElement.dataset.theme).toBe('dark')
+})
+
+// Codex round 2 on #495 (P2): a public page makes no signed-in request, so a
+// stale token left in the browser never sends it to the sign-in page.
+test.for([
+  ['a password-reset link', '/featherbase/reset-password?key=some-reset-key'],
+  ['a public web form', '/featherbase/form/no-such-form'],
+] as const)('%s with a stale token stored asks nothing signed in and stays put', async ([, path]) => {
+  const urls: string[] = []
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    urls.push(String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url))
+    return real(input, init)
+  })
+  await renderApp(path, { token: 'stale-token', user: 'someone-gone' } as never)
+  await waitFor(() => expect(document.body.textContent?.trim()).not.toBe(''))
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  expect(urls.filter((u) => u.includes('/api/whoami'))).toEqual([])
+  // A 401 would have cleared the stored token on its way to the sign-in page.
+  expect(getToken()).toBe('stale-token')
+})
+
+// Codex round 2 on #495 (P2): the theme state belongs to one signed-in person.
+// A's slow save, finishing after B has signed in, must not keep B's own
+// stored theme from being applied.
+test("a slow theme save from the person before does not hide the next person's theme", async ({ admin, createUser }) => {
+  const b = await createUser({ email: 'theme.next@example.com' })
+  await admin.post('/api/set_password', { user: b.user, password: 'theme-next-pw-1' })
+  await b.post('/api/set_theme', { theme: 'light' })
+  const real = globalThis.fetch
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    const answer = real(input, init)
+    if (url.includes('/api/set_theme')) await held // the write lands; its answer is slow
+    return answer
+  })
+  await renderApp('/featherbase/sales-target', admin)
+  await settledBar()
+  await userEvent.click(screen.getByTestId('theme-dark'))
+  await openAccountMenu()
+  await userEvent.click(screen.getByTestId('logout'))
+  const email = await waitFor(() => {
+    const field = document.querySelector<HTMLInputElement>('input[name=email]')
+    if (!field) throw new Error('no sign-in form yet')
+    return field
+  })
+  await userEvent.type(email, 'theme.next@example.com')
+  await userEvent.type(document.querySelector<HTMLInputElement>('input[name=password]')!, 'theme-next-pw-1')
+  await userEvent.click(document.querySelector<HTMLButtonElement>('button[type=submit]')!)
+  await screen.findByTestId('no-access')
+  await settledBar()
+  release()
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  await waitFor(() => expect(screen.getByTestId('theme-light')).toHaveAttribute('aria-checked', 'true'))
+  expect(document.documentElement.dataset.theme).toBe('light')
 })
 
 // ---- 10. states -------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { TopBar } from '../components/TopBar'
+import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
 import { cardClasses } from '../components/ui'
 
@@ -16,10 +17,12 @@ type Row = Record<string, unknown>
 // Account menu.
 function PortalShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-canvas">
-      <TopBar />
-      <main className="mx-auto w-full max-w-3xl p-6">{children}</main>
-    </div>
+    <ThemeChoiceProvider>
+      <div className="flex min-h-screen flex-col bg-canvas">
+        <TopBar />
+        <main className="mx-auto w-full max-w-3xl p-6">{children}</main>
+      </div>
+    </ThemeChoiceProvider>
   )
 }
 
