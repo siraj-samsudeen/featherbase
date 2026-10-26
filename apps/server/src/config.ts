@@ -1,4 +1,5 @@
 import { currentEnvironment, environmentDeclared, overrideVariable, readVariable } from './env'
+import { parseInstanceAddresses, type InstanceAddress } from './instance-addresses'
 
 export { environmentDeclared }
 
@@ -20,6 +21,13 @@ export const environment = currentEnvironment()
 // that explicit value is wrong.
 const defaultDatabase = environment === 'test' ? 'featherbase_test' : 'featherbase'
 
+// The list parsed once per distinct value: it is read on every request.
+let parsed: { raw: string | undefined; list: InstanceAddress[] | null } | null = null
+function addressesFrom(raw: string | undefined): InstanceAddress[] | null {
+  if (parsed?.raw !== raw || !parsed) parsed = { raw, list: parseInstanceAddresses(raw, environment) }
+  return parsed.list
+}
+
 export const config = {
   port: Number(readVariable('PORT') ?? 8000),
   environment,
@@ -31,21 +39,23 @@ export const config = {
   allowedOrigins: (
     readVariable('WEB_ORIGINS') ?? 'http://localhost:5173,http://127.0.0.1:5173'
   ).split(','),
-  // The deployment's own absolute URL, as a browser sees it (`https://app.example.com`).
-  // Used for links the server hands out — password-reset emails, and the OAuth
-  // `redirect_uri`. Configuration, so it cannot be steered by a request header;
-  // empty means "derive it from the request", which is what a dev checkout does.
-  // Read at call time; assigning it sets SITE_URL for this process only, which
-  // the release checks see too (env.ts overrideVariable).
-  get siteUrl(): string {
-    return (readVariable('SITE_URL') ?? '').trim().replace(/\/+$/, '')
+  // #488: what each web address of this instance opens, and which one emailed
+  // links use (src/instance-addresses.ts). Configuration, so a request header
+  // can only select an entry, never create one. null (unset) is allowed only
+  // in development and test, where links fall back to the request's origin;
+  // the release and the server start refuse it anywhere else (env.ts). Read
+  // at call time; assigning it sets INSTANCE_ADDRESSES for this process only,
+  // which the release checks see too (env.ts overrideVariable).
+  get instanceAddresses(): InstanceAddress[] | null {
+    return addressesFrom(readVariable('INSTANCE_ADDRESSES'))
   },
-  set siteUrl(value: string) {
-    overrideVariable('SITE_URL', value)
+  set instanceAddresses(list: InstanceAddress[] | null) {
+    overrideVariable(
+      'INSTANCE_ADDRESSES',
+      list ? JSON.stringify(list.map(({ address, opens, emails }) => ({ address, opens, emails }))) : '',
+    )
   },
 }
 
-// The only environments where a link the server emails may be built from the
-// request's own origin when SITE_URL is unset (#430). Everywhere else SITE_URL
-// is required: release-preflight refuses without it.
-export const ORIGIN_FALLBACK_ENVIRONMENTS: readonly string[] = ['development', 'test']
+// An invalid INSTANCE_ADDRESSES stops the boot here, naming the rule it breaks.
+void config.instanceAddresses

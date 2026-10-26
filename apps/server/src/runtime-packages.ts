@@ -354,6 +354,11 @@ export function activateAppUpgrade(name: string, version: string) {
   }, true)
 }
 
+/** A discovered app package's title, for an address that opens it (#488). */
+export function packageTitle(name: string): string | undefined {
+  return packages.get(name)?.title
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []

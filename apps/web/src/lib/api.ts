@@ -17,10 +17,15 @@ export interface SessionUser {
   /** Optional contact data (person-identities): null when the person has none. */
   email: string | null
   full_name: string | null
-  // #3755: where this account lands after sign-in when it is not the Admin
-  // (a sales-target report viewer lands on /sales-target). Absent = /admin.
+  // Where this account lands after sign-in on this address when it is not the
+  // Admin (#3755, #488: on Feather Dash's address, its report). Absent = /admin.
   landing?: string
 }
+
+/** A sign-in's answer as the page acts on it: the session's user, plus — when
+ *  this person belongs on another address of the instance — the one-time
+ *  hand-off URL to go to there (#488). The hand-off is never stored. */
+export type SignedIn = SessionUser & { handoff?: string }
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -141,27 +146,28 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 }
 
-type LoginResponse = { token: string; user: SessionUser; landing?: string }
+type LoginResponse = { token: string; user: SessionUser; landing?: string; handoff?: string }
 
-function rememberLogin(res: LoginResponse): SessionUser {
+/** Stores the session; returns the user, with the hand-off when there is one. */
+export function rememberLogin(res: LoginResponse): SignedIn {
   const user = res.landing ? { ...res.user, landing: res.landing } : res.user
   setSession(res.token, user)
-  return user
+  return res.handoff ? { ...user, handoff: res.handoff } : user
 }
 
-export async function login(usr: string, pwd: string): Promise<SessionUser> {
+export async function login(usr: string, pwd: string): Promise<SignedIn> {
   return rememberLogin(await api.post<LoginResponse>('/api/login', { usr, pwd }))
 }
 
 /** Sign in through a connected service (a Sign In Method row of kind
  *  `delegated_password`, e.g. StyleHR) named by its key. Same session shape. */
-export async function loginDelegated(usr: string, pwd: string, method: string): Promise<SessionUser> {
+export async function loginDelegated(usr: string, pwd: string, method: string): Promise<SignedIn> {
   return rememberLogin(await api.post<LoginResponse>('/api/login/delegated', { usr, pwd, method }))
 }
 
 /** Direct sign-up (person-identities): a username and a password, when the
  *  instance has opened it. Signs the new person in like `login`. */
-export async function signUp(username: string, password: string): Promise<SessionUser> {
+export async function signUp(username: string, password: string): Promise<SignedIn> {
   return rememberLogin(await api.post<LoginResponse>('/api/signup', { username, password }))
 }
 

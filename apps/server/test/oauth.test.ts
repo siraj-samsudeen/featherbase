@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { makePerson } from './fixtures'
@@ -326,14 +327,16 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(redirectUri).toMatch(/^https:\/\/[^,]+\/api\/oauth\/google\/callback$/)
   })
 
-  test('a configured SITE_URL settles the origin and the header is not consulted', async ({
+  test('a configured INSTANCE_ADDRESSES settles the origin and the header is not consulted', async ({
     api,
   }) => {
     await setClientId('test-client-id')
-    const previous = config.siteUrl
-    config.siteUrl = 'https://app.example.com'
+    const previous = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses('[{"address":"https://app.example.com","opens":"admin","emails":true}]', 'test')
     try {
-      const res = await api.fetch('/api/oauth/google/login', {
+      // The listed host, reached over plain http as far as the header says.
+      // (An unlisted one is sent to start again here: instance-addresses-http.test.ts.)
+      const res = await api.fetch('http://app.example.com/api/oauth/google/login', {
         headers: { 'x-forwarded-proto': 'http' },
       })
       const redirectUri = new URLSearchParams((res.headers.get('location') as string).split('?')[1]).get(
@@ -342,7 +345,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       expect(redirectUri).toBe('https://app.example.com/api/oauth/google/callback')
       for (const cookie of res.headers.getSetCookie()) expect(cookie).toMatch(/;\s*Secure/i)
     } finally {
-      config.siteUrl = previous
+      config.instanceAddresses = previous
     }
   })
 

@@ -10,6 +10,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { migrationBatches } from '../src/migrate'
 import { NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { makePerson } from './fixtures'
@@ -146,19 +147,19 @@ describe('release preflight: access configuration', () => {
   const SIGNUP_OK = 'no sign-in method creates new people for anyone here'
   const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
 
-  // These cases run preflight as production; give it the SITE_URL a production
-  // server must have (#430), its own JWT_SECRET, and no mock Google provider
-  // (which this suite turns on for itself, vitest.config.ts), so they reach the
-  // access checks they are about.
-  let siteUrlBefore = ''
+  // These cases run preflight as production; give it the INSTANCE_ADDRESSES a
+  // production server must have (#430, #488), its own JWT_SECRET, and no mock
+  // Google provider (which this suite turns on for itself, vitest.config.ts),
+  // so they reach the access checks they are about.
+  let addressesBefore: typeof config.instanceAddresses = null
   beforeEach(() => {
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
-    siteUrlBefore = config.siteUrl
-    ;(config as { siteUrl: string }).siteUrl = 'https://featherbase.example.test'
+    addressesBefore = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses('[{"address":"https://featherbase.example.test","opens":"admin","emails":true}]', 'production')
   })
   afterEach(() => {
-    ;(config as { siteUrl: string }).siteUrl = siteUrlBefore
+    config.instanceAddresses = addressesBefore
   })
 
   async function grant(role: string, refTable: string, flags: Record<string, boolean>) {
@@ -327,7 +328,7 @@ describe('release preflight: deployment variables', () => {
   // A complete production environment; each case takes one thing away.
   beforeEach(() => {
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
-    vi.stubEnv('SITE_URL', 'https://featherbase.example.test')
+    vi.stubEnv('INSTANCE_ADDRESSES', '[{"address":"https://featherbase.example.test","opens":"admin","emails":true}]')
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
     vi.stubEnv('FILE_STORAGE_DIR', '/data/files')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
@@ -336,7 +337,7 @@ describe('release preflight: deployment variables', () => {
 
   test('a complete production environment passes and says so', async () => {
     const lines = await preflightRelease({ environment: 'production' })
-    expect(lines).toEqual(expect.arrayContaining(['JWT_SECRET set', 'SITE_URL set', 'FILE_STORAGE_DIR set']))
+    expect(lines).toEqual(expect.arrayContaining(['JWT_SECRET set', 'INSTANCE_ADDRESSES set', 'FILE_STORAGE_DIR set']))
   })
 
   test('a missing JWT_SECRET refuses before migrating, naming it', async () => {
@@ -400,7 +401,7 @@ describe('release preflight: deployment variables', () => {
 describe('where a missing variable refuses', () => {
   const productionMissingJwt = (url: string) => ({
     ...process.env, DATABASE_URL: url, FEATHERBASE_ENV: 'production', NODE_ENV: 'production',
-    SITE_URL: 'https://featherbase.example.com', JWT_SECRET: '', ALLOW_MOCK_OAUTH: '', ADMIN_PASSWORD: '',
+    INSTANCE_ADDRESSES: '[{"address":"https://featherbase.example.com","opens":"admin","emails":true}]', JWT_SECRET: '', ALLOW_MOCK_OAUTH: '', ADMIN_PASSWORD: '',
     DISABLE_DATABASE_ENVIRONMENT_CHECK: '1', PORT: '0',
   })
   function runTsx(args: string[], env: NodeJS.ProcessEnv, input?: string): { ok: boolean; output: string } {

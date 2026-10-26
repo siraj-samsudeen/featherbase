@@ -565,11 +565,6 @@ export async function createEmbedSession(
 
 // ------------------------------------------------------------------- routes
 
-/** Where a freshly signed-in user lands: report viewers skip the Admin. */
-export async function landingFor(user: string): Promise<string | undefined> {
-  return (await getRoles(user)).includes(VIEWER_ROLE) ? REPORT_PATH : undefined
-}
-
 /**
  * Fail-closed gate shared by every sales-target route (#279): a session
  * token alone is not enough, because the role can be revoked mid-session.

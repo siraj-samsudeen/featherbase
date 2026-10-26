@@ -146,7 +146,9 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
       `identity_moved stylehr for ${rr60} to ${rr61} (${id})`,
       `identity_unlinked stylehr for ${rr61} (${moved.id})`,
     ])
-    expect(await sql`select person_id, ended_reason from sign_in_identity where id in (${id}, ${moved.id}) order by linked_at`).toEqual([
+    // Both rows are written in one transaction, so `linked_at` ties; order by
+    // the reason instead, which names each row once ('moved' < 'unlinked').
+    expect(await sql`select person_id, ended_reason from sign_in_identity where id in (${id}, ${moved.id}) order by ended_reason`).toEqual([
       { person_id: rr60, ended_reason: 'moved' },
       { person_id: rr61, ended_reason: 'unlinked' },
     ])

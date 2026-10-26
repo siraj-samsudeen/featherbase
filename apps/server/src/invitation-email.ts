@@ -3,7 +3,8 @@
 // optional invitation_email_intro), never from this public repo. A send is
 // awaited — the inviter is an administrator who is told whether it went —
 // and a failure never undoes the invite.
-import { config, ORIGIN_FALLBACK_ENVIRONMENTS } from './config'
+import { config } from './config'
+import { emailOrigin } from './instance-addresses'
 import { sql } from './db'
 import { AppError } from './errors'
 import { deliverEmail, type MailMessage } from './email'
@@ -40,14 +41,9 @@ export function _setInvitationHooksForTests(h: Partial<Hooks> | null): void {
   hooks = h ? { ...hooks, ...h } : DEFAULT_HOOKS
 }
 
-/** Where the email's link points. SITE_URL is configuration a request cannot
- *  steer; only a development or test server, which has none, falls back to
- *  the inviter's own request. Elsewhere, no SITE_URL means no email. */
-export function invitationSiteUrl(requestOrigin: string, environment = config.environment, siteUrl = config.siteUrl): string | null {
-  if (siteUrl) return siteUrl
-  return ORIGIN_FALLBACK_ENVIRONMENTS.includes(environment) ? requestOrigin : null
-}
-export const SITE_URL_MISSING = "The invitation email was not sent: this instance's address (SITE_URL) is not set"
+/** The invitation is not sent when this instance has no address for emails
+ *  (outside development and test with INSTANCE_ADDRESSES unset). */
+export const ADDRESS_MISSING = "The invitation email was not sent: this instance's addresses (INSTANCE_ADDRESSES) are not set"
 
 /** The page an invited person opens: the instance's own sign-in page. */
 export function signInLink(origin: string): string {
@@ -126,8 +122,10 @@ export async function sendInvitation(
   // are compared for equality below.
   const [{ previous }] = await sql`select invitation_sent_at::text as previous from sign_in_identity where id = ${identityId}`
   const previousIso = previous == null ? null : new Date(previous as string).toISOString()
-  const site = invitationSiteUrl(requestOrigin)
-  if (!site) return { invitation_email: { status: 'failed', error: SITE_URL_MISSING }, invitation_sent_at: previousIso }
+  // #488: the address marked for emails; the inviter's own origin only when a
+  // development or test server has no list. Never a link from the request elsewhere.
+  const site = emailOrigin(config.instanceAddresses, config.environment, requestOrigin)
+  if (!site) return { invitation_email: { status: 'failed', error: ADDRESS_MISSING }, invitation_sent_at: previousIso }
 
   const settings = await getSystemSettings()
   const [intro] = await sql`select value from single_value where table_name = 'System Settings' and field = 'invitation_email_intro'`

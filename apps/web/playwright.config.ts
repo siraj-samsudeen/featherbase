@@ -151,6 +151,14 @@ export default defineConfig({
             // fails closed. Matches what init.sh does for a dev machine.
             ALLOW_MOCK_OAUTH: '1',
             WEB_ORIGINS: `http://localhost:${webPort}`,
+            // #488: two addresses of one instance, on `*.localhost` names that
+            // resolve to this machine (instance-addresses.spec.ts). Every other
+            // spec drives plain `localhost`, which is not listed and so is
+            // served as a single address, exactly as before.
+            INSTANCE_ADDRESSES: JSON.stringify([
+              { address: `http://admin.localhost:${webPort}`, opens: 'admin', emails: true },
+              { address: `http://dash.localhost:${webPort}`, opens: 'feather_dash' },
+            ]),
           },
         },
         {

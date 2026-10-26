@@ -4,6 +4,7 @@ import { sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { findPasswordAccount, setUserPassword } from './auth'
 import { deliverWithoutWaiting } from './email'
+import { emailOrigin } from './instance-addresses'
 
 // SET-002: password reset via an emailed link. A request mints a single-use,
 // time-limited token and mails a reset link to the user. The
@@ -12,19 +13,22 @@ import { deliverWithoutWaiting } from './email'
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
 /** The one minimum password length: reset and sign-up share it. */
 export const MIN_PASSWORD_LENGTH = 6
-// One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
-// never be told two different things about where this instance lives.
-export const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
 // Never reveal whether an account exists; only a real, enabled user with both
 // an email and a password gets a mail (person-identities): resetting never
 // gives a password to an account that signs in only through another method.
 // Returns the token in dev/test so callers can assert without scraping.
-export async function requestPasswordReset(usr: string): Promise<string | null> {
+// #488: the link is on the address marked for emails; `requestOrigin` (the
+// asker's origin) is only the development and test fallback when no list is set.
+export async function requestPasswordReset(usr: string, requestOrigin?: string): Promise<string | null> {
   const user = await findPasswordAccount(usr)
   // #137: only a person has a password to reset; a service account is not a
   // person, so it is never found here — the same silent `null` as an unknown user.
   if (!user || !user.enabled || !user.email || !user.password_hash) return null
+  // No address to link to (outside development and test with no list, which
+  // the release preflight refuses): no mail, and the same silent answer.
+  const origin = emailOrigin(config.instanceAddresses, config.environment, requestOrigin)
+  if (!origin) return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
@@ -34,7 +38,7 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
     expires_at: expires,
   })}`
 
-  const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
+  const link = `${origin}/featherbase/reset-password?key=${token}`
   // The caller is anonymous and the route answers ok either way, so neither a
   // failed send nor the time an SMTP server takes may tell an existing account
   // from an unknown one (#395): the send is not awaited, and a failure is

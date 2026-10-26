@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
-import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
+import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 import { Logo } from '../components/Logo'
 
@@ -94,9 +94,23 @@ export function takeLoginNext(): string | undefined {
 
 /** Go to a checked return path: a Featherbase page inside the SPA, anything
  *  else (a runtime app) by a full page load. */
-export function openReturnPath(path: string, push: (path: string) => void): void {
+export function openReturnPath(
+  path: string,
+  push: (path: string) => void,
+  load: (path: string) => void = (p) => window.location.assign(p),
+): void {
   if (path.startsWith('/featherbase/')) push(path)
-  else window.location.assign(path)
+  else load(path)
+}
+
+/** Go to where a signed-in person lands (#488): a Featherbase page inside the
+ *  SPA, an app's root (on an app's own address) by a full page load. */
+export function openLanding(
+  user: SessionUser,
+  push: (path: string) => void,
+  load: (path: string) => void = (p) => window.location.assign(p),
+): void {
+  openReturnPath(landingPath(user), push, load)
 }
 
 export function LoginPage() {
@@ -161,18 +175,25 @@ export function LoginPage() {
   }
 
   // Both sign-in forms end here: back to a safe deep link, else the landing.
-  async function signIn(attempt: () => Promise<SessionUser>, blank: string, showValidation = false) {
+  async function signIn(attempt: () => Promise<SignedIn>, blank: string, showValidation = false) {
     setError(null)
     setBusy(true)
     try {
       const user = await attempt()
+      // #488: this person belongs on another address of the instance; the
+      // hand-off signs them in there. It wins over a return path on this one.
+      if (user.handoff) {
+        takeLoginNext()
+        window.location.assign(user.handoff)
+        return
+      }
       const returnTo = safeLoginNext(next)
       takeLoginNext() // signed in: whatever the Google round trip saved is spent
       if (returnTo) {
         openReturnPath(returnTo, (path) => router.history.push(path))
         return
       }
-      navigate({ to: landingPath(user) })
+      openLanding(user, (path) => router.history.push(path))
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable
       // service and a person who has left apart; nothing raw gets through.
