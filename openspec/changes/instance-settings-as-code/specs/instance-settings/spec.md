@@ -69,9 +69,9 @@ environment. An export SHALL never contain a secret.
 - **WHEN** the owner exports prod's settings and applies the result to prod
 - **THEN** the result says nothing changed
 
-### Requirement: Managed settings are read-only in the Desk
+### Requirement: Managed settings are read-only in Admin
 
-A setting the file manages SHALL be read-only in the Desk and SHALL say that
+A setting the file manages SHALL be read-only in Admin and SHALL say that
 it is changed through the instance's settings file.
 
 #### Scenario: Trying to clear the allowed domains

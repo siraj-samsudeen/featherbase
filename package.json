@@ -12,6 +12,7 @@
     "check:capabilities": "node --test tools/capability-catalog.test.mjs && node tools/capability-catalog.mjs",
     "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "check:sensitive": "node --test tools/check-sensitive.test.mjs && node tools/check-sensitive.mjs",
+    "check:vocabulary": "node --test tools/check-vocabulary.test.mjs && node tools/check-vocabulary.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",

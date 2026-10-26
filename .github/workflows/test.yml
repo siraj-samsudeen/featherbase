@@ -140,6 +140,12 @@ jobs:
       - name: Check for personal data in tracked files
         run: pnpm check:sensitive
 
+      # Retired product words (e.g. "Desk" for the Admin screen) must not creep
+      # back into app sources, specs or docs. The list lives at the top of
+      # tools/check-vocabulary.mjs.
+      - name: Check for retired vocabulary
+        run: pnpm check:vocabulary
+
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 
