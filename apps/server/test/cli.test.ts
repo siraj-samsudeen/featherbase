@@ -1,7 +1,8 @@
 // NOT sandbox-migrated: spawns the CLI as a SUBPROCESS, which opens its own
 // Postgres connection — a per-test transaction in this process cannot cover it.
 import { execFileSync } from 'node:child_process'
-import { accessSync, constants } from 'node:fs'
+import { accessSync, constants, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -413,5 +414,47 @@ describe('#401: cli settings:set', () => {
     const f = failure(['settings:set', 'privacy_notice', 'inline value'])
     expect(f?.status).toBe(1)
     expect(f?.stderr).toContain('usage: cli settings:set <field> --stdin')
+  }, 60_000)
+})
+
+// #465 (D3, D9): the settings file from the command line. Export, then apply
+// the export, must report "nothing changed"; a dry run writes nothing.
+describe('#465: cli settings:export and settings:apply', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'featherbase-settings-cli-'))
+  afterAll(async () => {
+    rmSync(dir, { recursive: true, force: true })
+    await sql`delete from activity_log where "user" = 'instance-settings' and full_name = 'instance settings file, applied by cli'`
+  })
+
+  it('exports this environment, and applying the export changes nothing', async () => {
+    const out = cli(['settings:export', '--dir', dir])
+    expect(out).toContain('instance-settings.json')
+    const file = JSON.parse(readFileSync(join(dir, 'instance-settings.json'), 'utf8'))
+    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job'])
+    const applied = cli(['settings:apply', '--file', join(dir, 'instance-settings.json'), '--revision', 'cli-test'])
+    expect(applied).toContain('settings:apply: nothing changed')
+  }, 60_000)
+
+  it('a dry run names the change and writes nothing; a file it names is read from beside it', async () => {
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'notice.md'), '# A notice only the dry run sees\n')
+    writeFileSync(join(dir, 'preview.json'), JSON.stringify({ settings: { 'System Settings': { privacy_notice: { file: 'notice.md' } } } }))
+    const before = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+    const out = cli(['settings:apply', '--file', join(dir, 'preview.json'), '--dry-run'])
+    expect(out).toContain('System Settings privacy_notice:')
+    expect(out).toContain('"# A notice only the dry run sees\\n"')
+    expect(out).toContain('settings:apply: 1 setting would change (dry run; nothing was written)')
+    expect(await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`).toEqual(before)
+  }, 60_000)
+
+  it('refuses a file reference outside the settings file\'s folder', () => {
+    writeFileSync(join(dir, 'escape.json'), JSON.stringify({ settings: { 'System Settings': { privacy_notice: { file: '../package.json' } } } }))
+    let stderr = ''
+    try {
+      cli(['settings:apply', '--file', join(dir, 'escape.json'), '--dry-run'])
+    } catch (err) {
+      stderr = (err as { stderr: string }).stderr
+    }
+    expect(stderr).toContain("../package.json is outside the settings file's folder")
   }, 60_000)
 })

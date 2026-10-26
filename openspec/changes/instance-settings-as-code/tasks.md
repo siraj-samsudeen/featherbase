@@ -13,12 +13,12 @@
 
 ## 3. Apply, dry run and export
 
-- [ ] 3.1 Declare the managed scope (System Settings fields, sign-in method rows, scheduled-job `enabled`, privacy notice by file). Verify: unit test listing the scope.
-- [ ] 3.2 Implement apply (one transaction through `saveDoc`, actor `instance-settings`, source revision in the Activity Log), with dry run, strict validation, and the feature-secret refusal. Verify: tests for changed fields, "nothing changed" on re-apply, unknown field aborts with nothing written, overlay applied per environment.
-- [ ] 3.3 Expose apply over HTTP for a System Manager token and as `cli settings:apply --file`. Verify: an HTTP call against the running server with a service-account token returns the changes, and an unprivileged token is refused.
-- [ ] 3.4 Implement `cli settings:export`. Verify: export, then apply to the same database, reports "no changes".
-- [ ] 3.5 Remove instance settings from manifest fixtures (the System Settings case) and update the sample apps and docs that use it. Verify: `pnpm test`.
-- [ ] 3.6 Document the flow in DEPLOY.md: the file, the on-demand apply after a fresh or restored database, and the deploy-failure alert per environment.
+- [x] 3.1 Declare the managed scope (System Settings fields, sign-in method rows, scheduled-job `enabled`, privacy notice by file). Verify: unit test listing the scope.
+- [x] 3.2 Implement apply (one transaction through `saveDoc`, actor `instance-settings`, source revision in the Activity Log), with dry run, strict validation, and the feature-secret refusal. Verify: tests for changed fields, "nothing changed" on re-apply, unknown field aborts with nothing written, overlay applied per environment.
+- [x] 3.3 Expose apply over HTTP for a System Manager token and as `cli settings:apply --file`. Verify: an HTTP call against the running server with a service-account token returns the changes, and an unprivileged token is refused.
+- [x] 3.4 Implement `cli settings:export`. Verify: export, then apply to the same database, reports "no changes".
+- [x] 3.5 Remove instance settings from manifest fixtures (the System Settings case) and update the sample apps and docs that use it. Verify: `pnpm test`.
+- [x] 3.6 Document the flow in DEPLOY.md: the file, the on-demand apply after a fresh or restored database, and the deploy-failure alert per environment.
 
 ## 4. Managed fields locked
 

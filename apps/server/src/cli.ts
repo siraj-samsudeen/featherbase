@@ -25,6 +25,15 @@
 //                                     SMTP_HOST is set, otherwise the Email Sink); exits 1 if delivery fails
 //   cli settings:set <field> --stdin set one System Settings text field to the whole of stdin, e.g.
 //                                     `cli settings:set privacy_notice --stdin < notice.md`
+//   cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]
+//                     [--revision <sha>] [--run <id>]
+//                                     apply an instance settings file (#465): one transaction, actor
+//                                     `instance-settings`; --dry-run previews and writes nothing. A
+//                                     { "file": "x.md" } value is read from next to the settings file
+//   cli settings:export [--dir <folder>]
+//                                     print this environment's managed settings in the file's shape
+//                                     (never a secret); --dir writes instance-settings.json and
+//                                     privacy-notice.md there instead
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -294,6 +303,77 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   console.log(`System Settings ${field} set (${value.length} characters)`)
 }
 
+/** Every { "file": name } value in a settings file, read from the folder
+ *  the settings file is in. A name that leaves that folder is refused. */
+async function referencedFiles(value: unknown, folder: string, out: Record<string, string> = {}): Promise<Record<string, string>> {
+  const { readFile } = await import('node:fs/promises')
+  const path = await import('node:path')
+  if (Array.isArray(value)) {
+    for (const v of value) await referencedFiles(v, folder, out)
+  } else if (value && typeof value === 'object') {
+    const keys = Object.keys(value)
+    const name = (value as { file?: unknown }).file
+    if (keys.length === 1 && typeof name === 'string') {
+      const full = path.resolve(folder, name)
+      if (path.relative(folder, full).startsWith('..') || path.isAbsolute(name))
+        throw new Error(`${name} is outside the settings file's folder`)
+      out[name] = await readFile(full, 'utf8').catch(() => {
+        throw new Error(`the settings file names ${name}, which does not exist next to it`)
+      })
+    } else for (const v of Object.values(value)) await referencedFiles(v, folder, out)
+  }
+  return out
+}
+
+async function cmdSettingsApply(flags: Record<string, string | string[] | boolean>) {
+  const file = flags.file
+  if (typeof file !== 'string') throw new Error('usage: cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]')
+  for (const key of ['environment', 'revision', 'run'] as const)
+    if (flags[key] !== undefined && typeof flags[key] !== 'string') throw new Error(`--${key} takes a value`)
+  const { readFile } = await import('node:fs/promises')
+  const path = await import('node:path')
+  let settings: unknown
+  try {
+    settings = JSON.parse(await readFile(file, 'utf8'))
+  } catch (err) {
+    throw new Error(`cannot read ${file} as JSON: ${(err as Error).message}`)
+  }
+  const { applyInstanceSettings } = await import('./instance-settings')
+  const result = await applyInstanceSettings(settings, {
+    by: 'cli',
+    environment: flags.environment as string | undefined,
+    dryRun: flags['dry-run'] === true,
+    source: { revision: flags.revision as string | undefined, run: flags.run as string | undefined },
+    files: await referencedFiles(settings, path.dirname(path.resolve(file))),
+  })
+  for (const c of result.changes)
+    console.log(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}`)
+  for (const w of result.warnings) console.log(w)
+  console.log(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
+}
+
+async function cmdSettingsExport(flags: Record<string, string | string[] | boolean>) {
+  if (flags.dir !== undefined && typeof flags.dir !== 'string') throw new Error('--dir takes a folder')
+  const { exportInstanceSettings } = await import('./instance-settings')
+  const { file, withheld } = await exportInstanceSettings()
+  // Never on stdout, which may be redirected into the settings file.
+  for (const w of withheld) console.error(`settings:export: left out ${w}`)
+  if (typeof flags.dir !== 'string') {
+    console.log(JSON.stringify(file, null, 2))
+    return
+  }
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const path = await import('node:path')
+  await mkdir(flags.dir, { recursive: true })
+  const system = file.settings['System Settings'] as Record<string, unknown> | undefined
+  if (typeof system?.privacy_notice === 'string') {
+    await writeFile(path.join(flags.dir, 'privacy-notice.md'), system.privacy_notice)
+    system.privacy_notice = { file: 'privacy-notice.md' }
+  }
+  await writeFile(path.join(flags.dir, 'instance-settings.json'), `${JSON.stringify(file, null, 2)}\n`)
+  console.log(`settings:export: wrote ${path.join(flags.dir, 'instance-settings.json')}`)
+}
+
 async function cmdConsole() {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
@@ -417,6 +497,12 @@ async function main() {
     case 'settings:set':
       await cmdSettingsSet(positional, flags)
       break
+    case 'settings:apply':
+      await cmdSettingsApply(flags)
+      break
+    case 'settings:export':
+      await cmdSettingsExport(flags)
+      break
     case 'seed-pack': {
       const [verb, name] = positional
       if (verb !== 'apply' || !name) throw new Error('usage: cli seed-pack apply <name>')
@@ -448,7 +534,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|mail:test|seed-pack|boot-check|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

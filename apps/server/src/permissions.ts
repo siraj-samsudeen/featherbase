@@ -1,6 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
+import { isActingSystemActor } from './system-actor'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -9,6 +10,8 @@ import { activeApps } from './app-lifecycle'
 // so the id alone names the principal.
 export async function getRoles(principal: string): Promise<string[]> {
   if (principal === 'Guest') return ['Guest']
+  // The server's own actor (system-actor.ts), only inside its operation.
+  if (isActingSystemActor(principal)) return ['All', 'System Manager']
   const rows = await sql`
     select role from has_role
     where parent = ${principal} and parenttype in ('Person', 'Service Account')
