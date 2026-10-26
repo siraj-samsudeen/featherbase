@@ -96,13 +96,18 @@ export function isRowsReadOnly(meta: TableMeta | undefined): boolean {
   return isSourceReadOnly(meta) || isSystemWritten(meta)
 }
 
-export function useMeta(table: string, enabled = true) {
-  return useQuery({
+/** The one query for a Table's metadata — shared by useMeta and by callers
+ *  that must know a Table exists before acting (the recents recorder). */
+export function metaQuery(table: string) {
+  return {
     queryKey: ['meta', table],
-    enabled: enabled && Boolean(table),
     queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(table)}:meta`),
     staleTime: 60_000,
-  })
+  }
+}
+
+export function useMeta(table: string, enabled = true) {
+  return useQuery({ ...metaQuery(table), enabled: enabled && Boolean(table) })
 }
 
 // Columns for a list view: name first, then flagged columns (or the first

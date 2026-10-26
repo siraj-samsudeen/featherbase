@@ -29,6 +29,7 @@ import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
+import { metaQuery } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
@@ -121,7 +122,20 @@ function AdminShell() {
     if (recordedNavigation.current === id) return
     recordedNavigation.current = id
     const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
-    if (action) recordAction(user.row_id, action)
+    if (!action) return
+    // A list or row names a Table; it is remembered only once that Table's
+    // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
+    // and is never offered back.
+    const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
+    if (!table) {
+      recordAction(user.row_id, action)
+      return
+    }
+    const owner = user.row_id
+    queryClient.fetchQuery(metaQuery(table)).then(
+      () => recordAction(owner, action),
+      () => {},
+    )
   }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [recentSel, setRecentSel] = useState(0)
@@ -437,7 +451,7 @@ function AdminShell() {
           <Menu aria-hidden size={20} />
         </button>
 
-        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto min-[1600px]:mx-auto min-[1600px]:max-w-4xl" data-testid="awesomebar">
+        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:mx-auto sm:max-w-4xl" data-testid="awesomebar">
           <input
             ref={searchRef}
             value={search}

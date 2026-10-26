@@ -212,3 +212,26 @@ test('on a phone the app selector drops the app-name prefix; wider screens keep 
   expect(wide.selectedOptions[0].textContent).toBe('Featherbase Home')
   vi.restoreAllMocks()
 })
+
+// Siraj, 26-Oct (#476): the row page's heading read "Store Section: sec-001"
+// although the Table names a title column. It uses the same row title as
+// Home and the feed, and updates after a save.
+test('the row page heading reads the row title, not its id', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Store Section', id_pattern: 'prompt', title_column: 'section_name',
+    columns: [{ column_name: 'store_code', column_type: 'Data' }, { column_name: 'section_name', column_type: 'Data' }],
+  })
+  await admin.post('/api/save_row', { table: 'Store Section', row: { row_id: 'sec-001', store_code: '1517', section_name: 'Kurti' } })
+  await renderApp('/featherbase/admin/Store%20Section/sec-001', admin)
+  const heading = await screen.findByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent('Store Section: Kurti'))
+  expect(heading).not.toHaveTextContent('sec-001')
+  expect(screen.getByTestId('breadcrumbs')).toHaveTextContent('Kurti')
+})
+
+test('a row whose Table has no title column is headed by its readable values', async ({ admin }) => {
+  await seedMerch(admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(MERCH)}/${encodeURIComponent(MERCH_ROW)}`, admin)
+  const heading = await screen.findByRole('heading', { level: 1 })
+  await waitFor(() => expect(heading).toHaveTextContent(`${MERCH}: 1517 · Kurti Z`))
+})

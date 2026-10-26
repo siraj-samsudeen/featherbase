@@ -35,3 +35,20 @@ test('one navigation is recorded once under StrictMode; navigating again records
   await new Promise((r) => setTimeout(r, 100))
   expect(visits()).toBe(2)
 })
+
+// Siraj, 26-Oct (#476): `/featherbase/admin/people` is not a Table, yet it was
+// remembered as a list and offered back as "people". A list or row visit is
+// recorded only once the Table's metadata has loaded; a 404 is never recorded.
+test('a list for a Table that does not exist is never recorded; a real one is', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: 'Record Real', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const { renderApp } = await import('./pg-test')
+  const rendered = await renderApp('/featherbase/admin/people', admin)
+  await screen.findByTestId('admin-sidebar')
+  await new Promise((r) => setTimeout(r, 300))
+  expect(recentActions('Administrator', 20).map((e) => e.key)).not.toContain('list:people?')
+  await rendered.router.navigate({ to: '/featherbase/admin/Record Real' })
+  await waitFor(() => expect(recentActions('Administrator', 20).map((e) => e.key)).toContain('list:Record Real?'))
+  await rendered.router.navigate({ to: '/featherbase/admin/people/P-1' })
+  await new Promise((r) => setTimeout(r, 300))
+  expect(recentActions('Administrator', 20).map((e) => e.key)).not.toContain('row:people/P-1')
+})

@@ -47,3 +47,30 @@ test('only a safe same-origin destination is remembered', () => {
   rememberLoginNext(DEEP)
   expect(takeLoginNext()).toBe(DEEP)
 })
+
+// Siraj, 26-Oct (#476): a refused Google sign-in comes back as
+// `/login?error=…` with no `next`. The saved destination must survive it — in
+// the address bar too — so a password or StyleHR sign-in afterwards lands
+// there, and clearing `error` once the person chooses keeps `next`.
+test('after a Google refusal, a password sign-in still lands on the saved deep link', async ({ admin, createUser }) => {
+  vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
+  const person = await createUser({ email: 'refused.then.password@example.com', roles: ['System Manager'] })
+  await admin.post('/api/set_password', { user: person.user, password: 'refusal-pw-1' })
+  rememberLoginNext(DEEP)
+  window.history.replaceState(null, '', '/featherbase/login?error=not_provisioned')
+  const { router } = await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+  await screen.findByTestId('sign-in-refused-panel')
+  // The destination is back in the address bar, beside the refusal.
+  await waitFor(() => expect(new URLSearchParams(window.location.search).get('next')).toBe(DEEP))
+  await userEvent.click(screen.getByTestId('refused-other-ways'))
+  // Choosing clears `error` and keeps `next`.
+  expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
+  expect(new URLSearchParams(window.location.search).get('next')).toBe(DEEP)
+  await userEvent.type(await screen.findByLabelText('Email or username'), 'refused.then.password@example.com')
+  await userEvent.type(screen.getByLabelText('Password'), 'refusal-pw-1')
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+  await waitFor(() => expect(where(router).href).toBe(DEEP))
+  // Used once: nothing is left to send a later sign-in somewhere stale.
+  expect(takeLoginNext()).toBeUndefined()
+  window.history.replaceState(null, '', '/')
+})

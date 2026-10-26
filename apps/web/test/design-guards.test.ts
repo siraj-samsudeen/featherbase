@@ -377,12 +377,14 @@ describe('the Admin shell', () => {
     expect(tagWith(shell, 'admin-navbar')).toMatch(/\bmd:pl-0\b/)
   })
 
-  test('the command bar fills the space up to the bell; only at 1600px and wider is it capped, and centred', () => {
+  test('the command bar has ONE width rule at every size: fill up to the cap, then centre — no breakpoint jump', () => {
     const bar = tagWith(shell, 'awesomebar')
     expect(bar).toMatch(/\bsm:flex-1\b/)
-    // No cap at ordinary widths: any max-w must sit behind the 1600px breakpoint.
-    for (const m of bar.matchAll(/(\S*)max-w-\S+/g)) expect(m[1]).toBe('min-[1600px]:')
-    expect(bar).toMatch(/\bmin-\[1600px\]:mx-auto\b/)
+    // Exactly one max-width and one centring rule, both from sm up, and no
+    // width rule keyed to a wider breakpoint (that is what made it jump).
+    expect([...bar.matchAll(/[\w:[\]-]*max-w-[\w[\]-]+/g)].map((m) => m[0])).toEqual(['sm:max-w-4xl'])
+    expect(bar).toMatch(/\bsm:mx-auto\b/)
+    expect(bar).not.toMatch(/(?:md|lg|xl|2xl|min-\[[^\]]+\]):(?:max-w|w|mx|basis|flex)-/)
     // The bell group must not grab the free space with its own auto margin at sm+.
     expect(tagWith(shell, 'navbar-right-zone')).toMatch(/\bsm:ml-0\b/)
   })

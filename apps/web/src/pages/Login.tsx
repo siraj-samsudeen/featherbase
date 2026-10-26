@@ -72,6 +72,16 @@ export function rememberLoginNext(next: string | undefined): void {
   }
 }
 
+/** The saved destination, left in place (a refused Google sign-in comes back
+ *  to the sign-in page without `next`, and a later sign-in still needs it). */
+export function peekLoginNext(): string | undefined {
+  try {
+    return safeLoginNext(sessionStorage.getItem(LOGIN_NEXT_KEY) ?? undefined)
+  } catch {
+    return undefined
+  }
+}
+
 export function takeLoginNext(): string | undefined {
   try {
     const stored = sessionStorage.getItem(LOGIN_NEXT_KEY)
@@ -93,7 +103,18 @@ export function LoginPage() {
   const router = useRouter()
   // From the router, not window.location: the route guard's redirect sets it.
   const searchStr = useRouterState({ select: (s) => s.location.searchStr })
-  const next = new URLSearchParams(searchStr).get('next') ?? undefined
+  const urlParams = new URLSearchParams(searchStr)
+  // A refused Google sign-in returns as `?error=…` without `next`; the
+  // destination saved before leaving for Google stands in for it.
+  const next = urlParams.get('next') ?? (urlParams.get('error') ? peekLoginNext() : undefined)
+  useEffect(() => {
+    // …and is written back beside the refusal, so a reload keeps it too.
+    if (!next || urlParams.get('next')) return
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('next')) return
+    url.searchParams.set('next', next)
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [next]) // eslint-disable-line react-hooks/exhaustive-deps
   const navigate = useNavigate()
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
@@ -146,6 +167,7 @@ export function LoginPage() {
     try {
       const user = await attempt()
       const returnTo = safeLoginNext(next)
+      takeLoginNext() // signed in: whatever the Google round trip saved is spent
       if (returnTo) {
         openReturnPath(returnTo, (path) => router.history.push(path))
         return
