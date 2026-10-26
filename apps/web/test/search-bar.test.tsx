@@ -1,11 +1,10 @@
 // The search bar of the Admin (openspec/specs/admin-ui-feedback, "The search
 // bar opens what it finds"). Real Admin in jsdom against the in-process server.
 
-import { configure, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 
-configure({ asyncUtilTimeout: 5000 })
 
 const here = (r: { router: unknown }) =>
   (r.router as { state: { location: { pathname: string } } }).state.location.pathname

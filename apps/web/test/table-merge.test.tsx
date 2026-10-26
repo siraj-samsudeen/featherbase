@@ -223,7 +223,9 @@ test('a source larger than one page merges all of its rows, not the first page',
     `/api/table/${encodeURIComponent(DST)}?limit_page_length=1`,
   )
   expect(page.total).toBe(523)
-})
+// 520 rows through the real server: slower than the suite default on a busy
+// machine (#527), so this one test gets more time; no assertion changes.
+}, 30_000)
 
 describe('Merged values are converted to fit, or the row is reported as failed', () => {
   test('a text value that is not a number is reported as a failed row and not stored', async ({ admin }) => {

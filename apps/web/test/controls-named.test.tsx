@@ -3,11 +3,10 @@
 // a person (or a screen reader) can read: visible text, an aria-label, or a
 // label tied to it. Real list and form in jsdom against the in-process server.
 
-import { configure, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 
-configure({ asyncUtilTimeout: 5000 })
 
 type Admin = Parameters<typeof renderApp>[1]
 const CONTROLS = 'button, a[href], input, select, textarea, [role=button], [role=combobox], [role=checkbox]'

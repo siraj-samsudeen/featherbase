@@ -15,10 +15,12 @@ describe('GET /api/ping', () => {
   })
 
   // Running an Instance / A running server can be checked: a person with no
-  // sign-in can ask, and is told whether the database is on this machine.
-  test('answers without signing in, and says its database is on this machine', async ({ api }) => {
+  // sign-in can ask, and is told whether the database is on this machine. The
+  // answer depends on the host (CI's database runs in its own container), so
+  // the test pins that a yes-or-no answer is given, not which.
+  test('answers without signing in, and says whether its database is on this machine', async ({ api }) => {
     const res = await api.fetch('/api/ping')
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ message: 'pong', db: true, database_server_local: true })
+    expect(await res.json()).toMatchObject({ message: 'pong', db: true, database_server_local: expect.any(Boolean) })
   })
 })

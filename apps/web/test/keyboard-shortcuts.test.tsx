@@ -2,11 +2,10 @@
 // "The Admin has keyboard shortcuts for the common moves"). Real Admin in
 // jsdom against the in-process server.
 
-import { configure, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 
-configure({ asyncUtilTimeout: 5000 })
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent

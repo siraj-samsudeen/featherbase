@@ -6,7 +6,7 @@
 // test that sorts waits for it to land (see list-settings.test.tsx) — a PUT
 // that arrives after the sandbox closes would commit for real.
 
-import { configure, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { afterAll, beforeAll, beforeEach, describe } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -16,7 +16,6 @@ import { invalidateSources } from 'server/src/sources/registry'
 import { test, expect, renderApp } from './pg-test'
 
 // A cold first render on a busy machine can take longer than the 1s default.
-configure({ asyncUtilTimeout: 5000 })
 
 type Admin = Parameters<typeof renderApp>[1]
 const enc = encodeURIComponent

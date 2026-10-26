@@ -2,12 +2,11 @@
 // Real FormView and Peek in jsdom, talking through the fetch bridge to the
 // in-process server inside a rolled-back Postgres transaction.
 
-import { configure, screen, waitFor, within } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 
 // A cold first render on a busy machine can take longer than the 1s default.
-configure({ asyncUtilTimeout: 5000 })
 
 type Admin = Parameters<typeof renderApp>[1]
 type Saved = { row_id: string; updated_at: string }
