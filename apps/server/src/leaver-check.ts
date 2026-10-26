@@ -15,6 +15,7 @@ import { sql, withTransaction } from './db'
 import { saveDoc } from './document'
 import { logActivity } from './audit'
 import { queueEmail, type MailMessage } from './email'
+import { NO_RECIPIENTS, recordUndeliveredNotice, systemManagerEmails } from './system-notice'
 import { readMotherDuck, type WarehouseReader } from './motherduck-reader'
 
 export const LEAVER_CHECK_JOB = 'disable_leavers'
@@ -271,7 +272,9 @@ export async function planLeaverCheck(today = istToday()): Promise<LeaverPlan | 
 export interface LeaverRun {
   plan: LeaverPlan | null
   disabled: Leaver[]
-  emailed: number
+  /** System Managers mailed; 0 when there was nothing to report, and
+   *  'no recipients' when there was but no System Manager has an address. */
+  emailed: number | 'no recipients'
 }
 
 /** Disable one leaver: a normal row save as Administrator, so the change is
@@ -314,16 +317,23 @@ export function summaryBody(plan: LeaverPlan, disabled: Leaver[], failedCount = 
   return out.join('\n')
 }
 
-async function sendSummary(plan: LeaverPlan, disabled: Leaver[], failed: string[]): Promise<number> {
+async function sendSummary(plan: LeaverPlan, disabled: Leaver[], failed: string[]): Promise<number | 'no recipients'> {
   if (!plan.refused && !disabled.length && !failed.length && !plan.privileged_leavers.length) return 0
-  const managers = await sql`
-    select distinct lower(trim(p.email)) as email from person p
-    join has_role r on r.parent = p.row_id and r.parenttype = 'Person' and r.role = 'System Manager'
-    where p.enabled and p.replaced_by is null and coalesce(trim(p.email), '') <> ''
-    order by 1`
+  const managers = await systemManagerEmails()
+  if (!managers.length) {
+    await recordUndeliveredNotice('leaver-check summary')
+    return 'no recipients'
+  }
   const body = summaryBody(plan, disabled, failed.length)
-  for (const m of managers) await sender({ to: String(m.email), subject: LEAVER_CHECK_SUBJECT, body })
+  for (const to of managers) await sender({ to, subject: LEAVER_CHECK_SUBJECT, body })
   return managers.length
+}
+
+/** One line on where the run's summary went, for the CLI and the job's
+ *  Job Execution result. */
+export function formatSummaryDelivery(run: LeaverRun): string {
+  if (run.emailed === 'no recipients') return `leaver check: summary reached nobody — ${NO_RECIPIENTS}`
+  return run.emailed ? `leaver check: summary sent to ${run.emailed} System Manager(s)` : 'leaver check: nothing to report; no summary sent'
 }
 
 export interface RunOpts {

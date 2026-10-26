@@ -15,6 +15,7 @@ import {
   KINDS,
   auditIdentity,
   candidate,
+  consumeExpectedSignIn,
   disableLeaver,
   domainAllowed,
   foldName,
@@ -45,8 +46,30 @@ export interface Found {
   identity: string | null
 }
 
-const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
+export const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
+export const ADDRESS_IN_USE = 'An account already uses this address. Contact your administrator.'
 const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
+
+export const GOOGLE_OFF = 'Google sign-in is not configured'
+
+/** The reasons a browser-navigation sign-in (the Google callback) can be
+ *  refused, as the short code the sign-in page explains. Only the code
+ *  travels — never the address, the domain or the server's message. */
+export type SignInRefusal = 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'google_off' | 'expired' | 'google_failed'
+
+export function signInRefusal(err: unknown): SignInRefusal {
+  if (!(err instanceof AppError)) return 'google_failed'
+  if (err.message === NOT_PROVISIONED) return 'not_provisioned'
+  if (err.message === ADDRESS_IN_USE) return 'address_in_use'
+  if (err.message === GOOGLE_OFF) return 'google_off'
+  // A disabled person, a method that may not admit them, a leaver.
+  if (err.message === INVALID_CREDENTIALS || err.type === 'PermissionError') return 'not_allowed'
+  // Google itself failed to answer the exchange: not this browser's state.
+  if (/^Google /.test(err.message)) return 'google_failed'
+  // The login challenge: missing, from another browser, forged or too old.
+  if (/state|token|expired|signature/i.test(err.message)) return 'expired'
+  return 'google_failed'
+}
 
 export function unavailableError(method: SignInMethod): AppError {
   return new AppError(
@@ -106,6 +129,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null}, last_used_at = now()
         where id = ${String(invite.id)}`
       await writeThroughIdentity(String(invite.id))
+      await consumeExpectedSignIn(String(invite.person_id), method)
       return { user: String(invite.person_id), identity: String(invite.id) }
     })
     if (claimed) await auditIdentity(claimed.user, 'claimed', claimed.user, method.key, claimed.identity!)
@@ -117,7 +141,58 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
   }
 }
 
-/** The method's rule for a person it does not know (design D4). */
+/** #473: link the first Google sign-in to the person a System Manager marked
+ *  as expecting it — only when ALL hold: the mark is set; Google verified the
+ *  address; the address is admitted by the method's domains (and, for a
+ *  company domain, Google's hosted-domain claim agrees — domainAdmitted); it
+ *  is that person's own address, compared folded; the person is enabled and
+ *  eligible; and they have no current Google sign-in, linked or invited. The
+ *  mark is consumed in the same transaction. Null when any fails, so the
+ *  caller falls through to today's answer (refused, or a new person). */
+async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): Promise<Found | null> {
+  if (method.kind !== 'google' || !v.subject || !v.email_verified || !v.email) return null
+  if (!domainAdmitted(method, v).ok) return null
+  const address = foldName(v.email)
+  try {
+    return await withTransaction(async () => {
+      const people = await sql`
+        select row_id, email, enabled, replaced_by, expects_google_sign_in from person
+        where lower(email) = ${address} limit 2 for update`
+      // One holder only: two people on one address is for an administrator.
+      if (people.length !== 1) return null
+      const [p] = people
+      const person = String(p.row_id)
+      if (p.expects_google_sign_in !== true || p.enabled !== true || p.replaced_by != null) return null
+      if (foldName(String(p.email ?? '')) !== address) return null
+      const [held] = await sql`
+        select 1 from sign_in_identity where person_id = ${person} and method = ${method.key} and ended_at is null limit 1`
+      if (held) return null
+      const c = await candidate(person)
+      if (!c || !c.enabled || (c.privileged && !KINDS[method.kind].admitsPrivileged)) return null
+      if (!(await consumeExpectedSignIn(person, method))) return null
+      const id = newIdentityId()
+      await sql`insert into sign_in_identity ${sql({
+        id,
+        person_id: person,
+        method: method.key,
+        subject: v.subject!,
+        email: v.email!,
+        display_name: v.display_name ?? null,
+        linked_by: 'expected-sign-in',
+        last_used_at: new Date(),
+      })}`
+      await writeThroughIdentity(id)
+      // A system action: no person did it in that moment; the method is named.
+      await auditIdentity('system', 'linked_on_expected_sign_in', person, method.key, id)
+      return { user: person, identity: id }
+    })
+  } catch (err) {
+    // The same Google account linked a moment ago by a concurrent sign-in.
+    if ((err as { code?: string })?.code === '23505') return linkedBySubject(method, v.subject)
+    throw err
+  }
+}
+
 /** A new person's starting name: their display name, or the part of the
  *  address before the @ — never the address itself (#429). An administrator
  *  can correct it. */
@@ -150,7 +225,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
       // Never turned into a link: an address already in use belongs to someone
       // an administrator must decide about.
-      if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      if (taken) throw new AppError('AuthenticationError', ADDRESS_IN_USE)
       // An opaque, permanent id (minted by the Person Table's id pattern) —
       // the address is contact data, not the anchor.
       const created = await saveDoc(
@@ -183,20 +258,23 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
     if ((err as { code?: string })?.code === '23505') {
       const winner = await linkedBySubject(method, v.subject)
       if (winner) return winner
-      throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      throw new AppError('AuthenticationError', ADDRESS_IN_USE)
     }
     throw err
   }
 }
 
 /** Resolve a verified outside identity to a person: linked subject, then a
- *  one-time invite, then the method's rule. Never by email match alone. */
+ *  one-time invite, then a person marked as expecting it (#473), then the
+ *  method's rule. Never by email match alone. */
 export async function resolveVerified(method: SignInMethod, v: VerifiedIdentity, opts: { testMode?: boolean } = {}): Promise<Found> {
   if (!v.subject) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   const linked = await linkedBySubject(method, v.subject)
   if (linked) return linked
   const claimed = await claimInvite(method, v)
   if (claimed) return claimed
+  const expected = await claimExpectedSignIn(method, v)
+  if (expected) return expected
   // A concurrent claim may have linked it a moment ago.
   return (await linkedBySubject(method, v.subject)) ?? newPerson(method, v, opts)
 }
@@ -261,6 +339,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
         linked_by: 'self',
       })}`
       await writeThroughIdentity(id)
+      await consumeExpectedSignIn(user, method)
       await auditIdentity(user, 'linked', user, method.key, id)
       return id
     })

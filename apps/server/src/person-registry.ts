@@ -102,7 +102,7 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   import_log: { '*': code, error_summary: text, touched: text },
   installed_app: { '*': code },
   internal_metadata: { '*': code },
-  job_execution: { job: code, method: code, outcome: code, error: text },
+  job_execution: { job: code, method: code, outcome: code, error: text, result: text },
   letter_head: { '*': text },
   metadata_override: { '*': code },
   migration: { '*': code },

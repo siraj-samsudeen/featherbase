@@ -27,7 +27,7 @@ export interface Connection {
   via: string | null
   count: number
   filters: Filter[]
-  // #432: the platform alone writes the connected Table's rows, so the Desk
+  // #432: the platform alone writes the connected Table's rows, so the Admin
   // offers no "new connected row" for it.
   system_written: boolean
 }

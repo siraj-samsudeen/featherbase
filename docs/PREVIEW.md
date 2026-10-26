@@ -19,7 +19,7 @@ Neither touches whatever is deployed from `main`.
 
 ## PR environments (the usual route)
 
-Railway project **`jeyarama-featherbase-dev`** (service `jeyarama-featherbase-dev`, database `jeyarama-featherbase-dev-db`)
+Railway project **`<project>`** (service `<service>`, database `<database>`)
 (`7997b9e9-518d-4aa5-8a72-ae3df4041328`) has PR environments enabled,
 including for PRs opened by bots — which is what an agent-authored PR is. So
 pushing a branch and opening a PR is all it takes; there is no per-PR setup.
@@ -127,7 +127,7 @@ the `dev-preview` service if you run one.
 
 | Variable | Value | Why |
 | --- | --- | --- |
-| `DATABASE_URL` | Base environment: `${{jeyarama-featherbase-dev-db.DATABASE_URL}}`. `dev-preview`: `${{<the database service you created>.DATABASE_URL}}` | Railway's reference syntax is `${{<service name>.VAR}}`, so name the database that belongs to *this* service. **Check it points at this environment's Postgres.** |
+| `DATABASE_URL` | Base environment: `${{<database>.DATABASE_URL}}`. `dev-preview`: `${{<the database service you created>.DATABASE_URL}}` | Railway's reference syntax is `${{<service name>.VAR}}`, so name the database that belongs to *this* service. **Check it points at this environment's Postgres.** |
 | `JWT_SECRET` | a long random string | Session signing. Must differ from any other environment. |
 | `SITE_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` | Absolute external URL, resolved per environment. See above. |
 | `FILE_STORAGE_DIR` | `/data/files` | Uploaded files. Attach a Railway **Volume** mounted at `/data` or uploads vanish on each deploy. |
@@ -147,7 +147,7 @@ and the route stays off. It does not quietly run with a weak key.
 
 ## What you land in
 
-Click the link and you are in the Desk, signed in, with a **Preview
+Click the link and you are in the Admin, signed in, with a **Preview
 deployment** banner across the top. The session lasts as long as any other, so
 the link is needed once per browser.
 

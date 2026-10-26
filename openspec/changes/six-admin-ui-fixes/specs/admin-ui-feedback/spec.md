@@ -38,7 +38,7 @@ For multiple parsed sheets, the builder SHALL show an amber warning immediately 
 
 ### Requirement: source_preview_explains_references
 
-SourceBrowser SHALL expose column names, source types and proposed field types. FK columns SHALL show their schema-qualified source target. A FK to a matching bound key SHALL propose Reference with its Desk target; a FK to a selected bindable target's primary key SHALL show its prospective Reference target. Other FK columns SHALL retain their primitive proposal and explain that the target must be reflected with the matching key. Non-FK and primary-key columns SHALL not be presented as Reference fields. Previewing SHALL not perform reflection.
+SourceBrowser SHALL expose column names, source types and proposed field types. FK columns SHALL show their schema-qualified source target. A FK to a matching bound key SHALL propose Reference with its Admin target; a FK to a selected bindable target's primary key SHALL show its prospective Reference target. Other FK columns SHALL retain their primitive proposal and explain that the target must be reflected with the matching key. Non-FK and primary-key columns SHALL not be presented as Reference fields. Previewing SHALL not perform reflection.
 
 #### Scenario: fk_targets_are_not_interchangeable
 - **WHEN** columns reference a selected target's primary key, a different schema's same-named table, an unselected target and a non-primary column

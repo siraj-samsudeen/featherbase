@@ -285,6 +285,42 @@ It lives in `.claude/skills/` and is linked into `.agents/skills/` for Codex.
 When a spec, the code and the tests disagree, that disagreement is not yours to
 settle silently — see "A discovered behaviour is not a requirement" above.
 
+### Review routes (owner decision, 26-Oct-2026)
+
+There are two review routes. Which one a change takes depends on what a person
+can see when they test it.
+
+1. **UI changes: spec, build, independent verifier, owner.**
+   - Agree the design with the owner first, using mockups or options. Then write
+     it into the issue as a numbered spec checklist: labels, icons, order,
+     formats, states, phone width.
+   - The builder builds it, with tests written first (`tdd`).
+   - A **separate verifier agent** checks the result. It is not the builder. It
+     runs the real UI with Playwright at 1280px and 375px, goes through the
+     checklist item by item, and returns a "spec vs built" table with
+     screenshots and any other visual oddities it noticed.
+   - Differences go back to the builder to fix. The owner sees the screenshots
+     first, and only then the code or a merge request. In the owner's words:
+     "launch a subagent to check it against that spec and then come back to us
+     with screenshots … before I look at the code or even being asked to merge
+     the PR."
+2. **Codex review is only for what a person can't see when testing**: security,
+   permissions, data and migrations, server logic, redirects, and anything else
+   complex. "A Codex round should be dedicated to things that I can't easily see
+   as a user when I'm testing and for more complex work." During the Feather
+   Dash rollout, run at most 2 rounds: fix the real blockers and file the rest
+   as issues.
+   - **No Codex review** for docs, cosmetic changes, very minor fixes, or UI the
+     owner verifies through the verifier's screenshots.
+   - A PR that mixes UI with hidden logic (a new endpoint, a sign-in redirect, a
+     permission check) takes both routes: the verifier for the UI, Codex for the
+     hidden part.
+3. **Issue first.** Every build starts from an issue that records the decision.
+   For UI work, that issue holds the spec checklist.
+4. **Small problems are fixed straight away.** A simple problem noticed in
+   passing is fixed at once, inline or by a subagent, and small approved fixes
+   are merged as they come. Nothing is parked on a "later" list.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `siraj-samsudeen/featherbase`, driven through

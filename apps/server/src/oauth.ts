@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import type { SessionUser } from './auth'
 import { AppError } from './errors'
 import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
-import type { VerifiedIdentity } from './sign-in'
+import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
 
 export { mockOAuthEnabled }
 
@@ -48,7 +48,7 @@ export function assertMockProviderAllowed(clientId: string): void {
 // refused outright unless the mock was explicitly opted into.
 export function assertSignInAvailable(clientId: string): void {
   if (!clientId && !mockOAuthEnabled())
-    throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+    throw new AppError('AuthenticationError', GOOGLE_OFF)
 }
 
 // --- signed, stateless tokens (state + mock code) ---------------------------

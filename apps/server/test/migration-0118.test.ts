@@ -1,4 +1,4 @@
-// Migration 0118 (24-Oct-2026): the Desk calls the Sales Target Assignment's
+// Migration 0118 (24-Oct-2026): the Admin calls the Sales Target Assignment's
 // material_group column "Subcategory". A Table created before its definition
 // carried the label is relabelled; a label someone set by hand is kept.
 import { readFileSync } from 'node:fs'

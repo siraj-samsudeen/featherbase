@@ -26,6 +26,7 @@ const PW_USER = 'cli-pw-user'
 const PW_OTHER = 'cli-pw-other'
 const PW_EMAIL = 'cli-pw-link@x.com'
 const PW_SVC = 'svc-cli-pw-test'
+const GOOGLE_USER = 'cli-google-user@x.com'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
@@ -47,7 +48,7 @@ function cli(args: string[], input = ''): string {
 // person-rename: ids are minted, so the people are found by email/username
 // and the service account by its label.
 async function cleanup() {
-  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER, PW_EMAIL])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
+  const people = await sql`select row_id from person where lower(email) in ${sql([USER, DUP_USER, PW_EMAIL, GOOGLE_USER])} or lower(username) in ${sql([NAME_USER, PW_USER, PW_OTHER])}`
   const services = await sql`select row_id from service_account where lower(label) in ${sql([SVC, PW_SVC])}`
   const ids = [...people, ...services].map((r) => String(r.row_id))
   if (ids.length) {
@@ -99,6 +100,31 @@ describe('PLAT-004: developer CLI', () => {
     expect(u.enabled).toBe(true)
     const roles = await sql`select role from has_role where parent = ${u.row_id as string}`
     expect(roles.map((r) => r.role)).toContain('System Manager')
+  }, 60_000)
+
+  // #473: a person who will sign in with Google needs no password; the mark
+  // lets their first Google sign-in with this address link to them.
+  it('create-person --expects-google-sign-in needs no password and sets the mark', async () => {
+    const stdout = cli(['create-person', GOOGLE_USER, '--roles', 'System Manager', '--expects-google-sign-in'])
+    const [u] = await sql`select row_id, expects_google_sign_in, password_hash is not null as has_pw from person where email = ${GOOGLE_USER}`
+    expect(u).toMatchObject({ expects_google_sign_in: true, has_pw: false })
+    expect(stdout).toContain(`created person ${u.row_id as string} (${GOOGLE_USER})`)
+    expect(stdout).toContain('expects Google sign-in')
+    const roles = await sql`select role from has_role where parent = ${u.row_id as string}`
+    expect(roles.map((r) => r.role)).toContain('System Manager')
+  }, 60_000)
+
+  it('create-person still needs a password without the mark, and the mark needs an address', () => {
+    const fails = (args: string[]) => {
+      try {
+        cli(args)
+        return ''
+      } catch (err) {
+        return String((err as { stderr?: string }).stderr)
+      }
+    }
+    expect(fails(['create-person', 'cli-no-pw-user'])).toContain('create-person requires <username-or-email> <password>')
+    expect(fails(['create-person', 'cli-no-email', '--expects-google-sign-in'])).toContain('--expects-google-sign-in needs an email address')
   }, 60_000)
 
   // person-identities: a username is not an address, so no email is stored;

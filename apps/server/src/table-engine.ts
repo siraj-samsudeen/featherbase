@@ -84,6 +84,8 @@ const columnSchema = z.object({
   hidden: z.boolean().nullish().transform((v) => v ?? undefined),
   in_list_view: z.boolean().nullish().transform((v) => v ?? undefined),
   tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined),
+  // #473: one plain line every form shows under the control.
+  description: optionalString,
   // EDS-3: true column name on a bound Table's source when the legal
   // column_name had to differ (reserved word, illegal characters).
   source_column: optionalString,
@@ -363,6 +365,8 @@ export async function updateTable(
       // that call updateTable run before the column does (fresh databases).
       const sourceColumn = f.source_column ?? (old ? old.source_column : null)
       if (sourceColumn != null) row.source_column = sourceColumn
+      // Likewise a description (0121): kept when the update leaves it out.
+      if (f.description !== undefined) row.description = f.description
       if (!old) {
         await tx`insert into column_def ${tx({
           parent: name,
@@ -562,6 +566,8 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
         tier: f.tier ?? 'basic',
       }
       if (f.source_column != null) columnRow.source_column = f.source_column
+      // Only when given: migrations before 0121 create Tables without it.
+      if (f.description != null) columnRow.description = f.description
       await tx`insert into column_def ${tx(columnRow as Record<string, never>)}`
     }
     // BV1!: a bound Table never causes DDL — no CREATE TABLE, no RLS, no

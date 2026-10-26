@@ -43,6 +43,8 @@ export interface ColumnDef {
   hidden: boolean
   in_list_view: boolean
   tier: 'basic' | 'restricted'
+  // #473: one plain line shown under the control on every form (0121).
+  description?: string | null
   // EDS-3: on a source-bound Table, the true column name on the source when
   // it differs from column_name (reserved/illegal names). Null = same name.
   source_column: string | null
@@ -70,7 +72,7 @@ export const ROW_KEY = 'row_id'
 // row id and is deliberately out of scope for #132.
 //
 // This exception is PHYSICAL ONLY. Every API response still carries the key as
-// `row_id`, so nothing above the SQL layer — the Desk included — has to know.
+// `row_id`, so nothing above the SQL layer — the Admin included — has to know.
 const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
 
 export function physicalRowKey(table: string): string {
@@ -113,11 +115,11 @@ export interface TableMeta {
   // Source column used for optimistic locking + the synthesized updated_at.
   external_modified: string | null
   // Enriched from the Data Source row at load time (not stored on table_def)
-  // so the Desk can gate its UI; invalidated with the meta cache when a
+  // so the Admin can gate its UI; invalidated with the meta cache when a
   // source changes (spec S3).
   source_access?: 'read_only' | 'read_write' | null
   source_engine?: string | null
-  // The server-derived truth the Desk gates all write affordances on:
+  // The server-derived truth the Admin gates all write affordances on:
   // engine capability AND access mode (review finding 7 — access alone
   // mislabels a read_write-configured duckdb source as editable).
   source_writable?: boolean
@@ -336,7 +338,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
   }
 
   // EDS-7/EDS-13: surface the bound source's access mode and engine on the
-  // meta the Desk consumes. Loaded here so it caches (and invalidates) with
+  // meta the Admin consumes. Loaded here so it caches (and invalidates) with
   // the meta itself; the Data Source controller invalidates on save.
   if (meta.data_source) {
     const [src] = await sql`

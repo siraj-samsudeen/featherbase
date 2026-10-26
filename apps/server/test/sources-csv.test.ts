@@ -1,4 +1,4 @@
-// M1: csv-folder sources — dbt seed files edited through the Desk. The
+// M1: csv-folder sources — dbt seed files edited through the Admin. The
 // fixture folder mimics a dbt seeds/ directory; byte stability of untouched
 // records is the load-bearing property (reviewable git diffs).
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'

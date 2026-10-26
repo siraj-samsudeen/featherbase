@@ -8,13 +8,14 @@ import { config } from './config'
 import { sql, withTransaction } from './db'
 import { assertNotSystemWritten } from './system-written'
 import { AppError, errorResponse } from './errors'
+import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
-import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
+import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
@@ -407,7 +408,7 @@ app.on(
       ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
-    await next()
+    await runInSession('sign_in' in user ? user.sign_in : null, () => next())
   },
   rateLimit,
   async (c) => {
@@ -482,8 +483,26 @@ function clearLoginChallengeCookies(c: Context) {
   deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
 }
 
+// A browser navigation (the address bar, a redirect) asks for a page;
+// fetch/XHR does not. A refused navigation sign-in goes back to the sign-in
+// page with a short reason code instead of showing raw JSON; an API caller
+// keeps the JSON error.
+function isPageNavigation(c: Context): boolean {
+  return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
+}
+
+function refusedToLoginPage(c: Context, err: unknown) {
+  // Unexpected faults are still worth a server-side line; refusals are not.
+  if (!(err instanceof AppError)) console.error('[sign-in] google callback failed', err)
+  return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
+}
+
 app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
-  if (!(await googleAvailable())) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!(await googleAvailable())) {
+    const off = new AppError('AuthenticationError', GOOGLE_OFF)
+    if (isPageNavigation(c)) return refusedToLoginPage(c, off)
+    throw off
+  }
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
@@ -518,8 +537,13 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   } catch (err) {
     // A link attempt that fails before its state is verified (expired, another
     // browser, Google turned off) still lands on a page that explains it,
-    // never raw JSON. Sign-in failures keep their status (pinned by tests).
-    if (claimedPurpose(c.req.query('state')) !== 'link') throw err
+    // never raw JSON. A refused sign-in does the same for a browser, on the
+    // sign-in page; an API caller keeps the JSON error and its status.
+    if (claimedPurpose(c.req.query('state')) !== 'link') {
+      if (!isPageNavigation(c)) throw err
+      clearLoginChallengeCookies(c)
+      return refusedToLoginPage(c, err)
+    }
     clearLoginChallengeCookies(c)
     const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
     return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
@@ -528,7 +552,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
 
 async function googleCallback(c: Context) {
   const google = await googleAvailable()
-  if (!google) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!google) throw new AppError('AuthenticationError', GOOGLE_OFF)
   const clientId = google.client_id
   assertSignInAvailable(clientId)
   // The state must match the cookie this browser got at login. Without that
@@ -613,7 +637,9 @@ app.get('/preview', async (c) => {
 app.use('/api/*', async (c, next) => {
   const user = await resolveToken(authCredential(c))
   c.set('user', user)
-  await next()
+  // #473: a test-mode or preview session cannot add a lasting way in, even
+  // through the generic save path (document.ts).
+  await runInSession(user.sign_in, () => next())
 })
 
 // API-007: throttle authenticated requests per user (runs after auth so it can

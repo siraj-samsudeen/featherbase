@@ -71,7 +71,7 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
 }
 
 // JSON-safe rows: getRowObjectsJson() renders BIGINT/DECIMAL as strings and
-// DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Desk needs.
+// DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Admin needs.
 async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
   try {
     const { instance } = await instanceFor(cfg)

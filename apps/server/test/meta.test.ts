@@ -46,3 +46,34 @@ describe('META-001: table/column storage and Meta loader', () => {
     })
   })
 })
+
+// #473 (Codex bot review): a column can carry a one-line description, kept in
+// its metadata, which every form shows under the control. The generic form
+// renders it; no Table needs frontend code for it.
+describe('a column description', () => {
+  test('is stored with the column, served in the meta, and kept when an update leaves it out', async ({ admin }) => {
+    const { createTable, updateTable } = await import('../src/table-engine')
+    await createTable({
+      name: 'Described Note',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'urgent', column_type: 'Check', description: 'Ticked notes go to the top of everyone’s list.' },
+      ],
+    })
+    const meta = (await admin.get('/api/table/Described%20Note:meta')) as { columns: { column_name: string; description: string | null }[] }
+    expect(meta.columns.find((c) => c.column_name === 'urgent')?.description).toBe('Ticked notes go to the top of everyone’s list.')
+    expect(meta.columns.find((c) => c.column_name === 'title')?.description).toBeNull()
+    await updateTable('Described Note', {
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Heading' },
+        { column_name: 'urgent', column_type: 'Check' },
+      ],
+    })
+    expect((await getMeta('Described Note')).columns.find((c) => c.column_name === 'urgent')?.description).toBe('Ticked notes go to the top of everyone’s list.')
+  })
+
+  test('the Person column that lets a first Google sign-in link carries its explanation', async () => {
+    const column = (await getMeta('Person')).columns.find((c) => c.column_name === 'expects_google_sign_in')
+    expect(column?.description).toBe('They can sign in with Google using this email the first time; after that the link is permanent.')
+  })
+})

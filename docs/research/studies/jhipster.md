@@ -83,5 +83,5 @@ pyramid**: unit tests, integration tests, Cypress e2e, Gatling load tests.
 
 **Do not adopt:** generation as the primary mode (kills runtime
 authoring, invites round-trip drift); the everything-up-front deliverable
-(Featherbase's generic Desk means most apps never need the generated-app
+(Featherbase's generic Admin means most apps never need the generated-app
 surface at all).

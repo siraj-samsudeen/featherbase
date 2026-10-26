@@ -120,6 +120,20 @@ test directories (`test`, and for web also `e2e`, plus the Vite/Playwright
 configs). A type error in a test file fails typecheck exactly like one in
 `src`.
 
+### What CI runs, and when
+
+`.github/workflows/test.yml` runs every suite on every push to `main` and on
+manual dispatch. On a pull request it runs the static checks, both
+typechecks, the server suite (three shards), the web and shared suites and
+the PostgreSQL 18 release preflight — and the Playwright e2e suite **only**
+when the PR touches what the browser suite covers beyond the others:
+`apps/web/**` (which holds `e2e/` and `playwright.config.ts`),
+`packages/**`, `runtime-apps/**`, the lockfile, the root `package.json` or
+`pnpm-workspace.yaml`, or the workflow itself. A server-only PR skips it;
+add the `run-e2e` label to a PR to force it, for example when a server
+change alters a route the UI depends on. Its `e2e` check then reports
+`skipped`, and the full e2e runs again on the merge to `main`.
+
 ## Why `fileParallelism: false`
 
 Both `apps/server/vitest.config.ts` and `apps/web/vitest.config.ts` set
@@ -311,8 +325,12 @@ starts — and because a shipped migration is append-only history that no
 test can retroactively cover.
 
 The ratchet itself is `coverage.thresholds` in each `vitest.config.ts`;
-that is the single place the numbers live, and the CI `unit` job runs the
-coverage scripts so a suite that drops below its floor fails the build.
+that is the single place the numbers live, and CI runs the suites with
+coverage so one that drops below its floor fails the build. The server
+suite runs in three CI shards with their thresholds zeroed (a shard sees
+only part of the files); the `unit` job merges the shards' Vitest blob
+reports and enforces the floor on the merged coverage. Locally,
+`pnpm test:coverage` still runs each suite whole against its floor.
 Baselines measured 2026-08-28, each rounded down to the whole percent:
 
 | Package | Lines / statements | Functions | Threshold set |

@@ -21,7 +21,7 @@ test.describe('preview sign-in', () => {
     // A brand-new context: no cookie, no localStorage, nothing but the URL.
     await session.visit(`/preview?key=${encodeURIComponent(KEY)}`)
 
-    await session.step('lands straight into the Desk, not the login form', async ({ page }) => {
+    await session.step('lands straight into the Admin, not the login form', async ({ page }) => {
       await expect(page).toHaveURL(/\/admin/, { timeout: 15_000 })
       await expect(page.locator('input[name=password]')).toHaveCount(0)
     })

@@ -3,6 +3,7 @@ import { opaqueId } from './opaque-id'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
+import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
@@ -443,6 +444,22 @@ async function assertAccessColumnsUnchanged(
       throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { enabled: 'must be true or false' })
     if (existing !== null && values.enabled !== stored) changed.push('enabled')
   }
+  if (meta.name === 'Person' && 'expects_google_sign_in' in values) {
+    // #473: lets the first Google sign-in with the person's own address link
+    // to them, so it is access like `enabled` — judged the same way, and on a
+    // new person too (switching it on there is the whole point).
+    const value = values.expects_google_sign_in
+    const stored = existing === null ? false : existing.expects_google_sign_in === true
+    if (value != null && typeof value !== 'boolean')
+      throw new AppError('ValidationError', `Invalid values for ${meta.name}`, { expects_google_sign_in: 'must be true or false' })
+    if ((value === true) !== stored) {
+      // Turning it on adds a way in; so does turning it off and on again. A
+      // test-mode or preview session may do neither, whoever it belongs to.
+      if (!sessionMayAddWayIn())
+        throw new AppError('PermissionError', 'Not allowed from this sign-in. Sign in again normally to change how this account signs in.')
+      changed.push('expects_google_sign_in')
+    }
+  }
   if (!changed.length) return
   if (!trusted && (await isPrivileged(user))) return
   throw securityRefusal(`a ${meta.name}'s ${changed.join(' or ')}`)
@@ -531,7 +548,7 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
-  // line — API responses, the Desk, tests — sees `row_id` and nothing else.
+  // line — API responses, the Admin, tests — sees `row_id` and nothing else.
   if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
@@ -855,7 +872,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Desk shows that state).
+// Without one, updates are last-write-wins (the Admin shows that state).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
@@ -886,7 +903,7 @@ async function updateBoundDoc(
   await runHooks('validate', hctx)
   await runHooks('before_save', hctx)
   // BV2!: write only fields present in the payload — plus any a hook
-  // actually changed — so CLI-owned columns the Desk never touched survive.
+  // actually changed — so CLI-owned columns the Admin never touched survive.
   const toWrite: RowValues = {}
   const norm = (v: unknown) => JSON.stringify(v instanceof Date ? v.toISOString() : (v ?? null))
   for (const f of meta.columns) {

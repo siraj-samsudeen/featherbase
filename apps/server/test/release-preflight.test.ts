@@ -11,7 +11,8 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { config } from '../src/config'
 import { migrationBatches } from '../src/migrate'
-import { preflightRelease } from '../src/release-preflight'
+import { NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
+import { makePerson } from './fixtures'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -38,6 +39,16 @@ describe('migration batches', () => {
 })
 
 describe('release preflight', () => {
+  test('warns, without refusing, when no System Manager but the built-in Administrator has an email address (#463)', async () => {
+    await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
+    await sql`update person set email = 'admin.builtin@example.com' where row_id = 'Administrator'`
+    expect(await preflightRelease({ environment: 'test' })).toContain(NO_NOTICE_RECIPIENTS_WARNING)
+    await makePerson({ full_name: 'Manager', email: 'notice.manager@example.com', roles: [{ role: 'System Manager' }] })
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).not.toContain(NO_NOTICE_RECIPIENTS_WARNING)
+    expect(lines).toContain('a System Manager with an email address receives system alerts')
+  })
+
   test('a release that does not declare its environment refuses (#430)', async () => {
     vi.stubEnv('FEATHERBASE_ENV', '')
     vi.stubEnv('NODE_ENV', '')

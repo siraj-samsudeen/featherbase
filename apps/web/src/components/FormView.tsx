@@ -656,9 +656,18 @@ function FieldControl({
       {error}
     </p>
   )
+  // #473: the column's own description, from its metadata.
+  const hintText = field.description?.trim() || null
+  const hintId = `${controlId}-hint`
+  const hint = hintText ? (
+    <p id={hintId} className="mt-1 text-xs text-ink-subtle" data-testid={`hint-${field.column_name}`}>
+      {t(hintText)}
+    </p>
+  ) : null
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
+    ...(hintText ? { 'aria-describedby': hintId } : {}),
     'aria-required': field.reqd || undefined,
     disabled: field.read_only,
     'data-field': field.column_name,
@@ -670,6 +679,7 @@ function FieldControl({
     <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
       {label}
       {control}
+      {hint}
       {preview}
       {err}
     </div>

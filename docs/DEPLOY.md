@@ -61,8 +61,24 @@ Manager has a password. Provision a named manager on the production box:
 pnpm --filter server cli create-person <email> <password> --roles "System Manager"
 ```
 
+Or, for a manager who will sign in with Google and needs no password (#473):
+
+```sh
+pnpm --filter server cli create-person <email> --roles "System Manager" --expects-google-sign-in
+```
+
+Their first Google sign-in with that verified address links to them, provided
+the Google method's `allowed_email_domains` admits its domain; the mark is then
+used up. Put `--expects-google-sign-in` last: it takes no value.
+
 Use a protected operator shell; do not put real passwords in shared logs or
 shell history. Administrator is a break-glass account, not a daily login.
+
+Give that manager an email address. System notices (the leaver-check summary,
+waiting-for-access alerts) go to enabled System Managers with an address, and
+Administrator has none. With no such manager, the release preflight and
+`cli boot-check` print a WARNING, and each notice is logged as
+`notice_undelivered` in the activity log instead of being sent (#463).
 Alternatively, set `ADMIN_PASSWORD` in the deployment secret store before
 first release. If migrations already ran with Administrator locked, set it
 and deliberately run `pnpm --filter server cli seed`. Ordinary recorded
@@ -98,7 +114,7 @@ refused; they use tokens.
 ```sh
 # Prompts without echo locally, then pipes the value through the SSH session.
 read -rs PW && printf '%s\n' "$PW" | \
-  railway ssh -p <project> -e <env> -s jeyarama-featherbase -- \
+  railway ssh -p <project> -e <env> -s <service> -- \
   pnpm --filter server cli set-password Administrator --stdin; unset PW
 #   → password set for Administrator; their sessions are ended
 #   → access tokens still work — on a suspected compromise: cli list-tokens Administrator, then cli revoke-token <id>
@@ -110,7 +126,7 @@ stdin, open an interactive shell and pipe it there instead — the password
 never lands in shell history or on a command line:
 
 ```sh
-railway ssh -p <project> -e <env> -s jeyarama-featherbase
+railway ssh -p <project> -e <env> -s <service>
 # then, on the remote shell:
 read -rs PW; printf '%s\n' "$PW" | pnpm --filter server cli set-password Administrator --stdin; unset PW
 ```
@@ -198,16 +214,16 @@ instead (#395).
 | --- | --- | --- |
 | `SMTP_HOST` | `smtp-relay.gmail.com` | turns real delivery on; unset or blank keeps the Email Sink |
 | `SMTP_PORT` | `587` (default) | `587` = STARTTLS; `465` = implicit TLS. On every port but 465, STARTTLS is **required**: the server refuses to continue if the relay does not offer it. Certificates are always verified |
-| `SMTP_USER` | `noreply@jeyarama.com` | a Workspace user in the domain; turns on SMTP AUTH |
+| `SMTP_USER` | `noreply@example.com` | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
-| `MAIL_FROM` | `Feather Dash <noreply@jeyarama.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
-| `SMTP_NAME` | `jeyarama.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
+| `MAIL_FROM` | `Feather Dash <noreply@example.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
+| `SMTP_NAME` | `example.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
 
 Production uses port 587. TLS is always required: there is no setting that
 lets mail or a credential leave unencrypted, and none that skips the
 certificate check.
 
-### Google Workspace SMTP relay (jeyarama.com)
+### Google Workspace SMTP relay (your Workspace domain)
 
 In the Admin console: **Apps → Google Workspace → Gmail → Routing → SMTP
 relay service → Configure**, then:
@@ -224,7 +240,7 @@ minutes, occasionally up to an hour, to accept a new configuration.
 The relay refuses an `EHLO` name that is not a fully qualified domain, with
 `421 4.7.0 Try again later, closing connection. (EHLO)`, which `mail:test`
 reports as `Mail delivery failed (ECONNECTION 421)`. The `MAIL_FROM` domain
-(`jeyarama.com`) is a name it accepts, so nothing more is needed; set
+(your Workspace domain, e.g. `example.com`) is a name it accepts, so nothing more is needed; set
 `SMTP_NAME` only to greet with a different hostname.
 
 The `SMTP_USER` account must have **2-Step Verification** turned on; only then
@@ -485,10 +501,17 @@ Google's account ID, the StyleHR employee code — never by email:
 
 - `GET|POST /api/people/<person>/identities` (System Manager): link StyleHR
   `{"method":"stylehr","subject":"RR-0101","sign_in_name":"name_9999999999"}`;
-  invite a Google address `{"method":"google","email":"sm.atk@jeyarama.com"}`
+  invite a Google address `{"method":"google","email":"person@example.com"}`
   — the first Google sign-in with that verified address links it for good.
   **Any change to the person's email cancels every unused invite they hold**;
   invite again after changing an email.
+- Instead of an invite, tick **Expects Google sign-in** on the Person (System
+  Manager only, #473). The first Google sign-in links to them only if Google
+  verified the address, it is the person's own email, its domain is in the
+  Google method's `allowed_email_domains`, the person is enabled and has no
+  Google sign-in yet. The link clears the mark and is logged as a `system`
+  activity; any other Google link clears it too. Otherwise the sign-in gets
+  today's answer (refused as an address already in use).
 - `PATCH /api/identities/<id>` `{"sign_in_name": …}` renames a StyleHR login
   ID (sessions survive) or `{"person_id": …}` moves a link to another person in
   one step (a store mailbox at a Store Manager handover).
@@ -837,7 +860,7 @@ setting. It needs the **`btree_gist`** extension (`create extension if not
 exists btree_gist`; Railway's Postgres 18.6 offers it). Where the StyleHR
 sign-in method exists (dev) it also:
 
-- applies the Jeyarama seed pack (`stylehr-employee-id`, Restricted-hidden;
+- applies the instance's seed pack (`stylehr-employee-id`, Restricted-hidden;
   `stylehr-employee-code`, scoped by firm) and links the StyleHR sign-in
   method to the record numbers;
 - writes an employee-code row for every `employee_code` Custom Field value
@@ -910,7 +933,7 @@ B. Announce the maintenance window to the trial users: 30 minutes outside
    store hours (proposed 06:00–06:30 IST).
 
 **No CDC step belongs in the dev window.** The only Featherbase CDC worker,
-`jeyarama-cdc-featherbase`, mirrors **prod**, not dev. Pausing it, switching
+`<cdc-worker>`, mirrors **prod**, not dev. Pausing it, switching
 its registration and verifying the warehouse all happen when the release is
 promoted to production (below).
 
@@ -931,7 +954,7 @@ promoted to production (below).
    until the release is signed off.
 3. **`cli boot-check`** in the dev service's own environment (its real
    variables and `DATABASE_URL`):
-   `railway ssh -p <project> -e dev -s jeyarama-featherbase -- pnpm --filter server cli boot-check`.
+   `railway ssh -p <project> -e dev -s <service> -- pnpm --filter server cli boot-check`.
    Expect "the server will start", then
    `database environment matches "staging"`, `test mode on, allowed here`,
    `btree_gist available for 0102`, `no publication blocks updates on a
@@ -981,7 +1004,7 @@ promoted to production (below).
    0 moved, 265 already moved; parity after it 271 / 271. Settle a listed one
    by hand (its Person form) or in the next file.
 8. Close the window. After it, `pnpm --filter server cli seed-pack apply
-   jeyarama` is safe to run (idempotent). The roster sync stays **frozen**
+   <instance-seed-pack>` is safe to run (idempotent). The roster sync stays **frozen**
    until data-warehouse#4336 rebuilds it on the identifier rows; the manual
    procedures below are in force until then.
 
@@ -1016,11 +1039,10 @@ promoted to production (below).
 
 Prod deploys the **`production`** branch, and only with the owner's approval.
 Prod is platform-only: it has no test mode and no StyleHR sign-in method, so
-it skips the re-stamp, and 0102 writes no Jeyarama rows. This is where the
-CDC steps happen, because `jeyarama-cdc-featherbase` mirrors prod. The exact
+it skips the re-stamp, and 0102 writes no instance seed-pack rows. This is where the
+CDC steps happen, because `<cdc-worker>` mirrors prod. The exact
 operator commands for the warehouse side are in **data-warehouse PR #4339**
-(draft, "DO NOT MERGE before…"):
-https://github.com/JeyaramaGroup/data-warehouse/pull/4339.
+(draft, "DO NOT MERGE before…"), in the instance's private warehouse repository.
 
 **What the warehouse receives after the switch.** `person` replaces `user`,
 and **`identifier_system`** is mirrored (design D10). **`person_identifier`
@@ -1033,7 +1055,7 @@ columns, which logical replication does not send**. Warehouse readers use
 1. **Rehearse** the CDC switch against a restored prod snapshot with 0100–0102
    applied (#4339): the worker freezes `access."user"`, baselines
    `access.person`, and reconciles row counts.
-2. **Pause** `jeyarama-cdc-featherbase`. Write down its current schedule
+2. **Pause** `<cdc-worker>`. Write down its current schedule
    first, then set it to `0 5 29 2 *` (it fires only on 29 February), and
    confirm no run is in progress.
 3. **Publication check.** The CDC publication covers `has_role`, which has
