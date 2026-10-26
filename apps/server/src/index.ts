@@ -60,7 +60,7 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { collapseRuns, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { rowTitles, validateRowTitleRequest } from './row-titles'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
@@ -798,7 +798,11 @@ app.get('/api/routine_suggestion', async (c) => {
 // are collapsed into a single row with a count, BEFORE the limit (home
 // cleanup), and rows are titled for the viewer (title_column or a readable
 // stand-in), never shown as a bare internal id.
-const FEED_CANDIDATES_PER_ROW = 20
+//
+// The collapse is gaps-and-islands in SQL over the whole ordered trail: a row
+// starts a run when it differs from the row before it, a running sum numbers
+// the runs, and a page is the first `limit` runs with their full counts. A
+// fixed scan window would cut a long run short and hide what came before it.
 
 /** The viewer's titles for the rows a feed page references, by "table\0id". */
 async function feedRowTitles(user: string, refs: Array<{ table?: string; row_id?: string }>) {
@@ -812,26 +816,35 @@ app.get('/api/activity_feed', async (c) => {
   const user = who(c)
   const scope = c.req.query('scope') === 'team' ? 'team' : 'mine'
   const limit = Math.min(Math.max(Number(c.req.query('limit')) || 30, 1), 100)
-  const candidates = limit * FEED_CANDIDATES_PER_ROW
 
   if (scope === 'mine') {
     const rows = await sql`
-      select kind, ref_key, label, sub_label, path, occurred_at
-      from user_event where created_by = ${user}
-      order by occurred_at desc, row_id desc limit ${candidates}`
+      with marked as (
+        select kind, ref_key, label, sub_label, path, occurred_at, row_id,
+               case when lag(kind) over w = kind and lag(ref_key) over w is not distinct from ref_key
+                    then 0 else 1 end as starts
+        from user_event where created_by = ${user}
+        window w as (order by occurred_at desc, row_id desc)
+      ), runs as (
+        select *, sum(starts) over (order by occurred_at desc, row_id desc rows unbounded preceding) as run
+        from marked
+      )
+      select r.kind, r.ref_key, r.label, r.sub_label, r.path, r.occurred_at, n.count
+      from runs r
+      join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
+      where r.starts = 1
+      order by r.run`
     const me = (await whoLabels([user])).get(user)
     const whoName = me?.name ?? user
-    const items = collapseRuns(
-      rows.map((r) => ({
-        kind: r.kind as string,
-        ref_key: (r.ref_key as string | null) ?? '',
-        label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
-        sub: (r.sub_label as string | null) ?? undefined,
-        path: (r.path as string | null) ?? '',
-        at: new Date(r.occurred_at as string).toISOString(),
-      })),
-      (i) => `${i.kind}\0${i.ref_key}`,
-    ).slice(0, limit)
+    const items = rows.map((r) => ({
+      kind: r.kind as string,
+      ref_key: (r.ref_key as string | null) ?? '',
+      label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
+      sub: (r.sub_label as string | null) ?? undefined,
+      path: (r.path as string | null) ?? '',
+      at: new Date(r.occurred_at as string).toISOString(),
+      count: Number(r.count),
+    }))
     // A row event is keyed `row:<Table>/<id>` and carries the Table as sub.
     const rowRef = (i: (typeof items)[number]) =>
       i.kind === 'row' && i.sub && i.ref_key === `row:${i.sub}/${i.label}` ? { table: i.sub, row_id: i.label } : {}
@@ -859,32 +872,54 @@ app.get('/api/activity_feed', async (c) => {
   const roles = await getRoles(user)
   if (!roles.includes('System Manager'))
     throw new AppError('PermissionError', 'The team feed requires the System Manager role')
-  const versions = await sql`
-    select created_by, ref_table, ref_name, created_at
-    from version order by created_at desc limit ${candidates}`
-  const logins = await sql`
-    select "user", full_name, created_at
-    from activity_log where operation = 'login'
-    order by created_at desc limit ${candidates}`
-  const merged = [
-    ...versions.map((v) => ({
-      who: v.created_by as string,
-      kind: 'change',
-      label: (v.ref_name as string | null) ?? '',
-      sub: (v.ref_table as string | null) ?? undefined,
-      path: v.ref_table && v.ref_name ? `/featherbase/admin/${v.ref_table}/${v.ref_name}` : '',
-      at: new Date(v.created_at as string).toISOString(),
-    })),
-    ...logins.map((l) => ({
-      who: l.user as string,
-      kind: 'login',
-      label: '', // the row already names the person; a sign-in has no object
-      sub: 'signed in',
-      path: '',
-      at: new Date(l.created_at as string).toISOString(),
-    })),
-  ].sort((a, b) => (a.at < b.at ? 1 : -1))
-  const items = collapseRuns(merged, (i) => `${i.who}\0${i.kind}\0${i.sub ?? ''}\0${i.label}`).slice(0, limit)
+  // Changes and sign-ins as one ordered stream; a run is one person doing the
+  // same kind of thing to the same target back to back.
+  const rows = await sql`
+    with stream as (
+      select created_by as who, 'change'::text as kind, ref_table as sub, ref_name as label, created_at as at, row_id::text as id
+      from version
+      union all
+      select "user", 'login', null, null, created_at, row_id::text
+      from activity_log where operation = 'login'
+    ), marked as (
+      select *,
+             case when lag(kind) over w = kind and lag(who) over w is not distinct from who
+                   and lag(sub) over w is not distinct from sub and lag(label) over w is not distinct from label
+                  then 0 else 1 end as starts
+      from stream
+      window w as (order by at desc, id desc)
+    ), runs as (
+      select *, sum(starts) over (order by at desc, id desc rows unbounded preceding) as run
+      from marked
+    )
+    select r.who, r.kind, r.sub, r.label, r.at, n.count
+    from runs r
+    join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
+    where r.starts = 1
+    order by r.run`
+  const items = rows.map((r) => {
+    const sub = (r.sub as string | null) ?? undefined
+    const label = (r.label as string | null) ?? ''
+    return r.kind === 'login'
+      ? {
+          who: r.who as string,
+          kind: 'login',
+          label: '', // the row already names the person; a sign-in has no object
+          sub: 'signed in',
+          path: '',
+          at: new Date(r.at as string).toISOString(),
+          count: Number(r.count),
+        }
+      : {
+          who: r.who as string,
+          kind: 'change',
+          label,
+          sub,
+          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          at: new Date(r.at as string).toISOString(),
+          count: Number(r.count),
+        }
+  })
   const names = await whoLabels(items.map((i) => i.who))
   const titleOf = await feedRowTitles(user, items.map((i) => (i.kind === 'change' ? { table: i.sub, row_id: i.label } : {})))
   return c.json({

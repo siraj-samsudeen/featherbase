@@ -29,8 +29,13 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
       navigate({ to: '/featherbase/login' })
       return
     }
+    // StrictMode runs this effect twice against the one memoised redemption.
+    // Only the effect still mounted finishes the sign-in, so the saved deep
+    // link is taken once and no stale handler then overrides it.
+    let live = true
     redeemOnce(code)
       .then(({ token, user, landing }) => {
+        if (!live) return
         const withLanding = landing ? { ...user, landing } : user
         setSession(token, withLanding)
         // A deep link the person was headed to before Google (see Login).
@@ -38,7 +43,12 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
         if (returnTo) openReturnPath(returnTo, (path) => router.history.push(path))
         else navigate({ to: landingPath(withLanding) })
       })
-      .catch(() => navigate({ to: '/featherbase/login' }))
+      .catch(() => {
+        if (live) navigate({ to: '/featherbase/login' })
+      })
+    return () => {
+      live = false
+    }
   }, [code, navigate, router])
 
   return (
