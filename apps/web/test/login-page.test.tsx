@@ -185,6 +185,9 @@ describe('the "We couldn\'t sign you in" panel (#474)', () => {
     await configureDelegated()
     await renderApp('/featherbase/login?error=not_provisioned', anonymous)
     const other = await screen.findByTestId('refused-other-ways')
+    // The link renders before /api/brand answers; the StyleHR button in the
+    // panel shows that it has, so the methods it reveals are known.
+    await screen.findByTestId('refused-delegated')
     expect(other).toHaveTextContent('Other ways to sign in')
     expect(other.className).not.toContain('bg-action')
     await userEvent.click(other)
