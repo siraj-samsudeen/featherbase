@@ -20,7 +20,6 @@ import {
 import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
-import { useSettings } from '../lib/settings'
 import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
@@ -110,12 +109,8 @@ function AdminShell() {
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
   const { set: setTheme } = useThemeChoice()
-  // SET-004: the instance brand (System Settings → app_name) names the
-  // browser tab — "Frappe Clone" is only the default.
-  const { app_name } = useSettings()
-  useEffect(() => {
-    document.title = app_name
-  }, [app_name])
+  // #501 item 1: the browser tab says "Featherbase Admin", as the bar does;
+  // TopBar sets it from the bar's name.
   const [search, setSearch] = useState('')
 
   // Recent actions (#101 Phase 1): every admin navigation is remembered in a
@@ -551,7 +546,7 @@ function AdminShell() {
         home="admin"
         left={
           <>
-            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
+            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={FEATHERBASE_ADMIN_DESTINATION.label}className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
               <Logo className="h-7 w-7" />
             </Link>
             <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
