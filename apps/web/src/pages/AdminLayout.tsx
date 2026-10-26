@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_HOME_DESTINATION } from 'shared'
-import { ApiError, SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, listResource, signOut } from '../lib/api'
+import { FEATHERBASE_ADMIN_DESTINATION } from 'shared'
+import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
   ago,
   connectEventSink,
-  flushPendingEvents,
   frequentActions,
   mergeServerEntries,
   displayEntry,
@@ -22,19 +21,19 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
-import { THEMES, THEME_LABEL, useTheme } from '../lib/theme'
-import { useI18n } from '../lib/i18n'
+import { ThemeChoiceProvider, useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
+import { ADMIN_NAME, PHONE_QUERY, TopBar } from '../components/TopBar'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
 import { metaQuery } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
-import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
+import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
-import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
-import { Bell, Clock, Compass, Database, History, Key, LogIn, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
+import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, useMediaQuery } from '../components/ui'
+import { Bell, Clock, Compass, Database, History, Key, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -72,21 +71,35 @@ connectEventSink({
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
 export function AdminLayout() {
+  // #489: the signed-in person's theme choice outlives every toggle on the page.
+  return (
+    <ThemeChoiceProvider>
+      <AdminLayoutForKind />
+    </ThemeChoiceProvider>
+  )
+}
+
+function AdminLayoutForKind() {
   const kind = useShellKind()
-  const pathname = useRouterState({ select: (s) => s.location.pathname })
-  if (kind === 'loading') return <Waiting label="Checking your access" />
-  if (kind === 'failed')
+  // #489 item 10: while whoami loads, the bar's frame and name are drawn and
+  // its right side stays empty — no flash of the wrong items.
+  if (kind === 'loading' || kind === 'failed')
     return (
-      <Waiting>
-        We could not check what you have access to. <button type="button" className="underline" onClick={() => window.location.reload()}>Try again</button>
-      </Waiting>
+      <div className="flex min-h-screen flex-col bg-canvas">
+        <TopBar home="admin" />
+        {kind === 'loading' ? (
+          <Waiting label="Checking your access" />
+        ) : (
+          <Waiting>
+            We could not check what you have access to. <button type="button" className="underline" onClick={() => window.location.reload()}>Try again</button>
+          </Waiting>
+        )}
+      </div>
     )
   if (kind === 'no-access') return <NoAccessPage />
-  if (kind === 'report-only') {
-    // The one Admin page a report reader keeps is their own sign-in methods.
-    if (pathname.replace(/\/$/, '') !== SIGN_IN_METHODS_PATH) return <Navigate to={REPORT_PATH} replace />
-    return <ReportOnlyShell />
-  }
+  // A report reader has no Admin page left: their sign-in methods are an
+  // account page now (#489), so every Admin address sends them to the report.
+  if (kind === 'report-only') return <Navigate to={REPORT_PATH} replace />
   return <AdminShell />
 }
 
@@ -95,11 +108,10 @@ function AdminShell() {
   const router = useRouter()
   const queryClient = useQueryClient()
   const user = getSessionUser()
-  const { theme, set: setTheme } = useTheme()
-  // No language picker until a translation ships (#380); i18n stays wired.
-  const { t } = useI18n()
+  // The command bar's theme commands; the bar's own toggle is in TopBar.
+  const { set: setTheme } = useThemeChoice()
   // SET-004: the instance brand (System Settings → app_name) names the
-  // navbar and the browser tab — "Frappe Clone" is only the default.
+  // browser tab — "Frappe Clone" is only the default.
   const { app_name } = useSettings()
   useEffect(() => {
     document.title = app_name
@@ -156,29 +168,9 @@ function AdminShell() {
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isMobileSidebar = useMediaQuery(MOBILE_SIDEBAR_QUERY)
-  // A phone's header has no room for "Featherbase Home" (141px of text in
-  // 119px at 375px wide), so there the app-name prefix is dropped.
+  // #489: on a phone the command bar takes its own row under the bar, so Tab
+  // still follows what the eye reads: the bar's row first, then the search.
   const isPhone = useMediaQuery(PHONE_QUERY)
-
-  // #72: the avatar opens an account menu (Change password, Log out).
-  const [accountOpen, setAccountOpen] = useState(false)
-  const [pwModalOpen, setPwModalOpen] = useState(false)
-  const accountRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!accountOpen) return
-    function onDown(e: MouseEvent) {
-      if (accountRef.current && !accountRef.current.contains(e.target as Node)) setAccountOpen(false)
-    }
-    function onEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') setAccountOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onEsc)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onEsc)
-    }
-  }, [accountOpen])
 
   // RT-003: unread notification count, live-updated when a realtime
   // 'notification' event arrives for this user.
@@ -275,30 +267,6 @@ function AdminShell() {
     queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
   })
 
-  async function logout() {
-    // Drain the pending event batch FIRST, while the departing user's token
-    // and cookie still exist — afterwards the queue's owner check would
-    // discard it, and it must never ride the next account's session
-    // (PR #104 review).
-    flushPendingEvents()
-    // Invalidate the sid cookie BEFORE dropping local state: while it lives,
-    // any token-less request fired in the logout gap re-authenticates as the
-    // departing user and re-poisons the cache for the next account in this
-    // tab (#101 review). #411: if the server could not end the session, say
-    // so and stay signed in rather than pretend it ended.
-    if (!(await signOut())) {
-      window.alert(SIGN_OUT_INCOMPLETE)
-      return
-    }
-    clearSession()
-    // Leave the admin screen BEFORE dropping the cache: clearing while the
-    // layout's queries are still mounted makes every observer refetch
-    // token-less — 401s that api.ts answers with a hard redirect. Once
-    // /login has rendered there are no observers left, and the clear (PR #92
-    // review) empties the cache for whoever signs in next.
-    await navigate({ to: '/featherbase/login' })
-    queryClient.clear()
-  }
 
   // UI-014: row hits from the server, debounced.
   const [debounced, setDebounced] = useState('')
@@ -382,14 +350,6 @@ function AdminShell() {
     navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
-  // person-rename: a person's id is opaque (`psn_…`); never draw initials from it.
-  const initials = (user?.full_name || user?.email || user?.row_id || '?')
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase())
-    .join('')
-
   // User tables surface before system tables in suggestions (stable sort
   // keeps the alphabetical order within each group).
   const suggestions =
@@ -415,43 +375,18 @@ function AdminShell() {
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
 
-  return (
-    <PeekProvider>
-    <div className="flex h-full flex-col">
-      <PreviewBanner />
-      {/* Navbar */}
-      {/* md+: the left zone is exactly the sidebar's width (w-60) with the
-          sidebar's content padding, so the selector lines up with the column
-          below; the command bar then fills what is left up to the bell. */}
-      <header className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-surface px-2 py-1 sm:flex-nowrap sm:gap-4 sm:px-4 md:pl-0" data-testid="admin-navbar">
-        <div className="order-1 flex min-w-0 flex-1 items-center gap-1 sm:order-none sm:flex-none md:w-60 md:shrink-0 md:px-3" data-testid="navbar-left-zone">
-          <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
-            <Logo className="h-7 w-7" />
-          </Link>
-          <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
-          <Select
-            id="admin-app-switcher"
-            aria-label="Switch application"
-            value={FEATHERBASE_HOME_DESTINATION.href}
-            onChange={(event) => { window.location.assign(event.target.value) }}
-            wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
-            className="truncate pl-2.5 pr-8 font-medium max-sm:min-h-11"
-          >
-            <option value={FEATHERBASE_HOME_DESTINATION.href}>{isPhone ? shortHomeLabel(FEATHERBASE_HOME_DESTINATION.label) : FEATHERBASE_HOME_DESTINATION.label}</option>
-            {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
-          </Select>
-        </div>
-        <button
-          onClick={() => setSidebarOpen((o) => !o)}
-          data-testid="sidebar-toggle"
-          aria-label="Toggle menu"
-          aria-expanded={sidebarOpen}
-          className={iconButtonClasses('order-3 sm:order-none md:hidden')}
+  // The command bar: inline in the top bar from sm up, its own row on a phone.
+  const commandBar = (
+        <form
+          onSubmit={runSearch}
+          // #489 item 11: the recents close only when focus leaves the whole
+          // command bar, so Tab from the input reaches them (visual order).
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setBarFocused(false)
+          }}
+          className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl"
+          data-testid="awesomebar"
         >
-          <Menu aria-hidden size={20} />
-        </button>
-
-        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:mx-auto sm:max-w-4xl" data-testid="awesomebar">
           <input
             ref={searchRef}
             value={search}
@@ -460,7 +395,6 @@ function AdminShell() {
               setBarFocused(true)
               setRecentSel(0)
             }}
-            onBlur={() => setBarFocused(false)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.currentTarget.blur()
@@ -603,8 +537,41 @@ function AdminShell() {
             </div>
           )}
         </form>
+  )
 
-        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:ml-0 sm:gap-2" data-testid="navbar-right-zone">
+  return (
+    <PeekProvider>
+    <div className="flex h-full flex-col">
+      {/* #489: the shared top bar, with the Admin menus inside it: the app
+          switcher in the name's place, the sidebar toggle, the command bar
+          and the notification bell. md+: the left zone is exactly the
+          sidebar's width (w-60, TopBar) so the selector lines up with the
+          column below; the command bar then fills what is left up to the bell. */}
+      <TopBar
+        home="admin"
+        left={
+          <>
+            <Link to={FEATHERBASE_ADMIN_DESTINATION.href} aria-label={FEATHERBASE_ADMIN_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
+              <Logo className="h-7 w-7" />
+            </Link>
+            <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
+            {/* The switcher's current entry is the bar's name, "Featherbase Admin"
+                (#489 item 2); on a phone it is cut with an ellipsis (item 9). */}
+            <Select
+              id="admin-app-switcher"
+              aria-label="Switch application"
+              value={FEATHERBASE_ADMIN_DESTINATION.href}
+              onChange={(event) => { window.location.assign(event.target.value) }}
+              wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
+              className="truncate pl-2.5 pr-8 font-semibold max-sm:min-h-11"
+              data-testid="top-bar-name"
+            >
+              <option value={FEATHERBASE_ADMIN_DESTINATION.href}>{ADMIN_NAME}</option>
+              {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
+            </Select>
+          </>
+        }
+        beforeRight={
           <div className="relative" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
             <span className="flex size-9 items-center justify-center text-ink-muted" data-testid="notif-bell">
@@ -620,91 +587,20 @@ function AdminShell() {
               </span>
             )}
           </div>
-          {/* #72: the avatar is the account menu — theme, password, sign-in methods, log out. */}
-          <div className="relative" ref={accountRef}>
-            <button
-              onClick={() => setAccountOpen((o) => !o)}
-              data-testid="session-user"
-              title={user?.full_name || user?.email || user?.row_id}
-              aria-haspopup="menu"
-              aria-expanded={accountOpen}
-              className={iconButtonClasses('rounded-full hover:bg-transparent')}
-            >
-              <span aria-hidden="true" className="flex size-8 items-center justify-center rounded-full bg-action text-xs font-semibold text-action-ink">
-                {initials}
-              </span>
-              <span className="sr-only">{user?.full_name || user?.email || user?.row_id}</span>
-            </button>
-            {accountOpen && (
-              <div
-                className={cardClasses('absolute right-0 top-full z-30 mt-1 w-64 overflow-hidden py-1')}
-                data-testid="account-menu"
-                role="menu"
-              >
-                <div className="border-b border-border px-3 py-2">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {user?.full_name || user?.row_id}
-                  </p>
-                  {user?.email && (
-                    <p className="truncate text-xs text-ink-subtle">{user.email}</p>
-                  )}
-                </div>
-                {/* #380: one theme choice — light, dark, or follow the device. */}
-                <div className="border-b border-border px-3 py-2" role="group" aria-labelledby="account-theme-label">
-                  <p id="account-theme-label" className={labelClasses()}>{t('Theme')}</p>
-                  <div className="grid grid-cols-3 gap-1" data-testid="theme-choice">
-                    {THEMES.map((choice) => (
-                      <button
-                        key={choice}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={theme === choice}
-                        onClick={() => setTheme(choice)}
-                        data-testid={`theme-${choice}`}
-                        className={buttonClasses({
-                          variant: theme === choice ? 'primary' : 'secondary',
-                          className: 'px-1 text-xs',
-                        })}
-                      >
-                        {t(THEME_LABEL[choice])}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setAccountOpen(false)
-                    setPwModalOpen(true)
-                  }}
-                  data-testid="account-change-password"
-                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
-                >
-                  {t('Change password')}
-                </button>
-                <Link
-                  role="menuitem"
-                  to="/featherbase/admin/sign-in-methods"
-                  onClick={() => setAccountOpen(false)}
-                  data-testid="account-sign-in-methods"
-                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
-                >
-                  {t('Sign-in methods')}
-                </Link>
-                <button
-                  role="menuitem"
-                  onClick={logout}
-                  data-testid="logout"
-                  className="flex min-h-control w-full items-center px-3 text-left text-sm text-ink hover:bg-action-tint"
-                >
-                  {t('Log out')}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        {pwModalOpen && <ChangePasswordModal onClose={() => setPwModalOpen(false)} />}
-      </header>
+        }
+        below={isPhone && <div className="shrink-0 border-b border-border bg-surface px-2 pb-1 pt-1" data-testid="awesomebar-row">{commandBar}</div>}
+      >
+        <button
+          onClick={() => setSidebarOpen((o) => !o)}
+          data-testid="sidebar-toggle"
+          aria-label="Toggle menu"
+          aria-expanded={sidebarOpen}
+          className={iconButtonClasses('md:hidden')}
+        >
+          <Menu aria-hidden size={20} />
+        </button>
+        {!isPhone && commandBar}
+      </TopBar>
 
       <div className="relative flex min-h-0 flex-1">
         {/* UI-025: on mobile, a backdrop closes the drawer. */}
@@ -819,7 +715,6 @@ function AdminShell() {
               // #131: automation credentials are self-service (the endpoint is
               // owner-scoped), so the link shows for everyone in the Admin.
               { to: '/featherbase/admin/access-tokens', label: 'Access tokens', icon: Key, testid: 'access-tokens-link' },
-              { to: '/featherbase/admin/sign-in-methods', label: 'Sign-in methods', icon: LogIn, testid: 'sign-in-methods-link' },
               ...(canManage
                 ? [{
                     to: '/featherbase/admin/waiting-for-access',
@@ -863,14 +758,6 @@ interface SidebarItem {
 /** A labelled group of sidebar links: a muted sentence-case heading with a
  *  small icon (a heading, not a link), then each link with its grey icon.
  *  Renders nothing — heading included — when no item is visible. */
-/** Below Tailwind's `sm`: the header shares one row with the logo, menu, bell and avatar. */
-export const PHONE_QUERY = '(max-width: 639.98px)'
-
-/** "Featherbase Home" → "Home": the app's own name is the logo beside it. */
-export function shortHomeLabel(label: string): string {
-  return label.replace(/^Featherbase\s+/, '')
-}
-
 /** Recently opened holds at most this many items, Frequent included. */
 export const SIDEBAR_RECENT_CAP = 5
 
@@ -906,10 +793,6 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
   )
 }
 
-// #72: change the session user's own password. Posts { password } to
-// /api/set_password (the endpoint scopes to the caller when no user is given).
-// Mirrors the ResetPassword page's form: card, label and input recipes, a
-// client-side confirm check, then a success state.
 // #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
 // the rail's width, ★-marked when it comes from the Frequent ranking.
 //
@@ -990,114 +873,5 @@ function RecentRow({
       </span>
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{ago(last)}</span>
     </button>
-  )
-}
-
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [done, setDone] = useState(false)
-
-  useEffect(() => {
-    function onEsc(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onEsc)
-    return () => document.removeEventListener('keydown', onEsc)
-  }, [onClose])
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setError(null)
-    const form = new FormData(e.currentTarget)
-    const pw = String(form.get('password') ?? '')
-    const confirm = String(form.get('confirm') ?? '')
-    if (!pw) {
-      setError('Password is required')
-      return
-    }
-    if (pw !== confirm) {
-      setError('Passwords do not match')
-      return
-    }
-    setBusy(true)
-    try {
-      await api.post('/api/set_password', { password: pw })
-      setDone(true)
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change password')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-scrim/40 px-4"
-      data-testid="change-password-modal"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className={cardClasses('w-full max-w-sm p-6')} role="dialog" aria-modal="true" aria-label="Change password">
-        <h2 className="mb-4 text-base font-semibold text-ink">Change password</h2>
-        {done ? (
-          <div className="space-y-4" data-testid="change-password-done">
-            <p className="text-sm text-ink">Your password has been updated.</p>
-            <button
-              type="button"
-              onClick={onClose}
-              className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
-              data-testid="change-password-close"
-            >
-              Done
-            </button>
-          </div>
-        ) : (
-          <form className="space-y-4" data-testid="change-password-form" onSubmit={onSubmit}>
-            <div>
-              <label className={labelClasses()} htmlFor="account-new-password">
-                New password
-              </label>
-              <input
-                id="account-new-password"
-                type="password"
-                name="password"
-                autoComplete="new-password"
-                autoFocus
-                className={inputClasses()}
-                data-testid="change-password-new"
-              />
-            </div>
-            <div>
-              <label className={labelClasses()} htmlFor="account-confirm-password">
-                Confirm password
-              </label>
-              <input
-                id="account-confirm-password"
-                type="password"
-                name="confirm"
-                autoComplete="new-password"
-                className={inputClasses()}
-                data-testid="change-password-confirm"
-              />
-            </div>
-            {error && (
-              <p className="text-sm text-negative" data-testid="change-password-error">
-                {error}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} className={buttonClasses()} data-testid="change-password-cancel">
-                Cancel
-              </button>
-              <button type="submit" disabled={busy} className={buttonClasses({ variant: 'primary' })} data-testid="change-password-submit">
-                {busy ? 'Saving…' : 'Change password'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
   )
 }

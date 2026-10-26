@@ -35,7 +35,7 @@ test('a person adds their own phone and sees it is not yet verified', async ({ a
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
   const me = await createUser({ email: 'own.ids@example.com', roles: [VIEWER_ROLE] })
   // Their own page: Sign-in methods (account menu), not the Admin Person form.
-  await renderApp('/featherbase/admin/sign-in-methods', me)
+  await renderApp('/featherbase/account/sign-in-methods', me)
   const panel = await screen.findByTestId('person-identifiers')
   const form = await within(panel).findByTestId('add-identifier-form')
   await userEvent.selectOptions(within(form).getByLabelText('Identifier'), 'phone')

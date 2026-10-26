@@ -65,7 +65,10 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands on the no-access pa
   await session.step('signed in as the new user, told they have no access yet', async ({ page }) => {
     await page.waitForURL(/\/admin/)
     await expect(page.getByTestId('no-access')).toBeVisible()
+    // #489: signing out is in the top bar's Account menu.
+    await page.getByTestId('session-user').click()
     await expect(page.getByTestId('logout')).toBeVisible()
+    await page.keyboard.press('Escape')
   })
 
   // #150: the landing carried a one-time handoff code, never the session

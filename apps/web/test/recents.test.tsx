@@ -125,11 +125,11 @@ describe('actionForLocation', () => {
   })
 
   it('#440: a static admin page is remembered as a page under its title', () => {
-    expect(actionForLocation('/featherbase/admin/sign-in-methods', {})).toMatchObject({
+    expect(actionForLocation('/featherbase/admin/access-tokens', {})).toMatchObject({
       kind: 'page',
-      key: 'page:sign-in-methods',
-      label: 'Sign-in methods',
-      path: '/featherbase/admin/sign-in-methods',
+      key: 'page:access-tokens',
+      label: 'Access tokens',
+      path: '/featherbase/admin/access-tokens',
     })
   })
 

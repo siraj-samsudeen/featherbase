@@ -81,6 +81,7 @@ test('signing out on one address ends only that address’s session', async ({ s
     await expect(page).toHaveURL(`${DASH}/featherbase/sales-target`, { timeout: 15_000 })
   })
   await session.step('sign out on the app address', async () => {
+    await page.getByTestId('session-user').click()
     await page.getByTestId('logout').click()
     await expect(page).toHaveURL(new RegExp(`^${DASH}/featherbase/login`))
   })

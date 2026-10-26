@@ -117,15 +117,18 @@ describe('on an address that opens an app', () => {
   })
 
   test('an Admin page redirects to the app root', async ({ api }) => {
-    for (const page of ['/featherbase/admin/table/Person', '/featherbase/admin', '/featherbase/admin/sign-in-methods-other', '/featherbase/admin/waiting-for-access']) {
+    // #489 item 13: Sign-in methods left the Admin for the account pages, so
+    // its old Admin path is an Admin page like any other here.
+    for (const page of ['/featherbase/admin/table/Person', '/featherbase/admin', '/featherbase/admin/sign-in-methods', '/featherbase/admin/sign-in-methods-other', '/featherbase/admin/waiting-for-access']) {
       const res = await get(api, `${DASH}${page}`)
       expect([page, res.status, res.headers.get('location')]).toEqual([page, 302, ROOT])
     }
   })
 
-  // Codex round 2: until A2 moves it (#489 item 13), the report links here.
+  // Codex round 2, then #489 item 13: the Account menu and the Google link
+  // flow's return lead to the account page, which every address serves.
   test('the Sign-in methods page is served', async ({ api }) => {
-    for (const page of ['/featherbase/admin/sign-in-methods', '/featherbase/admin/sign-in-methods?link=linked'])
+    for (const page of ['/featherbase/account/sign-in-methods', '/featherbase/account/sign-in-methods?link=linked'])
       expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
   })
 

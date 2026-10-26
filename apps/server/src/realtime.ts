@@ -195,7 +195,7 @@ export function closeSessionSockets(sessionId: string): void {
 export async function recheckSessionSockets(): Promise<void> {
   const open = [...clients].filter((c) => c.user.sign_in?.session_id)
   const sessions = new Map(open.map((c) => [c.user.sign_in!.session_id, {
-    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.issued_at ?? 0, expiresAt: c.user.sign_in!.expires_at,
+    jti: c.user.sign_in!.session_id, person: c.user.row_id, issuedAt: c.user.sign_in!.authenticated_at ?? c.user.sign_in!.issued_at ?? 0, expiresAt: c.user.sign_in!.expires_at,
   }]))
   const ended = await endedSessionIds([...sessions.values()])
   for (const client of open) if (ended.has(client.user.sign_in!.session_id)) closeSignedOut(client)

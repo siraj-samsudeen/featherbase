@@ -139,9 +139,9 @@ first `x-forwarded-proto` hop.
 
 **On an address that opens an app**, `/` and every other Featherbase page or
 app root redirect to the app's root. Sign-in, password reset, the OAuth
-callback, `/privacy`, `/api/*` and the runtime shell's assets are served, and,
-until A2 moves it out of the Admin (#489), Sign-in methods
-(`/featherbase/admin/sign-in-methods`). An
+callback, `/privacy`, `/api/*`, the runtime shell's assets and the person's
+own account pages (`/featherbase/account/*`, where Sign-in methods lives) are
+served. An
 app that is not installed, or disabled, shows "Application unavailable". Until
 Feather Dash is an installed app, an address that opens `feather_dash` treats
 the sales target report (`/featherbase/sales-target`) as its root, and

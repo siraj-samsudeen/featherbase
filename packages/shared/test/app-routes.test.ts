@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
+import { APP_ROOT_PATTERN, FEATHERBASE_ADMIN_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
 
-test('the canonical Featherbase Home destination has its product label and path', () => {
-  expect(FEATHERBASE_HOME_DESTINATION).toEqual({
-    label: 'Featherbase Home',
+test('the canonical Featherbase Admin destination has its product label and path', () => {
+  expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
+    label: 'Featherbase Admin',
     href: '/featherbase/admin',
   })
 })
@@ -38,6 +38,6 @@ import { ADMIN_STATIC_PAGES, adminPageTitle } from '../src/index'
 test('every static admin page has a unique slug and a title', () => {
   const slugs = ADMIN_STATIC_PAGES.map((p) => p.slug)
   expect(new Set(slugs).size).toBe(slugs.length)
-  expect(adminPageTitle('sign-in-methods')).toBe('Sign-in methods')
+  expect(adminPageTitle('access-tokens')).toBe('Access tokens')
   expect(adminPageTitle('nope')).toBeUndefined()
 })

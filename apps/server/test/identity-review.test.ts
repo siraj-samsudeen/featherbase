@@ -270,11 +270,11 @@ describe('third review round', () => {
     // A code the provider will not exchange.
     const bad = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: cookies }, redirect: 'manual' })
     expect(bad.status).toBe(302)
-    expect(bad.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=google_failed')
+    expect(bad.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=google_failed')
     // A link callback that lost its state cookie (another browser, expired).
     const lost = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
     expect(lost.status).toBe(302)
-    expect(lost.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=expired')
+    expect(lost.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=expired')
   })
 })
 
