@@ -34,6 +34,7 @@ import { SignInMethods } from './pages/SignInMethods'
 import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
+import { InstanceHealth } from './pages/InstanceHealth'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -546,6 +547,15 @@ const waitingForAccessRoute = createRoute({
   ),
 })
 
+// #465 D8: instance health (System Manager only).
+const instanceHealthRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'instance-health',
+  component: () => (
+    <ManageOnly><InstanceHealth /></ManageOnly>
+  ),
+})
+
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
 // shortcuts (static segment).
 const homePageRoute = createRoute({
@@ -771,5 +781,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, tableRoute, docRoute]),
 ])

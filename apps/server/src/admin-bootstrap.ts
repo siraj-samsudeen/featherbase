@@ -1,6 +1,6 @@
 import { environment } from './config'
 import { sql } from './db'
-import { hashPassword, verifyPassword } from './auth'
+import { hashPassword } from './auth'
 import { readVariable } from './env'
 
 // Security supersession of migration 0006 (#130). Only explicit local
@@ -22,11 +22,10 @@ export async function bootstrapAdministrator(env: string = environment) {
       where row_id = 'Administrator' and password_hash is null`
 }
 
+// The default-password warning is now the "Administrator default password"
+// health check (instance-health.ts, #465 D8), printed by the release step.
 export async function diagnoseAdminBootstrap() {
   if (['development', 'test'].includes(environment)) return
-  const [admin] = await sql`select password_hash from person where row_id = 'Administrator'`
-  if (admin?.password_hash && verifyPassword('admin', admin.password_hash))
-    console.warn('SECURITY: Administrator known default password remains active. Rotate it explicitly through the password UI before exposing this deployment. ADMIN_PASSWORD and cli seed never overwrite an existing hash. See docs/DEPLOY.md: First admin.')
   const [ready] = await sql`select 1 from person u
     where u.enabled and u.password_hash is not null
       and (u.row_id = 'Administrator' or exists (

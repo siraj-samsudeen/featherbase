@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, adminPageNeedsManage } from 'shared'
 import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -32,8 +32,9 @@ import { metaQuery } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
+import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, useMediaQuery } from '../components/ui'
-import { Bell, Clock, Compass, Database, History, Key, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
+import { Bell, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -138,6 +139,9 @@ function AdminShell() {
     // A list or row names a Table; it is remembered only once that Table's
     // metadata has loaded. A path that is not a Table (`/admin/people`) 404s
     // and is never offered back.
+    // The same rule for a page only a System Manager can open: anyone else is
+    // sent home, so the page is never offered back to them (#476).
+    if (action.kind === 'page' && adminPageNeedsManage(action.key.slice('page:'.length)) && !canManage) return
     const table = action.kind === 'list' ? action.label : action.kind === 'row' ? action.sub : undefined
     if (!table) {
       recordAction(user.row_id, action)
@@ -542,6 +546,9 @@ function AdminShell() {
   return (
     <PeekProvider>
     <div className="flex h-full flex-col">
+      {/* #465 D8: System Managers only, while a health check fails; above the
+          top bar, beside the preview banner. */}
+      <HealthBanner enabled={canManage} />
       {/* #489: the shared top bar, with the Admin menus inside it: the app
           switcher in the name's place, the sidebar toggle, the command bar
           and the notification bell. md+: the left zone is exactly the
@@ -731,6 +738,12 @@ function AdminShell() {
                   }]
                 : []),
             ]}
+          />
+          <SidebarGroup
+            heading="This instance"
+            icon={ListChecks}
+            testid="sidebar-group-instance"
+            items={canManage ? [{ to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' }] : []}
           />
         </aside>
 

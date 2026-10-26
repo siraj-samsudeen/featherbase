@@ -22,6 +22,11 @@ export interface ManagedPath {
   field: string
 }
 
+/** A locked field and the value the apply left in it (#465 D8). */
+export interface ManagedValue extends ManagedPath {
+  value: unknown
+}
+
 export interface LastApply {
   applied_at: Date
   applied_by: string
@@ -29,6 +34,8 @@ export interface LastApply {
   revision: string | null
   run: string | null
   managed_paths: ManagedPath[]
+  /** Null on an apply recorded before the values were kept (0123). */
+  managed_values: ManagedValue[] | null
 }
 
 const LOCKABLE: ReadonlySet<string> = new Set(INSTANCE_SETTINGS_TABLES)
@@ -48,14 +55,17 @@ export async function lastApply(db: typeof sql = sql): Promise<LastApply | null>
     storeExists = true
   }
   const [row] = await db`
-    select applied_at, applied_by, environment, revision, run, managed_paths from instance_settings_apply`
-  return row ? (row as unknown as LastApply) : null
+    select * from instance_settings_apply`
+  if (!row) return null
+  const apply = row as unknown as LastApply
+  return { ...apply, managed_values: apply.managed_values ?? null }
 }
 
 /** Record a successful apply, inside its transaction: it replaces the last
  *  one, so a field the file stops naming is editable again. */
 export async function recordApply(db: typeof sql, apply: Omit<LastApply, 'applied_at'>): Promise<void> {
-  const row = { ...apply, managed_paths: db.json(apply.managed_paths as unknown as Parameters<typeof db.json>[0]) }
+  const json = (v: unknown) => db.json(v as Parameters<typeof db.json>[0])
+  const row = { ...apply, managed_paths: json(apply.managed_paths), managed_values: apply.managed_values === null ? null : json(apply.managed_values) }
   await db`delete from instance_settings_apply`
   await db`insert into instance_settings_apply ${db(row as unknown as Record<string, never>)}`
 }

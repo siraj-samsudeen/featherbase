@@ -31,13 +31,21 @@ export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
 // for every reader: the router, the page headings, the recent-actions
 // recorder and the server's activity feed (#440). `slug` is the first path
 // segment; `title` is what a person sees.
-export const ADMIN_STATIC_PAGES = [
-  { slug: 'imports', title: 'Imports' },
+// `manage`: only a System Manager can open the page; anyone else is sent to
+// the Admin home, so their visit is never remembered as a recent (#476 rule).
+export const ADMIN_STATIC_PAGES: readonly { slug: string; title: string; manage?: true }[] = [
+  { slug: 'imports', title: 'Imports', manage: true },
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
-  { slug: 'waiting-for-access', title: 'Waiting for access' },
-] as const
+  { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
+  { slug: 'instance-health', title: 'Instance health', manage: true },
+]
+
+/** Does this static admin page open only for a System Manager? */
+export function adminPageNeedsManage(slug: string): boolean {
+  return ADMIN_STATIC_PAGES.some((p) => p.slug === slug && p.manage === true)
+}
 
 /** Admin first segments that are real pages but not worth remembering
  *  (home, builders, browsers, prototypes) — never logged as a Table's list. */
