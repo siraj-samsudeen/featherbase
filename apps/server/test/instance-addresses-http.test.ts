@@ -9,6 +9,7 @@ import { sql } from '../src/db'
 import { methodOfKind } from '../src/identities'
 import { alertNewArrival } from '../src/waiting-for-access'
 import { makePerson } from './fixtures'
+import { setPasswordFromShell } from '../src/auth'
 import { preflightRelease } from '../src/release-preflight'
 
 // The mock provider, admitting any address (oauth.test.ts drives it the same way).
@@ -153,15 +154,27 @@ async function personWith(admin: TestClient, name: string, roles: string[]) {
   return { id, usr: `${name}@example.com` }
 }
 
-async function signIn(api: TestClient, origin: string, usr: string): Promise<{ res: Response; body: SignedIn }> {
+const cookieOf = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))?.split(';')[0] ?? ''
+
+/** A password sign-in; `sid` is the cookie this browser now holds on `origin`. */
+async function signIn(api: TestClient, origin: string, usr: string): Promise<{ res: Response; body: SignedIn; sid: string }> {
   const res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr, pwd: 'landing-pw-1' }) })
-  return { res, body: (await res.json()) as SignedIn }
+  return { res, body: (await res.json()) as SignedIn, sid: cookieOf(res, 'sid') }
 }
 
-const handoffCodeOf = (handoff: string | undefined) => new URL(handoff ?? 'http://x/').searchParams.get('code')
+/** One browser following a hand-off: to the target (which sets its nonce
+ *  cookie), back to the source (which needs this browser's sid there), then
+ *  to the target's callback URL. Returns the code and the target's cookie. */
+async function followHandoff(api: TestClient, handoff: string, sourceSid: string): Promise<{ code: string | null; nonce: string; bind: Response }> {
+  const start = await api.fetch(handoff)
+  const nonce = cookieOf(start, 'handoff_nonce')
+  const bind = await api.fetch(start.headers.get('location') ?? '', { headers: { cookie: sourceSid } })
+  const code = bind.status === 302 ? new URL(bind.headers.get('location')!).searchParams.get('code') : null
+  return { code, nonce, bind }
+}
 
-function redeemOn(api: TestClient, origin: string, code: string | null) {
-  return api.fetch(`${origin}/api/oauth/session`, { method: 'POST', body: JSON.stringify({ code }) })
+function redeemOn(api: TestClient, origin: string, code: string | null, cookie = '') {
+  return api.fetch(`${origin}/api/oauth/session`, { method: 'POST', headers: cookie ? { cookie } : {}, body: JSON.stringify({ code }) })
 }
 
 describe('landing after sign-in', () => {
@@ -175,7 +188,7 @@ describe('landing after sign-in', () => {
   test("on an app's address, a person who cannot open it but can use Admin is handed to the admin address", async ({ api, admin }) => {
     const manager = await personWith(admin, 'manager.handed', ['System Manager'])
     const { body } = await signIn(api, DASH, manager.usr)
-    expect(body.handoff).toMatch(new RegExp(`^${ADMIN}/featherbase/oauth-callback\\?code=`))
+    expect(body.handoff).toMatch(new RegExp(`^${ADMIN}/api/handoff/start\\?ticket=`))
   })
 
   test('on the admin address, a person who can use Admin stays', async ({ api, admin }) => {
@@ -188,7 +201,7 @@ describe('landing after sign-in', () => {
   test("on the admin address, a person who can only open an app is handed to the app's address", async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.handed', ['Sales Target Viewer'])
     const { body } = await signIn(api, ADMIN, viewer.usr)
-    expect(body.handoff).toMatch(new RegExp(`^${DASH}/featherbase/oauth-callback\\?code=`))
+    expect(body.handoff).toMatch(new RegExp(`^${DASH}/api/handoff/start\\?ticket=`))
   })
 
   test('on the admin address, a person who can do nothing gets the no-access page', async ({ api, admin }) => {
@@ -212,50 +225,111 @@ describe('landing after sign-in', () => {
     await inviteGoogleRaw(viewer, 'google.viewer@example.com')
     const { callback, cookie } = await mockCallbackUrl(api, ADMIN, 'google.viewer@example.com')
     const back = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
-    const sid = back.headers.getSetCookie().find((c) => c.startsWith('sid='))!.split(';')[0]
+    const sid = cookieOf(back, 'sid')
     const code = new URL(back.headers.get('location')!, ADMIN).searchParams.get('code')
     const redeemed = await api.fetch(`${ADMIN}/api/oauth/session`, { method: 'POST', headers: { cookie: sid }, body: JSON.stringify({ code }) })
-    expect(((await redeemed.json()) as SignedIn).handoff).toMatch(new RegExp(`^${DASH}/featherbase/oauth-callback\\?code=`))
+    const { handoff } = (await redeemed.json()) as SignedIn
+    expect(handoff).toMatch(new RegExp(`^${DASH}/api/handoff/start\\?ticket=`))
+    const followed = await followHandoff(api, handoff!, sid)
+    expect((await redeemOn(api, DASH, followed.code, followed.nonce)).status).toBe(200)
   })
 })
 
-describe('the hand-off code', () => {
-  test('redeemed on its target address, it mints a new session there', async ({ api, admin }) => {
+describe('the hand-off between addresses', () => {
+  test('the target sets a host-only, HttpOnly nonce cookie and sends the browser back to the source', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.round.trip', ['Sales Target Viewer'])
+    const { body } = await signIn(api, ADMIN, viewer.usr)
+    const start = await api.fetch(body.handoff!)
+    expect(start.status).toBe(302)
+    expect(start.headers.get('location')).toMatch(new RegExp(`^${ADMIN}/api/handoff/bind\\?`))
+    const cookie = start.headers.getSetCookie().find((c) => c.startsWith('handoff_nonce='))!
+    expect(cookie).toMatch(/HttpOnly/i)
+    expect(cookie).toMatch(/Secure/i)
+    expect(cookie).not.toMatch(/domain=/i)
+  })
+
+  test('the browser that started it redeems the code on the target and gets a new session there', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.redeems', ['Sales Target Viewer'])
-    const { body: source } = await signIn(api, ADMIN, viewer.usr)
-    const res = await redeemOn(api, DASH, handoffCodeOf(source.handoff))
+    const { body: source, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, source.handoff!, sid)
+    const res = await redeemOn(api, DASH, code, nonce)
     expect(res.status).toBe(200)
     const target = (await res.json()) as SignedIn
     expect(target.user.row_id).toBe(viewer.id)
     expect(target.token).not.toBe(source.token)
     expect(target.landing).toBe(ROOT)
-    expect(res.headers.getSetCookie().find((c) => c.startsWith('sid='))).toContain(target.token)
+    expect(cookieOf(res, 'sid')).toContain(target.token)
+  })
+
+  test('a code redeemed by another browser, with no nonce cookie, is refused', async ({ api, admin }) => {
+    const attacker = await personWith(admin, 'attacker.no.nonce', ['Sales Target Viewer'])
+    const { body, sid } = await signIn(api, ADMIN, attacker.usr)
+    const { code } = await followHandoff(api, body.handoff!, sid)
+    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+  })
+
+  test("a code redeemed by another browser, with that browser's own nonce cookie, is refused", async ({ api, admin }) => {
+    const attacker = await personWith(admin, 'attacker.other.nonce', ['Sales Target Viewer'])
+    const mine = await signIn(api, ADMIN, attacker.usr)
+    const { code } = await followHandoff(api, mine.body.handoff!, mine.sid)
+    const theirs = await signIn(api, ADMIN, attacker.usr)
+    const victimNonce = cookieOf(await api.fetch(theirs.body.handoff!), 'handoff_nonce')
+    expect((await redeemOn(api, DASH, code, victimNonce)).status).toBe(401)
+  })
+
+  test('a hand-off link opened in another browser is refused at the source, which has no session for it', async ({ api, admin }) => {
+    const attacker = await personWith(admin, 'attacker.link', ['Sales Target Viewer'])
+    const { body } = await signIn(api, ADMIN, attacker.usr)
+    const { bind, code } = await followHandoff(api, body.handoff!, '')
+    expect(bind.status).toBe(401)
+    expect(code).toBeNull()
   })
 
   test('a replayed code is refused', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.replays', ['Sales Target Viewer'])
-    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
-    expect((await redeemOn(api, DASH, code)).status).toBe(200)
-    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+    const { body, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, body.handoff!, sid)
+    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(200)
+    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
   })
 
   test('a code redeemed on another host is refused, and spent', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.wrong.host', ['Sales Target Viewer'])
-    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
-    expect((await redeemOn(api, ADMIN, code)).status).toBe(401)
-    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+    const { body, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, body.handoff!, sid)
+    expect((await redeemOn(api, ADMIN, code, nonce)).status).toBe(401)
+    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
   })
 
   test('a code older than one minute is refused', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.late', ['Sales Target Viewer'])
-    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
+    const { body, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, body.handoff!, sid)
     const now = Date.now()
     const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
     try {
-      expect((await redeemOn(api, DASH, code)).status).toBe(401)
+      expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
     } finally {
       clock.mockRestore()
     }
+  })
+
+  test('a code is refused once the source session has signed out', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.source.out', ['Sales Target Viewer'])
+    const { body, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, body.handoff!, sid)
+    await api.fetch(`${ADMIN}/api/logout`, { method: 'POST', headers: { cookie: sid } })
+    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
+  })
+
+  test("a code is refused once an operator's password reset ends the person's sessions", async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.source.reset', ['Sales Target Viewer'])
+    const { body, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, body.handoff!, sid)
+    // The shell reset ends sessions issued up to now; move the cut-off past this one.
+    await setPasswordFromShell(viewer.id, 'reset-by-operator-1')
+    await sql`update person set sessions_ended_at = now() + interval '1 second' where row_id = ${viewer.id}`
+    expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
   })
 })
 
@@ -268,8 +342,9 @@ describe('sessions stay per address', () => {
 
   test('signing out on one address ends only that address’s session', async ({ api, admin }) => {
     const viewer = await personWith(admin, 'viewer.signs.out', ['Sales Target Viewer'])
-    const { body: source } = await signIn(api, ADMIN, viewer.usr)
-    const target = (await (await redeemOn(api, DASH, handoffCodeOf(source.handoff))).json()) as SignedIn
+    const { body: source, sid } = await signIn(api, ADMIN, viewer.usr)
+    const { code, nonce } = await followHandoff(api, source.handoff!, sid)
+    const target = (await (await redeemOn(api, DASH, code, nonce)).json()) as SignedIn
     const out = await api.fetch(`${DASH}/api/logout`, { method: 'POST', headers: { authorization: `Bearer ${target.token}` } })
     expect(out.status).toBe(200)
     const whoami = (token: string, origin: string) => api.fetch(`${origin}/api/whoami`, { headers: { authorization: `Bearer ${token}` } })

@@ -14,7 +14,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
@@ -24,7 +24,7 @@ import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
 import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -197,7 +197,7 @@ function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
 // #488: every sign-in answers with the session plus where to go next — a path
 // on this address, or a hand-off URL to another (landing.ts).
 async function withLanding(c: Context, session: { token: string; user: SessionUser }, opts?: { handOff?: boolean }) {
-  return { ...session, ...(await landingAfterSignIn(session.user, requestHost(c.req.url), opts)) }
+  return { ...session, ...(await landingAfterSignIn(session, requestHost(c.req.url), opts)) }
 }
 
 // The Authorization header wins; an sid cookie is the fallback credential.
@@ -613,17 +613,71 @@ async function googleCallback(c: Context) {
 // this returns is the thing being established. Redeeming burns the code.
 //
 // #488: a code handed over from another address of this instance is redeemed
-// here too, on its target host only. It carries no session: a new one is
-// minted for this address, with its own host-only sid cookie.
+// here too: on its target host only, by the browser holding the nonce cookie
+// that host set (oauth.ts, step 4), and only while the source session is still
+// live. It carries no session: a new one is minted for this address, with the
+// source session's sign-in facts and its own host-only sid cookie.
 app.post('/api/oauth/session', async (c) => {
   const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
   const host = requestHost(c.req.url)
-  const redeemed = redeemHandoffCode(code, getCookie(c, 'sid'), host)
+  const redeemed = redeemHandoffCode(code, getCookie(c, 'sid'), host, getCookie(c, HANDOFF_NONCE_COOKIE))
   if (redeemed.kind === 'session') return c.json(await withLanding(c, redeemed.session))
-  const issued = await issueSession(redeemed.handoff.person, redeemed.handoff.opts)
+  deleteCookie(c, HANDOFF_NONCE_COOKIE, { path: '/' })
+  // Signed out, expired, or ended by a password reset since: no hand-off.
+  const source = await resolveToken(`Bearer ${redeemed.sourceToken}`)
+  const issued = await issueSession(source.row_id, sessionOptionsOf(source))
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session, { handOff: false }))
+})
+
+// #488: the two legs of the hand-off round trip (oauth.ts). Public: the
+// browser carries a ticket, and the source leg also needs its sid cookie.
+const HANDOFF_NONCE_COOKIE = 'handoff_nonce'
+
+/** How a handed-over session was opened: the source session's own facts. */
+function sessionOptionsOf(user: SessionUser): SessionOptions {
+  const claims = user.sign_in
+  return {
+    ...(claims?.method ? { method: claims.method } : {}),
+    ...(claims?.identity ? { identity: claims.identity } : {}),
+    ...(claims?.test_mode ? { testMode: true } : {}),
+    ...(claims?.preview ? { preview: true } : {}),
+  }
+}
+
+/** A listed address by host; the hand-off only ever runs between listed ones. */
+function listedAddress(host: string) {
+  const entry = matchAddress(config.instanceAddresses, host)
+  if (!entry) throw new AppError('AuthenticationError', 'Invalid or expired sign-in code')
+  return entry
+}
+
+// Step 2, on the target: this browser gets the nonce cookie, and goes back to
+// the source with only its hash.
+app.get('/api/handoff/start', publicLimit('OAUTH_LOGIN'), (c) => {
+  const id = c.req.query('ticket')
+  const ticket = ticketForTarget(id, requestHost(c.req.url))
+  const source = listedAddress(ticket.sourceHost)
+  const nonce = newHandoffNonce()
+  setCookie(c, HANDOFF_NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 120,
+    secure: externalOrigin(c).protocol === 'https:',
+  })
+  const back = new URLSearchParams({ ticket: id ?? '', nonce: nonceHash(nonce) })
+  return c.redirect(`${source.address}/api/handoff/bind?${back}`)
+})
+
+// Step 3, on the source: only the browser holding the ticket's own session
+// gets a code, bound to the nonce the target gave it.
+app.get('/api/handoff/bind', publicLimit('OAUTH_CALLBACK'), async (c) => {
+  const sid = getCookie(c, 'sid')
+  const { code, targetHost } = bindHandoffTicket(c.req.query('ticket'), sid, requestHost(c.req.url), c.req.query('nonce'))
+  await resolveToken(`Bearer ${sid}`) // the source session must still be live
+  return c.redirect(`${listedAddress(targetHost).address}/featherbase/oauth-callback?code=${encodeURIComponent(code)}`)
 })
 
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public

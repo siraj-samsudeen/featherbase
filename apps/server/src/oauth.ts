@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import type { SessionOptions, SessionUser } from './auth'
+import type { SessionUser } from './auth'
 import { AppError } from './errors'
 import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
 import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
@@ -304,10 +304,24 @@ export async function exchangeCode(
 // being handed over. A code intercepted in flight is worthless elsewhere.
 //
 // #488 adds a second kind: the hand-off to ANOTHER address of this instance.
-// The minting host's sid cookie cannot cross hosts, so that code is bound to
-// the target's host instead, and it carries no session: redeeming it there
-// mints a new one, with the sign-in facts of the session it came from. Never
-// a shared cookie — each address keeps its own sign-in.
+// The source host's sid cookie cannot cross hosts, and a code that only named
+// its target host could be handed to someone else's browser (login CSRF: an
+// attacker signs in, takes their own hand-off URL, sends it to a victim, whose
+// browser ends up signed in as the attacker). So the hand-off is a round trip
+// that binds it to the browser that signed in, with no shared cookie:
+//
+//   1. the sign-in on the source mints a TICKET (source session, source host,
+//      target host) and sends the browser to the target's /api/handoff/start;
+//   2. the target sets its own short-lived, host-only, HttpOnly nonce cookie
+//      and sends the browser back to the source's /api/handoff/bind with the
+//      nonce's hash;
+//   3. the source requires THIS browser's sid cookie to be the ticket's
+//      session, spends the ticket and mints a CODE bound to the target host,
+//      the nonce's hash and the source session, then sends the browser to the
+//      target's /featherbase/oauth-callback;
+//   4. the target redeems the code only with the matching nonce cookie, and
+//      only while the source session is still live (index.ts re-resolves it),
+//      then mints a new session of its own.
 const HANDOFF_TTL_MS = 60_000
 
 interface HandoffSession {
@@ -315,25 +329,49 @@ interface HandoffSession {
   user: SessionUser
 }
 
-/** What an address hand-off carries to its target. */
-export interface AddressHandoff {
-  person: string
-  opts: SessionOptions
-}
-
-type Handoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; handoff: AddressHandoff; host: string }
-export type RedeemedHandoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; handoff: AddressHandoff }
+type Handoff =
+  | { kind: 'session'; session: HandoffSession }
+  | { kind: 'address'; host: string; nonceHash: string; sourceToken: string }
+export type RedeemedHandoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; sourceToken: string }
 
 const handoffs = new Map<string, { entry: Handoff; expires: number }>()
 
-function mint(entry: Handoff): string {
-  const now = Date.now()
+interface Ticket {
+  sourceToken: string
+  sourceHost: string
+  targetHost: string
+}
+const tickets = new Map<string, { ticket: Ticket; expires: number }>()
+
+function sweep<T extends { expires: number }>(map: Map<string, T>, now: number) {
   // Abandoned codes (the user closes the tab mid-redirect) would otherwise
   // accumulate for the process's lifetime.
-  for (const [code, held] of handoffs) if (held.expires <= now) handoffs.delete(code)
+  for (const [key, held] of map) if (held.expires <= now) map.delete(key)
+}
+
+function mint(entry: Handoff): string {
+  const now = Date.now()
+  sweep(handoffs, now)
   const code = randomBytes(32).toString('base64url')
   handoffs.set(code, { entry, expires: now + HANDOFF_TTL_MS })
   return code
+}
+
+function sameSecret(a: string | undefined, b: string): boolean {
+  const x = Buffer.from(a ?? '')
+  const y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+
+/** The hash of a hand-off nonce: what travels in a URL, while the nonce
+ *  itself stays in the target's HttpOnly cookie. */
+export function nonceHash(nonce: string): string {
+  return createHash('sha256').update(nonce).digest('base64url')
+}
+
+/** A fresh nonce for the target's cookie (step 2). */
+export function newHandoffNonce(): string {
+  return randomBytes(32).toString('base64url')
 }
 
 /** A code for the browser that already holds `session`'s sid cookie. */
@@ -341,35 +379,51 @@ export function mintHandoffCode(session: HandoffSession): string {
   return mint({ kind: 'session', session })
 }
 
-/** A code that mints a new session for `user` on the address whose host is
- *  `host`, and nowhere else. The session keeps how the person signed in. */
-export function mintAddressHandoffCode(user: SessionUser, host: string): string {
-  const claims = user.sign_in
-  const opts: SessionOptions = {
-    ...(claims?.method ? { method: claims.method } : {}),
-    ...(claims?.identity ? { identity: claims.identity } : {}),
-    ...(claims?.test_mode ? { testMode: true } : {}),
-    ...(claims?.preview ? { preview: true } : {}),
-  }
-  return mint({ kind: 'address', handoff: { person: user.row_id, opts }, host })
+/** Step 1: a ticket for handing the session `sourceToken`, signed in on
+ *  `sourceHost`, over to `targetHost`. */
+export function mintHandoffTicket(sourceToken: string, sourceHost: string, targetHost: string): string {
+  const now = Date.now()
+  sweep(tickets, now)
+  const id = randomBytes(32).toString('base64url')
+  tickets.set(id, { ticket: { sourceToken, sourceHost, targetHost }, expires: now + HANDOFF_TTL_MS })
+  return id
+}
+
+const invalid = () => new AppError('AuthenticationError', 'Invalid or expired sign-in code')
+
+/** Step 2: the live ticket, when it is for this (target) host. Not spent. */
+export function ticketForTarget(id: string | undefined, host: string): Ticket {
+  const held = id ? tickets.get(id) : undefined
+  if (!held || held.expires <= Date.now() || held.ticket.targetHost !== host) throw invalid()
+  return held.ticket
+}
+
+/** Step 3: on the source host, with this browser's sid cookie, spend the
+ *  ticket and mint the code for its target, bound to the nonce's hash. Any
+ *  refusal spends the ticket too. */
+export function bindHandoffTicket(id: string | undefined, sid: string | undefined, host: string, hash: string | undefined): { code: string; targetHost: string } {
+  const held = id ? tickets.get(id) : undefined
+  if (id) tickets.delete(id)
+  if (!held || held.expires <= Date.now()) throw invalid()
+  const { ticket } = held
+  if (ticket.sourceHost !== host || !hash || !sameSecret(sid, ticket.sourceToken)) throw invalid()
+  return { code: mint({ kind: 'address', host: ticket.targetHost, nonceHash: hash, sourceToken: ticket.sourceToken }), targetHost: ticket.targetHost }
 }
 
 // One code, one use. The entry is deleted whatever the outcome — an expired,
 // wrong-browser or wrong-host attempt burns it too, so nothing is left to
-// retry against.
-export function redeemHandoffCode(code: string | undefined, sid: string | undefined, host: string): RedeemedHandoff {
-  const invalid = () => new AppError('AuthenticationError', 'Invalid or expired sign-in code')
+// retry against. A browser-bound code (#150) needs its sid cookie; an address
+// hand-off needs its host and the target's nonce cookie (`nonce`).
+export function redeemHandoffCode(code: string | undefined, sid: string | undefined, host: string, nonce?: string): RedeemedHandoff {
   if (!code) throw invalid()
   const held = handoffs.get(code)
   handoffs.delete(code)
   if (!held || held.expires <= Date.now()) throw invalid()
   const { entry } = held
   if (entry.kind === 'address') {
-    if (entry.host !== host) throw invalid()
-    return { kind: 'address', handoff: entry.handoff }
+    if (entry.host !== host || !nonce || !sameSecret(nonceHash(nonce), entry.nonceHash)) throw invalid()
+    return { kind: 'address', sourceToken: entry.sourceToken }
   }
-  const a = Buffer.from(sid ?? '')
-  const b = Buffer.from(entry.session.token)
-  if (a.length !== b.length || !timingSafeEqual(a, b)) throw invalid()
+  if (!sameSecret(sid, entry.session.token)) throw invalid()
   return { kind: 'session', session: entry.session }
 }

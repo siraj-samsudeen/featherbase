@@ -8,12 +8,14 @@
 //      that has an address is handed to that address;
 //   4. else, the no-access page (on an app's address: the app's own refusal).
 //
-// "Handed" means a one-time, one-minute code for the target address
-// (oauth.ts mintAddressHandoffCode), redeemed at its /featherbase/oauth-callback.
+// "Handed" means the browser-bound round trip in oauth.ts: a one-minute
+// ticket sends the browser to the target's /api/handoff/start, which sets its
+// nonce cookie and sends it back to the source's /api/handoff/bind, which
+// mints the code redeemed at the target's /featherbase/oauth-callback.
 import type { SessionUser } from './auth'
 import { config } from './config'
 import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from './instance-addresses'
-import { mintAddressHandoffCode } from './oauth'
+import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
 import { appCatalog } from './runtime-packages'
 import { VIEWER_ROLE } from './sales-target'
@@ -43,23 +45,29 @@ export async function canOpenApp(person: string, app: string): Promise<boolean> 
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
-function handTo(user: SessionUser, target: InstanceAddress): Landing {
-  const code = mintAddressHandoffCode(user, target.host)
-  return { handoff: `${target.address}/featherbase/oauth-callback?code=${encodeURIComponent(code)}` }
+function handTo(session: SignedInSession, here: InstanceAddress, target: InstanceAddress): Landing {
+  const ticket = mintHandoffTicket(session.token, here.host, target.host)
+  return { handoff: `${target.address}/api/handoff/start?ticket=${encodeURIComponent(ticket)}` }
 }
 
-/** The landing for `user`, who just signed in on `host`. `handOff: false` is
+/** The session a sign-in just issued on this address. */
+export interface SignedInSession {
+  token: string
+  user: SessionUser
+}
+
+/** The landing for `session`, just signed in on `host`. `handOff: false` is
  *  for a session that was itself just handed over: it stays where it is,
  *  so two addresses can never pass a person back and forth. */
-export async function landingAfterSignIn(user: SessionUser, host: string, { handOff = true } = {}): Promise<Landing> {
+export async function landingAfterSignIn(session: SignedInSession, host: string, { handOff = true } = {}): Promise<Landing> {
   const list = config.instanceAddresses
   const here = matchAddress(list, host)
-  const person = user.row_id
+  const person = session.user.row_id
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
     if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens) }
-    if (handOff && list && (await canUseAdmin(person))) return handTo(user, adminAddress(list))
+    if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
     return { landing: appRoot(here.opens) }
   }
 
@@ -68,7 +76,7 @@ export async function landingAfterSignIn(user: SessionUser, host: string, { hand
   // The Admin address: an app that has an address, in the list's order.
   if (here && list && handOff)
     for (const entry of list)
-      if (entry.opens !== ADMIN && (await canOpenApp(person, entry.opens))) return handTo(user, entry)
+      if (entry.opens !== ADMIN && (await canOpenApp(person, entry.opens))) return handTo(session, here, entry)
 
   // No list (development and test), or a host the list does not name: that
   // host is served as one address holding everything, as before #488, so a
