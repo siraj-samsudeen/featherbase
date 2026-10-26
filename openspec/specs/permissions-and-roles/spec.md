@@ -34,6 +34,20 @@ grant for an action on a table SHALL be refused that action there.
   delete, tries to delete one of its rows
 - **THEN** the deletion is refused
 
+### Requirement: Set a table's grants in one place
+
+A System Manager SHALL be able to see every role against a table's actions in
+one place and change any role's grants there. A change SHALL apply to
+everyone holding that role on their very next request, without them signing
+in again.
+
+#### Scenario: Granting read takes effect at once
+
+- **WHEN** a System Manager gives a role read access to a table, while a
+  person holding that role is signed in
+- **THEN** that person's next attempt to open the table's list succeeds, and
+  taking the grant away refuses the one after
+
 ### Requirement: A grant can be limited to rows someone created
 
 A role's grant on a table SHALL optionally apply only to the rows the
@@ -60,6 +74,13 @@ counted, and SHALL NOT apply to a System Manager.
 - **THEN** they see only that region's customers, and any table with rows
   referencing customers outside that region hides those rows too
 
+#### Scenario: A row that names no customer stays visible
+
+- **WHEN** that user opens a table of orders, some of which name no customer
+  at all
+- **THEN** the orders that name no customer are still listed, alongside the
+  orders for customers in their region
+
 ### Requirement: A single row can be shared beyond its role grants
 
 A specific row SHALL be shareable with a chosen person, giving them reading,
@@ -85,6 +106,25 @@ is silently dropped rather than saved.
   column
 - **THEN** the column is absent from what they see, not shown blank or
   masked
+
+### Requirement: Stored passwords and secrets never leave the server
+
+A stored password, secret key or token fingerprint SHALL never be shown,
+searched, sorted or changed through any list, form or connected data source,
+for anyone, a System Manager included. Asking for one is refused, and a write
+naming one is dropped rather than saved.
+
+#### Scenario: A System Manager opens a person
+
+- **WHEN** a System Manager opens or lists people who have passwords
+- **THEN** no password appears, and asking the list for it is refused
+
+#### Scenario: A connected table with a password column
+
+- **WHEN** a System Manager connects a table from another database that has
+  a password or key column
+- **THEN** that column is left out of the connected table, and asking for it
+  is refused
 
 ### Requirement: A refusal explains itself
 
@@ -162,6 +202,24 @@ their columns. Anyone allowed to read them still can.
 - **WHEN** the user signs in
 - **THEN** the sign-in appears in the activity record, and a System Manager
   can read it there but sees no way to edit or delete it
+
+### Requirement: Exports and prints are recorded
+
+Each time someone exports a table's rows or prints a row, Featherbase SHALL
+record who did it, which table and row, and in what format, alongside the
+platform's other records. Only someone who can read a table can have an
+export of it recorded.
+
+#### Scenario: An export is recorded
+
+- **WHEN** the user exports a list of people as a spreadsheet file
+- **THEN** a System Manager can see afterward that this user exported people,
+  and in which format
+
+#### Scenario: A print is recorded
+
+- **WHEN** the user prints a row as a PDF
+- **THEN** the record names the user, the table, the row and the PDF format
 
 ### Requirement: Only a System Manager changes who can do what
 

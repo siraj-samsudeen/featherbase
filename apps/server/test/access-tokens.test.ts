@@ -277,3 +277,92 @@ describe('#131: service accounts', () => {
     expect(res.status).toBe(200)
   })
 })
+
+describe('A token acts as its owner', () => {
+  test("a token deletes rows when its owner's role may, and is refused where the owner is", async ({
+    admin,
+    api,
+    createUser,
+  }) => {
+    const { createUserWithRole, makeTable } = await import('./fixtures')
+    const dt = await makeTable(admin, { name: 'Token Crate', columns: ['title'] })
+    const owner = await createUserWithRole(admin, createUser, {
+      role: 'Token Crate Keeper',
+      table: 'Token Crate',
+      can_read: true,
+      can_delete: true,
+    })
+    const first = await admin.post<{ row_id: string }>(dt.url, { title: 'one' })
+    const { token } = await admin.post<{ token: string }>('/api/access_tokens', { label: 'crate script', owner: owner.user })
+    const bearer = { authorization: `Bearer ${token}` }
+
+    expect((await api.fetch(dt.rowUrl(first.row_id), { method: 'DELETE', headers: bearer })).status).toBe(200)
+    expect((await admin.fetch(dt.rowUrl(first.row_id))).status).toBe(404)
+    // No wider than the owner: the role cannot create, so neither can the token.
+    expect(
+      (await api.fetch(dt.url, { method: 'POST', headers: bearer, body: JSON.stringify({ title: 'two' }) })).status,
+    ).toBe(403)
+  })
+})
+
+describe('Revoke a token', () => {
+  test('a revoked token stays listed, marked revoked', async ({ admin, api }) => {
+    await makeUser(admin)
+    const jwt = await userJwt(api)
+    const auth = { authorization: `Bearer ${jwt}` }
+    const issued = (await (
+      await api.fetch('/api/access_tokens', { method: 'POST', headers: auth, body: JSON.stringify({ label: 'old script' }) })
+    ).json()) as { id: string }
+    expect((await api.fetch(`/api/access_tokens/${issued.id}`, { method: 'DELETE', headers: auth })).status).toBe(200)
+    const { tokens } = (await (await api.fetch('/api/access_tokens', { headers: auth })).json()) as {
+      tokens: { id: string; label: string; revoked_at: string | null }[]
+    }
+    const listed = tokens.find((t) => t.id === issued.id)
+    expect(listed).toMatchObject({ label: 'old script' })
+    expect(listed?.revoked_at).not.toBeNull()
+  })
+})
+
+describe('An expired token or a disabled owner also stops it', () => {
+  test('disabling a service account stops every one of its tokens, and enabling it again revives them', async ({
+    admin,
+    api,
+  }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-many-tokens' })
+    const tokens = [
+      (await admin.post<{ token: string }>('/api/access_tokens', { label: 'first', owner: account.row_id })).token,
+      (await admin.post<{ token: string }>('/api/access_tokens', { label: 'second', owner: account.row_id })).token,
+    ]
+    const status = async (token: string) =>
+      (await api.fetch('/api/whoami', { headers: { authorization: `Bearer ${token}` } })).status
+    await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })
+    for (const token of tokens) expect(await status(token)).toBe(401)
+    await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: true }) })
+    for (const token of tokens) expect(await status(token)).toBe(200)
+  })
+
+  test('a disabled person cannot be issued a new token', async ({ admin }) => {
+    await makeUser(admin)
+    await sql`update person set enabled = false where row_id = ${USER}`
+    await expect(admin.post('/api/access_tokens', { label: 'for a leaver', owner: USER })).rejects.toMatchObject({
+      status: 417,
+    })
+  })
+})
+
+describe('Changes to a service account are recorded', () => {
+  test('creating, disabling and changing the roles of a service account is recorded in the activity record', async ({
+    admin,
+  }) => {
+    const account = await admin.post<{ row_id: string }>('/api/service_accounts', { label: 'svc-audited' })
+    await admin.fetch(`/api/service_accounts/${account.row_id}`, { method: 'PATCH', body: JSON.stringify({ enabled: false }) })
+    await admin.post(`/api/service_accounts/${account.row_id}/roles`, { roles: ['System Manager'] })
+    const rows = await sql`select "user", operation from activity_log where operation like ${'%' + account.row_id + '%'} order by created_at`
+    expect(rows.map((r) => r.operation)).toEqual([
+      `service_account_created ${account.row_id}`,
+      `service_account_disabled ${account.row_id}`,
+      `service_account_roles ${account.row_id}: System Manager`,
+    ])
+    expect(rows.every((r) => r.user === admin.user)).toBe(true)
+  })
+})

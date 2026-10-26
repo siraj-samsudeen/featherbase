@@ -55,6 +55,39 @@ having to revoke it by hand.
 - **THEN** none of its tokens can authenticate any more, without revoking
   each one individually
 
+#### Scenario: Turning the owner back on revives its tokens
+
+- **WHEN** that service account is enabled again
+- **THEN** each of its tokens that was not revoked or expired works again,
+  with no new token needed
+
+### Requirement: A token never travels in a web address
+
+A token SHALL authenticate only when it is sent alongside the request, the
+standard way for scripts. A token placed in a web address SHALL be refused,
+so it never lands in browser history or server logs.
+
+#### Scenario: A token in a link is refused
+
+- **WHEN** a script puts its token in the address of a private file instead
+  of the header
+- **THEN** the request is refused, while the same token sent the standard way
+  opens the file
+
+### Requirement: The token list shows whether each token still works
+
+Each listed token SHALL show its label, when it was created and last used,
+when it expires, and whether it still works: active, revoked, expired, or
+stopped because its owner is disabled. A token SHALL stay revocable until it
+is revoked, even after it has expired or its owner was disabled.
+
+#### Scenario: A disabled owner's token does not read as active
+
+- **WHEN** a System Manager opens the tokens after disabling a service
+  account that holds an unrevoked token
+- **THEN** that token shows as stopped by its disabled owner, not as active,
+  and can still be revoked
+
 ### Requirement: Service accounts for automation
 
 A System Manager SHALL be able to create a service account: an automation
@@ -83,6 +116,40 @@ issues its tokens on its behalf.
 - **THEN** every service account still has its tokens, its roles and the data
   access and shared rows it had, and its scripts keep working without a new
   token
+
+### Requirement: A service account has a unique short name
+
+A service account SHALL be named with a short lowercase name of letters,
+digits, dashes and underscores, and no two service accounts SHALL share a
+name, whatever its letter case.
+
+#### Scenario: A name already taken
+
+- **WHEN** a System Manager creates a service account named the same as an
+  existing one, in capitals
+- **THEN** it is refused, and the existing account is unchanged
+
+### Requirement: A service account is switched off, not deleted
+
+A service account SHALL be retired by disabling it; it cannot be deleted,
+and its tokens keep working until it is disabled or they are revoked.
+
+#### Scenario: Deleting a service account that holds a token
+
+- **WHEN** a System Manager tries to delete a service account that holds a
+  token
+- **THEN** it is refused, and the token still authenticates
+
+### Requirement: Changes to a service account are recorded
+
+Creating a service account, disabling or enabling it, and changing its roles
+SHALL each be recorded in the activity record with who did it.
+
+#### Scenario: Giving a service account a role
+
+- **WHEN** a System Manager gives a service account the System Manager role
+- **THEN** the activity record shows that System Manager changed that
+  account's roles, and to what
 
 ### Requirement: Who sees which tokens
 
