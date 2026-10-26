@@ -426,11 +426,11 @@ describe('emailed links use the address marked for emails', () => {
     expect(String(mail.body)).toContain(`${DASH}/featherbase/login`)
   })
 
-  test('the waiting-for-access alert links to the emails address', async () => {
+  test('the waiting-for-access alert, an Admin page, links to the admin address even when emails use an app address', async () => {
     await makePerson({ email: 'manager.488@example.com', full_name: 'Manager', roles: [{ role: 'System Manager' }] })
     const arrival = await makePerson({ full_name: 'New Arrival', email: 'new.arrival@staff.example.com' })
     await alertNewArrival(arrival, (await methodOfKind('google'))!)
     const [mail] = await sql`select body from email_queue where lower(recipient) = 'manager.488@example.com'`
-    expect(String(mail.body)).toContain(`${DASH}/featherbase/`)
+    expect(String(mail.body)).toContain(`${ADMIN}/featherbase/admin/waiting-for-access`)
   })
 })

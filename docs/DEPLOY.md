@@ -118,8 +118,10 @@ Each entry is one web address of this instance:
   and test. Each host appears once (the port is not part of the match).
 - `opens` is `admin` (the Admin screens) or an app's name. At least one entry
   opens `admin`.
-- Exactly one entry has `"emails": true`. Invitations, password resets and the
-  waiting-for-access alert link to it, and its host is the `EHLO` fallback.
+- Exactly one entry has `"emails": true`. Invitations and password resets
+  link to it, and its host is the `EHLO` fallback. An emailed link to an Admin
+  page (the waiting-for-access alert) uses the first `admin` entry instead,
+  since an app's address would redirect it away.
 
 The server checks these rules at boot and refuses to start on a bad list; the
 release preflight checks them again for the release's own environment, and
@@ -154,10 +156,15 @@ After any sign-in a person lands where they can do something:
 4. else, the no-access page.
 
 "Can open" Feather Dash is, for now, the `Sales Target Viewer` role. Being
-handed means a one-time code, valid for one minute and bound to the target
-address, redeemed at that address's `/featherbase/oauth-callback`, where it
-mints a new session. A code that is replayed, late, or redeemed on another
-host is refused.
+handed is a round trip bound to the browser that signed in, with no shared
+cookie: the browser goes to the target's `/api/handoff/start`, which sets a
+short-lived, host-only nonce cookie and sends it back to the source's
+`/api/handoff/bind`. There, only the browser holding the signed-in session's
+own `sid` cookie gets a one-time, one-minute code, which the target's
+`/featherbase/oauth-callback` redeems only with that nonce cookie and only
+while the source session is still live; it mints a new session there. A code
+that is replayed, late, redeemed on another host or in another browser is
+refused, and so is one whose source session has since ended.
 
 **Register every address with Google.** Google sign-in on each address uses
 `<address>/api/oauth/google/callback` as its `redirect_uri`, and the sign-in

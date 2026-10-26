@@ -123,7 +123,23 @@ export const DEV_WEB_ORIGIN = 'http://localhost:5173'
  *  there is one, else to the dev web origin; anywhere else there is no origin,
  *  and the link is not sent. */
 export function emailOrigin(list: readonly InstanceAddress[] | null, environment: string, requestOrigin?: string): string | null {
-  if (list) return emailsAddress(list).address
+  return emailedLinkOrigin(list, environment, requestOrigin, (l) => emailsAddress(l))
+}
+
+/** The origin of an emailed link whose page is an Admin page (the
+ *  waiting-for-access alert): the `admin` entry, since an app's address would
+ *  redirect the page away. Same fallback as `emailOrigin` with no list. */
+export function adminLinkOrigin(list: readonly InstanceAddress[] | null, environment: string): string | null {
+  return emailedLinkOrigin(list, environment, undefined, (l) => adminAddress(l))
+}
+
+function emailedLinkOrigin(
+  list: readonly InstanceAddress[] | null,
+  environment: string,
+  requestOrigin: string | undefined,
+  pick: (list: readonly InstanceAddress[]) => InstanceAddress,
+): string | null {
+  if (list) return pick(list).address
   if (!RELAXED_ENVIRONMENTS.includes(environment)) return null
   return requestOrigin ?? DEV_WEB_ORIGIN
 }
