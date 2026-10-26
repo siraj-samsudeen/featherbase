@@ -1,13 +1,14 @@
 import { environment } from './config'
 import { sql } from './db'
 import { hashPassword, verifyPassword } from './auth'
+import { readVariable } from './env'
 
 // Security supersession of migration 0006 (#130). Only explicit local
 // environments have a knowable default. Provisioning never rotates a hash.
 // Only a developer's own machine or a test run has a knowable default;
 // `staging` (a hosted trial instance) is production here.
 export async function bootstrapAdministrator(env: string = environment) {
-  const configured = process.env.ADMIN_PASSWORD
+  const configured = readVariable('ADMIN_PASSWORD')
   const password = configured?.trim() ? configured
     : ['development', 'test'].includes(env) ? 'admin' : null
   if (password === null) return

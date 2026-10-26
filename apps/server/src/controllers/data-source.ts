@@ -4,6 +4,7 @@ import { config } from '../config'
 import { invalidateMeta } from '../meta'
 import { assertSystemManager } from '../permissions'
 import { invalidateSources } from '../sources/registry'
+import { readNamedVariable } from '../env'
 
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
 // config and pool, and invalidates the meta cache so bound Tables pick up a
@@ -54,7 +55,7 @@ const controller: TableController = {
       // #432: the platform's own connection is never a data source. This is
       // the early, obvious refusal; the driver proves it for any other URL to
       // the same database when it first connects (sources/platform-guard.ts).
-      if (urlEnv && (urlEnv === 'DATABASE_URL' || process.env[urlEnv] === config.databaseUrl))
+      if (urlEnv && (urlEnv === 'DATABASE_URL' || readNamedVariable(urlEnv) === config.databaseUrl))
         throw new AppError('PermissionError', "A data source cannot use the platform's own database", {
           url_env: `${urlEnv} holds the platform's own connection; point the source at another database`,
         })

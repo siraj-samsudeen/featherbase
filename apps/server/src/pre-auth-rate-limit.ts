@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { processEnvironment } from './env'
 import { isIP } from 'node:net'
 import type { Context, Next } from 'hono'
 import { sql, type Sql } from './db'
@@ -6,7 +7,7 @@ import { sql, type Sql } from './db'
 const DEFAULTS = { LOGIN: 60, PASSWORD: 5, OAUTH_LOGIN: 30, OAUTH_CALLBACK: 30, FORM: 30, SIGNUP: 10 } as const
 type Kind = keyof typeof DEFAULTS
 
-function positiveInteger(env: NodeJS.ProcessEnv, name: string, fallback: number) {
+function positiveInteger(env: Record<string, string | undefined>, name: string, fallback: number) {
   const value = env[name] === undefined ? fallback : Number(env[name])
   if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647)
     throw new Error(`${name} must be a positive integer no greater than 2147483647`)
@@ -29,7 +30,7 @@ function ip(value: string | undefined): string | null {
   }).join('.')
 }
 
-export function preAuthPolicy(env = process.env) {
+export function preAuthPolicy(env: Record<string, string | undefined> = processEnvironment()) {
   const limits = Object.fromEntries(Object.entries(DEFAULTS).map(([kind, fallback]) =>
     [kind, positiveInteger(env, `PREAUTH_${kind}_MAX`, fallback)])) as Record<Kind, number>
   const trusted = (env.TRUSTED_PROXY_IPS ?? '').split(',').map((s) => s.trim()).filter(Boolean).map((s) => {

@@ -23,7 +23,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
-import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
+import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { sendInvitation } from './invitation-email'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
@@ -79,6 +79,7 @@ import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
+import { assertServerStart, readVariable } from './env'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
@@ -101,7 +102,7 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
-await discoverPackages(JSON.parse(process.env.FEATHERBASE_APP_PATHS ?? '[]') as string[])
+await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
 await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
@@ -2094,9 +2095,11 @@ if (webDist && existsSync(webDist)) {
   })
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  // Refuse to boot a non-development server with test mode set (D5).
-  assertTestModeAllowed()
+if (readVariable('NODE_ENV') !== 'test') {
+  // Refuse to boot on a missing required variable, or with a switch on that
+  // production must never have (instance-settings D7; test mode is one, D5).
+  const { settingsRequirements } = await import('./release-preflight')
+  for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })

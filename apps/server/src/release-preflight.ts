@@ -5,9 +5,10 @@
 // one transaction (migrate.ts ONE_TRANSACTION), so any of them failing leaves
 // the database as it was.
 import { sql } from './db'
-import { config, environmentDeclared, ORIGIN_FALLBACK_ENVIRONMENTS } from './config'
+import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
-import { assertTestModeAllowed, delegatedTestMode, TEST_MODE_ENVIRONMENTS } from './delegated-login'
+import { delegatedTestMode } from './delegated-login'
+import { checkVariables, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
@@ -34,11 +35,16 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   await assertDatabaseEnvironment(environment)
   passed.push(`database environment matches "${environment}"`)
 
-  // 2. The server would refuse to start with test mode here — refuse now,
-  //    before any migration, not after (D5). The database's own label counts
+  // 2. Deployment variables (instance-settings D7): refuse on a missing
+  //    required one or a switch production must never have (test mode among
+  //    them, D5), warn on a missing recommended one. This is the server's own
+  //    start-up check plus the variables the stored settings make required,
+  //    refused now, before any migration. The database's own label counts
   //    too: a database stamped production never runs with test mode, even
   //    with DISABLE_DATABASE_ENVIRONMENT_CHECK set.
-  assertTestModeAllowed(environment)
+  const pending = await pendingMigrations()
+  const variables = checkVariables({ environment, ...(await settingsRequirements(pending)) })
+  if (variables.forbidden.length) throw new Error(variables.forbidden.join('\n'))
   if (delegatedTestMode()) {
     const stamped = await storedEnvironment()
     if (stamped !== null && !(TEST_MODE_ENVIRONMENTS as readonly string[]).includes(stamped))
@@ -47,17 +53,10 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
       )
   }
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)
-
-  // 2b. Links the server emails (sign-in invitations, #430) must name the
-  //     instance from configuration, never from a request's Host header.
-  if (!config.siteUrl && !ORIGIN_FALLBACK_ENVIRONMENTS.includes(environment))
-    throw new Error(
-      `SITE_URL is not set on a "${environment}" server. Emailed links (sign-in invitations, password resets) need this instance's own address, which a request must not be able to steer. Set SITE_URL (https://…) first (docs/DEPLOY.md, "Configuration").`,
-    )
-  passed.push(config.siteUrl ? 'SITE_URL set' : `SITE_URL unset, allowed on a "${environment}" server`)
+  if (variables.refusals.length) throw new Error(variables.refusals.join('\n'))
+  passed.push(...variables.warnings, ...variables.passed)
 
   // 3. 0102 creates btree_gist (person_identifier's history constraint).
-  const pending = await pendingMigrations()
   if (pending.includes('0102_person_resolution.ts')) {
     const [ext] = await sql`
       select exists (select 1 from pg_extension where extname = 'btree_gist') as installed,
@@ -74,6 +73,42 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await noticeRecipients())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
+}
+
+/** 2. What the stored settings make required (D7). Preflight runs before
+ *  the migrations, so each table or column may not exist yet: a database
+ *  without them has nothing to require. Before 0100 there is no Sign In
+ *  Method yet, but 0100 turns a legacy `google_client_id` setting into an
+ *  enabled Google method, so that setting counts. */
+export async function settingsRequirements(pending: string[] = []): Promise<Pick<CheckVariablesOptions, 'conditions' | 'named'>> {
+  const conditions = new Set<SettingsCondition>()
+  const method = await locate('sign_in_method')
+  if (method && ['kind', 'enabled', 'client_id'].every((c) => method.columns.has(c))) {
+    const [google] = await sql`
+      select 1 from ${sql(method.relation)}
+      where kind = 'google' and enabled and coalesce(trim(client_id), '') <> '' limit 1`
+    if (google) conditions.add('google-sign-in-enabled')
+  } else if (pending.includes('0100_person_identities.ts')) {
+    const settings = await locate('single_value')
+    if (settings) {
+      const [legacy] = await sql`
+        select 1 from ${sql(settings.relation)}
+        where table_name = 'System Settings' and field = 'google_client_id' and coalesce(trim(value), '') <> '' limit 1`
+      if (legacy) conditions.add('google-sign-in-enabled')
+    }
+  }
+  // A Data Source reads its connection from the variable its url_env names,
+  // so that variable is required while the source exists.
+  const named: { name: string; reason: string }[] = []
+  const source = await locate('data_source')
+  if (source && source.columns.has('url_env')) {
+    const rows = await sql`
+      select url_env, string_agg(row_id, ', ' order by row_id) as sources
+      from ${sql(source.relation)} where coalesce(trim(url_env), '') <> ''
+      group by url_env order by url_env`
+    for (const r of rows) named.push({ name: String(r.url_env).trim(), reason: `the url_env of data source ${String(r.sources)}` })
+  }
+  return { conditions, named }
 }
 
 /** 4. On PostgreSQL 18, a published table whose replica identity is FULL and

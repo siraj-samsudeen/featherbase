@@ -1,4 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs'
+import { readVariable } from './env'
 import { join } from 'node:path'
 import { getMeta } from './meta'
 import { getDoc } from './document'
@@ -149,9 +150,9 @@ const CHROMIUM_BINARIES = [
 // PLAYWRIGHT_BROWSERS_PATH to the server process, so that path is probed too —
 // but only when it actually exists, so other hosts fall through to the default.
 function resolveChromium(): string | undefined {
-  if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH))
-    return process.env.CHROMIUM_PATH
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/opt/pw-browsers'
+  const chromium = readVariable('CHROMIUM_PATH')
+  if (chromium && existsSync(chromium)) return chromium
+  const root = readVariable('PLAYWRIGHT_BROWSERS_PATH') ?? '/opt/pw-browsers'
   try {
     const dirs = readdirSync(root)
       .filter((d) => d.startsWith('chromium-'))

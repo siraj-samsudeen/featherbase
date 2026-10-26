@@ -62,6 +62,8 @@ describe('release preflight', () => {
   })
 
   test('test mode against a database labelled production refuses, even for a staging process', async () => {
+    // A hosted staging trial never runs the mock Google provider this suite turns on (env.ts).
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
     await sql`update internal_metadata set value = 'production' where key = 'environment'`
@@ -145,9 +147,13 @@ describe('release preflight: access configuration', () => {
   const DOMAINS_OK = 'no sign-in method creates people from any address or a consumer email domain'
 
   // These cases run preflight as production; give it the SITE_URL a production
-  // server must have (#430) so they reach the access checks they are about.
+  // server must have (#430), its own JWT_SECRET, and no mock Google provider
+  // (which this suite turns on for itself, vitest.config.ts), so they reach the
+  // access checks they are about.
   let siteUrlBefore = ''
   beforeEach(() => {
+    vi.stubEnv('JWT_SECRET', 'a-production-secret')
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
     siteUrlBefore = config.siteUrl
     ;(config as { siteUrl: string }).siteUrl = 'https://featherbase.example.test'
   })
@@ -314,3 +320,138 @@ it('a legacy everyone-reads-User grant in public refuses BEFORE migrating', asyn
     await db.end()
   }
 }, 90_000)
+
+// instance-settings-as-code D7 (#465): the deployment-variable registry runs
+// in the release, with the variables the stored settings make required.
+describe('release preflight: deployment variables', () => {
+  // A complete production environment; each case takes one thing away.
+  beforeEach(() => {
+    vi.stubEnv('DISABLE_DATABASE_ENVIRONMENT_CHECK', '1')
+    vi.stubEnv('SITE_URL', 'https://featherbase.example.test')
+    vi.stubEnv('JWT_SECRET', 'a-production-secret')
+    vi.stubEnv('FILE_STORAGE_DIR', '/data/files')
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+  })
+
+  test('a complete production environment passes and says so', async () => {
+    const lines = await preflightRelease({ environment: 'production' })
+    expect(lines).toEqual(expect.arrayContaining(['JWT_SECRET set', 'SITE_URL set', 'FILE_STORAGE_DIR set']))
+  })
+
+  test('a missing JWT_SECRET refuses before migrating, naming it', async () => {
+    vi.stubEnv('JWT_SECRET', '')
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/JWT_SECRET is not set on a "production" server/)
+  })
+
+  test('a missing FILE_STORAGE_DIR warns and the release goes ahead', async () => {
+    vi.stubEnv('FILE_STORAGE_DIR', ' ')
+    expect(await preflightRelease({ environment: 'production' })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^WARNING: FILE_STORAGE_DIR is not set on a "production" server/)]))
+  })
+
+  test('the mock Google provider refuses a production release', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/^ALLOW_MOCK_OAUTH is set on a "production" server/)
+  })
+
+  test('an enabled Google method with a client id needs GOOGLE_CLIENT_SECRET', async () => {
+    // Without a client id the method is not a real Google client: nothing to require.
+    await sql`update sign_in_method set enabled = true, client_id = null where kind = 'google'`
+    expect(await preflightRelease({ environment: 'production' })).not.toContain('GOOGLE_CLIENT_SECRET set')
+    await sql`update sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(
+      /GOOGLE_CLIENT_SECRET is not set on a "production" server\. \(required while a Google sign-in method is enabled with a client id\)/)
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', 'the-google-secret')
+    expect(await preflightRelease({ environment: 'production' })).toContain('GOOGLE_CLIENT_SECRET set')
+    // Disabled again: not required.
+    vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+    await sql`update sign_in_method set enabled = false where kind = 'google'`
+    expect(await preflightRelease({ environment: 'production' })).not.toContain('GOOGLE_CLIENT_SECRET set')
+  })
+
+  test('before 0100, a legacy google_client_id counts as Google sign-in enabled', async () => {
+    await sql`delete from migration where name = '0100_person_identities.ts'`
+    await sql.unsafe(`alter table featherbase.sign_in_method rename to sign_in_method_moved_aside`)
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'google_client_id'`
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'google_client_id', 'legacy.apps.googleusercontent.com')`
+    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/GOOGLE_CLIENT_SECRET is not set/)
+  })
+
+  // A missing source URL makes only that source unusable, so the release warns
+  // and goes ahead; the refusal is at the point of use (#482 decision).
+  test("a data source's missing url_env warns at release, and the source refuses its queries", async () => {
+    await sql`insert into data_source (row_id, engine, url_env) values ('fb_test_warehouse', 'postgres', 'FB_TEST_WAREHOUSE_URL')`
+    for (const environment of ['production', 'development'])
+      expect(await preflightRelease({ environment })).toEqual(expect.arrayContaining([
+        expect.stringMatching(new RegExp(`^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "${environment}" server \\(the url_env of data source fb_test_warehouse\\)`))]))
+    vi.stubEnv('FB_TEST_WAREHOUSE_URL', '  ')
+    const { resolveUrl } = await import('../src/sources/registry')
+    expect(() => resolveUrl({ name: 'fb_test_warehouse', engine: 'postgres', url_env: 'FB_TEST_WAREHOUSE_URL' } as Parameters<typeof resolveUrl>[0]))
+      .toThrow('Environment variable FB_TEST_WAREHOUSE_URL is not set (required by data source fb_test_warehouse)')
+    vi.stubEnv('FB_TEST_WAREHOUSE_URL', 'postgres://warehouse.example.test/db')
+    expect(await preflightRelease({ environment: 'production' })).toContain('FB_TEST_WAREHOUSE_URL set (the url_env of data source fb_test_warehouse)')
+  })
+})
+
+// Break-glass (#465 design constraint): only the HTTP server start and the
+// release refuse. A CLI command over `railway ssh` still runs while a required
+// variable is missing.
+describe('where a missing variable refuses', () => {
+  const productionMissingJwt = (url: string) => ({
+    ...process.env, DATABASE_URL: url, FEATHERBASE_ENV: 'production', NODE_ENV: 'production',
+    SITE_URL: 'https://featherbase.example.com', JWT_SECRET: '', ALLOW_MOCK_OAUTH: '', ADMIN_PASSWORD: '',
+    DISABLE_DATABASE_ENVIRONMENT_CHECK: '1', PORT: '0',
+  })
+  function runTsx(args: string[], env: NodeJS.ProcessEnv, input?: string): { ok: boolean; output: string } {
+    try {
+      const out = execFileSync(process.execPath, [tsx, ...args], { cwd: server, encoding: 'utf8', timeout: 60_000, env, input, stdio: ['pipe', 'pipe', 'pipe'] })
+      return { ok: true, output: out }
+    } catch (error) {
+      const e = error as { stdout?: string; stderr?: string }
+      return { ok: false, output: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+    }
+  }
+
+  it('the server refuses to start; cli settings:set and create-person still run', async () => {
+    const name = `featherbase_breakglass_${randomUUID().replaceAll('-', '')}`
+    await admin.unsafe(`create database "${name}"`)
+    created.push(name)
+    const url = new URL(config.databaseUrl)
+    url.pathname = `/${name}`
+    const env = productionMissingJwt(url.toString())
+    expect(runTsx(['src/migrate.ts'], env).ok).toBe(true)
+
+    const boot = runTsx(['src/index.ts'], env)
+    expect(boot.ok).toBe(false)
+    expect(boot.output).toMatch(/JWT_SECRET is not set on a "production" server/)
+    expect(boot.output).not.toMatch(/server listening/)
+
+    const set = runTsx(['src/cli.ts', 'settings:set', 'app_name', '--stdin'], env, 'Break Glass')
+    expect(set.output).toMatch(/System Settings app_name set/)
+    const person = runTsx(['src/cli.ts', 'create-person', 'breakglass@example.com', 'A-long-break-glass-password-1', '--full-name', 'Break Glass'], env)
+    expect(person.output).not.toMatch(/JWT_SECRET/)
+    expect(person.ok, person.output).toBe(true)
+
+    const release = runTsx(['src/release.ts'], env)
+    expect(release.ok).toBe(false)
+    expect(release.output).toMatch(/release failed — aborting: JWT_SECRET is not set on a "production" server/)
+
+    // The start reads the stored settings too: an enabled Google method with
+    // a client id needs its secret at boot. A Data Source's url_env only warns.
+    const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    try {
+      await db`update featherbase.sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
+      await db`insert into featherbase.data_source (row_id, engine, url_env) values ('fb_boot_warehouse', 'postgres', 'FB_BOOT_WAREHOUSE_URL')`
+    } finally {
+      await db.end()
+    }
+    const withJwt = { ...env, JWT_SECRET: 'a-production-secret', GOOGLE_CLIENT_SECRET: '', FB_BOOT_WAREHOUSE_URL: '' }
+    const settingsBoot = runTsx(['src/index.ts'], withJwt)
+    expect(settingsBoot.ok).toBe(false)
+    expect(settingsBoot.output).toMatch(/GOOGLE_CLIENT_SECRET is not set on a "production" server/)
+    expect(settingsBoot.output).not.toMatch(/FB_BOOT_WAREHOUSE_URL/)
+    expect(settingsBoot.output).not.toMatch(/server listening/)
+    expect(runTsx(['src/cli.ts', 'list-tokens', 'Administrator'], withJwt).ok).toBe(true)
+  }, 180_000)
+})

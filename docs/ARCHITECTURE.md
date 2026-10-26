@@ -296,6 +296,7 @@ decision record.
 | Path | Purpose |
 |---|---|
 | `index.ts` | The Hono app: every route, middleware order, server boot, worker/scheduler startup |
+| `env.ts` | The deployment-variable registry: the only module that reads `process.env`, and the release and start-up checks |
 | `config.ts` | Port, `DATABASE_URL` default, allowed CORS origins |
 | `db.ts` | The `postgres` client (no ORM) and the test-sandbox delegate hook |
 | `meta.ts` | Table metadata loader + per-process cache (`getMeta`, `invalidateMeta`) |

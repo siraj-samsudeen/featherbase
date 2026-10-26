@@ -1,4 +1,5 @@
 import { AppError } from '../errors'
+import { readNamedVariable } from '../env'
 import type {
   Binding,
   IntrospectedTable,
@@ -38,7 +39,7 @@ const instances = new Map<string, Promise<InstanceEntry>>()
 function requireUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
     throw new AppError('ValidationError', `Data source ${cfg.name} has no url_env configured`)
-  const value = process.env[cfg.url_env]
+  const value = readNamedVariable(cfg.url_env)
   if (!value)
     throw new AppError(
       'ValidationError',
@@ -63,7 +64,7 @@ async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
 function wrapError(cfg: SourceConfig, err: unknown): never {
   if (err instanceof AppError) throw err
   const message = err instanceof Error ? err.message : String(err)
-  const secret = cfg.url_env ? process.env[cfg.url_env] : undefined
+  const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   throw new AppError(
     'DataSourceError',
     `Data source ${cfg.name} failed: ${secret ? message.split(secret).join(`$${cfg.url_env}`) : message}`,
