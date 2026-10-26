@@ -3,7 +3,7 @@
 // feeding the awesomebar's recents groups. Client-side only by design; the
 // server-side `user_event` log is a later phase of the same issue.
 
-import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle } from 'shared'
+import { ADMIN_NAMED_PAGE_KINDS, ADMIN_UNRECORDED_ROOTS, adminPageTitle, adminPathTitle } from 'shared'
 
 export type RecentKind = 'row' | 'list' | 'page' | 'search'
 
@@ -295,6 +295,39 @@ export function actionForLocation(
     }
   }
   return null
+}
+
+export interface EntryDisplay {
+  kind: RecentKind
+  label: string
+  sub?: string
+  /** Set for a row: whose title to show in place of its id. */
+  row?: { table: string; rowId: string }
+}
+
+/**
+ * How a remembered destination reads, decided at RENDER time so entries
+ * recorded before a rule existed read the same as new ones: a fixed admin
+ * page is a page with its catalog title (an old entry may be a 'list'
+ * labelled with the slug, #442), and a row names its Table as the sub-line
+ * and asks for its title by reference. `kind` may be absent (a pinned
+ * workspace target); the key's prefix decides then.
+ */
+export function displayEntry(entry: {
+  kind?: RecentKind
+  key: string
+  label: string
+  sub?: string
+  path: string
+}): EntryDisplay {
+  const kind = entry.kind ?? ((entry.key.split(':')[0] as RecentKind) || 'list')
+  if (kind === 'list' || kind === 'page') {
+    const title = adminPathTitle(entry.path)
+    if (title) return { kind: 'page', label: title }
+  }
+  if (kind === 'row' && entry.sub && entry.key === `row:${entry.sub}/${entry.label}`)
+    return { kind, label: entry.label, sub: entry.sub, row: { table: entry.sub, rowId: entry.label } }
+  return { kind, label: entry.label, sub: entry.sub }
 }
 
 /** Compact relative age for recents rows: "now", "5m", "3h", "2d". */

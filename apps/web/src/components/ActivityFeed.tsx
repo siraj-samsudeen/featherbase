@@ -16,9 +16,13 @@ interface FeedItem {
   filtered?: boolean
   kind: string
   label: string
+  /** A row's display title for this viewer, when the server could read it. */
+  title?: string
   sub?: string
   path: string
   at: string
+  /** Back-to-back repeats collapsed into this row (server-side); 1 = single. */
+  count?: number
 }
 
 // #101 Phase 4: the homepage activity feed. Two tabs with a deliberate
@@ -28,21 +32,15 @@ interface FeedItem {
 // comes from the role-gated endpoint; the websocket 'feed' channel is just
 // an invalidation ping.
 
-const KIND_STYLE: Record<string, string> = {
-  row: 'bg-subtle text-ink-muted',
-  list: 'bg-action-tint text-action',
-  page: 'bg-subtle text-ink-muted',
-  search: 'bg-action-tint text-action',
-  change: 'bg-caution-tint text-caution',
-  login: 'bg-positive-tint text-positive',
-}
+// The kind is a quiet tag beside the time, not part of the sentence — so it
+// carries no colour of its own (colour is for business meaning).
 const KIND_LABEL: Record<string, string> = {
-  row: 'row',
-  list: 'list',
-  page: 'page',
-  search: 'search',
-  change: 'change',
-  login: 'login',
+  row: 'Row',
+  list: 'List',
+  page: 'Page',
+  search: 'Search',
+  change: 'Change',
+  login: 'Sign-in',
 }
 const KIND_VERB: Record<string, string> = {
   row: 'opened',
@@ -107,21 +105,21 @@ export function ActivityFeed() {
         </p>
       )}
       {items.map((item, i) => (
+        // One sentence on both tabs — subject, action, object — with the
+        // kind and the time as quiet trailing metadata.
         <div
           key={`${item.at}-${i}`}
           className="flex items-center gap-2.5 border-b border-border px-3 py-1.5 text-sm last:border-b-0"
           data-testid="feed-item"
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-tint text-xs font-bold text-action">
+          <span
+            aria-hidden="true"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-action-tint text-xs font-bold text-action"
+          >
             {initials(item.who_name)}
           </span>
-          <span
-            className={`w-14 shrink-0 rounded-full px-0 py-0.5 text-center text-xs font-semibold uppercase tracking-wide ${KIND_STYLE[item.kind] ?? KIND_STYLE.row}`}
-          >
-            {KIND_LABEL[item.kind] ?? item.kind}
-          </span>
           <span className="min-w-0 flex-1 truncate">
-            {scope === 'team' && (
+            {scope === 'team' ? (
               <>
                 <span className="font-medium" data-testid="feed-who">{item.who_name}</span>
                 {item.who_role && (
@@ -130,22 +128,36 @@ export function ActivityFeed() {
                   </span>
                 )}
               </>
+            ) : (
+              <span className="font-medium" data-testid="feed-who">You</span>
             )}{' '}
             <span className="text-ink-muted">{feedVerb(item)}</span>{' '}
             {item.path ? (
               <button
                 type="button"
                 onClick={() => router.history.push(item.path)}
+                title={item.title ? item.label : undefined}
                 className="font-medium text-action hover:underline"
               >
-                {item.label}
+                {item.title ?? item.label}
               </button>
             ) : (
-              <span className="font-medium">{item.label}</span>
+              <span className="font-medium">{item.title ?? item.label}</span>
             )}
             {item.sub && <span className="ml-1.5 text-xs text-ink-subtle">{item.sub}</span>}
+            {(item.count ?? 1) > 1 && (
+              <span className="ml-1.5 text-xs text-ink-subtle" data-testid="feed-count">
+                · {item.count}×
+              </span>
+            )}
           </span>
-          <span className="shrink-0 text-xs tabular-nums text-ink-subtle">
+          <span
+            className="shrink-0 rounded-full bg-subtle px-1.5 py-0.5 text-xs text-ink-muted"
+            data-testid="feed-kind"
+          >
+            {KIND_LABEL[item.kind] ?? item.kind}
+          </span>
+          <span className="w-7 shrink-0 text-right text-xs tabular-nums text-ink-subtle">
             {ago(new Date(item.at).getTime())}
           </span>
         </div>

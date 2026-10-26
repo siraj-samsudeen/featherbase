@@ -9,6 +9,8 @@ import { cardClasses } from './ui'
 // its legacy JSON shortcuts. Everything shown here has already been
 // role-scoped and permission-filtered by GET /api/home_pages.
 
+export const UNLABELLED_CARD_HEADING = 'Tables'
+
 function routeFor(s: HomePageShortcut): string {
   const to = s.link_to
   switch (s.type) {
@@ -66,11 +68,11 @@ export function HomePageView({ name }: { name: string }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="home-page-cards">
           {page.cards.map((card, i) => (
             <div key={card.label ?? i} className={cardClasses('p-4')} data-testid={`home-card-${card.label ?? 'links'}`}>
-              {card.label && (
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-                  {card.label}
-                </div>
-              )}
+              {/* Links curated before the first card break form a card with no
+                  label of its own; every link here opens a Table, so it says so. */}
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle" data-testid="home-card-heading">
+                {card.label ?? UNLABELLED_CARD_HEADING}
+              </div>
               <div className="space-y-0.5">
                 {card.links.map((l) => (
                   <Link

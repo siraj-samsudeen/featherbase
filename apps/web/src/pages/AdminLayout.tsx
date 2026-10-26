@@ -10,6 +10,7 @@ import {
   flushPendingEvents,
   frequentActions,
   mergeServerEntries,
+  displayEntry,
   recentActions,
   recentSearches,
   recordAction,
@@ -25,7 +26,8 @@ import { useI18n } from '../lib/i18n'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
-import { ShownName, isOpaqueId } from '../lib/people'
+import { isOpaqueId } from '../lib/people'
+import { EntryLabel } from '../lib/row-titles'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
@@ -874,6 +876,7 @@ function SidebarRecentRow({
   frequent?: boolean
   onOpen: (entry: RecentEntry) => void
 }) {
+  const shown = displayEntry(entry)
   return (
     <a
       href={entry.path}
@@ -884,15 +887,15 @@ function SidebarRecentRow({
         onOpen(entry)
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
-      title={isOpaqueId(entry.label) ? entry.sub : entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
+      title={shown.row || isOpaqueId(shown.label) ? shown.sub : shown.sub ? `${shown.label} — ${shown.sub}` : shown.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-subtle"
     >
       <span className="block truncate text-sm text-ink">
         {frequent && <span className="mr-1 text-caution">★</span>}
-        <ShownName id={entry.label} />
+        <EntryLabel entry={entry} />
       </span>
-      {entry.sub && (
-        <span className="block truncate text-xs text-ink-subtle">{entry.sub}</span>
+      {shown.sub && (
+        <span className="block truncate text-xs text-ink-subtle">{shown.sub}</span>
       )}
     </a>
   )
@@ -911,6 +914,7 @@ function RecentRow({
   onOpen: (entry: RecentEntry) => void
 }) {
   const last = entry.visits[entry.visits.length - 1] ?? 0
+  const shown = displayEntry(entry)
   return (
     <button
       type="button"
@@ -922,11 +926,11 @@ function RecentRow({
       }`}
     >
       <span className="w-10 shrink-0 text-xs font-semibold uppercase tracking-wide text-action">
-        {RECENT_KIND_LABEL[entry.kind]}
+        {RECENT_KIND_LABEL[shown.kind]}
       </span>
       <span className="min-w-0 flex-1 truncate">
-        <ShownName id={entry.label} />
-        {entry.sub && <span className="ml-2 text-xs text-ink-subtle">{entry.sub}</span>}
+        <EntryLabel entry={entry} />
+        {shown.sub && <span className="ml-2 text-xs text-ink-subtle">{shown.sub}</span>}
       </span>
       <span className="shrink-0 text-xs tabular-nums text-ink-subtle">{ago(last)}</span>
     </button>

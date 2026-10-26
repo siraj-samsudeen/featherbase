@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { api, getSessionUser } from '../lib/api'
-import { ago, recentActions, type RecentEntry } from '../lib/recents'
-import { ShownName } from '../lib/people'
+import { ago, displayEntry, recentActions, type RecentEntry } from '../lib/recents'
+import { EntryLabel } from '../lib/row-titles'
 import { buttonClasses, cardClasses } from './ui'
 
 // #101 Phase 5: the Home Page's first job becomes resuming. ResumeStrip
@@ -70,26 +70,31 @@ export function ResumeStrip() {
         Continue where you left off
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((t) => (
-          <button
-            key={t.testid}
-            type="button"
-            onClick={t.open}
-            data-testid={t.testid}
-            className={cardClasses('p-3 text-left transition hover:border-action')}
-          >
-            <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-              {t.head}
-            </div>
-            <div className="mt-0.5 truncate text-sm font-medium text-ink">
-              <ShownName id={t.entry.label} />
-            </div>
-            <div className="mt-0.5 truncate text-xs text-ink-muted">
-              {t.entry.sub ? `${t.entry.sub} · ` : ''}
-              {ago(t.entry.visits[t.entry.visits.length - 1] ?? 0)}
-            </div>
-          </button>
-        ))}
+        {tiles.map((t) => {
+          // Rendered from the entry at display time: an old slug-labelled
+          // page reads as its catalog title, a row as its title over its Table.
+          const shown = displayEntry(t.entry)
+          return (
+            <button
+              key={t.testid}
+              type="button"
+              onClick={t.open}
+              data-testid={t.testid}
+              className={cardClasses('p-3 text-left transition hover:border-action')}
+            >
+              <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+                {t.head}
+              </div>
+              <div className="mt-0.5 truncate text-sm font-medium text-ink" data-testid="resume-tile-title">
+                <EntryLabel entry={t.entry} />
+              </div>
+              <div className="mt-0.5 truncate text-xs text-ink-muted" data-testid="resume-tile-sub">
+                {shown.sub ? `${shown.sub} · ` : ''}
+                {ago(t.entry.visits[t.entry.visits.length - 1] ?? 0)}
+              </div>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -123,11 +128,11 @@ export function RoutineCard() {
             type="button"
             onClick={() => router.history.push(t.path)}
             data-testid="workspace-chip"
-            title={t.sub}
+            title={displayEntry(t).sub}
             className="max-w-72 truncate rounded-full bg-action-tint px-3 py-1 text-xs font-medium text-action hover:opacity-80"
           >
-            <ShownName id={t.label} />
-            {t.sub ? <span className="ml-1 opacity-70">· {t.sub}</span> : null}
+            <EntryLabel entry={t} />
+            {displayEntry(t).sub ? <span className="ml-1 opacity-70">· {displayEntry(t).sub}</span> : null}
           </button>
         ))}
       </div>
@@ -154,8 +159,8 @@ export function RoutineCard() {
         {targets.map((t, i) => (
           <span key={t.key} className="font-medium text-ink">
             {i > 0 ? ', ' : ''}
-            <ShownName id={t.label} />
-            {t.sub ? ` (${t.sub})` : ''}
+            <EntryLabel entry={t} />
+            {displayEntry(t).sub ? ` (${displayEntry(t).sub})` : ''}
           </span>
         ))}
         . Pin them as your workspace?

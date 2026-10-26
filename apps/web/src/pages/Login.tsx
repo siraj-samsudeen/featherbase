@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
@@ -25,7 +25,44 @@ export function safeLoginNext(
   }
 }
 
+// The Google sign-in leaves the page for the provider and comes back on the
+// OAuth callback, so a destination in this URL would be lost on the way. It
+// rides in this tab's sessionStorage instead — safe-checked going in and
+// coming out, and good for one use.
+const LOGIN_NEXT_KEY = 'fc-login-next'
+
+export function rememberLoginNext(next: string | undefined): void {
+  const safe = safeLoginNext(next)
+  try {
+    if (safe) sessionStorage.setItem(LOGIN_NEXT_KEY, safe)
+    else sessionStorage.removeItem(LOGIN_NEXT_KEY)
+  } catch {
+    // Storage blocked: the person lands on their landing page instead.
+  }
+}
+
+export function takeLoginNext(): string | undefined {
+  try {
+    const stored = sessionStorage.getItem(LOGIN_NEXT_KEY)
+    sessionStorage.removeItem(LOGIN_NEXT_KEY)
+    return safeLoginNext(stored ?? undefined)
+  } catch {
+    return undefined
+  }
+}
+
+/** Go to a checked return path: a Featherbase page inside the SPA, anything
+ *  else (a runtime app) by a full page load. */
+export function openReturnPath(path: string, push: (path: string) => void): void {
+  if (path.startsWith('/featherbase/')) push(path)
+  else window.location.assign(path)
+}
+
 export function LoginPage() {
+  const router = useRouter()
+  // From the router, not window.location: the route guard's redirect sets it.
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr })
+  const next = new URLSearchParams(searchStr).get('next') ?? undefined
   const navigate = useNavigate()
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
@@ -76,9 +113,9 @@ export function LoginPage() {
     setBusy(true)
     try {
       const user = await attempt()
-      const returnTo = safeLoginNext(new URLSearchParams(window.location.search).get('next') ?? undefined)
+      const returnTo = safeLoginNext(next)
       if (returnTo) {
-        window.location.assign(returnTo)
+        openReturnPath(returnTo, (path) => router.history.push(path))
         return
       }
       navigate({ to: landingPath(user) })
@@ -124,7 +161,7 @@ export function LoginPage() {
 
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
-  const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
+  const sessionEnded = new URLSearchParams(searchStr).get('ended') === '1'
 
   const errorLine = error && (
     <p className="text-sm text-negative" data-testid="login-error">
@@ -263,6 +300,7 @@ export function LoginPage() {
           {google && (
             <a
               href="/api/oauth/google/login"
+              onClick={() => rememberLoginNext(next)}
               data-testid="google-login"
               className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
             >
