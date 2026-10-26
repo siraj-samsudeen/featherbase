@@ -146,10 +146,15 @@ describe('settings-dependent requirements', () => {
     expect(assertVariables({ environment: 'production', conditions: on })).toContain('GOOGLE_CLIENT_SECRET set')
   })
 
-  it('a variable the data names is required while that data exists', () => {
+  it('a variable the data names only warns when missing, in every environment', () => {
     production()
     const named = [{ name: 'FB_TEST_WAREHOUSE_URL', reason: 'the url_env of data source warehouse' }]
-    expect(() => assertVariables({ environment: 'production', named })).toThrow(/FB_TEST_WAREHOUSE_URL is not set on a "production" server \(the url_env of data source warehouse\)/)
+    for (const environment of ['production', 'staging', 'development']) {
+      const report = checkVariables({ environment, named })
+      expect(report.refusals).toEqual([])
+      expect(report.warnings).toEqual([expect.stringMatching(new RegExp(`^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "${environment}" server \\(the url_env of data source warehouse\\)\\. That source refuses every query`))])
+    }
+    expect(() => assertServerStart('production', { named })).not.toThrow()
     vi.stubEnv('FB_TEST_WAREHOUSE_URL', 'postgres://warehouse')
     expect(assertVariables({ environment: 'production', named })).toContain('FB_TEST_WAREHOUSE_URL set (the url_env of data source warehouse)')
   })

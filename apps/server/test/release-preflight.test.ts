@@ -378,13 +378,17 @@ describe('release preflight: deployment variables', () => {
     await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/GOOGLE_CLIENT_SECRET is not set/)
   })
 
-  test("a data source's url_env is required while the source exists", async () => {
+  // A missing source URL makes only that source unusable, so the release warns
+  // and goes ahead; the refusal is at the point of use (#482 decision).
+  test("a data source's missing url_env warns at release, and the source refuses its queries", async () => {
     await sql`insert into data_source (row_id, engine, url_env) values ('fb_test_warehouse', 'postgres', 'FB_TEST_WAREHOUSE_URL')`
-    await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(
-      /FB_TEST_WAREHOUSE_URL is not set on a "production" server \(the url_env of data source fb_test_warehouse\)/)
-    // In development it warns: a checkout need not reach every source.
-    expect(await preflightRelease({ environment: 'development' })).toEqual(
-      expect.arrayContaining([expect.stringMatching(/^WARNING: FB_TEST_WAREHOUSE_URL is not set/)]))
+    for (const environment of ['production', 'development'])
+      expect(await preflightRelease({ environment })).toEqual(expect.arrayContaining([
+        expect.stringMatching(new RegExp(`^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "${environment}" server \\(the url_env of data source fb_test_warehouse\\)`))]))
+    vi.stubEnv('FB_TEST_WAREHOUSE_URL', '  ')
+    const { resolveUrl } = await import('../src/sources/registry')
+    expect(() => resolveUrl({ name: 'fb_test_warehouse', engine: 'postgres', url_env: 'FB_TEST_WAREHOUSE_URL' } as Parameters<typeof resolveUrl>[0]))
+      .toThrow('Environment variable FB_TEST_WAREHOUSE_URL is not set (required by data source fb_test_warehouse)')
     vi.stubEnv('FB_TEST_WAREHOUSE_URL', 'postgres://warehouse.example.test/db')
     expect(await preflightRelease({ environment: 'production' })).toContain('FB_TEST_WAREHOUSE_URL set (the url_env of data source fb_test_warehouse)')
   })
@@ -434,7 +438,7 @@ describe('where a missing variable refuses', () => {
     expect(release.output).toMatch(/release failed — aborting: JWT_SECRET is not set on a "production" server/)
 
     // The start reads the stored settings too: an enabled Google method with
-    // a client id, and a Data Source, need their variables at boot as well.
+    // a client id needs its secret at boot. A Data Source's url_env only warns.
     const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
     try {
       await db`update featherbase.sign_in_method set enabled = true, client_id = 'client.apps.googleusercontent.com' where kind = 'google'`
@@ -446,7 +450,7 @@ describe('where a missing variable refuses', () => {
     const settingsBoot = runTsx(['src/index.ts'], withJwt)
     expect(settingsBoot.ok).toBe(false)
     expect(settingsBoot.output).toMatch(/GOOGLE_CLIENT_SECRET is not set on a "production" server/)
-    expect(settingsBoot.output).toMatch(/FB_BOOT_WAREHOUSE_URL is not set on a "production" server \(the url_env of data source fb_boot_warehouse\)/)
+    expect(settingsBoot.output).not.toMatch(/FB_BOOT_WAREHOUSE_URL/)
     expect(settingsBoot.output).not.toMatch(/server listening/)
     expect(runTsx(['src/cli.ts', 'list-tokens', 'Administrator'], withJwt).ok).toBe(true)
   }, 180_000)

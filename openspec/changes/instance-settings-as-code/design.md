@@ -157,8 +157,11 @@ variable (this replaces the hand-written `SITE_URL` step) and warn on a
 missing recommended one. Apply refuses to turn on a feature whose secret is
 missing.
 
-Manifest sources' `url_env` names are treated as required variables while
-the source exists.
+Manifest sources' `url_env` names are checked while the source exists, but a
+missing one **warns** at release and boot rather than refusing (amended in
+#482): it makes only that source unusable, and the source's queries refuse at
+the point of use, naming the variable. Refusing the whole release for it was
+an unverifiable deploy risk on prod.
 
 ### D8. Health checks as small functions with recorded state changes
 

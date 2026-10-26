@@ -253,7 +253,8 @@ export interface CheckVariablesOptions {
   /** Settings facts that make a `{ when }` variable required. Unknown at
    *  server start (no database read there), so those entries are skipped. */
   conditions?: ReadonlySet<SettingsCondition>
-  /** Variables the instance's data names, each with why it is required. */
+  /** Variables the instance's data names, each with why it is needed. A
+   *  missing one warns and never refuses. */
   named?: readonly { name: string; reason: string }[]
 }
 
@@ -298,10 +299,12 @@ export function checkVariables(opts: CheckVariablesOptions): VariableReport {
     else if (req === 'recommended') report.warnings.push(`WARNING: ${missing(v)}`)
     else report.refusals.push(missing(v))
   }
+  // A data-named variable only ever warns, in every environment: without it
+  // that one Data Source is unusable (its queries refuse, naming the
+  // variable, sources/registry.ts resolveUrl), and the rest of the app is not.
   for (const { name, reason } of opts.named ?? []) {
     if (readNamedVariable(name)?.trim()) report.passed.push(`${name} set (${reason})`)
-    else if (dev) report.warnings.push(`WARNING: ${name} is not set on a "${environment}" server (${reason}).`)
-    else report.refusals.push(`${name} is not set on a "${environment}" server (${reason}). Set it, or delete the data source.`)
+    else report.warnings.push(`WARNING: ${name} is not set on a "${environment}" server (${reason}). That source refuses every query until it is set; set it, or delete the data source.`)
   }
   return report
 }

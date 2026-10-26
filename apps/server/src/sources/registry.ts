@@ -80,7 +80,7 @@ export function resolveUrl(cfg: SourceConfig): string {
   if (!cfg.url_env)
     throw new AppError('ValidationError', `Data source ${cfg.name} has no url_env configured`)
   const value = readNamedVariable(cfg.url_env)
-  if (!value)
+  if (!value?.trim())
     throw new AppError(
       'ValidationError',
       `Environment variable ${cfg.url_env} is not set (required by data source ${cfg.name})`,

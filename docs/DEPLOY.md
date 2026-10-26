@@ -45,11 +45,12 @@ themselves never refuse, so the break-glass commands over `railway ssh`
 (`cli set-password`, `cli settings:set`, `cli create-person`) still work while
 a variable is missing.
 
-Beyond the table, two kinds of variable are required by the instance's data:
-a Data Source needs the variable its `url_env` names while the source exists,
-and an enabled Google sign-in method with a client id needs
-`GOOGLE_CLIENT_SECRET`. The release and the server start check both; in development and test they
-only warn.
+Beyond the table, the instance's data asks for two more. An enabled Google
+sign-in method with a client id needs `GOOGLE_CLIENT_SECRET`: the release and
+the server start refuse without it (in development and test they warn). A Data
+Source needs the variable its `url_env` names: without it the release and the
+start only warn, because that one source is unusable while the rest of the
+app works, and every query against the source refuses, naming the variable.
 
 <!-- generated:variables:start — from apps/server/src/env.ts by `pnpm --filter server generate:env`; do not edit -->
 
