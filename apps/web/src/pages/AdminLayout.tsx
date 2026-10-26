@@ -13,6 +13,7 @@ import {
   displayEntry,
   recentActions,
   recentSearches,
+  uniqueByDisplay,
   recordAction,
   type RecentEntry,
   type ServerRecentEntry,
@@ -290,10 +291,10 @@ function AdminShell() {
   // past searches. All three read the per-user localStorage buffer.
   const trimmed = search.trim()
   const showRecents = Boolean(barFocused && trimmed === '' && user)
-  const recentItems = showRecents && user ? recentActions(user.row_id, 6) : []
+  const recentItems = showRecents && user ? uniqueByDisplay(recentActions(user.row_id, 12)).slice(0, 6) : []
   const frequentItems =
     showRecents && user
-      ? frequentActions(user.row_id, 4).filter((f) => !recentItems.some((r) => r.key === f.key))
+      ? uniqueByDisplay([...recentItems, ...frequentActions(user.row_id, 8)]).slice(recentItems.length, recentItems.length + 4)
       : []
   const pick = [...recentItems, ...frequentItems]
   const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
@@ -301,14 +302,10 @@ function AdminShell() {
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
   const sidebarRecent = user
-    ? recentActions(user.row_id, 12)
-        .filter((e) => e.kind !== 'search')
-        .slice(0, 5)
+    ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, 5)
     : []
   const sidebarFrequent = user
-    ? frequentActions(user.row_id, 8)
-        .filter((f) => !sidebarRecent.some((r) => r.key === f.key))
-        .slice(0, 3)
+    ? uniqueByDisplay([...sidebarRecent, ...frequentActions(user.row_id, 12)]).slice(sidebarRecent.length, sidebarRecent.length + 3)
     : []
 
   function recordSearch(q: string) {
@@ -400,7 +397,7 @@ function AdminShell() {
           sidebar's content padding, so the selector lines up with the column
           below; the command bar then fills what is left up to the bell. */}
       <header className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-surface px-2 py-1 sm:flex-nowrap sm:gap-4 sm:px-4 md:pl-0" data-testid="admin-navbar">
-        <div className="order-1 flex min-w-0 items-center gap-1 sm:order-none sm:gap-2 md:w-60 md:shrink-0 md:px-3" data-testid="navbar-left-zone">
+        <div className="order-1 flex min-w-0 flex-1 items-center gap-1 sm:order-none sm:flex-none md:w-60 md:shrink-0 md:px-3" data-testid="navbar-left-zone">
           <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
             <Logo className="h-7 w-7" />
           </Link>
@@ -410,8 +407,8 @@ function AdminShell() {
             aria-label="Switch application"
             value={FEATHERBASE_HOME_DESTINATION.href}
             onChange={(event) => { window.location.assign(event.target.value) }}
-            wrapperClassName="w-[9.5rem] shrink-0 sm:w-52 md:w-auto md:min-w-0 md:flex-1"
-            className="truncate font-semibold max-sm:min-h-11"
+            wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
+            className="truncate pl-2.5 pr-8 font-medium max-sm:min-h-11"
           >
             <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
             {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}

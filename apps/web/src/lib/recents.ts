@@ -330,6 +330,19 @@ export function displayEntry(entry: {
   return { kind, label: entry.label, sub: entry.sub }
 }
 
+/** One entry per destination as a person reads it: an old slug-keyed entry
+ *  and a new page entry for the same page are one place. Order kept. */
+export function uniqueByDisplay<T extends RecentEntry>(entries: T[]): T[] {
+  const seen = new Set<string>()
+  return entries.filter((e) => {
+    const shown = displayEntry(e)
+    const id = shown.kind === 'page' && !shown.sub ? `page:${shown.label}` : e.key
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
 /** Compact relative age for recents rows: "now", "5m", "3h", "2d". */
 export function ago(ts: number, now = Date.now()): string {
   const d = Math.max(0, now - ts)

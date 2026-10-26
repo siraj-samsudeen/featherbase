@@ -96,7 +96,7 @@ export function Select({
 }: SelectHTMLAttributes<HTMLSelectElement> & { wrapperClassName?: string }) {
   return (
     <div className={cx('relative', wrapperClassName)}>
-      <select className={inputClasses(cx('appearance-none pr-9', className))} {...rest}>
+      <select className={inputClasses(recipe('appearance-none pr-9', className))} {...rest}>
         {children}
       </select>
       <ChevronDown

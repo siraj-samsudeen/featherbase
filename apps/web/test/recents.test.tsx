@@ -7,6 +7,7 @@ import {
   connectEventSink,
   describeFilters,
   displayEntry,
+  uniqueByDisplay,
   flushPendingEvents,
   frecency,
   frequentActions,
@@ -233,5 +234,14 @@ describe('displayEntry', () => {
     expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Cross-filter workspace')
     expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/Task' }))
       .toEqual({ kind: 'list', label: 'Task', sub: 'kanban' })
+  })
+})
+
+describe('uniqueByDisplay', () => {
+  it('folds an old slug entry and a new page entry for the same page into one', () => {
+    const old = { kind: 'list' as const, key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore', visits: [1] }
+    const now = { kind: 'page' as const, key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', visits: [2] }
+    expect(uniqueByDisplay([now, old]).map((e) => e.key)).toEqual(['page:explore'])
+    expect(uniqueByDisplay([{ ...row('A'), visits: [1] }, { ...row('B'), visits: [1] }])).toHaveLength(2)
   })
 })
