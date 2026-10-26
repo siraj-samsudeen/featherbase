@@ -37,10 +37,10 @@ test('a line carrying a vocabulary-allow comment passes', () => {
 })
 
 test('scope: app sources, openspec, docs and root markdown, minus the allowlisted files', () => {
-  for (const f of ['apps/web/src/index.css', 'apps/server/src/a/b.ts', 'openspec/changes/x/design.md', 'docs/GLOSSARY.md', 'README.md', 'CLAUDE.md']) {
+  for (const f of ['apps/web/src/index.css', 'apps/server/src/a/b.ts', 'openspec/changes/x/design.md', 'docs/VISION.md', 'README.md', 'CLAUDE.md']) {
     assert.equal(inScope(f), true, f)
   }
-  for (const f of ['PROGRESS.md', 'CONTEXT.md', 'docs/archive/old.md', 'docs/research/frappe.md', 'apps/web/e2e/a.spec.ts', 'tools/x.mjs', 'apps/web/README.md', 'sub/README.md']) {
+  for (const f of ['CONTEXT.md', 'apps/web/e2e/a.spec.ts', 'tools/x.mjs', 'apps/web/README.md', 'sub/README.md']) {
     assert.equal(inScope(f), false, f)
   }
 })

@@ -6,28 +6,11 @@ faithfully — that phase is complete, the stack and architecture inspiration
 remain credited to Frappe, and much of the design below still traces back to
 it. The project is now in a deliberate second phase, diverging from Frappe's
 design (vocabulary and API shape included) where it doesn't serve this
-platform's own users. Read `docs/ROADMAP.md` for the strategy and
-`docs/adr/` for the decisions already made. This file is your standing
-protocol — follow it every session.
+platform's own users. Read `docs/adr/` for the decisions already made. This
+file is your standing protocol — follow it every session.
 
-The project was developed under the working name `frappe-clone` and became
-Featherbase in July 2026. That name now survives only where it is a dated
-record of the past, and every one of those is deliberate — do not sweep them:
-
-- dated `PROGRESS.md` entries (the log is frozen since 23-Oct-2026), and the generated
-  `docs/archive/harness-2026/site/*.html` dumps of them;
-- `docs/adr/0006-stack-react-hono-postgres.md`, which records the working name
-  as part of the decision it documents;
-- `docs/research/frappe-architecture.md`, where `frappe_clone` is a
-  *filesystem path* to an upstream Frappe checkout — unrelated to this project
-  and not to be renamed;
-- the archived harness's `diff-request.sh` and the `clone.json` evidence file
-  it writes (`docs/archive/harness-2026/`), where "clone" names an artifact
-  the harness emitted, not the product.
-
-Anywhere else — anything a user reads, and any prose that speaks in the
-present tense — the product is Featherbase. Describing its *history* as a
-replication of Frappe stays accurate and is not the old name resurfacing.
+The product is Featherbase (working name `frappe-clone` until July 2026);
+describing its *history* as a replication of Frappe is fine.
 
 ## Project stage — experimental, with one live trial
 
@@ -52,26 +35,17 @@ checkouts are real); compatibility with anything *outside* the repo is not.
 Revisit this section when the first real deployment happens — from that point
 the calculus changes.
 
-## The document set (updated 2026-09-21)
+## The document set
 
-> Judgment lives in the spec, mechanics live in one living doc, history
-> lives in append-only logs, and every relationship between documents is
-> checked by CI rather than maintained by discipline.
+Judgment lives in `openspec/specs/` (behavior and acceptance criteria),
+mechanics in `docs/TESTING.md`, decisions in `docs/adr/` (append-only), and
+history in pull requests, their issues and the OpenSpec changes. **A document
+that describes another artifact at a distance will drift** — if a claim about
+the codebase cannot be checked mechanically, do not write it down as a fact.
 
-Here that means: `openspec/specs/` carries the behavior judgment and acceptance
-criteria; the OpenSpec section below defines how behavior changes go through it;
-`docs/TESTING.md` is the single living doc for how the suites are built and
-run; `docs/adr/` is the append-only record of what was decided and why, and what
-happened lives in the pull requests, their issues and the OpenSpec changes.
-`PROGRESS.md` is a frozen historical log (retired 23-Oct-2026) — do not add to it.
-
-The anti-pattern this retires: **a document that describes another artifact
-at a distance will drift**, and nothing catches it. Statuses, inventories
-and checklists kept by hand go stale the moment the code moves and then read
-as current — which is why the 2026 build harness is now archived
-(`docs/archive/harness-2026/`). If a claim about the codebase cannot be
-checked mechanically, do not write it down as a fact; put it where history
-belongs, dated.
+Docs are minimal on purpose: README, VISION, CONTEXT, TESTING, DEPLOY, PREVIEW,
+ADRs and the specs. Don't add a new doc when a spec, test, ADR or PR body can
+carry it.
 
 ## Architecture invariants (never violate these)
 
@@ -95,13 +69,6 @@ belongs, dated.
    (`exc_type`, `frappe.client.*`, `/api/method/<dotted.path>` RPC naming,
    etc.) for compatibility's sake — they were removed on purpose.
 
-> `docs/ROADMAP.md` still describes a React + Supabase stack. That is the
-> original plan, not the implementation. Features it frames in terms of
-> Supabase / PostgREST / Supabase Auth / Supabase Realtime are satisfied here
-> with local equivalents: native Postgres RLS, server-issued JWTs, server
-> websockets, and disk-backed file storage. See
-> [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md).
-
 ## Stack
 
 - `apps/server` — Node + Hono + TypeScript, the [`postgres`](https://github.com/porsager/postgres)
@@ -123,8 +90,7 @@ shape and density tokens in `apps/web/src/index.css` and the shared components.
 source file — text contrast in light and dark, and no raw Tailwind colour classes,
 literal colours, text under 12px, browser-locale number/date formatting or retired
 token and `.fc-*` class names. There is one colour palette; the theme is light,
-dark or the device's own setting (#380 stage 3). The older "Visual identity"
-section in `PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
+dark or the device's own setting (#380 stage 3).
 
 ## Environment
 
@@ -151,8 +117,8 @@ section in `PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
 
 ## Testing
 
-`docs/TESTING.md` is the living doc — how the suites are built, run and
-extended. What follows is only the part you must not get wrong from memory.
+`docs/TESTING.md` is the only testing doc — how the suites are built, run and
+extended; don't start another. What follows is only the part you must not get wrong from memory.
 
 Every test runs inside a real Postgres transaction that is rolled back at the
 end — Phoenix's Ecto SQL Sandbox model, via `feather-testing-postgres`. No
@@ -183,8 +149,7 @@ once per run, outside any sandbox transaction. It complements
    the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
 3. **Pick ONE piece of work.** Take direction from the `ready-for-agent`
-   issues, `openspec/specs/` and active `openspec/changes/`,
-   and `docs/design/execution-plan.md` (milestones M1–M5). Do not start a second thread of
+   issues and active `openspec/changes/`. Do not start a second thread of
    work in the same session.
 4. **Implement it fully.** Small, complete, working — not broad and half-done.
 5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
@@ -236,11 +201,7 @@ command, that is the first finding.
 - `openspec/specs/` — the sole behavior authority. The OpenSpec section below
   defines the workflow; ADR 0010 records why. Use plain, descriptive
   requirement and scenario names.
-- `docs/research/` — Frappe architecture, Glide, and stack studies.
-- `docs/archive/` — frozen history: the 2026 build harness and its feature
-  inventory (`harness-2026/`), and the specs from the retired Convex
-  implementation (`convex-capabilities/`, preserved on the `archive/convex-v1`
-  tag). Read for lineage; never as a statement about today's code.
+- `CONTEXT.md` — the domain vocabulary and the words it retires.
 
 ## OpenSpec
 

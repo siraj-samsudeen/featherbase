@@ -49,9 +49,7 @@ export function errorResponse(c: Context, err: unknown) {
       // ONE envelope, and nothing beside it: `error: { type, message, fields? }`.
       // This body used to carry Frappe's top-level `exc_type` as well (with
       // NotFound spelled DoesNotExistError). That was wire parity for the
-      // replication phase and is a CLAUDE.md invariant-4 violation now —
-      // docs/ARCHITECTURE.md has described it as removed since the divergence
-      // phase began; the code had not caught up.
+      // replication phase and is a CLAUDE.md invariant-4 violation now.
       { error: { type: err.type, message: err.message, ...(err.fields ? { fields: err.fields } : {}) } },
       STATUS[err.type] as 403,
     )
