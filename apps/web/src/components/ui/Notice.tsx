@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { cx } from './cx'
 import { CircleCheck, CircleX, Info, TriangleAlert, type LucideIcon } from './icons'
 
-export type NoticeTone = 'info' | 'caution' | 'negative' | 'positive'
+type NoticeTone = 'info' | 'caution' | 'negative' | 'positive'
 
 const TONE: Record<NoticeTone, { box: string; icon: string; Icon: LucideIcon }> = {
   info: { box: 'border-border bg-subtle', icon: 'text-ink-muted', Icon: Info },

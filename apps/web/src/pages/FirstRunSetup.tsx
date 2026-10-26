@@ -13,7 +13,7 @@ import { INSTANCE_HEALTH_QUERY_KEY, useInstanceHealth } from './InstanceHealth'
 // (a deep link is never taken over). Each person named becomes a System
 // Manager and is invited; "Not now" reaches the Admin at once.
 
-export const SETUP_PATH = '/featherbase/admin/setup'
+const SETUP_PATH = '/featherbase/admin/setup'
 const ADMINISTRATOR = 'Administrator'
 const EMAIL_CHECK = 'system-manager-email'
 

@@ -115,3 +115,37 @@ test('clicking a chip navigates to the destination it stands for', async ({ crea
     ),
   )
 })
+
+// Merged web coverage (ADR 0012): "Not now", the Last view tile, and a pinned
+// workspace this version cannot read.
+test('"Not now" puts the routine away, and it stays away on the next visit', async ({ createUser }) => {
+  const user = await createUser({ roles: ['System Manager'] })
+  await user.post('/api/events', { events: habit(5) })
+  await openHome(user)
+  ;(await screen.findByTestId('routine-dismiss')).click()
+  await waitFor(() => expect(screen.queryByTestId('routine-card')).not.toBeInTheDocument())
+  expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument()
+  cleanup()
+  await openHome(user)
+  await waitFor(() => expect(screen.queryByTestId('routine-card')).not.toBeInTheDocument())
+})
+
+test('the Last view tile opens the list it names', async ({ createUser }) => {
+  const user = await createUser({ roles: ['System Manager'] })
+  const { recordAction } = await import('../src/lib/recents')
+  recordAction(user.user!, { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person' })
+  const { router } = await openHome(user)
+  ;(await screen.findByTestId('resume-tile-view')).click()
+  await waitFor(() =>
+    expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/Person'),
+  )
+})
+
+test('a pinned workspace this version cannot read counts as none, so the routine is offered again', async ({ createUser }) => {
+  const user = await createUser({ roles: ['System Manager'] })
+  await user.post('/api/events', { events: habit(5) })
+  localStorage.setItem(`fc-workspace:${user.user}`, '{not json')
+  await openHome(user)
+  expect(await screen.findByTestId('routine-card')).toBeInTheDocument()
+  expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument()
+})

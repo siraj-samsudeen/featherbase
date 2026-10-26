@@ -72,10 +72,12 @@ export default defineConfig({
       // functions 66.48% — the suite had long outgrown the old 34/34/49 floor.
       // Then again after the component tests the merged report called for:
       // lines 81.97%, statements 80.1%, functions 78.15%. Same rounding as above.
+      // Re-measured 2026-10-26 once the merged report reached 100% of lines
+      // and functions: lines 94.24%, statements 92.48%, functions 92.79%.
       thresholds: {
-        lines: 81,
-        statements: 80,
-        functions: 77,
+        lines: 94,
+        statements: 92,
+        functions: 91,
       },
     },
   },

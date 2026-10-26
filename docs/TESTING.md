@@ -348,6 +348,9 @@ pyramid, not as separate work.
 On 2026-10-26 the web suite moved to Istanbul (ADR 0012); with the component
 tests the merged report called for, the jsdom run measured lines 81.97%,
 statements 80.1%, functions 78.15%, and the floor became 81 / 80 / 77.
+On 2026-10-26 the merged report (below) reached 100% of lines and functions
+(statements 98.4%, branches 88.81%); the jsdom run then measured lines 94.24%,
+statements 92.48%, functions 92.79%, and the floor became 94 / 92 / 91.
 `apps/web/vitest.config.ts` holds the current numbers.
 
 On 2026-10-26 (ADR 0012) the server suite reached 100% of lines and
@@ -403,6 +406,14 @@ To measure next to a running `./init.sh`, keep the e2e stack off its ports and
 database: `E2E_API_PORT`/`E2E_WEB_PORT` move the ports, and the e2e database is
 `<DATABASE_URL's name>_e2e`, so a private `DATABASE_URL` gives a private one.
 The merged run is not a CI job; it is run by hand when choosing what to test.
+
+Measured 2026-10-26: lines 100% (5178/5178), functions 100% (2039/2039),
+statements 98.4%, branches 88.81% — from lines 96.34% / functions 95.42% the
+same day. A coverage ignore follows ADR 0012's list and gives its reason in the
+comment. Both suites strip comments before instrumenting, so a hint in front of
+a statement only survives when it is marked as a legal comment —
+`/* istanbul ignore next -- <reason> @preserve */`; a hint inside an expression
+(the argument of `.catch(...)`) survives as it is.
 
 ## Runtime packages (#296)
 

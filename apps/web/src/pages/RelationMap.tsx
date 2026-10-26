@@ -48,7 +48,6 @@ export function RelationMap({
 }) {
   const meta = useMeta(table)
   const cnx = useConnections(table, name)
-  const settings = useSettings()
   const navigate = useNavigate()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
   // Option C of the Explore entry-point exploration: hand this row's

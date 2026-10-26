@@ -2,7 +2,7 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cx, recipe } from './cx'
 import { LoaderCircle } from './icons'
 
-export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
+type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary: 'border-transparent bg-action text-action-ink hover:bg-action-hover',
@@ -33,7 +33,7 @@ export function buttonClasses({
   )
 }
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   block?: boolean
   /** Shows a spinner, keeps the label, and refuses clicks until it settles. */

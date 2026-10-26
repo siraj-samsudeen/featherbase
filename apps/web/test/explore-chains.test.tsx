@@ -118,3 +118,35 @@ test('from an item, the purchases that carry it through their lines', async ({ a
   expect(pane2).toHaveTextContent('po-3')
   expect(pane2).not.toHaveTextContent('po-2')
 })
+
+// Merged web coverage (ADR 0012): the last pane narrows nothing further, so
+// clicking one of its rows picks nothing; and the list's Explore split button
+// opens a chain of the dependents ticked in it.
+test('a row in the last pane is not picked when clicked', async ({ admin }) => {
+  await seed(admin)
+  await renderApp('/featherbase/admin/explore', admin)
+  await pick(await screen.findByTestId('explore-root'), 'Ec Supplier')
+  await pick(await screen.findByTestId('explore-step2'), 'Ec Purchase · supplier')
+  await pick(await screen.findByTestId('explore-step3'), 'Ec Line (Lines)')
+  await waitFor(() => expect(count('pane3')).toHaveTextContent('4'))
+  const [line] = within(screen.getByTestId('explore-pane3')).getAllByTestId('explore-row')
+  fireEvent.click(line)
+  expect(line).not.toHaveAttribute('data-selected')
+  expect(screen.getByTestId('explore-chips')).toHaveTextContent('No selection')
+})
+
+test("the list's Explore button opens a chain of the dependents ticked under it", async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  const { router } = await renderApp(`/featherbase/admin/${encodeURIComponent('Ec Supplier')}`, admin)
+  await user.click(await screen.findByTestId('explore-split-toggle'))
+  const [option] = await within(await screen.findByTestId('explore-split-panel')).findAllByTestId('explore-split-option')
+  await user.click(option)
+  expect(option).toBeChecked()
+  await user.click(option)
+  expect(option).not.toBeChecked()
+  await user.click(option)
+  await user.click(screen.getByTestId('explore-split-open'))
+  await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin/explore'))
+  await waitFor(() => expect(screen.getByTestId('explore-pane2')).toBeInTheDocument())
+})

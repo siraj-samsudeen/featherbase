@@ -25,14 +25,14 @@ type Row = Record<string, unknown>
 // real navigation. Airtable's expanded records + Glide's pushed detail
 // screens, generalized over Table metadata.
 
-export type PeekFrame =
+type PeekFrame =
   | { kind: 'record'; table: string; name: string }
   | { kind: 'list'; table: string; filters: Filter[]; title: string }
 
-const PeekContext = createContext<{ push: (f: PeekFrame) => void; available: boolean }>({
-  push: () => {},
-  available: false,
-})
+// Outside the Admin's PeekProvider there is no stack to push onto: callers
+// check `available` before offering a peek, and `push` exists only when it is.
+type PeekApi = { available: true; push: (f: PeekFrame) => void } | { available: false }
+const PeekContext = createContext<PeekApi>({ available: false })
 
 export function usePeek() {
   return useContext(PeekContext)
@@ -41,7 +41,7 @@ export function usePeek() {
 export function PeekProvider({ children }: { children: React.ReactNode }) {
   const [stack, setStack] = useState<PeekFrame[]>([])
   const push = useCallback((f: PeekFrame) => setStack((s) => [...s, f]), [])
-  const value = useMemo(() => ({ push, available: true }), [push])
+  const value = useMemo<PeekApi>(() => ({ push, available: true }), [push])
 
   // A real navigation underneath (breadcrumb, sidebar, ↗) closes the stack —
   // peeking never leaves a stale overlay over a page it wasn't opened from.

@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { queryOptions, useQuery } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from './api'
 
 // Current session identity + roles, resolved from the server (whoami) and
 // cached. Used to gate role-only UI like the SET-003 permission manager.
 // #410: what the shell may draw, computed by the server from current roles and
 // grants. Display only — the server still refuses what the person cannot do.
-export interface Capabilities {
+interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
   report: boolean // the Sales Target report
   table_access: boolean // holds any Table grant of their own, or a shared row
@@ -27,10 +27,16 @@ interface WhoAmI {
   preview?: boolean
 }
 
+/** whoami, as every reader asks for it — the hook below and a write that
+ *  must know the server's value before it can roll back to it. */
+export const whoAmIQuery = queryOptions({
+  queryKey: ['whoami'],
+  queryFn: () => api.get<WhoAmI>('/api/whoami'),
+})
+
 export function useWhoAmI() {
   return useQuery({
-    queryKey: ['whoami'],
-    queryFn: () => api.get<WhoAmI>('/api/whoami'),
+    ...whoAmIQuery,
     staleTime: 5 * 60_000,
     // Signed out there is nothing to ask — and an anonymous whoami would ride
     // the sid cookie (if one survives) and answer as the previous user.
@@ -47,7 +53,7 @@ export function useIsSystemManager(): boolean {
   return q.data?.roles?.includes('System Manager') ?? false
 }
 
-export type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
+type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
 
 /**
  * Which layout the person gets (#410). Pure so the rule is testable: an error

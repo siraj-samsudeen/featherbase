@@ -9,7 +9,7 @@ import { cardClasses } from './ui'
 // its legacy JSON shortcuts. Everything shown here has already been
 // role-scoped and permission-filtered by GET /api/home_pages.
 
-export const UNLABELLED_CARD_HEADING = 'Tables'
+const UNLABELLED_CARD_HEADING = 'Tables'
 
 function routeFor(s: HomePageShortcut): string {
   const to = s.link_to

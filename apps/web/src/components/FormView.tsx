@@ -297,12 +297,8 @@ export function FormView({
         setBanner('Saved')
       }
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.fields) setErrors(err.fields)
-        setBanner(err.message)
-      } else {
-        setBanner('Save failed')
-      }
+      if (err instanceof ApiError && err.fields) setErrors(err.fields)
+      setBanner(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
       setSaving(false)
     }

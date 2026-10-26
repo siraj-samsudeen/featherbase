@@ -3,7 +3,7 @@ import { inputClasses } from './ui'
 // kinds mirror resolveName() in apps/server/src/document.ts; a series is split
 // here into a prefix and a digit count so nobody has to type ".###".
 
-export type NamingKind = 'series' | 'hash' | 'prompt' | 'field'
+type NamingKind = 'series' | 'hash' | 'prompt' | 'field'
 
 // The generated kinds. 'field' is deliberately absent: naming a row after a
 // column IS picking that column, so the columns appear as options in this same
@@ -21,7 +21,7 @@ interface Parsed {
   column: string
 }
 
-export function parseIdPattern(pattern: string): Parsed {
+function parseIdPattern(pattern: string): Parsed {
   const base: Parsed = { kind: 'hash', prefix: '', digits: 3, column: '' }
   if (pattern === 'prompt') return { ...base, kind: 'prompt' }
   if (pattern.startsWith('field:'))
@@ -40,14 +40,14 @@ export function parseIdPattern(pattern: string): Parsed {
   return base
 }
 
-export function composeIdPattern(p: Parsed): string {
+function composeIdPattern(p: Parsed): string {
   if (p.kind === 'prompt') return 'prompt'
   if (p.kind === 'field') return p.column ? `field:${p.column}` : 'hash'
   if (p.kind === 'series') return p.prefix ? `${p.prefix}.${'#'.repeat(p.digits)}` : 'hash'
   return 'hash'
 }
 
-export function namingPreview(pattern: string): string {
+function namingPreview(pattern: string): string {
   const p = parseIdPattern(pattern)
   if (p.kind === 'prompt') return 'You type each row’s id yourself'
   if (p.kind === 'field')

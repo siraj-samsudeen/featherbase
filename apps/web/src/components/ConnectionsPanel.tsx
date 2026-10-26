@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
-import { connectionLabel, useConnections, type Connection, type Filter } from '../lib/connections'
+import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
 import { cardClasses, pillClasses } from './ui'
@@ -228,4 +228,3 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
   )
 }
 
-export type { Filter }

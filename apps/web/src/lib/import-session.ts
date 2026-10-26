@@ -137,7 +137,7 @@ export function loadSheets(fileName: string): ParsedSheet[] | null {
   return saved.sheets
 }
 
-export function clearSheets(): void {
+function clearSheets(): void {
   try {
     store()?.removeItem(IMPORT_DATA_KEY)
   } catch {

@@ -5,9 +5,9 @@ import { FileText, LayoutDashboard, List, LogIn, Pencil, Search, type LucideIcon
 // command bar all draw a kind from here, so a page always looks like a page.
 // The icon stands in for a written label, so each carries the kind's name.
 
-export type ActivityKind = 'page' | 'row' | 'list' | 'search' | 'change' | 'login'
+type ActivityKind = 'page' | 'row' | 'list' | 'search' | 'change' | 'login'
 
-export interface KindVisual {
+interface KindVisual {
   /** The kind's name, read out in place of the icon. */
   label: string
   Icon: LucideIcon
@@ -15,7 +15,7 @@ export interface KindVisual {
   tint: string
 }
 
-export const KIND_VISUALS: Record<ActivityKind, KindVisual> = {
+const KIND_VISUALS: Record<ActivityKind, KindVisual> = {
   page: { label: 'Page', Icon: LayoutDashboard, tint: 'bg-opportunity-tint text-opportunity' },
   row: { label: 'Row', Icon: FileText, tint: 'bg-action-tint text-action' },
   list: { label: 'List', Icon: List, tint: 'bg-positive-tint text-positive' },
@@ -24,7 +24,7 @@ export const KIND_VISUALS: Record<ActivityKind, KindVisual> = {
   login: { label: 'Sign-in', Icon: LogIn, tint: 'bg-subtle text-ink-muted' },
 }
 
-export function kindVisual(kind: string): KindVisual {
+function kindVisual(kind: string): KindVisual {
   return KIND_VISUALS[kind as ActivityKind] ?? KIND_VISUALS.row
 }
 

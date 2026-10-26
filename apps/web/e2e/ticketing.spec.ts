@@ -1,4 +1,4 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { test, adminAuth, type APIRequestContext } from './fixtures'
 
 const SUBJECT = 'E2E: helpdesk renders in the generic Admin'
 

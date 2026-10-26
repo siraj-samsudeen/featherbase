@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   IMPORT_DATA_KEY,
   IMPORT_DECISIONS_KEY,
@@ -149,4 +149,20 @@ test('starting over leaves nothing behind', () => {
   clearSession()
   expect(loadDecisions()).toBeNull()
   expect(loadSheets('chain.xlsx')).toBeNull()
+})
+
+// A browser that blocks site data throws on reaching sessionStorage at all
+// (merged web coverage, ADR 0012): nothing is saved, nothing is offered back.
+test('with session storage blocked outright, nothing is saved and nothing comes back', () => {
+  const blocked = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+    throw new DOMException('blocked', 'SecurityError')
+  })
+  try {
+    expect(saveDecisions(decisions())).toBe(false)
+    expect(loadDecisions()).toBeNull()
+    expect(saveSheets('chain.xlsx', SHEETS)).toBe(false)
+    expect(loadSheets('chain.xlsx')).toBeNull()
+  } finally {
+    blocked.mockRestore()
+  }
 })

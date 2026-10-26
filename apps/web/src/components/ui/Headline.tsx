@@ -2,7 +2,7 @@ import { useId, type ReactNode } from 'react'
 import { fmtPct } from '../../lib/inr'
 import { cx } from './cx'
 
-export type HeadlineTone = 'negative' | 'caution' | 'positive' | 'missing' | 'neutral'
+type HeadlineTone = 'negative' | 'caution' | 'positive' | 'missing' | 'neutral'
 
 const TONE_TEXT: Record<HeadlineTone, string> = {
   negative: 'text-negative',

@@ -1,5 +1,5 @@
 import { useId, type HTMLAttributes, type ReactNode } from 'react'
-import { cx, recipe } from './cx'
+import { recipe } from './cx'
 
 export function cardClasses(className?: string): string {
   return recipe('rounded-card border border-border bg-surface shadow-sm', className)

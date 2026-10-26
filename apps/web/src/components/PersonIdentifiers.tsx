@@ -45,7 +45,7 @@ const SOURCES: Record<string, string> = {
   migration: 'carried over at the upgrade',
   'stylehr-roster-sync': 'StyleHR roster',
 }
-export function sourceLabel(source: string): string {
+function sourceLabel(source: string): string {
   return SOURCES[source] ?? source
 }
 

@@ -15,17 +15,17 @@ export interface Frm {
   set_value: (field: string, value: unknown) => void
 }
 
-export type Handler = (frm: Frm) => void
+type Handler = (frm: Frm) => void
 // fieldname → handler, plus the special 'onload' / 'before_save' keys.
-export type HandlerMap = Record<string, Handler>
+type HandlerMap = Record<string, Handler>
 
-export interface CompiledScripts {
+interface CompiledScripts {
   handlers: HandlerMap
   errors: string[]
 }
 
 // Build the `featherbase` API a script sees and evaluate every script against it.
-export function compileClientScripts(table: string, scripts: string[]): CompiledScripts {
+function compileClientScripts(table: string, scripts: string[]): CompiledScripts {
   const handlers: HandlerMap = {}
   const errors: string[] = []
 

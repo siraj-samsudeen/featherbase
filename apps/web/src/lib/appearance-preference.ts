@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser } from './api'
-import { useWhoAmI } from './session'
+import { useWhoAmI, whoAmIQuery } from './session'
 
 // One owner for the whole session holds this hook (lib/theme-choice.tsx, at
 // the router root, #489). A write checks the person is still the one who
@@ -52,10 +52,7 @@ export function useAppearancePreference<T extends string>(
         // rollback value before writing, rather than treating a mirror as an
         // acknowledgement or letting that initial read overwrite the choice.
         if (revision === 1) {
-          const identity = await qc.ensureQueryData({
-            queryKey: ['whoami'],
-            queryFn: () => api.get<Record<string, unknown>>('/api/whoami'),
-          })
+          const identity = await qc.ensureQueryData(whoAmIQuery)
           if (isValue(identity[key])) confirmed.current = identity[key]
         }
         if (!active()) return

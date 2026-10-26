@@ -23,7 +23,7 @@ interface HistoryEntry {
   until: string | null
 }
 
-export interface HealthCheckView {
+interface HealthCheckView {
   key: string
   title: string
   ok: boolean
@@ -35,7 +35,7 @@ export interface HealthCheckView {
   history: HistoryEntry[]
 }
 
-export interface InstanceHealthView {
+interface InstanceHealthView {
   checks: HealthCheckView[]
   failing: number
   worst: Severity | null
@@ -62,7 +62,7 @@ export function useInstanceHealth(enabled: boolean) {
   return query
 }
 
-export function problemsLine(n: number): string {
+function problemsLine(n: number): string {
   return n === 1 ? '1 problem needs attention' : `${n} problems need attention`
 }
 
@@ -104,7 +104,7 @@ const stateOf = (ok: boolean, severity: Severity) => STATE[ok ? 'passing' : seve
 
 /** The Activity Log in the hour before a change and the 15 minutes after:
  *  what someone did that broke or fixed it. */
-export function activityAround(at: string): string {
+function activityAround(at: string): string {
   const t = new Date(at).getTime()
   const filters = [
     ['created_at', '>=', new Date(t - 60 * 60_000).toISOString()],
