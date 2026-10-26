@@ -33,8 +33,9 @@ import { metaQuery } from '../lib/meta'
 import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
+import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
-import { Bell, Clock, Compass, Database, History, Key, LogIn, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
+import { Bell, Clock, Compass, Database, History, Key, ListChecks, LogIn, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -419,6 +420,8 @@ function AdminShell() {
     <PeekProvider>
     <div className="flex h-full flex-col">
       <PreviewBanner />
+      {/* #465 D8: System Managers only, while a health check fails. */}
+      <HealthBanner enabled={canManage} />
       {/* Navbar */}
       {/* md+: the left zone is exactly the sidebar's width (w-60) with the
           sidebar's content padding, so the selector lines up with the column
@@ -836,6 +839,12 @@ function AdminShell() {
                   }]
                 : []),
             ]}
+          />
+          <SidebarGroup
+            heading="This instance"
+            icon={ListChecks}
+            testid="sidebar-group-instance"
+            items={canManage ? [{ to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' }] : []}
           />
         </aside>
 

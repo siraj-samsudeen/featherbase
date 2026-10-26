@@ -767,6 +767,30 @@ database seeded by the previous code).
    owners). A failed release leaves the old code serving, and nothing inside
    Featherbase can report a release it never ran.
 
+### Instance health
+
+System Managers see every health check at **Admin → This instance → Instance
+health** (`/featherbase/admin/instance-health`), each with its state, why it
+matters, how to fix it, and its history. While any check fails, every System
+Manager (and the built-in Administrator) sees a one-line banner on every Admin
+page: red when a failing check is an error, amber when only warnings fail.
+The banner cannot be dismissed; it goes once the cause is fixed.
+
+| Check | Severity | Fails when |
+| --- | --- | --- |
+| A System Manager with an email address | error | no enabled System Manager has an address, so system notices reach nobody |
+| Recommended deployment variables | warning | a recommended variable (or one the settings make required) is unset |
+| Settings file applied | error | the settings file was never applied on this database ("The settings were never applied.") |
+| Settings match the file | warning | a field the file set was changed outside it (`cli settings:set`) |
+| Scheduled job: `<method>` | error | an enabled job's last run failed, or it has not run for twice its cadence |
+| Administrator default password | error | outside development and test, the Administrator still has the default password |
+
+The same checks are printed by the release step (`health: passing …` /
+`health: FAILING …`; a failing check never stops a release), and the
+`check_instance_health` scheduled job runs them every 15 minutes, so the
+history is right even when nobody opens the page. Only changes of state are
+recorded (`health_check_event`).
+
 ## Privacy notice (#401)
 
 `/privacy` is a public page (no sign-in, no app JavaScript) that shows the

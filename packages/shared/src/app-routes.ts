@@ -26,6 +26,7 @@ export const ADMIN_STATIC_PAGES = [
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
   { slug: 'waiting-for-access', title: 'Waiting for access' },
+  { slug: 'instance-health', title: 'Instance health' },
 ] as const
 
 /** Admin first segments that are real pages but not worth remembering
