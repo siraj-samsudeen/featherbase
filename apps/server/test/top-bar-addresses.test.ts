@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { config } from '../src/config'
@@ -6,6 +6,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
+import { configureGoogle } from './identity-fixtures'
 
 // #489 (design D3, "One top bar on every address"): what the shared top bar
 // asks the server. The bar draws its name from the address it is on, and
@@ -59,16 +60,25 @@ const cookieOf = (res: Response, name: string) => res.headers.getSetCookie().fin
 /** A person with these roles, signed in on `origin` in one browser: `sid` is
  *  the cookie it holds there. `openAdmin` asks from `at`, as that browser does
  *  (its bearer token and its cookie). */
-async function signedIn(api: TestClient, admin: TestClient, name: string, roles: string[], origin: string) {
+async function signedIn(api: TestClient, admin: TestClient, name: string, roles: string[], origin: string, minutesAgo = 0) {
   await viewerRole()
   const id = await makePerson({ email: `${name}@example.com`, full_name: name, roles: roles.map((role) => ({ role })) })
   await admin.post('/api/set_password', { user: id, password: 'top-bar-pw-1' })
-  const res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr: `${name}@example.com`, pwd: 'top-bar-pw-1' }) })
+  // The sign-in alone happens `minutesAgo`: its session carries that time.
+  const now = Date.now()
+  const clock = minutesAgo ? vi.spyOn(Date, 'now').mockReturnValue(now - minutesAgo * 60_000) : null
+  let res: Response
+  try {
+    res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr: `${name}@example.com`, pwd: 'top-bar-pw-1' }) })
+  } finally {
+    clock?.mockRestore()
+  }
   const { token } = (await res.json()) as { token: string }
   const sid = cookieOf(res, 'sid')
   return {
     id,
     sid,
+    token,
     openAdmin: (at: string) => api.fetch(`${at}/api/open_admin`, { method: 'POST', headers: { authorization: `Bearer ${token}`, cookie: sid } }),
   }
 }
@@ -125,6 +135,42 @@ describe('POST /api/open_admin', () => {
 
   test('signed out, it is refused', async ({ api }) => {
     expect((await api.fetch(`${DASH}/api/open_admin`, { method: 'POST' })).status).toBe(401)
+  })
+})
+
+// ---- a hand-off never makes a sign-in younger (Codex round 1 on #495) ----------
+
+/** Signed in `minutesAgo` on DASH, then handed to ADMIN by Open Admin: the
+ *  session the admin address minted for this browser. */
+type Session = { token: string; user: { sign_in: { expires_at: number } } }
+
+async function handedOverAfter(api: TestClient, admin: TestClient, name: string, minutesAgo: number) {
+  const both = await signedIn(api, admin, name, ['System Manager', 'Sales Target Viewer'], DASH, minutesAgo)
+  const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
+  const res = await follow(api, handoff!, both.sid)
+  const source = (await (await api.fetch(`${DASH}/api/whoami`, { headers: { authorization: `Bearer ${both.token}` } })).json()) as Session['user']
+  return { target: (await res!.json()) as Session, source }
+}
+
+const startLinkingGoogle = (api: TestClient, token: string) =>
+  api.fetch(`${ADMIN}/api/oauth/google/link`, { headers: { authorization: `Bearer ${token}` }, redirect: 'manual' })
+
+describe('a handed-over session keeps the time its person signed in', () => {
+  beforeEach(() => configureGoogle({ client_id: 'test-client-id', self_link: true }))
+
+  test('Google linking on the admin address is refused when the sign-in on the app address is older than 15 minutes', async ({ api, admin }) => {
+    const { target } = await handedOverAfter(api, admin, 'stale.linker', 20)
+    expect((await startLinkingGoogle(api, target.token)).status).toBe(401)
+  })
+
+  test('Google linking on the admin address starts when the sign-in on the app address is fresh', async ({ api, admin }) => {
+    const { target } = await handedOverAfter(api, admin, 'fresh.linker', 1)
+    expect((await startLinkingGoogle(api, target.token)).status).toBe(302)
+  })
+
+  test('the handed-over session expires when the original sign-in would', async ({ api, admin }) => {
+    const { target, source } = await handedOverAfter(api, admin, 'expiry.keeper', 60)
+    expect(target.user.sign_in.expires_at).toBe(source.sign_in.expires_at)
   })
 })
 

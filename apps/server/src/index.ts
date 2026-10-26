@@ -657,6 +657,8 @@ function sessionOptionsOf(user: SessionUser): SessionOptions {
     ...(claims?.identity ? { identity: claims.identity } : {}),
     ...(claims?.test_mode ? { testMode: true } : {}),
     ...(claims?.preview ? { preview: true } : {}),
+    // The source's sign-in time travels with it (Codex round 1 on #495).
+    ...(claims?.authenticated_at ? { authenticatedAt: claims.authenticated_at } : {}),
   }
 }
 

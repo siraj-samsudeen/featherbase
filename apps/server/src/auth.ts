@@ -85,6 +85,11 @@ export interface SignInClaims {
   preview: boolean
   /** Seconds since the epoch; null for a token minted before the upgrade. */
   issued_at: number | null
+  /** Seconds since the epoch when the person last proved who they are. A
+   *  session handed between addresses (#488, #489 Open Admin) keeps its
+   *  source's time, so a hand-off never makes a sign-in younger. Freshness
+   *  and expiry read this, never `issued_at`. */
+  authenticated_at: number | null
   /** This session's unique id (`jti`, #411): what sign-out revokes. */
   session_id: string
   /** Seconds since the epoch when this session's token expires. */
@@ -96,6 +101,8 @@ export interface SessionOptions {
   identity?: string
   testMode?: boolean
   preview?: boolean
+  /** A hand-off's source sign-in time (seconds); absent means "now". */
+  authenticatedAt?: number
 }
 
 export interface IssuedSession {
@@ -104,13 +111,17 @@ export interface IssuedSession {
   maxAgeSeconds: number
 }
 
-async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number; jti: string }> {
+async function issueSessionToken(userName: string, opts: SessionOptions = {}): Promise<{ token: string; maxAgeSeconds: number; iat: number; at: number; exp: number; jti: string }> {
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
-  const maxAgeSeconds = hours * 3600
   const iat = Math.floor(Date.now() / 1000)
+  // Codex round 1 on #495: a handed-over session keeps the time its person
+  // signed in (`at`), and ends when that sign-in's session would have.
+  const at = Math.min(opts.authenticatedAt ?? iat, iat)
+  const exp = at + hours * 3600
+  const maxAgeSeconds = Math.max(exp - iat, 0)
   // #411: a unique id per session, so sign-out can revoke exactly this one.
   const jti = randomBytes(16).toString('base64url')
   // m = sign-in method, idn = linked identity, tm = test mode (design D8).
@@ -118,7 +129,8 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
     {
       sub: userName,
       iat,
-      exp: iat + maxAgeSeconds,
+      at,
+      exp,
       jti,
       ...(opts.method ? { m: opts.method } : {}),
       ...(opts.identity ? { idn: opts.identity } : {}),
@@ -127,11 +139,11 @@ async function issueSessionToken(userName: string, opts: SessionOptions = {}): P
     },
     jwtSecret(),
   )
-  return { token, maxAgeSeconds, iat, jti }
+  return { token, maxAgeSeconds, iat, at, exp, jti }
 }
 
-function claimsOf(opts: SessionOptions, iat: number, jti: string, exp: number): SignInClaims {
-  return { expires_at: exp, method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, session_id: jti }
+function claimsOf(opts: SessionOptions, iat: number, at: number, jti: string, exp: number): SignInClaims {
+  return { expires_at: exp, method: opts.method ?? null, identity: opts.identity ?? null, test_mode: Boolean(opts.testMode), preview: Boolean(opts.preview), issued_at: iat, authenticated_at: at, session_id: jti }
 }
 
 /** The one account a typed username-or-email names for password sign-in and
@@ -183,7 +195,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   })
   return {
     token: session.token,
-    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.jti, session.iat + session.maxAgeSeconds) },
+    user: { row_id: user.row_id as string, kind: 'person', email: (user.email as string | null) ?? null, full_name: user.full_name as string | null, sign_in: claimsOf(opts, session.iat, session.at, session.jti, session.exp) },
     maxAgeSeconds: session.maxAgeSeconds,
   }
 }
@@ -354,7 +366,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown; iat?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
+  let payload: { sub?: unknown; iat?: unknown; at?: unknown; exp?: unknown; jti?: unknown; m?: unknown; idn?: unknown; tm?: unknown; pv?: unknown }
   try {
     payload = (await verify(token, jwtSecret(), 'HS256')) as typeof payload
   } catch {
@@ -367,6 +379,9 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // be signed out, so it ended at that upgrade too.
   if (typeof payload.jti !== 'string' || !payload.jti) throw new AppError('AuthenticationError', 'Invalid or expired session')
   const jti = payload.jti
+  // When the person signed in: a hand-off's source time, else the issue time
+  // (every session minted before `at` existed was its own sign-in).
+  const authenticatedAt = typeof payload.at === 'number' ? Math.min(payload.at, payload.iat) : payload.iat
   const method = typeof payload.m === 'string' ? payload.m : null
   const identity = typeof payload.idn === 'string' ? payload.idn : null
   // One query (design D8): the person, the method the session came through,
@@ -391,10 +406,11 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     user.signed_out ||
     (method !== null && user.method_enabled !== true) ||
     (user?.method_kind === 'password' && !user.has_password) ||
-    // #391: a session issued before the person's sessions were ended. Whole
-    // seconds, like `iat` (floor(now)): a sign-in in the same second as the
-    // reset survives — and so would an older one from that same second.
-    (user.sessions_ended_at != null && payload.iat < Number(user.sessions_ended_at)) ||
+    // #391: a session whose sign-in came before the person's sessions were
+    // ended (for a handed-over session, its source's sign-in). Whole seconds,
+    // like `iat` (floor(now)): a sign-in in the same second as the reset
+    // survives — and so would an older one from that same second.
+    (user.sessions_ended_at != null && authenticatedAt < Number(user.sessions_ended_at)) ||
     // person-resolution D5: a session opened through an identity that has
     // since ended (left, moved, unlinked) ends on its next request.
     (identity !== null && (user.identity_owner !== user.row_id || user.identity_subject == null || user.identity_ended != null))
@@ -410,6 +426,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
       test_mode: payload.tm === true,
       preview: payload.pv === true,
       issued_at: typeof payload.iat === 'number' ? payload.iat : null,
+      authenticated_at: authenticatedAt,
       session_id: jti,
       expires_at: Number(payload.exp),
     },
@@ -451,8 +468,9 @@ export async function revokeSession(session: SessionToRevoke): Promise<void> {
 }
 
 /** #411: which of these open sessions have ended since they were checked —
- *  expired, signed out (on any instance), the person disabled, or issued before the
- *  person's sessions were ended (#391; whole seconds, as resolveToken). One
+ *  expired, signed out (on any instance), the person disabled, or signed in (`issuedAt`:
+ *  the sign-in time a hand-off keeps) before the person's sessions were ended (#391;
+ *  whole seconds, as resolveToken). One
  *  query for all of them. */
 export interface OpenSession { jti: string; person: string; issuedAt: number; expiresAt: number }
 export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<string>> {
@@ -476,8 +494,10 @@ export async function endedSessionIds(sessions: OpenSession[]): Promise<Set<stri
 export const LINK_FRESHNESS_SECONDS = 15 * 60
 export function assertFreshForLinking(user: SessionUser): void {
   assertCanChangeAccess(user)
-  const iat = user.sign_in?.issued_at
-  if (!iat || Date.now() / 1000 - iat > LINK_FRESHNESS_SECONDS)
+  // When the person signed in, not when this session was minted: a hand-off
+  // between addresses never makes a sign-in fresh (Codex round 1 on #495).
+  const at = user.sign_in?.authenticated_at
+  if (!at || Date.now() / 1000 - at > LINK_FRESHNESS_SECONDS)
     throw new AppError('AuthenticationError', 'Sign in again first, then link the new method within a few minutes.')
 }
 
