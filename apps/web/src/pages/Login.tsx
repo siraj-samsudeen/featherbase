@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
@@ -23,6 +23,33 @@ export function safeLoginNext(
   } catch {
     return undefined
   }
+}
+
+// A refused browser sign-in (the Google callback) comes back as
+// `?error=<code>`. Only these codes are explained; anything else reads as the
+// generic failure, and the query text itself is never shown.
+const REFUSALS: Record<string, (p: { appName: string; google: string; service: string | null }) => string> = {
+  not_provisioned: ({ appName, google, service }) =>
+    `This ${google} account isn't set up for ${appName}. Ask your manager or IT to invite you${service ? `, or sign in with ${service}.` : '.'}`,
+  not_allowed: ({ google }) => `This account can't sign in with ${google}. Ask your manager or IT for help.`,
+  address_in_use: ({ google }) => `Another account already uses this ${google} account's email address. Ask your manager or IT to link it for you.`,
+  google_off: ({ google }) => `${google} sign-in isn't available right now. Use another way to sign in.`,
+  expired: () => 'The sign-in took too long or was started in another window. Please try again.',
+  google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
+}
+
+const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
+// Server messages a person may read as they are: refusals the server already
+// words for people (a wrong password, an outage, someone who has left).
+const SHOWN_AS_SENT = new Set(['AuthenticationError', 'PermissionError', 'ServiceUnavailableError', 'ConflictError', 'RateLimitError'])
+
+/** What the page says about a failed sign-in. A validation message from the
+ *  server is a request shape ("Expected { usr, pwd }"), never shown on the
+ *  sign-in forms; sign-up's validation messages are worded for people. */
+export function signInErrorText(err: unknown, opts: { blank: string; showValidation?: boolean }): string {
+  if (!(err instanceof ApiError)) return SIGN_IN_FAILED
+  if (err.type === 'ValidationError') return opts.showValidation ? err.message : opts.blank
+  return SHOWN_AS_SENT.has(err.type) ? err.message : SIGN_IN_FAILED
 }
 
 export function LoginPage() {
@@ -52,8 +79,6 @@ export function LoginPage() {
   const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'delegated_password')
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
-  // Test mode (#3783): the server skips the provider, so there is no password to ask for.
-  const delegatedTestMode = delegated?.test_mode === true
   // If the brand cannot be read, offer Google as before; the server decides.
   const google = methods === null ? { key: 'google', label: 'Google' } : methods.find((m) => m.kind === 'google')
   // Until the brand answers, and if it cannot, the password form stays.
@@ -71,7 +96,7 @@ export function LoginPage() {
   }
 
   // Both sign-in forms end here: back to a safe deep link, else the landing.
-  async function signIn(attempt: () => Promise<SessionUser>) {
+  async function signIn(attempt: () => Promise<SessionUser>, blank: string, showValidation = false) {
     setError(null)
     setBusy(true)
     try {
@@ -84,8 +109,8 @@ export function LoginPage() {
       navigate({ to: landingPath(user) })
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable
-      // service and a person who has left apart.
-      setError(err instanceof ApiError ? err.message : 'Login failed')
+      // service and a person who has left apart; nothing raw gets through.
+      setError(signInErrorText(err, { blank, showValidation }))
     } finally {
       setBusy(false)
     }
@@ -93,8 +118,17 @@ export function LoginPage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // Read from the form, not from React state, so values the browser's
+    // autofill wrote into the boxes are what is sent.
     const form = new FormData(e.currentTarget)
-    await signIn(() => login(String(form.get('email')), String(form.get('password'))))
+    const usr = String(form.get('email') ?? '').trim()
+    const pwd = String(form.get('password') ?? '')
+    const blank = 'Enter your email or username and your password.'
+    if (!usr || !pwd) {
+      setError(blank)
+      return
+    }
+    await signIn(() => login(usr, pwd), blank)
   }
 
   async function onDelegatedSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -103,17 +137,19 @@ export function LoginPage() {
     const id = String(form.get('delegated_id') ?? '').trim()
     const password = String(form.get('delegated_password') ?? '')
     // Nothing typed is the person's slip, not an API validation failure (#406).
-    if (!id || (!delegatedTestMode && !password)) {
-      setError(delegatedTestMode ? 'Enter your employee code.' : `Enter your ${delegatedLabel} ID and password.`)
+    // Test mode asks the same: the page never advertises it.
+    const blank = `Enter your ${delegatedLabel} ID and password.`
+    if (!id || !password) {
+      setError(blank)
       return
     }
-    await signIn(() => loginDelegated(id, password, delegated!.key))
+    await signIn(() => loginDelegated(id, password, delegated!.key), blank)
   }
 
   async function onSignUpSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
-    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))))
+    await signIn(() => signUp(String(form.get('username')).trim(), String(form.get('password'))), 'Choose a username and a password.', true)
   }
 
   function switchMode(next: 'password' | 'delegated' | 'signup', key: string | null = null) {
@@ -125,6 +161,14 @@ export function LoginPage() {
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
+  const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
+  const refusal = refusalCode
+    ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+        appName,
+        google: google?.label ?? 'Google',
+        service: delegatedMethods[0]?.label ?? null,
+      })
+    : null
 
   const errorLine = error && (
     <p className="text-sm text-negative" data-testid="login-error">
@@ -147,23 +191,20 @@ export function LoginPage() {
             Your session has ended. Please sign in again.
           </p>
         )}
+        {refusal && (
+          <div className="mb-3" data-testid="sign-in-refused">
+            <Notice tone="caution">{refusal}</Notice>
+          </div>
+        )}
         <div className={cardClasses('p-6')}>
           {mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
-                {delegatedTestMode ? (
-                  <div data-testid="delegated-test-mode">
-                    <Notice tone="caution">
-                      Test mode: {delegatedLabel} is not asked. Enter an employee code (e.g. RR-0107) to open that person's view — no password needed.
-                    </Notice>
-                  </div>
-                ) : (
-                  <p className="text-sm text-ink-muted">
-                    Use the same ID and password you use for {delegatedLabel}.
-                  </p>
-                )}
+                <p className="text-sm text-ink-muted">
+                  Use the same ID and password you use for {delegatedLabel}.
+                </p>
                 <div>
-                  <label className={labelClasses()} htmlFor="delegated-id">{delegatedTestMode ? 'Employee code' : `${delegatedLabel} ID`}</label>
+                  <label className={labelClasses()} htmlFor="delegated-id">{`${delegatedLabel} ID`}</label>
                   <input
                     id="delegated-id"
                     type="text"
@@ -175,7 +216,7 @@ export function LoginPage() {
                     className={inputClasses()}
                   />
                 </div>
-                {!delegatedTestMode && <div>
+                <div>
                   <label className={labelClasses()} htmlFor="delegated-password">Password</label>
                   <input
                     id="delegated-password"
@@ -184,7 +225,7 @@ export function LoginPage() {
                     autoComplete="current-password"
                     className={inputClasses()}
                   />
-                </div>}
+                </div>
                 {errorLine}
                 <button
                   type="submit"
@@ -236,7 +277,9 @@ export function LoginPage() {
                 type="text"
                 name="email"
                 autoComplete="username"
-                placeholder="Administrator"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 className={inputClasses()}
               />
             </div>
@@ -247,12 +290,11 @@ export function LoginPage() {
                 type="password"
                 name="password"
                 autoComplete="current-password"
-                placeholder="••••••••"
                 className={inputClasses()}
               />
             </div>
             {errorLine}
-            <button type="submit" disabled={busy} className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
+            <button type="submit" disabled={busy} data-testid="login-submit" className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>

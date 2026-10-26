@@ -14,7 +14,7 @@ import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
-import { completeSignIn, linkVerifiedToSelf, passwordSignIn } from './sign-in'
+import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
@@ -481,8 +481,26 @@ function clearLoginChallengeCookies(c: Context) {
   deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
 }
 
+// A browser navigation (the address bar, a redirect) asks for a page;
+// fetch/XHR does not. A refused navigation sign-in goes back to the sign-in
+// page with a short reason code instead of showing raw JSON; an API caller
+// keeps the JSON error.
+function isPageNavigation(c: Context): boolean {
+  return c.req.header('sec-fetch-mode') === 'navigate' || (c.req.header('accept') ?? '').includes('text/html')
+}
+
+function refusedToLoginPage(c: Context, err: unknown) {
+  // Unexpected faults are still worth a server-side line; refusals are not.
+  if (!(err instanceof AppError)) console.error('[sign-in] google callback failed', err)
+  return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
+}
+
 app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
-  if (!(await googleAvailable())) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!(await googleAvailable())) {
+    const off = new AppError('AuthenticationError', GOOGLE_OFF)
+    if (isPageNavigation(c)) return refusedToLoginPage(c, off)
+    throw off
+  }
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
@@ -517,8 +535,13 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   } catch (err) {
     // A link attempt that fails before its state is verified (expired, another
     // browser, Google turned off) still lands on a page that explains it,
-    // never raw JSON. Sign-in failures keep their status (pinned by tests).
-    if (claimedPurpose(c.req.query('state')) !== 'link') throw err
+    // never raw JSON. A refused sign-in does the same for a browser, on the
+    // sign-in page; an API caller keeps the JSON error and its status.
+    if (claimedPurpose(c.req.query('state')) !== 'link') {
+      if (!isPageNavigation(c)) throw err
+      clearLoginChallengeCookies(c)
+      return refusedToLoginPage(c, err)
+    }
     clearLoginChallengeCookies(c)
     const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
     return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
@@ -527,7 +550,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
 
 async function googleCallback(c: Context) {
   const google = await googleAvailable()
-  if (!google) throw new AppError('AuthenticationError', 'Google sign-in is not configured')
+  if (!google) throw new AppError('AuthenticationError', GOOGLE_OFF)
   const clientId = google.client_id
   assertSignInAvailable(clientId)
   // The state must match the cookie this browser got at login. Without that

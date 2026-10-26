@@ -85,9 +85,10 @@ test('wrong password, an outage and a person who has left each read differently'
   expect(screen.getByLabelText('Email or username')).toBeInTheDocument()
 })
 
-// Test mode (OpenSpec change `delegated-login-test-mode`): the server skips the
-// provider, so the page drops the password box and says why.
-test('test mode: a notice, no password field, and an employee code alone signs in', async ({ createUser }) => {
+// Test mode (OpenSpec change `quiet-test-mode-and-friendly-sign-in-refusals`):
+// the server skips the provider and accepts any password, but the page looks
+// exactly like the ordinary form — no notice, same labels, a password box.
+test('test mode: the form looks like the ordinary one, and an employee code with any password signs in', async ({ createUser }) => {
   vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
   try {
     await connectStyleHR()
@@ -97,10 +98,13 @@ test('test mode: a notice, no password field, and an employee code alone signs i
 
     await renderApp('/featherbase/login', anonymous)
     await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
-    expect(await screen.findByTestId('delegated-test-mode')).toHaveTextContent('Test mode')
-    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('StyleHR ID')).not.toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Employee code'), tl.user!)
+    const form = await screen.findByTestId('delegated-login-form')
+    expect(screen.queryByTestId('delegated-test-mode')).not.toBeInTheDocument()
+    expect(form).not.toHaveTextContent(/test mode|no password|employee code/i)
+    expect(form).toHaveTextContent('Use the same ID and password you use for StyleHR.')
+    expect(screen.queryByLabelText('Employee code')).not.toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('StyleHR ID'), tl.user!)
+    await userEvent.type(screen.getByLabelText('Password'), 'anything-typed')
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
 
     await screen.findByTestId('no-access') // no role yet (#410)
@@ -143,8 +147,9 @@ test('if the sign-in options cannot be read, Google is still offered', async () 
   }
 })
 
-// Nothing typed is a mistake the page names itself, not the API's validation text (#406).
-test('submitting no employee code says what to enter and sends nothing', async () => {
+// Nothing typed is a mistake the page names itself, not the API's validation text (#406);
+// in test mode the page says the same as without it.
+test('in test mode, submitting nothing says what the ordinary form says and sends nothing', async () => {
   vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
   try {
     await connectStyleHR()
@@ -155,7 +160,7 @@ test('submitting no employee code says what to enter and sends nothing', async (
     await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
     requests.mockClear()
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
-    expect(await screen.findByText('Enter your employee code.')).toBeInTheDocument()
+    expect(await screen.findByText('Enter your StyleHR ID and password.')).toBeInTheDocument()
     expect(screen.queryByText(/Expected \{/)).not.toBeInTheDocument()
     expect(requests.mock.calls.filter(([u]) => String(u).includes('/api/login'))).toEqual([])
     expect(asked).not.toHaveBeenCalled()

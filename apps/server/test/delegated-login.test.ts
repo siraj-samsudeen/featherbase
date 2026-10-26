@@ -484,6 +484,25 @@ describe('delegated sign-in test mode', () => {
     expect((await signIn(api, tl.user!, '')).status).toBe(200)
   })
 
+  // The test-mode form now has a password box like the ordinary one, so
+  // testers type something into it: whatever they type is accepted and is
+  // never written to a log or the activity log.
+  test('on: any typed password is accepted and never logged', async ({ api, createUser }) => {
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    await configure()
+    const tl = await createUser({ email: 'tl.typed.pw@example.com' })
+    await link(tl.user!, 'tl_typed_pw')
+    const typed = 'Typed-Into-The-Box-7731'
+    const lines: string[] = []
+    for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const)
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => void lines.push(args.map(String).join(' ')))
+    expect((await signIn(api, tl.user!, typed)).status).toBe(200)
+    expect((await signIn(api, 'nobody-here', typed)).status).toBe(401)
+    expect(lines.join('\n')).not.toContain(typed)
+    const logged = await sql`select to_jsonb(a)::text as row from activity_log a where "user" in (${tl.user!}, 'nobody-here')`
+    expect(logged.map((r) => r.row).join('\n')).not.toContain(typed)
+  })
+
   test('a server that is not development or test refuses to start with test mode set', async () => {
     const { assertTestModeAllowed } = await import('../src/delegated-login')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
