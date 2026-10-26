@@ -9,6 +9,8 @@
 // configuration: a request's Host header can only SELECT one of its entries,
 // never add one, and every absolute URL the server builds comes from here.
 
+import { APP_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from 'shared'
+
 /** What an address opens: the Admin screens, or one app by name. */
 export const ADMIN = 'admin'
 
@@ -74,7 +76,7 @@ export function validateInstanceAddresses(entries: InstanceAddress[], environmen
       refuse(`${entry.address} must use https on a "${environment}" server`)
     if (hosts.has(entry.host)) refuse(`the host ${entry.host} is listed more than once`)
     hosts.add(entry.host)
-    if (entry.opens !== ADMIN && !APP_NAME.test(entry.opens))
+    if (entry.opens !== ADMIN && (!APP_NAME.test(entry.opens) || (RESERVED_APP_ROOTS as readonly string[]).includes(entry.opens)))
       refuse(`${entry.address} opens "${entry.opens}": opens must be "admin" or an app name`)
   }
   if (entries.filter((e) => e.emails).length !== 1) refuse('exactly one entry must be marked "emails": true')
@@ -123,4 +125,45 @@ export function emailOrigin(list: readonly InstanceAddress[] | null, environment
   if (list) return emailsAddress(list).address
   if (!RELAXED_ENVIRONMENTS.includes(environment)) return null
   return requestOrigin ?? DEV_WEB_ORIGIN
+}
+
+// Interim until the app exists (design D8): Feather Dash is today's sales
+// target report, a Featherbase page rather than an installed app.
+const INTERIM_APP_ROOTS: Record<string, string> = { feather_dash: '/featherbase/sales-target' }
+const INTERIM_APP_TITLES: Record<string, string> = { feather_dash: 'Feather Dash' }
+
+/** The title of an app that is not yet a package (design D8). */
+export function interimAppTitle(app: string): string | undefined {
+  return INTERIM_APP_TITLES[app]
+}
+
+/** Where an app's address keeps people: the app's own root. */
+export function appRoot(app: string): string {
+  return INTERIM_APP_ROOTS[app] ?? appHref(app)
+}
+
+// The Featherbase pages an app's address still serves: signing in, resetting a
+// password, the OAuth hand-back, and the runtime shell's assets.
+const SERVED_EVERYWHERE = [
+  '/featherbase/login',
+  '/featherbase/reset-password',
+  '/featherbase/oauth-callback',
+  '/featherbase/runtime-shell.css',
+  '/featherbase/runtime-shell.js',
+]
+
+const under = (path: string, root: string) => {
+  const bare = root.replace(/\/$/, '')
+  return path === bare || path.startsWith(`${bare}/`)
+}
+const appRootPattern = new RegExp(APP_ROOT_PATTERN)
+
+/** On an address that opens an app, where a GET of `path` is sent instead,
+ *  or null when it is served as it is. */
+export function addressRedirect(entry: InstanceAddress, path: string): string | null {
+  const root = appRoot(entry.opens)
+  if (path === '/') return root
+  if (under(path, root) || SERVED_EVERYWHERE.some((page) => under(path, page))) return null
+  if (under(path, '/featherbase') || appRootPattern.test(path)) return root
+  return null
 }

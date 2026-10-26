@@ -26,7 +26,7 @@ import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-acces
 import { announceDelegatedTestMode, assertTestModeAllowed, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { sendInvitation } from './invitation-email'
-import { linkAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -72,7 +72,7 @@ import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -165,8 +165,12 @@ app.get('/api/brand', async (c) => {
     ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
     ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
   ]
+  // #488: on an address that opens an app, the sign-in page and the document
+  // title carry the app's name; elsewhere the instance's.
+  const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
+  const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
   return c.json({
-    app_name: s.app_name,
+    app_name: appTitle ?? s.app_name,
     sign_in_methods: methods,
     sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
     // The roster sync checks this before writing linked identities (design D11).
@@ -681,6 +685,17 @@ app.get('*', (c, next) => {
   const url = new URL(c.req.url)
   if (!legacyHumanRoot.test(url.pathname)) return next()
   return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
+})
+
+// #488: an address that opens an app shows that app and the sign-in pages it
+// needs, nothing else. `/`, every other Featherbase page and every other app's
+// root go to the app's root. An address is presentation, never a security
+// boundary: every API call is authorized on its own merits on every address.
+app.get('*', (c, next) => {
+  const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
+  if (!entry || entry.opens === ADMIN) return next()
+  const target = addressRedirect(entry, c.req.path)
+  return target ? c.redirect(target, 302) : next()
 })
 
 app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))

@@ -85,6 +85,67 @@ describe('the OAuth state is bound to its address', () => {
   })
 })
 
+describe('on an address that opens an app', () => {
+  const ROOT = '/featherbase/sales-target' // feather_dash's interim root (design D8)
+  const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
+
+  test('/ redirects to the app root', async ({ api }) => {
+    const res = await get(api, `${DASH}/`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(ROOT)
+  })
+
+  test('an Admin page redirects to the app root', async ({ api }) => {
+    const res = await get(api, `${DASH}/featherbase/admin/table/Person`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(ROOT)
+  })
+
+  test("another app's root redirects to the app root", async ({ api }) => {
+    const res = await get(api, `${DASH}/tasker/`)
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(ROOT)
+  })
+
+  test('the sign-in pages, the shell assets and the app root are served', async ({ api }) => {
+    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/runtime-shell.css', ROOT, `${ROOT}/`])
+      expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
+  })
+
+  test('the API and the privacy notice are served', async ({ api }) => {
+    expect((await api.fetch(`${DASH}/api/ping`)).status).toBe(200)
+    expect((await get(api, `${DASH}/privacy`)).status).not.toBe(302)
+  })
+
+  test('on the admin address nothing is redirected', async ({ api }) => {
+    expect((await get(api, `${ADMIN}/featherbase/admin`)).status).not.toBe(302)
+  })
+
+  test('an app that is not installed shows "Application unavailable"', async ({ admin }) => {
+    config.instanceAddresses = parseInstanceAddresses(
+      JSON.stringify([{ address: DASH, opens: 'not_installed', emails: true }, { address: ADMIN, opens: 'admin' }]),
+      'test',
+    )
+    const home = await get(admin, `${DASH}/`)
+    expect(home.headers.get('location')).toBe('/not_installed/')
+    const root = await get(admin, `${DASH}/not_installed/`)
+    expect(root.status).toBe(404)
+    expect(await root.text()).toContain('Application unavailable')
+  })
+})
+
+describe('the brand', () => {
+  test("on an app's address, /api/brand names the app", async ({ api }) => {
+    expect(((await (await api.fetch(`${DASH}/api/brand`)).json()) as { app_name: string }).app_name).toBe('Feather Dash')
+  })
+
+  test('on the admin address, /api/brand names the instance', async ({ api }) => {
+    const instance = ((await (await api.fetch('/api/brand')).json()) as { app_name: string }).app_name
+    expect(((await (await api.fetch(`${ADMIN}/api/brand`)).json()) as { app_name: string }).app_name).toBe(instance)
+    expect(instance).not.toBe('Feather Dash')
+  })
+})
+
 describe('the release preflight', () => {
   // A test database is stamped `test`; these cases ask about other environments.
   const asRelease = async <T>(run: () => Promise<T>) => {

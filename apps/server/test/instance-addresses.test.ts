@@ -50,6 +50,10 @@ describe('INSTANCE_ADDRESSES validation', () => {
     expect(() => parse([{ ...DASH, opens: 'Feather Dash' }, ADMIN])).toThrow(/opens/)
   })
 
+  test('a reserved root is not an app name', () => {
+    expect(() => parse([{ ...DASH, opens: 'featherbase' }, ADMIN])).toThrow(/opens/)
+  })
+
   test('exactly one entry is marked for emails', () => {
     expect(() => parse([{ ...DASH, emails: false }, ADMIN])).toThrow(/exactly one/)
     expect(() => parse([DASH, { ...ADMIN, emails: true }])).toThrow(/exactly one/)
