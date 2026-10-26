@@ -221,6 +221,18 @@ test('at phone width Open Admin and the theme toggle move into the Account menu,
   expect(order).toEqual(['open-admin', 'theme-toggle', 'account-sign-in-methods'])
 })
 
+// Verifier, round 2 on #495: "Same as device" wrapped onto two lines in the
+// phone menu; it reads "Device" there, and keeps the full accessible name.
+test("at phone width the menu's device choice reads Device and is named Same as device", async ({ admin }) => {
+  phoneWidth()
+  await renderApp('/featherbase/sales-target', admin)
+  await settledBar()
+  const menu = await openAccountMenu()
+  const device = within(menu).getByTestId('theme-device')
+  expect(device).toHaveTextContent(/^Device$/)
+  expect(within(menu).getByRole('radio', { name: 'Same as device' })).toBe(device)
+})
+
 // Codex round 1 on #495 (P2): closing the phone menu unmounts the toggle; the
 // theme's save must not go with it.
 test('at phone width a theme chosen in the Account menu sticks after the menu closes before the save lands', async ({ admin }) => {

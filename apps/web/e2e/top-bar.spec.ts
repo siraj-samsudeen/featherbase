@@ -165,6 +165,20 @@ test.describe('at 375px', () => {
       const y = async (id: string) => (await menu.getByTestId(id).boundingBox())!.y
       expect(await y('open-admin')).toBeLessThan(await y('account-sign-in-methods'))
       expect(await y('theme-toggle')).toBeLessThan(await y('account-sign-in-methods'))
+    })
+    await session.step('nothing in the Account menu wraps onto a second line', async () => {
+      const menu = page.getByTestId('account-menu')
+      const wrapped = await menu.locator('button, a').evaluateAll((els) =>
+        els.filter((el) => {
+          const lines = el.getClientRects().length
+          const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20
+          const text = el.textContent?.trim() ?? ''
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          const textHeight = range.getBoundingClientRect().height
+          return text !== '' && (lines > 1 || textHeight > lineHeight * 1.5)
+        }).map((el) => el.textContent?.trim()))
+      expect(wrapped).toEqual([])
       await page.keyboard.press('Escape')
     })
   })

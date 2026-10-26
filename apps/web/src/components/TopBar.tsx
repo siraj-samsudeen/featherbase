@@ -224,7 +224,9 @@ function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
               type="button"
               role="radio"
               aria-checked={theme === choice}
-              aria-label={labelled ? undefined : label}
+              // The phone menu's words must fit one line at 375px: "Device" is
+              // shown, "Same as device" stays the name (verifier, round 2).
+              aria-label={labelled && choice !== 'device' ? undefined : label}
               title={labelled ? undefined : label}
               onClick={() => set(choice)}
               data-testid={`theme-${choice}`}
@@ -235,7 +237,7 @@ function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
                 className: labelled ? 'px-1 text-xs' : 'size-control px-0',
               })}
             >
-              {labelled ? label : <Icon aria-hidden size={18} />}
+              {labelled ? (choice === 'device' ? t('Device') : label) : <Icon aria-hidden size={18} />}
             </button>
           )
         })}
