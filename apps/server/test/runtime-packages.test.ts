@@ -1,5 +1,5 @@
 import { describe, expect } from 'vitest'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
@@ -13,6 +13,7 @@ import { registerController, unregisterController, type TableController } from '
 import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { permittedTiers } from '../src/permissions'
+import { app } from '../src/index'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -435,5 +436,46 @@ describe('Only administrators manage apps', () => {
     await expect(member.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 403 })
     await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
     expect(await sql`select enabled from installed_app where name = 'other'`).toEqual([{ enabled: true }])
+  })
+})
+
+// trusted-runtime-packages "An app can be delivered without rebuilding core":
+// the core app below was loaded (built) before Tasker's package exists
+// anywhere it can find it. The built package — exactly the files its
+// package.json ships — is staged afterwards in a fresh directory apart from
+// its source, discovered and installed, and opens inside the host shell
+// through the generic app root: no core route is added, none names Tasker.
+describe('An app owns its own screen', () => {
+  test('a built Tasker staged after core loads opens in the host shell with no core rebuild or Tasker route', async ({ admin, createUser }) => {
+    const routesBefore = app.routes.map((r) => `${r.method} ${r.path}`)
+    expect(routesBefore.filter((r) => /tasker/i.test(r))).toEqual([])
+    const source = resolve('../..', 'runtime-apps/tasker')
+    const staged = join(await mkdtemp(resolve('test/.runtime-delivered-')), 'package')
+    try {
+      const shipped = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8')) as { files: string[] }
+      for (const entry of ['package.json', ...shipped.files]) await cp(resolve(source, entry), resolve(staged, entry), { recursive: true })
+      expect(await discoverPackages([staged])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      const member = await createUser({ email: 'delivered-member@example.com', roles: [] })
+      expect(await member.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
+
+      const page = await member.fetch('/tasker/', { headers: { accept: 'text/html' } })
+      expect(page.status).toBe(200)
+      const html = await page.text()
+      expect(html).toContain('data-testid="runtime-shell"')
+      expect(html).toContain('<option value="/tasker/" selected>Tasker</option>')
+      // The client's own entry script is served from the staged package.
+      const entry = /<script type="module"[^>]*src="(\/tasker\/[^"]+\.js)"/.exec(html)?.[1]
+      expect(entry).toBeDefined()
+      const script = await member.fetch(entry!)
+      expect(script.status).toBe(200)
+      expect(script.headers.get('content-type')).toBe('text/javascript')
+      const assetPath = entry!.slice('/tasker/'.length)
+      expect(Buffer.from(await script.arrayBuffer()).equals(await readFile(resolve(staged, 'dist/client', assetPath)))).toBe(true)
+
+      expect(app.routes.map((r) => `${r.method} ${r.path}`)).toEqual(routesBefore)
+    } finally {
+      await rm(resolve(staged, '..'), { recursive: true, force: true })
+    }
   })
 })

@@ -485,6 +485,31 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(me.assignment.material_groups).toEqual(['010505001', '010505002'])
   })
 
+  test('a store that comes only from the Section maps is named by the cached figures', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
+    const { _setSourceReader, SALES_TARGET_DATASET } = await import('../src/datasets/sales-target-mtd')
+    const { buildSnapshot } = await import('../src/dataset-snapshot')
+    const dayRows = [['1501', 'Attakulangara', 'ATK', '010505001', '2026-09-01', 100, 60]]
+    _setSourceReader(async (text: string) => {
+      if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text)) return [['010505001', 'Kurti']]
+      return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [['2026-09-17', 1]] : dayRows
+    })
+    try {
+      expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+      const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+      const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { stores: unknown }
+      // 1501 has no assignment label (maps only): its name comes from the cache; 1515 keeps its label.
+      expect(me.stores).toEqual([
+        { plant_code: '1501', store_name: 'Attakulangara', sections: ['Kurti'], scope_basis: ['section_staff'] },
+        { plant_code: '1515', store_name: 'Kattakada', sections: [], scope_basis: ['assignment'] },
+      ])
+    } finally {
+      _setSourceReader(null)
+    }
+  })
+
   test('more Sections outrank a lower store code; an equal count falls to the lowest store code', async ({ admin, api }) => {
     await seed(admin)
     await seedSectionMaps(admin)

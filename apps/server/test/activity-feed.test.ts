@@ -24,6 +24,25 @@ describe('#101: GET /api/activity_feed', () => {
     expect(feed.items[1]).toMatchObject({ kind: 'row', label: 'A' })
   })
 
+  test("another user's 'mine' feed never includes the caller's trail", async ({ admin, createUser }) => {
+    await admin.post('/api/events', {
+      events: [
+        { kind: 'row', key: 'row:X/feed-private-row', label: 'feed-private-row', path: '/admin/X/feed-private-row', at: Date.now() - 1000 },
+        { kind: 'search', key: 'search:feed-private-term', label: 'feed-private-term', at: Date.now() },
+      ],
+    })
+    const other = await createUser({ roles: [] })
+    await other.post('/api/events', { events: [{ kind: 'search', key: 'search:other-term', label: 'other-term' }] })
+
+    const theirs = await other.get<{ items: Array<{ label: string }> }>('/api/activity_feed?scope=mine')
+    const labels = theirs.items.map((i) => i.label)
+    expect(labels).toContain('other-term')
+    expect(labels).not.toContain('feed-private-row')
+    expect(labels).not.toContain('feed-private-term')
+    const mine = await admin.get<{ items: Array<{ label: string }> }>('/api/activity_feed?scope=mine')
+    expect(mine.items.map((i) => i.label)).toEqual(expect.arrayContaining(['feed-private-row', 'feed-private-term']))
+  })
+
   test("'team' carries changes (Version) and logins, never read events", async ({ admin }) => {
     // A tracked edit writes a Version row (track_changes is the default).
     await admin.post('/api/table_def', {

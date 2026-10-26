@@ -154,6 +154,18 @@ describe('runtime upgrades', () => {
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       await expect(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } })).rejects.toMatchObject({ status: 409 })
+      // A colleague's tab still running the previous version: refused on save and on read, told to reload.
+      const stale = (path: string, init: RequestInit = {}) => member.fetch(path, { ...init, headers: {
+        'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@0.0.1', ...init.headers,
+      } })
+      const reloadAsked = { error: { type: 'ConflictError', message: 'App other was upgraded. Reload its current client and retry with the installed application version' } }
+      const staleSave = await stale('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'other.task', row: { row_id: 'stale', quantity: 5 } }) })
+      expect(staleSave.status).toBe(409)
+      expect(await staleSave.json()).toMatchObject(reloadAsked)
+      const staleRead = await stale('/api/table/other.task/kept')
+      expect(staleRead.status).toBe(409)
+      expect(await staleRead.json()).toMatchObject(reloadAsked)
+      expect(await sql`select 1 from other.task where row_id = 'stale'`).toEqual([])
       const response = await admin.fetch('/api/save_row', { method: 'POST', headers: {
         'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@2.0.0',
       }, body: JSON.stringify({ table: 'other.task', row: { row_id: 'new', quantity: 19, notes: '**markdown**' } }) })

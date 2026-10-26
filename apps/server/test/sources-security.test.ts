@@ -524,6 +524,10 @@ describe('re-review findings', () => {
       body: JSON.stringify({ dry_run: true, rows: [{ label: 'smuggled' }] }),
     })
     expect(dry.status).toBe(417)
+    // Check and import refuse with the same message, saying the table is connected to a data source.
+    const message = ((await res.json()) as { error: { message: string } }).error.message
+    expect(message).toBe(`${BOUND} is bound to data source sec-fixture; bulk import is not supported on bound Tables yet`)
+    expect(((await dry.json()) as { error: { message: string } }).error.message).toBe(message)
     // Nothing landed on the source.
     const [{ n }] = await cli`select count(*)::int as n from sec_fixture.account`
     expect(Number(n)).toBe(2)

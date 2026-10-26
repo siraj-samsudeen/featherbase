@@ -114,6 +114,55 @@ describe('migrate: a database of its own', () => {
   }, 60_000)
 })
 
+// running-an-instance "The person-record changes stand or fall together":
+// 0100, 0101, 0101a and 0102 apply as one transaction. A database stopped at
+// 0099 (later files recorded so they stay out of the way) gets a stray
+// `person_identifier` that only 0102 trips over — the last member fails, and
+// none of the four may be left applied. With the obstacle gone, the next run
+// applies the four once.
+describe('migrate: the person-record changes', () => {
+  const GROUP = ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts']
+
+  it('one failing person change leaves none of them applied, and the next run applies them once', async () => {
+    const later = (await allMigrations()).filter((f) => f >= '0100')
+    expect(later).toEqual(expect.arrayContaining(GROUP))
+    const scratch = await scratchDatabase(`create schema featherbase;
+      create table featherbase.migration (name text primary key, applied_at timestamptz not null default now())`)
+    try {
+      await scratch.db`insert into featherbase.migration ${scratch.db(later.map((name) => ({ name })))}`
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      await scratch.db`delete from featherbase.migration where name in ${scratch.db(GROUP)}`
+      await scratch.db`insert into featherbase."user" (row_id, email, full_name, enabled, created_at, updated_at)
+        values ('staff-0701', 'staff.0701@store.example', 'Staff 0701', true, now(), now())`
+      await scratch.db.unsafe('create table featherbase.person_identifier (stray int)')
+
+      const failed = await runMain(scratch.migrate.main, [])
+      expect(failed.code).toBe(1)
+      // The failure is 0102's — the last member — adding person_identifier's
+      // foreign key to person (nothing earlier in the group touches that table).
+      expect(failed.stderr).toContain('column "person_id" referenced in foreign key constraint does not exist')
+      const relation = async (name: string) => (await scratch.db`select to_regclass(${name})::text as r`)[0].r
+      // 0100's identities, 0101's rename and re-id, 0101a's index: none remains.
+      expect(await relation('featherbase.user_identity')).toBeNull()
+      expect(await relation('featherbase.sign_in_identity')).toBeNull()
+      expect(await relation('featherbase.sign_in_method')).toBeNull()
+      expect(await relation('featherbase.person')).toBeNull()
+      expect(await relation('featherbase.service_account_label_lower_uq')).toBeNull()
+      expect(await relation('featherbase.identifier_system')).toBeNull()
+      expect(await scratch.db`select row_id from featherbase."user" where email = 'staff.0701@store.example'`).toEqual([{ row_id: 'staff-0701' }])
+      expect(await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)}`).toEqual([])
+
+      await scratch.db.unsafe('drop table featherbase.person_identifier')
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0 })
+      expect((await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)} order by name`).map((r) => r.name)).toEqual(GROUP)
+      expect(await relation('featherbase.person')).toBe('featherbase.person')
+      expect(await scratch.db`select row_id from featherbase.person where email = 'staff.0701@store.example'`).toEqual([{ row_id: expect.stringMatching(/^psn_/) }])
+    } finally {
+      await scratch.close()
+    }
+  }, 240_000)
+})
+
 describe('migrate: one file', () => {
   test('a migration that leaves two platform ledgers behind is refused', async () => {
     await sql`delete from migration where name = '0124_script_api_featherbase.sql'`

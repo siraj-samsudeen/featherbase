@@ -614,7 +614,7 @@ describe('Connect a data source', () => {
     await reflectTenant(admin)
     await expect(admin.delete('/api/table/Data%20Source/ext-fixture')).rejects.toMatchObject({
       status: 417,
-      message: expect.stringContaining('still has bound Tables'),
+      message: expect.stringContaining('still has bound Tables (e.g. Ext Tenant)'),
     })
     await admin.delete('/api/table_def/Ext%20Tenant')
     await admin.delete('/api/table/Data%20Source/ext-fixture')

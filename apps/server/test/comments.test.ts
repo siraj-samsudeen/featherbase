@@ -130,7 +130,10 @@ describe('Comment on a row', () => {
   test('someone who cannot read the row cannot comment on it', async ({ admin, createUser }) => {
     const doc = await commentWorld(admin)
     const commenter = await createUser({ roles: ['Cmt Req Commenter'] })
-    expect((await postComment(commenter, doc.row_id, 'I should not be here')).status).toBe(403)
+    const watcher = await makePerson({ username: 'cmt-unread-watcher' })
+    expect((await postComment(commenter, doc.row_id, 'I should not be here, @cmt-unread-watcher')).status).toBe(403)
+    expect(await sql`select 1 from comment where ref_name = ${doc.row_id}`).toHaveLength(0)
+    expect(await sql`select 1 from notification_log where for_user = ${watcher}`).toHaveLength(0)
   })
 })
 
@@ -194,7 +197,15 @@ describe('See a row\'s whole history in order', () => {
     invalidateMeta('Cmt Req NoHist')
     const doc = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: 'Cmt Req NoHist', row: { title: 'a' } })
     await admin.post('/api/save_row', { table: 'Cmt Req NoHist', row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'b' } })
-    const activity = await admin.get<{ versions: unknown[] }>(`/api/activity/Cmt%20Req%20NoHist/${doc.row_id}`)
+    const posted = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Comment', row: { ref_table: 'Cmt Req NoHist', ref_name: doc.row_id, content: 'renamed to b' } }),
+    })
+    expect(posted.status).toBe(201)
+    const activity = await admin.get<{ versions: unknown[]; comments: { content: string }[] }>(
+      `/api/activity/Cmt%20Req%20NoHist/${doc.row_id}`,
+    )
+    expect(activity.comments.map((c) => c.content)).toEqual(['renamed to b'])
     expect(activity.versions).toEqual([])
   })
 })

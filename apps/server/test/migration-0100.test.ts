@@ -8,6 +8,11 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { formatPlan, migratePersonIdentities, planPersonIdentities } from '../src/person-identities-migration'
 import { pre0101Shape } from './person-migration-fixtures'
+import { migratePersonRename } from '../src/person-rename-migration'
+import { migratePersonResolution } from '../src/person-resolution-migration'
+import { invalidateMeta } from '../src/meta'
+import { googleSignIn, redeemSession } from './google-mock'
+import { _setDelegatedFetch } from '../src/delegated-login'
 
 // 0100 runs before 0101 (person-rename), so the pre-0101 names are put back
 // first (inside the same rolled-back transaction) and 0100 is proven against
@@ -246,6 +251,75 @@ describe('migration 0100: person + linked identities', () => {
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, client_id)
       values ('google', 'google', 'Google', true, 'refuse', 'cid.apps.googleusercontent.com')`
     expect((await planPersonIdentities()).parity.exceptions.map((p) => p.row_id)).toEqual(['SM-cbe'])
+  })
+})
+
+// Existing sign-ins carry over: the upgrade chain this data actually ran —
+// 0100 (linked identities), 0101 (User → Person, opaque ids), 0102 (identifier
+// rows) — then the first sign-ins of the morning after, through the real HTTP
+// routes. Synthetic people on store.example; the pre-upgrade shape is built
+// here rather than reused so nothing in it names a real domain.
+async function morningAfterShape() {
+  await pre0101Shape()
+  await sql`delete from user_identity`
+  await sql`delete from sign_in_method where kind = 'delegated_password' or row_id = 'google'`
+  for (const column of ['stylehr_username', 'social_login', 'employee_code'])
+    await sql.unsafe(`alter table featherbase."user" add column if not exists ${column} varchar(140)`)
+  for (const [field, value] of [
+    ['delegated_login_label', 'StyleHR'],
+    ['delegated_login_url', 'https://stylehr.example.test/api/login/'],
+    ['delegated_login_user_column', 'stylehr_username'],
+    ['allowed_login_domains', 'store.example'],
+  ])
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', ${field}, ${value})
+      on conflict (table_name, field) do update set value = excluded.value`
+  await sql`insert into "user" (row_id, email, full_name, enabled, stylehr_username, employee_code, social_login, user_type, created_at, updated_at) values
+    ('RR-0701', 'rr-0701@staff.store.invalid', 'Team Leader 0701', true, 'tl_0701', 'RR-0701', null, 'human', now(), now()),
+    ('lead@store.example', 'Lead@Store.example', 'Store Lead', true, null, null, 'google', 'human', now(), now())`
+}
+
+async function upgrade() {
+  await morningAfterShape()
+  await migratePersonIdentities()
+  const renamed = await migratePersonRename()
+  await migratePersonResolution()
+  invalidateMeta()
+  const idOf = (old: string) => renamed.persons.find((p) => p.old_id === old)!.new_id
+  return { teamLeader: idOf('RR-0701'), lead: idOf('lead@store.example') }
+}
+
+describe('Existing sign-ins carry over, through 0100 → 0101 → 0102', () => {
+  test('store staff the morning after: the HR system ID in any mix of capitals opens the same account', async ({ api }) => {
+    const { teamLeader } = await upgrade()
+    const signIn = async (typed: string) => {
+      const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: typed, pwd: 'Hr-Password-1', method: 'stylehr' }) })
+      expect(res.status, typed).toBe(200)
+      return ((await res.json()) as { user: { row_id: string } }).user.row_id
+    }
+    // Their HR login ID, as they typed it before the upgrade; the HR system says yes
+    // (the provider is stubbed, never contacted).
+    _setDelegatedFetch((async () => Response.json({ token: 'opaque' })) as typeof fetch)
+    try {
+      for (const typed of ['tl_0701', 'TL_0701', ' Tl_0701 ']) expect(await signIn(typed), typed).toBe(teamLeader)
+    } finally {
+      _setDelegatedFetch(null)
+    }
+    // The trial's test mode, which skips the provider, resolves their employee code the same way.
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    for (const typed of ['rr-0701', 'rR-0701', 'RR-0701']) expect(await signIn(typed), typed).toBe(teamLeader)
+  })
+
+  test('first Google sign-in after the upgrade opens their own account and links the permanent ID', async ({ api }) => {
+    const { lead } = await upgrade()
+    expect(await sql`select subject, pending_email from sign_in_identity where person_id = ${lead} and method = 'google'`)
+      .toEqual([{ subject: null, pending_email: 'lead@store.example' }])
+    const first = await googleSignIn(api, 'LEAD@store.example', { subject: 'g-lead-1', hd: 'store.example' })
+    expect(first.status).toBe(302)
+    expect((await redeemSession(api, first)).user.row_id).toBe(lead)
+    expect(await sql`select subject, pending_email, linked_by from sign_in_identity where person_id = ${lead} and method = 'google'`)
+      .toEqual([{ subject: 'g-lead-1', pending_email: null, linked_by: 'first-sign-in' }])
+    // From then on the permanent ID, not the address, finds them.
+    expect((await googleSignIn(api, 'lead@store.example', { subject: 'g-lead-other', hd: 'store.example' })).status).toBe(401)
   })
 })
 
