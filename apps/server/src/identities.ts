@@ -238,18 +238,19 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
     checks.push(['sign_in_name', sql`select id, person_id from sign_in_identity where method = ${method.key} and lower(sign_in_name) = ${foldName(what.sign_in_name)} and ended_at is null`])
   if (what.pending_email)
     checks.push(['invite', sql`select id, person_id from sign_in_identity where method = ${method.key} and subject is null and pending_email = ${what.pending_email} and ended_at is null`])
+  // The holder may have ended between the violation and this lookup; then
+  // there is no one to name and the answer stays general.
+  let held: { kind: string; hit: Record<string, unknown> } | null = null
   for (const [kind, query] of checks) {
     const [hit] = await query
-    if (hit) {
-      const label = kind === 'subject' ? `This ${method.label || method.key} ID` : kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
-      throw new AppError('ConflictError', `${label} is already linked to ${hit.person_id as string}`, {
-        clash: kind,
-        identity: String(hit.id),
-        person: String(hit.person_id),
-      })
-    }
+    if (hit && !held) held = { kind, hit }
   }
-  throw new AppError('ConflictError', 'This sign-in is already linked to an account')
+  const label = held?.kind === 'subject' ? `This ${method.label || method.key} ID` : held?.kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
+  throw new AppError(
+    'ConflictError',
+    held ? `${label} is already linked to ${held.hit.person_id as string}` : 'This sign-in is already linked to an account',
+    held ? { clash: held.kind, identity: String(held.hit.id), person: String(held.hit.person_id) } : undefined,
+  )
 }
 
 /** Run one write in its own savepoint; a unique violation becomes `onClash`. */

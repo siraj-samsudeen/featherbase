@@ -261,3 +261,20 @@ describe("An account's permanent reference is never an address or a code", () =>
     expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('mina.old@gmail.com')
   })
 })
+
+describe('only a person has sign-in methods', () => {
+  test('inviting a service account to sign in with Google says to issue an access token; an unknown id is not found', async () => {
+    const { inviteGoogle } = await import('../src/identities')
+    const { createServiceAccount } = await import('../src/service-accounts')
+    const bot = await createServiceAccount('invite-probe-bot', [], 'Administrator')
+    await expect(inviteGoogle(bot.row_id, 'bot@example.com', 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: 'Service accounts have no sign-in methods — issue an access token instead',
+    })
+    await expect(inviteGoogle('psn_nobody', 'nobody@example.com', 'Administrator')).rejects.toMatchObject({
+      type: 'NotFoundError',
+      message: 'Person psn_nobody not found',
+    })
+    expect(await sql`select 1 from sign_in_identity where person_id in (${bot.row_id}, 'psn_nobody')`).toHaveLength(0)
+  })
+})

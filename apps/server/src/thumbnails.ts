@@ -12,6 +12,29 @@ export function isThumbnable(mime: string | undefined): boolean {
   return !!mime && THUMBNABLE.has(mime.toLowerCase())
 }
 
+// The resize runs inside Chromium, so Node cannot instrument it; it is kept as
+// source text, called with its argument as one expression, and is proven by
+// the real-image tests in test/thumbnails.test.ts.
+const RESIZE_IN_BROWSER = `async ({ dataUrl, maxDim }) => {
+  const img = new Image()
+  const ok = await new Promise((resolve) => {
+    img.onload = () => resolve(true)
+    img.onerror = () => resolve(false)
+    img.src = dataUrl
+  })
+  if (!ok || !img.width || !img.height) return null
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+  const w = Math.max(1, Math.round(img.width * scale))
+  const h = Math.max(1, Math.round(img.height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(img, 0, 0, w, h)
+  return canvas.toDataURL('image/jpeg', 0.8)
+}`
+
 // Returns a `data:image/jpeg;base64,…` thumbnail no larger than maxDim on its
 // longest side, or null if the image can't be decoded.
 export async function makeThumbnailDataUrl(
@@ -24,28 +47,7 @@ export async function makeThumbnailDataUrl(
   const page = await browser.newPage()
   try {
     const dataUrl = `data:${mime};base64,${content.toString('base64')}`
-    const thumb = await page.evaluate(
-      async ({ dataUrl, maxDim }: { dataUrl: string; maxDim: number }) => {
-        const img = new Image()
-        const ok = await new Promise<boolean>((resolve) => {
-          img.onload = () => resolve(true)
-          img.onerror = () => resolve(false)
-          img.src = dataUrl
-        })
-        if (!ok || !img.width || !img.height) return null
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
-        const w = Math.max(1, Math.round(img.width * scale))
-        const h = Math.max(1, Math.round(img.height * scale))
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return null
-        ctx.drawImage(img, 0, 0, w, h)
-        return canvas.toDataURL('image/jpeg', 0.8)
-      },
-      { dataUrl, maxDim },
-    )
+    const thumb = (await page.evaluate(`(${RESIZE_IN_BROWSER})(${JSON.stringify({ dataUrl, maxDim })})`)) as string | null
     return thumb
   } catch {
     return null

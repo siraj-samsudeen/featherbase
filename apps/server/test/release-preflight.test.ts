@@ -505,3 +505,41 @@ describe('two releases at once', () => {
     }
   }, 120_000)
 })
+
+describe('release preflight: the btree_gist extension 0102 creates', () => {
+  test('a release that has not yet run 0102 checks the extension and says it is available', async () => {
+    await sql`delete from migration where name = '0102_person_resolution.ts'`
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toContain('btree_gist available for 0102')
+    expect(lines.find((l) => l.startsWith('pending migrations:'))).toContain('0102_person_resolution.ts')
+  })
+
+  test('once 0102 has run the check is not repeated', async () => {
+    expect(await preflightRelease({ environment: 'test' })).not.toContain('btree_gist available for 0102')
+  })
+
+  test('a server that does not ship the extension, or a role that may not create it, is refused with the fix', async () => {
+    const { assertBtreeGist } = await import('../src/release-preflight')
+    expect(() => assertBtreeGist({ installed: true, available: false, can_create: false })).not.toThrow()
+    expect(() => assertBtreeGist({ installed: false, available: true, can_create: true })).not.toThrow()
+    expect(() => assertBtreeGist({ installed: false, available: false, can_create: true })).toThrow(/does not ship\. Install the contrib package first/)
+    expect(() => assertBtreeGist({ installed: false, available: true, can_create: false })).toThrow(/may not create extensions.*create extension btree_gist;/)
+  })
+})
+
+describe('the refusal for a publication that would make updates fail', () => {
+  test('each publication is named once with its fix, quoting names that need it', async () => {
+    const { publicationRefusal } = await import('../src/release-preflight')
+    const text = publicationRefusal([
+      { pubname: 'warehouse_cdc', schemaname: 'featherbase', tablename: 'has_role', has_column_list: false },
+      { pubname: 'weird "name"', schemaname: 'featherbase', tablename: 'has_role', has_column_list: true },
+      { pubname: 'warehouse_cdc', schemaname: 'featherbase', tablename: 'person', has_column_list: false },
+    ])
+    expect(text).toContain('publication "warehouse_cdc" covers featherbase.has_role; publication "weird "name"" covers featherbase.has_role with a column list; publication "warehouse_cdc" covers featherbase.person: ')
+    const fixes = text.split('Fix it first:\n')[1].split('\n')
+    expect(fixes).toEqual([
+      '  ALTER PUBLICATION "warehouse_cdc" SET (publish_generated_columns = stored);',
+      '  publication "weird "name"" lists columns for featherbase.has_role: drop the column list (ALTER PUBLICATION "weird ""name""" SET TABLE … without one), or include every stored generated column after 0101;',
+    ])
+  })
+})

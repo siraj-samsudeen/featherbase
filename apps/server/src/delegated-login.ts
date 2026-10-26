@@ -163,9 +163,9 @@ export function announceDelegatedTestMode(log: (message: string) => void = conso
 
 // Injectable for the sandboxed suite — the real provider is never contacted
 // from a test (same seam as `_setEmbedFetch` in sales-target.ts).
-let delegatedFetch: typeof fetch = (...args) => fetch(...args)
+let delegatedFetch: typeof fetch | null = null
 export function _setDelegatedFetch(f: typeof fetch | null) {
-  delegatedFetch = f ?? ((...args) => fetch(...args))
+  delegatedFetch = f
 }
 
 const TIMEOUT_MS = 10_000
@@ -208,7 +208,7 @@ export async function checkWithProvider(cfg: DelegatedLoginConfig, id: string, p
   if (delegatedTestMode()) return 'verified'
   let res: Response
   try {
-    res = await delegatedFetch(cfg.url, {
+    res = await (delegatedFetch ?? fetch)(cfg.url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify({ [cfg.wire.id_field]: id, [cfg.wire.password_field]: password }),

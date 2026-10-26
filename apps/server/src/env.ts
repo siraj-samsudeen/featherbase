@@ -325,10 +325,8 @@ export function assertVariables(opts: CheckVariablesOptions): string[] {
 // loaded once at import — KEY=VALUE lines only, never overriding variables
 // already set by the shell. Values stay in process.env; nothing is persisted
 // or logged.
-function loadDotEnv() {
+export function loadDotEnv(file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env')) {
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url))
-    const file = path.resolve(here, '../.env')
     if (!existsSync(file)) return
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)

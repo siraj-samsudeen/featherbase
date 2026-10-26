@@ -103,3 +103,20 @@ test('a retry start sends Google the account picker', async ({ api }) => {
   expect(loc.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')).toBe(true)
   expect(new URLSearchParams(loc.split('?')[1]).get('prompt')).toBe('select_account')
 })
+
+describe('the refusal code a failed sign-in carries to the page', () => {
+  test('each kind of failure maps to its short code, and anything unrecognised is a Google failure', async () => {
+    const { signInRefusal, NOT_PROVISIONED, ADDRESS_IN_USE, GOOGLE_OFF } = await import('../src/sign-in')
+    const { AppError } = await import('../src/errors')
+    const auth = (message: string) => new AppError('AuthenticationError', message)
+    expect(signInRefusal(auth(NOT_PROVISIONED))).toBe('not_provisioned')
+    expect(signInRefusal(auth(ADDRESS_IN_USE))).toBe('address_in_use')
+    expect(signInRefusal(auth(GOOGLE_OFF))).toBe('google_off')
+    expect(signInRefusal(new AppError('PermissionError', 'Not allowed'))).toBe('not_allowed')
+    expect(signInRefusal(auth('Google token exchange failed'))).toBe('google_failed')
+    expect(signInRefusal(auth('Token expired'))).toBe('expired')
+    expect(signInRefusal(auth('OAuth state does not match this browser'))).toBe('expired')
+    expect(signInRefusal(auth('something else entirely'))).toBe('google_failed')
+    expect(signInRefusal(new Error('boom'))).toBe('google_failed')
+  })
+})

@@ -1101,3 +1101,102 @@ describe('the report period is month to date in India Standard Time', () => {
     }
   })
 })
+
+describe('the shared experiment inputs the seed script reads', () => {
+  test('KEY=VALUE lines are read, comments and quotes handled, and a missing file reads as empty', async () => {
+    const { readSharedEnv, sharedEnvPath, DEFAULT_SHARED_ENV } = await import('../src/sales-target')
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'st-env-'))
+    const file = join(dir, '.env.local')
+    writeFileSync(file, '# a comment\nTEST_EMPLOYEE_1_PASSWORD="pw one"\nDIVE_ID=abc\n  SERVICE_ACCOUNT = svc \nnot a line\n')
+    expect(readSharedEnv(file)).toEqual({ TEST_EMPLOYEE_1_PASSWORD: 'pw one', DIVE_ID: 'abc', SERVICE_ACCOUNT: 'svc' })
+    expect(readSharedEnv(join(dir, 'absent'))).toEqual({})
+
+    const saved = process.env.SALES_TARGET_SHARED_ENV
+    try {
+      delete process.env.SALES_TARGET_SHARED_ENV
+      expect(sharedEnvPath()).toBe(DEFAULT_SHARED_ENV)
+      process.env.SALES_TARGET_SHARED_ENV = file
+      expect(sharedEnvPath()).toBe(file)
+    } finally {
+      if (saved === undefined) delete process.env.SALES_TARGET_SHARED_ENV
+      else process.env.SALES_TARGET_SHARED_ENV = saved
+    }
+  })
+
+  test('embed settings fall back to the shared file when the process sets none', async () => {
+    const { embedConfig } = await import('../src/sales-target')
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const file = join(mkdtempSync(join(tmpdir(), 'st-env-')), '.env.local')
+    writeFileSync(file, 'DIVE_ID=from-file\nDIVE_VERSION=7\nSERVICE_ACCOUNT=svc-file\n')
+    const keys = ['DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'] as const
+    const saved = keys.map((k) => process.env[k])
+    for (const k of keys) delete process.env[k]
+    process.env.SALES_TARGET_SHARED_ENV = file
+    try {
+      expect(embedConfig()).toMatchObject({ diveId: 'from-file', version: 7, serviceAccount: 'svc-file' })
+    } finally {
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k]
+        else process.env[k] = saved[i]
+      })
+    }
+  })
+
+  test('the four test-employee passwords are picked from TEST_EMPLOYEE_N_PASSWORD, skipping any left unset', async () => {
+    const { testPasswords } = await import('../src/sales-target')
+    expect(testPasswords({ TEST_EMPLOYEE_1_PASSWORD: 'a', TEST_EMPLOYEE_3_PASSWORD: 'c', OTHER: 'x' })).toEqual({
+      test_employee_1: 'a',
+      test_employee_3: 'c',
+    })
+  })
+})
+
+describe('the embed session request over a real connection', () => {
+  test('the default fetch posts to the configured API base, and a non-JSON refusal is reported by its text', async () => {
+    const { createServer } = await import('node:http')
+    const { createEmbedSession } = await import('../src/sales-target')
+    const seen: { url?: string; auth?: string }[] = []
+    let answer: { status: number; body: string } = { status: 200, body: JSON.stringify({ session: 'live-session' }) }
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url, auth: req.headers.authorization })
+      res.writeHead(answer.status, { 'content-type': 'text/plain' })
+      res.end(answer.body)
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const { port } = server.address() as { port: number }
+    process.env.MOTHERDUCK_TOKEN = 'tok'
+    const cfg = { apiBase: `http://127.0.0.1:${port}`, diveId: 'd 1', version: 2, serviceAccount: 'svc' }
+    try {
+      expect(await createEmbedSession({} as never, cfg)).toEqual({ ok: true, session: 'live-session', status: 200 })
+      expect(seen[0]).toEqual({ url: '/v1/dives/d%201/embed-session', auth: 'Bearer tok' })
+      answer = { status: 502, body: '<html>Bad gateway</html>' }
+      expect(await createEmbedSession({} as never, cfg)).toEqual({
+        ok: false,
+        status: 502,
+        error: 'embed API answered HTTP 502: <html>Bad gateway</html>',
+        kind: 'unreachable',
+      })
+    } finally {
+      await new Promise((r) => server.close(r))
+    }
+  })
+})
+
+describe('assignments for people the seed did not create', () => {
+  test('an assignment naming an existing person by username reaches that person', async ({ admin }) => {
+    const { makePerson } = await import('./fixtures')
+    await seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, [])
+    const outsider = await makePerson({ username: 'outside_employee', full_name: 'Outside Employee', roles: [{ role: VIEWER_ROLE }] })
+    const result = await seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, [
+      { username: 'outside_employee', display_name: 'Outside Employee', plant_code: '1501', store_label: 'ATK', material_groups: ['010101009'] },
+    ])
+    expect(result.assignments).toEqual(['1501/010101009'])
+    const listed = await admin.get<{ data: { employee: string }[] }>(`${TABLE_URL}?filters=${encodeURIComponent(JSON.stringify([['store_subcategory', '=', '1501/010101009']]))}&fields=${encodeURIComponent('["employee"]')}`)
+    expect(listed.data.map((r) => r.employee)).toEqual([outsider])
+  })
+})

@@ -514,9 +514,9 @@ export type EmbedResult =
 
 // Injectable for the sandboxed suite (no network); MOTHERDUCK_API_BASE
 // redirects the real fetch for browser-level stub runs.
-let embedFetch: typeof fetch = (...args) => fetch(...args)
+let embedFetch: typeof fetch | null = null
 export function _setEmbedFetch(f: typeof fetch | null) {
-  embedFetch = f ?? ((...args) => fetch(...args))
+  embedFetch = f
 }
 
 export async function createEmbedSession(
@@ -534,7 +534,7 @@ export async function createEmbedSession(
     }
   let res: Response
   try {
-    res = await embedFetch(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
+    res = await (embedFetch ?? fetch)(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ username: cfg.serviceAccount, version: cfg.version, initial_state: initialState }),

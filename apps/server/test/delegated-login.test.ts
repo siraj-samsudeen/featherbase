@@ -655,3 +655,52 @@ describe('delegated sign-in through linked identities', () => {
     expect(row.last_used_at).not.toBeNull()
   })
 })
+
+describe('the boot announcement and the real provider connection', () => {
+  test('test mode is announced with what it does; a normal instance says nothing', async () => {
+    const { announceDelegatedTestMode } = await import('../src/delegated-login')
+    const lines: string[] = []
+    announceDelegatedTestMode((m) => lines.push(m))
+    expect(lines).toEqual([])
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    announceDelegatedTestMode((m) => lines.push(m))
+    expect(lines).toEqual(['delegated sign-in TEST MODE: the provider is not asked; a linked account signs in by its employee code, without a password'])
+    const warned: string[] = []
+    const original = console.warn
+    console.warn = (...a: unknown[]) => void warned.push(a.join(' '))
+    try {
+      announceDelegatedTestMode()
+    } finally {
+      console.warn = original
+    }
+    expect(warned).toHaveLength(1)
+  })
+
+  test('without a stub, the provider is reached over a real connection with the StyleHR body', async ({ api, createUser }) => {
+    const { createServer } = await import('node:http')
+    const received: { method?: string; body: string }[] = []
+    const server = createServer((req, res) => {
+      let body = ''
+      req.on('data', (c) => (body += c))
+      req.on('end', () => {
+        received.push({ method: req.method, body })
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ token: 'opaque' }))
+      })
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    try {
+      const { port } = server.address() as { port: number }
+      await configure({ url: `http://127.0.0.1:${port}/login` })
+      const tl = await createUser({ email: 'tl.real@example.com' })
+      await link(tl.user!, 'tl_real')
+      const res = await signIn(api, 'tl_real')
+      expect(res.status).toBe(200)
+      expect(received).toHaveLength(1)
+      expect(received[0].method).toBe('POST')
+      expect(JSON.parse(received[0].body)).toEqual({ email: 'tl_real', password: PASSWORD })
+    } finally {
+      await new Promise((r) => server.close(r))
+    }
+  })
+})

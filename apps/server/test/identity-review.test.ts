@@ -256,6 +256,24 @@ describe('a delegated provider is configuration only (genericity)', () => {
   })
 })
 
+describe('a delegated method\'s settings may arrive as JSON text', () => {
+  const save = (admin: TestClient, row_id: string, settings: unknown) =>
+    admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id, kind: 'delegated_password', label: row_id, enabled: false, settings } }),
+    })
+
+  test('JSON text is parsed and checked like an object, and text that is not JSON is refused naming the field', async ({ admin }) => {
+    expect((await save(admin, 'text_ok', '{"success_keys":["ok"]}')).status).toBe(201)
+    const bad = await save(admin, 'text_bad', '{"success_keys": ')
+    expect(bad.status).toBe(417)
+    expect(await bad.json()).toMatchObject({ error: { message: 'settings must be JSON', fields: { settings: 'settings must be JSON' } } })
+    const wrong = await save(admin, 'text_wrong', '{"success_keys":"ok"}')
+    expect(wrong.status).toBe(417)
+    expect((await save(admin, 'text_blank', '')).status).toBe(201)
+  })
+})
+
 describe('third review round', () => {
   test('a delegated row with malformed settings is skipped with a warning naming it', async ({ api }) => {
     await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, self_link, service_url, settings, created_at, updated_at)

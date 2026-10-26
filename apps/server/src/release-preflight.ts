@@ -19,6 +19,16 @@ export interface PreflightOptions {
   environment?: string
 }
 
+export interface BtreeGistStatus { installed: boolean; available: boolean; can_create: boolean }
+
+/** 0102 needs btree_gist: installed, or installable by this role. */
+export function assertBtreeGist(ext: BtreeGistStatus): void {
+  if (!ext.installed && !ext.available)
+    throw new Error('0102 needs the btree_gist extension, which this Postgres server does not ship. Install the contrib package first.')
+  if (!ext.installed && !ext.can_create)
+    throw new Error('0102 creates the btree_gist extension, but this role may not create extensions in this database. Create it as the owner first: create extension btree_gist;')
+}
+
 /** Throws, naming the problem, if the release must not start. Returns one
  *  line per check that passed. */
 export async function preflightRelease(opts: PreflightOptions = {}): Promise<string[]> {
@@ -72,10 +82,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
       select exists (select 1 from pg_extension where extname = 'btree_gist') as installed,
              exists (select 1 from pg_available_extensions where name = 'btree_gist') as available,
              has_database_privilege(current_database(), 'CREATE') as can_create`
-    if (!ext.installed && !ext.available)
-      throw new Error('0102 needs the btree_gist extension, which this Postgres server does not ship. Install the contrib package first.')
-    if (!ext.installed && !ext.can_create)
-      throw new Error('0102 creates the btree_gist extension, but this role may not create extensions in this database. Create it as the owner first: create extension btree_gist;')
+    assertBtreeGist(ext as unknown as BtreeGistStatus)
     passed.push('btree_gist available for 0102')
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
@@ -156,17 +163,20 @@ async function assertPublicationsPublishGeneratedColumns(pending: string[]): Pro
         where a.attrelid = relid and a.attnum > 0 and not a.attisdropped and a.attgenerated = 's'))
     end
     order by 1, 2, 3`
-  if (blocking.length) {
-    const quote = (name: string) => `"${name.replaceAll('"', '""')}"`
-    const fixes = [...new Set(blocking.map((b) =>
-      b.has_column_list
-        ? `  publication "${b.pubname}" lists columns for ${b.schemaname}.${b.tablename}: drop the column list (ALTER PUBLICATION ${quote(String(b.pubname))} SET TABLE … without one), or include every stored generated column after 0101;`
-        : `  ALTER PUBLICATION ${quote(String(b.pubname))} SET (publish_generated_columns = stored);`))]
-    throw new Error(
-      `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`,
-    )
-  }
+  if (blocking.length) throw new Error(publicationRefusal(blocking as unknown as BlockingPublication[]))
   return 'no publication blocks updates on a table with stored generated columns'
+}
+
+export interface BlockingPublication { pubname: string; schemaname: string; tablename: string; has_column_list: boolean }
+
+/** The refusal text for publications that would make updates fail, with the fix for each. */
+export function publicationRefusal(blocking: BlockingPublication[]): string {
+  const quote = (name: string) => `"${name.replaceAll('"', '""')}"`
+  const fixes = [...new Set(blocking.map((b) =>
+    b.has_column_list
+      ? `  publication "${b.pubname}" lists columns for ${b.schemaname}.${b.tablename}: drop the column list (ALTER PUBLICATION ${quote(String(b.pubname))} SET TABLE … without one), or include every stored generated column after 0101;`
+      : `  ALTER PUBLICATION ${quote(String(b.pubname))} SET (publish_generated_columns = stored);`))]
+  return `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`
 }
 
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start

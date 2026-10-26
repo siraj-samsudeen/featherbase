@@ -258,7 +258,6 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
     if ((err as { code?: string })?.code === '23505') {
       const winner = await linkedBySubject(method, v.subject)
       if (winner) return winner
-      throw new AppError('AuthenticationError', ADDRESS_IN_USE)
     }
     throw err
   }

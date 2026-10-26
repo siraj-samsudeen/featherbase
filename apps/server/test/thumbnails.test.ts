@@ -96,6 +96,20 @@ describe('FILE-004: thumbnails', () => {
     expect(thumb).toBeNull()
   })
 
+  test('returns null for bytes that claim to be an image but cannot be decoded', async () => {
+    expect(await makeThumbnailDataUrl(Buffer.from('this is not really a png'), 'image/png')).toBeNull()
+  }, 30_000)
+
+  test('returns null, rather than failing the upload, when the browser dies while resizing', async () => {
+    const png = await makePng(4000, 4000)
+    const browser = await getBrowser()
+    const resizing = makeThumbnailDataUrl(png, 'image/png', 128)
+    // Wait until the thumbnail's own page is open, then kill the browser under it.
+    while (!browser.contexts().some((c) => c.pages().length > 0)) await new Promise((r) => setTimeout(r, 1))
+    await browser.close()
+    expect(await resizing).toBeNull()
+  }, 60_000)
+
   // The cached Chromium handle used to be memoized unconditionally, so once the
   // browser died under a long-lived server every later thumbnail came back null
   // — silently, because makeThumbnailDataUrl swallows the error — and every PDF

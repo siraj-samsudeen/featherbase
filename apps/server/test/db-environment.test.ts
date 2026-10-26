@@ -84,3 +84,18 @@ describe('pending migrations are reported before they can confuse a run', () => 
     expect(await pendingMigrations()).toEqual([String(victim.name)])
   })
 })
+
+describe('the refusal when the database address cannot be read', () => {
+  test('an unparseable address is reported as such, never echoed', async () => {
+    await stampEnvironment('production')
+    const original = config.databaseUrl
+    config.databaseUrl = 'secret-pass not a url'
+    try {
+      const err = (await assertDatabaseEnvironment('test').catch((e: Error) => e)) as Error
+      expect(err.message).toContain('Connected to: (unparseable DATABASE_URL)')
+      expect(err.message).not.toContain('secret-pass')
+    } finally {
+      config.databaseUrl = original
+    }
+  })
+})
