@@ -45,8 +45,30 @@ export interface Found {
   identity: string | null
 }
 
-const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
+export const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
+export const ADDRESS_IN_USE = 'An account already uses this address. Contact your administrator.'
 const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
+
+export const GOOGLE_OFF = 'Google sign-in is not configured'
+
+/** The reasons a browser-navigation sign-in (the Google callback) can be
+ *  refused, as the short code the sign-in page explains. Only the code
+ *  travels — never the address, the domain or the server's message. */
+export type SignInRefusal = 'not_provisioned' | 'not_allowed' | 'address_in_use' | 'google_off' | 'expired' | 'google_failed'
+
+export function signInRefusal(err: unknown): SignInRefusal {
+  if (!(err instanceof AppError)) return 'google_failed'
+  if (err.message === NOT_PROVISIONED) return 'not_provisioned'
+  if (err.message === ADDRESS_IN_USE) return 'address_in_use'
+  if (err.message === GOOGLE_OFF) return 'google_off'
+  // A disabled person, a method that may not admit them, a leaver.
+  if (err.message === INVALID_CREDENTIALS || err.type === 'PermissionError') return 'not_allowed'
+  // Google itself failed to answer the exchange: not this browser's state.
+  if (/^Google /.test(err.message)) return 'google_failed'
+  // The login challenge: missing, from another browser, forged or too old.
+  if (/state|token|expired|signature/i.test(err.message)) return 'expired'
+  return 'google_failed'
+}
 
 export function unavailableError(method: SignInMethod): AppError {
   return new AppError(
@@ -150,7 +172,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
         where ${email}::text is not null and (lower(email) = ${email ? foldName(email) : ''} or lower(row_id) = ${email ? foldName(email) : ''})`
       // Never turned into a link: an address already in use belongs to someone
       // an administrator must decide about.
-      if (taken) throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      if (taken) throw new AppError('AuthenticationError', ADDRESS_IN_USE)
       // An opaque, permanent id (minted by the Person Table's id pattern) —
       // the address is contact data, not the anchor.
       const created = await saveDoc(
@@ -183,7 +205,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
     if ((err as { code?: string })?.code === '23505') {
       const winner = await linkedBySubject(method, v.subject)
       if (winner) return winner
-      throw new AppError('AuthenticationError', 'An account already uses this address. Contact your administrator.')
+      throw new AppError('AuthenticationError', ADDRESS_IN_USE)
     }
     throw err
   }
