@@ -63,6 +63,12 @@ pnpm --filter server cli create-person <email> <password> --roles "System Manage
 
 Use a protected operator shell; do not put real passwords in shared logs or
 shell history. Administrator is a break-glass account, not a daily login.
+
+Give that manager an email address. System notices (the leaver-check summary,
+waiting-for-access alerts) go to enabled System Managers with an address, and
+Administrator has none. With no such manager, the release preflight and
+`cli boot-check` print a WARNING, and each notice is logged as
+`notice_undelivered` in the activity log instead of being sent (#463).
 Alternatively, set `ADMIN_PASSWORD` in the deployment secret store before
 first release. If migrations already ran with Administrator locked, set it
 and deliberately run `pnpm --filter server cli seed`. Ordinary recorded

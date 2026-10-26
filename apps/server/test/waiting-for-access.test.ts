@@ -247,6 +247,23 @@ describe('the email alert to System Managers', () => {
     expect(await alertsTo('manager.one@example.com')).toHaveLength(1)
   })
 
+  test('with no System Manager to mail, the alert is recorded as undelivered, not dropped (#463)', async () => {
+    await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
+    const google = await realGoogle()
+    const p = await makePerson({ full_name: 'Nobody Told', email: `nobody.told@${DOMAIN}` })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(await alertNewArrival(p, google)).toBe('no recipients')
+
+    expect(await sql`select 1 from email_queue where subject = ${ALERT_SUBJECT} and reference_name = ${p}`).toHaveLength(0)
+    const rows = await sql`select "user", operation from activity_log where operation like 'notice_undelivered:%'`
+    expect(rows).toEqual([{ user: 'system', operation: 'notice_undelivered: no System Manager has an email address (waiting-for-access alert)' }])
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('notice_undelivered'))
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { event: 'notice_undelivered', notice: 'waiting-for-access alert', reason: 'no System Manager has an email address' },
+    ])
+  })
+
   test('a mail failure never blocks the sign-in; it logs one structured line', async () => {
     await managers()
     _setAlertSender(async () => {
