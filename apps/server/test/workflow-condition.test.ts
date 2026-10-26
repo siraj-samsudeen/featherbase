@@ -102,4 +102,20 @@ describe('conditional workflow transitions', () => {
       applyWorkflowAction(DT, 'big', 'Auto Approve', 'Administrator'),
     ).rejects.toMatchObject({ type: 'ValidationError' })
   })
+
+  test('an action whose condition cannot be evaluated is refused and leaves the row where it was', async ({ admin }) => {
+    await setup(admin)
+    await seedDocs(admin)
+    const current = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+    const transitions = (current.transitions as Record<string, unknown>[]).map((t) =>
+      t.action === 'Approve' ? { ...t, condition: 'doc.amount >' } : t,
+    )
+    await admin.post('/api/save_row', { table: 'Workflow', row: { ...current, transitions } })
+
+    await expect(applyWorkflowAction(DT, 'big', 'Approve', 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: expect.stringContaining('condition'),
+    })
+    expect((await getDoc(DT, 'big')).workflow_state).toBe('Draft')
+  })
 })

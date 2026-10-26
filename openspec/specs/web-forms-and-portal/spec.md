@@ -3,8 +3,10 @@
 ## Purpose
 
 A published web form lets anyone fill in and submit data without signing in or
-having an account. The portal is where a signed-in outside user, such as a
-customer, comes back to see and open the rows that belong to them.
+having an account. A published web page lets anyone read content an
+administrator wrote, also without signing in. The portal is where a signed-in
+outside user, such as a customer, comes back to see and open the rows that
+belong to them.
 
 ## Requirements
 
@@ -27,6 +29,16 @@ is marked when it's required; submitting creates the row it's for.
   configured answers are "Standard", "Expedited", and "Same day"
 - **THEN** those answers are offered in that order, and selecting "Expedited"
   lets the user submit it as the field's answer
+
+### Requirement: A form accepts only the fields its builder chose
+
+A submission SHALL save only the fields the form's builder put on the form;
+anything else a submitter sends along is ignored.
+
+#### Scenario: An extra field
+
+- **WHEN** a visitor's submission carries a field the form doesn't show
+- **THEN** the row is created without that field's value
 
 ### Requirement: A missing or unpublished form is not reachable
 
@@ -90,3 +102,20 @@ opening a row or attachment that belongs to someone else SHALL be refused.
 
 - **WHEN** a customer opens the direct link to another customer's row
 - **THEN** they're told they don't have access to it
+
+### Requirement: Publish a page for anyone to read
+
+A published web page SHALL be readable by anyone at its own address, without
+signing in, showing its title and the content its author wrote. A page that
+is unpublished, or doesn't exist, is reported as not found. The title is
+shown as plain text, never as markup.
+
+#### Scenario: Open a published page
+
+- **WHEN** a visitor who is not signed in opens a published page's address
+- **THEN** they see the page's content and its title
+
+#### Scenario: Open an unpublished page
+
+- **WHEN** a visitor opens the address of a page that isn't published
+- **THEN** they are told there is no page there

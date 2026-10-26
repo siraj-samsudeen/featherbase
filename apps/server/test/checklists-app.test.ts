@@ -128,6 +128,21 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
+  test('a run with no section or store is titled by its template alone, and a run cannot start without one', async ({ admin }) => {
+    const { templateName } = await install()
+    try {
+      const bare = await admin.post<Row>('/api/save_row', { table: RUN_DT, row: { template: templateName } })
+      expect(bare.run_title).toBe('Section Opening — Ground Floor')
+      expect(bare.items as Row[]).toHaveLength(8)
+
+      await expect(
+        admin.post('/api/save_row', { table: RUN_DT, row: { section: 'Kurti' } }),
+      ).rejects.toMatchObject({ status: 417 })
+    } finally {
+      await unwire()
+    }
+  })
+
   test('ticking stamps done_at, unticking clears it, progress follows', async ({ admin }) => {
     const { templateName } = await install()
     try {

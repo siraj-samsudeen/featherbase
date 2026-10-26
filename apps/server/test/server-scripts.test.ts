@@ -79,6 +79,22 @@ describe('CUST-004: server scripts', () => {
     expect(await runApiScript('srv_double', { n: 21 })).toBe(42)
   })
 
+  test('an API script can be called by name over HTTP', async ({ admin }) => {
+    await setup(admin)
+    await makeScript(admin, { row_id: 'ss-srv-http', script_type: 'API', api_method: 'srv_http', script: 'result = { doubled: (args.n || 0) * 2 }', enabled: true })
+    const res = await admin.post<{ result: { doubled: number } }>('/api/server_script/srv_http', { n: 4 })
+    expect(res.result).toEqual({ doubled: 8 })
+    await expect(admin.post('/api/server_script/no_such_method', {})).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('a row script that runs too long is stopped and the save is refused', async ({ admin }) => {
+    await setup(admin)
+    await makeScript(admin, { row_id: 'ss-srv-rowloop', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'while(true){}', enabled: true })
+    const res = await saveTarget(admin, { amount: 1 })
+    expect(res.status).toBe(417)
+    expect((await sql`select 1 from featherbase.ss_srv_doc`).length).toBe(0)
+  })
+
   test('time-boxes a runaway script instead of hanging', async ({ admin }) => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-loop', script_type: 'API', api_method: 'srv_loop', script: 'while(true){}', enabled: true })

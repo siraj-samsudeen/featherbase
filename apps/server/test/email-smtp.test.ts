@@ -394,6 +394,31 @@ describe('#395: delivery through a real SMTP server', () => {
     }
   })
 
+  test('an attachment on a queued email arrives with it at the real inbox', async () => {
+    await loadJobs()
+    await setupAccount()
+    const smtp = await startSmtp()
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      const csv = 'title,qty\nWasher,3'
+      await queueEmail({
+        to: 'reports@example.test',
+        subject: 'Report',
+        body: 'Attached.',
+        attachments: [{ filename: 'stock.csv', content_b64: Buffer.from(csv).toString('base64') }],
+      })
+      await sql`
+        update background_job set run_at = now()
+        where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+      await drainJobs()
+      expect(smtp.received).toHaveLength(1)
+      expect(smtp.received[0].data).toContain('filename=stock.csv')
+      expect(smtp.received[0].data).toContain(Buffer.from(csv).toString('base64'))
+    } finally {
+      await smtp.close()
+    }
+  })
+
   async function queueOne(to: string) {
     await loadJobs()
     await setupAccount()

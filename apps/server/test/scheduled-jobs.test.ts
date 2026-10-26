@@ -109,6 +109,13 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     expect(await liveEntries(METHOD)).toHaveLength(0)
   })
 
+  test('a schedule must name the job it runs', async ({ admin }) => {
+    await setup()
+    await expect(
+      admin.post('/api/save_row', { table: 'Scheduled Job', row: { method: '  ', cadence: 'hourly', enabled: true } }),
+    ).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
+  })
+
   test('after a run, the next interval follows the row, not the stale entry it was queued with', async () => {
     await setup()
     registerJob(METHOD, async () => {})

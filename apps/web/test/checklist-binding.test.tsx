@@ -16,7 +16,9 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import { installApp } from 'server/src/apps'
+import userEvent from '@testing-library/user-event'
 import { sql } from 'server/src/db'
+import { invalidateMeta } from 'server/src/meta'
 import { test, expect, renderApp } from './pg-test'
 
 async function installChecklists() {
@@ -183,4 +185,57 @@ test('a submitted run is final — no ticking, no submitting, no adding', async 
   expect(screen.queryByTestId('checklist-submit')).not.toBeInTheDocument()
   expect(screen.queryByTestId('checklist-photo-add')).not.toBeInTheDocument()
   expect(screen.queryByTestId('checklist-add-note')).not.toBeInTheDocument()
+})
+
+// ---------------------------------------------------------------------------
+// Evidence: a note on an item that isn't ticked, and what a locked run allows.
+// ---------------------------------------------------------------------------
+
+test('a note can be added to an item that is not ticked yet, and edited afterwards', async ({ admin }) => {
+  const run = await seedRun(admin, 'Kurti')
+  await openRun(admin, run)
+
+  const item = () => screen.getAllByTestId('checklist-item')[3]
+  await userEvent.click(within(item()).getByTestId('checklist-add-note'))
+  const box = within(item()).getByTestId('checklist-note-input')
+  await userEvent.type(box, 'Shutter jammed{Enter}')
+  await waitFor(() => expect(item()).toHaveTextContent('Note: Shutter jammed'))
+
+  // The note is saved on the run, not just shown.
+  const noted = (await admin.get(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)) as { items: { note: string | null }[] }
+  expect(noted.items.map((i) => i.note)).toContain('Shutter jammed')
+
+  // Tapping it again edits it.
+  await userEvent.click(within(item()).getByTitle('Edit note'))
+  const again = within(item()).getByTestId('checklist-note-input')
+  await userEvent.clear(again)
+  await userEvent.type(again, 'Fixed by facilities{Enter}')
+  await waitFor(() => expect(item()).toHaveTextContent('Note: Fixed by facilities'))
+})
+
+test('a run whose rows cannot be written offers no ticking, noting or photographing, but still shows its evidence', async ({
+  admin,
+}) => {
+  const run = await seedRun(admin, 'Kurti')
+  // Put a note on the fourth item while the run can still be worked on.
+  const doc = (await admin.get(`/api/table/Checklist%20Run/${encodeURIComponent(run)}`)) as {
+    updated_at: string
+    items: Record<string, unknown>[]
+  }
+  await admin.post('/api/save_row', {
+    table: 'Checklist Run',
+    row: { row_id: run, updated_at: doc.updated_at, items: doc.items.map((i, n) => (n === 3 ? { ...i, note: 'Shutter jammed' } : i)) },
+  })
+  // Now the Table becomes one only the platform writes — the same lock a read-only connected source puts on a run.
+  await sql`update table_def set system_written = true where name = 'Checklist Run'`
+  invalidateMeta('Checklist Run')
+
+  await openRun(admin, run)
+  const items = screen.getAllByTestId('checklist-item')
+  expect(within(items[0]).getByRole('checkbox')).toBeDisabled()
+  expect(screen.queryByTestId('checklist-submit')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('checklist-add-note')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('checklist-photo-add')).not.toBeInTheDocument()
+  expect(items[3]).toHaveTextContent('Note: Shutter jammed')
+  expect(within(items[3]).queryByTitle('Edit note')).not.toBeInTheDocument()
 })

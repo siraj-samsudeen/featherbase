@@ -27,6 +27,49 @@ it — not on every later save while it keeps matching.
 - **THEN** no further email goes out for that rule; it only fires again the
   next time the row moves into the matching value
 
+#### Scenario: A workflow action counts as a change
+
+- **WHEN** a rule emails someone whenever a ticket becomes Closed, and the
+  user closes a ticket by taking a workflow action
+- **THEN** the rule's email goes out
+
+### Requirement: Address an email from the row itself
+
+A rule's recipient, subject and message SHALL be able to include details from
+the row, so one rule can email each row's own contact. A rule whose recipient
+comes out empty for a row sends nothing for it.
+
+#### Scenario: Email the person who raised the ticket
+
+- **WHEN** a rule emails whoever is named in a ticket's raised-by field and a
+  ticket naming a customer's address is saved
+- **THEN** that customer's address receives the email
+
+#### Scenario: No address on the row
+
+- **WHEN** the same rule matches a ticket whose raised-by field is empty
+- **THEN** no email is sent for that ticket
+
+### Requirement: Email is sent in the background, once each
+
+Email SHALL be queued and delivered in the background, so the action that
+caused it doesn't wait, and each message SHALL be delivered exactly once.
+
+#### Scenario: Send a queued email
+
+- **WHEN** an email is queued and the background worker runs, even twice
+- **THEN** the recipient receives one copy
+
+### Requirement: Attach a row as a PDF
+
+An email about a row SHALL be able to carry that row as a PDF.
+
+#### Scenario: Email an invoice
+
+- **WHEN** an email about an invoice is sent with the PDF option on
+- **THEN** it arrives with a PDF attached whose text shows the invoice's
+  details
+
 ### Requirement: Get notified when a row is assigned to you
 
 Assigning a row to someone SHALL leave them an in-app notification linking
@@ -62,6 +105,12 @@ came from Featherbase.
 - **THEN** the webhook's URL receives the row's data along with a signature
   proving it came from Featherbase
 
+#### Scenario: Only the chosen event
+
+- **WHEN** a webhook is set up for a Table's edit event and a new row is
+  created
+- **THEN** the webhook's URL is not called
+
 ### Requirement: A failed webhook delivery is retried, not lost
 
 If a webhook call fails or the receiving system doesn't confirm it,
@@ -73,6 +122,25 @@ number of attempts.
 - **WHEN** a webhook's endpoint is briefly unreachable when it's called
 - **THEN** Featherbase tries delivering it again rather than giving up after
   the first failure
+
+### Requirement: Deadlines follow priority
+
+A Table with a service level promise SHALL give each new row a response
+deadline and a resolution deadline from the promise for its priority, and
+mark it On Track. A priority the promise doesn't cover gets no deadline.
+
+#### Scenario: A high-priority request
+
+- **WHEN** the user creates a High-priority request and the promise is one
+  hour to respond and four to resolve
+- **THEN** the request is due a response in about an hour and a resolution
+  in about four, and is On Track
+
+#### Scenario: A priority with no promise
+
+- **WHEN** the user creates a request whose priority the promise doesn't
+  list
+- **THEN** it gets no deadlines
 
 ### Requirement: Escalate a deadline nobody met
 
@@ -88,6 +156,18 @@ overdue and emailed to whoever holds the escalation role, once per breach.
   emailed about it
 - **AND** it is not escalated again for the same breach
 
+#### Scenario: A resolved request is left alone
+
+- **WHEN** a request passes its resolution deadline after reaching a state
+  the promise counts as fulfilled
+- **THEN** it is not marked Overdue and no one is emailed
+
+#### Scenario: No escalation role
+
+- **WHEN** a request passes its deadline and the promise names no escalation
+  role
+- **THEN** it is marked Overdue and no email is sent
+
 ### Requirement: Email reaches people's real inboxes
 
 Once an administrator connects the organisation's mail server, every email
@@ -99,6 +179,12 @@ connection. Until then, email stays in a local mailbox for testing.
 - **WHEN** the mail server is connected and the user asks to reset their
   password
 - **THEN** the reset link arrives in their own inbox
+
+#### Scenario: A report arrives with its file
+
+- **WHEN** the mail server is connected and an email with a file attached is
+  sent
+- **THEN** it arrives in the recipient's inbox with the file attached
 
 ### Requirement: A failed email is recorded, not lost
 
