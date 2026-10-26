@@ -124,6 +124,27 @@ test('PLAT-006: an invited Google address links the existing User (no duplicate)
   expect(listed.data[0].row_id).toBe(existingId)
 })
 
+// A refused Google sign-in is a browser navigation: it lands back on the
+// sign-in page with a plain message, never a raw JSON error page.
+test('a Google account nobody set up lands on the sign-in page with a plain message', async ({ session, request }) => {
+  await session.visit('/login')
+  await session.step('sign in through the mock OAuth flow with an address nobody invited', async ({ page }) => {
+    await page.getByTestId('google-login').click()
+    await page.getByTestId('mock-email').fill(EMAIL)
+    await page.getByTestId('mock-approve').click()
+  })
+
+  await session.step('back on the sign-in page, told what to do', async ({ page }) => {
+    await page.waitForURL(/\/featherbase\/login\?error=not_provisioned$/)
+    await expect(page.getByTestId('sign-in-refused')).toContainText("This Google account isn't set up for")
+    await expect(page.getByTestId('sign-in-refused')).toContainText('Ask your manager or IT to invite you')
+    await expect(page.getByText('Access not provisioned')).toHaveCount(0)
+    await expect(page.getByTestId('login-form')).toBeVisible()
+  })
+
+  expect(await usersWithEmail(request)).toEqual([])
+})
+
 test('PLAT-006: a tampered OAuth state is rejected', async ({ request }) => {
   // The callback must reject a forged/blank state (CSRF protection).
   const res = await request.get('/api/oauth/google/callback?code=abc&state=forged.signature', {
