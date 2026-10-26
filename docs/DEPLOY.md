@@ -132,13 +132,16 @@ A request's `Host` (lowercased, port stripped) only *selects* a listed entry;
 it can never add one. Every absolute URL the server builds — the Google
 `redirect_uri`, the cookie `Secure` decision, emailed links — comes from the
 list. A host that is not listed gets the `admin` entry's address for links and
-is otherwise served as one address that holds everything. With the list unset
+is otherwise served as one address that holds everything; Google sign-in
+started there is sent to start again on the `admin` address. With the list unset
 (development and test only), the server falls back to the request, trusting the
 first `x-forwarded-proto` hop.
 
 **On an address that opens an app**, `/` and every other Featherbase page or
 app root redirect to the app's root. Sign-in, password reset, the OAuth
-callback, `/privacy`, `/api/*` and the runtime shell's assets are served. An
+callback, `/privacy`, `/api/*` and the runtime shell's assets are served, and,
+until A2 moves it out of the Admin (#489), Sign-in methods
+(`/featherbase/admin/sign-in-methods`). An
 app that is not installed, or disabled, shows "Application unavailable". Until
 Feather Dash is an installed app, an address that opens `feather_dash` treats
 the sales target report (`/featherbase/sales-target`) as its root, and
