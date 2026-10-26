@@ -12,89 +12,91 @@ still answers only to what the calling person is actually allowed to do.
 
 ### Requirement: declared_app_actions_fail_closed
 
-Only actions an app has explicitly declared, by name, SHALL run, and only
-for someone with a recognized reason to use them. A stale request — from
-someone signed out, or from after the app was disabled — SHALL be refused
-before anything runs, and without revealing what a successful call would
-have returned. Two different apps SHALL be able to declare an action with
-the same name without either one reaching the other's.
+The host SHALL execute only version-2 declared named actions with an explicit
+recognized policy for every operation through one authenticated app-identity/
+action-name endpoint. Declaration and handler names SHALL match exactly. Missing,
+disabled, incompatible, inaccessible or undeclared actions SHALL fail before
+handler execution or replay-result disclosure. Manager diagnostics SHALL expose
+declared names and policy-upgrade requirements. Identical local names in different
+apps SHALL remain distinct. Historical version-1 artifacts SHALL remain readable
+for exact-identity upgrade planning but SHALL NOT acquire a default policy.
 
 #### Scenario: stale_or_unauthenticated_action_call
-
-- **WHEN** someone with no session, or a signed-in person calling an action
-  after its app was disabled, submits that action
-- **THEN** it's refused before anything runs
-- **AND** no result is returned, successful or otherwise
+- **WHEN** a caller has no session or submits a stale action after disable
+- **THEN** the host rejects without running the handler or replaying private results
 
 #### Scenario: two_applications_declare_same_action_name
-
-- **WHEN** two installed apps each declare an action called "transform"
-- **THEN** calling one only ever runs that app's own version
+- **WHEN** two active applications declare `transform`
+- **THEN** the app identity selects only that application's implementation
 
 #### Scenario: absent_policy_requires_explicit_upgrade
-
-- **WHEN** an app's already-installed version declared an action with no
-  recognized rule for who may use it
-- **THEN** calling that action is refused, and using it needs a reviewed,
-  upgraded version that declares the rule
-- **AND** the app's existing data and any results already recorded stay
-  exactly as they were
+- **WHEN** an exact installed historical action artifact has no policy declaration
+- **THEN** actions fail with an operator-visible upgrade requirement and stored
+  data/results remain intact for an explicit reviewed package upgrade
 
 ### Requirement: action_helpers_preserve_caller_authority
 
-An action SHALL only be able to do what the person calling it could already
-do themselves — it SHALL NOT read or change anything outside what its app
-owns and what the caller has permission for, and it SHALL NOT be handed
-raw, unrestricted access to the database. Deleting through an action SHALL
-be limited to rows the action itself is allowed to remove.
+Handlers SHALL receive unknown payload, caller identity, immutable host-authorized
+operation scope, host validation rejection and narrow document helpers, never a
+raw SQL transaction or caller override. Helpers SHALL restrict access to declared
+local tables, ordinary caller table, row, field and reference permissions, and
+current app availability. Shared tables SHALL require package permission
+declarations as well as caller permission. Bound sources and privileged platform
+configuration SHALL be refused. Activity reads SHALL require document read access
+and redact inaccessible version fields. Comment helpers SHALL be append-only;
+discussion reads SHALL use the authorized document activity helper. Action
+deletion SHALL be limited to owned rows. List helpers SHALL refuse cross-table
+related filters. Every action SHALL use the declaration's action-role semantics;
+labelling an action read-only SHALL NOT grant mutation helpers to read-only roles.
 
 #### Scenario: malformed_action_payload_or_attempted_bypass
-
-- **WHEN** an action rejects a request it doesn't recognize, or the request
-  asks for something the action was never given access to
-- **THEN** the action fails
-- **AND** nothing it already changed survives
+- **WHEN** a handler rejects malformed payload or requests undeclared/private storage
+- **THEN** the command fails and no partial rows or history survive
 
 ### Requirement: action_writes_and_replay_are_atomic
 
-An action SHALL either fully succeed — every change it makes, together — or
-leave nothing changed at all. Retrying the exact same request SHALL return
-the exact same result without running the action's work again, but only
-after checking the caller still has the same access they had the first
-time; retrying with a changed request under the same retry marker SHALL be
-refused rather than reusing the old answer. If access that a first, saved
-result depended on is later removed, replaying that request SHALL refuse
-rather than hand back what it once returned.
+An action SHALL execute within one host-owned transaction. A successful command
+SHALL atomically persist its JSON result, immutable complete authorization scope
+metadata and payload identity under caller, app, action and idempotency key.
+Same-key identical-payload retries SHALL return that result without business
+handler execution only after fresh current authorization of the original scope;
+different-payload retries SHALL conflict without result disclosure. Store sets
+SHALL be normalized before identity comparison while object IDs and all other
+payload fields remain bound. Authorization metadata MAY be read before full scope
+approval; protected result data SHALL NOT be read until approval. Fresh checks
+SHALL follow idempotency/scope lock waits. Missing/incompatible required scope
+metadata SHALL deny replay. Explicit table/generic policies MAY replay historical
+metadata-null table results under their current permissions, but stores/product
+policies SHALL NOT treat those results as authorized.
+
+Failed handlers or stale source revisions SHALL roll back all writes and Versions
+and SHALL NOT consume a key. Update and delete SHALL require source revision
+checks. Replay SHALL authorize the original recorded scope without requiring a
+deleted source row or rerunning its scope resolver. Required current product gates
+SHALL run against the immutable original footprint before result disclosure.
 
 #### Scenario: asymmetric_multi_row_command_rolls_back
-
-- **WHEN** an action changes one row, then a different one, then fails
-- **THEN** neither change survives
+- **WHEN** a handler creates one row, changes a different row and then throws
+- **THEN** neither change, shared relation change nor partial Version persists
 
 #### Scenario: action_response_lost_and_caller_retries
-
-- **WHEN** a request is submitted again after its response was lost,
-  including after a restart
-- **THEN** the same result comes back
-- **AND** nothing the action does happens a second time
+- **WHEN** a committed request is repeated, including across restart
+- **THEN** current authorization is checked before the original result returns
+- **AND** no second destination is created, even when the source was deleted
 
 #### Scenario: narrowed_retry_cannot_disclose_old_scope
-
-- **WHEN** the same retry marker is resubmitted with different details
-- **THEN** it's refused rather than treated as a repeat of the original
+- **WHEN** an A+B result is committed and B access is removed
+- **THEN** the unchanged request refuses and the same key rewritten to A cannot
+  disclose the A+B result
+- **AND** neither request reads the protected result or executes the handler
 
 #### Scenario: equivalent_store_order_replays_once
-
-- **WHEN** the same request is resubmitted with the same retry marker and the
-  same underlying access, just listed in a different order
-- **THEN** the original result is returned once, without repeating the
-  action's work
+- **WHEN** unchanged authorized stores A+B are retried as B+A with the same IDs/key
+- **THEN** the original result returns without a second mutation
 
 #### Scenario: queued_retry_sees_revocation
-
-- **WHEN** access that a saved result depended on is removed, and that same
-  request is submitted again
-- **THEN** it's refused rather than returning the old result
+- **WHEN** a duplicate waits for its idempotency lock while rights are removed
+- **THEN** post-wait authorization refuses without result disclosure
 
 ### Requirement: Work that happens after an action commits doesn't repeat
 
