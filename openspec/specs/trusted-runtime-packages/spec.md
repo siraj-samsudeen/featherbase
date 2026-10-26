@@ -166,12 +166,12 @@ piece, and SHALL preserve an app-owned deep path, query and fragment across
 sign-in and refresh while loading the app's entry document.
 
 Featherbase SHALL render every app screen inside its responsive host shell on
-desktop and touch/mobile. The shell SHALL keep a persistent Featherbase Home
+desktop and touch/mobile. The shell SHALL keep a persistent Featherbase Admin
 icon immediately followed by one keyboard-operable app switcher. The switcher
-SHALL identify the current destination and contain Featherbase Home plus every
+SHALL identify the current destination and contain Featherbase Admin plus every
 active installed app the current member is allowed to open. It SHALL refresh
 after the document regains focus or visibility, omit unavailable destinations,
-and return to Featherbase Home if the current destination becomes unavailable.
+and return to Featherbase Admin if the current destination becomes unavailable.
 
 The Home destination SHALL be the single responsive route to Featherbase's
 ordinary host controls; neither the shell nor an app SHALL create a second app
@@ -203,9 +203,9 @@ tables remain available to administrators.
 
 - **WHEN** app access is granted, removed, disabled, made unavailable or
   restored before the document regains focus or visibility
-- **THEN** the refreshed switcher contains Featherbase Home plus exactly the
+- **THEN** the refreshed switcher contains Featherbase Admin plus exactly the
   active installed apps that member can open
-- **AND** if the current app disappeared, the member returns to Featherbase Home
+- **AND** if the current app disappeared, the member returns to Featherbase Admin
 
 #### Scenario: Host controls work with keyboard and touch
 
@@ -215,7 +215,7 @@ tables remain available to administrators.
 
 #### Scenario: Home restores Featherbase controls
 
-- **WHEN** a member activates the Home icon or chooses Featherbase Home
+- **WHEN** a member activates the Home icon or chooses Featherbase Admin
 - **THEN** they reach Featherbase's responsive navigation, command, account,
   appearance, language, notification and permitted administration controls
 

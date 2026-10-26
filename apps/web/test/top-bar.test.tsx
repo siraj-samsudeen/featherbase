@@ -78,6 +78,30 @@ test('on the Admin address the account page is named Featherbase Admin', async (
   await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase Admin'))
 })
 
+// Verifier, round 2 on #495: on an app's address every page's tab says the
+// app, and app content never shows under the Admin name.
+test("on an app's address the account page's tab title is the app's name", async ({ admin }) => {
+  document.title = 'Featherbase'
+  onAddressThatOpens('feather_dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await waitFor(() => expect(document.title).toBe('Feather Dash'))
+})
+
+test('the Sales Target page on the Admin address is named Feather Dash in its bar', async ({ admin }) => {
+  onAddressThatOpens('admin')
+  await renderApp('/featherbase/sales-target', admin)
+  await settledBar()
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  expect(await barName()).toHaveTextContent('Feather Dash')
+})
+
+test("the Sales Target page on the Admin address has Feather Dash as its tab title", async ({ admin }) => {
+  document.title = 'Featherbase'
+  onAddressThatOpens('admin')
+  await renderApp('/featherbase/sales-target', admin)
+  await waitFor(() => expect(document.title).toBe('Feather Dash'))
+})
+
 // ---- 3. Admin menus on the Admin screens only ---------------------------------
 
 test('the account page has the bar and no Admin menus', async ({ admin }) => {

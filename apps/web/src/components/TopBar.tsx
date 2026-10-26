@@ -51,10 +51,14 @@ function useBrand() {
   })
 }
 
-/** What this bar stands for: `admin` or an app's name. Undefined only while
- *  the address is still being asked and the page has no home of its own. */
+/** What this bar stands for: `admin` or an app's name. A page that belongs to
+ *  an app is that app's on every address, so app content never shows under
+ *  the Admin name (verifier, round 2 on #495); any other page takes the
+ *  address's side. Undefined only while the address is still being asked and
+ *  the page has no home of its own. */
 function useBarContext(home: string | undefined): { context?: string; brand?: Brand } {
   const brand = useBrand()
+  if (home && home !== ADMIN) return { context: home, brand: brand.data }
   if (brand.data) return { context: brand.data.opens ?? home ?? ADMIN, brand: brand.data }
   if (brand.isError) return { context: home ?? ADMIN }
   return { context: home }
@@ -91,6 +95,11 @@ export function TopBar({
 }) {
   const { context, brand } = useBarContext(home)
   const name = context ? nameOf(context, brand) : undefined
+  // An app's page, or any page on an app's address, carries the app's name in
+  // the browser tab too. The Admin screens title themselves (AdminShell).
+  useEffect(() => {
+    if (context && context !== ADMIN && name) document.title = name
+  }, [context, name])
   const caps = useWhoAmI().data?.capabilities
   const isPhone = useMediaQuery(PHONE_QUERY)
   const canUseAdmin = Boolean(caps && (caps.manage || caps.table_access))
