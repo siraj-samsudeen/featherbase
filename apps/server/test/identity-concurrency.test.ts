@@ -79,7 +79,7 @@ it('two concurrent removals of a person\'s last two ways in: one is refused', as
 
 it('two first sign-ins by one new Google account: the loser signs in as the winner and no second person stays', async () => {
   const tag = randomUUID().slice(0, 8)
-  const addresses = [`psnconc${tag}a@jeyarama.com`, `psnconc${tag}b@jeyarama.com`]
+  const addresses = [`psnconc${tag}a@store.example`, `psnconc${tag}b@store.example`]
   const subject = `g-new-${tag}`
   try {
     const google = { ...(await methodOfKind('google'))!, new_person: 'create' as const, allowed_email_domains: '*' }
