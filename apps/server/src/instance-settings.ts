@@ -451,7 +451,12 @@ export interface ExportResult {
 /** URL credentials: `scheme://user:password@` or `scheme://token@`. */
 const URL_CREDENTIALS = /[a-z][a-z0-9+.-]*:\/\/[^\s/?#@]+@/i
 /** JSON keys that name a secret. */
-const SECRET_KEY = /pass(word)?|secret|token|api[_-]?key|private[_-]?key|credential/i
+const SECRET_KEY = /pass(word)?|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|credential|signature|authorization/i
+/** A secret-named key with a value in text: a URL's `?token=…`, a DSN's
+ *  `password=…`, `api_key=…`. */
+const SECRET_ASSIGNMENT = /(?:^|[^a-z0-9])(?:pass(?:word)?|pwd|secret|client[_-]?secret|token|access[_-]?token|api[_-]?key|access[_-]?key|private[_-]?key|credentials?|sig(?:nature)?|auth(?:orization)?)\s*=\s*[^\s&;,'"]+/i
+/** An HTTP authorization value written out. */
+const AUTH_VALUE = /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]{8,}/i
 
 /** Every key path in a JSON value that names a secret, sorted. */
 function secretKeysIn(v: unknown, at = ''): string[] {
@@ -476,7 +481,18 @@ function secretIn(value: unknown): string | null {
     if (secret && secret.length >= 6 && text.includes(secret)) return `holds the value of ${v.name}`
   }
   if (URL_CREDENTIALS.test(text)) return 'a web address with credentials in it'
-  const keys = typeof value === 'object' ? secretKeysIn(value) : []
+  if (SECRET_ASSIGNMENT.test(text)) return 'names a secret with its value (a password=, token= or key= setting)'
+  if (AUTH_VALUE.test(text)) return 'holds an authorization value'
+  // JSON written as text is checked like JSON.
+  let parsed: unknown = value
+  if (typeof value === 'string' && /^\s*[[{]/.test(value)) {
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      parsed = value
+    }
+  }
+  const keys = typeof parsed === 'object' ? secretKeysIn(parsed) : []
   if (keys.length) return `holds ${keys.length === 1 ? 'a key that names' : 'keys that name'} a secret (${keys.join(', ')})`
   return null
 }

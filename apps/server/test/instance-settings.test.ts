@@ -312,6 +312,42 @@ describe('export (D9)', () => {
   })
 })
 
+describe('export: credentials no deployment variable holds', () => {
+  test('a token in a query string, a DSN password, an authorization value and secret keys in JSON text are left out', async () => {
+    const leaks = {
+      query: 'https://hr.example.com/login?user=bot&token=ext-provider-token-1',
+      dsn: 'host=db.example.com port=5432 user=app password=dsn-pass-77 dbname=hr',
+      bearer: 'Send it with Authorization: Bearer abcdefgh12345678',
+      jsonText: '{"endpoint":"https://x.example.com","api_key":"k-json-text-99"}',
+    }
+    await sql`insert into sign_in_method ${sql({
+      row_id: 'leaky2', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), status: 'draft', position: 0,
+      kind: 'delegated_password', label: 'Leaky Two', enabled: false, new_person: 'refuse', self_link: false, service_url: leaks.query,
+    } as never)}`
+    for (const [field, value] of [['time_zone', leaks.dsn], ['invitation_email_intro', leaks.bearer], ['app_name', leaks.jsonText]])
+      await sql`insert into single_value ${sql({ table_name: 'System Settings', field, value })}
+        on conflict (table_name, field) do update set value = excluded.value`
+    const exported = await exportInstanceSettings()
+    const text = JSON.stringify(exported.file)
+    for (const secret of ['ext-provider-token-1', 'dsn-pass-77', 'abcdefgh12345678', 'k-json-text-99']) expect(text).not.toContain(secret)
+    expect(exported.withheld).toEqual(expect.arrayContaining([
+      'Sign In Method.leaky2.service_url: names a secret with its value (a password=, token= or key= setting)',
+      'System Settings.time_zone: names a secret with its value (a password=, token= or key= setting)',
+      'System Settings.invitation_email_intro: holds an authorization value',
+      'System Settings.app_name: holds a key that names a secret (api_key)',
+    ]))
+  })
+
+  test('ordinary prose and addresses are exported as they are', async () => {
+    const intro = 'Sign in with your work account. Your password is never shared, and the token you get expires.'
+    await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'invitation_email_intro', value: intro })}
+      on conflict (table_name, field) do update set value = excluded.value`
+    const exported = await exportInstanceSettings()
+    expect(exported.file.settings['System Settings']).toMatchObject({ invitation_email_intro: intro })
+    expect(exported.withheld).toEqual([])
+  })
+})
+
 describe('over HTTP (D3)', () => {
   test('a System Manager service account applies and previews; anyone else is refused', async ({ api }) => {
     const bot = await createServiceAccount('settings-bot', ['System Manager'], 'Administrator')

@@ -338,6 +338,11 @@ async function cmdSettingsApply(flags: Record<string, string | string[] | boolea
   } catch (err) {
     throw new Error(`cannot read ${file} as JSON: ${(err as Error).message}`)
   }
+  // The same core controllers the server registers at start (index.ts), so
+  // the CLI enforces what HTTP does: the sign-in lockout guard, a scheduled
+  // job's queue re-timing (Codex adversarial, #465).
+  const { loadControllers } = await import('./controllers')
+  await loadControllers()
   const { applyInstanceSettings } = await import('./instance-settings')
   const result = await applyInstanceSettings(settings, {
     by: 'cli',

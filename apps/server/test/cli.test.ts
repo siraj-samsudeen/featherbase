@@ -447,6 +447,17 @@ describe('#465: cli settings:export and settings:apply', () => {
     expect(await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`).toEqual(before)
   }, 60_000)
 
+  it('runs the same safety controllers as the server: a sign-in method cannot change kind', () => {
+    writeFileSync(join(dir, 'kind.json'), JSON.stringify({ settings: { 'Sign In Method': [{ row_id: 'google', kind: 'password' }] } }))
+    let stderr = ''
+    try {
+      cli(['settings:apply', '--file', join(dir, 'kind.json'), '--dry-run'])
+    } catch (err) {
+      stderr = (err as { stderr: string }).stderr
+    }
+    expect(stderr).toContain('A sign-in method cannot change kind')
+  }, 60_000)
+
   it('refuses a file reference outside the settings file\'s folder', () => {
     writeFileSync(join(dir, 'escape.json'), JSON.stringify({ settings: { 'System Settings': { privacy_notice: { file: '../package.json' } } } }))
     let stderr = ''
