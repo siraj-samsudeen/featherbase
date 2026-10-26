@@ -100,6 +100,14 @@ for example on two companies' payrolls.
 - **THEN** their record shows the code as current again with the new start
   date, and the earlier spell is kept as history
 
+#### Scenario: An invitee found by their invited address
+
+- **WHEN** a person has an open Google invitation and has not signed in yet,
+  so they hold no email address identifier, and someone who may read them
+  searches that exact address
+- **THEN** the search finds them, marked as invited and not signed in yet;
+  someone who may not read them gets no result
+
 ### Requirement: Sensitive identifiers are never shown in full
 
 A national ID such as Aadhaar SHALL never be stored or shown in full.
