@@ -4,6 +4,7 @@
 // and is reported to the inviter; a pending invite can be re-sent, at most
 // once per ten minutes.
 import { afterEach, describe, expect, vi } from 'vitest'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -72,10 +73,10 @@ describe('the invitation email', () => {
     expect(String(mail.body)).not.toContain('undefined')
   })
 
-  test('the link uses the configured site address', async ({ createUser }) => {
+  test('the link uses the address marked for emails', async ({ createUser }) => {
     const { config } = await import('../src/config')
-    const before = config.siteUrl
-    ;(config as { siteUrl: string }).siteUrl = 'https://dash.example.com'
+    const before = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses('[{"address":"https://dash.example.com","opens":"admin","emails":true}]', 'test')
     try {
       const admin = await inviter(createUser)
       const person = await makePerson({ full_name: 'Linked Person' })
@@ -83,7 +84,7 @@ describe('the invitation email', () => {
       const [mail] = await mailsTo('linked.person@example.com')
       expect(String(mail.body)).toContain('https://dash.example.com/featherbase/login')
     } finally {
-      ;(config as { siteUrl: string }).siteUrl = before
+      config.instanceAddresses = before
     }
   })
 
@@ -208,9 +209,9 @@ describe('hardening', () => {
     const res = await client.fetch(`/api/identities/${enc(identity)}/resend_invitation`, { method: 'POST' })
     return { status: res.status, body: (await res.json()) as Record<string, any> }
   }
-  async function withConfig<T>(change: Partial<{ siteUrl: string; environment: string }>, run: () => Promise<T>): Promise<T> {
-    const c = config as { siteUrl: string; environment: string }
-    const before = { siteUrl: c.siteUrl, environment: c.environment }
+  async function withConfig<T>(change: Partial<Pick<typeof config, 'instanceAddresses' | 'environment'>>, run: () => Promise<T>): Promise<T> {
+    const c = config as Pick<typeof config, 'instanceAddresses' | 'environment'>
+    const before = { instanceAddresses: c.instanceAddresses, environment: c.environment }
     Object.assign(c, change)
     try {
       return await run()
@@ -219,10 +220,10 @@ describe('hardening', () => {
     }
   }
 
-  test('outside development and test, no SITE_URL means no email, never a link from the request', async ({ createUser }) => {
+  test('outside development and test, no INSTANCE_ADDRESSES means no email, never a link from the request', async ({ createUser }) => {
     const admin = await inviter(createUser)
     const person = await makePerson({ full_name: 'Prod Person' })
-    await withConfig({ siteUrl: '', environment: 'production' }, async () => {
+    await withConfig({ instanceAddresses: null, environment: 'production' }, async () => {
       const res = await admin.fetch(`/api/people/${enc(person)}/identities`, {
         method: 'POST',
         headers: { host: 'attacker.example.net' },
@@ -230,28 +231,28 @@ describe('hardening', () => {
       })
       expect(res.status).toBe(201)
       const body = (await res.json()) as Record<string, any>
-      expect(body.invitation_email).toEqual({ status: 'failed', error: expect.stringMatching(/SITE_URL/) })
+      expect(body.invitation_email).toEqual({ status: 'failed', error: expect.stringMatching(/INSTANCE_ADDRESSES/) })
       expect(body.invitation_sent_at).toBeNull()
       const again = await resend(admin, body.id)
       expect(again.status).toBe(503)
-      expect(again.body.error.message).toMatch(/SITE_URL/)
+      expect(again.body.error.message).toMatch(/INSTANCE_ADDRESSES/)
     })
     expect(await mailsTo('prod.person@example.com')).toHaveLength(0)
   })
 
-  test('the release preflight refuses a production server without SITE_URL', async () => {
+  test('the release preflight refuses a production server without INSTANCE_ADDRESSES', async () => {
     // A production release also needs the rest of a production environment
     // (env.ts): its own JWT_SECRET, and no mock Google provider, which this
     // suite turns on for itself (vitest.config.ts).
     vi.stubEnv('JWT_SECRET', 'a-production-secret')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '')
-    await withConfig({ siteUrl: '' }, async () => {
+    await withConfig({ instanceAddresses: null }, async () => {
       const prev = process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK
       process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK = '1'
       try {
-        await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/SITE_URL is not set on a "production" server/)
-        await withConfig({ siteUrl: 'https://dash.example.com' }, async () => {
-          expect(await preflightRelease({ environment: 'production' })).toContain('SITE_URL set')
+        await expect(preflightRelease({ environment: 'production' })).rejects.toThrow(/INSTANCE_ADDRESSES is not set on a "production" server/)
+        await withConfig({ instanceAddresses: parseInstanceAddresses('[{"address":"https://dash.example.com","opens":"admin","emails":true}]', 'production') }, async () => {
+          expect(await preflightRelease({ environment: 'production' })).toContain('INSTANCE_ADDRESSES: https://dash.example.com opens admin (emails)')
         })
       } finally {
         if (prev === undefined) delete process.env.DISABLE_DATABASE_ENVIRONMENT_CHECK

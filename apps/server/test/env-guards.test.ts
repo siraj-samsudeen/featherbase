@@ -16,7 +16,7 @@ describe('lint: process.env outside src/env.ts', () => {
   it('flags each form of read and names the line', () => {
     const hits = scanSource([
       "const a = process.env.JWT_SECRET",
-      "const b = process.env['SITE_URL']",
+      "const b = process.env['INSTANCE_ADDRESSES']",
       "const { c } = process.env",
       "const d = process .env. PORT",
     ].join('\n'))

@@ -14,9 +14,9 @@ import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
 import { ManageOnly } from './pages/RestrictedShell'
-import { EmptyState } from './components/ui'
+import { EmptyState, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
-import { getToken, landingPath, loginHref } from './lib/api'
+import { ApiError, getToken, landingPath, loginHref } from './lib/api'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -31,6 +31,7 @@ import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
+import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
@@ -169,7 +170,30 @@ const adminRoute = createRoute({
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
   },
   component: AdminLayout,
+  // Verifier, round 2 on #495: a path no Admin page matches.
+  notFoundComponent: AdminPageNotFound,
 })
+
+/** An Admin path that is neither a known page nor an existing Table: said
+ *  plainly, with the way back. Never the Table loader's own error. */
+function AdminPageNotFound() {
+  return (
+    <div data-testid="page-not-found">
+      <EmptyState
+        title="Page not found"
+        body="There is no page at this address in the Admin."
+        action={<Link to="/featherbase/admin" className={buttonClasses()}>Go to the Admin home</Link>}
+      />
+    </div>
+  )
+}
+
+/** The Table a path names never existed: its metadata answered the server's
+ *  plain not-found (meta.ts). A deleted Table answers 404 too, with a tombstone
+ *  saying who deleted it and when (DEL-R9); that one keeps its own message. */
+function noSuchTable(error: unknown, table: string): boolean {
+  return error instanceof ApiError && error.status === 404 && error.message === `Table ${table} not found`
+}
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
@@ -316,6 +340,7 @@ function TableListPage() {
   const { filters } = tableRoute.useSearch()
   const navigate = tableRoute.useNavigate()
   const meta = useMeta(table)
+  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   // SET-001: a Settings Table has no list — open its one row directly.
   if (meta.data?.kind === 'settings') {
     return (
@@ -487,9 +512,20 @@ const accessTokensRoute = createRoute({
   component: AccessTokens,
 })
 
+// #489 item 13: the person's own account pages, outside the Admin screens and
+// served on every address, under the shared top bar.
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/account',
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+  },
+  component: AccountLayout,
+})
+
 // person-identities (#275): the signed-in person's sign-in methods.
 const signInMethodsRoute = createRoute({
-  getParentRoute: () => adminRoute,
+  getParentRoute: () => accountRoute,
   path: 'sign-in-methods',
   component: SignInMethods,
 })
@@ -655,6 +691,8 @@ function TableFormPage() {
   // remounts the form instead of retaining the previous form's values.
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
+  const meta = useMeta(table)
+  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   return (
     <div data-testid="doc-page">
       <FormView
@@ -741,6 +779,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
+  accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, tableRoute, docRoute]),
 ])

@@ -149,14 +149,13 @@ test('every text role meets AA in light and dark, as the browser computes the pr
 test('a rejected latest theme choice returns the rendered choice to the confirmed one', async ({ session }) => {
   await session.step('a refused theme update rolls the account menu back to the confirmed choice', async ({ page }) => {
   await page.goto('/admin/new-table')
-  await page.getByTestId('session-user').click()
+  // #489: the theme toggle sits in the top bar.
   await page.getByTestId('theme-dark').click()
   await expect.poll(async () => (await page.request.get('/api/whoami')).json().then((who) => who.theme)).toBe('dark')
   await page.route('**/api/set_theme', (route) => route.fulfill({ status: 500, json: { error: { type: 'TestFailure', message: 'Preference refused' } } }))
   await page.getByTestId('theme-light').click()
   await expect(page.getByTestId('theme-dark')).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.keyboard.press('Escape')
   await page.getByTestId('dt-file-input').setInputFiles(workbook(['Zones', 'Stores', 'Prices']))
   await expect(page.getByTestId('dt-more-sheets')).toBeVisible()
   await capture(page, 'dark-preference-rollback')

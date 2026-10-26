@@ -12,6 +12,7 @@ import { checkVariables, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, typ
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
+import { validateInstanceAddresses } from './instance-addresses'
 
 export interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -23,7 +24,7 @@ export interface PreflightOptions {
 export async function preflightRelease(opts: PreflightOptions = {}): Promise<string[]> {
   // 0. A release declares what it is. Unset, the environment defaults to
   //    development, which would wave through every production-only check
-  //    below (SITE_URL among them). A local dev server never runs this.
+  //    below (INSTANCE_ADDRESSES among them). A local dev server never runs this.
   if (!opts.environment && !environmentDeclared())
     throw new Error(
       'Neither FEATHERBASE_ENV nor NODE_ENV is set. A release must declare its environment (FEATHERBASE_ENV=production, staging, …) rather than default to development (docs/DEPLOY.md, "Configuration").',
@@ -55,6 +56,15 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)
   if (variables.refusals.length) throw new Error(variables.refusals.join('\n'))
   passed.push(...variables.warnings, ...variables.passed)
+
+  // 2b. #488: the registry above refuses a missing INSTANCE_ADDRESSES outside
+  //     development and test. A list that is set was validated at boot for
+  //     this process's environment; it is checked again for the release's own.
+  const addresses = config.instanceAddresses
+  if (addresses) {
+    validateInstanceAddresses(addresses, environment)
+    passed.push(`INSTANCE_ADDRESSES: ${addresses.map((a) => `${a.address} opens ${a.opens}${a.emails ? ' (emails)' : ''}`).join(', ')}`)
+  }
 
   // 3. 0102 creates btree_gist (person_identifier's history constraint).
   if (pending.includes('0102_person_resolution.ts')) {

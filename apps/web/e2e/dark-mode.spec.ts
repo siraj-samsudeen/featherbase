@@ -26,8 +26,7 @@ test('UI-024: switching to dark actually repaints the canvas', async ({ session 
     lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   })
   await session
-    .step('choose dark in the account menu', async ({ page }) => {
-      await page.getByTestId('session-user').click()
+    .step("choose dark in the top bar's theme toggle", async ({ page }) => {
       await page.getByTestId('theme-dark').click()
     })
     .within('html', (root) => root.assertAttribute('data-theme', 'dark'))

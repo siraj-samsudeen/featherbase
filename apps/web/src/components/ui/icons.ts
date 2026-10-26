@@ -31,6 +31,7 @@ export {
   LogIn,
   LogOut,
   Menu,
+  Monitor,
   Moon,
   Pencil,
   Plus,

@@ -10,10 +10,22 @@ export const APP_ROOT_PATTERN = `^/(?!(${RESERVED_APP_ROOTS.join('|')})(/|\\?|$)
 export const LEGACY_HUMAN_ROOT_PATTERN = '^/(admin|login|form|portal|print|oauth-callback|reset-password|sales-target)(/|\\?|$)'
 export function appHref(name: string): string { return `/${name}/` }
 
-export const FEATHERBASE_HOME_DESTINATION = {
-  label: 'Featherbase Home',
+export const FEATHERBASE_ADMIN_DESTINATION = {
+  label: 'Featherbase Admin',
   href: '/featherbase/admin',
 } as const
+
+// Interim until the app exists (design D8): Feather Dash is today's sales
+// target report, a Featherbase page rather than an installed app. The server
+// routes and names its address from this; the shared top bar names the page.
+export const INTERIM_APPS: Record<string, { root: string; title: string }> = {
+  feather_dash: { root: '/featherbase/sales-target', title: 'Feather Dash' },
+}
+
+// #489: the person's own account pages live outside the Admin screens, so
+// every address serves them (an app's address keeps people out of Admin).
+export const ACCOUNT_ROOT = '/featherbase/account'
+export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
 
 // Static pages under /featherbase/admin (no Table behind them), one catalog
 // for every reader: the router, the page headings, the recent-actions
@@ -22,7 +34,6 @@ export const FEATHERBASE_HOME_DESTINATION = {
 export const ADMIN_STATIC_PAGES = [
   { slug: 'imports', title: 'Imports' },
   { slug: 'access-tokens', title: 'Access tokens' },
-  { slug: 'sign-in-methods', title: 'Sign-in methods' },
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
   { slug: 'waiting-for-access', title: 'Waiting for access' },

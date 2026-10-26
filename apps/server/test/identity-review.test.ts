@@ -146,7 +146,9 @@ describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () 
       `identity_moved stylehr for ${rr60} to ${rr61} (${id})`,
       `identity_unlinked stylehr for ${rr61} (${moved.id})`,
     ])
-    expect(await sql`select person_id, ended_reason from sign_in_identity where id in (${id}, ${moved.id}) order by linked_at`).toEqual([
+    // Both rows are written in one transaction, so `linked_at` ties; order by
+    // the reason instead, which names each row once ('moved' < 'unlinked').
+    expect(await sql`select person_id, ended_reason from sign_in_identity where id in (${id}, ${moved.id}) order by ended_reason`).toEqual([
       { person_id: rr60, ended_reason: 'moved' },
       { person_id: rr61, ended_reason: 'unlinked' },
     ])
@@ -268,11 +270,11 @@ describe('third review round', () => {
     // A code the provider will not exchange.
     const bad = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: cookies }, redirect: 'manual' })
     expect(bad.status).toBe(302)
-    expect(bad.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=google_failed')
+    expect(bad.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=google_failed')
     // A link callback that lost its state cookie (another browser, expired).
     const lost = await api.fetch(`/api/oauth/google/callback?state=${encodeURIComponent(state)}&code=garbage`, { headers: { cookie: `sid=${token}` }, redirect: 'manual' })
     expect(lost.status).toBe(302)
-    expect(lost.headers.get('location')).toBe('/featherbase/admin/sign-in-methods?link=expired')
+    expect(lost.headers.get('location')).toBe('/featherbase/account/sign-in-methods?link=expired')
   })
 })
 

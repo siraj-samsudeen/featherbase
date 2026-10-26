@@ -35,7 +35,7 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
     events: [
       { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task' },
       { kind: 'list', key: `list:Task?${filters}`, label: 'Task', sub: 'status = Overdue' },
-      { kind: 'list', key: 'list:sign-in-methods?', label: 'sign-in-methods', path: '/featherbase/admin/sign-in-methods' },
+      { kind: 'list', key: 'list:access-tokens?', label: 'access-tokens', path: '/featherbase/admin/access-tokens' },
     ],
   })
   await renderApp('/featherbase/admin', me)
@@ -45,8 +45,8 @@ test('My activity: honest verbs, page titles, a List icon, "You" as the subject'
   const text = rows.map((r) => r.textContent ?? '')
   expect(text.filter((t) => t.includes('filtered'))).toHaveLength(1)
   expect(text.filter((t) => t.includes('opened Task'))).toHaveLength(1)
-  expect(text.some((t) => t.includes('Sign-in methods'))).toBe(true)
-  expect(text.some((t) => t.includes('sign-in-methods'))).toBe(false)
+  expect(text.some((t) => t.includes('Access tokens'))).toBe(true)
+  expect(text.some((t) => t.includes('access-tokens'))).toBe(false)
   for (const r of rows) {
     expect(r.textContent).not.toContain('psn_')
     expect(r.textContent).not.toMatch(/\bVIEW\b/i)

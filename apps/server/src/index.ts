@@ -14,7 +14,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionUser } from './auth'
+import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
 import { GOOGLE_OFF, completeSignIn, linkVerifiedToSelf, passwordSignIn, signInRefusal } from './sign-in'
 import { addIdentifier, addableSystems, deleteIdentifier, findByIdentifier, identifierPerson, listIdentifiers, systemDefaults, updateIdentifier, type AddInput } from './person-identifiers'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, setServiceAccountRoles } from './service-accounts'
@@ -24,12 +24,14 @@ import { resolvePreviewPerson } from './preview-person'
 import { pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
-import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
+import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
+import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, VIEWER_ROLE, landingFor, salesTargetRoutes } from './sales-target'
+import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
+import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -72,9 +74,9 @@ import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -166,8 +168,15 @@ app.get('/api/brand', async (c) => {
     ...(google ? [{ key: google.key, kind: google.kind, label: google.label || 'Google', test_mode: false }] : []),
     ...delegated.map((d) => ({ key: d.key, kind: 'delegated_password', label: d.label, test_mode: testMode })),
   ]
+  // #488: on an address that opens an app, the sign-in page and the document
+  // title carry the app's name; elsewhere the instance's.
+  const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
+  const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
   return c.json({
-    app_name: s.app_name,
+    app_name: appTitle ?? s.app_name,
+    // #489: what this address opens — `admin`, an app's name, or null for a
+    // host the list does not name — so the shared top bar can name itself.
+    opens: opened ?? null,
     sign_in_methods: methods,
     sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
     // The roster sync checks this before writing linked identities (design D11).
@@ -188,6 +197,12 @@ function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   })
 }
 
+// #488: every sign-in answers with the session plus where to go next — a path
+// on this address, or a hand-off URL to another (landing.ts).
+async function withLanding(c: Context, session: { token: string; user: SessionUser }, opts?: { handOff?: boolean }) {
+  return { ...session, ...(await landingAfterSignIn(session, requestHost(c.req.url), opts)) }
+}
+
 // The Authorization header wins; an sid cookie is the fallback credential.
 function authCredential(c: Context): string | undefined {
   const header = c.req.header('authorization')
@@ -205,9 +220,8 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  // #3755: report viewers land on their report, not the Admin.
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  // #488: where this person can do something (landing.ts).
+  return c.json(await withLanding(c, session))
 })
 
 // Delegated password sign-in (OpenSpec change `delegated-password-login`):
@@ -236,8 +250,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  return c.json(await withLanding(c, session))
 })
 
 // person-identities D10: direct sign-up with a username and password, open
@@ -271,8 +284,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session, 201)
+  return c.json(await withLanding(c, session), 201)
 })
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
@@ -311,7 +323,7 @@ app.post('/api/logout', async (c) => {
 app.post('/api/reset_password_request', async (c) => {
   const { usr } = (await c.req.json().catch(() => ({}))) as { usr?: string }
   if (!usr) throw new AppError('ValidationError', 'Expected { usr }')
-  await requestPasswordReset(usr)
+  await requestPasswordReset(usr, externalOrigin(c).origin)
   return c.json({ ok: true })
 })
 
@@ -424,18 +436,20 @@ app.on(
   },
 )
 
-// The origin a browser reaches this instance on. `SITE_URL` is configuration
-// and therefore authoritative: a request header cannot steer it. Only a
-// checkout that has not been told where it lives falls back to the request,
-// and then `x-forwarded-proto` is read as what it is — a LIST. A proxy chain
-// APPENDS its hop rather than overwriting, so a request that reached the edge
-// over TLS arrives as `https,http`; comparing that whole string to 'https'
-// read false and set the login cookies without `Secure`, and interpolated
+// The origin a browser reaches this instance on. INSTANCE_ADDRESSES is
+// configuration and therefore authoritative (#488): the request's Host only
+// SELECTS one of its entries, and an unlisted host gets the Admin entry, so a
+// header can never create an origin. Only a checkout with no list at all
+// (development and test) falls back to the request, and then
+// `x-forwarded-proto` is read as what it is — a LIST. A proxy chain APPENDS
+// its hop rather than overwriting, so a request that reached the edge over TLS
+// arrives as `https,http`; comparing that whole string to 'https' read false
+// and set the login cookies without `Secure`, and interpolated
 // `https,http://host` into the redirect_uri. Only the first hop is the
 // client's, and anything that is not http/https is not a protocol we will
 // paste into an origin.
 function externalOrigin(c: Context): URL {
-  if (config.siteUrl) return new URL(config.siteUrl)
+  if (config.instanceAddresses) return new URL(linkAddress(config.instanceAddresses, requestHost(c.req.url)).address)
   const url = new URL(c.req.url)
   const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0].trim().toLowerCase()
   const proto = forwarded === 'http' || forwarded === 'https' ? forwarded : url.protocol.slice(0, -1)
@@ -498,7 +512,18 @@ function refusedToLoginPage(c: Context, err: unknown) {
   return c.redirect(`/featherbase/login?error=${signInRefusal(err)}`)
 }
 
-app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
+// #488: with a list set, a host it does not name gets the admin address's
+// redirect_uri, so the callback would land on another host than the state
+// records. Start over on the admin address instead, before any challenge or
+// cookie is minted here (and before this host's budget is charged).
+function startGoogleOnAdmin(c: Context, next: () => Promise<void>) {
+  const list = config.instanceAddresses
+  if (!list || matchAddress(list, requestHost(c.req.url))) return next()
+  const url = new URL(c.req.url)
+  return c.redirect(`${linkAddress(list, url.hostname.toLowerCase()).address}${url.pathname}${url.search}`)
+}
+
+app.get('/api/oauth/google/login', startGoogleOnAdmin, publicLimit('OAUTH_LOGIN'), async (c) => {
   if (!(await googleAvailable())) {
     const off = new AppError('AuthenticationError', GOOGLE_OFF)
     if (isPageNavigation(c)) return refusedToLoginPage(c, off)
@@ -507,7 +532,7 @@ app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
-  const { state, verifier } = newLoginChallenge()
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url))
   setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name') }
   return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
@@ -526,7 +551,7 @@ app.get('/api/oauth/mock/approve', async (c) => {
   assertMockProviderAllowed(await oauthClientId())
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
-  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE))
+  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const email = c.req.query('email') ?? ''
   const name = c.req.query('name') ?? ''
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name, c.req.query('subject') ?? '', c.req.query('hd')))
@@ -547,7 +572,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
     }
     clearLoginChallengeCookies(c)
     const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
-    return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
+    return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}`)
   }
 })
 
@@ -559,7 +584,7 @@ async function googleCallback(c: Context) {
   // The state must match the cookie this browser got at login. Without that
   // binding an attacker could complete consent with their own account and
   // hand the victim the callback URL, planting the attacker's session.
-  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
+  const state = verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE), requestHost(c.req.url))
   const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
   // One challenge, one use — clear it whether or not the exchange succeeds.
   clearLoginChallengeCookies(c)
@@ -567,7 +592,7 @@ async function googleCallback(c: Context) {
     // person-identities D6: the signed-in person who started this flow links
     // the Google account they just proved. Every outcome, including a failed
     // exchange, travels back to the methods page as a code it can explain.
-    const back = (result: string) => c.redirect(`/featherbase/admin/sign-in-methods?link=${encodeURIComponent(result)}`)
+    const back = (result: string) => c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}`)
     try {
       const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
       const me = await resolveToken(authCredential(c))
@@ -600,13 +625,77 @@ async function googleCallback(c: Context) {
 // #150: the other half of the handoff. Public — the code IS the credential,
 // alongside the sid cookie set by the callback that minted it, and the session
 // this returns is the thing being established. Redeeming burns the code.
+//
+// #488: a code handed over from another address of this instance is redeemed
+// here too: on its target host only, by the browser holding the nonce cookie
+// that host set (oauth.ts, step 4), and only while the source session is still
+// live. It carries no session: a new one is minted for this address, with the
+// source session's sign-in facts and its own host-only sid cookie.
 app.post('/api/oauth/session', async (c) => {
   const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
-  const session = redeemHandoffCode(code, getCookie(c, 'sid'))
-  // #3783: the same landing password login gives — a report viewer signing in
-  // with Google lands on the report, not in the Admin.
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  const host = requestHost(c.req.url)
+  const redeemed = redeemHandoffCode(code, getCookie(c, 'sid'), host, getCookie(c, HANDOFF_NONCE_COOKIE))
+  if (redeemed.kind === 'session') return c.json(await withLanding(c, redeemed.session))
+  deleteCookie(c, HANDOFF_NONCE_COOKIE, { path: '/' })
+  // Signed out, expired, or ended by a password reset since: no hand-off.
+  const source = await resolveToken(`Bearer ${redeemed.sourceToken}`)
+  const issued = await issueSession(source.row_id, sessionOptionsOf(source))
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  return c.json(await withLanding(c, session, { handOff: false }))
+})
+
+// #488: the two legs of the hand-off round trip (oauth.ts). Public: the
+// browser carries a ticket, and the source leg also needs its sid cookie.
+const HANDOFF_NONCE_COOKIE = 'handoff_nonce'
+
+/** How a handed-over session was opened: the source session's own facts. */
+function sessionOptionsOf(user: SessionUser): SessionOptions {
+  const claims = user.sign_in
+  return {
+    ...(claims?.method ? { method: claims.method } : {}),
+    ...(claims?.identity ? { identity: claims.identity } : {}),
+    ...(claims?.test_mode ? { testMode: true } : {}),
+    ...(claims?.preview ? { preview: true } : {}),
+    // The source's sign-in time travels with it (Codex round 1 on #495).
+    ...(claims?.authenticated_at ? { authenticatedAt: claims.authenticated_at } : {}),
+    // ...and its expiry, verified on the source token (Codex round 2 on #495).
+    ...(claims?.expires_at ? { expiresAt: claims.expires_at } : {}),
+  }
+}
+
+/** A listed address by host; the hand-off only ever runs between listed ones. */
+function listedAddress(host: string) {
+  const entry = matchAddress(config.instanceAddresses, host)
+  if (!entry) throw new AppError('AuthenticationError', 'Invalid or expired sign-in code')
+  return entry
+}
+
+// Step 2, on the target: this browser gets the nonce cookie, and goes back to
+// the source with only its hash.
+app.get('/api/handoff/start', publicLimit('HANDOFF'), (c) => {
+  const id = c.req.query('ticket')
+  const ticket = ticketForTarget(id, requestHost(c.req.url))
+  const source = listedAddress(ticket.sourceHost)
+  const nonce = newHandoffNonce()
+  setCookie(c, HANDOFF_NONCE_COOKIE, nonce, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 120,
+    secure: externalOrigin(c).protocol === 'https:',
+  })
+  const back = new URLSearchParams({ ticket: id ?? '', nonce: nonceHash(nonce) })
+  return c.redirect(`${source.address}/api/handoff/bind?${back}`)
+})
+
+// Step 3, on the source: only the browser holding the ticket's own session
+// gets a code, bound to the nonce the target gave it.
+app.get('/api/handoff/bind', publicLimit('HANDOFF'), async (c) => {
+  const sid = getCookie(c, 'sid')
+  const { code, targetHost } = bindHandoffTicket(c.req.query('ticket'), sid, requestHost(c.req.url), c.req.query('nonce'))
+  await resolveToken(`Bearer ${sid}`) // the source session must still be live
+  return c.redirect(`${listedAddress(targetHost).address}/featherbase/oauth-callback?code=${encodeURIComponent(code)}`)
 })
 
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public
@@ -680,6 +769,17 @@ app.get('*', (c, next) => {
   const url = new URL(c.req.url)
   if (!legacyHumanRoot.test(url.pathname)) return next()
   return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
+})
+
+// #488: an address that opens an app shows that app and the sign-in pages it
+// needs, nothing else. `/`, every other Featherbase page and every other app's
+// root go to the app's root. An address is presentation, never a security
+// boundary: every API call is authorized on its own merits on every address.
+app.get('*', (c, next) => {
+  const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
+  if (!entry || entry.opens === ADMIN) return next()
+  const target = addressRedirect(entry, c.req.path)
+  return target ? c.redirect(target, 302) : next()
 })
 
 app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))
@@ -768,6 +868,21 @@ app.get('/api/whoami', async (c) => {
     // know the data is disposable and that they are signed in as someone.
     preview: previewLogin() !== null,
   })
+})
+
+// #489: the shared top bar's "Open Admin". A POST, because it mints a
+// one-time hand-off ticket: on an app's address the answer is #488's hand-off
+// URL to the Admin address, never a URL guessed from the browser's host. The
+// ticket is bound to the credential this request authenticated with (header
+// first, as the auth middleware reads it), so a stray sid cookie of another
+// session can never be the one handed over: the bind step requires this
+// browser's sid to BE that credential, and fails closed otherwise.
+app.post('/api/open_admin', async (c) => {
+  // Parsed exactly as resolveToken parsed it for the auth middleware above.
+  const token = authCredential(c)?.match(/^Bearer (.+)$/)?.[1] ?? ''
+  const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url))
+  if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
+  return c.json(opened)
 })
 
 // #101 Phase 3: batched capture of the caller's read-side intent (rows
@@ -1252,7 +1367,7 @@ app.get('/api/oauth/google/link', async (c) => {
   const google = await googleAvailable()
   if (!google || !google.self_link) throw new AppError('PermissionError', 'Linking Google is not available')
   const clientId = google.client_id
-  const { state, verifier } = newLoginChallenge({ purpose: 'link', uid: me.row_id })
+  const { state, verifier } = newLoginChallenge(requestHost(c.req.url), { purpose: 'link', uid: me.row_id })
   setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name'), subject: c.req.query('subject') }
   return c.redirect(googleAuthorizeUrl(clientId, state, oauthRedirectUri(c, clientId), codeChallengeFor(verifier), hint))

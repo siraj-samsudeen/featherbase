@@ -71,10 +71,14 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
         .toBeGreaterThanOrEqual(0)
       await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('inert')
       await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('aria-hidden')
-      await page.getByTestId('session-user').focus()
+      // #489: on a phone the command bar is the header's last row, so it and
+      // the recents it opens on focus are the last header controls in Tab
+      // order (visual order).
+      await page.getByRole('textbox', { name: 'Search or type a command' }).focus()
     })
-    await session.pressKey('Tab')
     await session.step('focus enters the open drawer', async ({ page }) => {
+      const inSearchRow = () => page.evaluate(() => Boolean(document.activeElement?.closest('[data-testid="awesomebar-row"]')))
+      for (let i = 0; i < 20 && (await inSearchRow()); i++) await page.keyboard.press('Tab')
       await expect(page.getByTestId('new-table-link')).toBeFocused()
     })
 

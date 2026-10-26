@@ -365,16 +365,17 @@ const tagWith = (text: string, id: string) => {
 
 describe('the Admin shell', () => {
   const shell = source('src/pages/AdminLayout.tsx')
-
+  // #489: the bar's frame is the shared top bar, which the Admin screens wear.
+  const topBar = source('src/components/TopBar.tsx')
   test("the navbar's left zone is exactly the sidebar's width, with the sidebar's padding", () => {
-    const zone = tagWith(shell, 'navbar-left-zone')
+    const zone = tagWith(topBar, 'top-bar-left')
     expect(zone).toMatch(/\bmd:w-60\b/)
     expect(zone).toMatch(/\bmd:shrink-0\b/)
     expect(zone).toMatch(/\bmd:px-3\b/)
     // The sidebar's tag holds an arrow function, so read a window, not up to '>'.
     expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\bmd:w-60\b/)
     // The header gives up its own left padding at md+, so the zone starts where the sidebar does.
-    expect(tagWith(shell, 'admin-navbar')).toMatch(/\bmd:pl-0\b/)
+    expect(tagWith(topBar, 'top-bar')).toMatch(/\bmd:pl-0\b/)
   })
 
   test('the command bar has ONE width rule at every size: fill up to the cap, then centre — no breakpoint jump', () => {
@@ -386,7 +387,7 @@ describe('the Admin shell', () => {
     expect(bar).toMatch(/\bsm:mx-auto\b/)
     expect(bar).not.toMatch(/(?:md|lg|xl|2xl|min-\[[^\]]+\]):(?:max-w|w|mx|basis|flex)-/)
     // The bell group must not grab the free space with its own auto margin at sm+.
-    expect(tagWith(shell, 'navbar-right-zone')).toMatch(/\bsm:ml-0\b/)
+    expect(tagWith(topBar, 'top-bar-right')).toMatch(/\bsm:ml-0\b/)
   })
 
   test('the sidebar scrolls as one column: the Home Pages never shrink', () => {

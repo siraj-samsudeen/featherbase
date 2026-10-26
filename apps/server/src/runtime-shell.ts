@@ -1,4 +1,4 @@
-import { FEATHERBASE_HOME_DESTINATION } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION } from 'shared'
 
 interface RuntimeDestination {
   name: string
@@ -24,12 +24,12 @@ const mark = `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
 
 export function composeRuntimeShell(html: string, currentApp: string, destinations: RuntimeDestination[]): string {
   const options = [
-    `<option value="${FEATHERBASE_HOME_DESTINATION.href}">${FEATHERBASE_HOME_DESTINATION.label}</option>`,
+    `<option value="${FEATHERBASE_ADMIN_DESTINATION.href}">${FEATHERBASE_ADMIN_DESTINATION.label}</option>`,
     ...destinations.map(destination => `<option value="${escapeHtml(destination.href)}"${destination.name === currentApp ? ' selected' : ''}>${escapeHtml(destination.title)}</option>`),
   ].join('')
   const head = '<link rel="stylesheet" href="/featherbase/runtime-shell.css">'
   const shell = `<header class="fc-runtime-shell" data-testid="runtime-shell">
-    <a class="fc-runtime-home" href="${FEATHERBASE_HOME_DESTINATION.href}" aria-label="${FEATHERBASE_HOME_DESTINATION.label}" title="${FEATHERBASE_HOME_DESTINATION.label}">${mark}</a>
+    <a class="fc-runtime-home" href="${FEATHERBASE_ADMIN_DESTINATION.href}" aria-label="${FEATHERBASE_ADMIN_DESTINATION.label}" title="${FEATHERBASE_ADMIN_DESTINATION.label}">${mark}</a>
     <label class="fc-runtime-label" for="fc-runtime-switcher">Switch application</label>
     <select id="fc-runtime-switcher" class="fc-runtime-switcher" aria-label="Switch application" data-current-app="${escapeHtml(currentApp)}">${options}</select>
   </header>`
@@ -147,10 +147,10 @@ export const runtimeShellJs = `(() => {
       .then(destinations => {
         const focused = document.activeElement === switcher;
         if (!destinations.some(destination => destination.name === current)) {
-          window.location.assign(${JSON.stringify(FEATHERBASE_HOME_DESTINATION.href)});
+          window.location.assign(${JSON.stringify(FEATHERBASE_ADMIN_DESTINATION.href)});
           return;
         }
-        switcher.replaceChildren(new Option(${JSON.stringify(FEATHERBASE_HOME_DESTINATION.label)}, ${JSON.stringify(FEATHERBASE_HOME_DESTINATION.href)}), ...destinations.map(destination => new Option(destination.title, destination.href, false, destination.name === current)));
+        switcher.replaceChildren(new Option(${JSON.stringify(FEATHERBASE_ADMIN_DESTINATION.label)}, ${JSON.stringify(FEATHERBASE_ADMIN_DESTINATION.href)}), ...destinations.map(destination => new Option(destination.title, destination.href, false, destination.name === current)));
         if (focused) switcher.focus();
       })
       .catch(() => {})

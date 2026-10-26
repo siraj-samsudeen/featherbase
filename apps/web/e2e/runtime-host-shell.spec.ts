@@ -42,15 +42,15 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
       .step('opening the task restores the original deep URL', async ({ page }: { page: Page }) => {
         await expect(page).toHaveURL(location)
       })
-      .assertHas('[aria-label="Featherbase Home"]')
+      .assertHas('[aria-label="Featherbase Admin"]')
       .assertSelected('Switch application', 'Tasker')
       .step('the switcher lists each authorized destination once', async ({ page }: { page: Page }) => {
         await expect.poll(async () => (await page.getByRole('combobox', { name: 'Switch application' })
-          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Other tasks', 'Tasker'])
+          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Admin', 'Other tasks', 'Tasker'])
       })
       .refuteHas('a[aria-label="Featherbase"]')
       .step('Home and the switcher expose consecutive keyboard focus', async ({ page }: { page: Page }) => {
-        const home = page.getByRole('link', { name: 'Featherbase Home' })
+        const home = page.getByRole('link', { name: 'Featherbase Admin' })
         const switcher = page.getByRole('combobox', { name: 'Switch application' })
         await home.focus()
         await expect(home).toBeFocused()
@@ -68,7 +68,7 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
         .step('focus refreshes the authorized application catalog', async ({ page }: { page: Page }) => {
           await page.evaluate(() => window.dispatchEvent(new Event('focus')))
           await expect.poll(async () => (await page.getByRole('combobox', { name: 'Switch application' })
-            .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Tasker'])
+            .locator('option').allTextContents()).sort()).toEqual(['Featherbase Admin', 'Tasker'])
         })
     } finally {
       const restored = await request.post('/api/set_app_enabled', {
@@ -80,7 +80,7 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
         .step('focus reloads the restored application catalog', async ({ page }: { page: Page }) => {
           await page.evaluate(() => window.dispatchEvent(new Event('focus')))
           await expect.poll(async () => (await page.getByRole('combobox', { name: 'Switch application' })
-            .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Other tasks', 'Tasker'])
+            .locator('option').allTextContents()).sort()).toEqual(['Featherbase Admin', 'Other tasks', 'Tasker'])
         })
     }
 
@@ -90,19 +90,21 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
         await expect(page).toHaveURL(location)
       })
       .assertText('Host shell deep-link proof')
-      .selectOption('Switch application', 'Featherbase Home')
+      .selectOption('Switch application', 'Featherbase Admin')
       .assertHas('[data-testid="awesomebar"]')
       .assertHas('[data-testid="session-user"]')
       .assertHas('[data-testid="admin-sidebar"]')
       .refuteHas('a[aria-label="Tasker"]')
-      .assertSelected('Switch application', 'Featherbase Home')
+      // #489: one name for one place: both switchers call the Admin home
+      // "Featherbase Admin", as the shared top bar does.
+      .assertSelected('Switch application', 'Featherbase Admin')
       .step('Admin lists the same authorized destinations', async ({ page }: { page: Page }) => {
         await expect.poll(async () => (await page.getByRole('combobox', { name: 'Switch application' })
-          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Other tasks', 'Tasker'])
+          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Admin', 'Other tasks', 'Tasker'])
       })
       .step('narrow Admin keeps identifiable touch-sized controls and visible focus', async ({ page }: { page: Page }) => {
         await page.setViewportSize({ width: 375, height: 812 })
-        const home = page.getByRole('link', { name: 'Featherbase Home' })
+        const home = page.getByRole('link', { name: 'Featherbase Admin' })
         const switcher = page.getByRole('combobox', { name: 'Switch application' })
         const search = page.getByPlaceholder('Search or type a command…')
         await expect(home).toBeVisible()
@@ -159,7 +161,7 @@ test('runtime shell leaves an app whose access disappears', async ({ session, re
         await page.evaluate(() => window.dispatchEvent(new Event('focus')))
         await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
       })
-      .assertSelected('Switch application', 'Featherbase Home')
+      .assertSelected('Switch application', 'Featherbase Admin')
   } finally {
     const restored = await request.post('/api/set_app_enabled', {
       headers: auth,
@@ -185,12 +187,12 @@ test.describe('coarse-pointer mobile runtime shell', () => {
       await signIn(session)
       await session
         .visit('/tasker/')
-        .assertHas('[aria-label="Featherbase Home"]')
+        .assertHas('[aria-label="Featherbase Admin"]')
         .assertHas('[aria-label="Switch application"]')
         .assertHas('[placeholder="What do you need to remember?"]')
         .step('mobile controls clear the measured host shell', async ({ page }: { page: Page }) => {
           expect(await page.evaluate(() => matchMedia('(pointer: coarse)').matches)).toBe(true)
-          const homeBox = await page.getByRole('link', { name: 'Featherbase Home' }).boundingBox()
+          const homeBox = await page.getByRole('link', { name: 'Featherbase Admin' }).boundingBox()
           const switcherBox = await page.getByRole('combobox', { name: 'Switch application' }).boundingBox()
           const shellBox = await page.locator('[data-testid="runtime-shell"]').boundingBox()
           const pageBox = await page.getByTestId('task-management-page').boundingBox()
