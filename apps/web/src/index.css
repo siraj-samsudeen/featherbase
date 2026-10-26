@@ -139,7 +139,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Slim, unobtrusive scrollbars like the Desk. */
+/* Slim, unobtrusive scrollbars like Frappe's Desk. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-border-control) transparent;

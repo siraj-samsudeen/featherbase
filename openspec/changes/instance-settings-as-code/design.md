@@ -36,7 +36,7 @@ See proposal.md, Why. The constraints that shape the approach:
 **Non-Goals:**
 - Storing or setting secrets. Railway (or any host's secret store) keeps
   them, and Featherbase only checks that they are present and consistent.
-- People and role membership. Those are data and stay editable in the Desk.
+- People and role membership. Those are data and stay editable in Admin.
 - Building the service from the instance repository against a pinned
   framework version. rama_dw's README plans this for editing seeds. It is
   compatible with this design, and not needed for it.
@@ -117,19 +117,19 @@ because none are in scope.
 The last successful apply's revision and time are stored, which feeds the
 "settings applied" health check.
 
-### D5. Managed fields are read-only in the Desk
+### D5. Managed fields are read-only in Admin
 
 The managed paths of the last successful apply are stored. The form renders
 those fields read-only with a note naming the instance's settings file, and
 the server's save refuses a change to them from any actor other than
 `instance-settings` and `cli`.
 
-- *Why:* no drift from the Desk at all, which is what makes applying on merge
+- *Why:* no drift from Admin edits at all, which is what makes applying on merge
   enough (D3).
 - *Break glass:* `cli settings:set` over `railway ssh` still works, is logged
   with actor `cli`, and makes the "matches the file" check fail until the
   file catches up.
-- *Alternatives:* file overwrites Desk edits (quick fixes silently vanish, and
+- *Alternatives:* file overwrites Admin edits (quick fixes silently vanish, and
   a daily run would be needed), or edits stick and drift is flagged (two
   sources of truth).
 
@@ -191,7 +191,7 @@ The setup screen is offered to the built-in Administrator whenever the
 creates each named person with the System Manager role and sends an
 invitation through the existing invitation flow. When outbound email is the
 sink, it shows the invitation links to copy instead. "Not now" always
-reaches the Desk.
+reaches the Admin screen.
 
 - *Why:* one rule covers a new instance and an old one whose last System
   Manager with an email has left. Administrator is never blocked, because it
@@ -217,7 +217,7 @@ prints the side-by-side table. Nothing is kept.
 - [Revealing whether two environments' secrets are equal] → Only a System
   Manager token can call it, the key is per run, and only rule-bearing
   secrets are fingerprinted.
-- [Locking blocks an urgent Desk fix] → The CLI break-glass path (D5), which
+- [Locking blocks an urgent fix in Admin] → The CLI break-glass path (D5), which
   is recorded and flagged.
 - [A fresh database runs unconfigured until someone triggers the apply] → A
   DEPLOY.md step, plus a red "never applied" check on the banner.
@@ -244,7 +244,7 @@ prints the side-by-side table. Nothing is kept.
 
 Rollback: an apply is one transaction and the previous values are in its
 result and the Activity Log. Re-applying the previous file revision restores
-them. Clearing the stored managed paths unlocks the Desk.
+them. Clearing the stored managed paths unlocks those fields in Admin.
 
 ## Open Questions
 
