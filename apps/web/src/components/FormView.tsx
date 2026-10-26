@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
+import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -64,6 +64,9 @@ export function FormView({
       ),
   })
   const managedFields = new Set(managed.data?.fields ?? [])
+  // The server refuses renaming or deleting a row with a locked field, so the
+  // form does not offer either (checklist item 10 on #465).
+  const rowManaged = managedFields.size > 0
 
   // #102 review: prefill seeds the INITIAL state synchronously, so the very
   // first render (and any client-script `onload` in the first effect flush)
@@ -398,7 +401,7 @@ export function FormView({
             </RouterLink>
           )}
           {/* A bound row's pk belongs to the source — never renameable here. */}
-          {!isNew && !renaming && !boundSource && !rowsReadOnly && !isOpaqueId(name) && (
+          {!isNew && !renaming && !boundSource && !rowsReadOnly && !rowManaged && !isOpaqueId(name) && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -433,6 +436,7 @@ export function FormView({
               read-only source, which owns its rows. */}
           {!isNew &&
             !rowsReadOnly &&
+            !rowManaged &&
             m.kind !== 'settings' &&
             m.kind !== 'sub_table' && (
               <button
@@ -687,7 +691,7 @@ function FieldControl({
   const managedId = `${controlId}-managed`
   const managedNote = managedHint ? (
     <p id={managedId} className="mt-1 text-xs text-ink-subtle" data-testid={`managed-${field.column_name}`}>
-      {t(managedHint)}
+      {withFileName(t(managedHint))}
     </p>
   ) : null
   const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
@@ -839,6 +843,21 @@ function FieldControl({
         />,
       )
   }
+}
+
+// The settings file's name never breaks at its hyphen on a narrow screen.
+function withFileName(text: string): React.ReactNode {
+  const parts = text.split(INSTANCE_SETTINGS_FILE)
+  return parts.flatMap((part, i) =>
+    i === 0
+      ? [part]
+      : [
+          <span key={i} className="whitespace-nowrap" data-testid="settings-file-name">
+            {INSTANCE_SETTINGS_FILE}
+          </span>,
+          part,
+        ],
+  )
 }
 
 function toLocalDatetime(iso: string): string {
