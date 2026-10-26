@@ -9,7 +9,7 @@ const PLATFORM_RELATIONS = new Set([
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
   'email_sink', 'file', 'has_role', 'home_page', 'home_page_link', 'home_page_role',
-  'import_log', 'installed_app', 'internal_metadata', 'job_execution', 'letter_head',
+  'import_log', 'installed_app', 'instance_settings_apply', 'internal_metadata', 'job_execution', 'letter_head',
   'metadata_override', 'migration', 'notification_log', 'password_reset', 'patch_log',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role',
   'runtime_action_result',

@@ -390,7 +390,7 @@ describe('#401: cli settings:set', () => {
     try {
       const f = failure(['settings:set', name, '--stdin'], 'x')
       expect(f?.status).toBe(1)
-      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text fields only`)
+      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text, Check and Choice fields only`)
     } finally {
       if (!layout) await sql`delete from column_def where parent = 'System Settings' and column_name = ${name}`
     }
@@ -402,18 +402,85 @@ describe('#401: cli settings:set', () => {
     expect(f?.stderr).toContain('System Settings has no field no_such_field')
   }, 60_000)
 
-  // Codex P2: stdin is text, so a typed field (Check, Int, Choice) would fail
-  // validation or take a stray newline; those are set in the form.
-  it('refuses a typed, non-text field', async () => {
-    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'true')
+  // Codex P2: stdin is text, so a typed field would take a stray newline.
+  // #465 D5 (Codex adversarial): a switch or choice the settings file can
+  // lock is reachable too, taking exactly true/false or one choice; other
+  // typed fields are still set in the form.
+  it('refuses a switch given anything but true or false, and a typed field it does not carry', async () => {
+    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'yes')
     expect(f?.status).toBe(1)
-    expect(f?.stderr).toContain('System Settings field allow_signup is Check; settings:set writes text fields only')
+    expect(f?.stderr).toContain('System Settings field allow_signup is a switch: send true or false')
+    const g = failure(['settings:set', 'session_hours', '--stdin'], '8')
+    expect(g?.status).toBe(1)
+    expect(g?.stderr).toContain('System Settings field session_hours is Int; settings:set writes text, Check and Choice fields only')
+  }, 60_000)
+
+  it('flips a locked scheduled job switch', async () => {
+    const [before] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled' }]) })}`
+    try {
+      const target = !before.enabled
+      const out = cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], `${target}\n`)
+      expect(out).toContain(`Scheduled Job disable_leavers enabled set (${target})`)
+      const [after] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+      expect(after.enabled).toBe(target)
+    } finally {
+      // Back through the same path, so the job queue is re-timed back too and
+      // no queued run leaks into the job tests.
+      cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], String(before.enabled))
+      await sql`delete from instance_settings_apply`
+      await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Scheduled Job%'`
+    }
   }, 60_000)
 
   it('refuses without --stdin', async () => {
     const f = failure(['settings:set', 'privacy_notice', 'inline value'])
     expect(f?.status).toBe(1)
     expect(f?.stderr).toContain('usage: cli settings:set <field> --stdin')
+  }, 60_000)
+
+  // #465 D5: the break-glass path. A field the last apply locked is still
+  // changed here, and the change is recorded as `cli`.
+  it('changes a field the instance settings file locked, recorded as cli', async () => {
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'System Settings', row_id: 'System Settings', field: 'privacy_notice' }]) })}`
+    try {
+      cli(['settings:set', 'privacy_notice', '--stdin'], 'Emergency notice\n')
+      const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+      expect(row.value).toBe('Emergency notice\n')
+      const [version] = await sql`select created_by from version where ref_table = 'System Settings' order by created_at desc limit 1`
+      expect(version.created_by).toBe('cli')
+    } finally {
+      await sql`delete from instance_settings_apply`
+    }
+  }, 60_000)
+
+  it('sets a sign-in method text field with --table and --row, even when locked', async () => {
+    const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains' }]) })}`
+    try {
+      const out = cli(['settings:set', 'allowed_email_domains', '--stdin', '--table', 'Sign In Method', '--row', 'google'], 'example.com')
+      expect(out).toContain('Sign In Method google allowed_email_domains set')
+      const [after] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+      expect(after.allowed_email_domains).toBe('example.com')
+      const [log] = await sql`select "user" from activity_log where operation = 'settings_set Sign In Method google allowed_email_domains' order by created_at desc limit 1`
+      expect(log.user).toBe('cli')
+    } finally {
+      await sql`delete from instance_settings_apply`
+      await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
+      await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Sign In Method%'`
+    }
+  }, 60_000)
+
+  it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
+    const outside = failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
+    expect(outside?.status).toBe(1)
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method or Scheduled Job, not Person')
+    const noRow = failure(['settings:set', 'label', '--stdin', '--table', 'Sign In Method'], 'x')
+    expect(noRow?.status).toBe(1)
+    expect(noRow?.stderr).toContain('Sign In Method has rows: name one with --row')
   }, 60_000)
 })
 
@@ -424,6 +491,7 @@ describe('#465: cli settings:export and settings:apply', () => {
   afterAll(async () => {
     rmSync(dir, { recursive: true, force: true })
     await sql`delete from activity_log where "user" = 'instance-settings' and full_name = 'instance settings file, applied by cli'`
+    await sql`delete from instance_settings_apply`
   })
 
   it('exports this environment, and applying the export changes nothing', async () => {

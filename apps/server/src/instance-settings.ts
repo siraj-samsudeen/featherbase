@@ -13,11 +13,12 @@ import { logActivity } from './audit'
 import { appOperation } from './app-lifecycle'
 import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
+import { INSTANCE_SETTINGS_ACTOR, holdManagedSetExclusive, recordApply, type ManagedPath } from './managed-settings'
 import { config } from './config'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
 /** Who an apply's saves are recorded as (D4). */
-export const INSTANCE_SETTINGS_ACTOR = 'instance-settings'
+export { INSTANCE_SETTINGS_ACTOR }
 
 // ---------------------------------------------------------------- scope (D2)
 
@@ -367,6 +368,9 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
   // 2. Compare, save what differs, and read back what was written — in one
   //    transaction that a problem, or a dry run, rolls back whole.
   const run = async (): Promise<ApplyResult> => {
+    // D5: no save of a lockable Table runs between this read and the commit
+    // that publishes the new locked set (managed-settings.ts).
+    await holdManagedSetExclusive(sql)
     const changes: SettingChange[] = []
     const warnings: string[] = []
     for (const { entry, meta, rows } of plan) {
@@ -436,6 +440,17 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
       warnings,
     }
     if (opts.dryRun) throw new DryRun(result)
+    // D5: what this file sets is what Admin may no longer change, until the
+    // next successful apply replaces it.
+    const managed: ManagedPath[] = plan.flatMap(({ meta, rows }) =>
+      rows.flatMap(({ row_id, values }) => Object.keys(values).map((field) => ({ table: meta.name, row_id, field }))))
+    await recordApply(sql, {
+      applied_by: opts.by,
+      environment: opts.environment ?? null,
+      revision: opts.source?.revision ?? null,
+      run: opts.source?.run ?? null,
+      managed_paths: managed,
+    })
     const source = [opts.source?.revision && `revision ${opts.source.revision}`, opts.source?.run && `run ${opts.source.run}`].filter(Boolean).join(' ')
     const section = opts.environment ? ` ${opts.environment}` : ''
     await logActivity(INSTANCE_SETTINGS_ACTOR, `settings_apply${section}${source ? ` ${source}` : ''}: ${result.summary}`.slice(0, 140), {

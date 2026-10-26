@@ -7,6 +7,7 @@ import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { assertNotSystemWritten } from './system-written'
 import { assertNotAccessTarget, assertSecurityWriter } from './security-tables'
+import { assertFieldNotManaged } from './managed-settings'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -198,6 +199,8 @@ export async function applyWorkflowAction(
   // #437: also checked when the Workflow is saved; a row saved before that
   // rule existed must not act either.
   assertNotAccessTarget(table, field, 'A workflow')
+  // #465 D5: nor may it rewrite a field the instance settings file sets.
+  await assertFieldNotManaged(table, name, field, user)
   await ensureStateField(table, sql, field)
 
   const row = await getDoc(table, name, user)

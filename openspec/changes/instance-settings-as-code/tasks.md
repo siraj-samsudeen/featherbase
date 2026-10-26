@@ -22,8 +22,8 @@
 
 ## 4. Managed fields locked
 
-- [ ] 4.1 Store the managed paths of the last successful apply, and refuse Admin saves to them from actors other than `instance-settings` and `cli`. Verify: server test where a System Manager's save of a managed field is refused and a `cli settings:set` succeeds and is logged.
-- [ ] 4.2 Render managed fields read-only in `FormView` with a note naming the settings file. Verify: Playwright test on the Google sign-in method form.
+- [x] 4.1 Store the managed paths of the last successful apply, and refuse Admin saves to them from actors other than `instance-settings` and `cli`. Verify: server test where a System Manager's save of a managed field is refused and a `cli settings:set` succeeds and is logged.
+- [x] 4.2 Render managed fields read-only in `FormView` with a note naming the settings file. Verify: Playwright test on the Google sign-in method form.
 
 ## 5. Health checks and history
 
