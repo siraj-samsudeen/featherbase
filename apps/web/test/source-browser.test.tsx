@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll } from 'vitest'
 import postgres from 'postgres'
@@ -50,4 +50,36 @@ test('the source browser lists a source\'s tables, marks one with no single iden
   })
   // Once turned on, it is shown as already connected and cannot be picked twice.
   await waitFor(() => expect(screen.getByTestId('sb-row-depot').querySelector('input[type="checkbox"]')).toBeDisabled())
+})
+
+// Testing the connection, and turning a table on under a chosen prefix and
+// module — paths the merged web coverage report (ADR 0012) showed untaken.
+test('test connection says whether the source answers, and a prefix and module shape what is turned on', async ({ admin }) => {
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-sb2', engine: 'postgres', url_env: ENV, default_schema: 'web_sb', access: 'read_only' })
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-sb-gone', engine: 'postgres', url_env: 'WEB_SB_NOT_SET', access: 'read_only' })
+  const user = userEvent.setup()
+
+  await renderApp('/featherbase/admin/source/web-sb-gone', admin)
+  await user.click(await screen.findByTestId('sb-test'))
+  expect(await screen.findByTestId('sb-test-result', undefined, { timeout: 8000 })).toHaveTextContent(
+    'Failed: Environment variable WEB_SB_NOT_SET is not set',
+  )
+
+  cleanup()
+  await renderApp('/featherbase/admin/source/web-sb2', admin)
+  await user.click(await screen.findByTestId('sb-test'))
+  expect(await screen.findByTestId('sb-test-result', undefined, { timeout: 8000 })).toHaveTextContent('Connection OK')
+
+  await user.type(screen.getByTestId('sb-schema'), 'web_sb')
+  await user.type(screen.getByTestId('sb-prefix'), 'Gold')
+  await user.type(screen.getByTestId('sb-module'), 'Warehouse')
+  await user.click(screen.getByTestId('sb-load'))
+  const usable = await screen.findByTestId('sb-row-depot', undefined, { timeout: 8000 })
+  await user.click(usable.querySelector('input[type="checkbox"]')!)
+  await user.click(screen.getByTestId('sb-reflect'))
+  const result = await screen.findByTestId('sb-result', undefined, { timeout: 8000 })
+  expect(result).toHaveTextContent('Created: Gold Depot')
+  const meta = await admin.get<{ module: string; external_table: string }>('/api/table/Gold%20Depot:meta')
+  expect(meta).toMatchObject({ module: 'Warehouse', external_table: 'depot' })
 })

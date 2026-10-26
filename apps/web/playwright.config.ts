@@ -102,9 +102,16 @@ function e2eDatabaseUrl(): string {
 // cannot be dropped after the server has connected to it.
 const apiCommand = 'pnpm --filter server e2e:serve'
 
+// MERGED COVERAGE (`pnpm --filter web coverage:e2e`, ADR 0012). E2E_COVERAGE=1
+// asks the web dev server for Istanbul-instrumented modules (VITE_COVERAGE,
+// read by vite.config.ts) and makes e2e/fixtures.ts collect them. An
+// instrumented bundle is larger and slower to transform, so tests get a
+// longer budget. Unset, both are exactly as before.
+const coverage = process.env.E2E_COVERAGE === '1'
+
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30_000,
+  timeout: coverage ? 60_000 : 30_000,
   // One worker, for the same reason the vitest suites set
   // `fileParallelism: false`: every spec drives the one shared server and
   // database, and several mutate global state (System Settings, the active
@@ -167,7 +174,11 @@ export default defineConfig({
           url: `http://localhost:${webPort}`,
           reuseExistingServer: false,
           timeout: 180_000,
-          env: { WEB_PORT: String(webPort), API_PORT: String(apiPort) },
+          env: {
+            WEB_PORT: String(webPort),
+            API_PORT: String(apiPort),
+            ...(coverage ? { VITE_COVERAGE: 'true' } : {}),
+          },
         },
       ]
     : undefined,

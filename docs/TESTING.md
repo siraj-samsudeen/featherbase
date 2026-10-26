@@ -313,7 +313,8 @@ ratchet rather than a gate sprung at 100% from day one: the threshold sits
 at the measured baseline and only rises, one commit at a time, until it
 reaches 100%.
 
-The wiring is v8 coverage in each of the three Vitest configs, collected by
+The wiring is coverage in each of the three Vitest configs (v8 for the server
+and shared, Istanbul for the web — see "Merged web coverage" below), collected by
 `pnpm test:coverage` (per package, or `pnpm -r test:coverage` from the root)
 and never by the plain `pnpm test` — day-to-day runs stay uninstrumented.
 Each config scopes collection to its own package's `src/`. The e2e suite is
@@ -335,7 +336,7 @@ Baselines measured 2026-08-28, each rounded down to the whole percent:
 
 | Package | Lines / statements | Functions | Threshold set |
 |---|---|---|---|
-| `apps/server` | 86.64% | 91.18% | lines 86, functions 91 |
+| `apps/server` | 86.64% | 91.18% | lines 86, functions 91 (superseded 2026-10-26, below) |
 | `apps/web` | 33.33% | 45.92% | lines 33, functions 45 |
 | `packages/shared` | 21.30% | 85.71% | lines 21, functions 85 |
 
@@ -344,14 +345,64 @@ seven e2e specs down to the component layer; it stood at lines 29.64% /
 functions 40.52% (thresholds 29 / 39) before that. Growing this layer is how
 the number moves — the ratchet rises as a side effect of rebalancing the
 pyramid, not as separate work.
+On 2026-10-26 the web suite moved to Istanbul (ADR 0012); with the component
+tests the merged report called for, the jsdom run measured lines 81.97%,
+statements 80.1%, functions 78.15%, and the floor became 81 / 80 / 77.
+`apps/web/vitest.config.ts` holds the current numbers.
 
-Two caveats on those figures. The server number is a *floor*, not the truth:
-`sources-mysql.test.ts` skips itself when `MYSQL_TEST_URL` is unset, so a
-developer checkout leaves `src/sources/mysql-driver.ts` (359 lines) at 6%
-while CI, which sets the variable, covers it — raise the server threshold to
-whatever the first green CI run reports. And coverage is per package, so a
+On 2026-10-26 (ADR 0012) the server suite reached 100% of lines and
+functions in CI's merged report, every file but release-preflight's
+PostgreSQL 18 checks (they run in the separate `release-preflight-pg18` job).
+The server gates are now functions 100, lines and statements 99.5, branches
+90. `src/sources/mysql-driver.ts` is measured only when `MYSQL_TEST_URL` is
+set (CI sets it), so a laptop run measures what it can test and passes the
+same gates. A coverage ignore is allowed only as ADR 0012 lists, each with
+its reason in the comment.
+
+Coverage is per package, so a
 `packages/shared` module driven only from the server and web suites reads as
 uncovered here; `src/import.ts` alone is the whole of shared's gap.
+
+### Merged web coverage (ADR 0012)
+
+The web number that decides which component tests to write is ONE report
+over both web suites: the jsdom run and the Playwright run. A screen e2e
+already drives is covered there, so a component test that repeats it adds
+nothing; component tests go where the merged report is still red.
+
+    pnpm --filter web test:coverage    # jsdom run → apps/web/.nyc_output/jsdom.json
+    pnpm --filter web coverage:e2e     # isolated e2e, instrumented → .nyc_output/e2e-*.json
+    pnpm --filter web coverage:merged  # remap + merge → apps/web/coverage-merged/
+
+Open `apps/web/coverage-merged/index.html` for the per-file, per-line view;
+`coverage-merged/coverage-summary.json` has the numbers. Delete
+`apps/web/.nyc_output/` before a fresh measurement, or old runs are summed in.
+
+How the pieces fit:
+
+- `coverage:e2e` sets `E2E_COVERAGE=1`. `playwright.config.ts` then starts its
+  web dev server with `VITE_COVERAGE=true`, and only that variable adds
+  `vite-plugin-istanbul` to `vite.config.ts` — the ordinary dev server,
+  `./init.sh` and `vite build` never see the plugin. Tests get 60s instead of
+  30s, since instrumented modules are larger.
+- `e2e/fixtures.ts` overrides the browser context for both `test` and
+  `anonymousTest`: it reads `window.__coverage__` from every page open when
+  the test ends, and a document a navigation unloads parks its counters in
+  `sessionStorage` on `pagehide` for the next document to hand over (a
+  binding called from `pagehide` itself is lost with the document). Counters
+  are summed per worker and written at worker teardown. Pages a spec opens in
+  its own `browser.newContext()` (realtime, sales-target) are not collected.
+- The jsdom run uses Istanbul too (`vitest.config.ts`); its thresholds still
+  gate the jsdom run alone in CI's `unit-web` job.
+- `scripts/coverage-merge.mjs` remaps each input to original source lines
+  BEFORE merging — `nyc merge` would merge first and remap after, adding the
+  browser's served-code counters to jsdom's source-level ones — then
+  `nyc report` renders `.coverage/merged.json`.
+
+To measure next to a running `./init.sh`, keep the e2e stack off its ports and
+database: `E2E_API_PORT`/`E2E_WEB_PORT` move the ports, and the e2e database is
+`<DATABASE_URL's name>_e2e`, so a private `DATABASE_URL` gives a private one.
+The merged run is not a CI job; it is run by hand when choosing what to test.
 
 ## Runtime packages (#296)
 

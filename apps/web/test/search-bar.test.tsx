@@ -89,3 +89,65 @@ test('The search bar opens what it finds: results are grouped under headings, an
   await waitFor(() => expect(here(app).startsWith('/featherbase/admin')).toBe(true))
   await waitFor(() => expect(here(app)).not.toContain('all-tables'))
 })
+
+// Paths the merged web coverage report (ADR 0012) showed untaken.
+test('The search bar opens what it finds: Enter on a word that names a record, not a Table, opens the record', async ({ admin }) => {
+  await seed(admin)
+  const { app, bar } = await openBar(admin)
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Zebrafinch' } })
+  await screen.findByTestId('awesomebar-doc')
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
+  expect(here(app)).toContain('Sb Gadget')
+})
+
+test('The search bar runs the theme commands', async ({ admin }) => {
+  await seed(admin)
+  const { bar } = await openBar(admin)
+  for (const [id, theme] of [['theme-dark', 'dark'], ['theme-light', 'light']] as const) {
+    fireEvent.focus(bar)
+    fireEvent.change(bar, { target: { value: 'theme' } })
+    fireEvent.click(await screen.findByTestId(`awesomebar-cmd-${id}`))
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe(theme))
+    expect(bar).toHaveValue('')
+  }
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'theme' } })
+  fireEvent.click(await screen.findByTestId('awesomebar-cmd-theme-device'))
+  // Following the device is a stored choice, not a fixed look.
+  await waitFor(() => {
+    const key = Object.keys(localStorage).find((k) => k.startsWith('fc_theme:'))
+    expect(key && localStorage.getItem(key)).toBe('device')
+  })
+})
+
+test('A past search comes back in the empty bar: arrow keys choose it and Enter puts it back in the bar', async ({ admin }) => {
+  await seed(admin)
+  const { bar } = await openBar(admin)
+  // Search once, for a word that opens nothing in particular.
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Zebrafinch' } })
+  await screen.findByTestId('awesomebar-doc')
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(field('title')).toHaveValue('Zebrafinch widget'))
+
+  // The empty bar now offers it among the recents; walk to it and press Enter.
+  fireEvent.change(bar, { target: { value: '' } })
+  bar.blur()
+  bar.focus()
+  const recents = await screen.findByTestId('awesomebar-recents')
+  const items = within(recents).getAllByRole('button')
+  const at = items.findIndex((b) => b.textContent?.includes('Zebrafinch') && !b.textContent?.includes('-widget'))
+  expect(at).toBeGreaterThanOrEqual(0)
+  // ArrowUp from the top wraps to the bottom; ArrowDown walks forward again.
+  fireEvent.keyDown(bar, { key: 'ArrowUp' })
+  for (let i = 0; i < ((at + 1) % items.length); i++) fireEvent.keyDown(bar, { key: 'ArrowDown' })
+  fireEvent.submit(bar.closest('form') as HTMLFormElement)
+  await waitFor(() => expect(bar).toHaveValue('Zebrafinch'))
+
+  // Escape leaves the bar.
+  bar.focus()
+  fireEvent.keyDown(bar, { key: 'Escape' })
+  expect(document.activeElement).not.toBe(bar)
+})
