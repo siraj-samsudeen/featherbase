@@ -195,6 +195,30 @@ test.describe('at 375px', () => {
     })
   })
 
+  // #502 follow-up: a long email address on the account page wraps inside its
+  // card instead of running under the "End" button.
+  test('on the account page a long email address wraps and End stays clickable', async ({ session, page, request }) => {
+    const someone = await person(request, 'Averylongfirstname Averylongmiddlename Averylonglastname', [])
+    await signInAt(page, ADMIN, someone)
+    await expect(page.getByTestId('no-access')).toBeVisible({ timeout: 15_000 })
+    await page.goto(`${ADMIN}/featherbase/account/sign-in-methods`)
+    const row = page.getByTestId('identifier-group-email').locator('li').first()
+    const end = row.getByRole('button', { name: 'End' })
+    await expect(end).toBeVisible()
+    await session.step('nothing scrolls sideways', async () => {
+      expect(await noSidewaysScroll(page)).toBe(true)
+    })
+    await session.step('the address stays left of End, and End inside its card', async () => {
+      const value = (await row.getByText(someone).boundingBox())!
+      const button = (await end.boundingBox())!
+      const card = (await page.getByTestId('person-identifiers').boundingBox())!
+      expect(value.x + value.width).toBeLessThanOrEqual(button.x)
+      expect(button.x + button.width).toBeLessThanOrEqual(card.x + card.width)
+      await end.click({ trial: true })
+    })
+    await shot(page, 'item3-admin-address-account-long-email')
+  })
+
   test('on the Admin address nothing scrolls sideways', async ({ session, page, request }) => {
     const manager = await person(request, 'Phone Admin', ['System Manager'])
     await signInAt(page, ADMIN, manager)
