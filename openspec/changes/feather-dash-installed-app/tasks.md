@@ -1,50 +1,58 @@
-Nothing here is built until the instance owner has reviewed this change (#458). Each
-stage runs on dev first. Prod gets each stage only after the owner approves, with a
-rehearsal on a restored prod snapshot that uses prod's real environment variables
-(`docs/DEPLOY.md`).
+Each stage runs on dev first. Prod gets each stage only after the owner approves,
+with a rehearsal on a restored prod snapshot that uses prod's real environment
+variables (`docs/DEPLOY.md`). Each stage starts from its own GitHub issue. UI work
+gets a numbered spec checklist and an independent verifier with screenshots before
+the owner reviews. Server, security and data logic gets a Codex review.
 
 ## 0. Owner review
 
-- [ ] 0.1 Owner answers Q1–Q4 in `design.md`, or accepts the recommendations; record the answers in the design.
-- [ ] 0.2 File follow-ups: "see Feather Dash as this person" for System Managers; shared Shop Floor tokens package for runtime clients.
+- [x] 0.1 Owner answers the open questions; record the answers in the design (decision log, 26-Oct-2026).
+- [x] 0.2 Record ADR 0011 "Platform, App, Instance".
+- [x] 0.3 File follow-ups: #484 (UI-built Tables to app code), #487 (client seed pack and runbook out of this repository).
+- [ ] 0.4 File follow-ups: "see Feather Dash as this person" for System Managers; shared Shop Floor tokens package for app clients; the extension-point catalogue generated from the manifest schema.
 
-## 1. Stage A — front door around today's page (platform only)
+## 1. Stage A — addresses and the shared bar (platform only)
 
-- [ ] 1.1 `front_doors` System Setting with validation (https origin outside dev/test, host unique and ≠ `SITE_URL` host, names a runtime package) and release-preflight checks.
-- [ ] 1.2 Host matching against configured doors; door-host routing (`/` → app root; Desk pages and other apps → door root; sign-in, reset, callback, privacy, API served).
-- [ ] 1.3 `/api/brand` and the login page use the door's name on a door host.
-- [ ] 1.4 Google sign-in per door: `redirect_uri` from the door's configured address, door recorded in `state`, callback refused on any other host; DEPLOY.md step to register each door's redirect.
-- [ ] 1.5 Cross-address handoff: one-time, one-minute code bound to the target door, minting a session for it; Desk-host landing hands people with no Desk capability to their door.
-- [ ] 1.6 Interim target: until the package is installed, a door for `feather_dash` serves today's report page in a door-branded shell.
-- [ ] 1.7 Tests: server (matching, header cannot invent an origin, redirects, OAuth state, handoff replay and expiry), browser (manager on door, System Manager on both hosts, sign-out per host).
+- [ ] 1.1 `INSTANCE_ADDRESSES` replaces `SITE_URL`: parse and validate (https outside dev/test, unique hosts, opens `admin` or an app, exactly one marked for emails, at least one opens `admin`); every reader of `SITE_URL` moves to it; release checks.
+- [ ] 1.2 Host matching against the list; on an app's address, `/` → the app's root, other `/featherbase/*` pages and other apps → the app's root; sign-in, reset, callback, privacy, API and shell assets served.
+- [ ] 1.3 `/api/brand` and the login page use the opened app's title on its address.
+- [ ] 1.4 Google sign-in per address: `redirect_uri` from the list, address recorded in `state`, callback refused on any other host; `DEPLOY.md` step to register each address.
+- [ ] 1.5 Hand-off in both directions: one-time, one-minute code bound to the target address, minting a session there; landing rules (stay, Admin, the app's address, no-access).
+- [ ] 1.6 Shared top bar component: Account menu (Sign-in methods, Log out), theme, "Open Admin" for people who can use Admin, the app's name on its address; replaces the report page's, Portal's and restricted shell's own headers.
+- [ ] 1.7 Interim target: until the app is installed, an address that opens `feather_dash` serves today's report page inside the shared bar.
+- [ ] 1.8 `docs/DEPLOY.md`: prod deploys from `main`; `INSTANCE_ADDRESSES` replaces `SITE_URL`.
+- [ ] 1.9 Tests: server (matching, a header cannot invent an origin, redirects, OAuth state, hand-off replay and expiry, list validation), browser (manager on the app address, System Manager on both, sign-out per address, the bar on every address).
 
-## 2. Stage B — Feather Dash as a package
+## 2. Stage B — Feather Dash as a generic app
 
-- [ ] 2.1 E1 `person_scope` policy, with today's derivation moved unchanged into a platform person-scope provider; refusal and audit as for `stores`.
-- [ ] 2.2 E2 declared settings (`App Setting`, a security Table) and secrets in the handler context; preflight warning for missing required secrets.
-- [ ] 2.3 E3 package datasets on the snapshot engine (declared columns and keys, platform-owned raw storage, `datasets.active().rows({ where })`), registered only for installed, active packages.
-- [ ] 2.4 E4 declared frame origins on the app's own documents; remove the global embed frame source.
+- [ ] 2.1 E1 scope shape and `person_scope` policy, with today's derivation moved unchanged into a provider; refusal and audit as for `stores`; `security-tables.ts` stops naming the client's roster tables.
+- [ ] 2.2 E2 declared settings (`App Setting`, a security Table) and secrets in the handler context; release warning for missing required secrets.
+- [ ] 2.3 E3 report definitions supplied by the instance: declared shape in the app, definition installed through the instance manifest, snapshot and live read through one shaping function.
+- [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.
 - [ ] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log.
-- [ ] 2.6 E7 release refuses when an installed, enabled package's exact version is missing.
-- [ ] 2.7 D4 app-role bindings (`App Role Binding`, a security Table; manifest defaults applied once; role checks honour bindings); default `Sales Target Viewer → Feather Dash Reader`.
-- [ ] 2.8 `runtime-apps/feather-dash` 1.0.0: manifest with every Table and grant stage D needs, the client with page parity, reads `me`, `report`, `embed_session`, the dataset definition. Dockerfile and `FEATHERBASE_APP_PATHS`.
-- [ ] 2.9 Parity check on a restored dev snapshot: for every person with a scope, the app's answers equal the core endpoints' answers (scope, rows, totals, embed initial state).
-- [ ] 2.10 Install on dev, switch the dev door to the app, run the trial; then prod with approval.
-- [ ] 2.11 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
-- [ ] 2.12 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
+- [ ] 2.6 E7 release refuses when an installed, enabled app's exact version is missing.
+- [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address).
+- [ ] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
+- [ ] 2.9 D4 app-role bindings (`App Role Binding`, a security Table, Admin-editable; manifest suggestions written once; role checks honour bindings); stand-in binding `Sales Target Viewer → Feather Dash Reader`.
+- [ ] 2.10 `runtime-apps/feather-dash` 1.0.0: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; Dockerfile and `FEATHERBASE_APP_PATHS`.
+- [ ] 2.11 In the client's repository: the report definition (today's query moved out of this repository), the Dive settings, the stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there, not here.
+- [ ] 2.12 Parity check on a restored dev snapshot: for every person with a scope, the app's answers equal the platform endpoints' (scope, rows, totals, embed scope state).
+- [ ] 2.13 Install on dev, switch the dev address to the app, run the trial; then prod with approval.
+- [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
+- [ ] 2.15 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
 
-## 3. Stage C — roster redesign (after #449 and #392 land)
+## 3. Stage C — roster redesign (after #449 and #392)
 
-- [ ] 3.1 Person-scope provider reads `position`, `section`, `section_subcategory`; #449's per-person parity check is the gate.
+- [ ] 3.1 The scope provider reads the #449 tables wherever #449 places them; #449's per-person parity check on the scope shape is the gate.
 - [ ] 3.2 Bindings move to the manager jobs; delete `Sales Target Viewer` and its binding.
 - [ ] 3.3 Confirm Feather Dash needed no change.
 
-## 4. Stage D — section editing (Feather Dash 1.1.0, code-only)
+## 4. Stage D — section editing (Feather Dash 1.1.0, after #462 and stage C)
 
 - [ ] 4.1 Scope entries carry section and mapping confirmation status.
 - [ ] 4.2 Action `request_section_change` (scope-checked, either side of a move) and withdraw; my-sections page.
-- [ ] 4.3 Action `decide_section_change` applying through the normal save path as the reviewer; reviewer page.
-- [ ] 4.4 Tests: Team Leader refused outside their section; reviewer without the master Tables' writer role cannot apply; applied edit survives a re-import.
+- [ ] 4.3 Action `decide_section_change` applying through the normal save path as the reviewer; reviewer page; the Section Reviewer role bound to #462's role.
+- [ ] 4.4 Tests: Team Leader refused outside their section; a reviewer without #462's role cannot apply; a System Manager is not the reviewer by default; applied edit survives a re-import.
 - [ ] 4.5 Upgrade dev, then prod with approval.
 
 ## 5. Close-out

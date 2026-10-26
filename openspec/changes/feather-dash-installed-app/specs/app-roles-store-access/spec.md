@@ -2,9 +2,9 @@
 
 ### Requirement: Scope comes from what a person is responsible for
 
-An app SHALL be able to rely on Featherbase to work out which stores, sections and
-subcategories a person is responsible for, from the instance's own records of who holds
-which job and where. Every app SHALL get the same answer for the same person, worked out
+An app SHALL be able to rely on Featherbase to work out which places a person is
+responsible for, from the instance's own records of who holds which job and where.
+Every app SHALL get the same answer for the same person, in the same form, worked out
 afresh on every request. A person whose records cannot be matched to them alone SHALL
 get no scope, never a partial one.
 
@@ -19,12 +19,24 @@ get no scope, never a partial one.
 - **WHEN** a person's employee record also belongs to someone else
 - **THEN** every app refuses to show them any store until the records are corrected
 
+### Requirement: Apps keep working when the roster changes shape
+
+When the instance changes how it records who leads what, every person's scope SHALL be
+the same before and after, and no app SHALL need a new version.
+
+#### Scenario: A roster redesign leaves the report untouched
+
+- **WHEN** the instance moves to a new way of recording positions and a Team Leader
+  opens the report
+- **THEN** they see the same sections as before the move
+
 ### Requirement: An app's roles follow people's jobs
 
-An app SHALL declare the roles it needs. An admin SHALL decide which jobs carry each of
-them, starting from defaults the app suggests. People SHALL hold jobs, not app roles.
-Gaining or leaving a job SHALL change what they can use in each app on their next
-request, and a later version of the app SHALL never undo the admin's choices.
+An app SHALL declare the roles it needs. An admin SHALL decide, in a setting they can
+edit, which jobs carry each of them, starting from suggestions the app makes. People
+SHALL hold jobs, not app roles. Gaining or leaving a job SHALL change what they can use
+in each app on their next request, and a later version of the app SHALL never undo the
+admin's choices.
 
 #### Scenario: A new Team Leader can open the report
 

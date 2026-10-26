@@ -2,360 +2,321 @@
 
 The decision in #458 is fixed. Featherbase is the master-data system. Feather Dash
 is a reporting app installed on top of it, the way Tasker is. This design sets out
-how to get there without the live report ever breaking.
+how to get there without the live report ever breaking. It is the first design
+checked against [ADR 0011](../../../docs/adr/0011-platform-app-instance.md)
+("Platform, App, Instance"): **each layer knows only the layer below it**, and the
+test for any file is whether a second client would have to change it.
 
-**Today (main at `af79470e`, 24-Oct-2026):**
+**Today (main at `b19be104`, 26-Oct-2026):**
 
-- **The report is core code.** The page is `apps/web/src/pages/SalesTarget.tsx` at
-  `/featherbase/sales-target`. The server side is `apps/server/src/sales-target.ts`
+- **The report is platform code.** The page is `apps/web/src/pages/SalesTarget.tsx`
+  at `/featherbase/sales-target`. The server side is `apps/server/src/sales-target.ts`
   (scope derivation, embed-session minting, the `/api/sales_target/{me,embed_session,report}`
-  routes, the `Sales Target Viewer` gate) plus `sales-target-report.ts` (shaping
-  over the snapshot or the live read) and `datasets/sales-target-mtd.ts` (the dataset
-  SQL, its loader and its validation). The dataset is registered with the generic
-  snapshot engine `dataset-snapshot.ts` and refreshed by the `refresh_datasets` job.
-- **The embed config is read from scattered places.** `DIVE_ID`, `DIVE_VERSION` and
-  `SERVICE_ACCOUNT` come from the process environment, or else from a shared
-  `.env.local` path (`SALES_TARGET_SHARED_ENV`) left over from the experiment. The
-  token (`MOTHERDUCK_TOKEN`) comes only from the environment. The CSP allows
-  `EMBED_ORIGIN` as a frame source on every page.
-- **Scope is derived in the report's own module.** `currentAssignments` reads the
-  person's current employee-code identifiers and nine Excel-born tables
-  (`Section Merchandise Map`, `Employee Section Map`, `Section Ownership`,
-  `Section Name Alias`, `Store Manager`, `Sales Target Assignment`, …). It returns
-  one assignment per store: sections, material groups and the basis for each.
-  These tables are listed in `SECURITY_TABLES` (#437), so only a System Manager
-  writes them, whatever the Permission rows say.
-- **Landing is decided by role.** `landingFor` sends a holder of `Sales Target Viewer`
-  to the report after every sign-in route. The web app picks `AdminLayout`,
-  `ReportOnlyShell` or `NoAccessPage` from the capabilities `whoami` returns
-  (`capabilities.report` is that role check). Portal is a separate shell for
-  web-form users.
-- **Hosts are not distinguished.** `SITE_URL` is the instance's one trusted origin.
-  It is used for emailed links (invitations, password reset, the waiting-for-access
-  alert), for the Google `redirect_uri` and for the cookie's `Secure` decision. The
-  sid cookie is host-only. The bearer token lives in that origin's storage.
-  `tenancy.ts` `resolveSite` maps a Host to a *separate schema-per-site tenant*,
-  and nothing in the report path uses it.
-- **Runtime packages already run server code.** A package's `featherbase.json`
-  declares owned Tables, permissions, migrations, `actions` and `reads`. Its compiled
-  `server.mjs` exports `actions`, `reads`, `validators`, `scopeResolvers` and
-  `authorizers`. The code is trusted: importing it grants full Node privileges, and
-  there is no sandbox. Operations carry a policy, either `table` or `stores` (an
-  app-owned store dimension filtered by Data Scope rows), plus an optional product
-  authorizer. Every read and action re-checks roles and scope fresh, inside one
-  transaction (`app-access.ts`). Install, preview-upgrade, upgrade (bound to a plan
-  ID) and activate are operator API calls. Discovery selects the *installed exact
-  version*, never the newest one. Upgrades may add optional columns and withdraw
-  grants (#437). They refuse new Tables and new or wider grants. Every runtime
-  client is wrapped in the #309 host bar, which has a Home icon and an app switcher.
-  #309 deliberately has no manifest "presentation mode".
+  routes, the `Sales Target Viewer` gate), `sales-target-report.ts` (shaping over
+  the snapshot or a live read, through one shared function so the two cannot
+  disagree) and `datasets/sales-target-mtd.ts` (the dataset SQL, its loader and its
+  validation). The dataset is registered with the generic snapshot engine
+  `dataset-snapshot.ts` and refreshed by the `refresh_datasets` job.
+- **The SQL names one client's warehouse.** It is the clearest break of one-way
+  knowledge in the platform today.
+- **The embed.** Featherbase mints a MotherDuck embed session and passes the
+  reader's scope as the Dive's `initial_state`, which the Dive reads with
+  `useDiveState`. The Dive is code the client's team writes in MotherDuck, and it
+  fetches its own numbers with `useSQLQuery`. Its configuration (`DIVE_ID`,
+  `DIVE_VERSION`, `SERVICE_ACCOUNT`) comes from the environment or a leftover shared
+  `.env.local`. The CSP allows `EMBED_ORIGIN` as a frame source on every page.
+- **Scope is derived in the report's own module** from nine Excel-born tables, which
+  `security-tables.ts` lists by name (#437). So the platform names one client's
+  roster.
+- **The page header is its own.** The report page, the Portal and the restricted
+  shell each draw their own row (identity, store switcher, "Sign-in methods",
+  "Log out"). Only the Admin screens (`AdminLayout.tsx`) have the real top bar, with
+  an Account menu.
+- **One address setting.** `SITE_URL` is the instance's one trusted origin, used for
+  emailed links, the Google `redirect_uri`, the cookie's `Secure` decision and the
+  release checks. dash.* and featherbase.* currently serve the same instance, and
+  nothing routes by address.
+- **Who may use the Admin screens.** `whoami` computes `manage` (System Manager) and
+  `table_access` (any Table granted through Permission rows). A Store Manager with a
+  grant on one Table already sees a trimmed Admin with only that Table.
+- **Apps already run server code.** A manifest (`featherbase.json`) declares owned
+  Tables, permissions, migrations, actions and reads. The server module runs
+  trusted, with no sandbox. Every read and action re-checks roles and scope fresh,
+  inside one transaction. Install, preview → upgrade → activate are operator calls.
+  Discovery serves the installed *exact* version, identified by a fingerprint of its
+  files (`artifact_digest`). Upgrades refuse new Tables and new or wider grants.
+- **Measured on dev, 26-Oct-2026** (two runs, a Team Leader):
 
-**What the runtime package system lacks for Feather Dash:**
+  | | cached numbers | embed session | Dive frame loaded | Dive numbers drawn |
+  |---|---|---|---|---|
+  | cold | 1.0 s | 1.8 s | 2.5 s | between 2.5 and 5 s |
+  | warm | 0.5 s | 0.9 s | 1.7 s | about 2.2 s |
 
-| Need | Today |
-|---|---|
-| The caller's scope from master data the app does not own | Facts and store dimensions must be app-owned Tables |
-| Settings and secrets | Nothing declared; a module can read `process.env` because it is trusted, which is invisible to review |
-| A scheduled snapshot dataset | Datasets register only from core code; packages declare no jobs |
-| A frame source for an embed | The CSP is global and core-owned |
-| An outbound network call inside a read | Reads run inside the authorization transaction, so row locks would be held across the call |
-| Roles that follow jobs | Roles are names on people, and upgrades can never widen a grant |
-| A front door by address | None |
+  About half the wait is before the Dive's code runs, and half is the Dive's own
+  queries.
 
 **Related work this must fit:**
 
-- The roster redesign #449 (owner decisions 23-Oct-2026), with its dossier in the
-  private warehouse repo. Four tables replace the nine: `section`,
-  `section_subcategory`, `position` (person, job, store, floor, section, from, to)
-  and `value_mapping`. Scope comes from current `position` rows: a Store Manager gets
-  the whole store, a Floor Manager every section on their floor, and a Department
-  Manager, Team Leader or Staff member the named section. Job roles (#392) are
-  granted from current `position` rows. At launch they go to managers only. The
-  `Sales Target Viewer` role and `sales_target_assignment` go away.
-- Security #441/#443/#437. Audit tables are written by the system only, and access-
-  deciding tables are written by a System Manager only. `position` and
-  `value_mapping` decide scope, so #449 writes them as System Manager only, or as a
-  named writer role such as a Data Quality Manager.
+- **Roster redesign #449** (owner decisions 23-Oct-2026): `section`,
+  `section_subcategory`, `position` and `value_mapping` replace the nine tables. Job
+  roles (#392) are granted from current `position` rows.
+- **Security #441/#443/#437**: audit tables are system-written; access-deciding
+  tables are written by a System Manager only.
+- **#462**: a named role that may write specific protected tables without being a
+  System Manager. Section editing waits for it (D5).
+- **#484**: turning UI-built Tables into app code. Not needed here.
+- **#487**: moving a client seed pack and runbook out of this repo.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Feather Dash ships, installs and upgrades as a runtime package. Featherbase core
-  holds no report-specific page, route, dataset or role.
-- `dash.<domain>` opens Feather Dash directly, under its own name, and
-  `featherbase.<domain>` stays the Desk. Which address opens which app is set in
-  configuration, never in code.
-- Scope is a platform answer derived from master data, so the next report (a
-  scorecard, an inventory view) reuses it without copying 250 lines.
-- Managers raise changes to their own section data from Feather Dash without
-  weakening the security-table rule.
-- Every stage is small, reversible until its clean-up step, and keeps the live report
-  working.
+- Feather Dash is a **generic app in this repository**, installed and upgraded like
+  Tasker. Nothing in it names a client. Featherbase core holds no report-specific
+  page, route, dataset or role.
+- **A client's report is instance setup**: its query, its Dive and its job bindings
+  live in the client's private configuration repository.
+- The Feather Dash address opens Feather Dash directly, under its own name. The
+  Featherbase address stays the Admin screens. Which address opens what is
+  configuration, never code.
+- **Scope is a fixed platform shape** with a swappable provider, so the next app
+  reuses it, and #449 can change the roster without touching any app.
+- One top bar on every address.
+- Every stage is small, reversible until its clean-up step, and keeps the live
+  report working.
 
 **Non-Goals:**
 
-- Implementing #449's tables, the import that remembers human edits, or roster sync.
-  This design only consumes them.
-- The Data Review app (warehouse epic item A5) and the "Dash home lists every report
-  and master" page (item C3). Feather Dash leaves room for both.
-- Sandboxing package code. Packages stay trusted and reviewed. The declarations below
-  serve review and preflight, not containment.
-- Multi-tenancy. A front door is another address for the same instance and the same
-  data, not a site.
+- Implementing #449's tables, #462's delegated role, or #484.
+- A sandbox for app code (ADR 0011: trusted and reviewed, with three guardrails).
+- Multi-tenancy. An app address is another address for the same instance and the
+  same data, not a site.
 
 ## The picture
 
-```
-                 browser                                  browser
-         https://dash.<domain>                    https://featherbase.<domain>  (= SITE_URL)
-                   │                                          │
-                   ▼                                          ▼
-   ┌──────────────────────────── one Featherbase instance (one server, one database) ─────────────────────────┐
-   │  Front-door routing: Host → configured door? ── yes → door shell, door brand, door sign-in, door landing  │
-   │                                               └─ no  → the Desk (Admin UI, #309 host bar for apps)       │
-   │                                                                                                          │
-   │   Installed apps (runtime packages)                                                                      │
-   │   ┌──────────────────────────────────────────┐   ┌──────────────┐                                         │
-   │   │ Feather Dash  (feather_dash)             │   │ Tasker       │   … later: Store Layout, Data Review    │
-   │   │  client: report, store switcher,         │   └──────────────┘                                         │
-   │   │          my sections, review queue       │                                                            │
-   │   │  server: reads me / embed_session /      │                                                            │
-   │   │          report; actions request /       │                                                            │
-   │   │          decide section change           │                                                            │
-   │   │  dataset: sales_target_mtd definition    │                                                            │
-   │   │  owns: section change requests           │                                                            │
-   │   └───────────────┬──────────────────────────┘                                                            │
-   │                   │ stable platform APIs (operation policies, context capabilities)                      │
-   │   ┌───────────────▼──────────────────────────────────────────────────────────────────────────────────┐   │
-   │   │ Platform: sign-in & sessions · people & identifiers · person scope (today: nine tables;          │   │
-   │   │ after #449: position + section + section_subcategory) · job roles & app-role bindings ·          │   │
-   │   │ security tables (#437) · dataset snapshot engine + refresh job · Access Log · app settings &     │   │
-   │   │ secrets · CSP · install / upgrade planner · release preflight                                    │   │
-   │   └──────────────────────────────────────────────────────────────────────────────────────────────────┘   │
-   └──────────────────────────────────────────────────────┬───────────────────────────────────────────────────┘
-                                                          │ outbound (token from a declared secret)
-                                                          ▼
-                                       MotherDuck: embed sessions, the Dive, the warehouse
+```mermaid
+flowchart TB
+  subgraph Instance["Instance setup (client's private repo)"]
+    RD["Report definition<br/>query · columns · keys · cache"]
+    DV["Dive ID and version<br/>(the Dive's code)"]
+    JB["Jobs → app roles"]
+    AD["INSTANCE_ADDRESSES"]
+  end
+  subgraph App["Feather Dash app (this repo, generic)"]
+    FD["Report page · bar store picker<br/>reads: me, report, embed session<br/>my sections · requests · review"]
+  end
+  subgraph Platform["Platform"]
+    P1["Addresses · sign-in · shared top bar"]
+    P2["Scope: fixed shape<br/>provider: today's nine tables → #449"]
+    P3["Snapshot engine · settings and secrets<br/>app roles · install · release guard"]
+  end
+  MD[("MotherDuck<br/>embed sessions, Dive, warehouse")]
+  Instance --> App
+  App --> Platform
+  FD -- "initial_state: scope + cached rows" --> MD
 ```
 
 ## Decisions
 
-### D1. The app boundary: product logic moves; master data and its meaning stay
+### D1. The boundary: three layers, not two
 
-| Piece | Goes to | Why |
+| Piece | Layer | Why |
 |---|---|---|
-| Report page, store switcher, empty/error states, the "remembered store" convenience | **Feather Dash client** | Product UI |
-| `me`, `embed_session`, `report` endpoints | **Feather Dash reads** (`/api/app_reads/feather_dash/<read>`) | Product behaviour. Each is a read: none changes data |
-| The IST month-to-date period, the Dive's initial-state shape, the embed-session call | **Feather Dash server module** | Specific to MotherDuck and the Dive |
-| `sales_target_mtd` SQL, row validation, report shaping and totals | **Feather Dash dataset + read** | The app's own query |
-| Dive ID, Dive version, service-account name | **Feather Dash settings** (E2) | Instance configuration, not code |
-| `MOTHERDUCK_TOKEN` | **A declared secret** (E2), still an environment variable | A secret never goes into a table |
-| The frame origin for the embed | **Declared by the app** (E4) | Only the app's own documents need it |
-| Who may open it, who may request or review section changes | **App roles** (D4) | The app declares them; the instance binds jobs to them |
-| Section-change requests | **A Feather Dash-owned Table** (D5) | The app's own workflow data |
-| Sign-in, sessions, people, identifiers | Platform | Shared by every app |
-| **Scope derivation** (person → stores → sections → subcategories, with the basis for each, and the "ambiguous code means no scope" rule) | **Platform person-scope provider** (E1) | Master data and what it means. Featherbase is the MDM, and every report needs the same answer |
-| The nine roster tables, and later `section`, `section_subcategory`, `position`, `value_mapping` | Platform (instance master data) | Owned by the MDM, not by one report |
-| Snapshot engine: registry, build/validate/activate, retain last good, misses, refresh job | Platform | Already generic (#281) |
-| Access Log of who opened which report from which snapshot | Platform-written (#441) | Audit is system-written |
-| Front-door routing, door shell, door brand | Platform (D3) | Chosen by address, not by the package (see the #309 note) |
+| Report page, empty and error states, the remembered store | **App** | Product UI, the same for every client |
+| Reads `me`, `report`, `embed_session`; the IST month-to-date period; the embed-session call | **App** | Product behaviour |
+| Section-change requests, the my-sections and review pages | **App** | The app's own workflow |
+| The roles the app needs, and their suggested jobs | **App** (declared) | The app says what it needs; the instance decides who |
+| **The report definition**: the query, its columns, keys, which columns are money, the cached dataset and its budget | **Instance setup** | It names one client's warehouse. A second client brings their own |
+| Dive ID, Dive version, embed service account | **Instance setup** (app settings) | Configuration, not code |
+| The Dive's own code | **Instance** (written in MotherDuck) | The client's report design. The app never copies its layout |
+| `MOTHERDUCK_TOKEN` | **Instance** (a declared secret, an environment variable) | A secret never goes in a table |
+| Jobs → app roles | **Instance** (an Admin-editable setting, seeded from the app's suggestions) | Who may use what is the client's decision |
+| Which address opens what | **Instance** (`INSTANCE_ADDRESSES`) | Configuration |
+| The scope shape, its provider, the snapshot engine, sign-in, addresses, the top bar, the Access Log | **Platform** | Shared by every app |
 
-**Where an app's server code lives.** It lives in the package: `runtime-apps/feather-dash/src/server.ts`
-is bundled to `dist/server.mjs`, as Tasker's is. Runtime apps already support
-server code (actions, reads, validators, scope resolvers, authorizers). The missing
-pieces are listed in D2.
+The client's report definition and settings travel through the existing instance
+install route: the client's configuration repository already installs its data
+sources, brand and sign-in settings through `manifest.json` with a service-account
+token. **No private build pipeline is needed**, because nothing private is code.
 
-### D2. The smallest platform extensions
+### D2. Platform extensions
 
-Each extension is generic. None names Feather Dash, and each one is useful to the
-next reporting app.
+Each is generic: none names Feather Dash or a client. Each joins the
+extension-point catalogue (ADR 0011), which is generated from the manifest schema
+and checked in CI.
 
-**E1. A `person_scope` operation policy.** It sits beside `table` and `stores`.
+**E1. The scope shape and a swappable provider.**
 
-- Declaration: `{ "policy": { "kind": "person_scope", "readRoles": [...], "actionRoles": [...] } }`.
-- The platform computes the caller's current scope fresh on every request. The
-  scope is a list of stores. For each store it gives the sections, the merchandise
-  codes in each section, and the basis (`section_staff`, `team_leader`,
-  `department_manager`, `floor_manager`, `store_manager`, and `assignment` until #449
-  removes it). The platform hands the scope to the handler frozen, in
-  `authorization.scope`.
-- The payload may name one `store` and, for actions, one `section`. The rules are
-  those of the `stores` policy. Naming anything outside the caller's scope refuses
-  the *whole* request, records the refusal in the Access Log, and reveals nothing. An
-  empty scope is never read as all stores, including for an administrator.
-- **Provider.** Stage B moves today's `currentEmployeeCodes`, `derivedFromSections`
-  and `sectionsOf` *unchanged* into a platform module, `person-scope.ts`. Stage C
-  replaces its body with the `position` derivation (#449). The policy's output shape
-  stays the same, so the app does not change at stage C. That is the reason for this
-  boundary.
-- Rejected: an app-owned scope Table filled from master data. It copies the MDM
-  into every app, and the copies drift. Also rejected: letting a package's scope
-  resolver read platform tables. That gives each app its own reading of who-leads-what,
-  and widens the `facts` capability to tables the app does not own.
+- **The shape** is a list of *places* the person covers. Each place has a label and
+  the filter values that go with it. For a Team Leader of one section:
+  `{ place: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
+  A place may also carry the basis (section staff, team leader, department manager,
+  floor manager, store manager) for display.
+- **A `person_scope` operation policy** sits beside `table` and `stores`. The platform
+  computes the caller's scope fresh on every request and hands it to the handler,
+  frozen. Naming a store or section outside it refuses the *whole* request, records
+  the refusal in the Access Log, and reveals nothing. An empty scope is never read
+  as all stores, for an administrator too. An ambiguous employee code still yields
+  no scope.
+- **The provider** fills the shape. Stage B moves today's derivation (the nine
+  tables) into it unchanged. #449 decides where the roster lives (the platform, or
+  a "store structure" app) and swaps the provider. **No app changes either way.**
+  The provider's output in this shape is also #449's parity target.
+- **The report definition maps filters to query columns**, for example
+  `subcategory` → the hierarchy code. So the app and the platform never learn the
+  client's column names.
+- **One-way knowledge in the security list.** `security-tables.ts` stops naming the
+  client's roster tables. The provider's own tables are marked as scope-deciding by
+  their definition, not by a platform list of names.
+- Rejected: the platform computing retail scope itself (it would know store, floor
+  and section, which a CRM client does not have). Also rejected: each app reading
+  the roster tables (the readings drift, and client table names would enter the
+  app).
 
 **E2. Declared settings and secrets.**
 
-- Manifest: `"settings": [{ "name": "dive_id", "label": "Dive", "required": true }, …]`
-  and `"secrets": ["MOTHERDUCK_TOKEN"]`.
-- Settings values live in a platform `App Setting` Table keyed by app and name. It is
-  a security Table, so only a System Manager writes it. The instance's own config
-  repo can set the values through fixtures, as it sets `app_name` today. Secrets stay
-  environment variables and are never stored, logged or returned.
+- Manifest: `"settings": [{ "name": "dive_id", "required": true }, …]` and
+  `"secrets": ["MOTHERDUCK_TOKEN"]`.
+- Values live in a platform `App Setting` Table, keyed by app and name. It is a
+  security Table. The instance sets them through its manifest install. Secrets
+  stay environment variables and are never stored, logged or returned.
 - Handlers receive `context.settings` and `context.secrets`, holding only what was
-  declared. A missing required value gives the app's own "not configured" answer
-  (today's `not_configured` marker). It is not an error. The release preflight warns
-  when an installed, enabled app lacks a required secret. It does not refuse,
-  because a deployment may serve the snapshot-only report on purpose.
-- This retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and
-  `seedSalesTarget`'s password seeding. Those are experiment scaffolding. Tests set
-  settings directly.
-- Not a sandbox. A trusted module could still read `process.env`. The declaration
-  makes what a package needs visible to review and to preflight.
+  declared. A missing required value gives the app's own "not set up yet" answer.
+  The release check warns when an installed, enabled app lacks a required secret.
+- Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
+  experiment's password seeding.
 
-**E3. Package datasets.**
+**E3. Report definitions supplied by the instance.**
 
-- Manifest: `"datasets": { "sales_target_mtd": { "columns": [{ "name": "plant_code", "type": "text" }, …], "keys": ["plant_code", "hierarchy_code"] } }`.
-  A dataset may have more than one row kind. Today's day rows and name rows become
-  two declared datasets, or one dataset with a `kind` key. That choice is left to
-  implementation.
-- Module: `export const datasets = { sales_target_mtd: { version(ctx), fetch(ctx), validate(rowCount, previous) } }`.
-  `fetch` receives the declared settings and secrets. The platform does the load. It
-  writes typed rows into storage it creates in the app's schema. That storage is a
-  raw relation, never a Table, and never reachable through the list, document or
-  export APIs. This keeps today's rule that the snapshot holds every store's figures
-  and is read only through a scope-checked path (#246).
-- The existing engine runs the lifecycle unchanged: build the candidate, run the
-  app's `validate`, activate atomically, keep the last good snapshot, record misses,
-  refresh on the `refresh_datasets` schedule. On deploy it registers only the
-  datasets of installed, active packages.
-- Reads get `context.datasets.active(name)`. It returns the snapshot's identity
-  (ID, source as-of, refreshed at) and `rows({ where })`, filtered by equality or
-  `in` on declared keys only. The app does its aggregation in code. The largest
-  reader (a whole store, about a month of days) is a few tens of thousands of rows,
-  which is cheap. No SQL crosses from the app to the platform.
-- The storage is a rebuildable cache. When the definition version or the columns
-  change, an upgrade may reshape it with no migration: the old snapshots are
-  dropped, the next refresh rebuilds, and the app's live read covers the gap (as it
-  does on the 1st of every month today).
+- **An app declares that it accepts a report definition**, and the shape it needs:
+  named columns, keys, and which columns are money.
+- **The instance supplies the definition** through its manifest install: a data
+  source it already declares (read-only), the query, the columns and keys, and the
+  filter mapping (E1). The query is reviewed in the client's repository.
+- The platform builds the cached snapshot from it on the existing engine: build,
+  validate, activate atomically, keep the last good copy, record misses, refresh on
+  the `refresh_datasets` schedule. The storage is raw, never a Table, never exported,
+  and read only through a scope-checked read (#246).
+- **The live read runs the same query, limited to the reader's scope**, through the
+  same shaping function, so cached and live cannot disagree in layout or maths.
+- Reads get `context.datasets.active(name)`, with equality or `in` filters on
+  declared keys only. No SQL crosses from the app to the platform.
 
-**E4. Declared frame origins.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
-The platform adds them to `frame-src` only on that app's own documents. The global
+**E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
+The platform allows them as frame sources only on that app's own pages. The global
 `EMBED_ORIGIN` entry goes away. The browser-level stub keeps working through a
-`frame_origin` setting, which only a System Manager can set and which is allowed only
-in development or test.
+development-only setting.
 
-**E5. Reads that call out.** A read declared with `"outbound": true` has its
-authorization decided and frozen inside the platform transaction, as today. Its
-handler then runs *after* that transaction closes, so no row lock or pooled
-connection is held during a MotherDuck call. Handlers also get
-`context.recordView({ reference, method })`. It writes the Access Log row (the
-platform writes it, as #441 requires) and replaces today's direct `logAccess` call.
+**E5. Reads that call out.** A read declared `"outbound": true` has its
+authorization decided and frozen inside the platform transaction; its handler runs
+*after* the transaction closes, so no row lock is held during a MotherDuck call.
+`context.recordView(...)` writes the Access Log row (platform-written, #441).
 
-**E6. App roles bound to jobs** (stage C, D4).
+**E6. App roles bound to jobs.** See D4.
 
-**E7. The deploy guard.** The release step (`pnpm --filter server release`) refuses
-when an *installed and enabled* runtime package's exact installed version is not
-among the discovered artifacts. Today that case only makes the app unavailable at
-runtime. For Feather Dash it would take the live report away silently on deploy. A
-refused release keeps the previous deployment serving.
+**E7. The release guard.** The release step refuses when an *installed and enabled*
+app's exact installed version is missing from the image. A refused release keeps
+the previous deployment serving, so a deploy can never silently take the report
+away.
 
-### D3. Front doors by address
+**E8. Bar controls.** An app may declare a control for the shared top bar:
+`"bar": [{ "picker": "Store", "options": "<one of the app's reads>", "sets": "store" }]`.
+The platform draws it in Shop Floor style, fills it from the app's own read (which
+is scope-checked), and puts the choice in the address (`?store=12`), where the app
+reads it. An app never runs its own code in the bar (ADR 0011).
 
-**Configuration.** A System Settings field `front_doors` holds a list:
+**E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
+dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
+change with it.
 
-```json
-[{ "address": "https://dash.example.com", "app": "feather_dash", "name": "Feather Dash" }]
+### D3. Addresses, sign-in and the top bar
+
+**One list replaces `SITE_URL`.** A deployment variable, read before the database:
+
+```
+INSTANCE_ADDRESSES =
+  https://dash.example.com         opens feather_dash   used in emails
+  https://featherbase.example.com  opens admin
 ```
 
-The instance sets it from its own config repo, like `app_name`. It is never
-hard-coded. Validation:
-
-- `address` is an absolute `https` origin outside development and test;
-- its host differs from `SITE_URL`'s host and from every other door's host;
-- `app` names a runtime package.
-
-A door whose app is not installed, or disabled, shows the existing "Application
-unavailable" page. It never falls back to the Desk. The release preflight checks the
-same rules.
+- Each entry is an absolute `https` origin outside development and test, with a
+  host unique in the list.
+- It opens `admin` (the Admin screens) or one installed app.
+- **Exactly one** entry is marked as used in emails.
+- At least one entry opens `admin`.
+- The release check validates the list. `SITE_URL` is removed outright: every
+  reader of it (emailed links, Google sign-in, cookies, trusted origins, release
+  checks) moves to the list. `docs/DEPLOY.md` changes with it.
 
 **Matching.** The request's `Host` (lowercased, port stripped) is compared exactly
-with the configured door hosts. No match means today's behaviour. The header can
-only *select* a configured door. Every absolute URL the server builds (redirects,
-`redirect_uri`, emailed links) comes from configuration, never from the header. This
-keeps the rule in `externalOrigin` and `SITE_URL`. `tenancy.ts` sites are rejected
-for this: they are separate schemas with separate data, while a door is the same
-instance.
+with the listed hosts. The header can only *select* a listed address. Every
+absolute URL the server builds comes from the list, never from the header.
+`tenancy.ts` sites stay separate: they are separate schemas with separate data,
+while these are addresses for one instance.
 
-**Routing on a door host.**
+**On an address that opens an app:**
 
-- `/` redirects to the app's root, `/feather_dash/`. Each app keeps one URL scheme on
-  every host, which is simple and needs no change to package base paths. Serving the
-  app at the door's root is possible later, without breaking links, if the path
-  looks wrong to the owner.
-- These are served as usual: `/featherbase/login`, `/featherbase/reset-password`,
-  `/featherbase/oauth-callback`, `/privacy`, `/api/*`, the runtime-shell assets and
-  the app's own root.
-- Every other `/featherbase/*` page (admin, form, portal, print) and every other
-  app's root redirects to the door's root. The Desk is not reachable on a door host.
-- **A door is presentation, not a security boundary.** Every API call is authorized
-  on its own merits on every host, and the design never relies on the redirects for
-  access control.
-
-**The door shell.** A door's documents get a *door shell* instead of the #309 host
-bar. It shows the door's name and mark, the signed-in person's display name and
-sign-out. It has no app switcher and no Desk menus. A person who can use the Desk
-(the `manage` or table-access capability) also gets one "Open the Desk" link to
-`SITE_URL`. #309 rejected a *package-chosen* presentation mode. Here the *address*
-picks the shell, an instance setting the package cannot influence. On the Desk host,
-Feather Dash still opens with the normal #309 bar, so a System Manager can reach it
-from the Desk.
-
-**Branding.** `/api/brand` answers with the door's `name` on a door host and with
-`app_name` otherwise. The login page, the document title and the door shell use it.
-`MAIL_FROM` and `app_name` are unchanged.
+- `/` redirects to the app's root (`/feather_dash/`).
+- Sign-in, password reset, the OAuth callback, `/privacy`, `/api/*`, the shell's
+  assets and the app's own root are served as usual.
+- Every other `/featherbase/*` page, and every other app's root, redirects to the
+  app's root.
+- An app that is not installed, or disabled, shows the existing "Application
+  unavailable" page and never falls back to Admin.
+- **An address is presentation, never a security boundary.** Every API call is
+  authorized on its own merits, the same way on every address.
 
 **Sign-in and sessions.**
 
-- **One sign-in per address.** The sid cookie stays host-only. The bearer token
-  stays in that origin's storage. Both hosts use the same server-side sessions, and
-  signing out on one host ends only that host's session (#411 behaviour per
-  session).
-  - Rejected: a parent-domain cookie (`Domain=.<domain>`). It would expose a live
-    credential to every subdomain, including unrelated services on the same domain,
-    and it still would not share the bearer token.
-  - Cost: an administrator signs in once on each address. Staff use only one address.
-- **Password, StyleHR (delegated) and sign-up** are same-origin POSTs and work on any
-  host unchanged.
-- **Google.** When sign-in starts on a door, the `redirect_uri` is
-  `<door address>/api/oauth/google/callback`. The OAuth `state` records the door, and
-  a callback that arrives on another host is refused. Each door address must be
-  registered as an authorized redirect on the Google client (a deployment step).
-- **Landing.**
-  - On a door, the landing is always the door's app.
-  - On the Desk, the landing is the Desk. The exception is a person who has no Desk
-    capability but can open a door's app. They are handed to that door. The handoff
-    is a one-time, one-minute code that names the target door and mints a *new*
-    session for it. The door's `/featherbase/oauth-callback` redeems it. Unlike #150's
-    handoff, it is not bound to the minting host's cookie, because that cookie cannot
-    cross hosts. It is bound to the target door instead.
-  - This replaces `landingFor`'s role check, `capabilities.report` and
-    `ReportOnlyShell`.
-- **Emails** keep linking to `SITE_URL` (Q3). A staff member who follows an invitation
-  or a reset link signs in on the Desk address and is handed to Feather Dash. The
-  link does not have to guess the person's door, and `SITE_URL` stays the one origin
-  the preflight requires.
+- **One sign-in per address.** The sid cookie stays host-only. Signing out on one
+  address ends only that address's session. Rejected: a parent-domain cookie, which
+  exposes a live credential to every subdomain.
+- Password, StyleHR (delegated) and sign-up are same-origin and work unchanged.
+- **Google** uses `<that address>/api/oauth/google/callback`. The OAuth `state`
+  records the address, and a callback arriving elsewhere is refused. Each address
+  must be registered on the Google client (a deployment step).
+- **Emails link to the address marked for emails** (dash, owner decision 26-Oct-2026).
 
-**What a System Manager sees on dash.** The same Feather Dash, under the same rules.
-Their report covers *their own* scope. An administrator role is never read as all
-stores (`app-roles-store-access`), so a System Manager with no position sees "no
-sections yet". They also get the "Open the Desk" link. Checking what a particular
-manager sees ("see as this person") is a separate feature with its own audit
-questions. It is out of scope here and filed as a follow-up.
+**Landing, and the hand-off in both directions.** After sign-in, a person lands
+where they can do something:
+
+1. On an app's address, if they can open that app: they stay.
+2. Otherwise, if they can use Admin: they are handed to the Admin address.
+3. On the Admin address, if they cannot use Admin but can open an app that has an
+   address: they are handed to that address.
+4. Otherwise: the no-access page, which says who to ask.
+
+The hand-off is a one-time, one-minute code that names the target address and
+mints a *new* session for it, redeemed at that address's `/featherbase/oauth-callback`.
+It is bound to the target address, because the minting host's cookie cannot cross
+hosts. This replaces `landingFor`'s role check, `capabilities.report` and
+`ReportOnlyShell`.
+
+**One top bar on every address** (owner decision 26-Oct-2026). The bar becomes one
+shared platform component, replacing the separate headers of the report page, the
+Portal and the restricted shell.
+
+- The same frame on every address. The right-hand side is the theme toggle and the
+  **Account** menu, which holds **Sign-in methods** and **Log out**.
+- On the Admin address: "Featherbase Admin", the Admin menus and the notification
+  bell.
+- On an app's address:
+  - the app's name;
+  - no Admin menus and no app switcher;
+  - **"Open Admin"**, shown only to people who can use Admin;
+  - the app's declared bar controls (E8), such as Feather Dash's store picker;
+  - no bell until the app sends notifications.
+- #309 rejected a *package-chosen* presentation mode. Here the *address*, an
+  instance setting, picks the contents.
+- **Branding.** `/api/brand` answers with the opened app's title on an app's
+  address. The login page and document title use it.
+
+**What a System Manager sees on dash.** If they cannot open Feather Dash, they are
+handed to Admin (rule 2). If they can, they get their *own* scope (an administrator
+role is never all stores), plus "Open Admin". "See as this person" is a separate
+feature (follow-up).
 
 ### D4. Roles: the app declares what it needs; people hold jobs
-
-**Feather Dash declares three app roles in its manifest:**
 
 | App role | Lets a person |
 |---|---|
@@ -363,328 +324,267 @@ questions. It is out of scope here and filed as a follow-up.
 | Feather Dash Section Editor | raise change requests for sections in their own scope |
 | Feather Dash Section Reviewer | see every open request and apply or reject it |
 
-**People are never given these roles by hand.** A person holds jobs (Store Manager,
-Floor Manager, Department Manager, Team Leader), which the system grants from current
-`position` rows (#392, #449). A person may also hold function roles, such as
-Data Quality Manager or System Manager. An **app-role binding** says which jobs and
-roles carry each app role:
-
-- **The bindings Table.** A new platform security Table, `App Role Binding` (app
-  role, granted through role). Only a System Manager writes it. The release preflight
-  refuses a binding to `All` or `Guest`.
-- **Manifest defaults.** `"roleDefaults": { "Feather Dash Reader": ["Store Manager", "Floor Manager", "Department Manager", "Team Leader"], "Feather Dash Section Editor": [same], "Feather Dash Section Reviewer": ["Data Quality Manager"] }`.
-  The defaults are written as binding rows at install time. After that, an
-  instance's System Manager may change them, and an upgrade never re-imposes them.
-  The scheduled job's cadence works the same way. Widening the audience (say, Staff
-  later) is therefore an instance decision, not an app release. The upgrade planner's
-  "never widen a grant" rule still holds, because a binding is not a package grant.
-- **The role check.** Both role-policy checks (`readRoles`/`actionRoles`) and Table
-  permissions treat a person as holding an app role if they hold it directly or hold
-  any role bound to it. The check runs fresh on every request.
-- **Answering #392's question.** "What can a Store Manager do?" is now one query over
-  the bindings. A person's role list shows jobs, and the app roles appear only as
-  what each job carries.
+- **People never hold these by hand.** An **Admin-editable setting binds jobs and
+  roles to app roles** (owner decision 26-Oct-2026). It is a security Table, `App
+  Role Binding`, written by a System Manager only. The release check refuses a
+  binding to `All` or `Guest`.
+- **Seeded from the app's suggestions.** `"roleDefaults"` in the manifest is written
+  as binding rows at install, once. An upgrade never re-imposes it, so widening the
+  audience is an instance decision, not an app release. The planner's "never widen a
+  grant" rule still holds, because a binding is not an app grant.
+- **The role check** treats a person as holding an app role if they hold it directly
+  or hold any role bound to it, checked fresh on every request.
 - **Rows come from scope, never from roles.** A Team Leader and a Store Manager hold
   the same Reader role and see different rows.
+- **A stand-in until the roster lands.** Before stage C, no jobs exist, so the
+  binding is `Sales Target Viewer → Feather Dash Reader`. The roughly 40 trial users
+  keep access with no edits. Everything else in the app is built and tested against
+  the setting, so stage C changes only the setting's rows.
 
-**Before stage C.** No jobs exist yet, so the default binding is
-`Sales Target Viewer → Feather Dash Reader`. The roughly 40 trial users keep access
-with no role edits. Stage C replaces it with the job bindings and deletes
-`Sales Target Viewer`.
-
-### D5. Section-data editing: requests in the app, writes by a reviewer
-
-**The section data a manager can affect, after #449:**
-
-| Table (#449) | What a manager may ask to change | Never |
-|---|---|---|
-| `section` | floor, line of business, "this section's list is confirmed" | create or delete a section, rename it, change its store |
-| `section_subcategory` | move a subcategory into or out of one of their sections, or mark the mapping wrong | edit mappings of sections outside their scope |
-| `position` (Staff rows only) | add or end a Staff placement in one of their sections | any manager's position (SM, FM, DM, TL), their own position |
-
-All three Tables decide scope. They are security Tables (#437): only a System Manager,
-or the named writer role #449 settles on (for example Data Quality Manager), writes
-them. **This design adds no exception to that rule.**
+### D5. Section editing: requests in the app, applied by #462's role
 
 **The model.**
 
-- **A request Table.** Feather Dash owns `feather_dash.section_change`. Its columns:
-  store, section, kind (`confirm_section`, `move_subcategory_in`,
-  `move_subcategory_out`, `add_staff`, `end_staff`, `correct_section_detail`, `note`),
-  subject (a subcategory or a person), proposed value, reason, status (`open`,
-  `applied`, `rejected`, `withdrawn`), decided by, decided at, decision note.
-- **Raising a request.** Action `request_section_change`. Policy `person_scope`,
-  actionRoles `[Feather Dash Section Editor]`. The payload names store and section,
-  and the platform refuses any section outside the caller's scope (E1):
-  - a Team Leader or Department Manager gets their named sections;
-  - a Floor Manager gets every section on their floor;
-  - a Store Manager gets the whole store.
+- **A request Table**, `feather_dash.section_change`. Columns:
+  - store, section;
+  - kind: `confirm_section`, `move_subcategory_in`, `move_subcategory_out`,
+    `add_staff`, `end_staff`, `correct_section_detail`, `note`;
+  - subject, proposed value, reason;
+  - status: `open`, `applied`, `rejected`, `withdrawn`;
+  - decided by, decided at, decision note.
+- **Raising a request.** Action `request_section_change`, policy `person_scope`, for
+  the Section Editor. A section outside the caller's scope is refused (E1). A move
+  between two sections names both. It is accepted if *either* is in scope, and the
+  reviewer sees both. Requesters read their own requests and withdraw only open ones.
+- **Deciding a request.** Action `decide_section_change`, for the Section Reviewer.
+  Applying writes the master rows *as the reviewer*, through the normal save path,
+  so version history and #449's "imported rows remember human edits" keep the change
+  across later imports.
+- **The reviewer is not a System Manager** (owner decision 26-Oct-2026). The reviewer
+  role is bound to #462's delegated role, which may write the roster tables without
+  System Manager's other powers.
+- **Stage D waits for #462** (owner decision 26-Oct-2026). This supersedes the
+  earlier interim of a System Manager applying requests: no request is ever applied
+  by a System Manager.
+- **What the screens show.** "My sections" lists each section in scope with its
+  subcategories, each marked *confirmed* or *assumed*, plus open requests. That
+  status rides on the scope shape (E1), so managers need no read grant on the master
+  Tables. The reviewer page lists every open request, grouped by store.
 
-  A move between two sections names both. It is accepted if *either* section is in
-  the requester's scope, and the reviewer sees both sides. Requesters read their own
-  requests (`own_rows_only`). They withdraw a request only while it is open.
-- **Deciding a request.** Action `decide_section_change`. Policy `table`, actionRoles
-  `[Feather Dash Section Reviewer]`. Applying a request writes the master rows *as
-  the reviewer* through the normal save path. #437's writer check passes only
-  because the reviewer holds the writer role. Version history and #449's "imported
-  rows remember human edits" keep the change across later imports. The request row
-  records the decision. To do this, the manifest declares the three master Tables in
-  `actions.tables` with reviewer write grants. The platform already allows a declared,
-  permissioned, non-owned instance Table, and refuses another app's Tables.
-- **What the screens show.** Feather Dash's "my sections" page lists each section in
-  scope with its subcategories, each marked *confirmed* or *assumed* (the warehouse
-  epic's item A4), plus any open requests. The data comes from E1: from stage D, each
-  scope entry also carries the section's and each mapping's confirmation status, so
-  managers need no read grant on the master Tables. The reviewer page lists every
-  open request, grouped by store.
+**Rejected:** direct writes by managers (a subcategory move changes someone else's
+scope); Admin grants plus Data Scope rows (they cannot express "sections your
+position names", and they would hand managers Admin screens they do not need).
 
-**Rejected:**
+### D6. The report page: the Dive is the report
 
-- **Direct writes by managers.** This needs a hole in #437. A subcategory move also
-  changes *another* section's scope, which belongs to another person.
-- **Desk grants plus Data Scope rows.** Data Scope restricts by a value list on one
-  Table. It cannot express "sections your position names, and the subcategories
-  under them". It would also hand managers the Desk.
+(Owner decisions 26-Oct-2026.) Feather Dash embeds **any** Dive a client
+configures, and Dives keep changing. So nothing in the app copies a Dive's layout.
 
-Q2 asks the owner to confirm the review step.
+- **The Dive is the one standard visual.** No Featherbase table sits beside it or in
+  front of it.
+- **Cached numbers inside the Dive.** When the report definition declares a cached
+  dataset, Feather Dash adds the reader's cached rows to the embed session's
+  `initial_state` under one documented key, `cached`, with the refresh time. The
+  Dive shows them at once while its own queries load (`live.data ?? cached`),
+  labelled "Cached · refreshed 05:49".
+- **The reader chooses when to see live numbers.** When the Dive's queries return,
+  the Dive shows "Live numbers are ready · Show them". The screen never changes
+  under someone reading it. Only one set of numbers shows at a time.
+- **Opt-in, so "any Dive" holds.** A Dive that ignores `cached` loads as today.
+  Keeping the cached shape equal to the live shape is the Dive author's job, and both
+  are reviewed together in the client's repository. The key is part of the
+  extension-point catalogue.
+- **Budget.** MotherDuck caps `initial_state` at 64 KB. Only the Month to date tab
+  is cached (the tab the Dive opens on). If a reader's cached rows exceed 56 KB, no
+  cache is sent and the Dive loads normally. **A cache is never truncated**, because
+  a partial cache would look like a total.
+- **One timestamp line, the same wording in both states:** "Data to 25-Oct-2026 ·
+  refreshed 05:49 IST" for cached, "… · fetched 10:32 IST" for live.
+- **The generic quick view** (a plain Shop Floor table built from the report
+  definition) is shown **only when the Dive cannot load**: not set up, or
+  unreachable. It is clearly labelled as cached.
+- What remains of the wait (session and frame, 1.7–2.5 s measured) shows as
+  "Opening your report…".
+- The store picker moves into the top bar (E8).
+- **Retires** today's fold-away quick table, whose bug was folding when the session
+  was *requested* rather than when the Dive had *drawn*.
 
-### D6. Packaging, versions, install and upgrade
+### D7. Packaging, versions, install and upgrade
 
-**The package.** `runtime-apps/feather-dash/`:
-
-- `package.json`, with version `1.0.0` at first install;
-- `featherbase.json`, the manifest (sketch below);
-- `src/` (client: Vite + React; server: `src/server.ts` bundled to `dist/server.mjs`);
-- `dist/client`.
-
-The client uses the Shop Floor tokens and components. It imports them at build time
-from a small workspace package extracted from `apps/web`, so the design guards apply
-to it as well. Tasker's current copy is not repeated.
+**The app.** `runtime-apps/feather-dash/` in this repository: `package.json`
+(version `1.0.0` at first install), `featherbase.json`, `src/` (client: Vite +
+React; server: `src/server.ts` bundled to `dist/server.mjs`), `dist/client`. The
+client uses the Shop Floor tokens and components, imported at build time from a
+small workspace package extracted from `apps/web`, so the design guards apply to it.
 
 ```json
 {
-  "manifestVersion": 1, "apiVersion": 1,
+  "manifestVersion": 1, "platformVersion": "2026-10",
   "name": "feather_dash", "title": "Feather Dash",
   "server": "dist/server.mjs", "client": "dist/client",
   "entryTable": "feather_dash.section_change",
   "roles": ["Feather Dash Reader", "Feather Dash Section Editor", "Feather Dash Section Reviewer"],
-  "roleDefaults": { "Feather Dash Reader": ["Sales Target Viewer"] },
-  "settings": [{ "name": "dive_id", "required": true }, { "name": "dive_version", "required": true },
-               { "name": "embed_service_account", "required": true }],
+  "roleDefaults": { "Feather Dash Reader": ["Store Manager", "Floor Manager", "Department Manager", "Team Leader"] },
+  "settings": [{ "name": "dive_id", "required": false }, { "name": "dive_version", "required": false },
+               { "name": "embed_service_account", "required": false }],
   "secrets": ["MOTHERDUCK_TOKEN"],
   "frameOrigins": ["https://embed-motherduck.com"],
-  "datasets": { "sales_target_mtd": { "columns": ["…"], "keys": ["plant_code", "hierarchy_code"] } },
-  "reads": { "version": 1, "tables": ["feather_dash.section_change"], "operations": {
-    "me":            { "policy": { "kind": "person_scope", "readRoles": ["Feather Dash Reader"], "actionRoles": [] }, "authorization": { "kind": "generic" } },
-    "report":        { "policy": { "kind": "person_scope", "readRoles": ["Feather Dash Reader"], "actionRoles": [] }, "authorization": { "kind": "generic" } },
-    "embed_session": { "policy": { "kind": "person_scope", "readRoles": ["Feather Dash Reader"], "actionRoles": [] }, "authorization": { "kind": "generic" }, "outbound": true },
-    "my_sections":   { "policy": { "kind": "person_scope", "readRoles": ["Feather Dash Section Editor"], "actionRoles": [] }, "authorization": { "kind": "generic" } }
-  } },
-  "actions": { "version": 2, "tables": ["feather_dash.section_change", "section", "section_subcategory", "position"], "operations": {
-    "request_section_change": { "policy": { "kind": "person_scope", "readRoles": [], "actionRoles": ["Feather Dash Section Editor"] }, "scope": { "kind": "request" }, "authorization": { "kind": "generic" } },
-    "decide_section_change":  { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
-  } },
-  "tables": [{ "name": "feather_dash.section_change", "label": "Section change request", "columns": ["…"] }],
-  "permissions": ["…own-rows create/read for Section Editor; read/write for Section Reviewer; reviewer write on the three master Tables…"]
+  "reportDefinition": { "columns": ["…named, typed, money or not…"], "keys": ["store", "item"] },
+  "bar": [{ "picker": "Store", "options": "me", "sets": "store" }],
+  "reads": { "…": "me, report, embed_session (outbound), my_sections — policy person_scope" },
+  "actions": { "…": "request_section_change (person_scope), decide_section_change (table)" },
+  "tables": [{ "name": "feather_dash.section_change", "…": "…" }],
+  "permissions": ["…own-rows create/read for Section Editor; read/write for Section Reviewer; reviewer write on the roster Tables…"]
 }
 ```
 
-The entry Table is the request Table, because a runtime package must own at least
-one Table and name an entry Table. The app catalog shows Feather Dash to anyone who
-can read it, so the Reader role gets an own-rows read grant on it. That grant shows
-nothing until the person raises a request.
+The Dive settings are optional: without them, the app serves the generic quick view.
+The entry Table is the request Table, because an app must own at least one Table.
+The Reader gets an own-rows read on it, which shows nothing until the person raises
+a request.
 
-**Versions.**
+**Versions.** Code-only changes are patch or minor releases with an empty migration.
+A new optional column is an `addColumn` migration. A new Table or a wider grant is
+refused by the upgrade planner, so **1.0.0 already declares the request Table and
+every grant stage D needs**.
 
-- Code-only changes are patch or minor versions with an empty migration
-  (`operations: []`).
-- A new optional column is an `addColumn` migration.
-- A new Table or a wider grant is refused by the upgrade planner. So **1.0.0 already
-  declares the request Table and every grant that stage D needs**, even though stage
-  B ships no section screens. Extending the planner to add Tables is deliberately
-  left out of this design.
+**Delivery.** The Dockerfile builds `runtime-apps/feather-dash` as it builds Tasker.
+The image also ships every version installed on any instance (the predecessor
+pattern). `FEATHERBASE_APP_PATHS` lists them, and E7 turns a missing version into a
+refused release. **Nothing from a client's repository enters this one**: #310's
+Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
+code, must be dropped from that PR.
 
-**Delivery.**
+**Dev and prod.** Prod auto-deploys from `main` (`docs/DEPLOY.md:881` still says it
+deploys a `production` branch; that line is stale and is corrected in stage A). The
+design holds either way, because **a deploy never upgrades an app**:
 
-- The Dockerfile builds `runtime-apps/feather-dash` as it builds Tasker.
-- The image also ships every version that is currently installed on any instance
-  (the predecessor-fixture pattern of `runtime-apps/fixtures/tasker-v2.2`).
-- `FEATHERBASE_APP_PATHS` lists both versions.
-- E7 makes a missing installed version a refused release, not a silent outage.
+1. A merge ships the new artifact.
+2. Discovery keeps serving the installed exact version; nobody sees a change.
+3. On dev, a System Manager runs preview → upgrade → activate and checks the result.
+4. On prod, the same steps run after the owner approves.
 
-**Dev and prod.** The brief says prod auto-deploys from main. `docs/DEPLOY.md` says
-prod deploys the `production` branch, with the owner's approval. The design holds
-either way: **a deploy never upgrades an app.**
+A small CLI wrapper (`cli app:upgrade feather_dash <version>`) prints the plan and
+runs the three calls, so the unavailable window stays short and the steps cannot run
+out of order.
 
-1. **Merge.** A merge to main ships the new artifact to an instance.
-2. **Nothing changes.** Discovery keeps serving the installed exact version, and
-   users see no change.
-3. **Upgrade on dev.** A System Manager runs preview → upgrade (plan ID) →
-   activate on dev, and checks the result.
-4. **Upgrade on prod.** The same steps on prod, after the owner approves (prod
-   receives nothing unapproved).
+**Install, once per instance.** Install the app, then install the client's instance
+setup (report definition, settings, bindings), then add the address. Dev first;
+prod after approval.
 
-Between upgrade and activation the app is unavailable for seconds. A small CLI
-wrapper (`cli app:upgrade feather_dash <version>`) prints the plan and runs the three
-calls, so the window stays short and the steps cannot be done out of order.
+### D8. Migration: four stages
 
-**Install.** Once per instance, by a System Manager: install, set the settings, add
-the front door. Dev first, then prod after approval.
-
-### D7. Migration: four stages, each reversible until its clean-up
-
-**Stage A: front door around today's page.** Platform only. No package yet.
+**Stage A: addresses and the shared bar, around today's page.** Platform only.
 
 - *Build:*
-  - door config and host matching;
-  - the door brand on `/api/brand` and the login page;
-  - the door-host redirects;
-  - Google `redirect_uri` per door;
-  - the cross-address handoff;
-  - door landing.
-- *Interim target:* while no app exists, a door's target is the built-in report path.
-  `"app": "feather_dash"` resolves to `/featherbase/sales-target` until the package
-  is installed, and the existing report page renders inside a door-branded
-  `ReportOnlyShell`. This is the only interim behaviour in the design, and stage B
-  deletes it.
-- *Live safety:* the trial address keeps working, and the Desk address is unchanged.
-- *Rollback:* remove the `front_doors` value.
+  - `INSTANCE_ADDRESSES` replaces `SITE_URL`, with release checks;
+  - host matching and the app-address redirects;
+  - per-address brand and Google `redirect_uri`;
+  - the hand-off in both directions, and landing;
+  - the shared top bar (Account menu with Sign-in methods, "Open Admin");
+  - the `DEPLOY.md` corrections.
+- *Interim target:* until the app is installed, an address that opens `feather_dash`
+  serves today's report page inside the shared bar. This is the only interim
+  behaviour, and stage B deletes it.
+- *Live safety:* the trial address keeps working, and the Admin address is unchanged.
+- *Rollback:* restore the previous address list.
+- *Before prod:* #487 (the client seed pack and runbook leave this repository).
 
-**Stage B: move the code into the package.**
+**Stage B: Feather Dash as a generic app.**
 
-- *Build:*
-  - the platform pieces: E1 with today's derivation moved verbatim, E2, E3, E4, E5
-    and E7;
-  - D4's binding mechanism with the `Sales Target Viewer` default;
-  - Feather Dash 1.0.0 with page parity.
-- *Install and check on dev:*
-  - Install the package on dev *beside* the core page.
-  - Run a **parity check** on a restored dev snapshot. For every person with a scope
-    today, the app's `me` and `report` answers must equal the core endpoints' answers
-    (same scope, same rows, same totals), and the embed initial state must be
-    identical.
-  - Then the door target switches to the installed app, and the trial runs on it.
-- *Promote:* after the owner's approval, the same steps run on prod.
-- *Clean up:* a core release deletes the core page and route, `/api/sales_target/*`,
-  `sales-target*.ts`, `datasets/sales-target-mtd.ts`, the old snapshot tables (by
-  migration), `capabilities.report`, `landingFor` and `ReportOnlyShell`. The repo's
-  no-compatibility-shim rule (CLAUDE.md) is satisfied: the parallel window is a
-  rehearsed cut-over for the live trial, closed by a named step, not a permanent
-  alias.
-- *Rollback until clean-up:* point the door back at the core page.
+- *Build:* E1 (today's derivation moved unchanged into the provider), E2, E3, E4,
+  E5, E7, E8, E9, D4's bindings with the stand-in, and Feather Dash 1.0.0 with
+  page parity plus the cache-in-Dive contract (D6).
+- *In the client's repository:* the report definition (today's query, moved out of
+  this repository), the Dive settings, the binding stand-in, and the Dive's few lines
+  for `cached` and the live-ready notice.
+- *Check on dev:* install beside the platform page. On a restored dev snapshot, for
+  every person with a scope today, the app's `me` and `report` answers must equal the
+  platform endpoints' (same scope, rows and totals), and the embed's scope state must
+  be identical. Then the address switches to the app.
+- *Promote:* the same steps on prod after the owner's approval.
+- *Clean up:* a platform release deletes the core page and route,
+  `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, the old
+  snapshot tables (by migration), `capabilities.report`, `landingFor`,
+  `ReportOnlyShell`, the stage A interim target, and the client's table names in
+  `security-tables.ts`. The parallel window is a rehearsed cut-over closed by a
+  named step, not a compatibility shim.
+- *Rollback until clean-up:* point the address back at the platform page.
 
 **Stage C: adopt the roster redesign** (needs #449 and #392).
 
-- *Build:*
-  - the person-scope provider reads `position`, `section` and `section_subcategory`;
-  - job roles are granted from current `position` rows;
-  - app-role bindings move from `Sales Target Viewer` to the manager jobs;
-  - `Sales Target Viewer` and `Sales Target Assignment` are removed (#449).
-- *Check:* #449's own per-person parity check (scope before and after) is the gate.
-- *App:* Feather Dash does not change, which proves the E1 boundary.
-- *Rollback until clean-up:* the provider's previous body. The nine tables are
-  deleted only after parity holds on prod.
+- The scope provider reads `position`, `section`, `section_subcategory`, wherever
+  #449 places them. #449's per-person parity check, on the scope shape, is the gate.
+- Job roles are granted from current `position` rows. The binding setting moves from
+  `Sales Target Viewer` to the manager jobs. `Sales Target Viewer` and
+  `Sales Target Assignment` are removed.
+- Feather Dash does not change, which proves the E1 boundary.
 
-**Stage D: section editing.**
+**Stage D: section editing** (needs #462, and C).
 
-- *Build:* Feather Dash 1.1.0, a code-only upgrade. It adds the my-sections page, the
-  request and decide actions, and the reviewer page. The Table and grants were
-  declared in 1.0.0.
-- *Live safety:* the report is untouched.
-- *Rollback:* do not activate. An upgraded but unactivated app is unavailable, so the
-  real rollback is "do not upgrade prod until dev is proven".
+- Feather Dash 1.1.0, a code-only upgrade: my-sections page, the request and decide
+  actions, and the reviewer page. The Table and grants were declared in 1.0.0.
+- The Section Reviewer role is bound to #462's delegated role.
+- *Rollback:* do not activate; dev proves it before prod is upgraded.
 
-### D8. Fit with the security rules (#437, #441, #443)
+### D9. Fit with the security rules (#437, #441, #443)
 
-- **System-written audit.** Access Log rows (report views, refusals) and Version
-  history are platform-written. The package gets `recordView`, not a write handle on
-  audit Tables.
-- **Security Tables.** `App Setting` and `App Role Binding` join `SECURITY_TABLES`.
-  The package never writes a security Table on its own authority. The reviewer path
-  writes master Tables only as a person whose own rights allow it.
-- **Release preflight** gains three checks: a front door's validity, no app-role
-  binding to `All`/`Guest`, and E7.
-- **Scope.** Scope still fails closed. An ambiguous employee code still yields no
-  scope, and a refusal reveals nothing.
-- **Snapshot rows** are never a Table, never exported, and read only through a
-  scope-checked read.
+- **System-written audit.** Access Log rows and Version history are
+  platform-written. The app gets `recordView`, not a write handle on audit Tables.
+- **Security Tables.** `App Setting` and `App Role Binding` join them. The app never
+  writes a security Table on its own authority. The reviewer writes roster Tables
+  only as a person whose own rights (#462) allow it.
+- **Release checks** gain: the address list's validity, no app-role binding to
+  `All`/`Guest`, E7, and a warning for a missing required secret.
+- **Scope still fails closed**, and a refusal reveals nothing.
+- **Cached rows sent to the Dive** are the reader's own scope-checked rows, sent to
+  the same service that already holds the warehouse.
 
 ## Risks / Trade-offs
 
-- **Two sign-ins for administrators.** This is accepted. A shared parent-domain cookie
-  is the riskier alternative.
-- **Google needs one redirect per door.** Forgetting it breaks Google sign-in on the
-  door only, so the stage A checklist carries it. Password and StyleHR sign-in are
-  unaffected.
-- **The parallel window in stage B.** The core page and the app coexist for days. The
-  clean-up release is a named task, so the window cannot become permanent.
-- **Trusted code with outbound calls.** E5 runs the handler outside the transaction,
-  so a slow MotherDuck no longer holds locks. A timeout on the embed call stays in
-  the app, as `unreachable`.
-- **The upgrade planner forbids new Tables.** Declaring stage D's Table in 1.0.0 is a
-  small cost. The alternative, teaching the planner additive Tables, is broader
-  platform work with its own review.
-- **Shared design tokens.** Extracting them into a workspace package touches the
-  design-guard tooling. If that slips, the client copies the tokens as Tasker does,
-  and the guard pending list records it.
+- **Two sign-ins for people who use both addresses.** Accepted; the alternative is a
+  shared parent-domain cookie.
+- **Google needs one redirect per address.** Forgetting one breaks Google sign-in on
+  that address only; the stage A checklist carries it.
+- **The scope shape is a contract apps rely on.** It is designed once, carries a
+  platform version, and joins the catalogue.
+- **Instance-supplied SQL** runs against a read-only source the instance already
+  declares, and is reviewed in the client's repository. It never comes from a user
+  at runtime.
+- **The cache depends on the Dive's cooperation.** It is opt-in; without it, the
+  Dive loads as today.
+- **The parallel window in stage B** is closed by a named clean-up task.
+- **Shared design tokens.** If extracting them slips, the client copies the tokens as
+  Tasker does, and the guard's pending list records it.
 
 ## Migration Plan
 
-See D7. The order is A → B → C → D. Dev first at each stage. Prod gets each stage
-only after the owner's approval. Each prod step runs on a restored prod snapshot
-first, with prod's real environment variables, as `docs/DEPLOY.md` requires.
+See D8. The order is A → B → C → D. Dev first at each stage. Prod gets each stage
+only after the owner's approval, rehearsed on a restored prod snapshot with prod's
+real environment variables, as `docs/DEPLOY.md` requires.
 
-## Open Questions
+## Decision log
 
-**Q1. Where does the Feather Dash package's source live?**
+Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
 
-- **A. In this repo, at `runtime-apps/feather-dash`.** It is built into the same image
-  and covered by CI and the design guards. Every instance-specific value (Dive, door
-  address, name) lives in instance config.
-- **B. In the instance owner's private repo.** It is built separately and mounted
-  into the image through `FEATHERBASE_APP_PATHS`.
-- **Recommendation: A.** The report is in this repo today and contains no instance
-  data. The image already bundles runtime apps, and B needs a second build-and-mount
-  pipeline that does not exist yet. The report's SQL names warehouse schemas
-  (`marts.sales…`), which ties it to one warehouse layout. If that is unwelcome in a
-  public repo, choose B.
-
-**Q2. Do managers' section edits go through a reviewer, or apply at once?**
-
-- **A. A request, and a reviewer applies it** (D5).
-- **B. Direct edits within scope,** with the history reviewed afterwards.
-- **C. A mix.** Confirmations and staff placements apply at once; subcategory moves
-  need review.
-- **Recommendation: A.**
-  - It keeps #437's "only a System Manager or the named writer role writes scope"
-    rule intact.
-  - A subcategory move changes another person's scope.
-  - The warehouse epic already plans a Data Review step.
-- B and C each need a narrow, platform-reviewed exception to #437. That exception is
-  possible, but it is a security decision for the owner, not a technical default.
-
-**Q3. Where do emailed links point?**
-
-- **A. `SITE_URL`, then a handoff to the person's door after sign-in** (D3).
-- **B. The door the invited person will use,** decided when the email is sent.
-- **C. A single instance setting,** "address for emailed links", set to the dash
-  address.
-- **Recommendation: A.**
-  - It works whichever link or bookmark a person uses.
-  - It needs no guess about the person's door at invite time, when they may hold no
-    role yet.
-  - `SITE_URL` stays the one origin the preflight requires.
-- C is simplest if every emailed person is staff, but administrators would then land
-  on dash.
-
-**Q4. How does the app say who may use it?**
-
-- **A. Its own app roles, bound to jobs by instance data** (D4), with manifest
-  defaults applied once.
-- **B. The manifest names jobs directly** (`readRoles: ["Team Leader", …]`).
-- **Recommendation: A.**
-  - People still hold only jobs, which is #392's concern.
-  - Widening or narrowing the audience is a System Manager's edit, not a package
-    release. The planner's "upgrades never widen a grant" rule (#437) would make B
-    need a reviewed reinstall for every audience change.
-- B is fewer concepts and could be enough if the audience never changes.
+1. **Code home.** Feather Dash is a generic app in this repository. Each client's
+   report definition, Dive and bindings are private instance setup in the client's
+   repository. Nothing from a client's repository enters this one. (Revises the
+   first answer, "the app's code in the private repository", once the split removed
+   everything private from the app.)
+2. **Scope** is a fixed platform shape with a swappable provider; #449 decides where
+   the roster lives.
+3. **Section edits** are change requests applied by a reviewer who is not a System
+   Manager. The generic role is #462, and stage D waits for it.
+4. **Emails** link to the address marked for emails (dash). Anyone landing on the
+   wrong address is handed to the right one.
+5. **Addresses** are one `INSTANCE_ADDRESSES` list; `SITE_URL` goes.
+6. **App access** is an Admin-editable setting binding jobs to app roles, seeded from
+   the app's suggestions.
+7. **The admin screens are called Admin** (as in #472).
+8. **One shared top bar** on every address; Sign-in methods in the Account menu; apps
+   may declare bar controls now.
+9. **The Dive is the report**, with cached rows inside it and the reader choosing
+   when to see live numbers.
+10. **Platform version**, dated by month, replaces `apiVersion`.
+11. **No sandbox now**, with ADR 0011's three guardrails.

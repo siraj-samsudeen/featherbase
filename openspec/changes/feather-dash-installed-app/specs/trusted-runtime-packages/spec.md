@@ -1,16 +1,27 @@
 ## ADDED Requirements
 
-### Requirement: An app can bring its own report data
+### Requirement: An instance brings its own report to an app
 
-An app SHALL be able to define report data that Featherbase refreshes on a schedule
-and serves to the app's readers. A refresh that fails or looks incomplete SHALL never
-replace the last good copy. Readers SHALL only ever receive the part their own access
-allows.
+An app SHALL be able to accept a report definition from the instance it is installed
+on, so the same app serves different clients' data without changing the app.
+Featherbase SHALL refresh that report on a schedule and serve each reader only the part
+their own access allows.
+
+#### Scenario: Two clients use the same report app
+
+- **WHEN** two instances install the same report app, each with its own report
+  definition
+- **THEN** each instance's readers see their own instance's report, and neither app
+  copy was changed
+
+### Requirement: A failed refresh never replaces the last good copy
+
+A scheduled refresh of an app's report data that fails or looks incomplete SHALL never
+replace the last good copy, and an admin SHALL be able to see why it was refused.
 
 #### Scenario: A half-finished refresh is never served
 
-- **WHEN** a scheduled refresh of an app's report data comes back far smaller than the
-  last good copy
+- **WHEN** a scheduled refresh comes back far smaller than the last good copy
 - **THEN** readers keep getting the last good copy
 - **AND** an admin can see that the refresh was refused, and why
 
@@ -36,6 +47,30 @@ SHALL allow that site on that app's pages and nowhere else.
 - **WHEN** an app that declared an outside report site is opened
 - **THEN** the embedded report shows inside that app
 - **AND** the same site cannot be embedded on any other Featherbase page
+
+### Requirement: An app can add a control to the top bar by declaring it
+
+An app SHALL be able to add a control, such as a picker, to the shared top bar by
+declaring it. Featherbase SHALL draw the control itself, and the control SHALL offer
+only choices the reader is allowed.
+
+#### Scenario: A store picker in the bar
+
+- **WHEN** a manager responsible for two stores opens an app that declared a store
+  picker
+- **THEN** the top bar offers exactly their two stores
+
+### Requirement: An app states the platform version it was built for
+
+Every app SHALL state the platform version it was built for. Featherbase SHALL keep
+running an app on any supported platform version, and SHALL warn before support for
+that version ends.
+
+#### Scenario: An older app keeps working after a platform release
+
+- **WHEN** Featherbase is upgraded and an installed app was built for an earlier,
+  still supported platform version
+- **THEN** the app keeps working as before
 
 ### Requirement: Deploying never silently takes an installed app away
 

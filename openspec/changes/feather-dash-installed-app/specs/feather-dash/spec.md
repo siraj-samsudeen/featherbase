@@ -24,6 +24,30 @@ shows. Asking for any other store SHALL be refused.
   of theirs
 - **THEN** nothing from that store is shown
 
+### Requirement: Numbers show at once, and live numbers wait for the reader
+
+When the report has a recent copy of the numbers, it SHALL show that copy at once,
+labelled with when it was refreshed. When current numbers arrive, the report SHALL
+offer them and switch only when the reader chooses. Only one set of numbers SHALL show
+at a time.
+
+#### Scenario: Live numbers arrive while a manager is reading
+
+- **WHEN** a manager is reading the recent copy and the current numbers arrive
+- **THEN** the report tells them current numbers are ready and keeps showing what they
+  are reading
+- **AND** it switches to the current numbers only when they ask
+
+### Requirement: Every set of numbers says how fresh it is
+
+The report SHALL say, in the same words for the recent copy and the current numbers,
+up to which day the data runs and when it was fetched.
+
+#### Scenario: A manager checks how old the numbers are
+
+- **WHEN** a manager looks at either set of numbers
+- **THEN** they can see the last day the data covers and when it was fetched
+
 ### Requirement: An empty report says why
 
 When the report cannot show figures, it SHALL say why: the person has no sections, the
@@ -58,7 +82,8 @@ it is reviewed.
 
 ### Requirement: A reviewer applies or rejects each request
 
-A reviewer SHALL see every open request and apply or reject it. Applying a request
+A reviewer SHALL see every open request and apply or reject it. The reviewer SHALL be
+someone given that job, not an instance administrator by default. Applying a request
 SHALL change the section data, keep a record of who changed what and when, and survive
 later imports of the same data.
 

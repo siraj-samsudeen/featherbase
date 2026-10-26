@@ -1,73 +1,93 @@
 ## ADDED Requirements
 
-### Requirement: An address can open one app directly
+### Requirement: Each address opens one thing
 
-An administrator SHALL be able to point a web address at one installed app. A
-signed-in person who opens that address, called the app's front door, SHALL go
-straight into that app under the app's own name, without the admin Desk's menus.
+An administrator SHALL be able to say, for each web address of an instance, what it
+opens: the Admin screens or one installed app. A signed-in person who opens an app's
+address SHALL go straight into that app, under the app's own name, without the Admin
+menus.
 
 #### Scenario: A manager opens the report address
 
 - **WHEN** a Team Leader opens the Feather Dash address and signs in
 - **THEN** they land in Feather Dash, which carries the Feather Dash name
-- **AND** no admin menu or app switcher is shown
+- **AND** no Admin menu is shown
 
-#### Scenario: The Desk is not reachable through the app address
+#### Scenario: Admin pages are not reachable through an app's address
 
-- **WHEN** someone types an admin page's path onto the Feather Dash address
+- **WHEN** someone types an Admin page's path onto the Feather Dash address
 - **THEN** they are taken back to Feather Dash instead
 
-### Requirement: The admin address stays the Desk
+### Requirement: Emails use one chosen address
 
-An address that is not a front door SHALL keep working exactly as before. A person
-who uses the Desk keeps the Desk there.
+Every link Featherbase sends by email SHALL use the one address the administrator
+marked for emails.
 
-#### Scenario: An administrator keeps the Desk
+#### Scenario: An invitation opens the staff address
 
-- **WHEN** a System Manager signs in on the Featherbase address
-- **THEN** they land in the Desk as before
+- **WHEN** the Feather Dash address is marked for emails and a manager is invited
+- **THEN** the link in their invitation opens the Feather Dash address
+
+### Requirement: People are handed to the address that has something for them
+
+After signing in, a person SHALL stay on the address they used if it has something
+for them. Otherwise they SHALL be taken, already signed in, to an address that does.
+A person with nothing on any address SHALL be told who to ask.
+
+#### Scenario: An administrator follows an emailed link
+
+- **WHEN** a System Manager who cannot open Feather Dash follows an emailed link to
+  the Feather Dash address and signs in
+- **THEN** they arrive in the Admin screens on the Featherbase address without signing
+  in again
+
+#### Scenario: A manager signs in on the Admin address
+
+- **WHEN** a manager who has nothing in the Admin screens signs in on the Featherbase
+  address
+- **THEN** they arrive in Feather Dash on its own address without signing in again
 
 ### Requirement: Sign in on the address you are on
 
-Sign-in SHALL work on every address, with the page carrying that address's name.
-Signing in with Google SHALL bring the person back to the address where they started.
+Sign-in SHALL work on every address, with the page carrying the name of what that
+address opens. Signing in with Google SHALL bring the person back to the address where
+they started.
 
 #### Scenario: Google sign-in returns to the app address
 
 - **WHEN** a manager starts Google sign-in on the Feather Dash address
-- **THEN** they come back signed in on the Feather Dash address, not on the Desk's
+- **THEN** they come back signed in on the Feather Dash address
 
 ### Requirement: Each address keeps its own sign-in
 
-Signing in on one address SHALL NOT sign the person in on another address. Signing
-out on one address SHALL end only the sign-in on that address.
+Signing in on one address SHALL NOT sign the person in on another. Signing out on one
+address SHALL end only the sign-in on that address.
 
-#### Scenario: Signing out of the app leaves the Desk alone
+#### Scenario: Signing out of the app leaves the Admin screens alone
 
 - **WHEN** a System Manager signed in on both addresses signs out of Feather Dash
-- **THEN** their Desk tab stays signed in
+- **THEN** their Admin tab stays signed in
 
-### Requirement: People without Desk access are taken to their app
+### Requirement: One top bar everywhere
 
-A person who has nothing to use in the Desk but can open an app with a front door,
-and who signs in on the Desk's address, SHALL be taken to that front door already
-signed in.
+Every address SHALL show the same top bar, with the person's account menu in the same
+place, holding their sign-in methods and sign-out. On an app's address the bar SHALL
+carry the app's name, and a way to open the Admin screens only for people who can use
+them.
 
-#### Scenario: A manager follows an invitation email
+#### Scenario: A manager manages their sign-in methods from Feather Dash
 
-- **WHEN** a manager follows the link in their invitation email, which opens the
-  Desk's address, and signs in
-- **THEN** they arrive in Feather Dash on its own address without signing in again
+- **WHEN** a manager in Feather Dash opens their account menu
+- **THEN** they can reach their sign-in methods and sign out, as they would in the
+  Admin screens
 
 ### Requirement: The address changes the look, not the access
 
-A front door SHALL NOT grant or remove anything. What a person may see or do SHALL be
-decided the same way on every address. Someone who can also use the Desk SHALL get a
-way to reach it from the app.
+An address SHALL NOT grant or remove anything. What a person may see or do SHALL be
+decided the same way on every address.
 
-#### Scenario: An administrator opens the app address
+#### Scenario: An administrator who reads the report opens the app address
 
-- **WHEN** a System Manager who holds no section opens Feather Dash
+- **WHEN** a System Manager who can open Feather Dash but holds no section opens it
 - **THEN** Feather Dash tells them they have no sections, rather than showing every
   store's figures
-- **AND** they have a way to open the Desk
