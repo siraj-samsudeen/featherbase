@@ -66,3 +66,18 @@ is responsible for it or anyone's My Focus (each person's private shortlist).
 - **WHEN** Siraj marks a task urgent
 - **THEN** Shahul also sees it as urgent
 - **AND** neither person's My Focus changes
+
+### Requirement: Choosing people when the team list is hidden
+
+Someone who isn't allowed to see the list of people SHALL still be able to
+make someone responsible for a task, choosing from themselves and anyone
+already responsible for a task, and Tasker SHALL tell them their choices are
+limited and who can widen them.
+
+#### Scenario: A limited people list
+
+- **WHEN** a store colleague who can't see the list of people assigns a task
+- **THEN** they can choose themselves or a teammate already responsible for
+  another task
+- **AND** Tasker tells them the people choices are limited and to ask an
+  administrator for more

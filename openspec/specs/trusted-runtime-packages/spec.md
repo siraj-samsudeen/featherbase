@@ -35,6 +35,12 @@ it holds untouched.
 - **THEN** the save is refused
 - **AND** every row Tasker held before is still there afterward
 
+#### Scenario: A turned-off app can't be opened
+
+- **WHEN** an admin turns Tasker off and a colleague then opens its address
+- **THEN** they are told it is unavailable and that its data is kept
+- **AND** Tasker is no longer in their app catalog
+
 ### Requirement: Re-enabling needs the app's code in place
 
 Turning a disabled app back on SHALL require its code to still be present.
@@ -358,6 +364,123 @@ Pending/obsolete clients SHALL retain existing fail-closed identity behavior.
 - **WHEN** a required scope resolver/product authorizer is absent across restart
 - **THEN** the protected contribution remains unavailable with a diagnostic
 - **AND** restoring the exact artifact restores one registration, not duplicate gates
+
+### Requirement: A failed installation leaves nothing behind
+
+If installing an app fails, Featherbase SHALL leave nothing of it behind — no
+tables, no access and no place in anyone's app catalog — so the admin can fix
+the cause and install it again.
+
+#### Scenario: An app with a broken access rule installs nothing
+
+- **WHEN** an admin installs an app whose access rule names a role that
+  doesn't exist
+- **THEN** the installation is refused
+- **AND** none of the app's tables exist and it is in no one's app catalog
+
+### Requirement: An app can't take a name Featherbase uses itself
+
+Featherbase SHALL refuse to offer an app whose name it already uses for its
+own addresses, such as "featherbase" or "api", so an app can never stand in
+front of Featherbase's own screens.
+
+#### Scenario: A reserved name is refused
+
+- **WHEN** an app is delivered under the name "api"
+- **THEN** Featherbase does not offer it for installation and says the name
+  is reserved
+
+### Requirement: Only administrators manage apps
+
+Installing, turning off, upgrading and inspecting installed apps SHALL be open
+only to administrators. An ordinary member sees only the apps they may open.
+
+#### Scenario: A member can't turn an app off
+
+- **WHEN** an ordinary member tries to turn Tasker off or preview an upgrade
+  of it
+- **THEN** it is refused
+- **AND** Tasker stays on
+
+### Requirement: Customizing an app's table can't change what it is
+
+An admin SHALL be able to adjust how an app's table is presented, such as its
+label, but SHALL NOT be able to change its name, where its data is kept or
+which app it belongs to. A change of that kind already on record SHALL be
+refused rather than applied.
+
+#### Scenario: Relabel, but not rename
+
+- **WHEN** an admin gives one of an app's tables a new label and also tries
+  to rename it
+- **THEN** the new label shows
+- **AND** the rename is refused and the table keeps its name
+
+### Requirement: Access an app grants lasts only while it is on
+
+Access an app gives people to shared Featherbase information, such as reading
+comments, SHALL apply only while that app is on. Turning the app off SHALL
+withdraw that access, unless another app that is still on grants the same.
+
+#### Scenario: Turning off the only app that grants it
+
+- **WHEN** Tasker is the only app letting members read comments and an admin
+  turns Tasker off
+- **THEN** members can no longer read comments
+- **AND** turning Tasker back on gives that access back
+
+### Requirement: Changing an app waits for work already under way
+
+Turning an app off, or applying its upgrade, SHALL wait for saves already under
+way in that app — including the follow-up work they trigger — to finish.
+Anything that starts afterward SHALL see the change.
+
+#### Scenario: Turning an app off during a save
+
+- **WHEN** an admin turns an app off while a save and its follow-up work are
+  still running
+- **THEN** turning off waits until both finish, and what they saved is kept
+- **AND** a save started afterward is refused
+
+### Requirement: An open app from before an upgrade is asked to reload
+
+Once an app's new version is active, a screen still running the previous
+version SHALL be refused when it reads or saves, and told to reload, rather
+than working against data shaped for the new version.
+
+#### Scenario: A stale tab after an upgrade
+
+- **WHEN** a colleague still has the previous version of an app open after an
+  admin upgrades and activates it, and they save a change
+- **THEN** the save is refused and they are asked to reload the app
+
+### Requirement: An upgrade never goes backward or rewrites its history
+
+Featherbase SHALL refuse an upgrade to the version already installed or an
+older one, and SHALL refuse a new version that describes an upgrade step
+already applied differently from how it was applied.
+
+#### Scenario: A downgrade is refused
+
+- **WHEN** an admin previews moving an app to an older version, or to the
+  version already installed
+- **THEN** the preview is refused and nothing changes
+
+#### Scenario: Rewritten history is refused
+
+- **WHEN** a new version describes an already-applied upgrade step
+  differently
+- **THEN** its preview is refused
+
+### Requirement: A turned-off app stays off through an upgrade
+
+Upgrading an app that is turned off SHALL leave it off once the new version is
+activated; the admin turns it back on separately.
+
+#### Scenario: Upgrading a turned-off app
+
+- **WHEN** an admin upgrades and activates an app that was turned off
+- **THEN** it stays off until the admin turns it on
 
 ## Deferred
 

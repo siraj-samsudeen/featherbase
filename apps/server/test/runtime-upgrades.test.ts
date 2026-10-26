@@ -345,3 +345,46 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }); await rm(next, { recursive: true, force: true }) }
   })
 })
+
+describe('An upgrade never goes backward', () => {
+  test('previewing an upgrade to the version already installed is refused and changes nothing', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    const [{ package_version: installed }] = await sql`select package_version from installed_app where name = 'other'`
+    await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: installed }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('newer') })
+    expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)
+      .toEqual([{ package_version: installed, activation_pending: false }])
+  })
+})
+
+describe('explicit_runtime_policy_upgrade', () => {
+  test('a policy written into the installed version, without a new version, makes the app unavailable until the exact artifact returns', async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.relabel-'))
+    const header = { 'X-Featherbase-App-Version': 'tasker@2.0.0' }
+    try {
+      await cp(resolve('../..', 'runtime-apps/fixtures/tasker-v2'), copy, { recursive: true })
+      expect(await discoverPackages([copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+      const file = resolve(copy, 'featherbase.json')
+      const original = await readFile(file, 'utf8')
+      const manifest = JSON.parse(original)
+      const policy = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
+      manifest.actions = { version: 2, operations: { promote: policy, delete_accidental: policy }, tables: manifest.actions.tables }
+      await writeFile(file, JSON.stringify(manifest))
+      await discoverPackages([copy])
+      await loadInstalledApps()
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(403)
+      const promote = await admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',
+        headers: { ...header, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'relabelled', payload: { row_id: 'x', updated_at: 'y' } }) })
+      expect(promote.status).toBe(403)
+      expect((await admin.get<{ installed: unknown[] }>('/api/apps')).installed)
+        .toContainEqual(expect.objectContaining({ name: 'tasker', available: false, active: false }))
+      await writeFile(file, original)
+      await discoverPackages([copy])
+      await loadInstalledApps()
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+})

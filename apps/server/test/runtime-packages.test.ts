@@ -398,3 +398,42 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await sql`select operation from activity_log where operation like 'app_grant_withdrawn tasker@2.3.0: All on Person%'`).toHaveLength(1)
     })
 })
+
+describe('Removing an app isn’t offered yet', () => {
+  test('removing an app that has its own code is refused, pointing to disable, and nothing is removed', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'keep-me', quantity: 43 } })
+    await expect(admin.post('/api/uninstall_app', { name: 'other' }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('Use disable') })
+    expect(await sql`select name from installed_app where name = 'other'`).toEqual([{ name: 'other' }])
+    expect(await sql`select name from table_def where name = 'other.task'`).toEqual([{ name: 'other.task' }])
+    expect(await admin.get('/api/table/other.task/keep-me')).toMatchObject({ quantity: '43' })
+  })
+})
+
+describe('App data is reachable only through the app', () => {
+  test('a generic dashboard count or chart over a turned-off app’s table is refused, and its rows stay', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted', quantity: 37 } })
+    await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+    await expect(admin.post('/api/dashboard/count', { table: 'other.task' })).rejects.toMatchObject({ status: 403 })
+    await expect(admin.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' })).rejects.toMatchObject({ status: 403 })
+    expect(await sql`select quantity from other.task where row_id = 'counted'`).toEqual([{ quantity: '37' }])
+  })
+})
+
+describe('Only administrators manage apps', () => {
+  test('an ordinary member can neither install, turn off, nor preview an upgrade of an app', async ({ admin, createUser }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    const member = await createUser({ email: 'not-a-manager@example.com', roles: ['All'] })
+    await expect(member.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 403 })
+    expect(await sql`select name from installed_app where name = 'other'`).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    await expect(member.post('/api/set_app_enabled', { name: 'other', enabled: false })).rejects.toMatchObject({ status: 403 })
+    await expect(member.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 403 })
+    await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
+    expect(await sql`select enabled from installed_app where name = 'other'`).toEqual([{ enabled: true }])
+  })
+})

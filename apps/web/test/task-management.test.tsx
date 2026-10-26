@@ -2,8 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
+import { sql } from 'server/src/db'
 import { resolve } from 'node:path'
-import { vi } from 'vitest'
+import { describe, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
@@ -52,6 +53,7 @@ test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ a
     await user.type(capture, 'Review September stock variance{Enter}')
 
     expect(await screen.findByText('Review September stock variance')).toBeInTheDocument()
+    expect(capture).toHaveValue('')
     const rows = (await admin.get(
       '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22project%22%2C%22personal_tasks_owner%22%2C%22assigned_to%22%5D',
     )) as { data: Record<string, unknown>[] }
@@ -738,4 +740,213 @@ test('task_list_surface: every task row exposes the same shared and private cont
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
+})
+
+describe('What the Inbox holds and where a task lives', () => {
+  test('moving an Inbox task into a project takes it out of the Inbox and into that project', async ({ admin }) => {
+    await install()
+    try {
+      const project = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: 'tasker.project', row: { project_name: 'Warehouse review' },
+      })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Order packing tape' } })
+      renderTasker(admin)
+      const user = userEvent.setup()
+
+      const destination = await screen.findByRole('combobox', { name: 'Destination for Order packing tape' })
+      await within(destination).findByRole('option', { name: 'Warehouse review' })
+      await user.selectOptions(destination, `project:${project.row_id}`)
+      await waitFor(() => expect(screen.queryByText('Order packing tape')).not.toBeInTheDocument())
+      await user.click(screen.getByRole('button', { name: 'Warehouse review' }))
+      expect(await screen.findByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+      expect(await screen.findByText('Order packing tape')).toBeInTheDocument()
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Missing tasks drop out of My Focus', () => {
+  test('when the middle of three focused tasks is deleted, My Work keeps the other two in order', async ({ admin }) => {
+    await install()
+    try {
+      const titles = ['First focused count', 'Middle focused count', 'Last focused count']
+      const created: Record<string, unknown>[] = []
+      for (const task_title of titles)
+        created.push(await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title } }))
+      await admin.put('/api/user_settings/Task%20Management%20Focus', { task_ids: created.map((task) => task.row_id) })
+      await admin.delete(`/api/table/tasker.task/${created[1].row_id}?updated_at=${encodeURIComponent(String(created[1].updated_at))}`)
+
+      renderTasker(admin)
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole('button', { name: /My Work/ }))
+      await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2))
+      const cards = screen.getAllByRole('article')
+      expect(cards[0]).toHaveTextContent('First focused count')
+      expect(cards[1]).toHaveTextContent('Last focused count')
+      expect(screen.queryByText('Middle focused count')).not.toBeInTheDocument()
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Tabs for missing projects disappear', () => {
+  test('when the middle of three starred projects is deleted, the other two tabs keep their order', async ({ admin }) => {
+    await install()
+    try {
+      const names = ['Store opening', 'Stock review', 'Warehouse review']
+      const projects: Record<string, unknown>[] = []
+      for (const project_name of names)
+        projects.push(await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name } }))
+      await admin.put('/api/user_settings/tasker.projects', { project_ids: projects.map((project) => project.row_id) })
+      await admin.delete(`/api/table/tasker.project/${projects[1].row_id}?updated_at=${encodeURIComponent(String(projects[1].updated_at))}`)
+
+      const { container } = renderTasker(admin)
+      await screen.findAllByRole('button', { name: 'Warehouse review' }, { timeout: 5000 })
+      const tabs = await waitFor(() => {
+        const element = container.querySelector('[aria-label="Starred projects"]')
+        expect(element).not.toBeNull()
+        return element as HTMLElement
+      })
+      expect(within(tabs).getAllByRole('button').map((tab) => tab.textContent)).toEqual(['Store opening', 'Warehouse review'])
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Saved views stay within their list', () => {
+  test('a view saved for one project never shows matching tasks from another project', async ({ admin }) => {
+    await install()
+    try {
+      const stock = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'September stock review' } })
+      const opening = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Store opening readiness' } })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Recount 37 urgent cartons', project: stock.row_id, urgent: true } })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Urgent signage for opening', project: opening.row_id, urgent: true } })
+      await admin.put('/api/user_settings/tasker.saved-views', { views: [{
+        id: 'stock-urgent', name: 'Urgent stock work', scope: { kind: 'project', projectId: stock.row_id },
+        setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: ['urgent'], projects: [] } },
+      }] })
+      location.hash = '#view=stock-urgent'
+      renderTasker(admin)
+
+      expect(await screen.findByRole('heading', { name: 'Urgent stock work' })).toBeInTheDocument()
+      expect(await screen.findByText('Recount 37 urgent cartons')).toBeInTheDocument()
+      expect(screen.queryByText('Urgent signage for opening')).not.toBeInTheDocument()
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
+  test('a view filtering on a deleted project says the project is unavailable and shows no other project’s tasks', async ({ admin }) => {
+    await install()
+    try {
+      const gone = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Closed pop-up store' } })
+      const other = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Store opening readiness' } })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Hang 11 shelf labels', project: other.row_id } })
+      await admin.delete(`/api/table/tasker.project/${gone.row_id}?updated_at=${encodeURIComponent(String(gone.updated_at))}`)
+      await admin.put('/api/user_settings/tasker.saved-views', { views: [{
+        id: 'pop-up', name: 'Pop-up store work', scope: { kind: 'all' },
+        setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [gone.row_id] } },
+      }] })
+      renderTasker(admin)
+      const user = userEvent.setup()
+
+      await user.click(await screen.findByRole('button', { name: /Views/ }))
+      expect(await screen.findByText('One or more projects are unavailable')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /Pop-up store work/ }))
+      expect(await screen.findByRole('heading', { name: 'Pop-up store work' })).toBeInTheDocument()
+      expect(screen.queryByText('Hang 11 shelf labels')).not.toBeInTheDocument()
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Task details keep your place', () => {
+  test('closing a project task’s details returns to the same project', async ({ admin }) => {
+    await install()
+    try {
+      const project = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Warehouse review' } })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Count closing stock', project: project.row_id } })
+      renderTasker(admin)
+      const user = userEvent.setup()
+
+      await user.click(await screen.findByRole('button', { name: 'Warehouse review' }, { timeout: 5000 }))
+      await user.click(await screen.findByRole('link', { name: 'Count closing stock' }))
+      const details = await screen.findByRole('complementary', { name: 'Task details' })
+      await user.click(within(details).getByRole('link', { name: 'Close' }))
+      await waitFor(() => expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument())
+      expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Count closing stock' })).toBeInTheDocument()
+    } finally {
+      location.hash = ''
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Every task row offers the same controls', () => {
+  test('a Blocked task row shows its latest comment under its title, alongside a done tick', async ({ admin }) => {
+    await install()
+    try {
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: 'tasker.task', row: { task_title: 'Restock aisle 7', task_state: 'Blocked', urgent: true },
+      })
+      for (const content of ['Asked the warehouse', 'Waiting for supplier'])
+        await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content } })
+      renderTasker(admin)
+
+      const row = (await screen.findByRole('combobox', { name: 'State for Restock aisle 7' })).closest('article') as HTMLElement
+      expect(await within(row).findByText('Waiting for supplier')).toBeInTheDocument()
+      expect(within(row).queryByText('Asked the warehouse')).not.toBeInTheDocument()
+      expect(within(row).getByRole('checkbox', { name: 'Mark Restock aisle 7 done' })).not.toBeChecked()
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('Choosing people when the team list is hidden', () => {
+  test('a member who may not see the list of people is told so, and can still pick themselves and anyone already on a task', async ({ admin, createUser }) => {
+    await install()
+    try {
+      const member = await createUser({ roles: [] })
+      const colleague = await createUser({ roles: [] })
+      await expect(member.get('/api/table/Person')).rejects.toMatchObject({ status: 403 })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Colleague’s count', assigned_to: colleague.user } })
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Unassigned count' } })
+      renderTasker(member)
+
+      expect(await screen.findByText(/people choices are limited/)).toBeInTheDocument()
+      const picker = await screen.findByRole('combobox', { name: 'Assign Unassigned count' })
+      const options = within(picker).getAllByRole('option').map((option) => (option as HTMLOptionElement).value)
+      expect(options).toEqual(expect.arrayContaining([member.user, colleague.user]))
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('What the Inbox holds', () => {
+  // SPEC: What the Inbox holds — suspected defect, see report. Tasker loads
+  // only the 500 oldest tasks, so once a team has 500 tasks a newly captured
+  // one never shows in the Inbox (or any list).
+  test.fails('a task captured after the team already has 500 tasks still shows in the Inbox', async ({ admin }) => {
+    await install()
+    try {
+      await sql`insert into tasker.task (row_id, task_title, task_state, is_done, urgent, project, created_at, updated_at)
+        select 'TASK-OLD-' || n, 'Older task ' || n, 'Done', true, false, null, now() - interval '1 day' + n * interval '1 second', now()
+        from generate_series(1, 500) as n`
+      await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Call the supplier about 17 pallets' } })
+      renderTasker(admin)
+      expect(await screen.findByText('Call the supplier about 17 pallets', {}, { timeout: 5000 })).toBeInTheDocument()
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
 })
