@@ -36,7 +36,7 @@ Everything comes from the environment; every variable has a dev default in
 | --- | --- | --- |
 | `DATABASE_URL` | **yes** | Postgres connection string |
 | `FEATHERBASE_ENV` / `NODE_ENV` | **yes** | set to `production` for release and serve; `FEATHERBASE_ENV` takes precedence. The release (and `cli boot-check`) refuses when neither is set (#430). Only `development` and `test` allow zero-setup Administrator credentials |
-| `ADMIN_PASSWORD` | optional | provisions a null Administrator password hash; missing/blank leaves production password login locked. Never rotates an existing hash |
+| `ADMIN_PASSWORD` | optional | provisions a null Administrator password hash; missing/blank leaves production password login locked. Never rotates an existing hash (see [Rotating credentials](#rotating-credentials)) |
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
@@ -670,6 +670,142 @@ every token it owns without destroying them. An account that still holds
 tokens, data scope, shares or roles cannot be deleted — the database refuses;
 revoke or disable instead. A service account can never sign in interactively —
 no password, no sign-in method, no email.
+
+## Rotating credentials
+
+Featherbase reads each credential from one place, and several of them are
+**not** read where an operator would first look. Rotate every credential on
+**each** environment separately (dev first, then production): each one has its
+own database and its own variables. The pattern for every secret below is the
+same: create the new value in your secret store, set it, restart, verify, and
+only then revoke the old one. Never paste a value onto a command line or into
+a log; pipe it from the secret store.
+
+A variable change reaches the server only when the process restarts (most
+platforms redeploy a service when one of its variables changes). Every
+instance of a service must carry the same value.
+
+### Administrator and other passwords
+
+**Changing `ADMIN_PASSWORD` does not change the Administrator's password.** It
+is read only to fill an Administrator password hash that is still null: on a
+fresh database's first release, or a deliberate `cli seed` (see
+[First admin](#first-admin)). After that, the stored hash is the live password,
+and it changes only through the password UI or this command, run on each
+environment's own shell:
+
+```sh
+<read-from-secret-store> | pnpm --filter server cli set-password Administrator --stdin
+#   → password set for Administrator; their sessions are ended
+#   → access tokens still work — on a suspected compromise: cli list-tokens Administrator, then cli revoke-token <id>
+```
+
+The same command takes any person's id (`psn_…`). The password comes from
+stdin only (one trailing newline is dropped), and the command refuses a
+terminal. It ends that person's sessions, revokes their emailed reset links and
+writes an Activity Log entry. It leaves their access tokens alone; see below.
+[Locked out](#locked-out-391) shows how to pipe the value through a remote
+shell.
+
+Then set `ADMIN_PASSWORD` to the new value as well, or remove it, so that a
+future fresh bootstrap does not provision the old one. #467 plans a release
+warning for a deployment whose `ADMIN_PASSWORD` no longer matches the live
+Administrator password.
+
+**Verify:** sign in as Administrator with the new password, and confirm the old
+one is refused.
+
+### Access tokens
+
+Access tokens (`fbt_…`) are a separate credential: no password reset,
+`JWT_SECRET` change or restart affects them. Only their SHA-256 is stored, so a
+token cannot be shown again; rotating means issuing a new one and revoking the
+old:
+
+```sh
+pnpm --filter server cli list-tokens [<principal>]   # id, state, owner, label, expiry, last used
+pnpm --filter server cli issue-token <principal> --label "<purpose>" [--expires <days>]
+#   → prints the secret once; write it straight into the secret store
+pnpm --filter server cli revoke-token <old-token-id>
+```
+
+Update every consumer to the new token before revoking the old one. **Verify:**
+`list-tokens` shows the new token's last-used time move and the old one as
+`revoked`. Disabling a service account ends all of its tokens at once.
+*Admin → Access tokens* does the same from the UI.
+
+### `JWT_SECRET`
+
+`JWT_SECRET` signs every **session**. Changing it ends every session on that
+environment: every person must sign in again. It also invalidates any Google
+sign-in in progress (the OAuth state is signed with it and lasts 10 minutes)
+and any private-file link already handed out (5 minutes; these use
+`FILE_URL_SECRET` instead when it is set). It does **not** affect access tokens,
+emailed password-reset links or invitations; those are stored in the database.
+
+Use a long random value (for example `openssl rand -base64 48`, written
+straight into the secret store). Change it in a quiet window. During a rolling
+deploy, an instance still on the old value refuses sessions the new one issued,
+so restart all instances together.
+
+**Verify:** a session opened before the change is refused; a new sign-in works.
+
+### Database password
+
+Change the role's password in Postgres (`ALTER ROLE … PASSWORD …`, or your
+provider's rotate-credentials action), then update the variable that holds it.
+Point every consumer's `DATABASE_URL` at that one variable through a
+**reference variable** (for example Railway's `${{<db-service>.DATABASE_URL}}`)
+rather than a copied-in literal URL. A consumer that references it picks the new
+value up on its next deploy; a literal copy has to be found and edited by hand.
+Redeploy every consumer, including any outside Featherbase that reads the same
+database.
+
+Postgres keeps existing connections open after a password change, so a
+consumer you missed keeps working until it next reconnects, then fails.
+**Verify** each consumer after its redeploy instead: `pnpm --filter server cli
+boot-check` connects to the database, and `GET /api/ping` answers `pong` only
+with a live connection (see [Smoke check](#smoke-check)).
+
+### Google OAuth client secret
+
+The client **id** is stored in the `google` row of **Sign In Method**; only the
+secret is a variable, `GOOGLE_CLIENT_SECRET`. In the Google Cloud console, add a
+new secret to the OAuth client, set `GOOGLE_CLIENT_SECRET`, restart the service
+(that is what makes it read the new value), then sign in with Google once. Once
+that works, disable and delete the old secret in the console. Existing sessions
+are not affected: the secret is used only when a sign-in completes.
+
+### `SMTP_PASSWORD` (app password)
+
+`SMTP_PASSWORD` is the app password of the `SMTP_USER` account (see
+[Email](#email)), not its sign-in password. Create a new app password at the
+mail provider, set `SMTP_PASSWORD`, restart, then run
+`pnpm --filter server cli mail:test <your-address>`: it prints the relay's host
+and port, never the password, and masks the password in a refusal (`EAUTH` = a
+wrong user or app password). Then **revoke the old app password at the
+provider**; a leaked one keeps working until you do.
+
+### Order of operations
+
+For a planned rotation, or after a suspected leak:
+
+1. Generate each new value into the secret store first.
+2. Passwords of Administrator and every System Manager (`set-password`), so you
+   always hold a working way in.
+3. Access tokens: issue, update consumers, revoke the old.
+4. `JWT_SECRET`: ends every session still open, including any opened with a
+   stolen credential.
+5. The Google client secret, then `SMTP_PASSWORD`: each one revoked at the
+   provider only after it is verified.
+6. The database password last; it touches every consumer.
+
+To check that a deployed variable matches the secret store without printing
+either, compare fingerprints: run
+`printf %s "$VALUE" | shasum -a 256 | cut -c1-12` locally against the stored
+value, and `printf %s "$JWT_SECRET" | sha256sum | cut -c1-12` (quoted so the
+remote side expands it) on the service's shell. The same 12 characters mean
+the same value.
 
 ## The person release: `person-rename` (0101) + `person-resolution` 1a-i (0102)
 
