@@ -10,6 +10,7 @@ import { saveDoc } from './document'
 import { AppError } from './errors'
 import { CORE_PEOPLE_REVIEW_JSON } from './person-identifiers'
 import { completeSystemRow } from './identifiers'
+import { holdManagedSet, managedFieldsOf } from './managed-settings'
 
 const SEEDS = join(dirname(fileURLToPath(import.meta.url)), '..', 'seeds')
 
@@ -57,22 +58,38 @@ export async function applySeedPack(name: string): Promise<SeedPackResult> {
     await saveIdentifierSystem(row)
     result.added.push(id)
   }
+  // #465 D5: a field the instance settings file sets is the file's to change.
+  // Each check and its write share one transaction holding the settings lock,
+  // so an apply cannot lock the field between them (Codex bot on #494).
   for (const [method, link] of Object.entries(pack.sign_in_methods ?? {})) {
-    if (!link.identifier_system) continue
-    const updated = await sql`
-      update sign_in_method set identifier_system = ${link.identifier_system}
-      where row_id = ${method} and identifier_system is null returning row_id`
-    if (updated.length) result.methodsLinked.push(method)
+    const system = link.identifier_system
+    if (!system) continue
+    const linked = await sql.begin(async (tx) => {
+      const stx = tx as unknown as typeof sql
+      await holdManagedSet(stx, 'Sign In Method')
+      if ((await managedFieldsOf('Sign In Method', method, stx)).includes('identifier_system')) return false
+      const updated = await tx`
+        update sign_in_method set identifier_system = ${system}
+        where row_id = ${method} and identifier_system is null returning row_id`
+      return updated.length > 0
+    })
+    if (linked) result.methodsLinked.push(method)
   }
   if (pack.people_review) {
-    // Replaces only the core default, never an administrator's own setting.
-    const [current] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
-    if (!current || String(current.value) === CORE_PEOPLE_REVIEW_JSON) {
-      await sql`
-        insert into single_value (table_name, field, value) values ('System Settings', 'people_review', ${JSON.stringify(pack.people_review)})
+    const review = pack.people_review
+    const set = await sql.begin(async (tx) => {
+      const stx = tx as unknown as typeof sql
+      await holdManagedSet(stx, 'System Settings')
+      if ((await managedFieldsOf('System Settings', 'System Settings', stx)).includes('people_review')) return false
+      // Replaces only the core default, never an administrator's own setting.
+      const [current] = await tx`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
+      if (current && String(current.value) !== CORE_PEOPLE_REVIEW_JSON) return false
+      await tx`
+        insert into single_value (table_name, field, value) values ('System Settings', 'people_review', ${JSON.stringify(review)})
         on conflict (table_name, field) do update set value = excluded.value`
-      result.peopleReview = 'set'
-    }
+      return true
+    })
+    if (set) result.peopleReview = 'set'
   }
   return result
 }
