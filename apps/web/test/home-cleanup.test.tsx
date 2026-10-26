@@ -149,7 +149,8 @@ test('a System Manager sees Data and People and access, each link with a grey ic
   expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables', 'Past imports'])
   const access = screen.getByTestId('sidebar-group-access')
   expect(within(access).getByTestId('sidebar-group-heading')).toHaveTextContent(/^People and access$/)
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Sign-in methods', 'Waiting for access'])
+  // #489 item 6: Sign-in methods is in the Account menu only.
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Waiting for access'])
   for (const link of within(screen.getByTestId('admin-sidebar')).getAllByRole('link').filter((a) => a.closest('[data-testid^="sidebar-group-"]')))
     expect(within(link).getByTestId('sidebar-item-icon')).toHaveClass('text-ink-subtle')
   // Past imports is a normal nav link now; Import data stays the plain button.
@@ -165,7 +166,7 @@ test('a person with only a Table grant keeps today’s links, and no management 
   await renderApp('/featherbase/admin', clerk)
   await screen.findByTestId('sidebar-group-data')
   expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables'])
-  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Sign-in methods'])
+  expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens'])
 })
 
 test('Team: a sign-in reads "<person> signed in", the verb styled like every other verb', async ({ admin }) => {
@@ -193,8 +194,11 @@ test('Recently opened holds at most five items, Frequent included', async ({ adm
   expect(items).toHaveLength(5)
 })
 
-test('on a phone the app selector drops the app-name prefix; wider screens keep the full name', async ({ admin }) => {
-  const { PHONE_QUERY } = await import('../src/pages/AdminLayout')
+// #489 items 2 and 9 replace #476's phone label ("Home"): the selector's
+// current entry is the shared top bar's name, "Featherbase Admin", at every
+// width; a phone cuts it with an ellipsis rather than dropping words.
+test('the app selector reads Featherbase Admin, on a phone as on a wide screen', async ({ admin }) => {
+  const { PHONE_QUERY } = await import('../src/components/TopBar')
   const phone = (matches: boolean) =>
     vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
       matches: matches && q === PHONE_QUERY, media: q, onchange: null,
@@ -203,13 +207,13 @@ test('on a phone the app selector drops the app-name prefix; wider screens keep 
   phone(true)
   const first = await renderApp('/featherbase/admin', admin)
   const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(select.selectedOptions[0].textContent).toBe('Home')
+  expect(select.selectedOptions[0].textContent).toBe('Featherbase Admin')
   first.unmount()
   vi.restoreAllMocks()
   phone(false)
   await renderApp('/featherbase/admin', admin)
   const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
-  expect(wide.selectedOptions[0].textContent).toBe('Featherbase Home')
+  expect(wide.selectedOptions[0].textContent).toBe('Featherbase Admin')
   vi.restoreAllMocks()
 })
 

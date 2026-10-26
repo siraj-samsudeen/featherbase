@@ -7,7 +7,7 @@
 // Three representations must agree: the painted `data-theme` on the root, the
 // server row the choice is stored on, and a fresh load reading it back.
 
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 import { readFileSync } from 'node:fs'
@@ -58,20 +58,17 @@ async function mountAdmin(as: Client, theme = 'device') {
 
 /** Choose a theme in the account menu and wait for the server to own it. */
 async function choose(as: Client, theme: 'light' | 'dark' | 'device') {
-  if (!screen.queryByTestId('account-menu')) (await screen.findByTestId('session-user')).click()
+  // #489: the theme toggle sits in the top bar (in the Account menu on a phone).
   const option = await screen.findByTestId(`theme-${theme}`)
   option.click()
   await waitFor(() => expect(option).toHaveAttribute('aria-checked', 'true'))
   await waitFor(async () => expect(await serverTheme(as)).toBe(theme))
 }
 
-test('the account menu offers light, dark and same-as-device, with the current one checked', async ({ admin }) => {
+test("the top bar's theme toggle offers light, dark and same-as-device, with the current one checked", async ({ admin }) => {
   await mountAdmin(admin)
-  ;(await screen.findByTestId('session-user')).click()
-  const choice = await screen.findByTestId('theme-choice')
-  expect(choice).toHaveTextContent('Light')
-  expect(choice).toHaveTextContent('Dark')
-  expect(choice).toHaveTextContent('Same as device')
+  const toggle = await screen.findByTestId('theme-toggle')
+  expect(within(toggle).getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['Light', 'Dark', 'Same as device'])
   expect(screen.getByTestId('theme-device')).toHaveAttribute('aria-checked', 'true')
 })
 

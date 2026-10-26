@@ -141,16 +141,16 @@ describe('#101: GET /api/activity_feed', () => {
       events: [
         {
           kind: 'list',
-          key: 'list:sign-in-methods?',
-          label: 'sign-in-methods',
-          path: '/featherbase/admin/sign-in-methods',
+          key: 'list:access-tokens?',
+          label: 'access-tokens',
+          path: '/featherbase/admin/access-tokens',
         },
       ],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>(
       '/api/activity_feed?scope=mine',
     )
-    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Sign-in methods' })
+    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Access tokens' })
     expect(feed.items[0]).not.toHaveProperty('filtered', true)
   })
 

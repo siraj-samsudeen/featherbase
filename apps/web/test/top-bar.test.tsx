@@ -1,0 +1,232 @@
+// #489 (design D3, "One top bar on every address"): one bar, drawn by the
+// platform, on the Admin screens, the Sales Target page, the Portal, the
+// no-access page and the account pages. The address names it; the right side
+// is "Open Admin" (app addresses, people who can use Admin), the theme toggle
+// and the Account menu. What jsdom cannot see (widths, pixels, the hand-off's
+// cross-host navigation) is in e2e/top-bar.spec.ts.
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, vi } from 'vitest'
+import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
+import { config } from 'server/src/config'
+import { parseInstanceAddresses } from 'server/src/instance-addresses'
+import { VIEWER_ROLE } from 'server/src/sales-target'
+import { PHONE_QUERY } from '../src/components/TopBar'
+import { test, expect, renderApp } from './pg-test'
+
+type Client = Parameters<typeof renderApp>[1]
+
+afterEach(() => {
+  config.instanceAddresses = null
+  vi.restoreAllMocks()
+})
+
+/** The in-process server is reached as `localhost`: list it as this address. */
+function onAddressThatOpens(opens: string) {
+  const other = opens === 'admin' ? 'feather_dash' : 'admin'
+  config.instanceAddresses = parseInstanceAddresses(
+    JSON.stringify([
+      { address: 'http://localhost', opens, emails: true },
+      { address: 'http://elsewhere.example.test', opens: other },
+    ]),
+    'test',
+  )
+}
+
+async function viewerOnly(admin: Client, createUser: (o: { email?: string; roles?: string[] }) => Promise<Client>, email: string) {
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+  return createUser({ email, roles: [VIEWER_ROLE] })
+}
+
+const bar = () => screen.findByTestId('top-bar')
+const barName = async () => within(await bar()).findByTestId('top-bar-name')
+/** The bar once whoami has answered: the Account menu's avatar is drawn. */
+const settledBar = async () => {
+  await screen.findByTestId('session-user')
+  return bar()
+}
+const openAccountMenu = async () => {
+  await userEvent.click(await screen.findByTestId('session-user'))
+  return screen.findByTestId('account-menu')
+}
+
+// ---- 2. the name ---------------------------------------------------------------
+
+test('on the Admin screens the bar is named Featherbase Admin', async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  expect(await barName()).toHaveTextContent('Featherbase Admin')
+})
+
+test('on the Sales Target page the bar is named for the app, Feather Dash', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  expect(await barName()).toHaveTextContent('Feather Dash')
+})
+
+test("on an app's address the account page is named for the app", async ({ admin }) => {
+  onAddressThatOpens('feather_dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
+})
+
+test('on the Admin address the account page is named Featherbase Admin', async ({ admin }) => {
+  onAddressThatOpens('admin')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Featherbase Admin'))
+})
+
+// ---- 3. Admin menus on the Admin screens only ---------------------------------
+
+test('the account page has the bar and no Admin menus', async ({ admin }) => {
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await settledBar()
+  expect(await screen.findByTestId('sign-in-methods')).toBeInTheDocument()
+  for (const id of ['awesomebar', 'admin-sidebar', 'notif-bell', 'sidebar-toggle'])
+    expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+})
+
+test('the Sales Target page has no Admin menus in its bar', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  await settledBar()
+  for (const id of ['awesomebar', 'notif-bell', 'sidebar-toggle', 'admin-app-switcher'])
+    expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+})
+
+// ---- 4. the right side, and "Open Admin" ---------------------------------------
+
+test('Open Admin is offered on an app page to a person who can use Admin', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  expect(await within(await settledBar()).findByTestId('open-admin')).toHaveTextContent('Open Admin')
+})
+
+test('Open Admin is not offered to a person who cannot use Admin', async ({ admin, createUser }) => {
+  onAddressThatOpens('feather_dash')
+  const viewer = await viewerOnly(admin, createUser, 'viewer.bar@example.com')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
+  await waitFor(async () => expect(await barName()).toHaveTextContent('Feather Dash'))
+  expect(within(await settledBar()).queryByTestId('open-admin')).not.toBeInTheDocument()
+})
+
+test('Open Admin is not offered on the Admin screens', async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  expect(within(await settledBar()).queryByTestId('open-admin')).not.toBeInTheDocument()
+})
+
+test('the right side reads Open Admin, the theme toggle, then the Account menu', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  const right = within(await settledBar()).getByTestId('top-bar-right')
+  const order = [...right.querySelectorAll('[data-testid="open-admin"], [data-testid="theme-toggle"], [data-testid="session-user"]')]
+    .map((el) => el.getAttribute('data-testid'))
+  expect(order).toEqual(['open-admin', 'theme-toggle', 'session-user'])
+})
+
+// ---- 5. the Account menu --------------------------------------------------------
+
+test('the Account menu holds the name, Sign-in methods, then Log out', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  const menu = await openAccountMenu()
+  const order = [...menu.querySelectorAll('[data-testid="account-identity"], [role="menuitem"]')].map((el) => el.getAttribute('data-testid'))
+  expect(order).toEqual(['account-identity', 'account-sign-in-methods', 'logout'])
+})
+
+test("the Account menu's Sign-in methods opens the account page", async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  await openAccountMenu()
+  expect(screen.getByTestId('account-sign-in-methods')).toHaveAttribute('href', ACCOUNT_SIGN_IN_METHODS_PATH)
+})
+
+test("the person's name in the Account menu is not a control", async ({ admin }) => {
+  await renderApp('/featherbase/admin', admin)
+  await openAccountMenu()
+  const identity = screen.getByTestId('account-identity')
+  expect(identity).toHaveTextContent('Administrator')
+  expect(within(identity).queryByRole('button')).toBeNull()
+  expect(within(identity).queryByRole('link')).toBeNull()
+})
+
+// ---- 6. no loose Sign-in methods or Log out --------------------------------------
+
+test.for([
+  ['the Sales Target page', '/featherbase/sales-target'],
+  ['the Portal', '/featherbase/portal/Person'],
+  ['the Admin screens', '/featherbase/admin'],
+] as const)('%s has no Sign-in methods or Log out outside the Account menu', async ([, path], { admin }) => {
+  await renderApp(path, admin)
+  await settledBar()
+  expect(screen.queryByText('Log out')).toBeNull()
+  expect(screen.queryByText('Sign-in methods')).toBeNull()
+})
+
+test('the no-access page has no Log out outside the Account menu', async ({ createUser }) => {
+  const nobody = await createUser({ email: 'nobody.bar@example.com' })
+  await renderApp('/featherbase/admin', nobody)
+  await screen.findByTestId('no-access')
+  await settledBar()
+  expect(screen.queryByText('Log out')).toBeNull()
+})
+
+// ---- 7. the Sales Target page's identity line ---------------------------------
+
+test("the Sales Target page's identity line sits below the bar, not in it", async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  const identity = await screen.findByTestId('identity')
+  expect((await bar()).contains(identity)).toBe(false)
+})
+
+// ---- 9. phone width --------------------------------------------------------------
+
+function phoneWidth() {
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === PHONE_QUERY, media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+}
+
+test('at phone width Open Admin and the theme toggle move into the Account menu, above Sign-in methods', async ({ admin }) => {
+  phoneWidth()
+  await renderApp('/featherbase/sales-target', admin)
+  const right = within(await settledBar()).getByTestId('top-bar-right')
+  expect(within(right).queryByTestId('open-admin')).toBeNull()
+  expect(within(right).queryByTestId('theme-toggle')).toBeNull()
+  const menu = await openAccountMenu()
+  const order = [...menu.querySelectorAll('[data-testid="open-admin"], [data-testid="theme-toggle"], [data-testid="account-sign-in-methods"]')]
+    .map((el) => el.getAttribute('data-testid'))
+  expect(order).toEqual(['open-admin', 'theme-toggle', 'account-sign-in-methods'])
+})
+
+// ---- 10. states -------------------------------------------------------------------
+
+test('while whoami loads the bar shows its name and nothing on the right', async ({ admin }) => {
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+    String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes('/api/whoami')
+      ? new Promise<Response>(() => {})
+      : real(input, init))
+  await renderApp('/featherbase/sales-target', admin)
+  expect(await barName()).toHaveTextContent('Feather Dash')
+  expect(within(await bar()).getByTestId('top-bar-right')).toBeEmptyDOMElement()
+})
+
+// ---- 11. keyboard -------------------------------------------------------------------
+
+test('Escape closes the Account menu and returns focus to the avatar', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  await openAccountMenu()
+  screen.getByTestId('logout').focus()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument())
+  expect(screen.getByTestId('session-user')).toHaveFocus()
+})
+
+test('Enter on the avatar opens the Account menu', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  ;(await screen.findByTestId('session-user')).focus()
+  await userEvent.keyboard('{Enter}')
+  expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
+})
+
+test('Space on the avatar opens the Account menu', async ({ admin }) => {
+  await renderApp('/featherbase/sales-target', admin)
+  ;(await screen.findByTestId('session-user')).focus()
+  await userEvent.keyboard(' ')
+  expect(await screen.findByTestId('account-menu')).toBeInTheDocument()
+})

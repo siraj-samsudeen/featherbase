@@ -31,6 +31,7 @@ import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
+import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { KanbanView } from './components/KanbanView'
@@ -486,9 +487,20 @@ const accessTokensRoute = createRoute({
   component: AccessTokens,
 })
 
+// #489 item 13: the person's own account pages, outside the Admin screens and
+// served on every address, under the shared top bar.
+const accountRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/account',
+  beforeLoad: ({ location }) => {
+    if (!getToken()) throw redirect({ href: loginHref(location.href) })
+  },
+  component: AccountLayout,
+})
+
 // person-identities (#275): the signed-in person's sign-in methods.
 const signInMethodsRoute = createRoute({
-  getParentRoute: () => adminRoute,
+  getParentRoute: () => accountRoute,
   path: 'sign-in-methods',
   component: SignInMethods,
 })
@@ -731,6 +743,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   salesTargetRoute,
+  accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, tableRoute, docRoute]),
 ])

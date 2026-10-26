@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
+import { TopBar } from '../components/TopBar'
 import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
 import { cardClasses } from '../components/ui'
 
@@ -11,30 +12,13 @@ type Row = Record<string, unknown>
 // listed outside the Admin in a minimal public shell. Opening another user's
 // row returns 403 from the API and is surfaced as an access error.
 
+// #489: the shared top bar; who is signed in, and signing out, are in its
+// Account menu.
 function PortalShell({ children }: { children: React.ReactNode }) {
-  const user = getSessionUser()
   return (
-    <div className="min-h-screen bg-canvas">
-      <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-action text-xs font-bold text-action-ink">F</span>
-          <span className="text-sm font-semibold text-ink">Portal</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-ink-muted">
-          <span data-testid="portal-user">{user?.full_name || user?.email || user?.row_id}</span>
-          <button
-            data-testid="portal-logout"
-            onClick={() => {
-              clearSession()
-              window.location.href = '/featherbase/login'
-            }}
-            className="hover:text-ink"
-          >
-            Log out
-          </button>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl p-6">{children}</main>
+    <div className="flex min-h-screen flex-col bg-canvas">
+      <TopBar />
+      <main className="mx-auto w-full max-w-3xl p-6">{children}</main>
     </div>
   )
 }

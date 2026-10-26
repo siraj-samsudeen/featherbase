@@ -1,11 +1,13 @@
-// #72: the navbar avatar opens an account menu (user identity, Change
-// password, Log out). The Change-password modal posts { password } to
+// #72: the navbar avatar opens an account menu (user identity, Sign-in
+// methods, Log out — #489). Change password moved to the Sign-in methods page,
+// the account page every address serves; its modal posts { password } to
 // /api/set_password — through the fetch bridge these are real requests into
 // the in-process server, inside the test's rolled-back transaction, so the
 // suite can prove the password actually changed by logging in with it.
 
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { test, expect, renderApp } from './pg-test'
 
 async function login(usr: string, pwd: string): Promise<number> {
@@ -26,7 +28,7 @@ test('clicking the avatar opens the account menu; Escape and outside click close
 
   const menu = await screen.findByTestId('account-menu')
   expect(menu).toHaveTextContent('Administrator')
-  expect(screen.getByTestId('account-change-password')).toBeInTheDocument()
+  expect(screen.getByTestId('account-sign-in-methods')).toBeInTheDocument()
   expect(screen.getByTestId('logout')).toBeInTheDocument()
 
   // Escape closes.
@@ -43,8 +45,7 @@ test('clicking the avatar opens the account menu; Escape and outside click close
 test('Change password submits to /api/set_password and the new password logs in', async ({
   admin,
 }) => {
-  await renderApp('/featherbase/admin', admin)
-  await userEvent.click(await screen.findByTestId('session-user'))
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await userEvent.click(await screen.findByTestId('account-change-password'))
   await screen.findByTestId('change-password-modal')
 
@@ -67,8 +68,7 @@ test('Change password submits to /api/set_password and the new password logs in'
 })
 
 test('a mismatched confirmation blocks the submit', async ({ admin }) => {
-  await renderApp('/featherbase/admin', admin)
-  await userEvent.click(await screen.findByTestId('session-user'))
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
   await userEvent.click(await screen.findByTestId('account-change-password'))
   await screen.findByTestId('change-password-modal')
 

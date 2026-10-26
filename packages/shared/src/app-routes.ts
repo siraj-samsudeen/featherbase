@@ -34,7 +34,6 @@ export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
 export const ADMIN_STATIC_PAGES = [
   { slug: 'imports', title: 'Imports' },
   { slug: 'access-tokens', title: 'Access tokens' },
-  { slug: 'sign-in-methods', title: 'Sign-in methods' },
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
   { slug: 'waiting-for-access', title: 'Waiting for access' },

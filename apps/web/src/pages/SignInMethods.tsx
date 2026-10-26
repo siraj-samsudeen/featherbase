@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { PersonIdentifiers } from '../components/PersonIdentifiers'
+import { ChangePasswordModal } from '../components/ChangePasswordModal'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
-import { adminPageTitle } from 'shared'
+import { useI18n } from '../lib/i18n'
 import { Button, Card, Notice, buttonClasses } from '../components/ui'
 
 // person-identities (#275): the ways the signed-in person can get in — their
@@ -57,10 +59,20 @@ export function SignInMethods() {
   const labelOf = (key: string) => data?.methods.find((m) => m.key === key)?.label ?? key
   const google = data?.methods.find((m) => m.kind === 'google' && m.self_link)
   const hasGoogle = data?.identities.some((i) => i.linked && i.method === google?.key)
+  const { t } = useI18n()
+  // #72: changing one's own password. #489 moved it here from the Account
+  // menu, which holds only the name, Sign-in methods and Log out.
+  const [changingPassword, setChangingPassword] = useState(false)
 
   return (
     <div className="space-y-4" data-testid="sign-in-methods">
-      <h1 className="text-lg font-semibold text-ink">{adminPageTitle('sign-in-methods')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold text-ink">{t('Sign-in methods')}</h1>
+        <Button onClick={() => setChangingPassword(true)} data-testid="account-change-password">
+          {t('Change password')}
+        </Button>
+      </div>
+      {changingPassword && <ChangePasswordModal onClose={() => setChangingPassword(false)} />}
       {outcome && (
         <div data-testid="link-outcome">
           <Notice tone={outcome.tone}>{outcome.text}</Notice>
