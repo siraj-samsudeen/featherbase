@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect } from 'vitest'
+import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
-import { configureGoogle } from './identity-fixtures'
+import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { methodOfKind } from '../src/identities'
@@ -18,6 +19,7 @@ const setGoogleOpen = () => configureGoogle({ allowed_email_domains: '*' })
 
 const DASH = 'https://dash.example.com'
 const ADMIN = 'https://featherbase.example.com'
+const ROOT = '/featherbase/sales-target' // feather_dash's interim root (design D8)
 const ADDRESSES = parseInstanceAddresses(
   JSON.stringify([
     { address: DASH, opens: 'feather_dash', emails: true },
@@ -86,7 +88,6 @@ describe('the OAuth state is bound to its address', () => {
 })
 
 describe('on an address that opens an app', () => {
-  const ROOT = '/featherbase/sales-target' // feather_dash's interim root (design D8)
   const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
 
   test('/ redirects to the app root', async ({ api }) => {
@@ -131,6 +132,148 @@ describe('on an address that opens an app', () => {
     const root = await get(admin, `${DASH}/not_installed/`)
     expect(root.status).toBe(404)
     expect(await root.text()).toContain('Application unavailable')
+  })
+})
+
+// ---- landing after sign-in, and the hand-off between addresses -------------
+
+type SignedIn = { token: string; user: { row_id: string }; landing?: string; handoff?: string }
+
+async function viewerRole() {
+  const [have] = await sql`select 1 from role where row_id = 'Sales Target Viewer'`
+  if (!have) await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
+}
+
+/** A person with a password and these roles; returns their id and login name. */
+async function personWith(admin: TestClient, name: string, roles: string[]) {
+  await viewerRole()
+  const id = await makePerson({ email: `${name}@example.com`, full_name: name, roles: roles.map((role) => ({ role })) })
+  await admin.post('/api/set_password', { user: id, password: 'landing-pw-1' })
+  return { id, usr: `${name}@example.com` }
+}
+
+async function signIn(api: TestClient, origin: string, usr: string): Promise<{ res: Response; body: SignedIn }> {
+  const res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr, pwd: 'landing-pw-1' }) })
+  return { res, body: (await res.json()) as SignedIn }
+}
+
+const handoffCodeOf = (handoff: string | undefined) => new URL(handoff ?? 'http://x/').searchParams.get('code')
+
+function redeemOn(api: TestClient, origin: string, code: string | null) {
+  return api.fetch(`${origin}/api/oauth/session`, { method: 'POST', body: JSON.stringify({ code }) })
+}
+
+describe('landing after sign-in', () => {
+  test("on an app's address, a person who can open the app stays on its root", async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.stays', ['Sales Target Viewer'])
+    const { body } = await signIn(api, DASH, viewer.usr)
+    expect(body).toMatchObject({ landing: ROOT })
+    expect(body.handoff).toBeUndefined()
+  })
+
+  test("on an app's address, a person who cannot open it but can use Admin is handed to the admin address", async ({ api, admin }) => {
+    const manager = await personWith(admin, 'manager.handed', ['System Manager'])
+    const { body } = await signIn(api, DASH, manager.usr)
+    expect(body.handoff).toMatch(new RegExp(`^${ADMIN}/featherbase/oauth-callback\\?code=`))
+  })
+
+  test('on the admin address, a person who can use Admin stays', async ({ api, admin }) => {
+    const manager = await personWith(admin, 'manager.stays', ['System Manager', 'Sales Target Viewer'])
+    const { body } = await signIn(api, ADMIN, manager.usr)
+    expect(body.handoff).toBeUndefined()
+    expect(body.landing).toBeUndefined()
+  })
+
+  test("on the admin address, a person who can only open an app is handed to the app's address", async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.handed', ['Sales Target Viewer'])
+    const { body } = await signIn(api, ADMIN, viewer.usr)
+    expect(body.handoff).toMatch(new RegExp(`^${DASH}/featherbase/oauth-callback\\?code=`))
+  })
+
+  test('on the admin address, a person who can do nothing gets the no-access page', async ({ api, admin }) => {
+    const nobody = await personWith(admin, 'nobody.admin', [])
+    const { body } = await signIn(api, ADMIN, nobody.usr)
+    expect(body.handoff).toBeUndefined()
+    expect(body.landing).toBeUndefined()
+  })
+
+  test("on an app's address, a person who can do nothing stays on the app's root, which refuses them", async ({ api, admin }) => {
+    const nobody = await personWith(admin, 'nobody.dash', [])
+    const { body } = await signIn(api, DASH, nobody.usr)
+    expect(body.handoff).toBeUndefined()
+    expect(body.landing).toBe(ROOT)
+  })
+
+  test('a Google sign-in on the admin address hands a report viewer to the app address', async ({ api }) => {
+    await setGoogleOpen()
+    await viewerRole()
+    const viewer = await makePerson({ email: 'google.viewer@example.com', full_name: 'Google Viewer', roles: [{ role: 'Sales Target Viewer' }] })
+    await inviteGoogleRaw(viewer, 'google.viewer@example.com')
+    const { callback, cookie } = await mockCallbackUrl(api, ADMIN, 'google.viewer@example.com')
+    const back = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
+    const sid = back.headers.getSetCookie().find((c) => c.startsWith('sid='))!.split(';')[0]
+    const code = new URL(back.headers.get('location')!, ADMIN).searchParams.get('code')
+    const redeemed = await api.fetch(`${ADMIN}/api/oauth/session`, { method: 'POST', headers: { cookie: sid }, body: JSON.stringify({ code }) })
+    expect(((await redeemed.json()) as SignedIn).handoff).toMatch(new RegExp(`^${DASH}/featherbase/oauth-callback\\?code=`))
+  })
+})
+
+describe('the hand-off code', () => {
+  test('redeemed on its target address, it mints a new session there', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.redeems', ['Sales Target Viewer'])
+    const { body: source } = await signIn(api, ADMIN, viewer.usr)
+    const res = await redeemOn(api, DASH, handoffCodeOf(source.handoff))
+    expect(res.status).toBe(200)
+    const target = (await res.json()) as SignedIn
+    expect(target.user.row_id).toBe(viewer.id)
+    expect(target.token).not.toBe(source.token)
+    expect(target.landing).toBe(ROOT)
+    expect(res.headers.getSetCookie().find((c) => c.startsWith('sid='))).toContain(target.token)
+  })
+
+  test('a replayed code is refused', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.replays', ['Sales Target Viewer'])
+    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
+    expect((await redeemOn(api, DASH, code)).status).toBe(200)
+    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+  })
+
+  test('a code redeemed on another host is refused, and spent', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.wrong.host', ['Sales Target Viewer'])
+    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
+    expect((await redeemOn(api, ADMIN, code)).status).toBe(401)
+    expect((await redeemOn(api, DASH, code)).status).toBe(401)
+  })
+
+  test('a code older than one minute is refused', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.late', ['Sales Target Viewer'])
+    const code = handoffCodeOf((await signIn(api, ADMIN, viewer.usr)).body.handoff)
+    const now = Date.now()
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 61_000)
+    try {
+      expect((await redeemOn(api, DASH, code)).status).toBe(401)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+})
+
+describe('sessions stay per address', () => {
+  test('the sid cookie is host-only', async ({ api, admin }) => {
+    const manager = await personWith(admin, 'manager.cookie', ['System Manager'])
+    const { res } = await signIn(api, ADMIN, manager.usr)
+    expect(res.headers.getSetCookie().find((c) => c.startsWith('sid='))).not.toMatch(/domain=/i)
+  })
+
+  test('signing out on one address ends only that address’s session', async ({ api, admin }) => {
+    const viewer = await personWith(admin, 'viewer.signs.out', ['Sales Target Viewer'])
+    const { body: source } = await signIn(api, ADMIN, viewer.usr)
+    const target = (await (await redeemOn(api, DASH, handoffCodeOf(source.handoff))).json()) as SignedIn
+    const out = await api.fetch(`${DASH}/api/logout`, { method: 'POST', headers: { authorization: `Bearer ${target.token}` } })
+    expect(out.status).toBe(200)
+    const whoami = (token: string, origin: string) => api.fetch(`${origin}/api/whoami`, { headers: { authorization: `Bearer ${token}` } })
+    expect((await whoami(target.token, DASH)).status).toBe(401)
+    expect((await whoami(source.token, ADMIN)).status).toBe(200)
   })
 })
 

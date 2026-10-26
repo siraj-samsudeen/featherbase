@@ -30,7 +30,8 @@ import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, req
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
-import { EMBED_ORIGIN, VIEWER_ROLE, landingFor, salesTargetRoutes } from './sales-target'
+import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
+import { landingAfterSignIn } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -191,6 +192,12 @@ function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   })
 }
 
+// #488: every sign-in answers with the session plus where to go next — a path
+// on this address, or a hand-off URL to another (landing.ts).
+async function withLanding(c: Context, session: { token: string; user: SessionUser }, opts?: { handOff?: boolean }) {
+  return { ...session, ...(await landingAfterSignIn(session.user, requestHost(c.req.url), opts)) }
+}
+
 // The Authorization header wins; an sid cookie is the fallback credential.
 function authCredential(c: Context): string | undefined {
   const header = c.req.header('authorization')
@@ -208,9 +215,8 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  // #3755: report viewers land on their report, not the Admin.
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  // #488: where this person can do something (landing.ts).
+  return c.json(await withLanding(c, session))
 })
 
 // Delegated password sign-in (OpenSpec change `delegated-password-login`):
@@ -239,8 +245,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  return c.json(await withLanding(c, session))
 })
 
 // person-identities D10: direct sign-up with a username and password, open
@@ -274,8 +279,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
   const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session, 201)
+  return c.json(await withLanding(c, session), 201)
 })
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
@@ -605,13 +609,19 @@ async function googleCallback(c: Context) {
 // #150: the other half of the handoff. Public — the code IS the credential,
 // alongside the sid cookie set by the callback that minted it, and the session
 // this returns is the thing being established. Redeeming burns the code.
+//
+// #488: a code handed over from another address of this instance is redeemed
+// here too, on its target host only. It carries no session: a new one is
+// minted for this address, with its own host-only sid cookie.
 app.post('/api/oauth/session', async (c) => {
   const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
-  const session = redeemHandoffCode(code, getCookie(c, 'sid'))
-  // #3783: the same landing password login gives — a report viewer signing in
-  // with Google lands on the report, not in the Admin.
-  const landing = await landingFor(session.user.row_id)
-  return c.json(landing ? { ...session, landing } : session)
+  const host = requestHost(c.req.url)
+  const redeemed = redeemHandoffCode(code, getCookie(c, 'sid'), host)
+  if (redeemed.kind === 'session') return c.json(await withLanding(c, redeemed.session))
+  const issued = await issueSession(redeemed.handoff.person, redeemed.handoff.opts)
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
+  return c.json(await withLanding(c, session, { handOff: false }))
 })
 
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public

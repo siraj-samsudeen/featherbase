@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
-import type { SessionUser } from './auth'
+import type { SessionOptions, SessionUser } from './auth'
 import { AppError } from './errors'
 import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
 import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
@@ -301,6 +301,12 @@ export async function exchangeCode(
 // It is also bound to the browser it was minted for: the same response sets
 // the sid cookie, and redemption requires that cookie to match the session
 // being handed over. A code intercepted in flight is worthless elsewhere.
+//
+// #488 adds a second kind: the hand-off to ANOTHER address of this instance.
+// The minting host's sid cookie cannot cross hosts, so that code is bound to
+// the target's host instead, and it carries no session: redeeming it there
+// mints a new one, with the sign-in facts of the session it came from. Never
+// a shared cookie — each address keeps its own sign-in.
 const HANDOFF_TTL_MS = 60_000
 
 interface HandoffSession {
@@ -308,28 +314,61 @@ interface HandoffSession {
   user: SessionUser
 }
 
-const handoffs = new Map<string, { session: HandoffSession; expires: number }>()
+/** What an address hand-off carries to its target. */
+export interface AddressHandoff {
+  person: string
+  opts: SessionOptions
+}
 
-export function mintHandoffCode(session: HandoffSession): string {
+type Handoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; handoff: AddressHandoff; host: string }
+export type RedeemedHandoff = { kind: 'session'; session: HandoffSession } | { kind: 'address'; handoff: AddressHandoff }
+
+const handoffs = new Map<string, { entry: Handoff; expires: number }>()
+
+function mint(entry: Handoff): string {
   const now = Date.now()
   // Abandoned codes (the user closes the tab mid-redirect) would otherwise
   // accumulate for the process's lifetime.
-  for (const [code, entry] of handoffs) if (entry.expires <= now) handoffs.delete(code)
+  for (const [code, held] of handoffs) if (held.expires <= now) handoffs.delete(code)
   const code = randomBytes(32).toString('base64url')
-  handoffs.set(code, { session, expires: now + HANDOFF_TTL_MS })
+  handoffs.set(code, { entry, expires: now + HANDOFF_TTL_MS })
   return code
 }
 
-// One code, one use. The entry is deleted whatever the outcome — an expired or
-// wrong-browser attempt burns it too, so nothing is left to retry against.
-export function redeemHandoffCode(code: string | undefined, sid: string | undefined): HandoffSession {
+/** A code for the browser that already holds `session`'s sid cookie. */
+export function mintHandoffCode(session: HandoffSession): string {
+  return mint({ kind: 'session', session })
+}
+
+/** A code that mints a new session for `user` on the address whose host is
+ *  `host`, and nowhere else. The session keeps how the person signed in. */
+export function mintAddressHandoffCode(user: SessionUser, host: string): string {
+  const claims = user.sign_in
+  const opts: SessionOptions = {
+    ...(claims?.method ? { method: claims.method } : {}),
+    ...(claims?.identity ? { identity: claims.identity } : {}),
+    ...(claims?.test_mode ? { testMode: true } : {}),
+    ...(claims?.preview ? { preview: true } : {}),
+  }
+  return mint({ kind: 'address', handoff: { person: user.row_id, opts }, host })
+}
+
+// One code, one use. The entry is deleted whatever the outcome — an expired,
+// wrong-browser or wrong-host attempt burns it too, so nothing is left to
+// retry against.
+export function redeemHandoffCode(code: string | undefined, sid: string | undefined, host: string): RedeemedHandoff {
   const invalid = () => new AppError('AuthenticationError', 'Invalid or expired sign-in code')
   if (!code) throw invalid()
-  const entry = handoffs.get(code)
+  const held = handoffs.get(code)
   handoffs.delete(code)
-  if (!entry || entry.expires <= Date.now()) throw invalid()
+  if (!held || held.expires <= Date.now()) throw invalid()
+  const { entry } = held
+  if (entry.kind === 'address') {
+    if (entry.host !== host) throw invalid()
+    return { kind: 'address', handoff: entry.handoff }
+  }
   const a = Buffer.from(sid ?? '')
   const b = Buffer.from(entry.session.token)
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw invalid()
-  return entry.session
+  return { kind: 'session', session: entry.session }
 }
