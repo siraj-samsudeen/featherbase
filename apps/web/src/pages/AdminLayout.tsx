@@ -368,7 +368,16 @@ function AdminShell() {
 
   // The command bar: inline in the top bar from sm up, its own row on a phone.
   const commandBar = (
-        <form onSubmit={runSearch} className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl" data-testid="awesomebar">
+        <form
+          onSubmit={runSearch}
+          // #489 item 11: the recents close only when focus leaves the whole
+          // command bar, so Tab from the input reaches them (visual order).
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setBarFocused(false)
+          }}
+          className="relative w-full sm:min-w-0 sm:flex-1 sm:mx-auto sm:max-w-4xl"
+          data-testid="awesomebar"
+        >
           <input
             ref={searchRef}
             value={search}
@@ -377,7 +386,6 @@ function AdminShell() {
               setBarFocused(true)
               setRecentSel(0)
             }}
-            onBlur={() => setBarFocused(false)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 e.currentTarget.blur()

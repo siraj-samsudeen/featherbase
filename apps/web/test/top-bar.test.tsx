@@ -12,6 +12,7 @@ import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { PHONE_QUERY } from '../src/components/TopBar'
+import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
@@ -215,6 +216,16 @@ test('Escape closes the Account menu and returns focus to the avatar', async ({ 
   await userEvent.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument())
   expect(screen.getByTestId('session-user')).toHaveFocus()
+})
+
+test("Tab from the Admin command bar reaches its recents instead of closing them", async ({ admin }) => {
+  recordAction('Administrator', { kind: 'list', key: 'list:Person?', label: 'Person', path: '/featherbase/admin/Person' })
+  await renderApp('/featherbase/admin', admin)
+  const input = await screen.findByRole('textbox', { name: 'Search or type a command' })
+  await userEvent.click(input)
+  await screen.findByTestId('awesomebar-recents')
+  await userEvent.tab()
+  expect(document.activeElement).toHaveAttribute('data-testid', 'awesomebar-recent')
 })
 
 test('Enter on the avatar opens the Account menu', async ({ admin }) => {
