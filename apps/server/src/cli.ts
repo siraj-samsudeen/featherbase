@@ -289,6 +289,9 @@ async function readStdin(): Promise<string> {
 // stdin is text, taken unchanged: typed fields (Check, Int, Choice …) and
 // layout or child-table columns are set in the System Settings form instead.
 const TEXT_TYPES = new Set(['Data', 'Text', 'Long Text'])
+// #465 D5: the managed switches and choices, so break glass reaches every
+// field a settings file can lock that a line of stdin can carry.
+const TYPED_TYPES = new Set(['Check', 'Choice'])
 
 // #401: a text field of System Settings, or (#465 D5) of a sign-in method or
 // scheduled job row with --table and --row, through saveDoc (validation).
@@ -312,9 +315,17 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   if (meta.kind !== 'settings' && row === undefined) throw new Error(`${table} has rows: name one with --row`)
   const column = meta.columns.find((c) => c.column_name === field)
   if (!column) throw new Error(`${table} has no field ${field}`)
-  if (!TEXT_TYPES.has(column.column_type))
-    throw new Error(`${table} field ${field} is ${column.column_type}; settings:set writes text fields only`)
-  const value = await readStdin()
+  if (!TEXT_TYPES.has(column.column_type) && !TYPED_TYPES.has(column.column_type))
+    throw new Error(`${table} field ${field} is ${column.column_type}; settings:set writes text, Check and Choice fields only`)
+  const raw = await readStdin()
+  // Text is taken unchanged; a switch is exactly true or false, and a choice
+  // is one of the field's choices (the save checks it), each without the
+  // trailing newline a shell adds.
+  let value: string | boolean = raw
+  if (column.column_type === 'Check') {
+    if (!['true', 'false'].includes(raw.trim())) throw new Error(`${table} field ${field} is a switch: send true or false`)
+    value = raw.trim() === 'true'
+  } else if (column.column_type === 'Choice') value = raw.trim()
   // The same core controllers the server registers, so a sign-in method's
   // lockout guard runs here too.
   const { loadControllers } = await import('./controllers')
@@ -331,7 +342,7 @@ async function cmdSettingsSet(positional: string[], flags: Record<string, string
   })
   const where = row === undefined ? (table === 'System Settings' ? '' : `${table} `) : `${table} ${row} `
   await logActivity(BREAK_GLASS_ACTOR, `settings_set ${where}${field}`)
-  console.log(`${row === undefined ? table : `${table} ${row}`} ${field} set (${value.length} characters)`)
+  console.log(`${row === undefined ? table : `${table} ${row}`} ${field} set (${typeof value === 'boolean' ? value : `${value.length} characters`})`)
 }
 
 /** Every { "file": name } value in a settings file, read from the folder

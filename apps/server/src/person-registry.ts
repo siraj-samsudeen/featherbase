@@ -101,6 +101,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   home_page_role: { role: code },
   import_log: { '*': code, error_summary: text, touched: text },
   installed_app: { '*': code },
+  // #465 D5: who sent the last settings file; the rest name the file's source and fields.
+  instance_settings_apply: { applied_by: id, environment: code, revision: code, run: code, managed_paths: code },
   internal_metadata: { '*': code },
   job_execution: { job: code, method: code, outcome: code, error: text, result: text },
   letter_head: { '*': text },

@@ -11,6 +11,8 @@ import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf } from '../src/managed-se
 import { runAsSystemActor } from '../src/system-actor'
 import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
 import { expectApiError, patchDoc } from './fixtures'
+import { applySeedPack } from '../src/seed-packs'
+import { CORE_PEOPLE_REVIEW_JSON } from '../src/person-identifiers'
 
 const DOMAINS = 'example.com,example.org'
 const LOCKED = { status: 403, type: 'PermissionError', message: expect.stringContaining(`is set in the instance settings file (${INSTANCE_SETTINGS_FILE})`) }
@@ -164,6 +166,17 @@ describe('Admin saves of a locked field are refused (D5)', () => {
     if (!system) return
     await sql`update sign_in_method set identifier_system = ${system.row_id} where row_id = 'google'`
     await expect(renameDoc('Identifier System', String(system.row_id), 'renamed_system', 'Administrator')).rejects.toMatchObject({ type: 'PermissionError' })
+  })
+})
+
+describe('a seed pack leaves a locked field alone (Codex adversarial)', () => {
+  test('the people review the file sets is kept, even at the core default', async () => {
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'people_review'`
+    await apply({ settings: { 'System Settings': { people_review: JSON.parse(CORE_PEOPLE_REVIEW_JSON) } } })
+    const result = await applySeedPack('jeyarama')
+    expect(result.peopleReview).toBe('kept')
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
+    expect(JSON.parse(String(row.value))).toEqual(JSON.parse(CORE_PEOPLE_REVIEW_JSON))
   })
 })
 

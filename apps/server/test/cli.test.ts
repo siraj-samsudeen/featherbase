@@ -390,7 +390,7 @@ describe('#401: cli settings:set', () => {
     try {
       const f = failure(['settings:set', name, '--stdin'], 'x')
       expect(f?.status).toBe(1)
-      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text fields only`)
+      expect(f?.stderr).toContain(`System Settings field ${name} is Section Break; settings:set writes text, Check and Choice fields only`)
     } finally {
       if (!layout) await sql`delete from column_def where parent = 'System Settings' and column_name = ${name}`
     }
@@ -402,12 +402,34 @@ describe('#401: cli settings:set', () => {
     expect(f?.stderr).toContain('System Settings has no field no_such_field')
   }, 60_000)
 
-  // Codex P2: stdin is text, so a typed field (Check, Int, Choice) would fail
-  // validation or take a stray newline; those are set in the form.
-  it('refuses a typed, non-text field', async () => {
-    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'true')
+  // Codex P2: stdin is text, so a typed field would take a stray newline.
+  // #465 D5 (Codex adversarial): a switch or choice the settings file can
+  // lock is reachable too, taking exactly true/false or one choice; other
+  // typed fields are still set in the form.
+  it('refuses a switch given anything but true or false, and a typed field it does not carry', async () => {
+    const f = failure(['settings:set', 'allow_signup', '--stdin'], 'yes')
     expect(f?.status).toBe(1)
-    expect(f?.stderr).toContain('System Settings field allow_signup is Check; settings:set writes text fields only')
+    expect(f?.stderr).toContain('System Settings field allow_signup is a switch: send true or false')
+    const g = failure(['settings:set', 'session_hours', '--stdin'], '8')
+    expect(g?.status).toBe(1)
+    expect(g?.stderr).toContain('System Settings field session_hours is Int; settings:set writes text, Check and Choice fields only')
+  }, 60_000)
+
+  it('flips a locked scheduled job switch', async () => {
+    const [before] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled' }]) })}`
+    try {
+      const target = !before.enabled
+      const out = cli(['settings:set', 'enabled', '--stdin', '--table', 'Scheduled Job', '--row', 'disable_leavers'], `${target}\n`)
+      expect(out).toContain(`Scheduled Job disable_leavers enabled set (${target})`)
+      const [after] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+      expect(after.enabled).toBe(target)
+    } finally {
+      await sql`delete from instance_settings_apply`
+      await sql`update scheduled_job set enabled = ${before.enabled} where row_id = 'disable_leavers'`
+      await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Scheduled Job%'`
+    }
   }, 60_000)
 
   it('refuses without --stdin', async () => {

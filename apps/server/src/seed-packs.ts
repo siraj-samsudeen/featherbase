@@ -10,6 +10,7 @@ import { saveDoc } from './document'
 import { AppError } from './errors'
 import { CORE_PEOPLE_REVIEW_JSON } from './person-identifiers'
 import { completeSystemRow } from './identifiers'
+import { managedFieldsOf } from './managed-settings'
 
 const SEEDS = join(dirname(fileURLToPath(import.meta.url)), '..', 'seeds')
 
@@ -59,12 +60,14 @@ export async function applySeedPack(name: string): Promise<SeedPackResult> {
   }
   for (const [method, link] of Object.entries(pack.sign_in_methods ?? {})) {
     if (!link.identifier_system) continue
+    // #465 D5: a field the instance settings file sets is the file's to change.
+    if ((await managedFieldsOf('Sign In Method', method)).includes('identifier_system')) continue
     const updated = await sql`
       update sign_in_method set identifier_system = ${link.identifier_system}
       where row_id = ${method} and identifier_system is null returning row_id`
     if (updated.length) result.methodsLinked.push(method)
   }
-  if (pack.people_review) {
+  if (pack.people_review && !(await managedFieldsOf('System Settings', 'System Settings')).includes('people_review')) {
     // Replaces only the core default, never an administrator's own setting.
     const [current] = await sql`select value from single_value where table_name = 'System Settings' and field = 'people_review'`
     if (!current || String(current.value) === CORE_PEOPLE_REVIEW_JSON) {
