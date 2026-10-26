@@ -352,7 +352,7 @@ async function cmdSettingsApply(flags: Record<string, string | string[] | boolea
     files: await referencedFiles(settings, path.dirname(path.resolve(file))),
   })
   for (const c of result.changes)
-    console.log(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}`)
+    console.log(`${c.table}${c.table === c.row_id ? '' : ` ${c.row_id}`} ${c.field}: ${JSON.stringify(c.old)} -> ${JSON.stringify(c.new)}${c.created ? ' (new row)' : ''}${c.was_default ? ' (was the default)' : ''}`)
   for (const w of result.warnings) console.log(w)
   console.log(`settings:apply: ${result.summary}${result.dry_run ? ' (dry run; nothing was written)' : ''}`)
 }

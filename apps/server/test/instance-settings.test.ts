@@ -122,6 +122,18 @@ describe('apply (D4)', () => {
     expect({ ...after, activity: [] }).toEqual({ ...before, activity: [] })
   })
 
+  test('setting a field that only has its default is a change, even to null or false (Codex bot P2)', async () => {
+    await sql`delete from single_value where table_name = 'System Settings' and field in ('app_name', 'allow_signup')`
+    const result = await applyInstanceSettings({ settings: { 'System Settings': { app_name: null, allow_signup: false } } }, { by: 'Administrator' })
+    expect(result.changes).toEqual([
+      { table: 'System Settings', row_id: 'System Settings', field: 'app_name', old: null, new: null, was_default: true },
+      { table: 'System Settings', row_id: 'System Settings', field: 'allow_signup', old: null, new: false, was_default: true },
+    ])
+    expect(await sql`select field, value from single_value where table_name = 'System Settings' and field in ('app_name', 'allow_signup') order by field`)
+      .toEqual([{ field: 'allow_signup', value: '0' }, { field: 'app_name', value: null }])
+    expect((await applyInstanceSettings({ settings: { 'System Settings': { app_name: null, allow_signup: false } } }, { by: 'Administrator' })).changes).toEqual([])
+  })
+
   test('a System Settings change is versioned through the normal save path', async () => {
     await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Before' } } }, { by: 'Administrator' })
     await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'After' } } }, { by: 'Administrator' })

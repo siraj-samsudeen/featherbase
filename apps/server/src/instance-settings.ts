@@ -189,7 +189,10 @@ async function storedSettings(meta: TableMeta, fields: string[]): Promise<Record
   const rows = await sql`select field, value from single_value where table_name = ${meta.name}`
   const raw = new Map(rows.map((r) => [r.field as string, r.value]))
   const out: Record<string, unknown> = {}
-  for (const f of fields) out[f] = fromStored(kindOf(columnType(meta, f)), raw.get(f), true)
+  // A field with no stored row is ABSENT (its default is in effect), which is
+  // not the same as a stored null or false: setting either over a default is
+  // a change (Codex bot P2 on #491).
+  for (const f of fields) out[f] = raw.has(f) ? fromStored(kindOf(columnType(meta, f)), raw.get(f), true) : undefined
   return out
 }
 
@@ -221,6 +224,8 @@ export interface SettingChange {
   new: unknown
   /** The row did not exist and the apply created it. */
   created?: true
+  /** The field had no stored value (its default was in effect). */
+  was_default?: true
 }
 
 export interface ApplyResult {
@@ -376,7 +381,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
           problems[where] = `${meta.name} has no row ${row_id}`
           continue
         }
-        const differing = Object.fromEntries(Object.entries(values).filter(([f, v]) => !current || !same(current[f], v)))
+        const differing = Object.fromEntries(Object.entries(values).filter(([f, v]) => !current || current[f] === undefined || !same(current[f], v)))
         if (!Object.keys(differing).length) continue
         try {
           if (entry.shape === 'settings') await saveDoc(meta.name, differing, INSTANCE_SETTINGS_ACTOR)
@@ -399,10 +404,15 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
         const now = after.get(row_id)
         if (!now) continue
         for (const field of Object.keys(values)) {
-          const was = old ? old[field] : null
-          if (old && same(was, now[field])) continue
+          const was = old ? (old[field] ?? null) : null
+          if (old && old[field] !== undefined && same(was, now[field])) continue
+          if (now[field] === undefined) continue
           if (!old && now[field] === null) continue
-          changes.push({ table: meta.name, row_id, field, old: was, new: now[field], ...(old ? {} : { created: true as const }) })
+          changes.push({
+            table: meta.name, row_id, field, old: was, new: now[field],
+            ...(old ? {} : { created: true as const }),
+            ...(old && old[field] === undefined ? { was_default: true as const } : {}),
+          })
         }
       }
     }
@@ -509,7 +519,7 @@ export async function exportInstanceSettings(): Promise<ExportResult> {
     const keep = (where: string, values: Record<string, unknown>) => {
       const out: Record<string, unknown> = {}
       for (const [field, value] of Object.entries(values)) {
-        if (value === null) continue
+        if (value === null || value === undefined) continue
         const why = secretIn(value)
         if (why) withheld.push(`${where}.${field}: ${why}`)
         else out[field] = value
