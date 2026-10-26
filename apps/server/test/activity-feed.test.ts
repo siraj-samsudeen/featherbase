@@ -308,4 +308,11 @@ describe('#101: GET /api/activity_feed', () => {
     expect(versions(rows[0].count)).toBeGreaterThanOrEqual(1)
     expect(versions(rows[1].count)).toBeGreaterThanOrEqual(2)
   })
+
+  test('a sign-in by someone no longer on record reads "Unnamed person", never the opaque id', async ({ admin }) => {
+    await logActivity('psn_goneaaaaaaaaaaaaaaaa', 'login', { full_name: null })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    expect(JSON.stringify(team)).not.toContain('psn_gone')
+    expect(team.items.some((i) => i.kind === 'login' && i.who_name === 'Unnamed person')).toBe(true)
+  })
 })

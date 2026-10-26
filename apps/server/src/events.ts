@@ -109,9 +109,13 @@ export interface WhoLabel {
  *  full name → local part of the email (never the address) → @username → id.
  *  The local part is a deliberate fallback; this feed is for System Managers
  *  and the person themselves, who can already see the address. */
+const OPAQUE_PRINCIPAL = /^(psn|svc)_[a-z2-7]{20}$/
+
 export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
   const unique = [...new Set(ids)]
-  const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: id }]))
+  // An opaque id with no record behind it (a person since removed) is never
+  // shown as itself; a readable id (Administrator) is its own name.
+  const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: OPAQUE_PRINCIPAL.test(id) ? 'Unnamed person' : id }]))
   if (unique.length === 0) return labels
   const rows = await sql`
     select p.row_id,
@@ -127,7 +131,7 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
     from service_account s where s.row_id in ${sql(unique)}`
   for (const r of rows)
     labels.set(r.row_id as string, {
-      name: (r.name as string | null) ?? (r.row_id as string),
+      name: (r.name as string | null) ?? (OPAQUE_PRINCIPAL.test(r.row_id as string) ? 'Unnamed person' : (r.row_id as string)),
       ...(r.role ? { role: r.role as string } : {}),
     })
   return labels
