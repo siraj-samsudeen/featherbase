@@ -23,8 +23,12 @@
 //                                     employee code to its record number (warehouse file); idempotent
 //   cli mail:test <to>                send one test message through the configured transport (SMTP when
 //                                     SMTP_HOST is set, otherwise the Email Sink); exits 1 if delivery fails
-//   cli settings:set <field> --stdin set one System Settings text field to the whole of stdin, e.g.
-//                                     `cli settings:set privacy_notice --stdin < notice.md`
+//   cli settings:set <field> --stdin [--table <Table> --row <row id>]
+//                                     set one text field of System Settings (or, with --table and --row,
+//                                     of a sign-in method or scheduled job) to the whole of stdin, e.g.
+//                                     `cli settings:set privacy_notice --stdin < notice.md`. Break glass
+//                                     (#465 D5): it may change a field the instance settings file locked,
+//                                     and is logged with actor `cli`
 //   cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]
 //                     [--revision <sha>] [--run <id>]
 //                                     apply an instance settings file (#465): one transaction, actor
@@ -286,21 +290,48 @@ async function readStdin(): Promise<string> {
 // layout or child-table columns are set in the System Settings form instead.
 const TEXT_TYPES = new Set(['Data', 'Text', 'Long Text'])
 
-// #401: System Settings text fields only, through saveDoc (validation), and
-// recorded in the Activity Log with actor `cli`.
-// The value is the whole of stdin, unchanged, so a reviewed file applies as is.
+// #401: a text field of System Settings, or (#465 D5) of a sign-in method or
+// scheduled job row with --table and --row, through saveDoc (validation).
+// This is the break-glass path: it runs as the actor `cli`, which may change
+// a field the instance settings file locked, and is recorded in the Activity
+// Log with actor `cli`. The value is the whole of stdin, unchanged, so a
+// reviewed file applies as is.
 async function cmdSettingsSet(positional: string[], flags: Record<string, string | string[] | boolean>) {
   const [field] = positional
-  if (!field || flags.stdin !== true || positional.length !== 1) throw new Error('usage: cli settings:set <field> --stdin')
-  const meta = await getMeta('System Settings')
+  if (!field || flags.stdin !== true || positional.length !== 1)
+    throw new Error('usage: cli settings:set <field> --stdin [--table <Table> --row <row id>]')
+  for (const key of ['table', 'row'] as const)
+    if (flags[key] !== undefined && typeof flags[key] !== 'string') throw new Error(`--${key} takes a value`)
+  const { INSTANCE_SETTINGS_TABLES } = await import('shared')
+  const table = (flags.table as string | undefined) ?? 'System Settings'
+  if (!(INSTANCE_SETTINGS_TABLES as readonly string[]).includes(table))
+    throw new Error(`settings:set writes ${INSTANCE_SETTINGS_TABLES.slice(0, -1).join(', ')} or ${INSTANCE_SETTINGS_TABLES[INSTANCE_SETTINGS_TABLES.length - 1]}, not ${table}`)
+  const meta = await getMeta(table)
+  const row = flags.row as string | undefined
+  if (meta.kind === 'settings' && row !== undefined) throw new Error(`${table} has one row; leave out --row`)
+  if (meta.kind !== 'settings' && row === undefined) throw new Error(`${table} has rows: name one with --row`)
   const column = meta.columns.find((c) => c.column_name === field)
-  if (!column) throw new Error(`System Settings has no field ${field}`)
+  if (!column) throw new Error(`${table} has no field ${field}`)
   if (!TEXT_TYPES.has(column.column_type))
-    throw new Error(`System Settings field ${field} is ${column.column_type}; settings:set writes text fields only`)
+    throw new Error(`${table} field ${field} is ${column.column_type}; settings:set writes text fields only`)
   const value = await readStdin()
-  await saveDoc('System Settings', { [field]: value }, 'Administrator')
-  await logActivity('cli', `settings_set ${field}`)
-  console.log(`System Settings ${field} set (${value.length} characters)`)
+  // The same core controllers the server registers, so a sign-in method's
+  // lockout guard runs here too.
+  const { loadControllers } = await import('./controllers')
+  await loadControllers()
+  const { BREAK_GLASS_ACTOR } = await import('./managed-settings')
+  const { runAsSystemActor } = await import('./system-actor')
+  await runAsSystemActor(BREAK_GLASS_ACTOR, async () => {
+    if (row === undefined) {
+      await saveDoc(table, { [field]: value }, BREAK_GLASS_ACTOR)
+    } else {
+      const current = await getDoc(table, row, BREAK_GLASS_ACTOR)
+      await saveDoc(table, { row_id: row, [field]: value, updated_at: current.updated_at }, BREAK_GLASS_ACTOR)
+    }
+  })
+  const where = row === undefined ? (table === 'System Settings' ? '' : `${table} `) : `${table} ${row} `
+  await logActivity(BREAK_GLASS_ACTOR, `settings_set ${where}${field}`)
+  console.log(`${row === undefined ? table : `${table} ${row}`} ${field} set (${value.length} characters)`)
 }
 
 /** Every { "file": name } value in a settings file, read from the folder

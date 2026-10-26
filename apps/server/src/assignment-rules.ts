@@ -1,3 +1,4 @@
+import { managedFieldsOf } from './managed-settings'
 import { sql } from './db'
 import { tableRelation } from './table-engine'
 import { getMeta } from './meta'
@@ -61,7 +62,8 @@ export async function evaluateAssignmentRules(
       // Stamp the assignee into the row's own column (post-commit, so the
       // column must exist on the Table; unknown columns are ignored).
       const meta = await getMeta(table)
-      if (meta.columns.some((f) => f.column_name === field)) {
+      // #465 D5: never a field the instance settings file sets.
+      if (meta.columns.some((f) => f.column_name === field) && !(await managedFieldsOf(table, String(row.row_id))).includes(field)) {
         await sql`
           update ${sql(await tableRelation(table))} set ${sql(field)} = ${next}
           where ${sql(meta.row_key)} = ${String(row.row_id)}`

@@ -415,6 +415,49 @@ describe('#401: cli settings:set', () => {
     expect(f?.status).toBe(1)
     expect(f?.stderr).toContain('usage: cli settings:set <field> --stdin')
   }, 60_000)
+
+  // #465 D5: the break-glass path. A field the last apply locked is still
+  // changed here, and the change is recorded as `cli`.
+  it('changes a field the instance settings file locked, recorded as cli', async () => {
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'System Settings', row_id: 'System Settings', field: 'privacy_notice' }]) })}`
+    try {
+      cli(['settings:set', 'privacy_notice', '--stdin'], 'Emergency notice\n')
+      const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'privacy_notice'`
+      expect(row.value).toBe('Emergency notice\n')
+      const [version] = await sql`select created_by from version where ref_table = 'System Settings' order by created_at desc limit 1`
+      expect(version.created_by).toBe('cli')
+    } finally {
+      await sql`delete from instance_settings_apply`
+    }
+  }, 60_000)
+
+  it('sets a sign-in method text field with --table and --row, even when locked', async () => {
+    const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+    await sql`delete from instance_settings_apply`
+    await sql`insert into instance_settings_apply ${sql({ applied_by: 'cli-test', managed_paths: sql.json([{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains' }]) })}`
+    try {
+      const out = cli(['settings:set', 'allowed_email_domains', '--stdin', '--table', 'Sign In Method', '--row', 'google'], 'example.com')
+      expect(out).toContain('Sign In Method google allowed_email_domains set')
+      const [after] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+      expect(after.allowed_email_domains).toBe('example.com')
+      const [log] = await sql`select "user" from activity_log where operation = 'settings_set Sign In Method google allowed_email_domains' order by created_at desc limit 1`
+      expect(log.user).toBe('cli')
+    } finally {
+      await sql`delete from instance_settings_apply`
+      await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
+      await sql`delete from activity_log where "user" = 'cli' and operation like 'settings_set Sign In Method%'`
+    }
+  }, 60_000)
+
+  it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
+    const outside = failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
+    expect(outside?.status).toBe(1)
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method or Scheduled Job, not Person')
+    const noRow = failure(['settings:set', 'label', '--stdin', '--table', 'Sign In Method'], 'x')
+    expect(noRow?.status).toBe(1)
+    expect(noRow?.stderr).toContain('Sign In Method has rows: name one with --row')
+  }, 60_000)
 })
 
 // #465 (D3, D9): the settings file from the command line. Export, then apply
@@ -424,6 +467,7 @@ describe('#465: cli settings:export and settings:apply', () => {
   afterAll(async () => {
     rmSync(dir, { recursive: true, force: true })
     await sql`delete from activity_log where "user" = 'instance-settings' and full_name = 'instance settings file, applied by cli'`
+    await sql`delete from instance_settings_apply`
   })
 
   it('exports this environment, and applying the export changes nothing', async () => {

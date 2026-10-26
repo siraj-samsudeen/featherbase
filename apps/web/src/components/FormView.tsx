@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink, useNavigate } from '@tanstack/react-router'
-import { tableSchemaToZod, zodFieldErrors } from 'shared'
+import { INSTANCE_SETTINGS_TABLES, tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { pickerFor } from '../lib/pickers'
 import { principalLabel, usePrincipalName, isOpaqueId } from '../lib/people'
@@ -52,6 +52,18 @@ export function FormView({
     queryFn: () =>
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
+
+  // #465 D5: the fields the instance settings file set are read-only here,
+  // each with a sentence saying where it is changed instead.
+  const managed = useQuery({
+    queryKey: ['managed-fields', table, name],
+    enabled: !isNew && (INSTANCE_SETTINGS_TABLES as readonly string[]).includes(table),
+    queryFn: () =>
+      api.get<{ fields: string[]; hint: string }>(
+        `/api/instance-settings/managed/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
+      ),
+  })
+  const managedFields = new Set(managed.data?.fields ?? [])
 
   // #102 review: prefill seeds the INITIAL state synchronously, so the very
   // first render (and any client-script `onload` in the first effect flush)
@@ -581,10 +593,11 @@ export function FormView({
                   <FieldControl
                     key={f.column_name}
                     field={
-                      rowsReadOnly || (submittable && status !== 'draft')
+                      rowsReadOnly || (submittable && status !== 'draft') || managedFields.has(f.column_name)
                         ? { ...f, read_only: true }
                         : f
                     }
+                    managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
                     value={values[f.column_name]}
                     error={errors[f.column_name]}
                     onChange={(v) => setField(f.column_name, v)}
@@ -625,6 +638,7 @@ function FieldControl({
   meta,
   values,
   setField,
+  managedHint,
 }: {
   field: ColumnDef
   value: unknown
@@ -633,6 +647,8 @@ function FieldControl({
   meta: TableMeta
   values: Row
   setField: (columnName: string, value: unknown) => void
+  /** #465 D5: set when the instance settings file sets this field. */
+  managedHint?: string
 }) {
   const settings = useSettings()
   const { t } = useI18n()
@@ -668,10 +684,17 @@ function FieldControl({
       {t(hintText)}
     </p>
   ) : null
+  const managedId = `${controlId}-managed`
+  const managedNote = managedHint ? (
+    <p id={managedId} className="mt-1 text-xs text-ink-subtle" data-testid={`managed-${field.column_name}`}>
+      {t(managedHint)}
+    </p>
+  ) : null
+  const describedBy = [hintText ? hintId : null, managedHint ? managedId : null].filter(Boolean).join(' ')
   const common = {
     id: controlId,
     'aria-labelledby': labelId,
-    ...(hintText ? { 'aria-describedby': hintId } : {}),
+    ...(describedBy ? { 'aria-describedby': describedBy } : {}),
     'aria-required': field.reqd || undefined,
     disabled: field.read_only,
     'data-field': field.column_name,
@@ -684,6 +707,7 @@ function FieldControl({
       {label}
       {control}
       {hint}
+      {managedNote}
       {preview}
       {err}
     </div>

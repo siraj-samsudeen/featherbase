@@ -1067,6 +1067,17 @@ app.get('/api/instance-settings/export', async (c) => {
   return c.json(await exportInstanceSettings())
 })
 
+// D5: which fields of one row the last apply set, so the form shows them
+// read-only. Only someone who can read the row learns which are locked.
+app.get('/api/instance-settings/managed/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  const name = c.req.param('name')
+  await getDoc(table, name, who(c))
+  const { managedFieldsOf } = await import('./managed-settings')
+  const { MANAGED_FIELD_HINT } = await import('shared')
+  return c.json({ fields: await managedFieldsOf(table, name), hint: MANAGED_FIELD_HINT })
+})
+
 // #429: people who signed in but hold no role yet. System Manager only; the
 // list carries an address's domain, never the address.
 app.get('/api/people/waiting_for_access', async (c) => {

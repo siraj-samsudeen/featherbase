@@ -18,6 +18,7 @@ import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
+import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged } from './managed-settings'
 import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
@@ -776,6 +777,8 @@ async function writeDoc(
       await validateLinks(stx, meta, dbRow)
       attemptedRow = dbRow
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
+      // #465 D5: a new row under a locked row's id would set its locked fields.
+      await assertManagedUnchanged(stx, meta, String(rowId), null, inserted[0] as RowValues, user)
       for (const input of finalChildInputs)
         await saveChildren(stx, meta, rowId, input, user)
       ctx.row = { ...(inserted[0] as RowValues) }
@@ -1047,6 +1050,9 @@ async function updateDoc(
       attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
+      // #465 D5: judged on the row as written (after hooks and scripts)
+      // against the row as stored, so an echoed locked value is no change.
+      await assertManagedUnchanged(stx, meta, name, existing as RowValues, updated as RowValues, user)
       // Re-picked from the hooked row, as on insert. An absent key still
       // means "children untouched": the physical row spread into ctx.row
       // carries no Sub-table columns, so the key exists only if the payload
@@ -1257,6 +1263,7 @@ async function deleteDocImpl(
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    await assertRowNotManaged(stx, meta, name, user)
     if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
@@ -1432,6 +1439,13 @@ async function renameDocImpl(
     await assertUserPermissions(user, meta, existing as RowValues)
     const [clash] = await tx`select 1 from ${tx(tbl)} where ${tx(meta.row_key)} = ${target}`
     if (clash) throw new AppError('ConflictError', `${table} ${target} already exists`)
+    // #465 D5: neither a locked row's id, nor the id a locked field refers
+    // to (the cascade below would rewrite it), nor a locked row's id as the
+    // new name.
+    const stx = tx as unknown as typeof sql
+    await assertRowNotManaged(stx, meta, oldName, user)
+    await assertRowNotManaged(stx, meta, target, user)
+    await assertNoManagedReference(stx, table, oldName, user)
 
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
@@ -1582,7 +1596,10 @@ async function saveSingleImpl(
         insert into single_value ${stx({ table_name: table, field, value: text })}
         on conflict (table_name, field) do update set value = excluded.value`
     }
-    await recordVersion(stx, meta, table, before, await stored(), user)
+    const after = await stored()
+    // #465 D5: a locked field, judged as stored text on both sides.
+    await assertManagedUnchanged(stx, meta, table, before, after, user)
+    await recordVersion(stx, meta, table, before, after, user)
   })
   return getDoc(table, table, user)
 }

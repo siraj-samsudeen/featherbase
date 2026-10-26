@@ -51,7 +51,10 @@ import postgres from 'postgres'
 import { config } from '../src/config'
 import { ensureExternalDatabase } from './external-database'
 
-const SHARED_TABLES = ['background_job', 'user_event']
+// instance_settings_apply (#465 D5): the CLI tests apply a settings file for
+// real, and a run killed before their cleanup would leave every field that
+// file named locked for every later run.
+const SHARED_TABLES = ['background_job', 'user_event', 'instance_settings_apply']
 
 export async function setup() {
   // Uses the app's own connection, since runMigrations and the environment
