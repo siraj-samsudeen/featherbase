@@ -363,11 +363,20 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   }
 
   const content = await readStored(fileUrl)
+  // #506: the type is whatever the uploader declared, and the file is served
+  // from this app's own address. Only types a browser shows without running
+  // script open in place; anything else (HTML, SVG, scripts) downloads, so an
+  // uploaded page can never run as the app. An <img> ignores the download
+  // header, so an SVG still shows where a form embeds it.
+  const type = (row.mime_type as string) || 'application/octet-stream'
+  const disposition = SHOWN_IN_PLACE.test(type) ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
-    'content-type': (row.mime_type as string) || 'application/octet-stream',
-    'content-disposition': `inline; filename="${(row.file_name as string).replace(/"/g, '')}"`,
+    'content-type': type,
+    'content-disposition': `${disposition}; filename="${(row.file_name as string).replace(/"/g, '')}"`,
   })
 }
+
+const SHOWN_IN_PLACE = /^(image\/(png|jpeg|gif|webp|avif|bmp)|application\/pdf|text\/plain|audio\/|video\/)/i
 
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
 app.get('/private/files/:stored', (c) =>

@@ -87,6 +87,38 @@ describe('FILE-001: file upload + storage', () => {
     }
   })
 
+  test('an uploaded web page or SVG downloads instead of opening as part of the app', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const [name, body, type] of [
+        ['page.html', '<script>alert(1)</script>', 'text/html'],
+        ['logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', 'image/svg+xml'],
+      ] as const) {
+        const doc = (await (await upload(admin, name, body, type)).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.status).toBe(200)
+        expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
+  test('a picture, a PDF and plain text still open in place', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const [name, type] of [['a.png', 'image/png'], ['a.pdf', 'application/pdf'], ['a.txt', 'text/plain']] as const) {
+        const doc = (await (await upload(admin, name, 'x', type)).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.headers.get('content-disposition')).toMatch(/^inline;/)
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
   test('rejects uploads without a session', async ({ api }) => {
     const form = new FormData()
     form.append('file', new File(['x'], 'x.txt', { type: 'text/plain' }))

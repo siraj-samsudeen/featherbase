@@ -55,7 +55,7 @@ test('the user can choose another letterhead, or leave it off', async ({ admin }
 // SPEC: none yet (proposed in the audit report: "values print as text, not as markup") —
 // suspected defect, see report. The server's PDF page escapes row values before
 // filling a format; the browser print page puts them into the page as markup.
-test.fails('a value containing markup is shown as text on the print page, not run as markup', async ({ admin }) => {
+test('a value containing markup is shown as text on the print page, not run as markup', async ({ admin }) => {
   await setup(admin, '<img src="x" alt="injected" data-injected="1">')
   await admin.post('/api/save_row', {
     table: 'Print Format',

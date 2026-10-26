@@ -3,6 +3,7 @@ import type { TableController } from '../controllers'
 import { sql } from '../db'
 import { publishUserEvent } from '../realtime'
 import { afterDocumentCommit } from '../action-transaction'
+import { getDoc } from '../document'
 
 // UI-018: when a comment is posted, every @mentioned person gets a
 // Notification Log row. RT-003: each also receives a realtime notification
@@ -31,6 +32,12 @@ export function mentionedNames(content: string): { usernames: string[]; names: s
 const controller: TableController = {
   table: 'Comment',
   hooks: {
+    // #507: a comment is about a row, so only someone who may open that row
+    // can comment on it — otherwise a mention would hand others a link to a
+    // row the commenter was never shown.
+    validate: async ({ row, user }) => {
+      if (row.ref_table && row.ref_name) await getDoc(String(row.ref_table), String(row.ref_name), user)
+    },
     after_insert: async ({ row, tx, user }) => {
       const content = String(row.content ?? '')
       const { usernames, names } = mentionedNames(content)

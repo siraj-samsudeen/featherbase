@@ -23,7 +23,7 @@ describe('UI-018: comment @mention notifications', () => {
         table: 'Comment',
         row: {
           ref_table: 'Person',
-          ref_name: 'cmt-srv-doc',
+          ref_name: alice,
           content: `hi @cmt-alice and @[bob cmt kumar], cc @ghost-user @[Cmt Twin] @${twin1}`,
         },
       }),
@@ -32,7 +32,7 @@ describe('UI-018: comment @mention notifications', () => {
 
     const notifs = await sql`
       select for_user, subject from notification_log
-      where ref_name = 'cmt-srv-doc' order by for_user`
+      where ref_name = ${alice} order by for_user`
     const users = notifs.map((n) => n.for_user as string)
     expect(users.sort()).toEqual([alice, bob].sort())
     expect(users).not.toContain(twin1)
@@ -49,7 +49,7 @@ describe('UI-018: comment @mention notifications', () => {
       method: 'POST',
       body: JSON.stringify({
         table: 'Comment',
-        row: { ref_table: 'Person', ref_name: 'cmt-srv-doc', content: 'no mentions here' },
+        row: { ref_table: 'Person', ref_name: 'Administrator', content: 'no mentions here' },
       }),
     })
     expect(res.status).toBe(201)
@@ -115,11 +115,9 @@ describe('Comment on a row', () => {
     expect((await sql`select 1 from comment where ref_name = ${doc.row_id}`).length).toBe(0)
   })
 
-  // SPEC: Comment on a row — suspected defect, see report. A person whose role may
-  // comment but may not read the row's Table can still comment on that row by
-  // naming it, and a mention in it notifies others with a link to a row they
-  // were never shown.
-  test.fails('someone who cannot read the row cannot comment on it', async ({ admin, createUser }) => {
+  // #507: a role that may comment but may not read the row's Table cannot
+  // comment on that row by naming it.
+  test('someone who cannot read the row cannot comment on it', async ({ admin, createUser }) => {
     const doc = await commentWorld(admin)
     const commenter = await createUser({ roles: ['Cmt Req Commenter'] })
     expect((await postComment(commenter, doc.row_id, 'I should not be here')).status).toBe(403)
