@@ -2,8 +2,8 @@
 // `quiet-test-mode-and-friendly-sign-in-refusals`): a refused Google sign-in
 // comes back as a short code the page explains, nothing typed is a slip the
 // page names itself, and a raw server validation message is never shown.
-import { vi } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { describe, vi } from 'vitest'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { configureDelegated, removeDelegated } from 'server/test/identity-fixtures'
 import { setUserPassword } from 'server/src/auth'
@@ -17,11 +17,18 @@ const loginCalls = (spy: { mock: { calls: unknown[][] } }) =>
 test('a Google account nobody set up reads plainly and offers the connected service', async () => {
   await configureDelegated()
   await renderApp('/featherbase/login?error=not_provisioned', anonymous)
-  const notice = await screen.findByTestId('sign-in-refused')
-  // The connected service is named once the page has read the sign-in options.
-  await waitFor(() => expect(notice).toHaveTextContent('Ask your manager or IT to invite you, or sign in with StyleHR.'))
-  expect(notice).toHaveTextContent("This Google account isn't set up for")
-  expect(notice).not.toHaveTextContent('Access not provisioned')
+  // #474: on the panel the service is offered by its own button, so the
+  // sentence does not repeat it.
+  const button = await screen.findByTestId('refused-delegated')
+  expect(button).toHaveTextContent('Sign in with StyleHR')
+  const sentence = screen.getByTestId('sign-in-refused')
+  expect(sentence).toHaveTextContent("This Google account isn't set up for")
+  expect(sentence).toHaveTextContent(/Ask your manager or IT to invite you\.$/)
+  expect(sentence).not.toHaveTextContent('sign in with StyleHR')
+  expect(sentence).not.toHaveTextContent('Access not provisioned')
+  // Where no panel button offers it, the notice still names the service.
+  await userEvent.click(screen.getByTestId('refused-other-ways'))
+  expect(screen.getByTestId('sign-in-refused')).toHaveTextContent('Ask your manager or IT to invite you, or sign in with StyleHR.')
 })
 
 test('without a connected service the refusal does not point at one', async () => {
@@ -128,4 +135,130 @@ test('values written straight into the inputs, as autofill does, are what is sen
   fireEvent.submit(screen.getByTestId('login-form'))
   await waitFor(() => expect(localStorage.getItem('fc_token')).toBeTruthy())
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(person.user)
+})
+
+// #474: a refused Google sign-in shows a panel that offers the next step
+// instead of an empty form. The numbers are the agreed spec items on #474.
+const RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+
+/** Inputs a person could type into (hidden ones don't count). */
+const typeableInputs = () =>
+  Array.from(document.querySelectorAll('input, textarea, select')).filter((el) => (el as HTMLInputElement).type !== 'hidden')
+
+describe('the "We couldn\'t sign you in" panel (#474)', () => {
+  test('1, 5: a refusal shows the heading and the plain sentence, and no input until the person chooses', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const panel = await screen.findByTestId('sign-in-refused-panel')
+    expect(within(panel).getByRole('heading', { name: "We couldn't sign you in" })).toBeInTheDocument()
+    expect(within(panel).getByTestId('sign-in-refused')).toHaveTextContent("This Google account isn't set up for")
+    await screen.findByTestId('refused-delegated')
+    expect(typeableInputs()).toEqual([])
+    expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('delegated-login-form')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('forgot-password')).not.toBeInTheDocument()
+  })
+
+  test('2: with StyleHR on, "Sign in with StyleHR" is the primary button and opens the StyleHR form', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const stylehr = await screen.findByTestId('refused-delegated')
+    expect(stylehr).toHaveTextContent('Sign in with StyleHR')
+    expect(stylehr.className).toContain('bg-action')
+    expect(screen.getByTestId('refused-google-retry').className).not.toContain('bg-action')
+    await userEvent.click(stylehr)
+    expect(await screen.findByTestId('delegated-login-form')).toBeInTheDocument()
+    expect(screen.getByLabelText('StyleHR ID')).toBeInTheDocument()
+    expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
+  })
+
+  test('3: "Try another Google account" restarts Google sign-in with the account picker forced', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const retry = await screen.findByTestId('refused-google-retry')
+    expect(retry).toHaveTextContent('Try another Google account')
+    expect(retry.tagName).toBe('A')
+    expect(retry).toHaveAttribute('href', RETRY_HREF)
+  })
+
+  test('4: "Other ways to sign in" is a quiet link that reveals the usual methods', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const other = await screen.findByTestId('refused-other-ways')
+    expect(other).toHaveTextContent('Other ways to sign in')
+    expect(other.className).not.toContain('bg-action')
+    await userEvent.click(other)
+    expect(await screen.findByTestId('login-form')).toBeInTheDocument()
+    expect(screen.getByTestId('google-login')).toBeInTheDocument()
+    expect(screen.getByTestId('delegated-login-toggle')).toBeInTheDocument()
+    expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
+    // The reason stays in view above the methods.
+    expect(screen.getByTestId('sign-in-refused')).toHaveTextContent("This Google account isn't set up for")
+  })
+
+  test('6: without StyleHR the Google retry is the primary button', async () => {
+    await removeDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const panel = await screen.findByTestId('sign-in-refused-panel')
+    const retry = within(panel).getByTestId('refused-google-retry')
+    expect(retry.className).toContain('bg-action')
+    expect(within(panel).queryByTestId('refused-delegated')).not.toBeInTheDocument()
+    expect(within(panel).queryByText(/StyleHR/)).not.toBeInTheDocument()
+    expect(typeableInputs()).toEqual([])
+  })
+
+  test('7: unknown and hostile codes get the panel with the generic message, and nothing of the code', async () => {
+    for (const code of ['made-up', '<img src=x onerror=alert(1)>', '__proto__', 'toString']) {
+      const view = await renderApp(`/featherbase/login?error=${encodeURIComponent(code)}`, anonymous)
+      const panel = await screen.findByTestId('sign-in-refused-panel')
+      expect(within(panel).getByRole('heading', { name: "We couldn't sign you in" })).toBeInTheDocument()
+      expect(within(panel).getByTestId('sign-in-refused')).toHaveTextContent("Google sign-in didn't finish. Please try again.")
+      expect(panel).not.toHaveTextContent(/made-up|onerror|proto|toString/)
+      view.unmount()
+    }
+  })
+
+  test('the panel heading replaces the subtitle, which comes back once the person chooses', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    await screen.findByTestId('refused-delegated')
+    expect(screen.queryByText('Sign in to your account')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('refused-other-ways'))
+    expect(screen.getByText('Sign in to your account')).toBeInTheDocument()
+  })
+
+  test('panel buttons are the same size as the form buttons, and the quiet link is an easy tap', async () => {
+    await configureDelegated()
+    await renderApp('/featherbase/login?error=not_provisioned', anonymous)
+    const stylehr = await screen.findByTestId('refused-delegated')
+    const retry = screen.getByTestId('refused-google-retry')
+    // The form's buttons are sized `w-full justify-center py-2`.
+    for (const el of [stylehr, retry]) expect(el.className).toMatch(/(^|\s)py-2(\s|$)/)
+    // At least 40px tall to tap, though it still looks like a link.
+    expect(screen.getByTestId('refused-other-ways').className).toMatch(/(^|\s)min-h-10(\s|$)/)
+    await userEvent.click(screen.getByTestId('refused-other-ways'))
+    expect(screen.getByTestId('login-submit').className).toMatch(/(^|\s)py-2(\s|$)/)
+  })
+
+  test('choosing a way in drops the error from the address, so a reload does not bring the panel back', async () => {
+    await configureDelegated()
+    const path = '/featherbase/login?error=not_provisioned&next=%2Ffeatherbase%2Fadmin'
+    for (const choice of ['refused-other-ways', 'refused-delegated']) {
+      // The test router keeps its own history; a browser's address bar holds
+      // the same URL, so put it there as the browser would.
+      window.history.replaceState(null, '', path)
+      const view = await renderApp(path, anonymous)
+      await userEvent.click(await screen.findByTestId(choice))
+      expect(new URLSearchParams(window.location.search).get('error')).toBeNull()
+      expect(new URLSearchParams(window.location.search).get('next')).toBe('/featherbase/admin')
+      expect(window.location.pathname).toBe('/featherbase/login')
+      view.unmount()
+    }
+  })
+
+  test('no refusal code, no panel: the usual methods show straight away', async () => {
+    await renderApp('/featherbase/login', anonymous)
+    await screen.findByTestId('login-form')
+    expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
+  })
 })

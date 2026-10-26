@@ -38,6 +38,10 @@ const REFUSALS: Record<string, (p: { appName: string; google: string; service: s
   google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
 }
 
+// #474: "Try another Google account" restarts Google sign-in with the account
+// picker forced, so the account just refused is never silently reused.
+export const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
 // words for people (a wrong password, an outage, someone who has left).
@@ -86,6 +90,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [forgot, setForgot] = useState(false)
+  // #474: after a refused Google sign-in the card shows a panel of next steps,
+  // and no inputs, until the person picks one.
+  const [refusalAnswered, setRefusalAnswered] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
@@ -156,19 +163,33 @@ export function LoginPage() {
     setError(null)
     setDelegatedKey(key)
     setMode(next)
+    if (refusal && !refusalAnswered) {
+      // Once the person has chosen, a reload must not bring the panel back:
+      // drop `error` from the address bar, keeping everything else (#474).
+      const url = new URL(window.location.href)
+      url.searchParams.delete('error')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    setRefusalAnswered(true)
   }
 
   // person-rename: after an upgrade every session ends once; say so plainly
   // instead of showing an unexplained sign-in page.
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
   const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
-  const refusal = refusalCode
-    ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
-        appName,
-        google: google?.label ?? 'Google',
-        service: delegatedMethods[0]?.label ?? null,
-      })
-    : null
+  const refusalText = (service: string | null) =>
+    refusalCode
+      ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
+          appName,
+          google: google?.label ?? 'Google',
+          service,
+        })
+      : null
+  // The notice names the connected service as a way in; the panel does not,
+  // because its own button already says "Sign in with <service>".
+  const refusal = refusalText(delegatedMethods[0]?.label ?? null)
+  const panelRefusal = refusalText(null)
+  const panelShowing = Boolean(refusal) && !refusalAnswered
 
   const errorLine = error && (
     <p className="text-sm text-negative" data-testid="login-error">
@@ -182,22 +203,60 @@ export function LoginPage() {
         <div className="mb-6 flex flex-col items-center gap-2">
           <Logo className="h-11 w-11 rounded-xl shadow-sm" />
           <h1 className="text-lg font-semibold text-ink">{appName}</h1>
-          <p className="text-sm text-ink-muted">
+          {/* The refusal panel's own heading takes the subtitle's place. */}
+          {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
             {mode === 'delegated' && delegatedLabel ? `Sign in with ${delegatedLabel}` : mode === 'signup' ? 'Create an account' : 'Sign in to your account'}
-          </p>
+          </p>}
         </div>
         {sessionEnded && (
           <p className="mb-3 text-center text-sm text-ink-muted" data-testid="session-ended">
             Your session has ended. Please sign in again.
           </p>
         )}
-        {refusal && (
+        {refusal && refusalAnswered && (
           <div className="mb-3" data-testid="sign-in-refused">
             <Notice tone="caution">{refusal}</Notice>
           </div>
         )}
         <div className={cardClasses('p-6')}>
-          {mode === 'delegated' && delegatedLabel ? (
+          {panelShowing ? (
+            <div className="space-y-5" data-testid="sign-in-refused-panel">
+              <div className="space-y-2">
+                <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
+                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{panelRefusal}</p>
+              </div>
+              <div className="space-y-3">
+                {delegatedMethods[0] && (
+                  <button
+                    type="button"
+                    data-testid="refused-delegated"
+                    className={buttonClasses({ variant: 'primary', className: 'w-full justify-center py-2' })}
+                    onClick={() => switchMode('delegated', delegatedMethods[0].key)}
+                  >
+                    Sign in with {delegatedMethods[0].label}
+                  </button>
+                )}
+                {/* A full-page navigation, as the ordinary Google button is. */}
+                {google && (
+                  <a
+                    href={GOOGLE_RETRY_HREF}
+                    data-testid="refused-google-retry"
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', className: 'w-full justify-center py-2' })}
+                  >
+                    Try another {google.label} account
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                data-testid="refused-other-ways"
+                className="inline-flex min-h-10 items-center text-sm text-action hover:underline"
+                onClick={() => switchMode('password')}
+              >
+                Other ways to sign in
+              </button>
+            </div>
+          ) : mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
                 <p className="text-sm text-ink-muted">

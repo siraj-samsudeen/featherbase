@@ -13,6 +13,19 @@ way in) and SHALL NOT reveal anything else: no address, no domain, and no
 detail of the account. A caller that does not ask for a page (a script or an
 API client) SHALL get the error as before.
 
+The sign-in card SHALL show this as a panel of next steps, not as a notice
+above an empty form (#474). The panel is headed "We couldn't sign you in" and
+carries the plain sentence. It offers "Sign in with" the connected service as
+the main action when one is on, which opens that service's form; "Try another
+Google account", which starts Google sign-in again with Google's account
+picker forced, so the refused account is never reused without the person
+choosing it; and a quiet "Other ways to sign in" link that shows the usual
+ways in. The panel SHALL show no input fields until the person picks one of
+these. Without a connected service, "Try another Google account" is the main
+action. The panel's sentence SHALL NOT repeat the connected service its button
+already offers. Once the person chooses, the reason code SHALL leave the
+address, so a reload shows the usual sign-in, not the panel again.
+
 #### Scenario: A Google account nobody set up
 
 - **WHEN** someone signs in with a Google account that has no invite and whose
@@ -29,6 +42,26 @@ API client) SHALL get the error as before.
   answer
 - **THEN** the sign-in page says so in one plain sentence, and an unknown
   reason reads as a generic failure
+
+#### Scenario: The panel offers the next step, not an empty form
+
+- **WHEN** a refused Google sign-in comes back to the sign-in page and a
+  connected service such as StyleHR is on
+- **THEN** the card shows "We couldn't sign you in" with the plain sentence,
+  "Sign in with StyleHR" as the main action, "Try another Google account" and
+  "Other ways to sign in", and no input field
+
+#### Scenario: The person picks a next step
+
+- **WHEN** the person picks "Sign in with StyleHR", "Try another Google
+  account" or "Other ways to sign in"
+- **THEN** they get the StyleHR form, a new Google sign-in that shows Google's
+  account picker, or the usual ways in with the reason still shown above them
+
+#### Scenario: No connected service
+
+- **WHEN** the same refusal comes back and no connected service is on
+- **THEN** "Try another Google account" is the main action
 
 #### Scenario: An API caller keeps the error
 

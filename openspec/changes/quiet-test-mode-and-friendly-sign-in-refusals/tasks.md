@@ -13,3 +13,10 @@
 ## 3. Verification
 
 - [x] 3.1 `pnpm --filter server typecheck`, the web typecheck, the affected server and web suites, design-guards, `pnpm check:specs`, `pnpm check:sensitive`, and the e2e `oauth.spec.ts`.
+
+## 4. Refusal panel (#474)
+
+- [x] 4.1 Failing RTL tests in `apps/web/test/login-page.test.tsx` for the #474 spec items 1–7: the heading and sentence, "Sign in with StyleHR" as the main action that opens its form, "Try another Google account" linking to `/api/oauth/google/login?prompt=select_account`, a quiet "Other ways to sign in", no inputs until a choice, the Google retry as the main action without StyleHR, and unknown or hostile codes. Then implement the panel in `Login.tsx`.
+- [x] 4.2 Server pin in `apps/server/test/sign-in-refusal-page.test.ts`: a retry start sends Google `prompt=select_account` (the start already forces the picker; no server change).
+- [x] 4.3 e2e in `apps/web/e2e/oauth.spec.ts`: the refusal shows the panel with no inputs and "Other ways to sign in" reveals the form; "Try another Google account" starts again with the picker and an invited account signs in.
+- [x] 4.4 Verifier follow-ups: panel buttons the same size as the form's, a 40px tap area on "Other ways to sign in", no subtitle under the panel, no repeated service clause in the panel sentence, and `error` dropped from the address once the person chooses (RTL in `login-page.test.tsx`, reload check in `oauth.spec.ts`).

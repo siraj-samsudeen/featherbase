@@ -91,3 +91,15 @@ describe('a refused Google sign-in lands on the sign-in page', () => {
     expect(refusalCode(res)).toBe('expired')
   })
 })
+
+// #474: the panel's "Try another Google account" starts Google sign-in again
+// with `?prompt=select_account`. Google must show its account picker, so the
+// refused account is never silently reused.
+test('a retry start sends Google the account picker', async ({ api }) => {
+  await configureGoogle({ client_id: 'test-client-id' })
+  const res = await api.fetch('/api/oauth/google/login?prompt=select_account', { headers: PAGE })
+  expect(res.status).toBe(302)
+  const loc = res.headers.get('location') as string
+  expect(loc.startsWith('https://accounts.google.com/o/oauth2/v2/auth?')).toBe(true)
+  expect(new URLSearchParams(loc.split('?')[1]).get('prompt')).toBe('select_account')
+})

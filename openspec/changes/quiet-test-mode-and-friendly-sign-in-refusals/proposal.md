@@ -32,6 +32,12 @@ Three things on the sign-in page tell people more, or less, than they should.
   `google_failed`. The page explains each one in one plain sentence and
   reveals nothing else. A fetch/XHR caller still gets the JSON error and its
   status.
+- The sign-in card shows a refusal as a "We couldn't sign you in" panel of
+  next steps, with no input fields until the person picks one: sign in with
+  the connected service, try another Google account (the account picker is
+  forced), or other ways to sign in (#474, agreed with Siraj 26-Oct-2026).
+  An empty password form had suggested typing a password, which is the wrong
+  next step for someone whose Google account is not set up.
 - The password form checks for empty fields before it posts. It drops the
   example text, and it never shows a server validation message: a request
   shape reads as "Enter your email or username and your password.", and an
@@ -49,6 +55,6 @@ Three things on the sign-in page tell people more, or less, than they should.
 
 - `apps/server/src/index.ts`, `sign-in.ts` and `oauth.ts`: refusal codes on
   the Google start and callback routes.
-- `apps/web/src/pages/Login.tsx`: the test-mode form, the refusal notice,
-  empty-field checks and error wording.
+- `apps/web/src/pages/Login.tsx`: the test-mode form, the refusal panel
+  (#474), empty-field checks and error wording.
 - No schema, migration or dependency changes.
