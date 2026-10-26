@@ -3,9 +3,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, getSessionUser } from './api'
 import { useWhoAmI } from './session'
 
-// The Admin owns the theme preference's hook. Its queue lives with that
-// session's mounted Admin, so a queued selection never becomes a different
-// user's write.
+// One owner for the whole session holds this hook (lib/theme-choice.tsx, at
+// the router root, #489). A write checks the person is still the one who
+// chose, so a queued selection never becomes a different user's write.
 export function useAppearancePreference<T extends string>(
   key: 'theme',
   initial: T,

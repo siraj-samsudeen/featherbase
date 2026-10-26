@@ -32,6 +32,7 @@ import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccountLayout } from './pages/AccountLayout'
+import { ThemeChoiceProvider } from './lib/theme-choice'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { KanbanView } from './components/KanbanView'
@@ -51,7 +52,14 @@ import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
 
-const rootRoute = createRootRoute({ component: Outlet })
+// #489: the theme choice lives above every page, for the whole session.
+const rootRoute = createRootRoute({
+  component: () => (
+    <ThemeChoiceProvider>
+      <Outlet />
+    </ThemeChoiceProvider>
+  ),
+})
 
 // #87: every search param below is a string to the app, but TanStack's default
 // search parser runs JSON.parse over each value — so a URL that was TYPED or

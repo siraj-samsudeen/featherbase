@@ -13,12 +13,14 @@ import { parseInstanceAddresses } from 'server/src/instance-addresses'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { recordAction } from '../src/lib/recents'
+import { followDevice } from '../src/lib/theme'
 import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 
 afterEach(() => {
   config.instanceAddresses = null
+  followDevice()
   vi.restoreAllMocks()
 })
 
@@ -192,6 +194,32 @@ test('at phone width Open Admin and the theme toggle move into the Account menu,
   const order = [...menu.querySelectorAll('[data-testid="open-admin"], [data-testid="theme-toggle"], [data-testid="account-sign-in-methods"]')]
     .map((el) => el.getAttribute('data-testid'))
   expect(order).toEqual(['open-admin', 'theme-toggle', 'account-sign-in-methods'])
+})
+
+// Codex round 1 on #495 (P2): closing the phone menu unmounts the toggle; the
+// theme's save must not go with it.
+test('at phone width a theme chosen in the Account menu sticks after the menu closes before the save lands', async ({ admin }) => {
+  phoneWidth()
+  const real = globalThis.fetch
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    if (url.includes('/api/set_theme')) await held
+    return real(input, init)
+  })
+  await renderApp('/featherbase/sales-target', admin)
+  await settledBar()
+  const menu = await openAccountMenu()
+  await userEvent.click(within(menu).getByTestId('theme-dark'))
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument())
+  release()
+  await waitFor(async () => expect(((await admin.get('/api/whoami')) as { theme?: string }).theme).toBe('dark'))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  const reopened = await openAccountMenu()
+  expect(within(reopened).getByTestId('theme-dark')).toHaveAttribute('aria-checked', 'true')
+  expect(document.documentElement.dataset.theme).toBe('dark')
 })
 
 // ---- 10. states -------------------------------------------------------------------

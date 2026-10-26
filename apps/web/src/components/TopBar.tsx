@@ -5,7 +5,8 @@ import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_HOME_DESTINATION, INTERIM_APP
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useIsPreview, useWhoAmI } from '../lib/session'
-import { THEMES, THEME_LABEL, useTheme, type Theme } from '../lib/theme'
+import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
+import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
 import { Logo } from './Logo'
 import { buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
@@ -192,7 +193,7 @@ const THEME_ICON: Record<Theme, LucideIcon> = { light: Sun, dark: Moon, device: 
 /** #380's one theme choice (light, dark, or follow the device), as a toggle
  *  group: icons in the bar, words in the phone's Account menu. */
 function ThemeToggle({ labelled = false }: { labelled?: boolean }) {
-  const { theme, set } = useTheme()
+  const { theme, set } = useThemeChoice()
   const { t } = useI18n()
   const labelId = useId()
   return (

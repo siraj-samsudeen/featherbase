@@ -21,7 +21,7 @@ import { useHomePages } from '../lib/home-pages'
 import { useCapabilities, useShellKind, useShellTables } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
-import { useTheme } from '../lib/theme'
+import { useThemeChoice } from '../lib/theme-choice'
 import { searchHitKind } from '../lib/search-hit'
 import { Logo } from '../components/Logo'
 import { ADMIN_NAME, PHONE_QUERY, TopBar } from '../components/TopBar'
@@ -100,7 +100,7 @@ function AdminShell() {
   const queryClient = useQueryClient()
   const user = getSessionUser()
   // The command bar's theme commands; the bar's own toggle is in TopBar.
-  const { set: setTheme } = useTheme()
+  const { set: setTheme } = useThemeChoice()
   // SET-004: the instance brand (System Settings → app_name) names the
   // browser tab — "Frappe Clone" is only the default.
   const { app_name } = useSettings()
