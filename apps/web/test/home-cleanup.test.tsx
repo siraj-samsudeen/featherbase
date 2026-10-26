@@ -40,10 +40,10 @@ test('Last view shows an old slug-labelled page by its catalog title, on Home an
   rememberOldExplore('Administrator', Date.now() - 1000)
   await renderApp('/featherbase/admin', admin)
   const tile = await screen.findByTestId('resume-tile-view')
-  expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('Cross-filter workspace')
+  expect(within(tile).getByTestId('resume-tile-title')).toHaveTextContent('Explore')
   expect(tile).not.toHaveTextContent(/\bexplore\b/)
   const recent = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
-  expect(recent).toHaveTextContent('Cross-filter workspace')
+  expect(recent).toHaveTextContent('Explore')
   expect(recent).not.toHaveTextContent(/\bexplore\b/)
 })
 
@@ -73,9 +73,9 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
   await admin.post('/api/events', { events: [{ ...explore, at: now - 3000 }, { ...explore, at: now - 2000 }] })
   await renderApp('/featherbase/admin', admin)
   const feed = await screen.findByTestId('activity-feed')
-  const link = await within(feed).findByRole('button', { name: 'Cross-filter workspace' })
+  const link = await within(feed).findByRole('button', { name: 'Explore' })
   const row = link.closest('[data-testid="feed-item"]') as HTMLElement
-  expect(within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('Cross-filter workspace'))).toHaveLength(1)
+  expect(within(feed).getAllByTestId('feed-item').filter((r) => r.textContent?.includes('Explore'))).toHaveLength(1)
   // The day heading over it.
   const group = row.closest('[data-testid="feed-day-group"]') as HTMLElement
   expect(within(group).getByTestId('feed-day')).toHaveTextContent('Today')
@@ -84,7 +84,7 @@ test('My activity: under a day heading, the kind icon, "You opened …", repeats
   expect(row.firstElementChild).toBe(icon)
   expect(row.textContent).not.toMatch(/\bPAGE\b/)
   // Then the sentence…
-  expect(row.textContent).toMatch(/^You opened Cross-filter workspace\s*· 2×/)
+  expect(row.textContent).toMatch(/^You opened Explore\s*· 2×/)
   // …and the clock time last.
   expect(row.lastElementChild).toBe(within(row).getByTestId('feed-time'))
   expect(within(row).getByTestId('feed-time').textContent).toMatch(/^\d{2}:\d{2}$/)

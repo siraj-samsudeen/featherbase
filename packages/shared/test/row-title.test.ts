@@ -58,8 +58,8 @@ test('nothing readable at all: the Table name and the key parts', () => {
 })
 
 test('a fixed admin page path reads as its title, whatever the query or slash', () => {
-  expect(adminPathTitle('/featherbase/admin/explore')).toBe('Cross-filter workspace')
-  expect(adminPathTitle('/featherbase/admin/explore/?root=Task')).toBe('Cross-filter workspace')
+  expect(adminPathTitle('/featherbase/admin/explore')).toBe('Explore')
+  expect(adminPathTitle('/featherbase/admin/explore/?root=Task')).toBe('Explore')
   expect(adminPathTitle('/featherbase/admin/sign-in-methods#top')).toBe('Sign-in methods')
   expect(adminPathTitle('/featherbase/admin/Task')).toBeUndefined()
   expect(adminPathTitle('/featherbase/admin/explore/extra')).toBeUndefined()

@@ -223,7 +223,7 @@ describe('helpers', () => {
 describe('displayEntry', () => {
   it('reads an old slug-labelled page as its catalog title', () => {
     expect(displayEntry({ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore' }))
-      .toEqual({ kind: 'page', label: 'Cross-filter workspace' })
+      .toEqual({ kind: 'page', label: 'Explore' })
   })
   it('reads a row by reference, with its Table as the sub-line', () => {
     expect(displayEntry(row('1517|040802006'))).toEqual({
@@ -231,7 +231,7 @@ describe('displayEntry', () => {
     })
   })
   it('takes the kind from the key when a pinned target carries none', () => {
-    expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Cross-filter workspace')
+    expect(displayEntry({ key: 'page:explore', label: 'explore', path: '/featherbase/admin/explore' }).label).toBe('Explore')
     expect(displayEntry({ key: 'list:Task?', label: 'Task', sub: 'kanban', path: '/featherbase/admin/Task' }))
       .toEqual({ kind: 'list', label: 'Task', sub: 'kanban' })
   })

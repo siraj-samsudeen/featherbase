@@ -24,7 +24,7 @@ export const ADMIN_STATIC_PAGES = [
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'sign-in-methods', title: 'Sign-in methods' },
   { slug: 'find-person', title: 'Find a person by identifier' },
-  { slug: 'explore', title: 'Cross-filter workspace' },
+  { slug: 'explore', title: 'Explore' },
   { slug: 'waiting-for-access', title: 'Waiting for access' },
 ] as const
 

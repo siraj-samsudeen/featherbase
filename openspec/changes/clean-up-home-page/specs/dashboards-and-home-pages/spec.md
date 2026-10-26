@@ -29,7 +29,7 @@ read as a few of its own values instead, never as an internal id.
 
 #### Scenario: A page remembered before page titles existed
 
-- **WHEN** the user opened the cross-filter workspace before page titles were
+- **WHEN** the user opened the Explore page before page titles were
   recorded, and later returns to the home page
 - **THEN** the tile back to it shows the page's title, not its address
 

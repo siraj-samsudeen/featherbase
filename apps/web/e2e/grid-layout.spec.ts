@@ -90,8 +90,16 @@ test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async 
     .visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
     .assertHas('[data-testid="breadcrumbs"]', { text: 'Admin' })
     .assertHas('[data-testid="breadcrumbs"]', { text: DT })
-    .assertHas('[data-testid="breadcrumbs"]', { text: docName })
     .assertHas('[data-testid="form-status"]', { text: 'Saved' })
+
+  // The breadcrumb names the row by its title — this Table has no title
+  // column, so its first value, whatever an earlier spec saved there — and
+  // never by its internal id (#476).
+  await session.step('the breadcrumb shows the row title, not its id', async ({ page }) => {
+    const title = await page.locator('[data-field=title]').inputValue()
+    await expect(page.getByTestId('breadcrumbs')).toContainText(title)
+    await expect(page.getByTestId('breadcrumbs')).not.toContainText(docName)
+  })
 
   await session.step('edit the title field directly', async ({ page }) => {
     await page.locator('[data-field=title]').fill('status probe')

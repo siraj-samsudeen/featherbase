@@ -261,7 +261,7 @@ describe('#101: GET /api/activity_feed', () => {
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=3')
     expect(feed.items.map((i) => [i.label, i.count])).toEqual([
       ['Task', 1],
-      ['Cross-filter workspace', 2],
+      ['Explore', 2],
       ['acme', 1],
     ])
     expect(feed.items[1].at).toBe(new Date(now - 2000).toISOString())
@@ -289,7 +289,7 @@ describe('#101: GET /api/activity_feed', () => {
       events: [{ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore?root=Task' }],
     })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
-    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Cross-filter workspace' })
+    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Explore' })
   })
 
   test("'team' collapses one person's repeated edits of one row, and keeps distinct rows apart", async ({ admin }) => {
@@ -328,7 +328,7 @@ describe('#101: GET /api/activity_feed', () => {
     await admin.post('/api/events', { events })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=1')
     expect(feed.items).toHaveLength(1)
-    expect(feed.items[0]).toMatchObject({ label: 'Cross-filter workspace', count: 25 })
+    expect(feed.items[0]).toMatchObject({ label: 'Explore', count: 25 })
   })
 
   test("'mine' still reaches the distinct action before a long run", async ({ admin }) => {
@@ -341,7 +341,7 @@ describe('#101: GET /api/activity_feed', () => {
     ]
     await admin.post('/api/events', { events })
     const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=2')
-    expect(feed.items.map((i) => [i.label, i.count])).toEqual([['Cross-filter workspace', 45], ['older', 1]])
+    expect(feed.items.map((i) => [i.label, i.count])).toEqual([['Explore', 45], ['older', 1]])
   })
 
   test("'team' counts one person's long run of edits in full, and reaches the change before it", async ({ admin }) => {
