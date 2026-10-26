@@ -127,7 +127,7 @@ function kindOf(columnType: string): ValueKind {
 
 /** A stored value in the file's own terms: what export writes and what an
  *  apply compares. Blank text and an unset value are the same. */
-function fromStored(kind: ValueKind, v: unknown): unknown {
+function fromStored(kind: ValueKind, v: unknown, jsonAsText = false): unknown {
   if (kind === 'check') return v === true || v === 1 || v === '1' || v === 'true'
   if (v === undefined || v === null || v === '') return null
   if (kind === 'int' || kind === 'number') {
@@ -135,7 +135,9 @@ function fromStored(kind: ValueKind, v: unknown): unknown {
     return Number.isFinite(n) ? n : null
   }
   if (kind === 'json') {
-    if (typeof v !== 'string') return v
+    // A jsonb column arrives decoded: a string in it is a JSON string, not
+    // JSON text. Only the Settings store (single_value) keeps JSON as text.
+    if (typeof v !== 'string' || !jsonAsText) return v
     try {
       return JSON.parse(v)
     } catch {
@@ -187,7 +189,7 @@ async function storedSettings(meta: TableMeta, fields: string[]): Promise<Record
   const rows = await sql`select field, value from single_value where table_name = ${meta.name}`
   const raw = new Map(rows.map((r) => [r.field as string, r.value]))
   const out: Record<string, unknown> = {}
-  for (const f of fields) out[f] = fromStored(kindOf(columnType(meta, f)), raw.get(f))
+  for (const f of fields) out[f] = fromStored(kindOf(columnType(meta, f)), raw.get(f), true)
   return out
 }
 

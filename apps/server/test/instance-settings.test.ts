@@ -277,6 +277,18 @@ describe('export (D9)', () => {
     expect(result.changes).toEqual([])
   })
 
+  test('a JSON column holding a JSON string round-trips as that string (Codex P2)', async () => {
+    await sql`insert into sign_in_method ${sql({
+      row_id: 'stringy', created_by: 'Administrator', updated_by: 'Administrator', created_at: new Date(), updated_at: new Date(), status: 'draft', position: 0,
+      kind: 'delegated_password', label: 'Stringy', enabled: false, new_person: 'refuse', self_link: false, settings: sql.json('{}'),
+    } as never)}`
+    const exported = await exportInstanceSettings()
+    expect((exported.file.settings['Sign In Method'] as Record<string, unknown>[]).find((r) => r.row_id === 'stringy')).toMatchObject({ settings: '{}' })
+    const before = await sql`select settings, updated_at from sign_in_method where row_id = 'stringy'`
+    expect((await applyInstanceSettings(exported.file, { by: 'Administrator' })).changes).toEqual([])
+    expect(await sql`select settings, updated_at from sign_in_method where row_id = 'stringy'`).toEqual(before)
+  })
+
   test('never contains a password, client secret, token or connection string', async () => {
     const secrets = {
       DATABASE_URL: 'postgres://app:db-pass-123456@db.internal:5432/featherbase',
