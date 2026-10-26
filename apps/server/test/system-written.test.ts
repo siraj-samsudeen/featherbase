@@ -330,6 +330,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/set_language': 'personal preference',
     'POST /api/set_password': 'credentials',
     'POST /api/people/names': 'read',
+    'POST /api/row_titles': 'read',
     'POST /api/people/:id/identities': 'person identities',
     'POST /api/people/:id/identifiers': 'person identifiers',
     'PATCH /api/identifiers/:id': 'person identifiers',

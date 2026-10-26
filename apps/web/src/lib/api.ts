@@ -95,7 +95,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
       // A session that existed and was refused has ended (a disabled account,
       // an upgrade that re-keyed every account): the sign-in page says so.
-      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}${token ? '&ended=1' : ''}`
+      window.location.href = `${loginHref(next)}${token ? '&ended=1' : ''}`
     }
   }
   const body = (await res.json().catch(() => ({}))) as {
@@ -171,6 +171,12 @@ export interface BrandSignInMethod {
   kind: SignInMethodKind
   label: string
   test_mode: boolean
+}
+
+/** The sign-in page, carrying where the person was headed. The Login page
+ *  re-checks `next` (safeLoginNext) before using it. */
+export function loginHref(next: string): string {
+  return `/featherbase/login?next=${encodeURIComponent(next)}`
 }
 
 /** The signed-in account's landing path: the Admin unless the server said otherwise (#3755). */

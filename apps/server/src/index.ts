@@ -61,7 +61,8 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { recordAppAccessRefusal } from './app-access'
-import { staticAdminPageTitle, eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { eventSummary, listKeyHasFilter, whoLabels, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { rowTitles, validateRowTitleRequest } from './row-titles'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
@@ -73,7 +74,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
+import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -819,7 +820,24 @@ app.get('/api/routine_suggestion', async (c) => {
 // #101 Phase 4: the homepage activity feed. 'mine' is the caller's own raw
 // trail (reads included — visible to them alone). 'team' shows CHANGES only
 // — Version rows and logins, never what a colleague merely viewed — and is
-// gated to System Manager.
+// gated to System Manager. Back-to-back repeats of one action on one target
+// are collapsed into a single row with a count, BEFORE the limit (home
+// cleanup), and rows are titled for the viewer (title_column or a readable
+// stand-in), never shown as a bare internal id.
+//
+// The collapse is gaps-and-islands in SQL over the whole ordered trail: a row
+// starts a run when it differs from the row before it, a running sum numbers
+// the runs, and a page is the first `limit` runs with their full counts. A
+// fixed scan window would cut a long run short and hide what came before it.
+
+/** The viewer's titles for the rows a feed page references, by "table\0id". */
+async function feedRowTitles(user: string, refs: Array<{ table?: string; row_id?: string }>) {
+  const wanted = refs.filter((r): r is { table: string; row_id: string } => Boolean(r.table && r.row_id))
+  const titles = new Map<string, string>()
+  for (const t of await rowTitles(user, wanted.slice(0, 100))) titles.set(`${t.table}\0${t.row_id}`, t.title)
+  return (table?: string, rowId?: string) => (table && rowId ? titles.get(`${table}\0${rowId}`) : undefined)
+}
+
 app.get('/api/activity_feed', async (c) => {
   const user = who(c)
   const scope = c.req.query('scope') === 'team' ? 'team' : 'mine'
@@ -827,30 +845,51 @@ app.get('/api/activity_feed', async (c) => {
 
   if (scope === 'mine') {
     const rows = await sql`
-      select kind, ref_key, label, sub_label, path, occurred_at
-      from user_event where created_by = ${user}
-      order by occurred_at desc limit ${limit}`
+      with marked as (
+        select kind, ref_key, label, sub_label, path, occurred_at, row_id,
+               case when lag(kind) over w = kind and lag(ref_key) over w is not distinct from ref_key
+                    then 0 else 1 end as starts
+        from user_event where created_by = ${user}
+        window w as (order by occurred_at desc, row_id desc)
+      ), runs as (
+        select *, sum(starts) over (order by occurred_at desc, row_id desc rows unbounded preceding) as run
+        from marked
+      )
+      select r.kind, r.ref_key, r.label, r.sub_label, r.path, r.occurred_at, n.count
+      from runs r
+      join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
+      where r.starts = 1
+      order by r.run`
     const me = (await whoLabels([user])).get(user)
     const whoName = me?.name ?? user
+    const items = rows.map((r) => ({
+      kind: r.kind as string,
+      ref_key: (r.ref_key as string | null) ?? '',
+      label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
+      sub: (r.sub_label as string | null) ?? undefined,
+      path: (r.path as string | null) ?? '',
+      at: new Date(r.occurred_at as string).toISOString(),
+      count: Number(r.count),
+    }))
+    // A row event is keyed `row:<Table>/<id>` and carries the Table as sub.
+    const rowRef = (i: (typeof items)[number]) =>
+      i.kind === 'row' && i.sub && i.ref_key === `row:${i.sub}/${i.label}` ? { table: i.sub, row_id: i.label } : {}
+    const titleOf = await feedRowTitles(user, items.map(rowRef))
     return c.json({
-      items: rows.map((r) => {
-        const path = (r.path as string | null) ?? ''
-        const title = staticAdminPageTitle(path)
-        const base = {
-          who_name: whoName,
-          ...(me?.role ? { who_role: me.role } : {}),
-          path,
-          at: new Date(r.occurred_at as string).toISOString(),
-        }
+      items: items.map(({ ref_key, ...i }) => {
+        const base = { who_name: whoName, ...(me?.role ? { who_role: me.role } : {}), path: i.path, at: i.at, count: i.count }
         // #440: a fixed admin page is a page, titled — not a slug-named list.
-        if (title && (r.kind === 'list' || r.kind === 'page'))
-          return { ...base, kind: 'page', label: title }
+        const pageTitle = adminPathTitle(i.path)
+        if (pageTitle && (i.kind === 'list' || i.kind === 'page')) return { ...base, kind: 'page', label: pageTitle }
+        const ref = rowRef({ ...i, ref_key })
+        const title = titleOf(ref.table, ref.row_id)
         return {
           ...base,
-          kind: r.kind as string,
-          label: (r.label as string | null) ?? (r.ref_key as string | null) ?? '',
-          sub: (r.sub_label as string | null) ?? undefined,
-          ...(r.kind === 'list' ? { filtered: listKeyHasFilter((r.ref_key as string | null) ?? '') } : {}),
+          kind: i.kind,
+          label: i.label,
+          ...(title ? { title } : {}),
+          sub: i.sub,
+          ...(i.kind === 'list' ? { filtered: listKeyHasFilter(ref_key) } : {}),
         }
       }),
     })
@@ -859,40 +898,73 @@ app.get('/api/activity_feed', async (c) => {
   const roles = await getRoles(user)
   if (!roles.includes('System Manager'))
     throw new AppError('PermissionError', 'The team feed requires the System Manager role')
-  const versions = await sql`
-    select created_by, ref_table, ref_name, created_at
-    from version order by created_at desc limit ${limit}`
-  const logins = await sql`
-    select "user", full_name, created_at
-    from activity_log where operation = 'login'
-    order by created_at desc limit ${limit}`
-  const names = await whoLabels([
-    ...versions.map((v) => v.created_by as string),
-    ...logins.map((l) => l.user as string),
-  ])
-  const items = [
-    ...versions.map((v) => ({
-      who_name: names.get(v.created_by as string)?.name ?? (v.created_by as string),
-      who_role: names.get(v.created_by as string)?.role,
-      kind: 'change',
-      label: (v.ref_name as string | null) ?? '',
-      sub: (v.ref_table as string | null) ?? undefined,
-      path: v.ref_table && v.ref_name ? `/featherbase/admin/${v.ref_table}/${v.ref_name}` : '',
-      at: new Date(v.created_at as string).toISOString(),
-    })),
-    ...logins.map((l) => ({
-      who_name: names.get(l.user as string)?.name ?? (l.user as string),
-      who_role: names.get(l.user as string)?.role,
-      kind: 'login',
-      label: '', // the row already names the person; a sign-in has no object
-      sub: 'signed in',
-      path: '',
-      at: new Date(l.created_at as string).toISOString(),
-    })),
-  ]
-    .sort((a, b) => (a.at < b.at ? 1 : -1))
-    .slice(0, limit)
-  return c.json({ items })
+  // Changes and sign-ins as one ordered stream; a run is one person doing the
+  // same kind of thing to the same target back to back.
+  const rows = await sql`
+    with stream as (
+      select created_by as who, 'change'::text as kind, ref_table as sub, ref_name as label, created_at as at, row_id::text as id
+      from version
+      union all
+      select "user", 'login', null, null, created_at, row_id::text
+      from activity_log where operation = 'login'
+    ), marked as (
+      select *,
+             case when lag(kind) over w = kind and lag(who) over w is not distinct from who
+                   and lag(sub) over w is not distinct from sub and lag(label) over w is not distinct from label
+                  then 0 else 1 end as starts
+      from stream
+      window w as (order by at desc, id desc)
+    ), runs as (
+      select *, sum(starts) over (order by at desc, id desc rows unbounded preceding) as run
+      from marked
+    )
+    select r.who, r.kind, r.sub, r.label, r.at, n.count
+    from runs r
+    join (select run, count(*)::int as count from runs where run <= ${limit} group by run) n using (run)
+    where r.starts = 1
+    order by r.run`
+  const items = rows.map((r) => {
+    const sub = (r.sub as string | null) ?? undefined
+    const label = (r.label as string | null) ?? ''
+    return r.kind === 'login'
+      ? {
+          who: r.who as string,
+          kind: 'login',
+          label: '', // the row already names the person; a sign-in has no object
+          sub: undefined, // the verb ("signed in") is the web's, like every other kind
+          path: '',
+          at: new Date(r.at as string).toISOString(),
+          count: Number(r.count),
+        }
+      : {
+          who: r.who as string,
+          kind: 'change',
+          label,
+          sub,
+          path: sub && label ? `/featherbase/admin/${sub}/${label}` : '',
+          at: new Date(r.at as string).toISOString(),
+          count: Number(r.count),
+        }
+  })
+  const names = await whoLabels(items.map((i) => i.who))
+  const titleOf = await feedRowTitles(user, items.map((i) => (i.kind === 'change' ? { table: i.sub, row_id: i.label } : {})))
+  return c.json({
+    items: items.map(({ who: id, ...i }) => {
+      const title = i.kind === 'change' ? titleOf(i.sub, i.label) : undefined
+      return {
+        who_name: names.get(id)?.name ?? id,
+        who_role: names.get(id)?.role,
+        ...i,
+        ...(title ? { title } : {}),
+      }
+    }),
+  })
+})
+
+// Home cleanup: display titles for referenced rows (Home tiles, Recent).
+app.post('/api/row_titles', async (c) => {
+  const refs = validateRowTitleRequest(await c.req.json().catch(() => null))
+  return c.json({ titles: await rowTitles(who(c), refs) })
 })
 
 // UI-024 / #380: persist the caller's theme — light, dark, or follow the device.

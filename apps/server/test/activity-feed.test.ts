@@ -208,6 +208,8 @@ describe('#101: GET /api/activity_feed', () => {
     const login = team.items.find((i) => i.kind === 'login' && i.who_name === 'login-nameless')
     expect(login).toBeTruthy()
     expect(login!.label).toBe('')
+    // The verb is the web's ("signed in"); no grey sub-text rides along.
+    expect(login).not.toHaveProperty('sub')
     expect(JSON.stringify(login)).not.toContain('psn_')
   })
 
@@ -240,5 +242,122 @@ describe('#101: GET /api/activity_feed', () => {
     const change = team.items.find((i) => i.kind === 'change' && i.label === 'svc-row')
     expect(change).toMatchObject({ who_name: 'svc-nightly-importer', who_role: 'Service account' })
     expect(String(change!.who_name)).not.toContain('svc_')
+  })
+
+  // Home cleanup: a run of the same action on the same target is ONE row,
+  // collapsed before the limit so a page never fills with repeats.
+  test("'mine' collapses consecutive repeats into one row with a count and the latest time", async ({ admin }) => {
+    const now = Date.now()
+    const explore = { kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore' }
+    await admin.post('/api/events', {
+      events: [
+        { ...explore, at: now - 5000 },
+        { kind: 'search', key: 'search:acme', label: 'acme', at: now - 4000 },
+        { ...explore, at: now - 3000 },
+        { ...explore, at: now - 2000 },
+        { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', at: now - 1000 },
+      ],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=3')
+    expect(feed.items.map((i) => [i.label, i.count])).toEqual([
+      ['Task', 1],
+      ['Explore', 2],
+      ['acme', 1],
+    ])
+    expect(feed.items[1].at).toBe(new Date(now - 2000).toISOString())
+  })
+
+  test("'mine' titles an opened row from its values when its Table has no title column", async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Feed Merch Map',
+      id_pattern: 'prompt',
+      columns: ['store_code', 'material_group', 'mch_subcategory'].map((column_name) => ({ column_name, column_type: 'Data' })),
+    })
+    await admin.post('/api/save_row', {
+      table: 'Feed Merch Map',
+      row: { row_id: '1517|040802006', store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z' },
+    })
+    await admin.post('/api/events', {
+      events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006' }],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'row', title: '1517 · Kurti Z', sub: 'Feed Merch Map' })
+  })
+
+  test("'mine' titles an old slug-labelled page from the catalog, query string and all", async ({ admin }) => {
+    await admin.post('/api/events', {
+      events: [{ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore?root=Task' }],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Explore' })
+  })
+
+  test("'team' collapses one person's repeated edits of one row, and keeps distinct rows apart", async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Feed Repeat DT',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+    })
+    let c = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-a', title: 'v1' } })
+    for (const t of ['v2', 'v3'])
+      c = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-a', title: t, updated_at: c.updated_at } })
+    const b = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-b', title: 'v1' } })
+    await admin.post('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-b', title: 'v2', updated_at: b.updated_at } })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    const rows = team.items.filter((i) => i.kind === 'change' && i.sub === 'Feed Repeat DT')
+    expect(rows.map((i) => i.label)).toEqual(['rep-b', 'rep-a'])
+    const versions = (n: unknown) => Number(n)
+    expect(versions(rows[0].count)).toBeGreaterThanOrEqual(1)
+    expect(versions(rows[1].count)).toBeGreaterThanOrEqual(2)
+  })
+
+  test('a sign-in by someone no longer on record reads "Unnamed person", never the opaque id', async ({ admin }) => {
+    await logActivity('psn_goneaaaaaaaaaaaaaaaa', 'login', { full_name: null })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    expect(JSON.stringify(team)).not.toContain('psn_gone')
+    expect(team.items.some((i) => i.kind === 'login' && i.who_name === 'Unnamed person')).toBe(true)
+  })
+
+  // Codex review on #476: a run longer than any fixed scan window still
+  // collapses whole, and what came before it is still reachable.
+  test("'mine' counts a run longer than any scan window in full", async ({ admin }) => {
+    const now = Date.now()
+    const events = Array.from({ length: 25 }, (_, i) => ({
+      kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', at: now - i * 1000,
+    }))
+    await admin.post('/api/events', { events })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=1')
+    expect(feed.items).toHaveLength(1)
+    expect(feed.items[0]).toMatchObject({ label: 'Explore', count: 25 })
+  })
+
+  test("'mine' still reaches the distinct action before a long run", async ({ admin }) => {
+    const now = Date.now()
+    const events = [
+      { kind: 'search', key: 'search:older', label: 'older', at: now - 60_000 },
+      ...Array.from({ length: 45 }, (_, i) => ({
+        kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore', at: now - i * 1000,
+      })),
+    ]
+    await admin.post('/api/events', { events })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=2')
+    expect(feed.items.map((i) => [i.label, i.count])).toEqual([['Explore', 45], ['older', 1]])
+  })
+
+  test("'team' counts one person's long run of edits in full, and reaches the change before it", async ({ admin }) => {
+    const base = Date.now() - 3_600_000
+    const at = (s: number) => new Date(base + s * 1000)
+    // Newest first: 45 edits of one row, then (older) one edit of another.
+    // An hour ago, so nothing else in the run's span can sit between them.
+    await sql`insert into version ${sql([
+      { row_id: 'feed-run-older', created_by: 'Administrator', updated_by: 'Administrator', created_at: at(0), updated_at: at(0), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-b', data: '{}' },
+      ...Array.from({ length: 45 }, (_, i) => ({
+        row_id: `feed-run-${i}`, created_by: 'Administrator', updated_by: 'Administrator', created_at: at(10 + i), updated_at: at(10 + i), status: 'draft', ref_table: 'Feed Run DT', ref_name: 'run-a', data: '{}',
+      })),
+    ])}`
+    await sql`delete from activity_log where operation = 'login' and created_at >= ${at(0)}`
+    await sql`delete from version where created_at > ${at(60)}`
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team&limit=2')
+    expect(team.items.map((i) => [i.label, i.count])).toEqual([['run-a', 45], ['run-b', 1]])
   })
 })

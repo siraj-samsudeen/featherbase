@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
+import { RowTitle } from '../lib/row-titles'
 import { NO_COLUMN_TYPES, isRowsReadOnly, isSystemWritten, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
@@ -1250,7 +1251,7 @@ function RecentStrip({
           data-testid="recent-strip-row"
           className="rounded-full border border-border-control bg-surface px-2.5 py-0.5 text-xs text-ink-muted hover:border-action hover:text-action"
         >
-          {r.label}
+          <RowTitle table={table} rowId={r.label} />
         </Link>
       ))}
       {views.map(({ entry, parsed }) => (

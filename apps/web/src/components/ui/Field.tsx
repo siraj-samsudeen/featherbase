@@ -9,7 +9,7 @@ import {
   type SelectHTMLAttributes,
 } from 'react'
 import { cx, recipe } from './cx'
-import { Eye, EyeOff, Search } from './icons'
+import { ChevronDown, Eye, EyeOff, Search } from './icons'
 
 /** The look of anything the user types into or picks from. */
 export function inputClasses(className?: string): string {
@@ -85,11 +85,27 @@ export function TextInput({ className, type = 'text', ...rest }: InputHTMLAttrib
   return <input type={type} className={inputClasses(className)} {...rest} />
 }
 
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+/** A real <select> (keyboard and screen readers as the platform gives them)
+ *  with the browser's own arrow hidden and the design system's chevron drawn
+ *  in its place. `className` styles the select; `wrapperClassName` places it. */
+export function Select({
+  className,
+  wrapperClassName,
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement> & { wrapperClassName?: string }) {
   return (
-    <select className={inputClasses(cx('pr-8', className))} {...rest}>
-      {children}
-    </select>
+    <div className={cx('relative', wrapperClassName)}>
+      <select className={inputClasses(recipe('appearance-none pr-9', className))} {...rest}>
+        {children}
+      </select>
+      <ChevronDown
+        aria-hidden
+        size={16}
+        data-testid="select-chevron"
+        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-subtle"
+      />
+    </div>
   )
 }
 

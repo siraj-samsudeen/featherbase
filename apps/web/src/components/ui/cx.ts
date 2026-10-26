@@ -12,6 +12,8 @@ const COLOUR = String.raw`(?:canvas|surface|subtle|border|border-control|ink|ink
 // before its axis forms, so a call site's gap-x-4 refines a recipe's gap-2.
 const GROUPS: [RegExp, string][] = [
   [/^px-/, 'px'],
+  [/^pl-/, 'pl'],
+  [/^pr-/, 'pr'],
   [/^py-/, 'py'],
   [/^p-/, 'p'],
   [/^text-(xs|sm|base|lg|xl|[2-9]xl|control)$/, 'text-size'],

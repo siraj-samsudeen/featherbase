@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
-import { adminPageTitle, parseFilters } from 'shared'
+import { parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 
@@ -71,12 +71,8 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
 
 // #440: before the recorder knew the static admin pages, it logged them as a
 // 'list' labelled with the route slug (kept 90 days). The feed titles those
-// old events from the shared catalog; new ones arrive already as pages.
-/** The page title when `path` is exactly a static admin page, else undefined. */
-export function staticAdminPageTitle(path: string | null): string | undefined {
-  const m = /^\/featherbase\/admin\/([^/?#]+)\/?$/.exec(path ?? '')
-  return m ? adminPageTitle(m[1]) : undefined
-}
+// old events from the shared catalog (adminPathTitle); new ones arrive
+// already as pages.
 
 /** Did this list open carry a filter? The recorder keys a list as
  *  `list:<Table>[/<mode>]?<filters JSON>`; the list page ignores a malformed
@@ -97,9 +93,13 @@ export interface WhoLabel {
  *  full name → local part of the email (never the address) → @username → id.
  *  The local part is a deliberate fallback; this feed is for System Managers
  *  and the person themselves, who can already see the address. */
+const OPAQUE_PRINCIPAL = /^(psn|svc)_[a-z2-7]{20}$/
+
 export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
   const unique = [...new Set(ids)]
-  const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: id }]))
+  // An opaque id with no record behind it (a person since removed) is never
+  // shown as itself; a readable id (Administrator) is its own name.
+  const labels = new Map<string, WhoLabel>(unique.map((id) => [id, { name: OPAQUE_PRINCIPAL.test(id) ? 'Unnamed person' : id }]))
   if (unique.length === 0) return labels
   const rows = await sql`
     select p.row_id,
@@ -115,7 +115,7 @@ export async function whoLabels(ids: string[]): Promise<Map<string, WhoLabel>> {
     from service_account s where s.row_id in ${sql(unique)}`
   for (const r of rows)
     labels.set(r.row_id as string, {
-      name: (r.name as string | null) ?? (r.row_id as string),
+      name: (r.name as string | null) ?? (OPAQUE_PRINCIPAL.test(r.row_id as string) ? 'Unnamed person' : (r.row_id as string)),
       ...(r.role ? { role: r.role as string } : {}),
     })
   return labels

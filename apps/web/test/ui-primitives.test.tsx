@@ -91,6 +91,22 @@ describe('Field', () => {
     expect(screen.getByLabelText('Store').tagName).toBe('SELECT')
   })
 
+  test("a select keeps the real control, hides the browser's arrow and draws a chevron", () => {
+    render(
+      <Field label="Store">
+        <Select wrapperClassName="w-52">
+          <option>1501 Attakulangara</option>
+        </Select>
+      </Field>,
+    )
+    const select = screen.getByRole('combobox', { name: 'Store' })
+    expect(select.className).toMatch(/\bappearance-none\b/)
+    const chevron = screen.getByTestId('select-chevron')
+    expect(chevron).toHaveAttribute('aria-hidden', 'true')
+    expect(select.parentElement).toContainElement(chevron)
+    expect(select.parentElement?.className).toMatch(/\bw-52\b/)
+  })
+
   test('a search box is a searchbox with the given name', () => {
     render(<SearchInput aria-label="Search checklists" />)
     expect(screen.getByRole('searchbox', { name: 'Search checklists' })).toBeInTheDocument()
