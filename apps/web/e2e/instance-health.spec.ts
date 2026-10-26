@@ -1,12 +1,13 @@
-import { anonymousTest as test, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
+import { test, adminAuth, ensureAdminReaderRole, loginAs, type APIRequestContext } from './fixtures'
 
 // Instance health (#465, tasks 5.3 and 5.4; checklist on #465). The health
 // page on an instance whose settings file was never applied, and the banner
 // that only System Managers see, until every check passes.
 //
-// The isolated suite starts from a fresh database, and this file runs before
-// managed-settings.spec.ts (the only spec that applies a settings file), so
-// the first test sees an instance where the file was never applied.
+// The isolated suite starts from a fresh database. Files signed in as
+// Administrator run first, alphabetically, so this one runs before
+// managed-settings.spec.ts (the only other spec that applies a settings file)
+// and its first test sees an instance where the file was never applied.
 
 const KEEPER = 'health-keeper@example.com'
 const READER = 'health-reader@example.com'
@@ -53,9 +54,6 @@ test.afterAll(async ({ request }) => {
 })
 
 test('a System Manager opens instance health where the settings were never applied (5.3)', async ({ session }) => {
-  await session.step('sign in as Administrator', async ({ page }) => {
-    await loginAs(page)
-  })
   await session
     .visit('/admin/instance-health')
     .assertHas('[data-testid="instance-health"]')
@@ -70,7 +68,10 @@ test('a System Manager opens instance health where the settings were never appli
 })
 
 test('a person without the System Manager role does not see the banner (5.4)', async ({ session }) => {
-  await session.step('sign in as the reader', async ({ page }) => {
+  await session.step('sign in as the reader instead of Administrator', async ({ page }) => {
+    await page.goto('/login')
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear() })
+    await page.context().clearCookies()
     await loginAs(page, READER, PASSWORD)
   })
   await session
@@ -102,9 +103,6 @@ test('the banner leads to the page, and disappears once every check passes (5.4)
   // One problem left: the keeper is switched off, so no System Manager has an address.
   await patch(request, 'Person', keeperId, { enabled: false })
 
-  await session.step('sign in as Administrator', async ({ page }) => {
-    await loginAs(page)
-  })
   await session
     .visit('/admin/all-tables')
     .within('[data-testid="health-banner"]', (b) =>

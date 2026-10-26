@@ -317,6 +317,18 @@ const HISTORY_LIMIT = 20
 /** Run the checks, record what changed (unless `record` is false), and
  *  return them with their history: failing first, errors before warnings. */
 export async function instanceHealth(opts: HealthCheckOptions & { record?: boolean } = {}): Promise<InstanceHealth> {
+  if (opts.record === false) return describeHealth(opts)
+  // The observation and the history it is shown with are one step under the
+  // history lock, so a response never pairs these checks with a later
+  // observation's history (Codex review). The lock is reentrant, so
+  // observeHealth's own hold inside is free.
+  return withTransaction(async () => {
+    await holdHistory()
+    return describeHealth(opts)
+  })
+}
+
+async function describeHealth(opts: HealthCheckOptions & { record?: boolean }): Promise<InstanceHealth> {
   const observed = opts.record === false
     ? { checks: await runHealthChecks({ ...opts, now: opts.now ?? new Date() }), at: opts.now ?? new Date() }
     : await observeHealth(opts)
