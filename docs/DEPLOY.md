@@ -731,6 +731,112 @@ linked staff member by employee code, with no password.** Never set it where
 real users sign in, and remove it at the end of the trial. Test-mode sessions
 cannot change access, but they can read everything that person can.
 
+## Instance settings (#465)
+
+An instance's non-secret settings are kept in one reviewed file in the
+instance's own private repository, `featherbase/instance-settings.json`, next
+to its `manifest.json`. The file decides those settings in every environment.
+Secrets never go in it: they stay in the host's secret store (see
+[Configuration](#configuration)).
+
+**What the file manages.** Featherbase declares the scope, not the file:
+
+| Table | Shape | Fields the file may set |
+| --- | --- | --- |
+| `System Settings` | one object | every field (`app_name`, `time_zone`, `session_hours`, `privacy_notice`, …) |
+| `Sign In Method` | rows by `row_id` | every field; a row the environment lacks is created |
+| `Scheduled Job` | rows by `row_id` | `enabled` only; the job itself comes from code |
+
+A field the file leaves out is not managed, and keeps whatever the
+environment has. A text field may name a file next to the settings file
+instead of holding the text, for example
+`"privacy_notice": { "file": "privacy-notice.md" }`.
+
+```json
+{
+  "settings": {
+    "System Settings": { "app_name": "Example Dash", "privacy_notice": { "file": "privacy-notice.md" } },
+    "Sign In Method": [{ "row_id": "google", "allowed_email_domains": "example.com,example.org" }],
+    "Scheduled Job": [{ "row_id": "disable_leavers", "enabled": true }]
+  },
+  "environments": {
+    "dev": { "settings": { "Scheduled Job": [{ "row_id": "disable_leavers", "enabled": false }] } },
+    "production": {}
+  }
+}
+```
+
+**Values that differ by environment** go in that environment's section, and
+nowhere else: the sections are the list of intended differences. An object
+merges field by field; rows merge by `row_id`. When the file has sections,
+every apply must name one, and a name the file does not list is refused, so a
+typo cannot apply the base alone.
+
+**Applying it.** The instance repository's workflow sends the file on merge,
+and on demand, with a System Manager service account's token:
+
+```bash
+curl -fsS -X POST "https://<host>/api/instance-settings/apply" \
+  -H "authorization: Bearer $FEATHERBASE_TOKEN" -H 'content-type: application/json' \
+  -d '{ "file": <instance-settings.json>, "environment": "dev",
+        "files": { "privacy-notice.md": "<its text>" },
+        "source": { "revision": "<commit sha>", "run": "<workflow run id>" },
+        "dry_run": true }'
+```
+
+or, on the server itself:
+
+```bash
+pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
+# e.g. on Railway:
+railway ssh -p <project> -e <env> -s <service> -- pnpm --filter server cli settings:apply --file … --environment dev
+```
+
+- **One transaction.** Every change goes through the normal save path, as the
+  actor `instance-settings`, so each lands in the row's history. Any problem
+  (an unknown Table, row or field, a value the field refuses, a wrong type, a
+  file that was not sent) lists every problem at once and changes nothing.
+- **The result** names each changed setting with its old and new value, or
+  says `nothing changed`. The Activity Log records `settings_apply <environment>
+  revision <sha> run <id>: <n> settings changed`, with who sent it.
+- **Dry run** (`"dry_run": true`, `--dry-run`) reports the same changes and
+  the same problems, and writes nothing. Run it as the pull request check.
+- **A feature's secret.** A file that leaves a Google sign-in method on with a
+  client id is refused while `GOOGLE_CLIENT_SECRET` is unset on that server
+  (on development and test it only warns, as the release does).
+
+**Starting the file from a running environment:**
+
+```bash
+pnpm --filter server cli settings:export --dir featherbase/
+# writes instance-settings.json, and privacy-notice.md when one is set
+```
+
+or `GET /api/instance-settings/export` with a System Manager token. Applying
+an export to the environment it came from reports `nothing changed`. An export
+never carries a secret: the scope holds no secret field, and a value that
+holds one anyway (a secret variable's value pasted into a setting, a web
+address with credentials in it, a JSON key such as `api_token`) is left out
+and named on stderr (`withheld` over HTTP).
+
+**Manifests no longer carry settings.** An app manifest's `fixtures` may not
+set a Settings Table (System Settings among them); the install is refused and
+names this section. Moving an instance's settings out of its manifest changes
+nothing live: fixtures were applied only at install, a release never re-applies
+them, and uninstalling an app installed with one leaves the settings as they
+are (`apps/server/test/settings-fixture-release.test.ts` proves it on a
+database seeded by the previous code).
+
+**Checklist for each environment:**
+
+1. After a **fresh or restored database**, run the instance repository's
+   on-demand apply (or `cli settings:apply`) once. Until then the environment
+   runs on defaults, not on the file.
+2. Turn on the host's **deploy-failure notification** for the environment
+   (on Railway: the project's notification settings, deploy failed, to the
+   owners). A failed release leaves the old code serving, and nothing inside
+   Featherbase can report a release it never ran.
+
 ## Privacy notice (#401)
 
 `/privacy` is a public page (no sign-in, no app JavaScript) that shows the
@@ -746,7 +852,10 @@ cacheable for five minutes, so a change can take that long to show.
 - **Where it is stored:** the System Settings field `privacy_notice`
   (Markdown). Raw HTML in it is shown as text, never rendered; links work.
   Images never load: image syntax shows as a link with its alt text.
-- **How to apply it:** from the reviewed file, on the target instance:
+- **How to apply it:** through the instance settings file, as
+  `"privacy_notice": { "file": "privacy-notice.md" }` (see
+  [Instance settings](#instance-settings-465)). The one-field command below
+  is the break-glass path:
 
   ```bash
   pnpm --filter server cli settings:set privacy_notice --stdin < privacy-notice.md

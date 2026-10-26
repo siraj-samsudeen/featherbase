@@ -343,6 +343,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/access_tokens': 'credentials',
     'DELETE /api/access_tokens/:id': 'credentials',
     'POST /api/service_accounts': 'service accounts',
+    'POST /api/instance-settings/apply': 'saveDoc on the managed settings Tables (#465), none system-written',
     'PATCH /api/service_accounts/:name': 'service accounts',
     'POST /api/service_accounts/:id/roles': 'service accounts',
     'POST /api/access_log': 'internal writer: records the caller\'s own export',

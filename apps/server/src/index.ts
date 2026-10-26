@@ -1122,6 +1122,33 @@ app.get('/api/people/:id/identities', async (c) => {
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
+// Instance settings as code (#465, D3): the instance repository's workflow
+// sends its settings file here with a System Manager token, on merge and on
+// demand. `dry_run` previews; `files` carries what the file names with
+// { file }. The export is the same shape and never holds a secret.
+app.post('/api/instance-settings/apply', async (c) => {
+  await assertSystemManager(who(c))
+  // It writes sign-in methods, so it is access work (auth.ts).
+  assertCanChangeAccess(c.get('user'))
+  const { applyRequestSchema, applyInstanceSettings } = await import('./instance-settings')
+  const parsed = applyRequestSchema.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) {
+    const fields: Record<string, string> = {}
+    for (const issue of parsed.error.issues) fields[issue.path.join('.') || 'body'] = issue.message
+    throw new AppError('ValidationError', `Expected { file, environment?, dry_run?, source?, files? }: ${Object.entries(fields).map(([k, v]) => `${k} ${v}`).join('; ')}`, fields)
+  }
+  const body = parsed.data
+  return c.json(await applyInstanceSettings(body.file, {
+    by: who(c), environment: body.environment, dryRun: body.dry_run === true, source: body.source, files: body.files,
+  }))
+})
+
+app.get('/api/instance-settings/export', async (c) => {
+  await assertSystemManager(who(c))
+  const { exportInstanceSettings } = await import('./instance-settings')
+  return c.json(await exportInstanceSettings())
+})
+
 // #429: people who signed in but hold no role yet. System Manager only; the
 // list carries an address's domain, never the address.
 app.get('/api/people/waiting_for_access', async (c) => {

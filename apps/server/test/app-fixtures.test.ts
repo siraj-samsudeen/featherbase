@@ -325,3 +325,49 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     expect(apps.installed.map((a) => a.row_id)).not.toContain(APP)
   })
 })
+
+// #465 (instance-settings-as-code 3.5): instance settings are not install
+// fixtures. A Settings Table is one object that a fixture could only
+// overwrite on every install, never "adopt"; the settings live in the
+// instance settings file instead.
+describe('#465: a manifest cannot carry instance settings', () => {
+  test('a declarative manifest with a System Settings fixture is refused, and nothing is created', async () => {
+    const { installAppFromManifest } = await import('../src/apps')
+    const settingsBefore = await sql`select field, value from single_value where table_name = 'System Settings' order by field`
+    await expect(installAppFromManifest({
+      name: 'settings_fixture_app',
+      tables: [{ name: 'Settings Fixture Item', module: 'Test', columns: [{ column_name: 'title', column_type: 'Data' }] }],
+      fixtures: [{ table: 'System Settings', rows: [{ app_name: 'From The Manifest', allowed_login_domains: 'example.com' }] }],
+    })).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: expect.stringContaining('App settings_fixture_app: a fixture cannot set System Settings'),
+    })
+    expect(await isInstalled('settings_fixture_app')).toBe(false)
+    expect(await sql`select 1 from table_def where name = 'Settings Fixture Item'`).toHaveLength(0)
+    expect(await sql`select field, value from single_value where table_name = 'System Settings' order by field`).toEqual(settingsBefore)
+  })
+
+  test('a code app\'s own Settings Table is refused too', async () => {
+    registerApp({
+      name: 'own-settings-app',
+      tables: [{ name: 'Own Settings', module: 'Test', kind: 'settings', columns: [{ column_name: 'greeting', column_type: 'Data' }] }],
+      fixtures: [{ table: 'Own Settings', rows: [{ greeting: 'hello' }] }],
+    })
+    await expect(installApp('own-settings-app')).rejects.toMatchObject({ message: expect.stringContaining('a fixture cannot set Own Settings') })
+    expect(await sql`select 1 from table_def where name = 'Own Settings'`).toHaveLength(0)
+  })
+
+  test('uninstalling an app installed under the old rule leaves System Settings as they are', async () => {
+    // What an install before #465 left behind: the settings it wrote (later
+    // edited in Admin) and a ledger entry naming System Settings.
+    await saveDoc('System Settings', { app_name: 'Edited In Admin' }, 'Administrator')
+    await sql`insert into installed_app (name, tables, roles, perms, fixtures, sources, manifest) values (
+      'old_settings_fixture_app', ${sql.json([])}, ${sql.json([])}, ${sql.json([])},
+      ${sql.json([{ table: 'System Settings', row_id: 'System Settings' }])}, ${sql.json([])},
+      ${sql.json({ name: 'old_settings_fixture_app', fixtures: [{ table: 'System Settings', rows: [{ app_name: 'From The Manifest' }] }] })})`
+    const before = await sql`select field, value from single_value where table_name = 'System Settings' order by field`
+    await uninstallApp('old_settings_fixture_app')
+    expect(await isInstalled('old_settings_fixture_app')).toBe(false)
+    expect(await sql`select field, value from single_value where table_name = 'System Settings' order by field`).toEqual(before)
+  })
+})

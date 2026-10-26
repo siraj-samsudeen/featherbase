@@ -328,6 +328,7 @@ decision record.
 | `storage.ts`, `thumbnails.ts` | Disk-backed file storage, signed URLs, image thumbnails |
 | `webform.ts`, `website.ts` | Public web forms and server-rendered web pages |
 | `settings.ts` | System Settings (a Settings Table) |
+| `instance-settings.ts` | Instance settings as code: the managed scope, apply, dry run and export (#465) |
 | `i18n.ts` | Translation catalogs |
 | `audit.ts` | Access/activity logging |
 | `apps.ts`, `sample-apps/` | Installable app registry (e.g. `hello-crm`) |

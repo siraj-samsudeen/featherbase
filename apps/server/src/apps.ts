@@ -3,7 +3,7 @@ import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
-import { invalidateMeta, physicalRowKey } from './meta'
+import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
@@ -336,6 +336,31 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
   return created
 }
 
+// #465: a fixture never sets a Settings Table. A Settings Table is one object,
+// so a fixture on it could only overwrite it on every install, never adopt it;
+// and the System Settings are instance settings, kept in the instance's
+// settings file (instance-settings.ts). Checked before anything is created.
+async function isSettingsTable(table: string, manifest?: AppManifest): Promise<boolean> {
+  const declared = (manifest?.tables ?? []).find((def) => (def as { name?: unknown })?.name === table) as { kind?: unknown } | undefined
+  if (declared) return declared.kind === 'settings'
+  try {
+    return (await getMeta(table)).kind === 'settings'
+  } catch {
+    return false // an unknown Table fails at the fixture's own save
+  }
+}
+
+async function assertNoSettingsFixtures(manifest: AppManifest): Promise<void> {
+  for (const fixture of manifest.fixtures ?? [])
+    if (await isSettingsTable(fixture.table, manifest))
+      throw new AppError(
+        'ValidationError',
+        `App ${manifest.name}: a fixture cannot set ${fixture.table}. A Settings Table holds instance settings, which live in the ` +
+          `instance settings file and are applied with cli settings:apply or POST /api/instance-settings/apply (docs/DEPLOY.md, "Instance settings")`,
+        { fixtures: fixture.table },
+      )
+}
+
 // Remove the fixture rows an install created, newest-first (reverse of
 // declaration order, so dependents go before what they reference) and BEFORE
 // the app's tables drop — a fixture may live on an app-owned table. Runs the
@@ -343,6 +368,10 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
 // already deleted is skipped quietly — the goal state is "gone" either way.
 async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
   for (const ref of [...fixtures].reverse()) {
+    // An install before #465 may have recorded a System Settings fixture. A
+    // Settings Table has no rows to remove, and its values are the instance's,
+    // so uninstall leaves them as they are.
+    if (await isSettingsTable(ref.table)) continue
     try {
       await deleteDoc(ref.table, ref.row_id)
     } catch (err) {
@@ -441,6 +470,7 @@ async function provisionSources(
 async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
   if (await isInstalled(manifest.name))
     throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
+  await assertNoSettingsFixtures(manifest)
   const provisioned = await provisionSources(manifest)
   const runtimeManifest = manifest.runtime_manifest as { client?: unknown } | undefined
   const ownsClientRoot = manifest.runtime_package && typeof runtimeManifest?.client === 'string'
