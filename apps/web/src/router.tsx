@@ -187,9 +187,11 @@ function AdminPageNotFound() {
   )
 }
 
-/** The Table a path names does not exist (its metadata answered 404). */
-function noSuchTable(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404
+/** The Table a path names never existed: its metadata answered the server's
+ *  plain not-found (meta.ts). A deleted Table answers 404 too, with a tombstone
+ *  saying who deleted it and when (DEL-R9); that one keeps its own message. */
+function noSuchTable(error: unknown, table: string): boolean {
+  return error instanceof ApiError && error.status === 404 && error.message === `Table ${table} not found`
 }
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
@@ -337,7 +339,7 @@ function TableListPage() {
   const { filters } = tableRoute.useSearch()
   const navigate = tableRoute.useNavigate()
   const meta = useMeta(table)
-  if (noSuchTable(meta.error)) return <AdminPageNotFound />
+  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   // SET-001: a Settings Table has no list — open its one row directly.
   if (meta.data?.kind === 'settings') {
     return (
@@ -680,7 +682,7 @@ function TableFormPage() {
   // Parsing is memoized so the object isn't rebuilt every render.
   const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   const meta = useMeta(table)
-  if (noSuchTable(meta.error)) return <AdminPageNotFound />
+  if (noSuchTable(meta.error, table)) return <AdminPageNotFound />
   return (
     <div data-testid="doc-page">
       <FormView

@@ -3,6 +3,7 @@
 // home. The retired /featherbase/admin/sign-in-methods is one (#489 item 13;
 // changed outright, no redirect), and so is any made-up path.
 import { screen, within } from '@testing-library/react'
+import { logAccess } from 'server/src/audit'
 import { test, expect, renderApp } from './pg-test'
 
 test.for([
@@ -16,6 +17,15 @@ test.for([
   expect(page).toHaveTextContent('Page not found')
   expect(within(page).getByRole('link')).toHaveAttribute('href', '/featherbase/admin')
   expect(screen.queryByText(/Table .* not found/)).toBeNull()
+})
+
+// DEL-R9 stands: a Table that was deleted is not "not found"; its path says
+// who deleted it and when.
+test("a deleted Table's path still says it was deleted", async ({ admin }) => {
+  await logAccess('Administrator', 'delete_table', { table: 'Buried Table 489' })
+  await renderApp('/featherbase/admin/Buried%20Table%20489', admin)
+  expect(await screen.findByText(/Table Buried Table 489 was deleted by Administrator on/)).toBeInTheDocument()
+  expect(screen.queryByTestId('page-not-found')).toBeNull()
 })
 
 test('an existing Table still opens its list', async ({ admin }) => {
