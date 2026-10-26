@@ -241,4 +241,71 @@ describe('#101: GET /api/activity_feed', () => {
     expect(change).toMatchObject({ who_name: 'svc-nightly-importer', who_role: 'Service account' })
     expect(String(change!.who_name)).not.toContain('svc_')
   })
+
+  // Home cleanup: a run of the same action on the same target is ONE row,
+  // collapsed before the limit so a page never fills with repeats.
+  test("'mine' collapses consecutive repeats into one row with a count and the latest time", async ({ admin }) => {
+    const now = Date.now()
+    const explore = { kind: 'page', key: 'page:explore', label: 'Cross-filter workspace', path: '/featherbase/admin/explore' }
+    await admin.post('/api/events', {
+      events: [
+        { ...explore, at: now - 5000 },
+        { kind: 'search', key: 'search:acme', label: 'acme', at: now - 4000 },
+        { ...explore, at: now - 3000 },
+        { ...explore, at: now - 2000 },
+        { kind: 'list', key: 'list:Task?', label: 'Task', path: '/featherbase/admin/Task', at: now - 1000 },
+      ],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine&limit=3')
+    expect(feed.items.map((i) => [i.label, i.count])).toEqual([
+      ['Task', 1],
+      ['Cross-filter workspace', 2],
+      ['acme', 1],
+    ])
+    expect(feed.items[1].at).toBe(new Date(now - 2000).toISOString())
+  })
+
+  test("'mine' titles an opened row from its values when its Table has no title column", async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Feed Merch Map',
+      id_pattern: 'prompt',
+      columns: ['store_code', 'material_group', 'mch_subcategory'].map((column_name) => ({ column_name, column_type: 'Data' })),
+    })
+    await admin.post('/api/save_row', {
+      table: 'Feed Merch Map',
+      row: { row_id: '1517|040802006', store_code: '1517', material_group: '040802006', mch_subcategory: 'Kurti Z' },
+    })
+    await admin.post('/api/events', {
+      events: [{ kind: 'row', key: 'row:Feed Merch Map/1517|040802006', label: '1517|040802006', sub: 'Feed Merch Map', path: '/featherbase/admin/Feed%20Merch%20Map/1517%7C040802006' }],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'row', title: '1517 · Kurti Z', sub: 'Feed Merch Map' })
+  })
+
+  test("'mine' titles an old slug-labelled page from the catalog, query string and all", async ({ admin }) => {
+    await admin.post('/api/events', {
+      events: [{ kind: 'list', key: 'list:explore?', label: 'explore', path: '/featherbase/admin/explore?root=Task' }],
+    })
+    const feed = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=mine')
+    expect(feed.items[0]).toMatchObject({ kind: 'page', label: 'Cross-filter workspace' })
+  })
+
+  test("'team' collapses one person's repeated edits of one row, and keeps distinct rows apart", async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Feed Repeat DT',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+    })
+    let c = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-a', title: 'v1' } })
+    for (const t of ['v2', 'v3'])
+      c = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-a', title: t, updated_at: c.updated_at } })
+    const b = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-b', title: 'v1' } })
+    await admin.post('/api/save_row', { table: 'Feed Repeat DT', row: { row_id: 'rep-b', title: 'v2', updated_at: b.updated_at } })
+    const team = await admin.get<{ items: Array<Record<string, unknown>> }>('/api/activity_feed?scope=team')
+    const rows = team.items.filter((i) => i.kind === 'change' && i.sub === 'Feed Repeat DT')
+    expect(rows.map((i) => i.label)).toEqual(['rep-b', 'rep-a'])
+    const versions = (n: unknown) => Number(n)
+    expect(versions(rows[0].count)).toBeGreaterThanOrEqual(1)
+    expect(versions(rows[1].count)).toBeGreaterThanOrEqual(2)
+  })
 })

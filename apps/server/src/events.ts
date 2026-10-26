@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
-import { adminPageTitle, parseFilters } from 'shared'
+import { parseFilters } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 
@@ -71,11 +71,23 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
 
 // #440: before the recorder knew the static admin pages, it logged them as a
 // 'list' labelled with the route slug (kept 90 days). The feed titles those
-// old events from the shared catalog; new ones arrive already as pages.
-/** The page title when `path` is exactly a static admin page, else undefined. */
-export function staticAdminPageTitle(path: string | null): string | undefined {
-  const m = /^\/featherbase\/admin\/([^/?#]+)\/?$/.exec(path ?? '')
-  return m ? adminPageTitle(m[1]) : undefined
+// old events from the shared catalog (adminPathTitle); new ones arrive
+// already as pages.
+
+/** Feed rows in a run — the same person doing the same thing to the same
+ *  target, back to back — become ONE row: the latest of them, with `count`.
+ *  Runs only: an action repeated after something else stays its own row.
+ *  Input newest-first; collapsing happens before the caller's limit, so a
+ *  page of the feed is a page of distinct rows. */
+export function collapseRuns<T extends { at: string }>(items: T[], identity: (item: T) => string): Array<T & { count: number }> {
+  const out: Array<T & { count: number; _id: string }> = []
+  for (const item of items) {
+    const id = identity(item)
+    const last = out[out.length - 1]
+    if (last && last._id === id) last.count += 1
+    else out.push({ ...item, count: 1, _id: id })
+  }
+  return out.map(({ _id, ...rest }) => rest as unknown as T & { count: number })
 }
 
 /** Did this list open carry a filter? The recorder keys a list as

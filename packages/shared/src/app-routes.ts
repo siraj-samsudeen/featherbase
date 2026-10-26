@@ -44,3 +44,11 @@ export const ADMIN_NAMED_PAGE_KINDS: Record<string, string> = {
 export function adminPageTitle(slug: string): string | undefined {
   return ADMIN_STATIC_PAGES.find((p) => p.slug === slug)?.title
 }
+
+/** The title when `path` is exactly a static admin page (any query, hash or
+ *  trailing slash), else undefined. Read at render time, so entries recorded
+ *  before the catalog existed (labelled with the slug) still read as titles. */
+export function adminPathTitle(path: string | null | undefined): string | undefined {
+  const m = /^\/featherbase\/admin\/([^/?#]+)\/?(?:[?#].*)?$/.exec(path ?? '')
+  return m ? adminPageTitle(decodeURIComponent(m[1])) : undefined
+}
