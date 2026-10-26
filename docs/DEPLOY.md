@@ -40,10 +40,73 @@ Everything comes from the environment; every variable has a dev default in
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
-| `SITE_URL` | **yes, outside development and test** (the release preflight refuses without it, #430) | this instance's absolute external URL (`https://app.example.com`) — password-reset and invitation links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
+| `INSTANCE_ADDRESSES` | **yes, outside development and test** (the release preflight refuses without it, #430, #488) | what each web address of this instance opens, and which one emailed links use. See [Instance addresses](#instance-addresses) |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `SMTP_NAME` | to send real email | see [Email](#email); unset `SMTP_HOST` keeps the Email Sink |
+
+### Instance addresses
+
+`INSTANCE_ADDRESSES` is a JSON array, read at boot before the database (#488).
+Each entry is one web address of this instance:
+
+```json
+[{ "address": "https://dash.example.com", "opens": "feather_dash", "emails": true },
+ { "address": "https://featherbase.example.com", "opens": "admin" }]
+```
+
+- `address` is an absolute origin with no path, `https` outside development
+  and test. Each host appears once (the port is not part of the match).
+- `opens` is `admin` (the Admin screens) or an app's name. At least one entry
+  opens `admin`.
+- Exactly one entry has `"emails": true`. Invitations, password resets and the
+  waiting-for-access alert link to it, and its host is the `EHLO` fallback.
+
+The server checks these rules at boot and refuses to start on a bad list; the
+release preflight checks them again for the release's own environment, and
+refuses when the list is unset outside development and test.
+
+A request's `Host` (lowercased, port stripped) only *selects* a listed entry;
+it can never add one. Every absolute URL the server builds — the Google
+`redirect_uri`, the cookie `Secure` decision, emailed links — comes from the
+list. A host that is not listed gets the `admin` entry's address for links and
+is otherwise served as one address that holds everything. With the list unset
+(development and test only), the server falls back to the request, trusting the
+first `x-forwarded-proto` hop.
+
+**On an address that opens an app**, `/` and every other Featherbase page or
+app root redirect to the app's root. Sign-in, password reset, the OAuth
+callback, `/privacy`, `/api/*` and the runtime shell's assets are served. An
+app that is not installed, or disabled, shows "Application unavailable". Until
+Feather Dash is an installed app, an address that opens `feather_dash` treats
+the sales target report (`/featherbase/sales-target`) as its root, and
+`/api/brand` names it "Feather Dash" there. An address is presentation, never
+a security boundary: every API call is authorized the same way on every
+address.
+
+**Signing in.** Each address keeps its own sign-in: the `sid` cookie is
+host-only, and signing out on one address ends only that address's session.
+After any sign-in a person lands where they can do something:
+
+1. on an app's address, a person who can open the app stays;
+2. else, a person who can use Admin is handed to the `admin` address;
+3. on the `admin` address, a person who cannot use Admin but can open an app
+   that has an address is handed to it;
+4. else, the no-access page.
+
+"Can open" Feather Dash is, for now, the `Sales Target Viewer` role. Being
+handed means a one-time code, valid for one minute and bound to the target
+address, redeemed at that address's `/featherbase/oauth-callback`, where it
+mints a new session. A code that is replayed, late, or redeemed on another
+host is refused.
+
+**Register every address with Google.** Google sign-in on each address uses
+`<address>/api/oauth/google/callback` as its `redirect_uri`, and the sign-in
+must finish on the address it started on. In the Google Cloud console, open
+the OAuth client (the one whose id is in the `google` Sign In Method row) →
+**Authorized redirect URIs**, and add that URI for **every** entry of
+`INSTANCE_ADDRESSES` before the release that lists it. An address missing
+there gets Google's `redirect_uri_mismatch` error.
 
 Two settings already in the codebase matter specifically for hosted
 Postgres and must not regress: `db.ts` sets `prepare: false` (required by
@@ -199,7 +262,7 @@ server walks right-to-left only while the current hop is trusted, stopping
 at the nearest untrusted address. Malformed chains fall back to the socket;
 missing socket information shares an `unknown` bucket, never a supplied header.
 IPv4-mapped IPv6 is normalized. Do not trust a public client network or assume
-`SITE_URL` enables IP-header trust. Supplied sessions/tokens do not bypass
+`INSTANCE_ADDRESSES` enables IP-header trust. Supplied sessions/tokens do not bypass
 these public-route controls.
 
 ## Email
@@ -217,7 +280,7 @@ instead (#395).
 | `SMTP_USER` | `noreply@example.com` | a Workspace user in the domain; turns on SMTP AUTH |
 | `SMTP_PASSWORD` | (secret) | that user's **app password**, not their sign-in password. Required when `SMTP_USER` is set. A value in Google's grouped display (`abcd efgh ijkl mnop`) has its spaces removed; any other value is used exactly as set |
 | `MAIL_FROM` | `Feather Dash <noreply@example.com>` | the From of every SMTP message. It wins over any Email Account address, because the relay accepts only senders in the organisation's domains; the Email Account address it replaced becomes the Reply-To. Unset, the default Email Account's address is used |
-| `SMTP_NAME` | `example.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of `SITE_URL`, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
+| `SMTP_NAME` | `example.com` (optional) | the hostname sent in `EHLO`. Unset, it is the domain of `MAIL_FROM`, then the host of the `INSTANCE_ADDRESSES` entry marked for emails, then the domain of the sender address. The machine's own hostname is never used: a container's has no dot, and relays such as Google's refuse it. Must be a hostname, or `ECONFIG` |
 
 Production uses port 587. TLS is always required: there is no setting that
 lets mail or a credential leave unencrypted, and none that skips the
@@ -644,9 +707,10 @@ repo:
 - **Introduction (optional):** System Settings `invitation_email_intro`, plain
   text, one paragraph or two on what the service is for. Set it in the form or
   `pnpm --filter server cli settings:set invitation_email_intro --stdin < intro.txt`.
-- **Link:** `SITE_URL` + `/featherbase/login`. Outside development and test,
-  `SITE_URL` is **required**: the release preflight refuses to start without
-  it, and no invitation is sent (the inviter is told why). A link is never
+- **Link:** the `INSTANCE_ADDRESSES` entry marked for emails +
+  `/featherbase/login`. Outside development and test, `INSTANCE_ADDRESSES` is
+  **required**: the release preflight refuses to start without it, and no
+  invitation is sent (the inviter is told why). A link is never
   built from a request's Host header there.
 
 Mail goes through the instance's transport (the Email Sink until SMTP is
@@ -1037,7 +1101,7 @@ promoted to production (below).
 
 ### Promoting to production
 
-Prod deploys the **`production`** branch, and only with the owner's approval.
+Prod deploys from **`main`**, and only with the owner's approval.
 Prod is platform-only: it has no test mode and no StyleHR sign-in method, so
 it skips the re-stamp, and 0102 writes no instance seed-pack rows. This is where the
 CDC steps happen, because `<cdc-worker>` mirrors prod. The exact
@@ -1074,7 +1138,7 @@ columns, which logical replication does not send**. Warehouse readers use
    production; test mode off`, and the preflight lines, including `no
    publication blocks updates on a table with stored generated columns` and
    the pending migrations 0100, 0101, 0101a, 0102.
-5. **Promote:** merge to `production` (owner-approved); the release runs the
+5. **Promote:** deploy `main` to prod (owner-approved); the release runs the
    preflight, then 0100 + 0101 + 0101a + 0102 in **one** transaction (prod is
    at 0099 before the release, so 0100 is part of it, #399).
 6. **Counts** on prod, as in dev step 5 (no StyleHR rows: `person_identifier`
