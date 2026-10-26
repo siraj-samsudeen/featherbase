@@ -93,6 +93,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   email_rule: { '*': code, subject: text, message: text },
   email_sink: { '*': text },
   file: { file_name: text, file_url: code, mime_type: code, ref_table: code, ref_name: on('ref_table'), thumbnail_url: code },
+  // #465 D8: a health check's changes of state; the message is prose.
+  health_check_event: { check_key: code, severity: code, message: text },
   // The generated pair follows parent/parenttype (rewritten via `parent`).
   has_role: { person: id, service_account: id, role: code },
   // Shortcuts hold Table names and links, never a person id.
@@ -102,7 +104,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   import_log: { '*': code, error_summary: text, touched: text },
   installed_app: { '*': code },
   // #465 D5: who sent the last settings file; the rest name the file's source and fields.
-  instance_settings_apply: { applied_by: id, environment: code, revision: code, run: code, managed_paths: code },
+  // managed_values holds the settings the file set (configuration, never a person).
+  instance_settings_apply: { applied_by: id, environment: code, revision: code, run: code, managed_paths: code, managed_values: code },
   internal_metadata: { '*': code },
   job_execution: { job: code, method: code, outcome: code, error: text, result: text },
   letter_head: { '*': text },

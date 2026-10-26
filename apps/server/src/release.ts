@@ -9,6 +9,7 @@ import { runPatches } from './patches'
 import { patches } from '../patches/index'
 import { diagnoseAdminBootstrap } from './admin-bootstrap'
 import { preflightRelease } from './release-preflight'
+import { formatHealthReport, runHealthChecks } from './instance-health'
 
 try {
   await sql.begin(async (tx) => {
@@ -24,6 +25,14 @@ try {
     for (const n of newly) console.log(`applied patch ${n}`)
     console.log(`patches up to date (${patches.length} total)`)
     await diagnoseAdminBootstrap()
+    // Instance health (#465 D8): every check, failing ones as warnings. It
+    // never stops a release: the health page and banner carry them from here.
+    try {
+      for (const line of formatHealthReport(await runHealthChecks()))
+        (line.failing ? console.warn : console.log)(line.text)
+    } catch (err) {
+      console.warn(`health: the checks could not run: ${err instanceof Error ? err.message : String(err)}`)
+    }
   })
   await sql.end()
 } catch (err) {

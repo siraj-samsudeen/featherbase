@@ -1078,6 +1078,15 @@ app.get('/api/instance-settings/managed/:table/:name', async (c) => {
   return c.json({ fields: await managedFieldsOf(table, name), hint: MANAGED_FIELD_HINT })
 })
 
+// Instance health (#465 D8): every check with its state, why it matters, how
+// to fix it and its history. System Manager only. Reading it also records any
+// check whose state changed, so the history matches what the banner showed.
+app.get('/api/instance-health', async (c) => {
+  await assertSystemManager(who(c))
+  const { instanceHealth } = await import('./instance-health')
+  return c.json(await instanceHealth())
+})
+
 // #429: people who signed in but hold no role yet. System Manager only; the
 // list carries an address's domain, never the address.
 app.get('/api/people/waiting_for_access', async (c) => {
