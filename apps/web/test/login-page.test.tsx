@@ -40,6 +40,10 @@ test('each refusal code has its own plain message, and an unknown one a generic 
     ['expired', /The sign-in took too long or was started in another window/],
     ['google_failed', /Google sign-in didn't finish/],
     ['<script>made-up</script>', /Google sign-in didn't finish/],
+    // Names every object inherits are not codes (bot review on #468).
+    ['__proto__', /Google sign-in didn't finish/],
+    ['constructor', /Google sign-in didn't finish/],
+    ['hasOwnProperty', /Google sign-in didn't finish/],
   ]
   for (const [code, text] of cases) {
     const view = await renderApp(`/featherbase/login?error=${encodeURIComponent(code)}`, anonymous)

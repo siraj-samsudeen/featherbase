@@ -163,7 +163,7 @@ export function LoginPage() {
   const sessionEnded = new URLSearchParams(window.location.search).get('ended') === '1'
   const refusalCode = useRouterState({ select: (s) => new URLSearchParams(s.location.searchStr).get('error') })
   const refusal = refusalCode
-    ? (REFUSALS[refusalCode] ?? REFUSALS.google_failed)({
+    ? (Object.hasOwn(REFUSALS, refusalCode) ? REFUSALS[refusalCode] : REFUSALS.google_failed)({
         appName,
         google: google?.label ?? 'Google',
         service: delegatedMethods[0]?.label ?? null,
