@@ -515,6 +515,23 @@ describe('delegated sign-in test mode', () => {
     expect(() => assertTestModeAllowed('production')).not.toThrow()
   })
 
+  test('the server start itself refuses test mode on a production server and names the switch; staging starts', async () => {
+    const { assertServerStart } = await import('../src/env')
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
+    const refusal = (environment: string) => {
+      try {
+        assertServerStart(environment)
+        return ''
+      } catch (err) {
+        return (err as Error).message
+      }
+    }
+    expect(refusal('production')).toMatch(/DELEGATED_LOGIN_TEST_MODE is set on a "production" server/)
+    expect(refusal('production')).toMatch(/development, test or staging/)
+    // Any other refusal a bare test environment has is not about test mode.
+    expect(refusal('staging')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
+  })
+
   test('staging is production in every other respect: no default Administrator password', async () => {
     const { bootstrapAdministrator } = await import('../src/admin-bootstrap')
     vi.stubEnv('ADMIN_PASSWORD', '')

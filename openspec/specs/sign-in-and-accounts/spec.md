@@ -2,41 +2,75 @@
 
 ## Purpose
 
-A person gets into Featherbase with an email or username and a password, or
-with their Google account, and stays signed in without repeating that on
-every visit.
+A person gets into Featherbase with a username or email and a password, with
+their Google account, or with their ID at a connected outside service such as
+the organisation's HR system, and stays signed in without repeating that on
+every visit. One account stands for one person, whichever of their linked ways
+in they use, and administrators decide who may come in, how, and when that
+access ends.
 
 ## Requirements
 
 ### Requirement: Sign in with a password
 
-Signing in SHALL check an email or username against a password, and SHALL
-refuse with the same generic message whether the account doesn't exist, the
-password is wrong, or the account can't sign in this way — so a failed
-attempt never reveals which of those it was.
+Signing in SHALL check a username or email, ignoring capital letters, against
+a password. When what was typed is one person's username and another
+person's email, the username wins; when it names two different people equally
+— one person's account ID and another's username — nobody is signed in. A
+username can never be set to another person's ID, username or email. A failed
+attempt SHALL be refused with the same generic message whether the account
+doesn't exist, the password is wrong, or the account can't sign in this way,
+so it never reveals which.
 
 #### Scenario: Wrong password
 
 - **WHEN** a user signs in with an account that exists but the wrong password
 - **THEN** they are refused with a generic invalid-credentials message
 
+#### Scenario: Two people named equally
+
+- **WHEN** what was typed is one person's account ID and another person's
+  username
+- **THEN** the attempt is refused like a wrong password, whichever password
+  was typed
+
+#### Scenario: Username beats email
+
+- **WHEN** one account's username is "meena" and another account's email is
+  "meena", and someone signs in as "meena"
+- **THEN** only the first account's password is checked
+
+### Requirement: Repeated sign-in attempts are slowed
+
+Featherbase SHALL refuse further sign-in attempts for a while once too many
+have failed for the same name from the same place, and SHALL tell the person
+to try again later. A successful sign-in clears the count. Each way in that
+takes a typed name counts its own attempts.
+
+#### Scenario: Guessing a password
+
+- **WHEN** someone types a wrong password for the same account five times in
+  a quarter of an hour
+- **THEN** the next attempt is refused without checking the password, and
+  they are told to try again later
+
 ### Requirement: Sign in with Google
 
-Featherbase SHALL let a user sign in with their Google account. An account
-that already exists always signs in this way; a person signing in for the
-first time only gets an account made for them if their email's domain is
-one an administrator has allowed.
+Featherbase SHALL let a user sign in with their Google account. A Google
+account that is linked to a person opens that person's account; any other
+Google account is handled by the rule an administrator chose for people
+Google does not recognise.
 
 #### Scenario: First-time sign-in from an allowed domain
 
-- **WHEN** someone with no Featherbase account signs in with Google using an
-  email from an allowed domain
+- **WHEN** someone with no Featherbase account signs in with a Google account
+  belonging to an allowed company domain
 - **THEN** an account is created for them and they are signed in
 
 #### Scenario: Domain not allowed
 
 - **WHEN** someone with no Featherbase account signs in with Google using an
-  email from a domain that isn't allowed
+  address from a domain that isn't allowed
 - **THEN** they are refused and told to contact IT
 
 ### Requirement: Return to where they were headed
@@ -74,9 +108,9 @@ Once signed in by any supported method, a user SHALL stay signed in across visit
 ### Requirement: Reset a forgotten password
 
 Requesting a password reset SHALL always give the same confirmation, whether
-or not the account exists, and SHALL email a reset link only when it does.
-The link works once and stops working after an hour or after it's used,
-whichever comes first.
+or not the account exists, and SHALL email a reset link only to an account
+that has both an email address and a password. The link works once and stops
+working after an hour or after it's used, whichever comes first.
 
 #### Scenario: Request a reset
 
@@ -84,6 +118,13 @@ whichever comes first.
   account
 - **THEN** they see the same confirmation as someone whose account does
   exist, and no email is sent
+
+#### Scenario: Account that signs in elsewhere
+
+- **WHEN** someone asks to reset the password of an account that signs in
+  only through the HR system
+- **THEN** they see the same confirmation, no email is sent, and the account
+  gets no password
 
 #### Scenario: Reuse a spent link
 
@@ -136,31 +177,351 @@ with its access token.
 - **THEN** it is not offered; it appears only in the list of automation
   accounts
 
+### Requirement: One person, several ways to sign in
+
+An account SHALL stand for one person, who may have several sign-in methods
+linked to it, such as an HR system ID, a Google account and a password. A
+sign-in method is a way in that an administrator has set up, such as Google or
+the organisation's HR system. Every linked method opens the same account, with
+the same roles, data access and history.
+
+#### Scenario: Same person through two methods
+
+- **WHEN** a Team Leader whose HR system ID and Google account are both linked
+  to their account signs in with Google on Monday and with their HR system ID
+  on Tuesday
+- **THEN** both times they open the same account and see the same report and
+  history
+
+### Requirement: Email is optional
+
+A person SHALL be able to have an account, and sign in, without an email
+address. When an account has an email address, no other account may have the
+same one, ignoring capital letters. A placeholder address that can never
+receive mail, one ending in ".invalid", is refused.
+
+#### Scenario: Store staff without email
+
+- **WHEN** an administrator adds a store staff member with an HR system ID and
+  no email address
+- **THEN** the account is saved with no email and the person can sign in with
+  their HR system ID
+
+#### Scenario: Same address in different capitals
+
+- **WHEN** an administrator gives an account the address "Asha@Example.com"
+  while another account already has "asha@example.com"
+- **THEN** the save is refused because the address is already in use
+
+### Requirement: Matched by the provider's permanent ID
+
+A sign-in through an outside provider that keeps a permanent ID for the
+person, such as Google's account ID, SHALL be recognised by that ID only. A
+changed email or name at the provider does not change whose account opens,
+and an email address that matches an existing account never links a sign-in
+to it on its own; only an administrator's invite or mark for that person
+does.
+
+#### Scenario: Google address changes
+
+- **WHEN** a person whose Google account is linked changes that account's
+  address and signs in with Google again
+- **THEN** they open their own account as before
+
+#### Scenario: Someone else's address
+
+- **WHEN** a Google account that is not linked to anyone signs in, and its
+  address equals the email on an existing account that has no invite or mark
+  for it
+- **THEN** it does not open that existing account, and the sign-in is refused
+
+### Requirement: Rule for people a method does not know
+
+Each sign-in method SHALL follow the rule an administrator chose for a person
+it does not recognise: make an account for them, make one only when the
+method vouches for an email address on an allowed domain, or refuse. A method
+that cannot vouch for a permanent ID, such as the HR system, can only refuse.
+A new account starts with no access beyond what every signed-in person has.
+
+#### Scenario: Google with allowed domains
+
+- **WHEN** Google's rule is to admit only allowed domains and someone unknown
+  signs in with a Google account belonging to an allowed company domain
+- **THEN** an account is made for them, linked to their Google account, and
+  they are signed in
+
+#### Scenario: The HR system cannot make accounts
+
+- **WHEN** an administrator tries to set the HR system's rule to make an
+  account for people it does not know
+- **THEN** the change is refused, because the HR system cannot vouch for who
+  someone is
+
+### Requirement: Sign up with a username and password
+
+When an administrator has opened sign-up, a visitor SHALL be able to create an
+account by choosing a username and a password, and is signed in straight
+away. Sign-up asks for nothing else. It is closed unless an administrator
+opens it.
+
+#### Scenario: Sign up while it is open
+
+- **WHEN** sign-up is open and a visitor chooses an unused username and a
+  password
+- **THEN** their account is created with no email and they are signed in
+
+#### Scenario: Sign-up closed
+
+- **WHEN** sign-up is closed and someone tries to create an account
+- **THEN** the sign-in page offers no sign-up and the attempt is refused
+
+### Requirement: An administrator links sign-in methods
+
+An administrator who manages the system SHALL be able to link a sign-in method
+to any person, change or move a link in one step, and remove one. A Google
+account can be invited by its address before the person first signs in: their
+first Google sign-in with that address links the account for good, and after
+that the address is never used to find them. Any change to the person's email
+— set, changed or cleared — cancels every invite they have not yet used,
+whatever address it was for; an invite is never claimed for a disabled
+account.
+
+#### Scenario: Invite a store manager's Google account
+
+- **WHEN** an administrator invites a Google address to a store manager's
+  account and the manager then signs in with that Google account
+- **THEN** they open the store manager's account, and later sign-ins are
+  recognised by the Google account's permanent ID, not its address
+
+#### Scenario: Invite on a disabled account
+
+- **WHEN** a Google address is invited to an account that has since been
+  disabled, and someone signs in with that Google account
+- **THEN** they are refused and the invite stays unclaimed
+
+#### Scenario: Email changed before the invite is used
+
+- **WHEN** an administrator changes a person's email after inviting their old
+  Google address
+- **THEN** the old invite is cancelled and signing in with that Google account
+  no longer opens the person's account
+
+### Requirement: A person links another method themselves
+
+A signed-in person SHALL be able to link another sign-in method to their own
+account by proving it, for example by completing a Google sign-in, where an
+administrator allows it for that method. They must have signed in within the
+last few minutes, and a method already linked to someone else is refused.
+
+#### Scenario: Add Google to an HR system account
+
+- **WHEN** a Team Leader who just signed in with their HR system ID chooses to
+  link a Google account and completes Google's sign-in
+- **THEN** that Google account is linked and later opens the same account
+
+#### Scenario: Already someone else's
+
+- **WHEN** a person tries to link a Google account that is already linked to a
+  different account
+- **THEN** the link is refused and neither account changes
+
+### Requirement: Some sign-ins cannot change access
+
+A session that cannot vouch for the person SHALL NOT add or remove access to
+the account: it cannot link or remove a sign-in method, set a password, or
+create an access token. That covers a test-mode sign-in and a preview link's
+click-through sign-in. Such a session can still read until it expires.
+
+#### Scenario: Tester tries to keep a way in
+
+- **WHEN** a tester who signed in as a Team Leader through test mode tries to
+  set a password on that account or link their own Google account to it
+- **THEN** both are refused and the account is unchanged
+
+### Requirement: Removing a sign-in method
+
+A person SHALL be able to remove a sign-in method from their account, except
+their last working one; a pending invite does not count as a way in.
+Removing a method, or an administrator turning a method off, ends the sessions
+opened with it.
+
+#### Scenario: Remove the last method
+
+- **WHEN** a person with only one sign-in method tries to remove it
+- **THEN** they are refused and told to add another way in first
+
+#### Scenario: Method turned off
+
+- **WHEN** an administrator turns Google sign-in off while people are signed
+  in with Google
+- **THEN** their next action asks them to sign in again
+
+### Requirement: Administrators are never locked out
+
+Featherbase SHALL refuse any change that would leave an enabled Administrator
+or System Manager who can sign in now with no way in: turning off, removing or
+unconfiguring a sign-in method, or removing or moving one of their links. A
+connected service never counts as their way in, because they never sign in
+through it.
+
+#### Scenario: Turn off passwords
+
+- **WHEN** a System Manager tries to turn off password sign-in while the
+  Administrator signs in only with a password
+- **THEN** the change is refused and names who would be locked out
+
+#### Scenario: Remove a password beside an HR system link
+
+- **WHEN** a System Manager whose other link is their HR system ID tries to
+  remove their own password
+- **THEN** they are refused, because the HR system never signs them in
+
+### Requirement: Sign in through a connected service
+
+When an administrator has connected an outside sign-in service, such as the
+organisation's HR system, the sign-in page SHALL offer a second way in, named
+after that service. The person types their ID in that service and its
+password; Featherbase asks that service to check them and never keeps, logs
+or shows the password.
+
+#### Scenario: Sign in with an HR system ID
+
+- **WHEN** the HR system is connected, the user's account is linked to their
+  HR system ID, and they sign in with that ID and their HR system password
+- **THEN** they are signed in and land where a password sign-in would take
+  them
+
+#### Scenario: Wrong password at the service
+
+- **WHEN** the service says the password is wrong
+- **THEN** the user is refused with the same message as a wrong Featherbase
+  password, and is not signed in
+
+### Requirement: One linked account per service ID
+
+A sign-in through a connected service SHALL only ever sign in the one account
+that the typed service ID is linked to, ignoring case and surrounding spaces.
+An ID with no linked account is refused exactly like a wrong password, and its
+password is never sent to the service. One service ID can be linked to only
+one account.
+
+#### Scenario: No account linked yet
+
+- **WHEN** a user types an ID that no account is linked to
+- **THEN** they get the same refusal as a wrong password, and the service is
+  never asked whether their password is right
+
+#### Scenario: Linking an ID that is already taken
+
+- **WHEN** an administrator links a service ID that is already linked to
+  another account
+- **THEN** the link is refused and the existing link is unchanged
+
+### Requirement: An outage is not a wrong password
+
+When the connected service does not answer, answers with its own failure, or
+takes too long, the user SHALL be told the service is unavailable — never that
+their password is wrong.
+
+#### Scenario: The service is down
+
+- **WHEN** the user signs in through the service while it is not answering
+- **THEN** they are told the service is unavailable and to try again later
+
+### Requirement: No fallback during an outage
+
+When a connected sign-in service is not answering, Featherbase SHALL NOT try
+another way to sign the person in with what they typed, such as a password it
+holds itself.
+
+#### Scenario: HR system down
+
+- **WHEN** the HR system is down and a person who also has a Featherbase
+  password signs in with their HR system ID
+- **THEN** they are told the HR system is unavailable and are not signed in
+
+### Requirement: Off until connected
+
+Until an administrator connects the service and turns it on, the sign-in page
+SHALL show no second way in, and attempts to use it SHALL be answered as if it
+does not exist, without contacting any outside service.
+
+#### Scenario: Nothing connected
+
+- **WHEN** no service is connected and someone tries to sign in through it
+- **THEN** the attempt is answered as not found and no outside service is
+  contacted
+
+### Requirement: Only a clear yes signs anyone in
+
+A connected service SHALL sign a user in only when its answer clearly says the
+password is right; an empty, unreadable or unfamiliar answer SHALL be treated
+as the service not answering, never as a sign-in.
+
+#### Scenario: The service answers with a page it does not normally send
+
+- **WHEN** the service answers a sign-in with an empty reply or a web page
+- **THEN** the user is told the service is not responding and is not signed in
+
+### Requirement: Administrators use their own password
+
+The Administrator and System Managers SHALL never be signed in through a
+connected service, so whoever runs that service cannot reach them by resetting
+a password there.
+
+#### Scenario: A System Manager has a linked ID
+
+- **WHEN** an ID linked to a System Manager is typed with its HR password
+- **THEN** the sign-in is refused like a wrong password
+
+### Requirement: Someone who has left is refused everywhere
+
+When a connected service reports that a person has left, Featherbase SHALL
+refuse the sign-in even when the password is right, disable their account and
+end all their sessions, keeping the account's history. Every other way in
+then refuses them too.
+
+#### Scenario: Leaver who also has a password
+
+- **WHEN** someone who has left signs in with their still-working HR system
+  password, and later tries their Featherbase password
+- **THEN** they are told the account is no longer active, both are refused,
+  and the account is disabled with its history kept
+
 ### Requirement: Test mode for sign-in through a connected service
 
 A deployment MAY switch on test mode for sign-in through a connected service,
-only through its server environment and only with an exact switch value. While
-it is on, the service SHALL NOT be asked: a tester signs in as a person by
-typing that person's employee code (their account's ID) and no password — not
-the person's login name at the service, which a tester does not know. Who may
-sign in is otherwise unchanged — one account that is linked to the service,
-enabled, and not the Administrator or a System Manager. The sign-in page SHALL
-say that test mode is on and ask for an employee code.
+only through its server environment and only with an exact switch value, and
+only on a development, test or staging server — staging being a hosted trial
+instance that is a production server in every other respect: any other server
+refuses to start with it set. While it is on, the service SHALL NOT be asked:
+a tester signs in as a person by typing the employee code on that person's
+record, in any mix of capitals, with any password or none. The code must
+belong to exactly one person, and that person must have a live, unended link
+to the service; who may sign in is otherwise unchanged — one enabled account,
+and not the Administrator or a System Manager. The sign-in page SHALL look
+exactly as it does without test mode and SHALL NOT say that test mode is on,
+so the shortcut is known only to those who need it. A typed password SHALL
+NOT be logged.
 
 Because the service is not asked, it cannot report that someone has left.
 While test mode is on, a person who has left is refused only when their
 account is disabled; the instance that runs test mode SHALL keep leavers'
-accounts disabled (the roster sync's leaver option). Test mode is for a trial
-instance and SHALL NOT be switched on where real users sign in.
+accounts disabled. Test mode is for a trial instance and SHALL NOT be switched
+on where real users sign in.
 
 #### Scenario: Open the report as a Team Leader during a trial
 
-- **WHEN** test mode is on and the tester types a Team Leader's employee code with no password
-- **THEN** they are signed in as that Team Leader and the service is not contacted
+- **WHEN** test mode is on and the tester types a Team Leader's employee code
+  with any password
+- **THEN** they are signed in as that Team Leader and the service is not
+  contacted
 
 #### Scenario: Test mode does not widen who can sign in
 
-- **WHEN** test mode is on and the employee code belongs to no account, to an account not linked to the service, to a disabled account or to a System Manager
+- **WHEN** test mode is on and the employee code belongs to no one, to a
+  disabled account, to a System Manager, or to a person whose link to the
+  service has ended
 - **THEN** sign-in is refused exactly as it would be with the service asked
 
 #### Scenario: The service login name is not the test-mode ID
@@ -168,15 +529,132 @@ instance and SHALL NOT be switched on where real users sign in.
 - **WHEN** test mode is on and the tester types the person's login name at the service
 - **THEN** sign-in is refused; test mode looks people up by employee code only
 
+#### Scenario: A code on two records
+
+- **WHEN** test mode is on and the typed employee code is current on two
+  people's records
+- **THEN** sign-in is refused, and neither person is chosen
+
+#### Scenario: Only a development, test or staging server accepts test mode
+
+- **WHEN** the switch is set on a server that is not configured as
+  development, test or staging
+- **THEN** the server does not start, and says why
+
+#### Scenario: A hosted trial instance runs as staging
+
+- **WHEN** a hosted trial instance is configured as staging with the switch set
+- **THEN** it starts with test mode on, and it is otherwise treated as
+  production: the Administrator gets no default password
+
 #### Scenario: Anything but the exact switch value leaves it off
 
 - **WHEN** the switch holds a value such as "1" or "true"
-- **THEN** the service is asked and a password is required, as without test mode
+- **THEN** the service is asked and a password is required, as without test
+  mode
 
-#### Scenario: The page says so
+#### Scenario: The page does not advertise it
 
 - **WHEN** test mode is on and a service is connected
-- **THEN** the sign-in form shows a test-mode notice, asks for an employee code, and has no password field
+- **THEN** the sign-in form shows the ordinary labels, hint and password
+  field, and no test-mode notice
+
+### Requirement: A refused sign-in is explained on the sign-in page
+
+A sign-in that the browser reaches by navigation, such as the Google sign-in
+and its return from Google, SHALL NOT show a raw error. When it is refused,
+the browser SHALL go back to the sign-in page with a short reason, and the
+page SHALL explain it in one plain sentence that says what to do next (ask
+their manager or IT, try again, or use another way in) and reveals nothing
+else: no address, no domain, and no detail of the account. A caller that does
+not ask for a page, such as a script, SHALL get the error as before.
+
+#### Scenario: A Google account nobody set up
+
+- **WHEN** someone signs in with a Google account that has no invite and whose
+  domain is not allowed
+- **THEN** they are back on the sign-in page, told that this Google account
+  is not set up and to ask their manager or IT to invite them, or to sign in
+  with the connected service when one is offered
+
+#### Scenario: Other refusals read plainly too
+
+- **WHEN** a Google sign-in is refused because the account is disabled, its
+  address is already used by another account, Google sign-in is turned off,
+  the sign-in took too long or started in another window, or Google did not
+  answer
+- **THEN** the sign-in page says so in one plain sentence, and an unknown
+  reason reads as a generic failure
+
+#### Scenario: An API caller keeps the error
+
+- **WHEN** the same refusal reaches a caller that did not ask for a page
+- **THEN** it gets the error response and status it got before
+
+### Requirement: A refused sign-in offers the next step
+
+After a refused Google sign-in, the sign-in page SHALL show the reason with a
+short choice of next steps instead of an empty form: sign in through the
+connected service when one is on (the main choice), try another Google account
+with Google's account chooser shown, or see the other ways in. No input field
+is shown until the person picks one, and once they have, a reload shows the
+usual sign-in rather than the refusal again.
+
+#### Scenario: The person picks a next step
+
+- **WHEN** a refused Google sign-in comes back while the HR system is
+  connected, and the person picks the HR system, another Google account, or
+  the other ways in
+- **THEN** they get the HR system's form, a new Google sign-in that lets them
+  choose the account, or the usual ways in with the reason still shown above
+  them
+
+#### Scenario: No connected service
+
+- **WHEN** the same refusal comes back and no connected service is on
+- **THEN** trying another Google account is the main choice
+
+### Requirement: The sign-in forms never show a raw server message
+
+A sign-in form SHALL check that the fields it needs are filled before it
+sends anything, and say plainly what to enter when they are not. It SHALL
+send what is in the boxes when it is submitted, including values the
+browser's autofill wrote, and SHALL NOT show example text that could pass for
+a filled-in value. A server message SHALL be shown only when it is worded for
+people, such as a wrong password, an outage or someone who has left; a message
+about the request's shape, or an unexpected failure, SHALL read as a plain
+sentence.
+
+#### Scenario: Submitted empty
+
+- **WHEN** someone submits the password form with an empty field
+- **THEN** it tells them to enter their email or username and their password,
+  and sends nothing
+
+#### Scenario: The server answers with a request-shape message
+
+- **WHEN** the server answers a sign-in with a validation message about the
+  request's shape, or with an unexpected failure
+- **THEN** the page shows a plain sentence instead, never the server's text
+
+### Requirement: Open a preview with one link
+
+A preview deployment MAY be given one secret link that signs the visitor
+straight in as a named, non-Administrator person, so a feature can be judged
+as that person would see it. It SHALL be off unless both the link's secret and
+the person are configured, the secret must be long, and a wrong or missing
+secret SHALL be answered as if the page did not exist.
+
+#### Scenario: Follow the preview link
+
+- **WHEN** an owner opens the preview's link with the right secret
+- **THEN** they are signed in as the configured person, with that person's
+  own roles
+
+#### Scenario: Wrong secret
+
+- **WHEN** someone opens the link with a wrong secret, or previews are off
+- **THEN** they are told the page does not exist and are not signed in
 
 ### Requirement: An account's permanent reference is never an address or a code
 
@@ -191,6 +669,11 @@ can change or be reused; the reference cannot.
   they later move to a new Google address
 - **THEN** their account, its history and everything that refers to it are
   unchanged; only their contact address is updated
+
+#### Scenario: Renaming is refused
+
+- **WHEN** an administrator tries to rename a person's permanent reference
+- **THEN** the change is refused and they are told to change the name instead
 
 #### Scenario: Trial accounts get their permanent reference
 
@@ -213,6 +696,35 @@ can change or be reused; the reference cannot.
   comment's author, a list of people, a picker, a token's owner
 - **THEN** their name is shown instead (or their username, address or
   employee code where they have no name), and the reference itself never is
+
+### Requirement: Existing sign-ins carry over
+
+When linked sign-in methods were introduced, everyone who could sign in before
+SHALL keep signing in the same way without doing anything, after signing in
+once more. A person who had already signed in with Google gets a one-time
+link: their next Google sign-in with the same address links their Google
+account's permanent ID, and from then on the address is never used to find
+them. Before the upgrade an administrator can list what it will do, including
+a check that everyone who can sign in today keeps a way in.
+
+#### Scenario: Store staff the morning after
+
+- **WHEN** a Team Leader signs in with their HR system ID, typed in any mix
+  of capitals, the day after the upgrade
+- **THEN** they open the same account and report as the day before
+
+#### Scenario: First Google sign-in after the upgrade
+
+- **WHEN** a person who used to sign in with Google signs in with it for the
+  first time after the upgrade
+- **THEN** they open their own account, and their Google account is linked to
+  it by its permanent ID
+
+#### Scenario: Signed in before the upgrade
+
+- **WHEN** a person who was signed in before the upgrade opens Featherbase
+  after it
+- **THEN** they are asked to sign in, and then see what they saw before
 
 ### Requirement: Reset a password from the server when locked out
 

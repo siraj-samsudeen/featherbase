@@ -102,6 +102,22 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
     // An administrator unlinking that only way in is refused too.
     expect((await admin.fetch('/api/identities/uid_smog', { method: 'DELETE' })).status).toBe(417)
   })
+
+  test('moving a System Manager\'s only way in to someone else is refused and names them; the link stays', async ({ admin }) => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await configureGoogle({ client_id: 'real-client-id' })
+    const smove = await person('sm.only.moved', { roles: [{ role: 'System Manager' }] })
+    const other = await person('someone.else')
+    await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smove', ${smove}, 'google', 'g-smove', 'test')`
+    const res = await admin.fetch('/api/identities/uid_smove', { method: 'PATCH', body: JSON.stringify({ person_id: other }) })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${smove}`)
+    expect(await sql`select person_id, ended_at from sign_in_identity where id = 'uid_smove'`).toEqual([{ person_id: smove, ended_at: null }])
+    // Someone who is not an administrator can have theirs moved.
+    await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_plain', ${other}, 'google', 'g-plain', 'test')`
+    const third = await person('third.person')
+    expect((await admin.fetch('/api/identities/uid_plain', { method: 'PATCH', body: JSON.stringify({ person_id: third }) })).status).toBe(200)
+  })
 })
 
 describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () => {
