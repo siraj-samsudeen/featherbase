@@ -533,3 +533,202 @@ describe('EDS-2: foreign keys reflect as References', () => {
     }
   })
 })
+
+describe('Turn a data source table into a Featherbase table', () => {
+  const catalog = () => cli`
+    select c.table_name, c.column_name, c.data_type
+      from information_schema.columns c where c.table_schema = 'ext_fixture'
+     order by 1, 2, 3`
+  const indexes = () => cli`select indexname, indexdef from pg_indexes where schemaname = 'ext_fixture' order by 1`
+  const relations = () => cli`select relname, relkind from pg_class where relnamespace = 'ext_fixture'::regnamespace order by 1`
+
+  test('turning a table on leaves the database it came from exactly as it was', async ({ admin }) => {
+    await makeSource(admin)
+    const before = [await catalog(), await indexes(), await relations()]
+    await reflectTenant(admin)
+    await admin.get('/api/table/Ext%20Tenant')
+    expect([await catalog(), await indexes(), await relations()]).toEqual(before)
+  })
+
+  test('a column left out when connecting is never read or written', async ({ admin }) => {
+    await makeSource(admin)
+    // Hand-written binding that maps only `plan`; `internal_notes` and `slug` are left out.
+    await admin.post('/api/table_def', {
+      name: 'Ext Tenant Plans',
+      data_source: 'ext-fixture',
+      external_schema: 'ext_fixture',
+      external_table: 'tenant',
+      external_pk: 'id',
+      external_modified: 'updated_at',
+      columns: [{ column_name: 'plan', column_type: 'Data' }],
+    })
+    const enc = encodeURIComponent('Ext Tenant Plans')
+    const list = (await admin.get(
+      `/api/table/${enc}?filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
+    )) as { data: Record<string, unknown>[] }
+    expect(list.data.length).toBeGreaterThan(0)
+    for (const row of list.data) {
+      expect(row).not.toHaveProperty('internal_notes')
+      expect(row).not.toHaveProperty('slug')
+    }
+    // Saving the mapped field leaves the left-out one as the source has it.
+    const acme = (await admin.get(`/api/table/${enc}/${String(list.data[0].row_id)}`)) as Record<string, unknown>
+    const [{ internal_notes: notesBefore }] = await cli`
+      select internal_notes from ext_fixture.tenant where id = ${String(acme.row_id)}`
+    await patchDoc(admin, `/api/table/${enc}/${String(acme.row_id)}`, {
+      plan: 'platinum',
+      updated_at: acme.updated_at,
+    })
+    const [after] = await cli`
+      select plan, internal_notes from ext_fixture.tenant where id = ${String(acme.row_id)}`
+    expect(after).toEqual({ plan: 'platinum', internal_notes: notesBefore })
+    // Reaching for the left-out column is refused rather than silently written.
+    const fresh = (await admin.get(`/api/table/${enc}/${String(acme.row_id)}`)) as Record<string, unknown>
+    const res = await admin.fetch(`/api/table/${enc}/${String(acme.row_id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ internal_notes: 'overwritten', updated_at: fresh.updated_at }),
+    })
+    const [still] = await cli`select internal_notes from ext_fixture.tenant where id = ${String(acme.row_id)}`
+    expect(still.internal_notes).toBe(notesBefore)
+    expect(res.status).toBe(417)
+    // The fixture lives outside the sandbox: put the plan back for other tests.
+    await cli`update ext_fixture.tenant set plan = 'pro' where id = ${String(acme.row_id)} and plan = 'platinum'`
+  })
+
+  test('rows in a connected table cannot be submitted or cancelled', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const list = (await admin.get('/api/table/Ext%20Tenant')) as { data: { row_id: string }[] }
+    const id = encodeURIComponent(list.data[0].row_id)
+    for (const action of ['submit', 'cancel']) {
+      const res = await admin.fetch(`/api/table/Ext%20Tenant/${id}:${action}`, { method: 'POST', body: '{}' })
+      expect(res.status, action).toBeGreaterThanOrEqual(400)
+      expect(res.status, action).toBeLessThan(500)
+    }
+  })
+})
+
+describe('Connect a data source', () => {
+  test('a data source that still has connected tables cannot be removed until they are gone', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    await expect(admin.delete('/api/table/Data%20Source/ext-fixture')).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringContaining('still has bound Tables'),
+    })
+    await admin.delete('/api/table_def/Ext%20Tenant')
+    await admin.delete('/api/table/Data%20Source/ext-fixture')
+    expect((await admin.fetch('/api/table/Data%20Source/ext-fixture')).status).toBe(404)
+  })
+
+  test('a warehouse data source cannot be set up as writable', async ({ admin }) => {
+    await expect(
+      admin.post('/api/table/Data%20Source', {
+        row_id: 'duck-rw',
+        engine: 'duckdb',
+        url_env: 'EXT_FIXTURE_URL',
+        access: 'read_write',
+      }),
+    ).rejects.toMatchObject({ status: 417, fields: { access: expect.stringContaining('read_only') } })
+  })
+})
+
+describe('A data source outage doesn\'t take down anything else', () => {
+  test('a connected table says the source cannot be reached while other tables keep working', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    expect(((await admin.get('/api/table/Ext%20Tenant')) as { total: number }).total).toBeGreaterThan(0)
+
+    // The source stops answering.
+    process.env.EXT_DEAD_URL = 'postgres://nobody:nothing@127.0.0.1:59999/nope'
+    const src = (await admin.get('/api/table/Data%20Source/ext-fixture')) as Record<string, unknown>
+    await patchDoc(admin, '/api/table/Data%20Source/ext-fixture', {
+      url_env: 'EXT_DEAD_URL',
+      updated_at: src.updated_at,
+    })
+
+    const down = await admin.fetch('/api/table/Ext%20Tenant')
+    expect(down.status).toBe(502)
+    const body = (await down.json()) as { error: { type: string; message: string } }
+    expect(body.error.type).toBe('DataSourceError')
+    expect(body.error.message).toContain('ext-fixture')
+
+    // Everything else is untouched.
+    expect((await admin.fetch('/api/table/Role')).status).toBe(200)
+    expect((await admin.fetch('/api/table/Person')).status).toBe(200)
+  })
+})
+
+describe('Concurrent edits are caught when the source can tell', () => {
+  test('without a last-changed time on the source, a later save overwrites what is there', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['business'] },
+    )
+    const enc = encodeURIComponent(reflected.created[0].name)
+    const meta = (await admin.get(`/api/table/${enc}:meta`)) as { external_modified?: string | null }
+    expect(meta.external_modified ?? null).toBeNull()
+
+    const loaded = (await admin.get(`/api/table/${enc}/1`)) as Record<string, unknown>
+    // Someone else changes the row at the source after it was loaded.
+    await cli`update ext_fixture.business set name = 'Changed elsewhere' where code = 1`
+    const res = await admin.fetch(`/api/table/${enc}/1`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Mine', ...(loaded.updated_at ? { updated_at: loaded.updated_at } : {}) }),
+    })
+    expect(res.status).toBe(200)
+    const [row] = await cli`select name from ext_fixture.business where code = 1`
+    expect(row.name).toBe('Mine')
+    await cli`update ext_fixture.business set name = 'Zulu' where code = 1`
+  })
+})
+
+describe('Read and write through a connected table: a Postgres database', () => {
+  test('rows can be counted by a column, read straight from the source', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const res = await admin.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
+      table: 'Ext Tenant',
+      group_by: 'plan',
+      filters: [['slug', 'in', ['acme', 'globex']]],
+    })
+    const direct = await cli`
+      select plan as label, count(*)::int as n from ext_fixture.tenant
+      where slug in ('acme', 'globex') group by plan`
+    expect(Object.fromEntries(res.data.map((d) => [d.label, Number(d.value)]))).toEqual(
+      Object.fromEntries(direct.map((d) => [d.label, d.n])),
+    )
+  })
+})
+
+describe('Connect a data source: limiting which tables can be connected', () => {
+  test('a data source with a list of allowed tables connects only those', async ({ admin }) => {
+    await makeSource(admin, { table_allowlist: 'ext_fixture.tenant\next_fixture.vehicle' })
+    const reflect = (tables: string[]) =>
+      admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+        method: 'POST',
+        body: JSON.stringify({ schema: 'ext_fixture', tables }),
+      })
+    // A table outside the list is refused, and nothing is connected.
+    const refused = await reflect(['business'])
+    expect(refused.status).toBe(403)
+    expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('not in the allowlist')
+    expect(await sql`select 1 from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
+    // One on the list connects.
+    const allowed = await reflect(['tenant'])
+    expect(allowed.status).toBe(200)
+    expect(((await allowed.json()) as { created: { name: string }[] }).created.map((c) => c.name)).toEqual(['Ext Tenant'])
+    // A hand-written binding to a table outside the list is refused too.
+    await expect(
+      admin.post('/api/table_def', {
+        name: 'Ext Business By Hand',
+        data_source: 'ext-fixture',
+        external_schema: 'ext_fixture',
+        external_table: 'business',
+        external_pk: 'code',
+        columns: [{ column_name: 'name', column_type: 'Data' }],
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+  })
+})

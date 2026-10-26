@@ -100,3 +100,36 @@ describe('M3: duckdb read-only source', () => {
     expect(del.status).toBe(403)
   })
 })
+
+describe('Read and write through a connected table: a warehouse', () => {
+  test('rows can be counted by a column, read straight from the warehouse', async ({ admin }) => {
+    const name = await makeDuckSource(admin)
+    const res = await admin.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
+      table: name,
+      group_by: 'business_date',
+      filters: [],
+    })
+    expect(res.data.map((d) => [d.label.slice(0, 10), Number(d.value)])).toEqual(
+      expect.arrayContaining([['2026-07-01', 2], ['2026-07-02', 1]]),
+    )
+  })
+})
+
+describe('Connect a data source: a warehouse', () => {
+  test('testing the connection reports success, and failure when the file is missing', async ({ admin }) => {
+    await makeDuckSource(admin)
+    const ok = await admin.post<{ ok: boolean }>('/api/table/Data%20Source/duck-fixture:test_connection', {})
+    expect(ok.ok).toBe(true)
+
+    process.env.DUCK_MISSING_URL = path.join(dir, 'nowhere', 'missing.duckdb')
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'duck-missing',
+      engine: 'duckdb',
+      url_env: 'DUCK_MISSING_URL',
+      access: 'read_only',
+    })
+    const bad = await admin.post<{ ok: boolean; error?: string }>('/api/table/Data%20Source/duck-missing:test_connection', {})
+    expect(bad.ok).toBe(false)
+    expect(bad.error).not.toContain(process.env.DUCK_MISSING_URL)
+  })
+})

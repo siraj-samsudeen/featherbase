@@ -680,3 +680,30 @@ describe('UPS-I1/I2/I3: whole-run invariants', () => {
     expect(versions.data).toHaveLength(2) // the first run's two, none from the second
   })
 })
+
+describe('Add new rows or update the ones that match: the rehearsal', () => {
+  test('a rehearsal flags a mapped row id that differs from the matched row, as the real run does', async ({ admin }) => {
+    await setup(admin)
+    await seed(admin)
+    const rows = [{ zone: 'Alpha', pop: 1, row_id: 'UPST-999' }]
+    const key = { key_column: 'zone', columns: ['zone', 'pop', 'row_id'] }
+    const dry = await admin.post<{ failed: { index: number; message: string }[]; updated: number }>(PATH, { dry_run: true, rows, ...key })
+    expect(dry.updated).toBe(0)
+    expect(dry.failed).toEqual([{ index: 0, message: expect.stringContaining('cannot change a row') }])
+    const real = await admin.post<{ failed: { index: number; message: string }[]; updated: number }>(PATH, { rows, ...key })
+    expect(real.updated).toBe(0)
+    expect(real.failed).toEqual(dry.failed)
+  })
+
+  test('a rehearsal and the real run both name a key that is repeated in the file or matches several rows', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ zone: 'Twin', pop: 1 }, { zone: 'Twin', pop: 2 }] })
+    const rows = [{ zone: 'Twin', pop: 9 }, { zone: 'Fresh', pop: 3 }, { zone: 'Fresh', pop: 4 }]
+    const dry = await admin.post<{ failed: { index: number; message: string }[] }>(PATH, { dry_run: true, rows, key_column: 'zone', columns: ['zone', 'pop'] })
+    expect(dry.failed.map((f) => [f.index, f.message.includes('matches 2 existing rows') || f.message.includes('more than once')])).toEqual([
+      [0, true],
+      [1, true],
+      [2, true],
+    ])
+  })
+})

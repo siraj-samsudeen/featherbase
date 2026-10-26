@@ -24,6 +24,37 @@ to a log. Only a System Manager can register or manage a data source.
 - **THEN** Featherbase connects and reports whether it succeeded, without
   ever displaying the connection details
 
+#### Scenario: A folder or warehouse that can't be reached
+
+- **WHEN** a builder tests a data source whose folder or warehouse file is
+  missing
+- **THEN** the test reports that it failed and says why, and the data source
+  shows that its last check failed
+
+### Requirement: A data source can be limited to named tables
+
+A System Manager SHALL be able to list the only tables a data source may
+connect. A table outside the list is refused, however it is asked for.
+
+#### Scenario: A table that isn't on the list
+
+- **WHEN** a data source lists one allowed table and a System Manager tries to
+  connect a different table from it
+- **THEN** it is refused, saying the table is not on the data source's list
+- **AND** the allowed table connects normally
+
+### Requirement: A data source that is in use can't be removed
+
+A data source SHALL NOT be removed while any table is still connected
+through it.
+
+#### Scenario: Remove it too soon
+
+- **WHEN** a System Manager tries to remove a data source that still has a
+  connected table
+- **THEN** it is refused, naming a table that still uses it
+- **AND** once that table is deleted, the data source can be removed
+
 ### Requirement: Browse what a data source holds
 
 Opening a data source SHALL let the builder see its tables and the columns
@@ -37,6 +68,42 @@ unusable, saying why.
   unique key spans two columns together
 - **THEN** it is shown as unusable, saying it needs one column that
   identifies each row on its own
+
+### Requirement: Browsing shows what is already connected
+
+Browsing a data source SHALL show which of its tables are already connected
+and link to them, and SHALL NOT offer to connect the same table twice.
+
+#### Scenario: Already connected
+
+- **WHEN** a builder opens a data source with one of its tables already
+  connected
+- **THEN** that table is shown as connected, with a link, and cannot be
+  selected again
+
+### Requirement: Links between a source's tables carry over
+
+WHEN a table in a data source points at another through a foreign key, THE
+connected tables SHALL point at each other the same way, in whichever order
+they are connected, so the user can follow the link from one row to the other.
+
+#### Scenario: Connect the child before the parent
+
+- **WHEN** a builder connects an accidents table that points at a vehicles
+  table, and connects the vehicles table afterwards
+- **THEN** the accidents' vehicle column becomes a link to vehicles as soon as
+  both are connected
+
+### Requirement: Columns that look like secrets are never connected
+
+A column whose name suggests a credential, such as an API key or password,
+SHALL never be connected, shown, searched or filtered on, and a table whose
+only identifying column looks like one cannot be connected at all.
+
+#### Scenario: An API key column
+
+- **WHEN** a builder connects a table that has an api key column
+- **THEN** the column is left out, and cannot be listed, read or filtered by
 
 ### Requirement: Turn a data source's table into a Featherbase table
 
@@ -70,6 +137,13 @@ is saved.
 - **THEN** only the mapped field changes at the data source, and the
   unmapped column is untouched
 
+#### Scenario: Counting and filtering happen at the source
+
+- **WHEN** a chart counts a connected table's rows by one of its columns, or a
+  list is filtered by a pattern or a list of values
+- **THEN** the answer reflects what the data source holds right now, with no
+  local copy involved
+
 #### Scenario: "Rows I own" can't be granted here
 
 - **WHEN** a builder tries to limit a person's access to a connected table to
@@ -83,6 +157,12 @@ WHEN a connected table's rows carry a last-changed time, saving a row SHALL
 check it hasn't changed there since it was loaded, and refuse the save if it
 has. Without a last-changed time to check, a save simply overwrites whatever
 is there.
+
+#### Scenario: No last-changed time, no check
+
+- **WHEN** a connected table has no last-changed time and a person saves a row
+  that was changed at the data source after it was loaded
+- **THEN** the save goes through and replaces what is there
 
 #### Scenario: Someone else changed the row first
 
@@ -102,6 +182,56 @@ say so on the table itself, before anyone starts editing.
 - **WHEN** someone opens a row from a table whose data source is read-only
 - **THEN** there is no way to save, edit or delete from that screen, and the
   screen names the data source it's reading from
+
+#### Scenario: A warehouse can't be made writable
+
+- **WHEN** a System Manager sets up a DuckDB warehouse data source as writable
+- **THEN** it is refused, because a warehouse can only be read
+
+### Requirement: Row limits still apply to connected tables
+
+A person's limits on which rows they may see, and on rows they may change,
+SHALL apply to a connected table as they do to any other: a data scope narrows
+its lists, counts and single rows, and a change cannot move a row out of the
+person's scope.
+
+#### Scenario: A scoped person sees only their rows
+
+- **WHEN** a person limited by a data scope to two of a connected table's rows
+  opens its list
+- **THEN** they see and count only those two rows
+
+### Requirement: A file can't be imported into a connected table
+
+Importing a spreadsheet into a connected table SHALL be refused, both when
+checking and when importing, so a file is never written row by row into
+someone else's database.
+
+#### Scenario: Importing into a connected table
+
+- **WHEN** the user checks or imports a file into a connected table
+- **THEN** both are refused with the same message, saying the table is
+  connected to a data source
+
+### Requirement: An app can bring its own data sources
+
+An app SHALL be able to name the data sources it needs and the tables to
+connect from them, and installing it connects them; uninstalling it removes
+what it connected and the data source it created, but keeps a data source that
+already existed. An app only names where connection details are kept, never the
+details themselves.
+
+#### Scenario: Install and uninstall
+
+- **WHEN** an app that names a data source and two of its tables is installed,
+  then uninstalled
+- **THEN** the two tables appear on install and are gone after uninstall
+- **AND** a data source that was there before the install is still there
+
+#### Scenario: A connection string in an app is refused
+
+- **WHEN** an app names a connection string, rather than where one is kept
+- **THEN** the install is refused
 
 ### Requirement: A data source outage doesn't take down anything else
 

@@ -274,3 +274,55 @@ describe('M1: csv-folder source', () => {
     expect(body.skipped).toHaveLength(1)
   })
 })
+
+describe('Read and write through a connected table: a folder of CSV files', () => {
+  const chart = (admin: { post: <T = Record<string, unknown>>(p: string, b?: unknown) => Promise<T> }, table: string, group_by: string, filters: unknown[] = []) =>
+    admin.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table, group_by, filters })
+
+  test('pattern, list and exclusion filters work on the file\'s rows', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const enc = encodeURIComponent(stores)
+    const codes = async (filters: unknown[]) => {
+      const res = (await admin.get(
+        `/api/table/${enc}?fields=${encodeURIComponent('["store_code"]')}&order_by=store_code asc&filters=${encodeURIComponent(JSON.stringify(filters))}`,
+      )) as { data: { store_code: string }[]; total: number }
+      return res.data.map((r) => r.store_code)
+    }
+    expect(await codes([['city', 'like', 'ka%']])).toEqual(['KKL'])
+    expect(await codes([['city', 'not like', 'ka%']])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', 'in', ['TVM', 'CHN']]])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', 'not in', ['TVM', 'CHN']]])).toEqual(['KKL'])
+    expect(await codes([['store_code', '!=', 'KKL']])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', '>=', 'KKL']])).toEqual(['KKL', 'TVM'])
+    const count = (await admin.get(`/api/table/${enc}:count?filters=${encodeURIComponent('[["city","like","%a%"]]')}`)) as { count: number }
+    expect(count.count).toBe(2)
+  })
+
+  test('rows can be counted by a column, read straight from the file', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const res = await chart(admin, stores, 'city')
+    expect(res.data).toEqual([
+      { label: 'Chennai', value: 1 },
+      { label: 'Karaikal', value: 1 },
+      { label: 'TVM', value: 1 },
+    ])
+    const narrowed = await chart(admin, stores, 'city', [['store_code', '!=', 'KKL']])
+    expect(narrowed.data.map((d) => d.label).sort()).toEqual(['Chennai', 'TVM'])
+  })
+})
+
+describe('Connect a data source: a folder of CSV files', () => {
+  test('testing the connection succeeds for a readable folder and fails, naming the problem, for a missing one', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', { row_id: 'seed-ok', engine: 'csv-folder', root_path: dir, access: 'read_only' })
+    const ok = await admin.post<{ ok: boolean }>('/api/table/Data%20Source/seed-ok:test_connection', {})
+    expect(ok.ok).toBe(true)
+
+    await admin.post('/api/table/Data%20Source', { row_id: 'seed-gone', engine: 'csv-folder', root_path: path.join(dir, 'no-such-folder'), access: 'read_only' })
+    const bad = await admin.post<{ ok: boolean; error?: string }>('/api/table/Data%20Source/seed-gone:test_connection', {})
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toMatch(/not a readable directory|not readable/)
+    const [row] = await admin.get<{ data: { conn_status: string }[] }>(`/api/table/Data%20Source?filters=${encodeURIComponent('[["row_id","=","seed-gone"]]')}&fields=${encodeURIComponent('["conn_status"]')}`).then((r) => r.data)
+    expect(row.conn_status).toBe('error')
+  })
+})

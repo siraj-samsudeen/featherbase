@@ -100,3 +100,19 @@ describe('PRN-004: letterheads', () => {
     expect(html).not.toContain('ACME GLOBAL') // not the default
   })
 })
+
+describe('A letterhead adds a shared header and footer', () => {
+  test('marking another letterhead as the default makes it the only one', async () => {
+    await setup()
+    await saveDoc(
+      'Letter Head',
+      { row_id: 'Lh New Default', is_default: true, header_html: '<div>NEWEST HEADER</div>', footer_html: '' },
+      'Administrator',
+    )
+    const defaults = await sql`select row_id from letter_head where is_default = true`
+    expect(defaults).toEqual([{ row_id: 'Lh New Default' }])
+    const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard')
+    expect(html).toContain('NEWEST HEADER')
+    expect(html).not.toContain('ACME GLOBAL')
+  })
+})

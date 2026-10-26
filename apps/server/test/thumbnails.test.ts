@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { getBrowser } from '../src/print'
 import { isThumbnable, makeThumbnailDataUrl } from '../src/thumbnails'
+import { deleteStored } from '../src/storage'
 
 // FILE-004: image uploads get a downscaled thumbnail; non-images get none.
 
@@ -110,5 +111,29 @@ describe('FILE-004: thumbnails', () => {
     expect(thumb).toMatch(/^data:image\/jpeg;base64,/)
     expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
     expect((await getBrowser()).isConnected()).toBe(true)
+  }, 30_000)
+})
+
+describe('Pictures get a small preview when uploaded', () => {
+  async function uploadAs(admin: { fetch: (p: string, i?: RequestInit) => Promise<Response> }, name: string, body: BlobPart, type: string) {
+    const form = new FormData()
+    form.append('file', new File([body], name, { type }))
+    const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
+    expect(res.status).toBe(201)
+    return (await res.json()) as { file_url: string; thumbnail_url?: string | null }
+  }
+
+  test('an uploaded picture carries a small preview, and a text file does not', async ({ admin }) => {
+    const png = await makePng(600, 300)
+    const pic = await uploadAs(admin, 'wide.png', new Uint8Array(png), 'image/png')
+    const note = await uploadAs(admin, 'note.txt', 'hello', 'text/plain')
+    try {
+      expect(pic.thumbnail_url).toMatch(/^data:image\/jpeg;base64,/)
+      expect(await measure(pic.thumbnail_url!)).toEqual({ w: 128, h: 64 })
+      expect(note.thumbnail_url ?? null).toBeNull()
+    } finally {
+      await deleteStored(pic.file_url).catch(() => {})
+      await deleteStored(note.file_url).catch(() => {})
+    }
   }, 30_000)
 })

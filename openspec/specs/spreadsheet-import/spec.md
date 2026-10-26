@@ -25,6 +25,17 @@ sent, rather than used silently.
   any rows are sent
 - **AND** the user can pick a different table instead
 
+### Requirement: A file that isn't a spreadsheet is refused
+
+Dropping something that is not a CSV or Excel file SHALL be refused with a
+message naming the file, and nothing is started.
+
+#### Scenario: A text file is turned away
+
+- **WHEN** the user drops a plain text file onto the import screen
+- **THEN** a message says it is not a CSV or Excel file
+- **AND** no import is set up
+
 ### Requirement: A workbook's sheets are chosen one at a time
 
 Dropping a file with several sheets SHALL first show what the file
@@ -57,6 +68,52 @@ user says so, shown real values from each to help decide.
 - **AND** the unlike names stay separate until the user says they're the
   same thing
 
+### Requirement: A column can be left out
+
+The user SHALL be able to leave any file column out of the import; a column
+left out is never read into the table.
+
+#### Scenario: Leave a column out
+
+- **WHEN** the user switches off one of the file's columns before importing
+- **THEN** the imported rows have nothing in that column
+
+### Requirement: Dates keep the day the sheet shows
+
+A date typed in a spreadsheet SHALL be imported as the same calendar day the
+sheet shows, whatever time zone the user's computer is in.
+
+#### Scenario: A date doesn't slip a day
+
+- **WHEN** a workbook cell shows 15 January 2026 and is imported from a
+  computer in India
+- **THEN** the imported row holds 15 January 2026, not the day before
+
+### Requirement: Codes keep every digit
+
+A value that is really a code, such as 007 or a 16-digit reference
+number, SHALL be imported exactly as written, with its leading zeros and every
+digit, rather than being turned into a smaller number.
+
+#### Scenario: A code with leading zeros survives
+
+- **WHEN** a file column holding the code 007 and a 16-digit reference number
+  is imported
+- **THEN** the imported rows hold 007 and every digit of the reference number,
+  not 7 or a rounded figure
+
+### Requirement: Importing needs permission to add or change rows
+
+An import SHALL be refused as a whole, with nothing written, when the user
+may not add the rows it would add or change the rows it would change. A check
+before importing needs the same permission.
+
+#### Scenario: A user who can't add rows is turned away
+
+- **WHEN** a user without permission to add rows to a table tries to import a
+  file into it, or only to check it
+- **THEN** the request is refused and no row is written
+
 ### Requirement: Add new rows or update the ones that match
 
 The user SHALL be able to choose a column to match file rows against the
@@ -86,6 +143,19 @@ blank clears the matched row's existing value there or leaves it as is.
 - **THEN** those rows are counted separately and skipped
 - **AND** the counts still add up to the file's total rows
 
+### Requirement: An unclear match is refused, never guessed
+
+When a file row's match value appears on more than one file row, or matches
+more than one existing row, or is blank, every row involved SHALL be refused
+with the reason, instead of picking one to update.
+
+#### Scenario: A repeated or doubled value
+
+- **WHEN** the same match value appears twice in the file, or one value matches
+  two rows already in the table
+- **THEN** each of those file rows is reported as refused, saying why
+- **AND** the rest of the file is not held up
+
 ### Requirement: The matching column is remembered
 
 Re-importing into a table that was matched with a column before SHALL
@@ -112,6 +182,12 @@ table normally identifies new rows.
   onto the row-identity column
 - **THEN** the imported rows take those codes as their ids
 
+#### Scenario: A matched row keeps its id
+
+- **WHEN** the user matches on another column while the file also carries an
+  id that differs from the matched row's
+- **THEN** that file row is refused, saying an update can't change a row's id
+
 ### Requirement: A large update is confirmed before it runs
 
 An import about to update more than a small number of rows SHALL ask the
@@ -123,6 +199,20 @@ column is never clicked past by accident.
 - **WHEN** an import would update more rows than the confirmation point
 - **THEN** the user must type the exact number back before the import runs
 - **AND** a missing or wrong number leaves the import blocked
+
+### Requirement: A large file is imported in parts
+
+A file with many rows SHALL be sent in parts and still read as one import:
+the totals add up across the parts, and rows matched against the table see
+the rows earlier parts added.
+
+#### Scenario: Parts add up
+
+- **WHEN** a file big enough to be sent in several parts is imported
+- **THEN** the added, updated and failed counts across the parts add up to the
+  file's rows
+- **AND** a later part matching on a value an earlier part added updates that
+  row instead of adding it again
 
 ### Requirement: A bad row doesn't stop the others
 
@@ -149,6 +239,20 @@ left — never stopping silently at the first problem.
 - **WHEN** a workbook has three targets and the second is refused
 - **THEN** the first and third still import
 - **AND** the second is named as failed, with its reason
+
+### Requirement: Sheets can be imported one at a time or all together
+
+With several sheets chosen, the user SHALL be able to work through them one
+step at a time, importing each on its own, or import everything still waiting
+in one go. A sheet already imported is never imported again by the second
+route, and its result stays readable while the next sheet is worked on.
+
+#### Scenario: One now, the rest later
+
+- **WHEN** the user imports the first of three sheets on its own and then
+  chooses to import the rest
+- **THEN** the second and third are imported and the first is not imported
+  again
 
 ### Requirement: Leaving the import screen doesn't lose the work
 

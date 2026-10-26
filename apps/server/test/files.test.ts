@@ -128,6 +128,13 @@ describe('FILE-001: file upload + storage', () => {
     expect(res.status).toBe(404)
   })
 
+  test('a registered file whose stored object has gone missing is simply not found', async ({ admin, api }) => {
+    const res = await upload(admin, 'vanish.txt', 'soon gone', 'text/plain')
+    const doc = (await res.json()) as Record<string, unknown>
+    await deleteStored(doc.file_url as string)
+    expect((await api.fetch(doc.file_url as string)).status).toBe(404)
+  })
+
   test('records ref_table/ref_name when attaching to a document', async ({ admin }) => {
     const uploaded: string[] = []
     try {
@@ -183,6 +190,33 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
         `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )
       expect(after.data.map((f) => f.file_name)).toEqual(['att-b.txt'])
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+})
+
+describe('Find and manage a file on its own', () => {
+  test('the list of uploaded files shows each file with the row it is attached to', async ({ admin }) => {
+    const uploaded: string[] = []
+    try {
+      const doc = (await (
+        await upload(admin, 'photo.txt', 'pixels', 'text/plain', { ref_table: 'Person', ref_name: 'Guest' })
+      ).json()) as Record<string, unknown>
+      uploaded.push(doc.file_url as string)
+      const fields = encodeURIComponent(JSON.stringify(['row_id', 'file_name', 'ref_table', 'ref_name']))
+      const listed = await admin.get<{ data: Record<string, unknown>[] }>(`/api/table/File?fields=${fields}&limit_page_length=100`)
+      expect(listed.data).toContainEqual({
+        row_id: doc.row_id,
+        file_name: 'photo.txt',
+        ref_table: 'Person',
+        ref_name: 'Guest',
+      })
+      // And it can be opened and removed from there, without going through the row.
+      const opened = await admin.get<Record<string, unknown>>(`/api/table/File/${doc.row_id}`)
+      expect(opened.file_name).toBe('photo.txt')
+      await admin.delete(`/api/table/File/${doc.row_id}`)
+      expect((await admin.fetch(`/api/table/File/${doc.row_id}`)).status).toBe(404)
     } finally {
       await cleanupDisk(uploaded)
     }
