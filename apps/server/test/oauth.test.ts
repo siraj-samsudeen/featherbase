@@ -334,7 +334,9 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const previous = config.instanceAddresses
     config.instanceAddresses = parseInstanceAddresses('[{"address":"https://app.example.com","opens":"admin","emails":true}]', 'test')
     try {
-      const res = await api.fetch('/api/oauth/google/login', {
+      // The listed host, reached over plain http as far as the header says.
+      // (An unlisted one is sent to start again here: instance-addresses-http.test.ts.)
+      const res = await api.fetch('http://app.example.com/api/oauth/google/login', {
         headers: { 'x-forwarded-proto': 'http' },
       })
       const redirectUri = new URLSearchParams((res.headers.get('location') as string).split('?')[1]).get(

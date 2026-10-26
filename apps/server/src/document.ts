@@ -1569,11 +1569,20 @@ async function saveSingleImpl(
     stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
     'update',
   )
-  for (const [field, value] of Object.entries(clean)) {
-    const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
-    await sql`
-      insert into single_value ${sql({ table_name: table, field, value: text })}
-      on conflict (table_name, field) do update set value = excluded.value`
-  }
+  // #465: one transaction, and a version like any other row's save, so a
+  // settings change has history. Compared as stored text, both sides.
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const stored = async () => Object.fromEntries(
+      (await stx`select field, value from single_value where table_name = ${table}`).map((r) => [r.field as string, r.value as string | null]))
+    const before = await stored()
+    for (const [field, value] of Object.entries(clean)) {
+      const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : String(value)
+      await stx`
+        insert into single_value ${stx({ table_name: table, field, value: text })}
+        on conflict (table_name, field) do update set value = excluded.value`
+    }
+    await recordVersion(stx, meta, table, before, await stored(), user)
+  })
   return getDoc(table, table, user)
 }

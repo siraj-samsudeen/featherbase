@@ -10,6 +10,7 @@ import { methodOfKind } from '../src/identities'
 import { alertNewArrival } from '../src/waiting-for-access'
 import { makePerson } from './fixtures'
 import { setPasswordFromShell } from '../src/auth'
+import { preAuthPolicy } from '../src/pre-auth-rate-limit'
 import { preflightRelease } from '../src/release-preflight'
 
 // The mock provider, admitting any address (oauth.test.ts drives it the same way).
@@ -47,10 +48,27 @@ describe('Google sign-in per address', () => {
     expect(redirectUriOf(res)).toBe(`${DASH}/api/oauth/google/callback`)
   })
 
-  test('a forged Host cannot create an origin: an unlisted host gets the admin address', async ({ api }) => {
+  // Codex round 2: the state would record the unlisted host while the callback
+  // comes back to the admin address, so the sign-in could never finish there.
+  test('a forged Host cannot create an origin: an unlisted host is sent to start Google sign-in on the admin address', async ({ api }) => {
     await configureGoogle({ client_id: 'test-client-id' })
-    const res = await api.fetch('https://evil.example.net/api/oauth/google/login', { headers: { 'x-forwarded-proto': 'http' } })
-    expect(redirectUriOf(res)).toBe(`${ADMIN}/api/oauth/google/callback`)
+    const res = await api.fetch('https://evil.example.net/api/oauth/google/login?email=a%40example.com', { headers: { 'x-forwarded-proto': 'http' } })
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(`${ADMIN}/api/oauth/google/login?email=a%40example.com`)
+  })
+
+  test('an unlisted host gets no login challenge cookies of its own', async ({ api }) => {
+    await configureGoogle({ client_id: 'test-client-id' })
+    const res = await api.fetch('https://evil.example.net/api/oauth/google/login')
+    expect(res.headers.getSetCookie()).toEqual([])
+  })
+
+  test('Google sign-in started on an unlisted host finishes on the admin address', async ({ api }) => {
+    await setGoogleOpen()
+    const away = await api.fetch('https://evil.example.net/api/oauth/google/login')
+    const { callback, cookie } = await mockCallbackUrl(api, new URL(away.headers.get('location')!).origin, 'unlisted.start@gmail.com')
+    const res = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
+    expect(res.headers.get('location')).toContain('/featherbase/oauth-callback?code=')
   })
 
   test('the matched host ignores its case and its port', async ({ api }) => {
@@ -99,9 +117,19 @@ describe('on an address that opens an app', () => {
   })
 
   test('an Admin page redirects to the app root', async ({ api }) => {
-    const res = await get(api, `${DASH}/featherbase/admin/table/Person`)
-    expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toBe(ROOT)
+    // #489 item 13: Sign-in methods left the Admin for the account pages, so
+    // its old Admin path is an Admin page like any other here.
+    for (const page of ['/featherbase/admin/table/Person', '/featherbase/admin', '/featherbase/admin/sign-in-methods', '/featherbase/admin/sign-in-methods-other', '/featherbase/admin/waiting-for-access']) {
+      const res = await get(api, `${DASH}${page}`)
+      expect([page, res.status, res.headers.get('location')]).toEqual([page, 302, ROOT])
+    }
+  })
+
+  // Codex round 2, then #489 item 13: the Account menu and the Google link
+  // flow's return lead to the account page, which every address serves.
+  test('the Sign-in methods page is served', async ({ api }) => {
+    for (const page of ['/featherbase/account/sign-in-methods', '/featherbase/account/sign-in-methods?link=linked'])
+      expect([page, (await get(api, `${DASH}${page}`)).status]).not.toEqual([page, 302])
   })
 
   test("another app's root redirects to the app root", async ({ api }) => {
@@ -326,11 +354,36 @@ describe('the hand-off between addresses', () => {
     const viewer = await personWith(admin, 'viewer.source.reset', ['Sales Target Viewer'])
     const { body, sid } = await signIn(api, ADMIN, viewer.usr)
     const { code, nonce } = await followHandoff(api, body.handoff!, sid)
-    // The shell reset ends sessions issued up to now; move the cut-off past this one.
+    // The shell reset ends sessions issued before it, to the second, and its
+    // now() is this test transaction's start, earlier than the session. Move
+    // the cut-off a second past the wall clock, as a reset just after would.
     await setPasswordFromShell(viewer.id, 'reset-by-operator-1')
-    await sql`update person set sessions_ended_at = now() + interval '1 second' where row_id = ${viewer.id}`
+    await sql`update person set sessions_ended_at = clock_timestamp() + interval '1 second' where row_id = ${viewer.id}`
     expect((await redeemOn(api, DASH, code, nonce)).status).toBe(401)
   })
+})
+
+// Codex round 2: a store's staff share one public IP. The hand-off has its own
+// budget, so the Google sign-ins that budget allows each finish their hand-off.
+describe('the hand-off budget', () => {
+  test('as many Google sign-ins as the OAuth budget allows, from one source, each finish a full hand-off', async ({ api }) => {
+    await setGoogleOpen()
+    await viewerRole()
+    const viewer = await makePerson({ email: 'burst.viewer@example.com', full_name: 'Burst Viewer', roles: [{ role: 'Sales Target Viewer' }] })
+    await inviteGoogleRaw(viewer, 'burst.viewer@example.com')
+    const { limits } = preAuthPolicy()
+    const outcomes: number[] = []
+    for (let i = 0; i < limits.OAUTH_LOGIN; i++) {
+      const { callback, cookie } = await mockCallbackUrl(api, ADMIN, 'burst.viewer@example.com')
+      const back = await api.fetch(`${ADMIN}${callback}`, { headers: { cookie } })
+      const sid = cookieOf(back, 'sid')
+      const code = new URL(back.headers.get('location')!, ADMIN).searchParams.get('code')
+      const signedIn = await api.fetch(`${ADMIN}/api/oauth/session`, { method: 'POST', headers: { cookie: sid }, body: JSON.stringify({ code }) })
+      const followed = await followHandoff(api, ((await signedIn.json()) as SignedIn).handoff!, sid)
+      outcomes.push((await redeemOn(api, DASH, followed.code, followed.nonce)).status)
+    }
+    expect(outcomes).toEqual(Array(limits.OAUTH_LOGIN).fill(200))
+  }, 60_000)
 })
 
 describe('sessions stay per address', () => {
