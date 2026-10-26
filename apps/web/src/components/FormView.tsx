@@ -613,15 +613,6 @@ export function FormView({
   )
 }
 
-// A one-line hint under a platform column whose effect a label cannot say.
-// Column metadata has no description yet, so the few platform ones live here.
-const COLUMN_HINTS: Record<string, Record<string, string>> = {
-  Person: {
-    // #473: what ticking it allows, and that it is one-time.
-    expects_google_sign_in: 'They can sign in with Google using this email the first time; after that the link is permanent.',
-  },
-}
-
 function FieldControl({
   field,
   value,
@@ -665,7 +656,8 @@ function FieldControl({
       {error}
     </p>
   )
-  const hintText = COLUMN_HINTS[meta.name]?.[field.column_name]
+  // #473: the column's own description, from its metadata.
+  const hintText = field.description?.trim() || null
   const hintId = `${controlId}-hint`
   const hint = hintText ? (
     <p id={hintId} className="mt-1 text-xs text-ink-subtle" data-testid={`hint-${field.column_name}`}>

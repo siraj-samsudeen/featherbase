@@ -2,10 +2,16 @@
 // as expecting Google sign-in. The first verified Google sign-in with that
 // person's own address on an allowed domain then links to them, and the mark
 // is cleared (sign-in.ts claimExpectedSignIn). Off by default, so no existing
-// person changes. Same idempotent column_def pattern as 0114.
+// person changes. Same idempotent column_def pattern as 0114. Also adds
+// column descriptions, which the mark's hint is the first to use.
 import { sql } from '../src/db'
 
+const HINT = 'They can sign in with Google using this email the first time; after that the link is permanent.'
+
 export async function up() {
+  // A column can carry one plain line every form shows under its control
+  // (FormView). Generic: any Table's column may have one.
+  await sql`alter table featherbase.column_def add column if not exists description text`
   const [person] = await sql`select 1 from table_def where name = 'Person'`
   if (!person) return
   await sql`alter table featherbase.person add column if not exists expects_google_sign_in boolean not null default false`
@@ -27,7 +33,10 @@ export async function up() {
   await sql.unsafe(`create trigger person_clear_expected_sign_in before update of email on featherbase.person
     for each row execute function featherbase.fc_clear_expected_sign_in()`)
   const [have] = await sql`select 1 from column_def where parent = 'Person' and column_name = 'expects_google_sign_in'`
-  if (have) return
+  if (have) {
+    await sql`update column_def set description = ${HINT} where parent = 'Person' and column_name = 'expects_google_sign_in' and description is null`
+    return
+  }
   // Beside the email it applies to; everything after it moves down one.
   const [email] = await sql`select position from column_def where parent = 'Person' and column_name = 'email'`
   const [{ maxidx }] = await sql`select coalesce(max(position), 0)::int as maxidx from column_def where parent = 'Person'`
@@ -46,5 +55,6 @@ export async function up() {
     hidden: false,
     in_list_view: false,
     tier: 'basic',
+    description: HINT,
   })}`
 }

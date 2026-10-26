@@ -35,7 +35,7 @@ at creation").
 
 ## Impact
 
-- New Person column `expects_google_sign_in` (migration 0120), off for
+- New Person column `expects_google_sign_in` (migration 0121), off for
   everyone already there; guarded like a person's roles and enabled flag.
 - The Person form shows it with a one-line hint.
 - `cli create-person <email> --expects-google-sign-in` creates such a person
