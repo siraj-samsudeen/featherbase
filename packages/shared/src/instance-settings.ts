@@ -10,3 +10,6 @@ export const INSTANCE_SETTINGS_FILE = 'instance-settings.json'
 
 /** Under a field the last apply set: where the value is changed instead. */
 export const MANAGED_FIELD_HINT = `Set in the instance settings file (${INSTANCE_SETTINGS_FILE}). Change it there, then apply the file.`
+
+/** First-run setup (#465 D9): the most people one setup may name. */
+export const SETUP_MAX_PEOPLE = 20

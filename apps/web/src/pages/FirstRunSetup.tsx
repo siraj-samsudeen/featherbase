@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Navigate, useNavigate } from '@tanstack/react-router'
+import { Navigate, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
+import { SETUP_MAX_PEOPLE } from 'shared'
 import { ApiError, api, getSessionUser } from '../lib/api'
 import { Button, Card, Field, Notice, TextInput } from '../components/ui'
 import { Plus } from '../components/ui/icons'
@@ -39,14 +40,27 @@ function takeSetupOffer(): boolean {
 export function useSetupOffer(enabled: boolean): void {
   const navigate = useNavigate()
   const health = useInstanceHealth(enabled)
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  // Where the sign-in landed. Once the Administrator has moved on, the offer
+  // is spent: a slow answer must never pull them off a page (Codex review).
+  const landing = useRef(pathname)
   const decided = useRef(false)
   useEffect(() => {
-    if (decided.current || !enabled || !health.data) return
+    if (decided.current || !enabled) return
+    // The Admin index sends a sign-in on to the first Home Page by itself;
+    // that is still the landing.
+    const stillLanding = pathname === landing.current || pathname === '/featherbase/admin' || pathname.startsWith('/featherbase/admin/home/')
+    if (!stillLanding) {
+      decided.current = true
+      takeSetupOffer()
+      return
+    }
+    if (!health.data) return
     decided.current = true
     if (!takeSetupOffer() || getSessionUser()?.row_id !== ADMINISTRATOR) return
     const check = health.data.checks.find((c) => c.key === EMAIL_CHECK)
     if (check && !check.ok) void navigate({ to: SETUP_PATH, replace: true })
-  }, [enabled, health.data, navigate])
+  }, [enabled, health.data, navigate, pathname])
 }
 
 interface Row { full_name: string; email: string }
@@ -60,8 +74,7 @@ type Invitation =
 interface Outcome { person: string; full_name: string; email: string; created: boolean; invitation: Invitation }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-/** The most people one setup may name (the server's limit). */
-const MAX_PEOPLE = 20
+const MAX_PEOPLE = SETUP_MAX_PEOPLE
 
 function check(rows: Row[]): Record<string, string> {
   const problems: Record<string, string> = {}

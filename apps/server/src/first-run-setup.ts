@@ -14,9 +14,9 @@ import { readSmtpConfig } from './email'
 import { inviteGoogle, looksLikeEmail, methodOfKind } from './identities'
 import { invitationSiteUrl, sendInvitation, signInLink, SITE_URL_MISSING } from './invitation-email'
 
+import { SETUP_MAX_PEOPLE as MAX_PEOPLE } from 'shared'
+
 export const SETUP_ROLE = 'System Manager'
-/** How many people one setup may name. */
-const MAX_PEOPLE = 20
 
 const requestSchema = z.object({
   people: z.array(z.object({ full_name: z.string().max(140).optional(), email: z.string().max(254) }).strict()).min(1).max(MAX_PEOPLE),
@@ -85,9 +85,24 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
         select row_id, enabled from person
         where lower(trim(email)) = ${p.email} and replaced_by is null and row_id <> 'Administrator'
         order by enabled desc, created_at limit 1 for update`
-      if (!rows.length) continue
-      if (!rows[0].enabled) late[`people.${i}.email`] = 'This address belongs to a disabled person. Enable them on their Person page first.'
-      else found.set(p.email, String(rows[0].row_id))
+      // A sign-in already using the address decides who it reaches: Google
+      // sign-in finds a linked identity before any invitation, so a new
+      // person would be one the invitee can never enter (Codex review).
+      const signIns = await sql`
+        select i.person_id, p.enabled from sign_in_identity i
+        join person p on p.row_id = i.person_id
+        where i.ended_at is null and p.replaced_by is null and i.person_id <> 'Administrator'
+          and (lower(trim(i.email)) = ${p.email} or i.pending_email = ${p.email})
+        for update of p`
+      const owners = [...new Set([...rows.map((r) => String(r.row_id)), ...signIns.map((r) => String(r.person_id))])]
+      if (!owners.length) continue
+      if (owners.length > 1) {
+        late[`people.${i}.email`] = 'This address belongs to more than one person (as a contact address or a sign-in). Decide which person it is on the Person pages first.'
+        continue
+      }
+      const enabled = rows.length ? Boolean(rows[0].enabled) : Boolean(signIns[0].enabled)
+      if (!enabled) late[`people.${i}.email`] = 'This address belongs to a disabled person. Enable them on their Person page first.'
+      else found.set(p.email, owners[0])
     }
     if (Object.keys(late).length)
       throw new AppError('ValidationError', 'Some people could not be set up; nothing was changed', late)

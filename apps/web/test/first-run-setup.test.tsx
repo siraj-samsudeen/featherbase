@@ -119,3 +119,21 @@ test('a row can be removed, and a server problem with no field of its own is sti
   await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
   expect(await within(setup).findByText(/Name at most 20 people/)).toBeInTheDocument()
 })
+
+test('a slow health answer never pulls the Administrator off a page they moved on to (Codex review)', async ({ admin }) => {
+  await noManagerEmails()
+  justSignedIn()
+  let release: () => void = () => {}
+  const held = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    if (url.includes('/api/instance-health')) await held
+    return real(input, init)
+  })
+  await renderApp('/featherbase/admin', admin)
+  await userEvent.click(await screen.findByTestId('all-tables-link'))
+  release()
+  await screen.findByTestId('health-banner')
+  expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
+})

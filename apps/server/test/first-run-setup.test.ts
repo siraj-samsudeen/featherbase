@@ -121,6 +121,30 @@ describe('first-run setup (6.1)', () => {
     await expectApiError(admin.post(SETUP, { people: [] }), { status: 417, type: 'ValidationError' })
   })
 
+  test('an address that already signs in with Google reaches that person, not a new one (Codex review)', async ({ admin, createUser }) => {
+    await noManagerEmails()
+    await googleOn()
+    const holder = await createUser({ email: 'other.contact@example.com', roles: ['All'] })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('sid-setup-1', ${holder.user}, 'google', 'g-subject-1', 'asha.google@example.com', 'Administrator')`
+    const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Asha', email: 'asha.google@example.com' }] })
+    expect(res.people[0]).toMatchObject({ person: holder.user, created: false })
+    expect(await rolesOf('other.contact@example.com')).toContain('System Manager')
+  })
+
+  test('an address held by two different people is refused until someone decides', async ({ admin, createUser }) => {
+    await noManagerEmails()
+    const a = await createUser({ email: 'shared.setup@example.com', roles: ['All'] })
+    const b = await createUser({ email: 'b.setup@example.com', roles: ['All'] })
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('sid-setup-2', ${b.user}, 'google', 'g-subject-2', 'shared.setup@example.com', 'Administrator')`
+    await expectApiError(admin.post(SETUP, { people: [{ full_name: 'X', email: 'shared.setup@example.com' }] }), {
+      status: 417, type: 'ValidationError', fields: { 'people.0.email': expect.stringContaining('more than one person') },
+    })
+    expect(await rolesOf('shared.setup@example.com')).not.toContain('System Manager')
+    void a
+  })
+
   test('a disabled person with that address is refused, not silently given the role', async ({ admin, createUser }) => {
     await noManagerEmails()
     const gone = await createUser({ email: 'gone.setup@example.com', roles: ['All'] })
