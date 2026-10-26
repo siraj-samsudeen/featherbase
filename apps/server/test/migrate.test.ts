@@ -154,7 +154,7 @@ describe('migrate: the person-record changes', () => {
 
       await scratch.db.unsafe('drop table featherbase.person_identifier')
       expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0 })
-      expect((await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)} order by name`).map((r) => r.name)).toEqual(GROUP)
+      expect((await scratch.db`select name from featherbase.migration where name in ${scratch.db(GROUP)} order by name collate "C"`).map((r) => r.name)).toEqual(GROUP)
       expect(await relation('featherbase.person')).toBe('featherbase.person')
       expect(await scratch.db`select row_id from featherbase.person where email = 'staff.0701@store.example'`).toEqual([{ row_id: expect.stringMatching(/^psn_/) }])
     } finally {
