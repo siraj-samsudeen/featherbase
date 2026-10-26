@@ -149,23 +149,8 @@ export function fmtDate(iso: string | null | undefined): string {
   return month ? `${d}-${month}-${y}` : iso
 }
 
-/**
- * An ISO instant as `DD-Mon-YYYY HH:MM IST` — the form report_server's
- * `data_as_of()` uses. Rendered in IST because that is where the readers are;
- * the servers run UTC and a bare UTC clock time would be read as local and be
- * five and a half hours wrong.
- */
-export function fmtInstantIST(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return (
-    `${pad(ist.getUTCDate())}-${MONTHS[ist.getUTCMonth()]}-${ist.getUTCFullYear()} ` +
-    `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())} IST`
-  )
-}
+// `DD-Mon-YYYY HH:MM IST`: one definition, shared with the server (#465).
+export { fmtInstantIST } from 'shared'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const localIsoDay = (d: Date) =>

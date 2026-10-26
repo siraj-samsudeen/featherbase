@@ -4,6 +4,7 @@
 // run every 15 minutes by the `check_instance_health` scheduled job.
 // health_check_event keeps only changes of state, so a check that stays the
 // same writes nothing and the timeline costs almost nothing to keep.
+import { fmtInstantIST } from 'shared'
 import { sql, withTransaction } from './db'
 import { config } from './config'
 import { verifyPassword } from './auth'
@@ -37,15 +38,6 @@ export interface HealthCheckOptions {
   environment?: string
   /** The time to judge a job's last run against (default: now). */
   now?: Date
-}
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/** `26-Oct-2026 14:05 IST`, the repo's date format (ADR 844 in the instance). */
-export function formatInstantIST(d: Date): string {
-  const ist = new Date(d.getTime() + 5.5 * 60 * 60 * 1000)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(ist.getUTCDate())}-${MONTHS[ist.getUTCMonth()]}-${ist.getUTCFullYear()} ${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())} IST`
 }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
@@ -122,7 +114,7 @@ async function settingsApplied(): Promise<HealthCheck> {
   }
   if (!apply) return { ...base, ok: false, message: 'The settings were never applied.', fix: APPLY_FIX }
   const parts = [
-    `Last applied ${formatInstantIST(new Date(apply.applied_at))} by ${await principalName(apply.applied_by)}`,
+    `Last applied ${fmtInstantIST(new Date(apply.applied_at))} by ${await principalName(apply.applied_by)}`,
     apply.environment ? `for ${apply.environment}` : null,
     apply.revision ? `from revision ${apply.revision}` : null,
   ].filter(Boolean)
@@ -188,8 +180,8 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
         ...base,
         ok: false,
         message: lastRun
-          ? `It runs ${String(r.cadence)} but has not run since ${formatInstantIST(lastRun)}.`
-          : `It runs ${String(r.cadence)} but has not run since it was switched on (${formatInstantIST(since)}).`,
+          ? `It runs ${String(r.cadence)} but has not run since ${fmtInstantIST(lastRun)}.`
+          : `It runs ${String(r.cadence)} but has not run since it was switched on (${fmtInstantIST(since)}).`,
         fix: 'The background worker may have stopped. Check that the server is running and look at Jobs in Admin; the check passes after the next successful run.',
       }
     if (r.last_outcome === 'error') {
@@ -202,7 +194,7 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
       }
     }
     if (!lastRun) return { ...base, ok: true, message: 'Has not run yet.', fix: null }
-    return { ...base, ok: true, message: `The last run succeeded (${formatInstantIST(lastRun)}).`, fix: null }
+    return { ...base, ok: true, message: `The last run succeeded (${fmtInstantIST(lastRun)}).`, fix: null }
   })
 }
 
