@@ -54,14 +54,35 @@ async function viewerRole() {
   if (!have) await saveDoc('Role', { row_id: 'Sales Target Viewer' }, 'Administrator')
 }
 
-/** A person with these roles, signed in on `origin`; `openAdmin` asks from `at`. */
+const cookieOf = (res: Response, name: string) => res.headers.getSetCookie().find((c) => c.startsWith(`${name}=`))?.split(';')[0] ?? ''
+
+/** A person with these roles, signed in on `origin` in one browser: `sid` is
+ *  the cookie it holds there. `openAdmin` asks from `at`, as that browser does
+ *  (its bearer token and its cookie). */
 async function signedIn(api: TestClient, admin: TestClient, name: string, roles: string[], origin: string) {
   await viewerRole()
   const id = await makePerson({ email: `${name}@example.com`, full_name: name, roles: roles.map((role) => ({ role })) })
   await admin.post('/api/set_password', { user: id, password: 'top-bar-pw-1' })
   const res = await api.fetch(`${origin}/api/login`, { method: 'POST', body: JSON.stringify({ usr: `${name}@example.com`, pwd: 'top-bar-pw-1' }) })
   const { token } = (await res.json()) as { token: string }
-  return { id, openAdmin: (at: string) => api.fetch(`${at}/api/open_admin`, { method: 'POST', headers: { authorization: `Bearer ${token}` } }) }
+  const sid = cookieOf(res, 'sid')
+  return {
+    id,
+    sid,
+    openAdmin: (at: string) => api.fetch(`${at}/api/open_admin`, { method: 'POST', headers: { authorization: `Bearer ${token}`, cookie: sid } }),
+  }
+}
+
+/** One browser following #488's hand-off: to the target (its nonce cookie),
+ *  back to the source with `sourceSid`, then redeeming the code at the target. */
+async function follow(api: TestClient, handoff: string, sourceSid: string): Promise<Response | null> {
+  const start = await api.fetch(handoff)
+  const nonce = cookieOf(start, 'handoff_nonce')
+  const bind = await api.fetch(start.headers.get('location') ?? '', { headers: { cookie: sourceSid } })
+  if (bind.status !== 302) return null
+  const callback = new URL(bind.headers.get('location')!)
+  const code = callback.searchParams.get('code')
+  return api.fetch(`${callback.origin}/api/oauth/session`, { method: 'POST', headers: { cookie: nonce }, body: JSON.stringify({ code }) })
 }
 
 describe('POST /api/open_admin', () => {
@@ -69,16 +90,21 @@ describe('POST /api/open_admin', () => {
     const both = await signedIn(api, admin, 'both.opens', ['System Manager', 'Sales Target Viewer'], DASH)
     const res = await both.openAdmin(DASH)
     expect(res.status).toBe(200)
-    expect(((await res.json()) as Opened).handoff).toMatch(new RegExp(`^${ADMIN}/featherbase/oauth-callback\\?code=`))
+    expect(((await res.json()) as Opened).handoff).toMatch(new RegExp(`^${ADMIN}/api/handoff/start\\?ticket=`))
   })
 
-  test('the hand-off redeems on the admin address as a session for the same person', async ({ api, admin }) => {
+  test('the hand-off signs the same person in on the admin address', async ({ api, admin }) => {
     const both = await signedIn(api, admin, 'both.redeems', ['System Manager', 'Sales Target Viewer'], DASH)
     const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
-    const code = new URL(handoff!).searchParams.get('code')
-    const res = await api.fetch(`${ADMIN}/api/oauth/session`, { method: 'POST', body: JSON.stringify({ code }) })
-    expect(res.status).toBe(200)
-    expect(((await res.json()) as { user: { row_id: string } }).user.row_id).toBe(both.id)
+    const res = await follow(api, handoff!, both.sid)
+    expect(res?.status).toBe(200)
+    expect(((await res!.json()) as { user: { row_id: string } }).user.row_id).toBe(both.id)
+  })
+
+  test('the hand-off cannot be completed by a browser without that session', async ({ api, admin }) => {
+    const both = await signedIn(api, admin, 'both.stolen', ['System Manager', 'Sales Target Viewer'], DASH)
+    const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
+    expect(await follow(api, handoff!, '')).toBeNull()
   })
 
   test('a person who cannot use Admin is refused', async ({ api, admin }) => {

@@ -856,10 +856,16 @@ app.get('/api/whoami', async (c) => {
 })
 
 // #489: the shared top bar's "Open Admin". A POST, because it mints a
-// one-time hand-off code: on an app's address the answer is that code's URL
-// on the Admin address (#488), never a URL guessed from the browser's host.
+// one-time hand-off ticket: on an app's address the answer is #488's hand-off
+// URL to the Admin address, never a URL guessed from the browser's host. The
+// ticket is bound to the credential this request authenticated with (header
+// first, as the auth middleware reads it), so a stray sid cookie of another
+// session can never be the one handed over: the bind step requires this
+// browser's sid to BE that credential, and fails closed otherwise.
 app.post('/api/open_admin', async (c) => {
-  const opened = await openAdminFor(c.get('user'), requestHost(c.req.url))
+  // Parsed exactly as resolveToken parsed it for the auth middleware above.
+  const token = authCredential(c)?.match(/^Bearer (.+)$/)?.[1] ?? ''
+  const opened = await openAdminFor({ token, user: c.get('user') }, requestHost(c.req.url))
   if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
   return c.json(opened)
 })
