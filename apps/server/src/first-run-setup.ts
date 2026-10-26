@@ -122,11 +122,19 @@ export async function setUpSystemManagers(input: unknown, actor: string, request
       let full_name = p.full_name
       if (found) {
         person = found
-        const doc = await getDoc('Person', person, actor) as { roles?: { role: string }[]; updated_at?: unknown; full_name?: string }
+        const doc = await getDoc('Person', person, actor) as { roles?: { role: string }[]; updated_at?: unknown; full_name?: string; email?: string | null }
         const roles = (doc.roles ?? []).map((r) => r.role)
         full_name = doc.full_name?.trim() || p.full_name
-        if (!roles.includes(SETUP_ROLE))
-          await saveDoc('Person', { row_id: person, roles: [...roles, SETUP_ROLE].map((role) => ({ role })), updated_at: doc.updated_at }, actor)
+        // Notices go to a System Manager's contact email: a person found by
+        // their sign-in alone gets the address they were named by (Codex bot).
+        const needsEmail = !doc.email?.trim()
+        if (!roles.includes(SETUP_ROLE) || needsEmail)
+          await saveDoc('Person', {
+            row_id: person,
+            ...(roles.includes(SETUP_ROLE) ? {} : { roles: [...roles, SETUP_ROLE].map((role) => ({ role })) }),
+            ...(needsEmail ? { email: p.email } : {}),
+            updated_at: doc.updated_at,
+          }, actor)
       } else {
         const created = await saveDoc('Person', { email: p.email, full_name: p.full_name, enabled: true, roles: [{ role: SETUP_ROLE }] }, actor, 'insert')
         person = String(created.row_id)

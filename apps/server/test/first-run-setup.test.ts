@@ -132,6 +132,20 @@ describe('first-run setup (6.1)', () => {
     expect(await rolesOf('other.contact@example.com')).toContain('System Manager')
   })
 
+  test('a sign-in owner with no contact email gets the address, so the notices reach them (Codex bot)', async ({ admin, createUser }) => {
+    await noManagerEmails()
+    await googleOn()
+    const holder = await createUser({ email: 'blank.contact@example.com', roles: ['All'] })
+    await sql`update person set email = null where row_id = ${holder.user}`
+    await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
+      values ('sid-setup-3', ${holder.user}, 'google', 'g-subject-3', 'ravi.google@example.com', 'Administrator')`
+    const res = await admin.post<{ people: Outcome[] }>(SETUP, { people: [{ full_name: 'Ravi', email: 'ravi.google@example.com' }] })
+    expect(res.people[0]).toMatchObject({ person: holder.user, created: false })
+    const [row] = await sql`select email from person where row_id = ${holder.user}`
+    expect(row.email).toBe('ravi.google@example.com')
+    expect((await runHealthChecks()).find((c) => c.key === 'system-manager-email')!.ok).toBe(true)
+  })
+
   test('an address held by two different people is refused until someone decides', async ({ admin, createUser }) => {
     await noManagerEmails()
     const a = await createUser({ email: 'shared.setup@example.com', roles: ['All'] })
