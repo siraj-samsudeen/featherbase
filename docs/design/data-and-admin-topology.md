@@ -22,7 +22,7 @@
 > study grounding it. v7 (same day) answers "does a clean system of
 > record even need bronze/silver?" (layer economics, D21), gives
 > warehouse mapping/seed tables their home in the MDM, and adds the
-> reverse-direction use case: the Desk as a **warehouse browser** over
+> reverse-direction use case: the Admin as a **warehouse browser** over
 > MotherDuck/DuckDB. §9 lists decisions to ratify and sequencing.
 > Nothing here is implemented; nothing has to land at once.
 >
@@ -368,7 +368,7 @@ so apply them *per source*, not as dogma:
   they become MDM DocTypes — governed, audited, effective-dated — and
   egress like everything else. This alone repays the MDM app.
 
-#### The warehouse browser: the Desk over MotherDuck (v7)
+#### The warehouse browser: the Admin over MotherDuck (v7)
 
 The reverse direction, discovered from practice: bronze/silver/gold
 tables in MotherDuck currently have **no UI at all** beyond a SQL
@@ -381,7 +381,7 @@ new — a *Datasette-for-the-lakehouse*:
   read-only DocTypes.
 - The topology maps directly: each source system's bronze schema
   (`bronze_sap`, `bronze_salesforce`) and each silver schema adopt as a
-  group — surfaced as **modules** in the Desk sidebar (bronze-sap,
+  group — surfaced as **modules** in the Admin sidebar (bronze-sap,
   silver, gold), giving analysts saved **views** (the NocoDB lesson:
   fields + filters + sort as shareable objects) instead of SQL-only
   access.
@@ -487,7 +487,7 @@ breaks:
 
 **What it gets right.** An app is the natural unit of packaging and
 operations: one backend per app means one connection to configure, one
-failure domain (backend down → one app degraded, Desk fine — spec 0001's
+failure domain (backend down → one app degraded, Admin fine — spec 0001's
 failure semantics generalized), one backup story, full-featured Links *within* the app, and
 an install manifest that can declare its driver dependency. It also matches
 reality: a Convex app's DocTypes will practically all live in that Convex
@@ -540,7 +540,7 @@ parties use.** The moment core features get private APIs, the public one
 rots.
 
 For Featherbase: the core is the metadata engine, document engine,
-permission engine, storage-adapter seam (D5/D7), and the Desk shell with
+permission engine, storage-adapter seam (D5/D7), and the Admin shell with
 its extension points. Workflow, print, comments, email — and every future
 app (helpdesk, MDM) — are plugins over that API. The existing
 `AppManifest` (PLAT-001: doctypes, doc_events, scheduler_events, method
@@ -562,7 +562,7 @@ Featherbase contribution points (initial enumeration):
 | DocTypes, field-sets/types, seeds | metadata | Frappe app doctypes |
 | Fieldtypes: form widget + display + cell renderer | UI | Directus interfaces/displays |
 | List layouts / views (kanban, calendar, map) | UI | Directus layouts |
-| Pages / Desk modules, dashboard panels | UI | Directus modules/panels |
+| Pages / Admin modules, dashboard panels | UI | Directus modules/panels |
 | Workflow node & trigger types | logic | Directus operations, n8n nodes |
 | Lifecycle hooks, scheduled jobs | logic | existing doc_events |
 | API endpoints / RPC methods | logic | existing overrides |
@@ -723,7 +723,7 @@ unreliable") is exactly here.
 Four kinds of principal act on the system, and v1–v3 only modeled the
 first:
 
-1. **Internal humans** — Desk users; roles/scopes (Axis A).
+1. **Internal humans** — Admin users; roles/scopes (Axis A).
 2. **External humans** — portal users: the UN requester filing a ticket,
    a client reviewing a config PR. Same permission engine, narrower
    surface; never counted against internal seats.
@@ -735,7 +735,7 @@ first:
    their own identity **plus an on-behalf-of chain** ("agent X acting for
    the doctor"), so audit (Axis E) never collapses the two.
 
-The hard requirement is **identity propagation across boundaries**: a Desk
+The hard requirement is **identity propagation across boundaries**: an Admin
 edit that becomes a git commit carries the acting user as author; a sync
 push to SAP carries a mapped SAP user; an agent's write is recorded as
 agent-for-user. Every storage driver and sync binding declares how it
@@ -749,7 +749,7 @@ afterthought.
 - **Compliance/governance** (retention, PII handling, residency) —
   policies *expressed with* E (history), G (actors), and B (where data
   lives); adding an axis would duplicate those three.
-- **Presentation surfaces** (Desk / portal / embed) — follows from Axis G
+- **Presentation surfaces** (Admin / portal / embed) — follows from Axis G
   personas plus app UI; not independent.
 - **i18n** — exists (`i18n.ts`); a feature, not a dimension.
 - **Offline** — a driver capability (InstantDB has it natively), already
@@ -838,7 +838,7 @@ field update, never a row migration. (§2.3)
 
 **D5.** Storage descriptor per DocType = driver + connection + mode +
 mapping, behind one adapter interface with **declared capabilities** and
-explicit degradation; Desk/API/permissions/hooks are storage-agnostic.
+explicit degradation; Admin/API/permissions/hooks are storage-agnostic.
 (§3, §3.1)
 
 **D6.** Sync bindings are first-class objects separate from storage:

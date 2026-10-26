@@ -43,7 +43,7 @@ export interface TableMeta {
   // #432: the platform alone writes this Table's rows (Activity Log, Version,
   // Background Job, …). Lists and forms show it read-only for everyone.
   system_written?: boolean
-  // EDS-13: set when the Table is bound to an external Data Source. The Desk
+  // EDS-13: set when the Table is bound to an external Data Source. The Admin
   // shows a source badge and, for read-only sources, renders lists/forms
   // without any write affordance.
   data_source?: string | null
@@ -51,7 +51,7 @@ export interface TableMeta {
   external_modified?: string | null
   source_access?: 'read_only' | 'read_write' | null
   source_engine?: string | null
-  // Server-derived: engine can write AND access is read_write. The Desk
+  // Server-derived: engine can write AND access is read_write. The Admin
   // gates every write affordance on this, never on access alone.
   source_writable?: boolean
   created_by: string
@@ -72,7 +72,7 @@ export const COLUMN_TYPES = [
 ] as const
 
 // EDS-7: a bound Table on a read-only source (or a source whose engine has
-// no write path) accepts no writes; the Desk drops the affordances entirely
+// no write path) accepts no writes; the Admin drops the affordances entirely
 // (EDS-13: "absent, not merely disabled"). Trusts the server-derived
 // source_writable — a duckdb source misconfigured read_write still reads
 // as read-only here (review finding 7).

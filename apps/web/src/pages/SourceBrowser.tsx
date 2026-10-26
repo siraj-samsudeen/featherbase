@@ -235,7 +235,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                 <th className="px-3 py-2">Source table</th>
                 <th className="px-3 py-2">Primary key</th>
                 <th className="px-3 py-2">Columns</th>
-                <th className="px-3 py-2">Desk Table</th>
+                <th className="px-3 py-2">Admin Table</th>
               </tr>
             </thead>
             <tbody>

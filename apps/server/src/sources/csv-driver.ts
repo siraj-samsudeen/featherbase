@@ -13,7 +13,7 @@ import type {
   SourceRow,
 } from './types'
 
-// M1 (execution plan): dbt seed CSVs edited in the Desk. A csv-folder source
+// M1 (execution plan): dbt seed CSVs edited in the Admin. A csv-folder source
 // points root_path at a real directory (e.g. a dbt repo's seeds/); every
 // *.csv under it is a bindable table whose external_table is the file's
 // relative path. Rows are addressed by a synthetic 1-based row number
@@ -215,7 +215,7 @@ async function listCsvFiles(root: string): Promise<string[]> {
   return out.sort()
 }
 
-// Values in edited records come back from the Desk as typed JS values;
+// Values in edited records come back from the Admin as typed JS values;
 // everything is stored as its string form (null → empty string).
 function toCell(value: unknown): string {
   if (value == null) return ''
