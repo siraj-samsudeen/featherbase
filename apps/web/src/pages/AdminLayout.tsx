@@ -107,12 +107,22 @@ function AdminShell() {
 
   // Recent actions (#101 Phase 1): every admin navigation is remembered in a
   // per-user localStorage buffer; the command bar's empty state replays it.
+  // One navigation is one visit: StrictMode (dev) runs this effect twice for
+  // the same navigation, so it is keyed by the history entry's own key — a
+  // repeat run of the same entry records nothing, a new navigation does.
   const location = useRouterState({ select: (s) => s.location })
+  const navigationKey = (location.state as { __TSR_key?: string; key?: string } | undefined)?.__TSR_key
+    ?? (location.state as { key?: string } | undefined)?.key
+    ?? location.href
+  const recordedNavigation = useRef<string | null>(null)
   useEffect(() => {
     if (!user) return
+    const id = `${user.row_id}\u0000${navigationKey}`
+    if (recordedNavigation.current === id) return
+    recordedNavigation.current = id
     const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
     if (action) recordAction(user.row_id, action)
-  }, [user?.row_id, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.row_id, location.href, navigationKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [recentSel, setRecentSel] = useState(0)
 
@@ -132,6 +142,9 @@ function AdminShell() {
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const isMobileSidebar = useMediaQuery(MOBILE_SIDEBAR_QUERY)
+  // A phone's header has no room for "Featherbase Home" (141px of text in
+  // 119px at 375px wide), so there the app-name prefix is dropped.
+  const isPhone = useMediaQuery(PHONE_QUERY)
 
   // #72: the avatar opens an account menu (Change password, Log out).
   const [accountOpen, setAccountOpen] = useState(false)
@@ -302,10 +315,10 @@ function AdminShell() {
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
   const sidebarRecent = user
-    ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, 5)
+    ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
   const sidebarFrequent = user
-    ? uniqueByDisplay([...sidebarRecent, ...frequentActions(user.row_id, 12)]).slice(sidebarRecent.length, sidebarRecent.length + 3)
+    ? uniqueByDisplay([...sidebarRecent, ...frequentActions(user.row_id, 12)]).slice(sidebarRecent.length, SIDEBAR_RECENT_CAP)
     : []
 
   function recordSearch(q: string) {
@@ -410,7 +423,7 @@ function AdminShell() {
             wrapperClassName="min-w-0 flex-1 sm:w-52 sm:flex-none md:w-auto md:flex-1"
             className="truncate pl-2.5 pr-8 font-medium max-sm:min-h-11"
           >
-            <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
+            <option value={FEATHERBASE_HOME_DESTINATION.href}>{isPhone ? shortHomeLabel(FEATHERBASE_HOME_DESTINATION.label) : FEATHERBASE_HOME_DESTINATION.label}</option>
             {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
           </Select>
         </div>
@@ -424,7 +437,7 @@ function AdminShell() {
           <Menu aria-hidden size={20} />
         </button>
 
-        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:max-w-3xl" data-testid="awesomebar">
+        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto min-[1600px]:mx-auto min-[1600px]:max-w-4xl" data-testid="awesomebar">
           <input
             ref={searchRef}
             value={search}
@@ -577,7 +590,7 @@ function AdminShell() {
           )}
         </form>
 
-        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:gap-2" data-testid="navbar-right-zone">
+        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:ml-0 sm:gap-2" data-testid="navbar-right-zone">
           <div className="relative" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
             <span className="flex size-9 items-center justify-center text-ink-muted" data-testid="notif-bell">
@@ -723,7 +736,9 @@ function AdminShell() {
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
-          <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
+          {/* The sidebar scrolls as ONE column: the Home Pages keep their full
+              height whatever sits below them. */}
+          <nav className="shrink-0 px-2 pb-4 pt-3" data-testid="home-page-nav">
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-ink-subtle">Loading…</p>
             )}
@@ -834,6 +849,17 @@ interface SidebarItem {
 /** A labelled group of sidebar links: a muted sentence-case heading with a
  *  small icon (a heading, not a link), then each link with its grey icon.
  *  Renders nothing — heading included — when no item is visible. */
+/** Below Tailwind's `sm`: the header shares one row with the logo, menu, bell and avatar. */
+export const PHONE_QUERY = '(max-width: 639.98px)'
+
+/** "Featherbase Home" → "Home": the app's own name is the logo beside it. */
+export function shortHomeLabel(label: string): string {
+  return label.replace(/^Featherbase\s+/, '')
+}
+
+/** Recently opened holds at most this many items, Frequent included. */
+export const SIDEBAR_RECENT_CAP = 5
+
 export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
   heading: string
   icon: LucideIcon

@@ -208,6 +208,8 @@ describe('#101: GET /api/activity_feed', () => {
     const login = team.items.find((i) => i.kind === 'login' && i.who_name === 'login-nameless')
     expect(login).toBeTruthy()
     expect(login!.label).toBe('')
+    // The verb is the web's ("signed in"); no grey sub-text rides along.
+    expect(login).not.toHaveProperty('sub')
     expect(JSON.stringify(login)).not.toContain('psn_')
   })
 

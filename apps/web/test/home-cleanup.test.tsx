@@ -2,6 +2,7 @@
 // remembered page or row, the unlabelled link card, and the activity feed's
 // one-sentence rows. Every claim is read off the rendered page.
 import { screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
@@ -165,4 +166,49 @@ test('a person with only a Table grant keeps today’s links, and no management 
   await screen.findByTestId('sidebar-group-data')
   expect(groupLinks('sidebar-group-data')).toEqual(['Explore', 'All tables'])
   expect(groupLinks('sidebar-group-access')).toEqual(['Access tokens', 'Sign-in methods'])
+})
+
+test('Team: a sign-in reads "<person> signed in", the verb styled like every other verb', async ({ admin }) => {
+  const { logActivity } = await import('server/src/audit')
+  await logActivity('Administrator', 'login', { full_name: 'Administrator' })
+  await renderApp('/featherbase/admin', admin)
+  const feed = await screen.findByTestId('activity-feed')
+  ;(await within(feed).findByTestId('feed-tab-team')).click()
+  await waitFor(() => expect(within(feed).getAllByRole('img', { name: 'Sign-in' }).length).toBeGreaterThan(0))
+  const row = within(feed).getAllByRole('img', { name: 'Sign-in' })[0].closest('[data-testid="feed-item"]') as HTMLElement
+  const verb = within(row).getByTestId('feed-verb')
+  expect(verb).toHaveTextContent(/^signed in$/)
+  expect(verb).toHaveClass('text-ink-muted')
+  expect(verb).not.toHaveClass('text-xs')
+})
+
+test('Recently opened holds at most five items, Frequent included', async ({ admin }) => {
+  const now = Date.now()
+  for (let i = 0; i < 8; i++)
+    for (const back of [3, 2, 1])
+      recordAction('Administrator', { kind: 'list', key: `list:T${i}?`, label: `T${i}`, path: `/featherbase/admin/T${i}` }, now - i * 10_000 - back * 1000)
+  await renderApp('/featherbase/admin', admin)
+  await screen.findAllByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
+  const items = [...screen.queryAllByTestId('sidebar-recent'), ...screen.queryAllByTestId('sidebar-frequent')]
+  expect(items).toHaveLength(5)
+})
+
+test('on a phone the app selector drops the app-name prefix; wider screens keep the full name', async ({ admin }) => {
+  const { PHONE_QUERY } = await import('../src/pages/AdminLayout')
+  const phone = (matches: boolean) =>
+    vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+      matches: matches && q === PHONE_QUERY, media: q, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    }) as MediaQueryList)
+  phone(true)
+  const first = await renderApp('/featherbase/admin', admin)
+  const select = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
+  expect(select.selectedOptions[0].textContent).toBe('Home')
+  first.unmount()
+  vi.restoreAllMocks()
+  phone(false)
+  await renderApp('/featherbase/admin', admin)
+  const wide = (await screen.findByRole('combobox', { name: 'Switch application' })) as HTMLSelectElement
+  expect(wide.selectedOptions[0].textContent).toBe('Featherbase Home')
+  vi.restoreAllMocks()
 })

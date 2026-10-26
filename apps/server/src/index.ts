@@ -905,7 +905,7 @@ app.get('/api/activity_feed', async (c) => {
           who: r.who as string,
           kind: 'login',
           label: '', // the row already names the person; a sign-in has no object
-          sub: 'signed in',
+          sub: undefined, // the verb ("signed in") is the web's, like every other kind
           path: '',
           at: new Date(r.at as string).toISOString(),
           count: Number(r.count),

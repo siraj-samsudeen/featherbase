@@ -377,11 +377,21 @@ describe('the Admin shell', () => {
     expect(tagWith(shell, 'admin-navbar')).toMatch(/\bmd:pl-0\b/)
   })
 
-  test('the command bar fills the space up to the bell, capped on very wide screens', () => {
+  test('the command bar fills the space up to the bell; only at 1600px and wider is it capped, and centred', () => {
     const bar = tagWith(shell, 'awesomebar')
     expect(bar).toMatch(/\bsm:flex-1\b/)
-    expect(bar).toMatch(/\bsm:max-w-3xl\b/)
-    expect(bar).not.toMatch(/\bmx-auto\b|\bsm:max-w-md\b/)
+    // No cap at ordinary widths: any max-w must sit behind the 1600px breakpoint.
+    for (const m of bar.matchAll(/(\S*)max-w-\S+/g)) expect(m[1]).toBe('min-[1600px]:')
+    expect(bar).toMatch(/\bmin-\[1600px\]:mx-auto\b/)
+    // The bell group must not grab the free space with its own auto margin at sm+.
+    expect(tagWith(shell, 'navbar-right-zone')).toMatch(/\bsm:ml-0\b/)
+  })
+
+  test('the sidebar scrolls as one column: the Home Pages never shrink', () => {
+    const nav = tagWith(shell, 'home-page-nav')
+    expect(nav).toMatch(/\bshrink-0\b/)
+    expect(nav).not.toMatch(/\bflex-1\b|overflow-y-auto/)
+    expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\boverflow-y-auto\b/)
   })
 
   test('the shell draws no native select arrow: it uses the design-system Select', () => {
@@ -404,6 +414,16 @@ describe('the Admin shell', () => {
     expect(field).toMatch(/appearance-none/)
     expect(field).toMatch(/<ChevronDown[\s\S]*?pointer-events-none/)
   })
+})
+
+test('a feed row truncates only its object: who, verb and count never shrink', () => {
+  const feed = source('src/components/ActivityFeed.tsx')
+  expect(tagWith(feed, 'feed-sentence')).toMatch(/\bflex\b/)
+  expect(tagWith(feed, 'feed-sentence')).not.toMatch(/\btruncate\b/)
+  expect(tagWith(feed, 'feed-verb')).toMatch(/\bshrink-0\b/)
+  expect(tagWith(feed, 'feed-count')).toMatch(/\bshrink-0\b/)
+  expect(tagWith(feed, 'feed-object')).toMatch(/\btruncate\b/)
+  expect(tagWith(feed, 'feed-object')).toMatch(/min-w-\[4ch\]/)
 })
 
 describe('Home and the sidebar speak one kind vocabulary', () => {
