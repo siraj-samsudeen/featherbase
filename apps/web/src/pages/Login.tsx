@@ -38,6 +38,10 @@ const REFUSALS: Record<string, (p: { appName: string; google: string; service: s
   google_failed: ({ google }) => `${google} sign-in didn't finish. Please try again.`,
 }
 
+// #474: "Try another Google account" restarts Google sign-in with the account
+// picker forced, so the account just refused is never silently reused.
+export const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
 // words for people (a wrong password, an outage, someone who has left).
@@ -86,6 +90,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [forgot, setForgot] = useState(false)
+  // #474: after a refused Google sign-in the card shows a panel of next steps,
+  // and no inputs, until the person picks one.
+  const [refusalAnswered, setRefusalAnswered] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
@@ -156,6 +163,7 @@ export function LoginPage() {
     setError(null)
     setDelegatedKey(key)
     setMode(next)
+    setRefusalAnswered(true)
   }
 
   // person-rename: after an upgrade every session ends once; say so plainly
@@ -191,13 +199,50 @@ export function LoginPage() {
             Your session has ended. Please sign in again.
           </p>
         )}
-        {refusal && (
+        {refusal && refusalAnswered && (
           <div className="mb-3" data-testid="sign-in-refused">
             <Notice tone="caution">{refusal}</Notice>
           </div>
         )}
         <div className={cardClasses('p-6')}>
-          {mode === 'delegated' && delegatedLabel ? (
+          {refusal && !refusalAnswered ? (
+            <div className="space-y-5" data-testid="sign-in-refused-panel">
+              <div className="space-y-2">
+                <h2 className="text-base font-semibold text-ink">We couldn't sign you in</h2>
+                <p className="text-sm text-ink-muted" data-testid="sign-in-refused">{refusal}</p>
+              </div>
+              <div className="space-y-3">
+                {delegatedMethods[0] && (
+                  <Button
+                    variant="primary"
+                    block
+                    data-testid="refused-delegated"
+                    onClick={() => switchMode('delegated', delegatedMethods[0].key)}
+                  >
+                    Sign in with {delegatedMethods[0].label}
+                  </Button>
+                )}
+                {/* A full-page navigation, as the ordinary Google button is. */}
+                {google && (
+                  <a
+                    href={GOOGLE_RETRY_HREF}
+                    data-testid="refused-google-retry"
+                    className={buttonClasses({ variant: delegatedMethods[0] ? 'secondary' : 'primary', block: true })}
+                  >
+                    Try another {google.label} account
+                  </a>
+                )}
+              </div>
+              <button
+                type="button"
+                data-testid="refused-other-ways"
+                className="text-sm text-action hover:underline"
+                onClick={() => switchMode('password')}
+              >
+                Other ways to sign in
+              </button>
+            </div>
+          ) : mode === 'delegated' && delegatedLabel ? (
             <>
               <form className="space-y-4" data-testid="delegated-login-form" onSubmit={onDelegatedSubmit}>
                 <p className="text-sm text-ink-muted">
