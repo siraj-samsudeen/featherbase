@@ -363,6 +363,33 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
   })
 })
 
+describe('The Access Log records the store opened', () => {
+  test('a report served from the cache names the cached copy it came from', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader, SALES_TARGET_DATASET } = await import('../src/datasets/sales-target-mtd')
+    const { buildSnapshot } = await import('../src/dataset-snapshot')
+    const dayRows = [['1501', 'Attakulangara', 'ATK', '010101001', '2026-09-01', 100, 60], ['1501', 'Attakulangara', 'ATK', '010101003', '2026-09-01', 50, 20]]
+    _setSourceReader(async (text: string) => {
+      if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text)) return [['010101001', 'Shirts'], ['010101003', 'Belts']]
+      return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [['2026-09-17', 2]] : dayRows
+    })
+    try {
+      const built = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(built.status).toBe('activated')
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(((await res.json()) as { source: string }).source).toBe('snapshot')
+      const rows = await sql`
+        select method, reference_name, scope from access_log
+        where "user" = ${await idOf('test_employee_1')} and operation = 'view_report'`
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ method: 'snapshot', reference_name: built.snapshotId, scope: 'store=1501' })
+    } finally {
+      _setSourceReader(null)
+    }
+  })
+})
+
 describe('#3783 sales-target host: the assignment is derived from the Store Sections maps', () => {
   // The two Tables the store maintains in Featherbase (featherbase/apps/store-sections in the
   // data-warehouse repo). Created here through the same public API the app manifest uses, with

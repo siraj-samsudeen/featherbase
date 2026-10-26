@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, loadJobs } from '../src/jobs'
+import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import {
   activeSnapshot,
   buildSnapshot,
@@ -257,6 +257,16 @@ describe('publish before cache', () => {
     expect(jobs).toHaveLength(1)
   })
 
+  test('a miss while a refresh is already running schedules nothing more', async () => {
+    stub(sampleRows())
+    const running = await enqueue('refresh_datasets')
+    await sql`update background_job set job_status = 'running' where row_id = ${running}`
+    await reportFor(EMP1)
+    const queued = await sql`select row_id from background_job where method = 'refresh_datasets' and job_status = 'queued'`
+    expect(queued).toHaveLength(0)
+    expect(await pendingMisses()).toContain(SALES_TARGET_DATASET) // still recorded, so the running build's successor sees it
+  })
+
   test('repeated misses count rather than duplicate', async () => {
     stub(sampleRows())
     await reportFor(EMP1)
@@ -330,6 +340,27 @@ describe('Section subtotals', () => {
       { section: null, target: 200, actual: 120, gap: -80, achievement: 60, missing: 0, no_target_no_sale: 0, n: 1 },
     ])
     expect(r.total).toMatchObject({ target: 530, actual: 280, n: 4, missing: 1 })
+  })
+})
+
+describe('Achievement is the ratio of the sums', () => {
+  test('a total across a large and a small subcategory is total sales over total target, not the mean of the row percentages', async () => {
+    // One subcategory at 50% of a large target, one at 200% of a small one: the mean of the two
+    // percentages is 125, the ratio of the sums is 75.
+    stub([row('1501', '010101001', '2026-09-01', 100, 50), row('1501', '010101003', '2026-09-01', 20, 40)])
+    await buildSnapshot(SALES_TARGET_DATASET)
+    const r = await reportFor(EMP1)
+    const byCode = Object.fromEntries(r.rows.map((x) => [x.code, x.achievement]))
+    expect(byCode).toEqual({ '010101001': 50, '010101003': 200 })
+    expect(r.total).toMatchObject({ target: 120, actual: 90, achievement: 75 })
+  })
+
+  test('a target of zero shows no achievement rather than a division', async () => {
+    stub([row('1501', '010101001', '2026-09-01', 0, 30), row('1501', '010101003', '2026-09-01', 20, 10)])
+    await buildSnapshot(SALES_TARGET_DATASET)
+    const r = await reportFor(EMP1)
+    expect(r.rows.find((x) => x.code === '010101001')?.achievement).toBeNull()
+    expect(r.rows.find((x) => x.code === '010101001')?.actual).toBe(30)
   })
 })
 

@@ -50,6 +50,29 @@ sit under a heading.
 - **WHEN** a Table is added to a home page that has no named cards
 - **THEN** its link appears under a heading, not in a card with no title
 
+### Requirement: A card with nothing to show disappears
+
+A card whose links have all been hidden from the viewer, or point to a Table that no longer exists, SHALL NOT be shown, and the rest of the page SHALL still appear. A link to a part of a Table that has no list of its own SHALL NOT be shown.
+
+#### Scenario: Every link in a card is hidden
+
+- **WHEN** a card holds only links to Tables the viewer cannot read
+- **THEN** the card is not shown, and the page's other cards are
+
+#### Scenario: A Table has been removed
+
+- **WHEN** an app is uninstalled and a home page still links to one of its Tables
+- **THEN** the link is left out and the page opens normally
+
+### Requirement: Pages are listed Home first, the System page last
+
+The home pages SHALL be listed with the general Home page first, then one page for each module, then the System page.
+
+#### Scenario: Module pages before System
+
+- **WHEN** a viewer who can see the Warehouse module's page and the System page opens the navigation
+- **THEN** Warehouse is listed before System
+
 ### Requirement: A home page can be limited to certain roles
 
 A home page SHALL be visible to everyone unless it names specific roles, in
@@ -71,6 +94,15 @@ automatically, creating that page first if it doesn't exist yet.
 
 - **WHEN** the user builds a Table in a module with no home page yet
 - **THEN** a home page for that module appears with a link to the new Table
+
+### Requirement: Tables in the same module share one page
+
+A second Table built in a module SHALL be added to that module's existing home page, after the first, not to a new page. Tables filed under the default module SHALL go on the general Home page, and a Table that exists only as the rows of another Table SHALL get no link.
+
+#### Scenario: Two Tables in one module
+
+- **WHEN** the user builds two Tables in the Warehouse module
+- **THEN** one Warehouse page links both, in the order they were built
 
 ### Requirement: Resume where you left off
 

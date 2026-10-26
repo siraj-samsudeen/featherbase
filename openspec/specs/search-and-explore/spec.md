@@ -46,6 +46,11 @@ fast typeahead over a complete list.
 - **WHEN** a search term matches far more rows than fit in the dropdown
 - **THEN** only the first few per Table are shown, up to an overall cap
 
+#### Scenario: Many Tables
+
+- **WHEN** a search term matches several rows in each of many Tables
+- **THEN** the results stop at the overall cap even though every Table has more matches
+
 ### Requirement: The search bar remembers what the user did
 
 Focusing the empty search bar SHALL offer the user's own recently visited
@@ -146,3 +151,21 @@ that ID in place of its sensitive title.
 
 - **WHEN** a user with access to the sensitive title searches for text in it
 - **THEN** the matching row appears with that title
+
+### Requirement: A row shared with the user opens by link but is not searched
+
+A row that someone shared directly with the user SHALL open from its link, but SHALL NOT appear in the user's search results unless their own access to the Table already includes it.
+
+#### Scenario: A shared customer
+
+- **WHEN** a colleague shares one of their own customers with the user, who can otherwise see only their own customers
+- **THEN** the shared customer opens from the link, and a search for its name finds nothing
+
+### Requirement: Structural records rank last and say what they are
+
+Search results that are the platform's own definitions, such as a Table's definition or a permission rule, SHALL be listed after ordinary records and SHALL say what kind of definition they are, so they are not mistaken for the Table or for business data.
+
+#### Scenario: A Table's definition
+
+- **WHEN** the user searches for a word that matches both a customer record and the definition of a Table with that word in its name
+- **THEN** the customer is listed first, and the definition is labelled as a Table definition

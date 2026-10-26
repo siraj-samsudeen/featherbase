@@ -138,4 +138,45 @@ describe('EML-007: Auto Email Report', () => {
     const later = await runDueAutoEmailReports(new Date())
     expect(later).toContain(AER)
   })
+
+  test('a weekly report is not sent again until a week has passed', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set frequency = 'Weekly' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).toContain(AER) // never sent: due now
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER) // just sent
+    await sql`update auto_email_report set last_sent = now() - interval '3 days' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER)
+    await sql`update auto_email_report set last_sent = now() - interval '8 days' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).toContain(AER)
+  })
+
+  test('each recipient gets their own email, however the list is separated', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set recipients = ${'a@x.com, b@x.com;c@x.com d@x.com'} where row_id = ${AER}`
+    const out = await deliverAutoEmailReport(AER)
+    expect(out.recipients).toBe(4)
+    const queued = await sql`select recipient from email_queue where ref_table = 'Report' and reference_name = ${REPORT} order by recipient`
+    expect(queued.map((q) => q.recipient)).toEqual(['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com'])
+  })
+
+  test('a disabled schedule is never sent, and one with no recipients is refused', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set enabled = false where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER)
+    await expect(deliverAutoEmailReport(AER)).rejects.toMatchObject({ type: 'ValidationError' })
+    await sql`update auto_email_report set enabled = true, recipients = '' where row_id = ${AER}`
+    await expect(deliverAutoEmailReport(AER)).rejects.toMatchObject({ type: 'ValidationError' })
+    const queued = await sql`select 1 from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    expect(queued).toHaveLength(0)
+  })
+
+  test('the attachment can be a web page table instead of a CSV file', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set file_format = 'HTML' where row_id = ${AER}`
+    await deliverAutoEmailReport(AER)
+    const [q] = await sql`select attachments from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    const files = (q.attachments as { files?: { filename: string; content_b64: string }[] }).files ?? []
+    expect(files[0].filename).toBe(`${REPORT}.html`)
+    expect(Buffer.from(files[0].content_b64, 'base64').toString('utf8')).toContain('<td>Washer</td>')
+  })
 })

@@ -90,4 +90,19 @@ describe('RPT-006: report charts', () => {
     expect(charts).toHaveLength(1)
     expect(charts[0]).toMatchObject({ value_field: 'amount' })
   })
+
+  test('a pinned chart recomputes from live rows: a new row shows the next time it is drawn', async ({ admin }) => {
+    await setup(admin)
+    await pinChartToDashboard(DASH, { label: REPORT, report: REPORT, group_by: 'region' }, 'Administrator')
+    const before = await runReportChart({ report: REPORT, group_by: 'region' }, 'Administrator')
+    expect(Object.fromEntries(before.data.map((d) => [d.label, d.value]))).toEqual({ North: 2, South: 1 })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 's4', region: 'South', amount: 5 })
+    const after = await runReportChart({ report: REPORT, group_by: 'region' }, 'Administrator')
+    expect(Object.fromEntries(after.data.map((d) => [d.label, d.value]))).toEqual({ North: 2, South: 2 })
+  })
+
+  test('a chart grouped by a column the report does not have is refused', async ({ admin }) => {
+    await setup(admin)
+    await expect(runReportChart({ report: REPORT, group_by: 'nope' }, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
 })

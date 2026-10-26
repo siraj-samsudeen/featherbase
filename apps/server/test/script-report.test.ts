@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
 import { loadScriptReports, runScriptReport, scriptReportMeta, registerScriptReport } from '../src/script-report'
 
 // RPT-005: script reports resolve a registered server function via the Report
@@ -71,5 +72,34 @@ describe('RPT-005: script reports', () => {
     await expect(runScriptReport('SR Srv Missing', {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',
     })
+  })
+
+  test('a choice filter narrows the rows: Enabled Yes returns only enabled people, No only the others', async ({ admin, createUser }) => {
+    await setup(admin)
+    const gone = await createUser({ email: 'sr.gone@example.com', fullName: 'Gone Person' })
+    await sql`update person set enabled = false where row_id = ${gone.user}`
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: 'SR Srv Enabled', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
+    })
+    const meta = await scriptReportMeta('SR Srv Enabled', 'Administrator')
+    expect(meta.filters.map((f) => f.label)).toEqual(['Enabled'])
+    const yes = await runScriptReport('SR Srv Enabled', { enabled: 'Yes' }, 'Administrator')
+    const no = await runScriptReport('SR Srv Enabled', { enabled: 'No' }, 'Administrator')
+    expect(yes.rows.every((r) => r.enabled === true)).toBe(true)
+    expect(yes.rows.some((r) => r.row_id === gone.user)).toBe(false)
+    expect(no.rows.map((r) => r.row_id)).toContain(gone.user)
+    expect(no.rows.every((r) => r.enabled === false)).toBe(true)
+  })
+
+  test('a person who may not read the Report cannot run its script', async ({ admin, createUser }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: 'SR Srv Scoped', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
+    })
+    const nobody = await createUser({ email: 'sr.nobody@example.com', fullName: 'No Roles' })
+    // Without read access to the Report itself, the script never runs.
+    await expect(runScriptReport('SR Srv Scoped', {}, String(nobody.user))).rejects.toMatchObject({ type: 'PermissionError' })
   })
 })
