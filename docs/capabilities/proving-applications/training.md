@@ -32,7 +32,7 @@ contract and be used immediately by Training; application-specific grading
 logic remains ordinary code.
 
 The starting reference is
-[JeyaramaGroup/data-warehouse PR #3567](https://github.com/JeyaramaGroup/data-warehouse/pull/3567).
+an application kept in an instance's private repository.
 That Hono, TypeScript and Postgres application is similar to Advent of Code: a
 learner opens daily exercises, works them and submits answers for grading.
 

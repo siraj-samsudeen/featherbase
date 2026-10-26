@@ -3,7 +3,7 @@
 - **Status:** learning-slice implementation plus provisional follow-on direction; see spec 0011 for executable obligations
 - **Recorded:** 2026-09-21
 - **Product:** Tasker
-- **Initial users:** the Ramachandran data warehouse team
+- **Initial users:** the client's data team
 
 This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior lives in the [Tasker OpenSpec contract](../../openspec/TASKER.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
 
