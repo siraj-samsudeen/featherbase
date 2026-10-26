@@ -10,7 +10,7 @@
 // (offered), pinned (chips replace the card), reloaded (chips survive), and
 // a chip click (navigates). One claim each.
 
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { test, expect, renderApp } from './pg-test'
 
 const DAY = 86_400_000
@@ -147,5 +147,68 @@ test('a pinned workspace this version cannot read counts as none, so the routine
   localStorage.setItem(`fc-workspace:${user.user}`, '{not json')
   await openHome(user)
   expect(await screen.findByTestId('routine-card')).toBeInTheDocument()
+  expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument()
+})
+
+// "Tiles back to what the user was just doing" (dashboards-and-home-pages):
+// the trail is made in the app itself — a row opened, a list opened, a search
+// run — and the home page then offers one tile back to each.
+test('after opening a row, then a list, then running a search, the home page has a tile back to each', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: 'Hr Shelf',
+    id_pattern: 'prompt',
+    title_column: 'title',
+    columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  })
+  await admin.post('/api/table_def', { name: 'Hr Aisle', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] })
+  await admin.post('/api/save_row', { table: 'Hr Shelf', row: { row_id: 'shelf-quokka', title: 'Quokka shelf' } })
+  const here = (r: { router: unknown }) =>
+    decodeURIComponent((r.router as { state: { location: { pathname: string } } }).state.location.pathname)
+
+  const app = await renderApp('/featherbase/admin/Hr%20Shelf/shelf-quokka', admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await app.router.navigate({ to: '/featherbase/admin/Hr%20Aisle' })
+  await screen.findByTestId('list-view', {}, { timeout: 8000 })
+  const bar = screen.getByLabelText('Search or type a command')
+  fireEvent.focus(bar)
+  fireEvent.change(bar, { target: { value: 'Quokka' } })
+  fireEvent.click(await screen.findByTestId('awesomebar-doc'))
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Shelf/shelf-quokka'))
+
+  await app.router.navigate({ to: '/featherbase/admin' })
+  const strip = await screen.findByTestId('resume-strip', {}, { timeout: 8000 })
+  expect(within(strip).getByTestId('resume-tile-row')).toHaveTextContent('Quokka shelf')
+  expect(within(strip).getByTestId('resume-tile-view')).toHaveTextContent('Hr Aisle')
+  expect(within(strip).getByTestId('resume-tile-search')).toHaveTextContent('Quokka')
+
+  // One click each.
+  within(strip).getByTestId('resume-tile-view').click()
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Aisle'))
+  await app.router.navigate({ to: '/featherbase/admin' })
+  ;(await screen.findByTestId('resume-tile-row')).click()
+  await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Hr Shelf/shelf-quokka'))
+  await app.router.navigate({ to: '/featherbase/admin' })
+  ;(await screen.findByTestId('resume-tile-search')).click()
+  await waitFor(() => expect(screen.getByLabelText('Search or type a command')).toHaveValue('Quokka'))
+}, 30000)
+
+// SPEC: Pin a routine as shortcuts — "shortcuts that stay on the home page
+// until the user unpins them" — suspected defect: the pinned chips offer no
+// way to unpin them (HomeRecall's workspace row has no unpin control), so a
+// pin can never be taken away.
+test.fails('a pinned routine can be unpinned, and stays unpinned on the next visit', async ({ createUser }) => {
+  const user = await createUser({ roles: ['System Manager'] })
+  await user.post('/api/events', { events: habit(5) })
+  await openHome(user)
+  ;(await screen.findByTestId('routine-pin')).click()
+  const chips = await screen.findByTestId('workspace-chips')
+
+  within(chips).getByRole('button', { name: /unpin/i }).click()
+  await waitFor(() => expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument())
+  cleanup()
+  await openHome(user)
+  await waitFor(async () =>
+    expect((await user.get('/api/routine_suggestion')) as { targets: unknown[] }).not.toMatchObject({ targets: [] }),
+  )
   expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument()
 })

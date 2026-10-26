@@ -1,4 +1,4 @@
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterAll, beforeAll } from 'vitest'
 import postgres from 'postgres'
@@ -50,6 +50,30 @@ test('the source browser lists a source\'s tables, marks one with no single iden
   })
   // Once turned on, it is shown as already connected and cannot be picked twice.
   await waitFor(() => expect(screen.getByTestId('sb-row-depot').querySelector('input[type="checkbox"]')).toBeDisabled())
+})
+
+// "Already connected" (external-data-sources): a builder opens a source one
+// of whose tables was connected earlier — not in this visit.
+test('opening a source with a table already connected shows that table linked to its Featherbase table, and it cannot be picked again', async ({ admin }) => {
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'web-sb3', engine: 'postgres', url_env: ENV, default_schema: 'web_sb', access: 'read_only' })
+  await admin.post('/api/table/Data%20Source/web-sb3:reflect', { tables: ['web_sb.depot'], prefix: 'Earlier' })
+  const user = userEvent.setup()
+  const { router } = await renderApp('/featherbase/admin/source/web-sb3', admin)
+
+  await user.click(await screen.findByTestId('sb-load'))
+  const row = await screen.findByTestId('sb-row-depot', undefined, { timeout: 8000 })
+  expect(row.querySelector('input[type="checkbox"]')).toBeDisabled()
+  const link = within(row).getByRole('link', { name: 'Earlier Depot' })
+  // A table not yet connected shows its proposed name as plain text, not a link.
+  expect(within(screen.getByTestId('sb-row-depot_tag')).queryByRole('link')).not.toBeInTheDocument()
+
+  await user.click(link)
+  await waitFor(() =>
+    expect(decodeURIComponent((router.state as { location: { pathname: string } }).location.pathname)).toBe(
+      '/featherbase/admin/Earlier Depot',
+    ),
+  )
 })
 
 // Testing the connection, and turning a table on under a chosen prefix and

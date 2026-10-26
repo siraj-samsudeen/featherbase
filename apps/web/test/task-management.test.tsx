@@ -691,6 +691,99 @@ test('task_detail_flow: one task switches among three detail modes with comments
   }
 })
 
+// "Switch layouts without losing the task" (tasker-use-task-details). The UI
+// names the layouts Inspector (side panel), Focus (full page) and Compact
+// (summary).
+test('switching side panel → full page → summary keeps the same task open, and after a reload tasks open in the summary', async ({ admin }) => {
+  await install()
+  try {
+    await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Recount the shoe aisle', description: 'Two bins disagree.' } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Order more hangers' } })
+    const first = renderTasker(admin)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('link', { name: 'Recount the shoe aisle' }))
+    const panel = await screen.findByRole('complementary', { name: 'Task details' })
+    expect(await within(panel).findByRole('heading', { name: 'Recount the shoe aisle' })).toBeInTheDocument()
+
+    await user.click(within(panel).getByRole('button', { name: 'Focus' }))
+    const page = await screen.findByRole('dialog', { name: 'Focused task details' })
+    expect(await within(page).findByRole('heading', { name: 'Recount the shoe aisle' })).toBeInTheDocument()
+
+    await user.click(within(page).getByRole('button', { name: 'Compact' }))
+    const summary = await screen.findByRole('region', { name: 'Task detail content' })
+    expect(await within(summary).findByRole('heading', { name: 'Recount the shoe aisle' })).toBeInTheDocument()
+    expect(within(summary).getByText('Two bins disagree.')).toBeInTheDocument()
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } }))
+
+    // A reload: a fresh page with nothing cached, and no task open.
+    first.unmount()
+    location.hash = ''
+    renderTasker(admin)
+    await user.click(await screen.findByRole('link', { name: 'Order more hangers' }))
+    const reopened = await screen.findByRole('region', { name: 'Task detail content' })
+    expect(await within(reopened).findByRole('heading', { name: 'Order more hangers' })).toBeInTheDocument()
+    expect(within(reopened).getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('complementary', { name: 'Task details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument()
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// "See a comment and a change" (tasker-use-task-details): both made in the
+// task details by a person with a name.
+async function commentAndMarkUrgent(as: TestClient, title: string) {
+  renderTasker(as)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('link', { name: title }))
+  const panel = await screen.findByRole('complementary', { name: 'Task details' })
+  await user.type(await within(panel).findByRole('textbox', { name: 'Add comment' }), 'Called the supplier')
+  await user.click(within(panel).getByRole('button', { name: 'Comment' }))
+  await within(panel).findByText('Called the supplier')
+  await user.click(within(panel).getByRole('button', { name: 'Not urgent' }))
+  await waitFor(() => expect(within(panel).getByTestId('task-activity')).toHaveTextContent('urgent: false → true'))
+  const entries = within(within(panel).getByTestId('task-activity')).getAllByRole('listitem')
+    .filter((li) => li.parentElement === within(panel).getByTestId('task-activity'))
+  const comment = entries.find((li) => li.textContent?.includes('Called the supplier'))!
+  const change = entries.find((li) => li.textContent?.includes('urgent: false → true'))!
+  return { comment, change }
+}
+
+test('a comment and a change made in the task details each show when they were made', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const rani = await createUser({ roles: [], fullName: 'Rani Storekeeper' })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Chase the late delivery', assigned_to: rani.user } })
+    const { comment, change } = await commentAndMarkUrgent(rani, 'Chase the late delivery')
+    // The time each was made (any locale prints hours and minutes as h:mm).
+    expect(comment).toHaveTextContent(/commented · .*\d{1,2}:\d{2}/)
+    expect(change).toHaveTextContent(/edited · .*\d{1,2}:\d{2}/)
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// SPEC: Discussion and history stay in Tasker — "each with the user's name and
+// the time" — suspected defect: the entries name their author by the Person's
+// row id (`created_by`, a minted psn_… id for anyone but Administrator), not
+// by the person's name.
+test.fails('a comment and a change made in the task details each show the name of the person who made them', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const rani = await createUser({ roles: [], fullName: 'Rani Storekeeper' })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: { task_title: 'Chase the late delivery', assigned_to: rani.user } })
+    const { comment, change } = await commentAndMarkUrgent(rani, 'Chase the late delivery')
+    expect(comment).toHaveTextContent('Rani Storekeeper commented')
+    expect(change).toHaveTextContent('Rani Storekeeper edited')
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
 test('task details do not carry unsaved text into another task', async ({ admin }) => {
   await install()
   try {

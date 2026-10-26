@@ -144,6 +144,25 @@ test('Calendar: next and previous month page the grid', async ({ admin }) => {
   await waitFor(() => expect(screen.getByTestId('cal-month').textContent).toBe(first))
 })
 
+test('Calendar: the next month shows the rows dated in it', async ({ admin }) => {
+  await seedSchedule(admin)
+  const now = new Date()
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 20)
+  const nextDay = `${next.getFullYear()}-${pad(next.getMonth() + 1)}-20`
+  await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'n1', title: 'Stocktake', start_date: nextDay, end_date: nextDay } })
+  await admin.post('/api/save_row', { table: SCHED, row: { row_id: 'n2', title: 'Kickoff', start_date: thisMonth(15), end_date: thisMonth(15) } })
+  await renderApp(`/featherbase/admin/${enc(SCHED)}/view/calendar`, admin)
+  await waitFor(() => expect(within(screen.getByTestId(`cal-cell-${thisMonth(15)}`)).getByText('Kickoff')).toBeInTheDocument())
+  expect(screen.queryByText('Stocktake')).not.toBeInTheDocument()
+  const first = screen.getByTestId('cal-month').textContent
+
+  fireEvent.click(screen.getByTestId('cal-next'))
+  await waitFor(() => expect(screen.getByTestId('cal-month').textContent).not.toBe(first))
+  expect(screen.getByTestId('cal-month')).toHaveTextContent(String(next.getFullYear()))
+  await waitFor(() => expect(within(screen.getByTestId(`cal-cell-${nextDay}`)).getByText('Stocktake')).toBeInTheDocument())
+  expect(screen.queryByText('Kickoff')).not.toBeInTheDocument()
+})
+
 test('Timeline: each row is a bar from its first date to its second; a row missing a date has no bar', async ({ admin }) => {
   await seedSchedule(admin)
   await admin.post('/api/save_row', { table: SCHED, row: { row_id: 't1', title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' } })
