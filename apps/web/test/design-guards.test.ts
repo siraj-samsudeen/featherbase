@@ -352,3 +352,81 @@ function hitsByRule(file: string): string[] {
 test('every rule is a hard zero over every source file', () => {
   expect(files.filter((f) => violations(f) > 0).flatMap(hitsByRule)).toEqual([])
 })
+
+// ---------------------------------------------------------------- the shell (home cleanup, 26-Oct-2026)
+// Layout jsdom cannot measure, so the contract is read from the source.
+
+const source = (file: string) => readFileSync(join(WEB, file), 'utf8')
+/** The opening tag carrying `data-testid="<id>"`. */
+const tagWith = (text: string, id: string) => {
+  const at = text.indexOf(`data-testid="${id}"`)
+  return at < 0 ? '' : text.slice(text.lastIndexOf('<', at), text.indexOf('>', at) + 1)
+}
+
+describe('the Admin shell', () => {
+  const shell = source('src/pages/AdminLayout.tsx')
+
+  test("the navbar's left zone is exactly the sidebar's width, with the sidebar's padding", () => {
+    const zone = tagWith(shell, 'navbar-left-zone')
+    expect(zone).toMatch(/\bmd:w-60\b/)
+    expect(zone).toMatch(/\bmd:shrink-0\b/)
+    expect(zone).toMatch(/\bmd:px-3\b/)
+    // The sidebar's tag holds an arrow function, so read a window, not up to '>'.
+    expect(shell).toMatch(/data-testid="admin-sidebar"[\s\S]{0,600}\bmd:w-60\b/)
+    // The header gives up its own left padding at md+, so the zone starts where the sidebar does.
+    expect(tagWith(shell, 'admin-navbar')).toMatch(/\bmd:pl-0\b/)
+  })
+
+  test('the command bar fills the space up to the bell, capped on very wide screens', () => {
+    const bar = tagWith(shell, 'awesomebar')
+    expect(bar).toMatch(/\bsm:flex-1\b/)
+    expect(bar).toMatch(/\bsm:max-w-3xl\b/)
+    expect(bar).not.toMatch(/\bmx-auto\b|\bsm:max-w-md\b/)
+  })
+
+  test('the shell draws no native select arrow: it uses the design-system Select', () => {
+    expect(shell).not.toMatch(/<select\b/)
+    expect(shell).toMatch(/<Select\s[^>]*id="admin-app-switcher"/)
+  })
+
+  test('the sidebar group headings look exactly like "Recently opened": muted, sentence case, small icon', () => {
+    const cls = (id: string) => /className="([^"]+)"/.exec(tagWith(shell, id))?.[1]
+    expect(cls('sidebar-group-heading')).toBe(cls('sidebar-recents-heading'))
+    expect(cls('sidebar-group-heading')).toMatch(/\btext-ink-subtle\b/)
+    expect(cls('sidebar-group-heading')).not.toMatch(/\buppercase\b/)
+    expect(tagWith(shell, 'sidebar-item-icon')).toMatch(/\btext-ink-subtle\b/)
+    // Past imports is a nav item, no longer a small underlined link.
+    expect(shell).not.toMatch(/data-testid="past-imports-link"[^>]*underline/)
+  })
+
+  test("the Select primitive hides the browser's arrow and draws the chevron", () => {
+    const field = source('src/components/ui/Field.tsx')
+    expect(field).toMatch(/appearance-none/)
+    expect(field).toMatch(/<ChevronDown[\s\S]*?pointer-events-none/)
+  })
+})
+
+describe('Home and the sidebar speak one kind vocabulary', () => {
+  const kinds = source('src/lib/kind-icons.tsx')
+  test('each kind has one icon and one token tint, in one shared module', () => {
+    for (const [kind, icon, tint] of [
+      ['page', 'LayoutDashboard', 'opportunity'],
+      ['row', 'FileText', 'action'],
+      ['list', 'List', 'positive'],
+    ])
+      expect(kinds).toMatch(new RegExp(`${kind}: \\{ label: '[^']+', Icon: ${icon}, tint: 'bg-${tint}-tint text-${tint}' \\}`))
+  })
+  test('the feed, the sidebar and the command bar draw kinds from it, never their own labels', () => {
+    for (const file of ['src/components/ActivityFeed.tsx', 'src/pages/AdminLayout.tsx']) {
+      const text = source(file)
+      expect(text).toMatch(/<KindIcon kind=/)
+      expect(text).not.toMatch(/KIND_LABEL|KIND_STYLE|RECENT_KIND_LABEL/)
+    }
+  })
+  test('section headings on Home and in the sidebar are sentence case, never all capitals', () => {
+    for (const file of ['src/components/HomeRecall.tsx', 'src/components/HomePageView.tsx', 'src/components/ActivityFeed.tsx'])
+      expect(source(file)).not.toMatch(/\buppercase\b/)
+    const shell = source('src/pages/AdminLayout.tsx')
+    expect(tagWith(shell, 'sidebar-recents-heading')).not.toMatch(/\buppercase\b/)
+  })
+})

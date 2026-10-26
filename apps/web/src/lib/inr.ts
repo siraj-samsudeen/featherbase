@@ -166,3 +166,27 @@ export function fmtInstantIST(iso: string | null | undefined): string {
     `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())} IST`
   )
 }
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const localIsoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** A day heading for a timeline: "Today", "Yesterday", else "Tue, 13-Oct-2026"
+ *  (ADR 844's day form with the weekday), on the reader's own calendar. */
+export function fmtTimelineDay(d: Date, now: Date = new Date()): string {
+  const day = localIsoDay(d)
+  if (day === localIsoDay(now)) return 'Today'
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
+  if (day === localIsoDay(yesterday)) return 'Yesterday'
+  return `${WEEKDAYS[d.getDay()]}, ${fmtDate(day)}`
+}
+
+/** The day an instant falls on, as a grouping key (reader's calendar). */
+export function timelineDayKey(d: Date): string {
+  return localIsoDay(d)
+}
+
+/** A clock time inside a day group: "09:05" (24-hour, reader's clock). */
+export function fmtClockTime(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}

@@ -28,10 +28,11 @@ import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 import { isOpaqueId } from '../lib/people'
 import { EntryLabel } from '../lib/row-titles'
+import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, PreviewBanner, REPORT_PATH, ReportOnlyShell, SIGN_IN_METHODS_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
-import { StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
-import { Bell, Menu } from '../components/ui/icons'
+import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, useMediaQuery } from '../components/ui'
+import { Bell, Clock, Compass, Database, History, Key, LogIn, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -395,21 +396,27 @@ function AdminShell() {
     <div className="flex h-full flex-col">
       <PreviewBanner />
       {/* Navbar */}
-      <header className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-surface px-2 py-1 sm:flex-nowrap sm:gap-4 sm:px-4">
-        <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('order-1 max-sm:min-h-11 max-sm:min-w-11 sm:order-none')}>
-          <Logo className="h-7 w-7" />
-        </Link>
-        <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
-        <select
-          id="admin-app-switcher"
-          aria-label="Switch application"
-          value={FEATHERBASE_HOME_DESTINATION.href}
-          onChange={(event) => { window.location.assign(event.target.value) }}
-          className={inputClasses('order-2 w-[9.5rem] shrink-0 font-semibold max-sm:min-h-11 sm:order-none sm:w-52')}
-        >
-          <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
-          {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
-        </select>
+      {/* md+: the left zone is exactly the sidebar's width (w-60) with the
+          sidebar's content padding, so the selector lines up with the column
+          below; the command bar then fills what is left up to the bell. */}
+      <header className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-1 border-b border-border bg-surface px-2 py-1 sm:flex-nowrap sm:gap-4 sm:px-4 md:pl-0" data-testid="admin-navbar">
+        <div className="order-1 flex min-w-0 items-center gap-1 sm:order-none sm:gap-2 md:w-60 md:shrink-0 md:px-3" data-testid="navbar-left-zone">
+          <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className={iconButtonClasses('shrink-0 max-sm:min-h-11 max-sm:min-w-11')}>
+            <Logo className="h-7 w-7" />
+          </Link>
+          <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
+          <Select
+            id="admin-app-switcher"
+            aria-label="Switch application"
+            value={FEATHERBASE_HOME_DESTINATION.href}
+            onChange={(event) => { window.location.assign(event.target.value) }}
+            wrapperClassName="w-[9.5rem] shrink-0 sm:w-52 md:w-auto md:min-w-0 md:flex-1"
+            className="truncate font-semibold max-sm:min-h-11"
+          >
+            <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
+            {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
+          </Select>
+        </div>
         <button
           onClick={() => setSidebarOpen((o) => !o)}
           data-testid="sidebar-toggle"
@@ -420,7 +427,7 @@ function AdminShell() {
           <Menu aria-hidden size={20} />
         </button>
 
-        <form onSubmit={runSearch} className="relative order-5 mx-auto w-full basis-full sm:order-none sm:basis-auto sm:max-w-md" data-testid="awesomebar">
+        <form onSubmit={runSearch} className="relative order-5 w-full basis-full sm:order-none sm:min-w-0 sm:flex-1 sm:basis-auto sm:max-w-3xl" data-testid="awesomebar">
           <input
             ref={searchRef}
             value={search}
@@ -464,14 +471,14 @@ function AdminShell() {
                   input keeps focus until the click lands. */}
               {showRecents && pick.length > 0 && (
                 <div data-testid="awesomebar-recents" onMouseDown={(e) => e.preventDefault()}>
-                  <div className="px-3 pb-0.5 pt-1 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
-                    Recent
+                  <div className="px-3 pb-0.5 pt-1 text-xs font-semibold text-ink-subtle">
+                    Recently opened
                   </div>
                   {recentItems.map((r, i) => (
                     <RecentRow key={r.key} entry={r} selected={i === Math.min(recentSel, pick.length - 1)} onOpen={openRecent} />
                   ))}
                   {frequentItems.length > 0 && (
-                    <div className="px-3 pb-0.5 pt-1.5 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+                    <div className="px-3 pb-0.5 pt-1.5 text-xs font-semibold text-ink-subtle">
                       Frequent
                     </div>
                   )}
@@ -573,7 +580,7 @@ function AdminShell() {
           )}
         </form>
 
-        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:ml-0 sm:gap-2">
+        <div className="order-4 ml-auto flex shrink-0 items-center gap-1 sm:order-none sm:gap-2" data-testid="navbar-right-zone">
           <div className="relative" title="Notifications">
             {/* An indicator, not a control, so it needs no thumb-sized hit area. */}
             <span className="flex size-9 items-center justify-center text-ink-muted" data-testid="notif-bell">
@@ -714,15 +721,6 @@ function AdminShell() {
             >
               Import Data
             </Link>
-            {/* #206: an import is a thing you did, not just rows that
-                appeared — so it has a place to be found again. */}
-            <Link
-              to="/featherbase/admin/imports"
-              data-testid="past-imports-link"
-              className="mt-1 block text-center text-xs text-ink-subtle underline"
-            >
-              Past imports
-            </Link>
           </div>
           )}
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
@@ -753,89 +751,66 @@ function AdminShell() {
               buffer the command bar reads. */}
           {(sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
             <div className="border-t border-border px-2 py-2" data-testid="sidebar-recents">
-              <p className="px-2 pb-0.5 pt-1 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
-                Recent
-              </p>
+              {/* A heading, not a link: muted, sentence case, with a clock. */}
+              <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-recents-heading">
+                <Clock aria-hidden size={12} />
+                Recently opened
+              </h2>
               {sidebarRecent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
               {sidebarFrequent.length > 0 && (
-                <p className="px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+                <h2 className="px-2 pb-0.5 pt-2 text-xs font-medium text-ink-subtle">
                   Frequent
-                </p>
+                </h2>
               )}
               {sidebarFrequent.map((r) => (
                 <SidebarRecentRow key={r.key} entry={r} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
               ))}
             </div>
           )}
-          <div className="border-t border-border px-2 py-2">
-            {/* #100 pattern 4: the cross-filter Explore surface. */}
-            <Link
-              to="/featherbase/admin/explore"
-              search={{ root: undefined, chain: undefined, select: undefined }}
-              data-testid="explore-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
-              activeProps={{
-                className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
-              }}
-            >
-              Explore
-            </Link>
-            <Link
-              to="/featherbase/admin/all-tables"
-              data-testid="all-tables-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
-              activeProps={{
-                className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
-              }}
-            >
-              All tables
-            </Link>
-            {/* #131: automation credentials are self-service (the endpoint is owner-scoped), so the link shows for everyone in the Admin. */}
-            <Link
-              to="/featherbase/admin/access-tokens"
-              data-testid="access-tokens-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
-              activeProps={{
-                className:
-                  'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
-              }}
-            >
-              Access tokens
-            </Link>
-            <Link
-              to="/featherbase/admin/sign-in-methods"
-              data-testid="sign-in-methods-link"
-              className="block rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
-              activeProps={{
-                className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
-              }}
-            >
-              Sign-in methods
-            </Link>
-            {canManage && (
-              <Link
-                to="/featherbase/admin/waiting-for-access"
-                data-testid="waiting-for-access-link"
-                className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-ink-muted hover:bg-subtle hover:text-ink"
-                activeProps={{
-                  className: 'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
-                }}
-              >
-                Waiting for access
-                {(waiting.data?.count ?? 0) > 0 && (
-                  <StatusPill tone="caution">
-                    <span data-testid="waiting-for-access-count" aria-label={`${waiting.data!.count} waiting`}>
-                      {fmtCount(waiting.data!.count)}
-                    </span>
-                  </StatusPill>
-                )}
-              </Link>
-            )}
-          </div>
+          {/* Two labelled groups under the Home Pages and the recents, headed
+              like "Recently opened". Visibility per item is unchanged; a group
+              with nothing visible for this person drops its heading too. */}
+          <SidebarGroup
+            heading="Data"
+            icon={Database}
+            testid="sidebar-group-data"
+            items={[
+              // #100 pattern 4: the cross-filter Explore surface.
+              { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
+              { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+              // #206: an import is a thing you did, not just rows that appeared —
+              // so it has a place to be found again.
+              ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),
+            ]}
+          />
+          <SidebarGroup
+            heading="People and access"
+            icon={ShieldLock}
+            testid="sidebar-group-access"
+            items={[
+              // #131: automation credentials are self-service (the endpoint is
+              // owner-scoped), so the link shows for everyone in the Admin.
+              { to: '/featherbase/admin/access-tokens', label: 'Access tokens', icon: Key, testid: 'access-tokens-link' },
+              { to: '/featherbase/admin/sign-in-methods', label: 'Sign-in methods', icon: LogIn, testid: 'sign-in-methods-link' },
+              ...(canManage
+                ? [{
+                    to: '/featherbase/admin/waiting-for-access',
+                    label: 'Waiting for access',
+                    icon: UserRoundSearch,
+                    testid: 'waiting-for-access-link',
+                    badge: (waiting.data?.count ?? 0) > 0 && (
+                      <StatusPill tone="caution">
+                        <span data-testid="waiting-for-access-count" aria-label={`${waiting.data!.count} waiting`}>
+                          {fmtCount(waiting.data!.count)}
+                        </span>
+                      </StatusPill>
+                    ),
+                  }]
+                : []),
+            ]}
+          />
         </aside>
 
         {/* Page canvas */}
@@ -847,6 +822,50 @@ function AdminShell() {
       </div>
     </div>
     </PeekProvider>
+  )
+}
+
+interface SidebarItem {
+  to: string
+  search?: Record<string, undefined>
+  label: string
+  icon: LucideIcon
+  testid: string
+  badge?: React.ReactNode
+}
+
+/** A labelled group of sidebar links: a muted sentence-case heading with a
+ *  small icon (a heading, not a link), then each link with its grey icon.
+ *  Renders nothing — heading included — when no item is visible. */
+export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
+  heading: string
+  icon: LucideIcon
+  testid: string
+  items: SidebarItem[]
+}) {
+  if (items.length === 0) return null
+  const base = 'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm'
+  return (
+    <div className="border-t border-border px-2 py-2" data-testid={testid}>
+      <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
+        <HeadingIcon aria-hidden size={12} />
+        {heading}
+      </h2>
+      {items.map(({ to, search, label, icon: Icon, testid: id, badge }) => (
+        <Link
+          key={id}
+          to={to}
+          search={search as never}
+          data-testid={id}
+          className={`${base} text-ink-muted hover:bg-subtle hover:text-ink`}
+          activeProps={{ className: `${base} font-medium text-action bg-action-tint` }}
+        >
+          <Icon aria-hidden size={14} className="shrink-0 text-ink-subtle" data-testid="sidebar-item-icon" />
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {badge}
+        </Link>
+      ))}
+    </div>
   )
 }
 
@@ -890,19 +909,21 @@ function SidebarRecentRow({
       title={shown.row || isOpaqueId(shown.label) ? shown.sub : shown.sub ? `${shown.label} — ${shown.sub}` : shown.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-subtle"
     >
-      <span className="block truncate text-sm text-ink">
-        {frequent && <span className="mr-1 text-caution">★</span>}
-        <EntryLabel entry={entry} />
+      <span className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
+        <KindIcon kind={shown.kind} tone="grey" />
+        {frequent && <span className="text-caution">★</span>}
+        <span className="truncate">
+          <EntryLabel entry={entry} />
+        </span>
       </span>
       {shown.sub && (
-        <span className="block truncate text-xs text-ink-subtle">{shown.sub}</span>
+        <span className="block truncate pl-5 text-xs text-ink-subtle">{shown.sub}</span>
       )}
     </a>
   )
 }
 
 // #101: one row of the command bar's Recent/Frequent groups.
-const RECENT_KIND_LABEL = { row: 'row', list: 'view', page: 'page', search: 'search' } as const
 
 function RecentRow({
   entry,
@@ -921,13 +942,11 @@ function RecentRow({
       onClick={() => onOpen(entry)}
       data-testid="awesomebar-recent"
       aria-current={selected || undefined}
-      className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint ${
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-action-tint ${
         selected ? 'bg-action-tint' : ''
       }`}
     >
-      <span className="w-10 shrink-0 text-xs font-semibold uppercase tracking-wide text-action">
-        {RECENT_KIND_LABEL[shown.kind]}
-      </span>
+      <KindIcon kind={shown.kind} tone="grey" />
       <span className="min-w-0 flex-1 truncate">
         <EntryLabel entry={entry} />
         {shown.sub && <span className="ml-2 text-xs text-ink-subtle">{shown.sub}</span>}

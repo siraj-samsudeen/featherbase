@@ -70,7 +70,7 @@ export function HomePageView({ name }: { name: string }) {
             <div key={card.label ?? i} className={cardClasses('p-4')} data-testid={`home-card-${card.label ?? 'links'}`}>
               {/* Links curated before the first card break form a card with no
                   label of its own; every link here opens a Table, so it says so. */}
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-subtle" data-testid="home-card-heading">
+              <div className="mb-2 text-xs font-semibold text-ink-subtle" data-testid="home-card-heading">
                 {card.label ?? UNLABELLED_CARD_HEADING}
               </div>
               <div className="space-y-0.5">

@@ -66,7 +66,7 @@ export function ResumeStrip() {
   if (tiles.length === 0) return null
   return (
     <div data-testid="resume-strip">
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+      <p className="mb-1.5 text-xs font-semibold text-ink-subtle">
         Continue where you left off
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -82,7 +82,7 @@ export function ResumeStrip() {
               data-testid={t.testid}
               className={cardClasses('p-3 text-left transition hover:border-action')}
             >
-              <div className="text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+              <div className="text-xs font-semibold text-ink-subtle">
                 {t.head}
               </div>
               <div className="mt-0.5 truncate text-sm font-medium text-ink" data-testid="resume-tile-title">
@@ -119,7 +119,7 @@ export function RoutineCard() {
   if (workspace.length > 0)
     return (
       <div className="flex flex-wrap items-center gap-2" data-testid="workspace-chips">
-        <span className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">
+        <span className="text-xs font-semibold text-ink-subtle">
           📌 My workspace
         </span>
         {workspace.map((t) => (
