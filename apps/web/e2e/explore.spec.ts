@@ -10,8 +10,7 @@ import { deleteTableIfExists } from './cleanup'
 //   EX Vehicle ← EX Accident.vehicle ← EX Claim.accident
 //   EX Vehicle ← EX Service.vehicle
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// pane counts are exact `toHaveText` checks that assertHas' substring
+// Pane counts are exact `toHaveText` checks that assertHas' substring
 // semantics can't safely stand in for, and the split-button/checkbox
 // mechanics are testid-addressed, so both stay in named steps.
 

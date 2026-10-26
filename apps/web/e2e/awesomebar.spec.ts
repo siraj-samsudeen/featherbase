@@ -5,8 +5,7 @@ const DOC = 'zephyr-unique-doc'
 
 // UI-014: awesomebar surfaces Tables, documents, and "new X" actions;
 // Enter navigates to the top document hit's form.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the awesomebar input has no distinct accessible label, so each round of
+// The awesomebar input has no distinct accessible label, so each round of
 // typing/clicking/asserting stays inside a named step.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {

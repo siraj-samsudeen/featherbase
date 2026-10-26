@@ -1,495 +1,297 @@
 # Testing
 
+Featherbase tests hit a **real Postgres** — no mocks, no fixture files, no
+cleanup code — through the SQL Sandbox harness
+[feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres),
+a published npm dependency (fix it in its own repo, never vendor it here).
+
 ## Where does a new test go?
 
-- **Server integration** — sandboxed HTTP against the in-process app. Almost
-  everything belongs here; reach for it first.
-- **Web component** — jsdom + the *real* in-process server, never a mock
-  layer. Reach here only when the behavior is React-side.
-- **E2E** — only for what a browser alone can witness: routing,
-  focus/keyboard behavior, realtime updates, file drop.
+1. **Server integration** — `apps/server/test/**/*.test.ts`. Sandboxed HTTP
+   against the in-process Hono app: lifecycle, permissions, naming,
+   validation, API shapes. Almost everything belongs here; reach for it first.
+2. **Web component** — `apps/web/test/*.test.tsx`. jsdom +
+   `@testing-library/react`, its API calls hitting the *real* in-process server
+   on the same sandboxed database, never a mock layer. For React-side
+   behaviour: rendering from metadata, form logic, query invalidation, what
+   was or wasn't sent to the server.
+3. **E2E** — `apps/web/e2e/*.spec.ts`, Playwright. **Not** sandboxed: it
+   commits real data through a real browser. Only for what a browser alone can
+   witness: a rendered stylesheet, real layout, image decoding, genuine focus
+   and keyboard handling, the URL bar, routing, realtime between two sessions,
+   file drop.
+4. **Pure functions** — `packages/shared` has its own Vitest project: no
+   database, no `globalSetup`, fully parallel. It stays that way only while it
+   stays free of I/O.
 
-See [The three layers](#the-three-layers) below for the full picture.
-
-Featherbase tests hit a **real Postgres** — no mocks, no fixture files, no
-cleanup code. The trick that makes this fast and safe is the SQL Sandbox
-model, borrowed from Phoenix/Ecto and packaged as
-[feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres)
-(consumed as a published npm dependency; it lives in its own repo — fix it
-there, never vendor it here).
-
-## The sandbox model
-
-Every test body runs inside one Postgres transaction that is **rolled back**
-when the test ends. Whatever the test creates — Tables, tables, rows,
-users — vanishes at rollback, so tests need no teardown and can't pollute
-each other. Crucially, the test drives the *real* Hono app in-process, so
-the full production path (routes → auth → permissions → lifecycle → SQL)
-gets exercised.
-
-The binding of the harness to this app is
-`apps/server/test/pg-test-shared.ts` — the one place that calls
-`createPgTest`, wiring the app, the `sql` client, and a delegate hook
-(`_setSqlDelegate` in `apps/server/src/db.ts`) that routes the app's queries
-through the test's transaction. It also wires:
-
-- `mintToken` / `insertUser` — fixtures like `admin` come pre-authenticated.
-- `onTeardown` — invalidates the per-process metadata cache and Data Source
-  registry, and resets the rate limiter, because a test may have created
-  Tables (or Data Sources) whose physical backing no longer exists after
-  rollback.
-
-`apps/server/test/pg-test.ts` re-exports that `test` fixture — plus `expect`
-and `patchDoc`, the PATCH-aware error-envelope helper from `./fixtures.ts` —
-so the server suite has one place to import from.
-`apps/web/test/pg-test.ts` imports the same fixture from `pg-test-shared`
-directly, across the workspace boundary via the `server` package, rather
-than copy-pasting it: the two bindings used to be copies and drifted (the
-web one was missing `invalidateSources()`, leaking a stale Data Source
-cache into the next test — #218).
-
-## Writing a test
-
-A minimal real example, adapted from `apps/server/test/naming.test.ts`:
-
-```ts
-import { describe, expect } from 'vitest'
-import { test } from './pg-test'   // NOT vitest's test — the sandboxed one
-
-describe('naming', () => {
-  test('series names are sequential', async ({ admin }) => {
-    await admin.post('/api/table_def', {
-      name: 'Nm Invoice',
-      id_pattern: 'NMINV-.####',
-      columns: [{ column_name: 'title', column_type: 'Data' }],
-    })
-    const doc = await admin.post<{ name: string }>('/api/save_row', {
-      table: 'Nm Invoice',
-      row: { title: 'first' },
-    })
-    expect(doc.name).toBe('NMINV-0001')
-  })
-})
-```
-
-Import `test` from `./pg-test` and `expect` from vitest (pg-test re-exports
-it too). The `admin` fixture is a `TestClient` logged in as Administrator;
-call the HTTP API through it and assert on the JSON. You can also import
-`sql` from `../src/db` and query the database directly mid-test — you'll see
-the test's own uncommitted state, which is exactly what you want.
-
-Asserting `NMINV-0001` works every run because the series counter row is
-created inside the transaction and rolled back with it. But remember the
-sandbox *sees committed state*: a name that collides with seeded data (a
-Table that a migration created, say) will 409 — pick names that don't
-exist in the real schema.
-
-Most setup doesn't need to be hand-rolled per file — `apps/server/test/fixtures.ts`
-is the standard toolkit. `makeTable(admin, def)` creates a Table, expanding
-the column shorthand (`'qty:Int'`), and hands back its URL handles (list,
-meta, row, def). `grantRole(admin, { role, table, ...perms })` makes the
-Role → Permission dance idempotent (the Role is only created if missing, so
-widening an existing Role with a further Permission row just works).
-`createUserWithRole` layers a fixture user on top of a grant. `expectApiError
-(call, { status, ... })` asserts a failed request's error envelope whether
-the call threw (a `TestClient` method) or resolved to a non-ok `Response` (a
-raw `client.fetch`) — the one place ~170 `.rejects.toMatchObject({ status,
-type })`-shaped assertions agree on the shape. Reach for these before
-writing a new per-file `setup()`; 22 files had their own before this module
-existed (#220), and the shapes had drifted apart.
+The line between 2 and 3 is not "is it UI" but *what the browser adds*. A
+test that could run in layer 2 belongs there, where rollback cleans up and it
+runs in milliseconds.
 
 ## Running tests
 
 ```bash
-pnpm test                                        # everything (all workspaces)
+pnpm test                                        # every workspace's suite
 pnpm --filter server test                        # server suite
-pnpm --filter server test test/naming.test.ts    # one file
+pnpm --filter server test test/naming.test.ts    # one file (anything after is a vitest filter)
 pnpm --filter web test                           # web component suite
-pnpm --filter web e2e                            # Playwright e2e (spins up its own isolated stack)
-pnpm smoke                                       # server + web smoke tests (web half needs ./init.sh running)
+pnpm --filter web e2e                            # Playwright e2e, on its own isolated stack
+pnpm smoke                                       # server + web smoke (web half needs ./init.sh running)
+pnpm test:coverage                               # every suite with coverage and its floor
 pnpm --filter server typecheck
 pnpm --filter web typecheck
+pnpm check:e2e-dsl                               # e2e specs use the DSL fixtures
 ```
 
-`pnpm --filter server test` is `vitest run`, so anything after it is a
-vitest filter — a path runs that file.
+Run `pnpm apps:prepare` after installing dependencies and before the server
+and web suites: it builds the runtime packages under `runtime-apps/` (Tasker
+has its own npm lockfile and is not a pnpm workspace member). CI and
+`./init.sh` do this for you.
 
-`typecheck` runs `tsc` twice: once against `tsconfig.json` (`src` only), once
-against `tsconfig.test.json`, which extends it and widens `include` to the
-test directories (`test`, and for web also `e2e`, plus the Vite/Playwright
-configs). A type error in a test file fails typecheck exactly like one in
-`src`.
+`typecheck` runs `tsc` twice — on `src`, then on `tsconfig.test.json`, which
+adds the test directories (and for web `e2e/` and the Vite/Playwright
+configs). A type error in a test fails typecheck like one in `src`.
 
-### What CI runs, and when
+`pnpm --filter web e2e` sets `E2E_ISOLATED=1`: Playwright resets and migrates
+its own database (`<DATABASE_URL's name>_e2e`) and starts its own API and web
+servers on ports 8020/5193 (`E2E_API_PORT`/`E2E_WEB_PORT` move them), then
+tears them down. `pnpm smoke` does not; it drives whatever is already up on
+`:5173`, which is why `./init.sh` runs it as its boot check.
 
-`.github/workflows/test.yml` runs every suite on every push to `main` and on
-manual dispatch. On a pull request it runs the static checks, both
-typechecks, the server suite (three shards), the web and shared suites and
-the PostgreSQL 18 release preflight — and the Playwright e2e suite **only**
-when the PR touches what the browser suite covers beyond the others:
-`apps/web/**` (which holds `e2e/` and `playwright.config.ts`),
-`packages/**`, `runtime-apps/**`, the lockfile, the root `package.json` or
-`pnpm-workspace.yaml`, or the workflow itself. A server-only PR skips it;
-add the `run-e2e` label to a PR to force it, for example when a server
-change alters a route the UI depends on. Its `e2e` check then reports
-`skipped`, and the full e2e runs again on the merge to `main`.
+**CI** (`.github/workflows/test.yml`) runs everything on every push to `main`.
+On a pull request it runs the static checks, both typechecks, the server suite
+(three shards), the web and shared suites and the PostgreSQL 18 release
+preflight, and runs e2e **only** when the PR touches `apps/web/**`,
+`packages/**`, `runtime-apps/**`, the lockfile, the root `package.json`,
+`pnpm-workspace.yaml` or the workflow. Add the `run-e2e` label to force it
+(say, a server change to a route the UI depends on).
 
-## Why `fileParallelism: false`
+## The sandbox model
 
-Both `apps/server/vitest.config.ts` and `apps/web/vitest.config.ts` set
-`fileParallelism: false`, and `apps/web/playwright.config.ts` sets
-`workers: 1`, all for the same reason: every test file shares **one**
-database. Tests within a file are transaction-isolated, but parallel *files*
-contend on cross-cutting state — the single `background_job` queue
-(`drainJobs()` drains every queued job, so parallel files steal each other's
-jobs) and id-pattern row locks. Do not turn parallelism back on; the
-flake it causes looks like unrelated bugs.
+Every test body runs inside one Postgres transaction that is **rolled back**
+when it ends, so whatever it created — Tables, rows, users — vanishes, with no
+teardown and no cross-test pollution. The test drives the real app in-process,
+so the full path (routes → auth → permissions → lifecycle → SQL) runs.
 
-## The stale-job-queue story
+`apps/server/test/pg-test-shared.ts` is the one place that binds the harness
+to this app: it routes the app's queries through the test's transaction
+(`_setSqlDelegate` in `src/db.ts`), provides pre-authenticated fixtures such as
+`admin`, and on teardown clears the metadata cache, Data Source registry and
+rate limiter. The server suite imports from `apps/server/test/pg-test.ts`; the
+web suite's `apps/web/test/pg-test.ts` reuses the same binding, never a copy.
 
-`background_job` is the one piece of state that outlives a run. A run
-killed partway through (Ctrl-C, crash) leaves committed `queued` rows
-behind; the next run's `drainJobs()` then returns a higher count than a test
-expected, and the failure (`expected 2 to be 1`) reads like a real bug in
-job code. The fix is `apps/server/test/global-setup.ts`: a Vitest
-`globalSetup` that runs in the main process, **outside** any sandbox
-transaction, and deletes everything in `background_job` once per run.
-Both suites use it (the web config points at
-`../server/test/global-setup.ts`), so every run starts from a known-empty
-queue. It complements `fileParallelism: false` rather than replacing it.
+```ts
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'          // NOT vitest's test — the sandboxed one
+import { makeTable } from './fixtures'
 
-## The three layers
+describe('naming', () => {
+  test('series names are sequential', async ({ admin }) => {
+    await makeTable(admin, { name: 'Nm Invoice', id_pattern: 'NMINV-.####', columns: ['title'] })
+    const row = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Nm Invoice',
+      row: { title: 'first' },
+    })
+    expect(row.row_id).toBe('NMINV-0001')
+  })
+})
+```
 
-**1. Server integration** — `apps/server/test/*.test.ts`. Sandboxed HTTP
-against the in-process Hono app, as above. This is where almost everything
-belongs: lifecycle behavior, permissions, naming, validation, API shapes.
-Reach for it first.
+`admin` is a `TestClient` signed in as Administrator. You can also query `sql`
+from `../src/db` mid-test and see the test's own uncommitted state. The
+sandbox still sees committed data, so pick names that don't collide with seeded
+ones.
 
-**2. Web component** — `apps/web/test/*.test.tsx`. jsdom +
-`@testing-library/react`, but *not* mocked: the components' API calls hit
-the same in-process server against the same sandboxed database (which is why
-the web vitest config inlines `feather-testing-postgres` and reuses the
-server's global setup). `apps/web/test/setup.ts` stubs `WebSocket` so the
-Admin UI's realtime client doesn't try to open real connections under jsdom. Use
-this layer when the behavior under test is React-side: rendering from
-metadata, form interaction logic, query invalidation.
+Reach for `apps/server/test/fixtures.ts` before writing a per-file setup:
+`makeTable` (column shorthand like `'qty:Int'`), `grantRole` (idempotent Role →
+Permission), `createUserWithRole`, and `expectApiError` for asserting an error
+envelope whether the call threw or returned a non-ok `Response`.
 
-**3. Playwright e2e** — `apps/web/e2e/*.spec.ts`. These are **not**
-sandboxed — they commit real data through a real browser. Use this layer
-only for things the other two can't see: routing, focus/keyboard behavior,
-realtime updates, visual flows.
+**A component test must not end with a request in flight.** Writes fired as
+`void api.post(...)` (theme, language, list settings) would otherwise run after
+rollback and commit for real, breaking a later test. Wait for the round trip —
+poll the server until it reports the new value. `apps/web/test/theme.test.tsx`
+carries the helper.
 
-The dividing line between layers 2 and 3 is not "is it UI" — it is *what
-the browser adds*. A rendered stylesheet, real layout and box model, image
-decoding, genuine focus and key handling, the URL bar, two sessions at once:
-those need layer 3. Rendering from metadata, form logic, query invalidation,
-what got sent to the server and what didn't: those are layer 2, where the
-sandbox rolls the data back and the whole test runs in milliseconds. #223 is
-the standing effort to move the misfiled ones down.
+### Shared database: no file parallelism, and a cleared job queue
 
-**At least one journey per surface arrives by clicking (#257).** A URL
-asserts the destination, never the path to it. The Table Builder journey
-creates a Table, follows its home-page/list links, and clicks New to reach
-the first row form without a URL jump. Client-script, grouped form layout,
-and mobile journeys likewise reach new forms through the list's New link.
-Keep deliberate deep-link tests (shareable URLs, refresh, preserved return
-destinations), and comment why direct navigation is the subject. This is
-not a blanket `page.goto` ban: incidental fixture navigation remains useful,
-but cannot be the only evidence that users can reach a surface.
+Both Vitest configs set `fileParallelism: false` and Playwright sets
+`workers: 1`: every file shares one database, so parallel files steal each
+other's `background_job` rows (`drainJobs()` drains every queued job) and
+contend on id-pattern row locks. Do not turn parallelism back on.
 
-**A component test must not leave a request in flight when it ends.** The
-Admin fires several writes as `void api.post(...)` — the theme toggle,
-`setLanguage`, ListView's settings PUT. A test that returns while one is
-outstanding lets it execute *after* its sandbox transaction closed, which
-commits it for real: the next test then starts against a dark, French, or
-pre-sorted Admin, and the failure surfaces somewhere else entirely. End such
-a test by waiting for the round trip — poll the server until it reports the
-new value — so the write lands inside the transaction that rollback undoes.
-`apps/web/test/theme.test.tsx` and `list-settings.test.tsx` both carry the
-helper and the reasoning.
+`background_job` is the one piece of state that outlives a run: a killed run
+leaves `queued` rows, and the next run's `drainJobs()` count comes back too
+high (`expected 2 to be 1`). `apps/server/test/global-setup.ts`, a `globalSetup`
+both suites share, empties the queue once per run outside any transaction —
+so that symptom clears on rerun.
 
-Which `test` a spec imports from `e2e/fixtures.ts` *is* its auth story.
-Plain `test` is already signed in as Administrator, from a `storageState`
-captured once per worker by driving the real login form — no `/login` round
-trip per spec — and is the right import for the majority of specs, whose
-subject is something *behind* the login. `anonymousTest` starts signed out,
-for specs whose subject is the login surface itself, an identity other than
-Administrator, or a page that must be reached with no session at all. Shared
-UI fixture builders (`ensureTable`, the FormView Table trio, `fillRows`) live
-in `e2e/fixtures-ui.ts` — every spec still creates its own fixtures
-idempotently in its own `beforeAll`; what's shared is the *definition*, so
-the Table shapes can't drift apart across specs (#215/#216).
+### Tests that commit for real
 
-**Every behavioural e2e suite uses the `feather-testing-core` DSL** — both
-`test` and `anonymousTest` are DSL-backed (`feather-testing-core/playwright`),
-so every spec's `{ session }` fixture is the entry point for browser
-behaviour: `session.visit`/`clickButton`/`fillIn`/`assertText`/`assertHas`/
-`assertPath`/etc. Raw Playwright (`page`, `context`, …) is legitimate only
-inside a descriptively named `session.step('<what this does>', async ({
-page }) => { ... })` — for mechanics the DSL can't express (testid/attribute
-addressing, file inputs, drag/reorder, `page.evaluate`). `request` stays the
-tool for API setup in `beforeAll`/`afterEach`, unchanged. A CI check
-(`pnpm check:e2e-dsl`) enforces this: every `apps/web/e2e/*.spec.ts` must
-import `test` or `anonymousTest` from `./fixtures`; a file whose first line
-is `// e2e-dsl: exempt — <reason>` is skipped. See
-`docs/testing/e2e-dsl-migration.md` for the full before/after pattern, the
-step rule, and the migration's per-file status — as of this writing 14 of 76
-files are migrated; the doc lists the rest in batches.
+Every non-sandboxed test file says why in its header comment.
 
-`pnpm --filter web e2e` sets `E2E_ISOLATED=1`: Playwright brings up its own
-database and its own API/web ports (default 8020/5193, overridable),
-resetting the database first and tearing the stack down after — so a spec's
-real commits land in a disposable database, not whatever's running for
-development. `pnpm smoke` (just `e2e/smoke.spec.ts`) does not set that flag;
-it drives whatever stack is already up at `http://localhost:5173`, which is
-why `./init.sh` runs it as its own boot check — run `./init.sh` first to use
-`pnpm smoke` standalone.
+- `apps/server/test/rls.test.ts` checks native row-level security through a
+  second connection under a login role it creates for the run, which could
+  never see an uncommitted sandbox transaction, so it commits and drops the
+  role after. The `DATABASE_URL` user must be allowed to create roles.
+- `apps/server/test/workflow-active-commit.test.ts` proves two workflow
+  activations contend, which needs independent committing connections. Create
+  a disposable database `featherbase_<worker>_workflow_commit_e2e` on
+  `127.0.0.1:5432` and run the opt-in command in the test's header; global
+  setup migrates it and the proof checks its test-environment stamp before
+  writing. It keeps its records for inspection, so never point the ordinary
+  suite at that database.
+- `pnpm apps:prove` builds the runtime packages as npm tarballs, runs them on
+  plain Node against compiled core through real restarts, and writes evidence
+  to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`
+  (override with `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`).
 
-A spec waiting on a realtime update waits for the server's acknowledgment,
-not a timer: `waitForRealtime(page, channel)` polls
-`<html data-realtime-channels>` until the channel appears there, because the
-realtime client only mirrors a subscription onto that attribute once the
-server has authorized and recorded it (#224) — a subscribe frame is
-asynchronous, so an event published before that moment is simply missed.
+## E2E specs
 
-**`packages/shared`** has its own Vitest project
-(`packages/shared/vitest.config.ts`) alongside these three, for pure,
-I/O-free functions — no database, no `globalSetup`, no `fileParallelism`
-restriction. It's the one suite free to run fully parallel, and stays that
-way only as long as it stays free of database access.
+Every spec imports `test` or `anonymousTest` from `./fixtures`, and which one
+*is* its auth story: `test` is already signed in as Administrator (a
+`storageState` captured once per worker through the real login form);
+`anonymousTest` starts signed out, for the login surface itself, another
+identity, or a page reached with no session. Shared Table builders
+(`ensureTable`, `ensureFormFixtures`, `fillRows`) live in `e2e/fixtures-ui.ts`;
+each spec still creates its fixtures idempotently in its own `beforeAll`, using
+`request` for API setup.
 
-One deliberate exception in the server suite:
-`apps/server/test/rls.test.ts` is *not* sandbox-isolated either. It verifies
-native Postgres row-level security through a second connection under a
-login role the file creates for the run, with a random name and password
-— and that connection could never see an uncommitted sandbox transaction,
-so the test commits for real and cleans up after itself, dropping the role.
-It reaches the same database as `DATABASE_URL`, whose user must be allowed
-to create roles. No role is granted access to a Table by default, so the
-suite grants its probe role SELECT on the Tables it reads.
+Both fixtures are backed by the
+[feather-testing-core](https://github.com/siraj-samsudeen/feather-testing-core)
+DSL, pinned exactly in `apps/web/package.json`. A spec drives the browser
+through its `{ session }`:
 
-### Committed workflow activation proof
+- `visit`, `clickButton`/`clickLink`, `fillIn`/`selectOption`/`check`/`choose`
+  for controls with an accessible name or `<label>`;
+- `assertText`/`refuteText`, and `assertHas`/`refuteHas(selector, { text, count })`
+  for presence, counts and text under a CSS selector such as a testid;
+- `assertPath`/`refutePath` for an **exact** path;
+- `within(selector, s => …)` for `assertExactText`, `assertAttribute`,
+  `assertComputedStyle` and horizontal overflow/scroll checks on one element;
+  `reload()`.
 
-`apps/server/test/workflow-active-commit.test.ts` needs independent committing
-connections: sandbox savepoints cannot prove that two activations contend.
-Create a separate disposable database named
-`featherbase_<worker>_workflow_commit_e2e` on `127.0.0.1:5432`, then run the
-opt-in command in the test's header. Global setup migrates it and the proof
-checks its test-environment stamp before writing. The proof waits for the
-loser's database lock wait, then checks the HTTP conflict and durable winner.
-It retains uniquely named records for inspection; do not use this database
-for the ordinary suite, whose seed tests expect a clean starting dataset.
+Raw Playwright (`page`, `context`) goes only inside a named
+`session.step('<what this does>', async ({ page }) => { … })` — for testid or
+`[data-field]` addressing, file inputs, drag, keyboard and focus proofs,
+`page.evaluate`, route stubs, downloads, or a URL regex. Name the step the way
+you'd narrate it: the name is what a failure prints.
 
-## House conventions (ratified 2026-08-28, #226)
+```ts
+test('pages through the list', async ({ session }) => {
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .assertHas('[data-testid="list-total"]', { text: '30 total' })
+  await session.step('go to the second page', async ({ page }) => {
+    await page.getByTestId('next-page').click()
+  })
+  await session.assertHas('[data-testid="page-info"]', { text: '21–30 of 30' })
+})
+```
 
-**Naming.** Spec-sentence style is the standard: a name may encode the
-example table directly, the way `import/upsert.test.ts` does —
-`'UPS-R2 examples: one match updates · none inserts · empty fails ·
-file-dup fails both · multi-match fails with count'` — with a spec-tier
-file prefixing the rule ID it verifies. Plain behavior tests outside the
-spec tier stay verb-first with no "should" (`'series names are
-sequential'`), as before. This supersedes the <8-word cap in
-`docs/research/feather-testing-study.md`: that number was inherited
-verbatim from `feather-testing-convex`'s philosophy doc and never fit a
-suite whose spec-tier names carry a rule ID and a collapsed example table.
+Traps:
 
-**Assertion precision.** `toBeTruthy()` / `toBeDefined()` stay banned —
-assert the actual shape: `toMatch` against an id pattern, `toEqual` against
-a structure, `toMatchObject` against an error envelope (`expectApiError` in
-`fixtures.ts` exists so call sites don't hand-roll that last one). This is
-the standard now, not an aspiration to grow into — a sweep of the
-remaining pre-ruling instances is in flight, and each one is a defect
-against this rule, not a style call to revisit.
+- `assertHas(…, { text })` is a **substring** match, even with `exact`. An
+  exact `toHaveText('2')` must stay a raw `expect` inside a step — swapping it
+  would let "12" pass.
+- `assertPath` is exact. "Somewhere under /admin" is a step with
+  `expect(page).toHaveURL(/…/)`.
+- Real routes live under `/featherbase/…`; visit `/` and let it redirect.
+- A second browser context gets its own `createSession(page)` from
+  `feather-testing-core/playwright`.
+- Waiting on realtime: `waitForRealtime(page, channel)` waits until the server
+  has authorized the subscription, not a timer.
+- If you drive your own stack instead of `E2E_ISOLATED=1`, boot it with the
+  raised `PREAUTH_*_MAX` limits `playwright.config.ts` uses, or the login rate
+  limit trips partway through, and reset the database between full runs.
 
-**Every non-sandboxed test file says why, in a header comment.** This
-codifies a practice the suite already follows consistently, not a new one.
-`apps/server/test/rls.test.ts` is the exemplar: its header states, in the
-first lines, that it verifies native Postgres RLS through a second
-connection that can never see the sandbox's uncommitted transaction, so the
-test commits for real and cleans up after itself.
+**At least one journey per surface arrives by clicking** (#257): a URL proves
+the destination, never the path to it. Keep deliberate deep-link tests and
+say why in a comment; `page.goto` for incidental fixture navigation is fine.
 
-**Coverage.** 100% line coverage is the ratified target, enforced as a CI
-ratchet rather than a gate sprung at 100% from day one: the threshold sits
-at the measured baseline and only rises, one commit at a time, until it
-reaches 100%.
+`pnpm check:e2e-dsl` (`tools/check-e2e-dsl.mjs`, run in CI) fails any
+`apps/web/e2e/*.spec.ts` that does not import `test` or `anonymousTest` from
+`./fixtures`, or that imports `test` from `@playwright/test` or
+`feather-testing-core/playwright`. A file whose first line is
+`// e2e-dsl: exempt — <reason>` is skipped.
 
-The wiring is coverage in each of the three Vitest configs (v8 for the server
-and shared, Istanbul for the web — see "Merged web coverage" below), collected by
-`pnpm test:coverage` (per package, or `pnpm -r test:coverage` from the root)
-and never by the plain `pnpm test` — day-to-day runs stay uninstrumented.
-Each config scopes collection to its own package's `src/`. The e2e suite is
-excluded by construction: Playwright drives a live stack from a separate
-process, so nothing it exercises is attributable to these numbers. The
-server's `migrations/` and `patches/` are excluded for the same reason —
-a separate `tsx src/migrate.ts` process applies them before the suite
-starts — and because a shipped migration is append-only history that no
-test can retroactively cover.
+## Conventions
 
-The ratchet itself is `coverage.thresholds` in each `vitest.config.ts`;
-that is the single place the numbers live, and CI runs the suites with
-coverage so one that drops below its floor fails the build. The server
-suite runs in three CI shards with their thresholds zeroed (a shard sees
-only part of the files); the `unit` job merges the shards' Vitest blob
-reports and enforces the floor on the merged coverage. Locally,
-`pnpm test:coverage` still runs each suite whole against its floor.
-Baselines measured 2026-08-28, each rounded down to the whole percent:
+- **Names** are spec sentences. A spec-tier test leads with the rule ID it
+  verifies and may carry the example table
+  (`'UPS-R2 examples: one match updates · none inserts · …'`); other tests are
+  verb-first with no "should" (`'series names are sequential'`).
+- **Assert the shape.** `toBeTruthy()` / `toBeDefined()` are banned: use
+  `toMatch` against an id pattern, `toEqual` against a structure, and
+  `expectApiError` for an error envelope.
+- Never mock the database or the API; if a test can't run against the
+  sandbox, reshape the test. Don't add cleanup to sandboxed tests.
 
-| Package | Lines / statements | Functions | Threshold set |
-|---|---|---|---|
-| `apps/server` | 86.64% | 91.18% | lines 86, functions 91 (superseded 2026-10-26, below) |
-| `apps/web` | 33.33% | 45.92% | lines 33, functions 45 |
-| `packages/shared` | 21.30% | 85.71% | lines 21, functions 85 |
+## Coverage gates (ADR 0012)
 
-The web row was re-measured on 2026-08-28 after #223's first batch moved
-seven e2e specs down to the component layer; it stood at lines 29.64% /
-functions 40.52% (thresholds 29 / 39) before that. Growing this layer is how
-the number moves — the ratchet rises as a side effect of rebalancing the
-pyramid, not as separate work.
-On 2026-10-26 the web suite moved to Istanbul (ADR 0012); with the component
-tests the merged report called for, the jsdom run measured lines 81.97%,
-statements 80.1%, functions 78.15%, and the floor became 81 / 80 / 77.
-On 2026-10-26 the merged report (below) reached 100% of lines and functions
-(statements 98.4%, branches 88.81%); the jsdom run then measured lines 94.24%,
-statements 92.48%, functions 92.79%, and the floor became 94 / 92 / 91.
-`apps/web/vitest.config.ts` holds the current numbers.
+Coverage is per package, collected only by `pnpm test:coverage` (never by
+plain `pnpm test`) and scoped to each package's `src/` — v8 for server and
+shared, Istanbul for web. E2E is not attributable to these numbers, and the
+server's `migrations/` and `patches/` are excluded (a separate process applies
+them; shipped migrations are append-only history).
 
-On 2026-10-26 (ADR 0012) the server suite reached 100% of lines and
-functions in CI's merged report, every file but release-preflight's
-PostgreSQL 18 checks (they run in the separate `release-preflight-pg18` job).
-The server gates are now functions 100, lines and statements 99.5, branches
-90. `src/sources/mysql-driver.ts` is measured only when `MYSQL_TEST_URL` is
-set (CI sets it), so a laptop run measures what it can test and passes the
-same gates. A coverage ignore is allowed only as ADR 0012 lists, each with
-its reason in the comment.
+The floors live only in each package's `vitest.config.ts` `coverage.thresholds`
+and only rise. CI fails a suite that drops below. The server suite's three CI
+shards run with thresholds zeroed and the `unit` job enforces the floor on the
+merged shard reports; locally each suite runs whole against its floor.
 
-Coverage is per package, so a
-`packages/shared` module driven only from the server and web suites reads as
-uncovered here; `src/import.ts` alone is the whole of shared's gap.
+Under ADR 0012 the server reached 100% of lines and functions, except
+release-preflight's PostgreSQL 18 checks (CI's `release-preflight-pg18` job).
+Its gates are functions 100, lines and statements 99.5, branches 90.
+`src/sources/mysql-driver.ts` is measured only when `MYSQL_TEST_URL` is set
+(CI sets it). A coverage ignore is allowed only as ADR 0012 lists, with its
+reason in the comment.
 
-### Merged web coverage (ADR 0012)
+A `packages/shared` module driven only from the server and web suites reads as
+uncovered in shared's own report.
 
-The web number that decides which component tests to write is ONE report
-over both web suites: the jsdom run and the Playwright run. A screen e2e
-already drives is covered there, so a component test that repeats it adds
-nothing; component tests go where the merged report is still red.
+### Merged web coverage
 
-    pnpm --filter web test:coverage    # jsdom run → apps/web/.nyc_output/jsdom.json
-    pnpm --filter web coverage:e2e     # isolated e2e, instrumented → .nyc_output/e2e-*.json
-    pnpm --filter web coverage:merged  # remap + merge → apps/web/coverage-merged/
+The web number that decides which component tests to write is ONE report over
+both web suites. A screen e2e already drives is covered; component tests go
+where the merged report is still red.
 
-Open `apps/web/coverage-merged/index.html` for the per-file, per-line view;
-`coverage-merged/coverage-summary.json` has the numbers. Delete
-`apps/web/.nyc_output/` before a fresh measurement, or old runs are summed in.
+```bash
+rm -rf apps/web/.nyc_output        # or old runs are summed in
+pnpm --filter web test:coverage    # jsdom run → .nyc_output/jsdom.json
+pnpm --filter web coverage:e2e     # isolated e2e, instrumented → .nyc_output/e2e-*.json
+pnpm --filter web coverage:merged  # → apps/web/coverage-merged/index.html
+```
 
-How the pieces fit:
+- `coverage:e2e` sets `E2E_COVERAGE=1`; only then does Playwright start the web
+  server with `VITE_COVERAGE=true`, which adds `vite-plugin-istanbul` (the
+  normal dev server and `vite build` never see it). Tests get 60s instead of 30s.
+- `e2e/fixtures.ts` collects `window.__coverage__` from every page of both
+  fixtures, carrying counters across navigations via `sessionStorage`. Pages a
+  spec opens in its own `browser.newContext()` are not collected.
+- `scripts/coverage-merge.mjs` remaps each input to source lines *before*
+  merging (`nyc merge` would add served-code counters to source-level ones).
+- The jsdom run's own thresholds gate CI's `unit-web` job; the merged run is
+  done by hand. To run it beside `./init.sh`, move the ports and give it a
+  private `DATABASE_URL`.
+- Both web suites strip comments before instrumenting, so a coverage hint
+  before a statement must be a legal comment —
+  `/* istanbul ignore next -- <reason> @preserve */`; one inside an expression
+  (the argument of `.catch(...)`) survives as it is.
 
-- `coverage:e2e` sets `E2E_COVERAGE=1`. `playwright.config.ts` then starts its
-  web dev server with `VITE_COVERAGE=true`, and only that variable adds
-  `vite-plugin-istanbul` to `vite.config.ts` — the ordinary dev server,
-  `./init.sh` and `vite build` never see the plugin. Tests get 60s instead of
-  30s, since instrumented modules are larger.
-- `e2e/fixtures.ts` overrides the browser context for both `test` and
-  `anonymousTest`: it reads `window.__coverage__` from every page open when
-  the test ends, and a document a navigation unloads parks its counters in
-  `sessionStorage` on `pagehide` for the next document to hand over (a
-  binding called from `pagehide` itself is lost with the document). Counters
-  are summed per worker and written at worker teardown. Pages a spec opens in
-  its own `browser.newContext()` (realtime, sales-target) are not collected.
-- The jsdom run uses Istanbul too (`vitest.config.ts`); its thresholds still
-  gate the jsdom run alone in CI's `unit-web` job.
-- `scripts/coverage-merge.mjs` remaps each input to original source lines
-  BEFORE merging — `nyc merge` would merge first and remap after, adding the
-  browser's served-code counters to jsdom's source-level ones — then
-  `nyc report` renders `.coverage/merged.json`.
+## Tasker development scenarios
 
-To measure next to a running `./init.sh`, keep the e2e stack off its ports and
-database: `E2E_API_PORT`/`E2E_WEB_PORT` move the ports, and the e2e database is
-`<DATABASE_URL's name>_e2e`, so a private `DATABASE_URL` gives a private one.
-The merged run is not a CI job; it is run by hand when choosing what to test.
-
-Measured 2026-10-26: lines 100% (5178/5178), functions 100% (2039/2039),
-statements 98.4%, branches 88.81% — from lines 96.34% / functions 95.42% the
-same day. A coverage ignore follows ADR 0012's list and gives its reason in the
-comment. Both suites strip comments before instrumenting, so a hint in front of
-a statement only survives when it is marked as a legal comment —
-`/* istanbul ignore next -- <reason> @preserve */`; a hint inside an expression
-(the argument of `.catch(...)`) survives as it is.
-
-## Runtime packages (#296)
-
-Run `pnpm apps:prepare` after dependency installation and before server/web tests.
-This uses Tasker's independent npm lockfile and builds its server module and
-client; the package is deliberately not a pnpm workspace member. CI and `init.sh`
-do this explicitly. Runtime never runs npm from an HTTP request.
-
-- `pnpm --filter server exec vitest run test/runtime-storage.test.ts test/runtime-packages.test.ts test/tasker-transition.test.ts test/task-management-app.test.ts`
-- `pnpm --filter web exec vitest run test/task-management.test.tsx`
-- `pnpm --filter web e2e e2e/task-management.spec.ts` (isolated database, Vite proxy)
-- `pnpm apps:prove` (compiled core → separately built npm tarballs → plain Node +
-  browser → real restarts; core checksum must stay unchanged). Uses only the
-  dedicated `featherbase_runtime_proof_e2e` database, protected by the usual stamp
-  and suffix checks. Override `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`
-  for parallel checkouts. Prints a `dist/runtime-proof-*/` evidence directory
-  with tarballs, compiled core, screenshots and `evidence.json`.
-
-For a regular dev server, `init.sh` configures the two example package paths.
-Otherwise set `FEATHERBASE_APP_PATHS` to a JSON array of absolute unpacked package
-directories, restart, sign in as Administrator, POST `/api/install_app` with
-`{"name":"tasker"}`, and open `/tasker/`. POST `/api/set_app_enabled` with
-`{"name":"tasker","enabled":false}` to disable, `true` to restore. `/api/apps`
-is manager-only; `/api/app_catalog` is the signed-in user's accessible launch list.
-The original prototype migration is automatic in the normal migration chain,
-but must not be run against an operator's development rows without authorization.
-
-App-owned relations are API-only for now: no database role but their owner holds
-any privilege on them, and the artifact proof checks that on its committed rows.
-
-### Tasker development scenarios
-
-With Tasker installed and enabled on a directly local development server backed
-by directly local PostgreSQL, seed the deterministic discussion scenarios through
-the ordinary HTTP API:
+With Tasker installed and enabled on a local dev server backed by local
+Postgres, seed deterministic discussion scenarios through the HTTP API:
 
 ```bash
 ADMIN_PASSWORD=admin pnpm seed:tasker -- --url=http://127.0.0.1:8000
 ```
 
-The command refuses non-loopback URLs (including accepting Node's canonical
-`http://[::1]` form), redirects, an environment other than `development`, and a
-PostgreSQL server that reports a non-local server address. It verifies identity
-before login, uses redirect refusal on every request, and rejects any response
-outside the exact configured origin so an Administrator credential is never
-forwarded across a detectable redirect. These checks cannot detect a transparent
-proxy: policy forbids SSH tunnels, port forwards, reverse/transparent proxies,
-shared development databases, QA, staging, production, external services, and
-production data. A literal artifact proof may explicitly request `test`; ordinary
-CLI seeding cannot.
-
-Every project and task has a deterministic `DEV-TASKER-*` row ID. The seed adopts
-only that ID and never overwrites an adopted row. Same-title developer rows remain
-untouched and receive neither scenario comments nor focus. Unrelated focus IDs are
-preserved after the three-item scenario order. Running it again is safe and it does
-not reset a database. Scenario definitions live in
-`runtime-apps/tasker/development/scenarios.mjs`, an app-owned development path
-excluded by Tasker's npm `files` and `featherbase.json` production fixtures.
-
-Concrete seeded row: `Triage supplier invoice mismatch` is an urgent, unassigned
-Inbox task. Other scenarios cover a non-urgent Inbox item, a visibly explained
-Blocked item, two projects with assigned and unassigned work, Administrator's
-personal task, completed work, two fake `@example.test` teammates, and private
-My Work ordering. `pnpm apps:prove` creates these rows in the stamped disposable
-`*_e2e` database, checks positive UI content and API boundaries, and writes the
-rows plus screenshots to its printed `dist/runtime-proof-*/` evidence directory.
-
-Limitations: the seed authenticates as Administrator and assumes Tasker is already
-installed and enabled. It intentionally creates no passwords for fake teammates,
-and it neither removes stale prior scenario rows nor modifies an adopted row whose
-content was changed by a developer.
-
-## Ground rules
-
-- Never mock the database or the API — if a test can't run against the
-  sandbox, reshape the test.
-- Don't add cleanup code to sandboxed tests; rollback is the cleanup.
-- If a run dies and the next one fails with a job-count mismatch, that's the
-  stale-queue symptom above — just rerun; the global setup clears it.
+It refuses non-loopback URLs, redirects, an environment other than
+`development`, and a database reporting a non-local address. It cannot detect
+a transparent proxy, so never point it through a tunnel, port forward or
+proxy, or at any shared, QA, staging or production database. Rows have
+deterministic `DEV-TASKER-*` IDs; rerunning is safe and never overwrites a row
+a developer changed. Scenarios live in
+`runtime-apps/tasker/development/scenarios.mjs`.

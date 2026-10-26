@@ -35,8 +35,7 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-// UI-022: Gantt bars — migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md).
+// UI-022: Gantt bars.
 test('UI-022: bars span the correct ranges', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}/view/gantt`).assertHas('[data-testid="gantt-view"]')
 

@@ -48,7 +48,6 @@ test.afterAll(async ({ request }) => {
 // I18N-002: a user's stored language is applied on a fresh login (no manual
 // switch), and dates render in the System-Settings-configured format.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The login form is label-friendly (mirrors admin.spec.ts's `signIn`, but for
 // a non-Administrator user so it stays inline rather than reusing that
 // helper); the account-menu/testid checks that follow stay in named steps.

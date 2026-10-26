@@ -1,7 +1,6 @@
 // The e2e suite's fixture seam — and, since #216, its single auth story.
-// Since the feather-testing-core DSL migration (docs/testing/e2e-dsl-migration.md),
-// both `test` and `anonymousTest` are DSL-backed: every spec gets a `session`
-// fixture, whether or not it uses one yet.
+// Both `test` and `anonymousTest` are backed by the feather-testing-core DSL:
+// every spec gets a `session` fixture, whether or not it uses one yet.
 //
 // WHICH `test` A SPEC IMPORTS *IS* ITS AUTH STORY:
 //

@@ -4,8 +4,7 @@ const SVC = 'svc-e2e-spec'
 
 // #131: the access-tokens screen — create a service account, issue it a
 // token through the show-once modal, prove the secret authenticates, revoke.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// every control here is testid-addressed, so the mechanics stay in named
+// Every control here is testid-addressed, so the mechanics stay in named
 // steps; assertHas covers the plain presence/text checks around them.
 test('#131: service account + token lifecycle through the Admin screen', async ({
   session,

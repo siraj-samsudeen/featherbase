@@ -45,7 +45,6 @@ const controls = ['[data-testid=breadcrumbs]', 'h1', '[data-field]', '[data-test
   '[data-testid=error-title]', '[data-testid=attach-error]', '[data-testid=attach-file]',
   '[data-testid=attachment-row] a', '[data-testid=attachment-delete]']
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // Every check here is a bounding-box/CSS/attribute probe, a screenshot, or a
 // route stub — none of which has a Session verb — so the body stays the
 // original imperative Playwright, reorganized into named steps around

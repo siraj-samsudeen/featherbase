@@ -12,8 +12,7 @@ import { deleteTableIfExists } from './cleanup'
 // route. Going to look at what you just imported destroyed the work of
 // planning the rest.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). `page.reload()` and every wizard
+// `page.reload()` and every wizard
 // control here stay inside named steps; `session.visit` carries navigation.
 
 const ONE = 'Resume One'

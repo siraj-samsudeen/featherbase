@@ -15,8 +15,7 @@ test.beforeAll(async ({ request }) => {
   docName = ((await doc.json()) as { row_id: string }).row_id
 })
 
-// UI-015: Ctrl/Cmd+S saves the current form. Migrated to the
-// feather-testing-core DSL (docs/testing/e2e-dsl-migration.md): keyboard
+// UI-015: Ctrl/Cmd+S saves the current form. Keyboard
 // shortcuts and `[data-field]` addressing aren't expressible by DSL verbs,
 // so they stay in named steps; assertHas covers the plain checks around them.
 test('UI-015: Ctrl+S saves the form', async ({ session }) => {

@@ -7,8 +7,7 @@ import { deleteTableIfExists } from './cleanup'
 // before the fix, the wizard would have named row 5 for a defect the user
 // sees at row 6 in Excel, and they'd go fix an innocent neighbour.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Row Number Truth'

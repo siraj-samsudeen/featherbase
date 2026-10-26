@@ -8,7 +8,7 @@ import { test, expect, adminAuth, type Page } from './fixtures'
 //
 // The representative screens are a Table's list and one of its rows' forms.
 // Steps that walk the Tab order and read computed styles have no DSL verb,
-// so they stay in named steps (docs/testing/e2e-dsl-migration.md).
+// so they stay in named steps.
 
 const DT = 'Kbn E2E Item'
 let rowName: string

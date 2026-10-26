@@ -37,7 +37,6 @@ test.afterEach(async ({ request }) => {
   await setAllowedDomains(request, '')
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The mock-OAuth screen and its outcome are all testid-addressed, so the
 // flow lives in named steps; `session` carries the plain navigation.
 test('PLAT-006: Google OAuth (mock) creates a User and lands on the no-access page until given a role', async ({ session, page, request }) => {

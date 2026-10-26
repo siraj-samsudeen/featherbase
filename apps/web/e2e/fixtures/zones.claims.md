@@ -1,6 +1,6 @@
 # zones.csv — claims
 
-The agreement fixture of `docs/design/requirements-framework.md` (Part II).
+The agreement fixture for spreadsheet import (`openspec/specs/spreadsheet-import`).
 Eight rows, six columns, each column landing on a different inferred type
 without a judgement call:
 

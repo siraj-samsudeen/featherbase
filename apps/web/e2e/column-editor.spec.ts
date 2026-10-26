@@ -9,8 +9,6 @@ import { deleteTableIfExists } from './cleanup'
 // no way to grow a column, and a misspelled column name had no way back —
 // the PUT route matches columns by name, so a changed name reads as
 // delete-plus-add and orphans the rows.
-//
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 
 const DT = 'Column Editor Zones'
 

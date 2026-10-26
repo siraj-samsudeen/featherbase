@@ -4,8 +4,7 @@ const DT = 'Cf Target'
 const FIELD = 'priority_note'
 
 // CUST-001: a custom field appears in the generic form and list views.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the field is `[data-field]`-addressed, so the form check stays in a step;
+// The field is `[data-field]`-addressed, so the form check stays in a step;
 // assertHas covers the list-view column/text check.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {

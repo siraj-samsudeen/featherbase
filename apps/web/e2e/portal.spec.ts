@@ -56,7 +56,6 @@ test.beforeAll(async ({ request }) => {
   bobDoc = ((await b.json()) as { row_id: string }).row_id
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // `loginAs` drives an identity other than Administrator, so it stays a named
 // step; navigation to the portal page moves onto `session.visit`.
 test('WEB-003: portal user sees only their own documents', async ({ session }) => {

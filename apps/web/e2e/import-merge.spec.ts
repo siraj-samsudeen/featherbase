@@ -6,8 +6,7 @@ import { deleteTableIfExists } from './cleanup'
 // The reported case: eleven sheets of section data, one per supermarket in a
 // chain, which the wizard could only turn into eleven Tables.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const MERGED_DT = 'Merge Sections'

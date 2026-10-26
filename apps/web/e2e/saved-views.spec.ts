@@ -84,8 +84,7 @@ async function waitPastDedupWindow(page: Page, table: string, filters: unknown):
     .toBeGreaterThan(SAME_ARRIVAL_WINDOW_MS)
 }
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// this whole flow polls page-local localStorage state between repeated
+// This whole flow polls page-local localStorage state between repeated
 // navigations and drives testid-addressed chip/nudge controls, so each test
 // stays as one named step operating on the raw `page`.
 test('#101 P6: three applications trigger the nudge; the saved view lives as a chip', async ({

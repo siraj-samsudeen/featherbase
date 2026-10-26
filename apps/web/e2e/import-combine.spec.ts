@@ -9,8 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // which is exactly why nothing should propose it (Q5 — no guessing) and why
 // the user must be able to say it themselves.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Combine Sections'

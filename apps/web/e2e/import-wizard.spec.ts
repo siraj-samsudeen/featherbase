@@ -5,8 +5,7 @@ import { deleteTableIfExists } from './cleanup'
 // IMP-010: the Import wizard — multi-sheet workbooks, rename-tolerant
 // existing-Table suggestions, column mapping, dry-run, Choice detection.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const NEW_DT = 'Wizard Orders' // created by the wizard from sheet 1

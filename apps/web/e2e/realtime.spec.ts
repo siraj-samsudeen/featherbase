@@ -44,7 +44,6 @@ test.beforeAll(async ({ request }) => {
     await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // Every test here drives TWO independent browser contexts, which the `session`
 // fixture (bound to the default `page`) cannot reach — `createSession(page)`
 // (the same factory `fixtures.ts`'s own DSL-backed `test` is built on) gives

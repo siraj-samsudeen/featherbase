@@ -229,7 +229,6 @@ const needsLive = () => test.skip(!live.ok, blockedReason())
 const needsFrame = () => test.skip(!live.ok && MODE === 'live', blockedReason())
 
 // ── 1. Local login ───────────────────────────────────────────────────────────
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // Every check here reads an embed iframe, a bounding box, or the raw `login`
 // helper (a non-Administrator identity, so it isn't `signIn(session)`) —
 // nothing a Session verb reaches — so each test's body stays exactly the
@@ -390,7 +389,6 @@ test.describe('4. Period and arithmetic', () => {
 })
 
 // ── 5. Simultaneous viewers ──────────────────────────────────────────────────
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // A single two-viewer choreography, so it stays one named step on a Session
 // bound to the acting viewer (p1); the mechanics inside (iframe locators,
 // stub/Dive reads) are all things the DSL doesn't reach.

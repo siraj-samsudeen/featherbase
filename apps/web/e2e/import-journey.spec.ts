@@ -1,10 +1,8 @@
 import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
-// IMP-J1 — the first-import golden path of
-// docs/design/requirements-framework.md (Part II), written in the
-// feather-testing DSL: each chain segment mirrors a journey step, and
-// step() carries the value assertions the UI cannot yet express through
+// The first-import golden path, written in the feather-testing DSL: each
+// chain segment mirrors a journey step, and step() carries the value assertions the UI cannot yet express through
 // labels (the wizard's inputs are test-id addressed, not label-associated —
 // the same finding that got the login form its htmlFor attributes).
 //

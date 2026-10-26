@@ -1,7 +1,6 @@
 import { anonymousTest as test, expect, ADMIN_PWD } from './fixtures'
 
-// UI-001, migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). The login form's fields ARE labelled,
+// UI-001. The login form's fields ARE labelled,
 // so sign-in itself becomes DSL verbs; the sidebar/table-nav assertions stay
 // testid-addressed steps.
 test('UI-001: full login flow into the Admin shell', async ({ session }) => {

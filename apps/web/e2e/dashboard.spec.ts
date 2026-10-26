@@ -44,7 +44,6 @@ test.beforeAll(async ({ request }) => {
 })
 
 // UI-026: a dashboard shows a count card and a bar chart that match the data.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('UI-026: dashboard number cards and bar chart match the underlying data', async ({ session }) => {
   await session
     .visit(`/admin/dashboard/${encodeURIComponent(DASH)}`)

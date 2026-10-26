@@ -14,7 +14,6 @@ test.beforeAll(async ({ request }) => {
   docName = await createFormRow(request, auth, { title: 'link autocomplete fixture', qty: 1 })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The Reference field is a `[data-field=...]` combobox with a testid-addressed
 // options panel, not a labelled input, so the whole walk stays inside one
 // named step; `session.visit`/`assertHas` carry navigation and the Saved

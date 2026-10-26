@@ -43,8 +43,7 @@ test.beforeAll(async ({ request }) => {
 })
 
 // CUST-003: a client script auto-fills a field on change.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the field is `[data-field]`-addressed with no label, so it stays in steps.
+// The field is `[data-field]`-addressed with no label, so it stays in steps.
 test('CUST-003: a client script auto-fills a field on change', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}`)
   await session.step('open a new document', async ({ page }) => {

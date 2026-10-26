@@ -63,7 +63,6 @@ test.beforeAll(async ({ request }) => {
 // WEB-002: an anonymous visitor submits a public web form and it creates a doc;
 // server validation still applies.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // `context.clearCookies()` is a raw Playwright fixture with no DSL verb. The
 // rendered controls are labelled, so every supported form interaction uses a
 // Session verb.
