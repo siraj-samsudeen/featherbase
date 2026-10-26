@@ -34,6 +34,7 @@ import { SignInMethods } from './pages/SignInMethods'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
+import { FirstRunSetup } from './pages/FirstRunSetup'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -520,6 +521,14 @@ const instanceHealthRoute = createRoute({
   ),
 })
 
+// #465 D9: first-run setup (the built-in Administrator only; the page itself
+// sends anyone else home).
+const setupRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'setup',
+  component: FirstRunSetup,
+})
+
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
 // shortcuts (static segment).
 const homePageRoute = createRoute({
@@ -742,5 +751,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, signInMethodsRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, setupRoute, tableRoute, docRoute]),
 ])

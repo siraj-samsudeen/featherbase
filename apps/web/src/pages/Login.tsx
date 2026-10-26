@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
+import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 import { Logo } from '../components/Logo'
@@ -172,6 +173,9 @@ export function LoginPage() {
         openReturnPath(returnTo, (path) => router.history.push(path))
         return
       }
+      // #465 D9: landing on the Admin home, the Administrator may be asked
+      // who looks after the instance (a deep link is never taken over).
+      markSetupOffer(user)
       navigate({ to: landingPath(user) })
     } catch (err) {
       // The server's message already tells a wrong password, an unavailable

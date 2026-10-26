@@ -1087,6 +1087,14 @@ app.get('/api/instance-health', async (c) => {
   return c.json(await instanceHealth())
 })
 
+// First-run setup (#465 D9): the built-in Administrator names the people who
+// look after the instance; each becomes a System Manager and is invited.
+app.post('/api/setup/system-managers', async (c) => {
+  assertCanChangeAccess(c.get('user'))
+  const { setUpSystemManagers } = await import('./first-run-setup')
+  return c.json(await setUpSystemManagers(await c.req.json().catch(() => null), who(c), externalOrigin(c).origin))
+})
+
 // #429: people who signed in but hold no role yet. System Manager only; the
 // list carries an address's domain, never the address.
 app.get('/api/people/waiting_for_access', async (c) => {
