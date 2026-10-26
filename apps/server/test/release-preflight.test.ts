@@ -456,3 +456,52 @@ describe('where a missing variable refuses', () => {
     expect(runTsx(['src/cli.ts', 'list-tokens', 'Administrator'], withJwt).ok).toBe(true)
   }, 180_000)
 })
+
+// Running an Instance / Two releases at once do not collide: a release that
+// starts while another holds the release lock waits, applies nothing, and
+// then finds the work done.
+describe('two releases at once', () => {
+  it('a second release waits for the first, then applies nothing', async () => {
+    const { spawn } = await import('node:child_process')
+    const name = `featherbase_lock_${randomUUID().replaceAll('-', '')}`
+    await admin.unsafe(`create database "${name}"`)
+    created.push(name)
+    const url = new URL(config.databaseUrl)
+    url.pathname = `/${name}`
+    const env = {
+      ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test',
+      ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '', ALLOW_MOCK_OAUTH: '',
+    }
+    const holder = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    let output = ''
+    let exited: number | null = null
+    let child: ReturnType<typeof spawn> | undefined
+    try {
+      let release!: () => void
+      const held = new Promise<void>((resolveHeld) => {
+        void holder.begin(async (tx) => {
+          await tx`select pg_advisory_xact_lock(hashtext('featherbase-release'))`
+          resolveHeld()
+          await new Promise<void>((resolveRelease) => (release = resolveRelease))
+        })
+      })
+      await held
+      child = spawn(process.execPath, [tsx, 'src/release.ts'], { cwd: server, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      child.stdout!.on('data', (d) => (output += d))
+      child.stderr!.on('data', (d) => (output += d))
+      child.on('exit', (code) => (exited = code ?? 1))
+      // While the lock is held the release applies nothing and does not finish.
+      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000))
+      expect(exited).toBeNull()
+      expect(output).not.toMatch(/applied /)
+      release()
+      const deadline = Date.now() + 80_000
+      while (exited === null && Date.now() < deadline) await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+      expect(exited, output).toBe(0)
+      expect(output).toMatch(/migrations up to date/)
+    } finally {
+      child?.kill()
+      await holder.end({ timeout: 1 })
+    }
+  }, 120_000)
+})

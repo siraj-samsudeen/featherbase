@@ -537,3 +537,44 @@ describe('#465: cli settings:export and settings:apply', () => {
     expect(stderr).toContain("../package.json is outside the settings file's folder")
   }, 60_000)
 })
+
+// Running an Instance: rehearse an environment's start-up checks, and list the
+// commands. Both run as subprocesses with the environment this test names.
+function cliResult(args: string[], env: Record<string, string> = {}): { code: number; output: string } {
+  try {
+    const out = execFileSync(TSX, [CLI, ...args], {
+      cwd: serverDir, timeout: 60_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    })
+    return { code: 0, output: out }
+  } catch (err) {
+    const e = err as { status?: number; stdout?: string; stderr?: string }
+    return { code: e.status ?? 1, output: `${e.stdout ?? ''}${e.stderr ?? ''}` }
+  }
+}
+
+describe('Running an Instance: rehearse an environment\'s start-up checks', () => {
+  it('a configuration that would start says so and lists what the release checks passed', () => {
+    const r = cliResult(['boot-check'], { FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ALLOW_MOCK_OAUTH: '' })
+    expect(r.code, r.output).toBe(0)
+    expect(r.output).toMatch(/boot-check: environment test; test mode off; the server will start/)
+    expect(r.output).toMatch(/boot-check: release preflight — database environment matches "test"/)
+  }, 60_000)
+
+  it('a production configuration with a forbidden switch on fails and names the switch', () => {
+    const r = cliResult(['boot-check'], {
+      FEATHERBASE_ENV: 'production', NODE_ENV: 'production', ALLOW_MOCK_OAUTH: '1',
+    })
+    expect(r.code).toBe(1)
+    expect(r.output).toMatch(/ALLOW_MOCK_OAUTH is set on a "production" server/)
+    expect(r.output).not.toMatch(/the server will start/)
+  }, 60_000)
+})
+
+describe('Running an Instance: the command line lists what it can do', () => {
+  it('an unknown command lists the commands and fails', () => {
+    const r = cliResult(['no-such-command'])
+    expect(r.code).toBe(1)
+    expect(r.output).toMatch(/usage: cli <migrate\|patches\|/)
+  }, 60_000)
+})
