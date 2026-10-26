@@ -60,6 +60,8 @@ type Invitation =
 interface Outcome { person: string; full_name: string; email: string; created: boolean; invitation: Invitation }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+/** The most people one setup may name (the server's limit). */
+const MAX_PEOPLE = 20
 
 function check(rows: Row[]): Record<string, string> {
   const problems: Record<string, string> = {}
@@ -172,29 +174,48 @@ export function FirstRunSetup() {
             <p className="mt-1 text-sm text-ink-muted">
               Each person you name is invited as a System Manager, and receives the system notices by email.
             </p>
-            {error && !Object.keys(problems).length && <Notice tone="negative" className="mt-3">{error}</Notice>}
+            {error && Object.keys(problems).every((k) => !/^people\.\d+\.(email|full_name)$/.test(k)) && (
+              <Notice tone="negative" className="mt-3">{error}</Notice>
+            )}
             <div className="mt-4 space-y-4">
               {rows.map((r, i) => (
                 <fieldset key={i} className={`grid gap-3 sm:grid-cols-2${i > 0 ? ' border-t border-border pt-4' : ''}`} data-testid="setup-person">
                   <legend className="sr-only">Person {i + 1}</legend>
-                  <Field label="Full name">
-                    <TextInput value={r.full_name} autoComplete="off" onChange={(e) => update(i, 'full_name', e.target.value)} className="max-sm:min-h-11" />
+                  <Field label="Full name" error={problems[`people.${i}.full_name`]}>
+                    <TextInput value={r.full_name} maxLength={140} autoComplete="off" onChange={(e) => update(i, 'full_name', e.target.value)} className="max-sm:min-h-11" />
                   </Field>
                   <Field label="Email" error={problems[`people.${i}.email`]}>
                     <TextInput type="email" value={r.email} autoComplete="off" onChange={(e) => update(i, 'email', e.target.value)} className="max-sm:min-h-11" />
                   </Field>
+                  {i > 0 && (
+                    <div className="sm:col-span-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="max-sm:min-h-11"
+                        onClick={() => {
+                          setRows((rs) => rs.filter((_, j) => j !== i))
+                          setProblems({})
+                        }}
+                      >
+                        Remove person {i + 1}
+                      </Button>
+                    </div>
+                  )}
                 </fieldset>
               ))}
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              className="mt-3 max-sm:min-h-11"
-              onClick={() => setRows((rs) => [...rs, { full_name: '', email: '' }])}
-            >
-              <Plus aria-hidden size={16} />
-              Add another person
-            </Button>
+            {rows.length < MAX_PEOPLE && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-3 max-sm:min-h-11"
+                onClick={() => setRows((rs) => [...rs, { full_name: '', email: '' }])}
+              >
+                <Plus aria-hidden size={16} />
+                Add another person
+              </Button>
+            )}
             <div className="mt-6 flex flex-wrap gap-2">
               <Button type="submit" variant="primary" disabled={busy} className="max-sm:min-h-11">Invite</Button>
               <Button type="button" variant="secondary" onClick={goToAdmin} className="max-sm:min-h-11">Not now</Button>

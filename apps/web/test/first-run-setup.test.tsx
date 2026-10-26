@@ -98,3 +98,24 @@ test('another System Manager is never offered the setup (item 18)', async ({ cre
   await renderApp('/featherbase/admin/setup', manager)
   await waitFor(() => expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument())
 })
+
+test('a row can be removed, and a server problem with no field of its own is still shown (Codex review)', async ({ admin }) => {
+  await noManagerEmails()
+  await renderApp('/featherbase/admin/setup', admin)
+  const setup = await screen.findByTestId('first-run-setup')
+  await userEvent.click(within(setup).getByRole('button', { name: 'Add another person' }))
+  expect(within(setup).getAllByLabelText('Email')).toHaveLength(2)
+  await userEvent.click(within(setup).getByRole('button', { name: 'Remove person 2' }))
+  expect(within(setup).getAllByLabelText('Email')).toHaveLength(1)
+  // The server refuses for a reason no field carries: it is shown, not swallowed.
+  const real = globalThis.fetch
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url
+    if (url.includes('/api/setup/system-managers'))
+      return Promise.resolve(new Response(JSON.stringify({ error: { type: 'ValidationError', message: 'Name at most 20 people', fields: { people: 'too many' } } }), { status: 417, headers: { 'content-type': 'application/json' } }))
+    return real(input, init)
+  })
+  await userEvent.type(within(setup).getByLabelText('Email'), 'one@example.com')
+  await userEvent.click(within(setup).getByRole('button', { name: 'Invite' }))
+  expect(await within(setup).findByText(/Name at most 20 people/)).toBeInTheDocument()
+})
