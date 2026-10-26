@@ -84,3 +84,18 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash') }
   return {}
 }
+
+const ADMIN_ROOT = '/featherbase/admin'
+
+/** #489: "Open Admin" in the shared top bar. On an app's address, a hand-off
+ *  to the Admin address (the same one-time code a sign-in uses), so the person
+ *  arrives signed in there. Where this host is itself the Admin (the Admin
+ *  address, an unlisted host, or no list at all), the Admin's own path. Null
+ *  for a person who cannot use Admin. */
+export async function openAdminFor(user: SessionUser, host: string): Promise<Landing | null> {
+  if (!(await canUseAdmin(user.row_id))) return null
+  const list = config.instanceAddresses
+  const here = matchAddress(list, host)
+  if (list && here && here.opens !== ADMIN) return handTo(user, adminAddress(list))
+  return { landing: ADMIN_ROOT }
+}

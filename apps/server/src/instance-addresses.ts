@@ -9,7 +9,7 @@
 // configuration: a request's Host header can only SELECT one of its entries,
 // never add one, and every absolute URL the server builds comes from here.
 
-import { APP_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from 'shared'
+import { ACCOUNT_ROOT, APP_ROOT_PATTERN, INTERIM_APPS, RESERVED_APP_ROOTS, appHref } from 'shared'
 import { DEV_ENVIRONMENTS } from './env'
 
 /** What an address opens: the Admin screens, or one app by name. */
@@ -144,27 +144,24 @@ function emailedLinkOrigin(
   return requestOrigin ?? DEV_WEB_ORIGIN
 }
 
-// Interim until the app exists (design D8): Feather Dash is today's sales
-// target report, a Featherbase page rather than an installed app.
-const INTERIM_APP_ROOTS: Record<string, string> = { feather_dash: '/featherbase/sales-target' }
-const INTERIM_APP_TITLES: Record<string, string> = { feather_dash: 'Feather Dash' }
-
-/** The title of an app that is not yet a package (design D8). */
+/** The title of an app that is not yet a package (design D8, shared INTERIM_APPS). */
 export function interimAppTitle(app: string): string | undefined {
-  return INTERIM_APP_TITLES[app]
+  return INTERIM_APPS[app]?.title
 }
 
 /** Where an app's address keeps people: the app's own root. */
 export function appRoot(app: string): string {
-  return INTERIM_APP_ROOTS[app] ?? appHref(app)
+  return INTERIM_APPS[app]?.root ?? appHref(app)
 }
 
 // The Featherbase pages an app's address still serves: signing in, resetting a
-// password, the OAuth hand-back, and the runtime shell's assets.
+// password, the OAuth hand-back, the person's own account pages (#489), and
+// the runtime shell's assets.
 const SERVED_EVERYWHERE = [
   '/featherbase/login',
   '/featherbase/reset-password',
   '/featherbase/oauth-callback',
+  ACCOUNT_ROOT,
   '/featherbase/runtime-shell.css',
   '/featherbase/runtime-shell.js',
 ]

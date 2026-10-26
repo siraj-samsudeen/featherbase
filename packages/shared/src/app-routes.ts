@@ -15,6 +15,18 @@ export const FEATHERBASE_HOME_DESTINATION = {
   href: '/featherbase/admin',
 } as const
 
+// Interim until the app exists (design D8): Feather Dash is today's sales
+// target report, a Featherbase page rather than an installed app. The server
+// routes and names its address from this; the shared top bar names the page.
+export const INTERIM_APPS: Record<string, { root: string; title: string }> = {
+  feather_dash: { root: '/featherbase/sales-target', title: 'Feather Dash' },
+}
+
+// #489: the person's own account pages live outside the Admin screens, so
+// every address serves them (an app's address keeps people out of Admin).
+export const ACCOUNT_ROOT = '/featherbase/account'
+export const ACCOUNT_SIGN_IN_METHODS_PATH = `${ACCOUNT_ROOT}/sign-in-methods`
+
 // Static pages under /featherbase/admin (no Table behind them), one catalog
 // for every reader: the router, the page headings, the recent-actions
 // recorder and the server's activity feed (#440). `slug` is the first path

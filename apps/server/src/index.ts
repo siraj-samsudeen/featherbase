@@ -31,7 +31,7 @@ import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, l
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, VIEWER_ROLE, salesTargetRoutes } from './sales-target'
-import { landingAfterSignIn } from './landing'
+import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -76,7 +76,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -174,6 +174,9 @@ app.get('/api/brand', async (c) => {
   const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
+    // #489: what this address opens — `admin`, an app's name, or null for a
+    // host the list does not name — so the shared top bar can name itself.
+    opens: opened ?? null,
     sign_in_methods: methods,
     sign_up_open: Boolean(password?.enabled && password.new_person === 'create'),
     // The roster sync checks this before writing linked identities (design D11).
@@ -558,7 +561,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
     }
     clearLoginChallengeCookies(c)
     const code = err instanceof AppError && /state|token|expired|signature/i.test(err.message) ? 'expired' : 'google_failed'
-    return c.redirect(`/featherbase/admin/sign-in-methods?link=${code}`)
+    return c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${code}`)
   }
 })
 
@@ -578,7 +581,7 @@ async function googleCallback(c: Context) {
     // person-identities D6: the signed-in person who started this flow links
     // the Google account they just proved. Every outcome, including a failed
     // exchange, travels back to the methods page as a code it can explain.
-    const back = (result: string) => c.redirect(`/featherbase/admin/sign-in-methods?link=${encodeURIComponent(result)}`)
+    const back = (result: string) => c.redirect(`${ACCOUNT_SIGN_IN_METHODS_PATH}?link=${encodeURIComponent(result)}`)
     try {
       const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
       const me = await resolveToken(authCredential(c))
@@ -850,6 +853,15 @@ app.get('/api/whoami', async (c) => {
     // know the data is disposable and that they are signed in as someone.
     preview: previewLogin() !== null,
   })
+})
+
+// #489: the shared top bar's "Open Admin". A POST, because it mints a
+// one-time hand-off code: on an app's address the answer is that code's URL
+// on the Admin address (#488), never a URL guessed from the browser's host.
+app.post('/api/open_admin', async (c) => {
+  const opened = await openAdminFor(c.get('user'), requestHost(c.req.url))
+  if (!opened) throw new AppError('PermissionError', 'You cannot use the Admin screens')
+  return c.json(opened)
 })
 
 // #101 Phase 3: batched capture of the caller's read-side intent (rows
