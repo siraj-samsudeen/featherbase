@@ -439,6 +439,7 @@ test('6. Shared tablet: Employee 1 → logout → Employee 2; refresh keeps 2; l
     await embedOutcome(page)
   })
   await session.step('Employee 1 logs out; Employee 2 signs in on the same tablet', async () => {
+    await page.getByTestId('session-user').click()
     await page.getByTestId('logout').click()
     await expect(page).toHaveURL(/\/login$/)
     await login(page, 2)
@@ -454,6 +455,7 @@ test('6. Shared tablet: Employee 1 → logout → Employee 2; refresh keeps 2; l
     await page.reload()
     await expect(page).toHaveURL(/\/sales-target$/)
     await expect(page.getByTestId('identity')).toContainText('Employee 2 · 1501 — ATK')
+    await page.getByTestId('session-user').click()
     await page.getByTestId('logout').click()
     await expect(page).toHaveURL(/\/login$/)
     expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
@@ -469,6 +471,7 @@ test('6b. Stale in-flight embed response after an account change is never render
     await login(page, 1) // Employee 1's embed request is now in flight for 4 s
     await expect(page.getByTestId('identity')).toContainText('Employee 1')
     await page.waitForTimeout(300)
+    await page.getByTestId('session-user').click()
     await page.getByTestId('logout').click()
     await expect(page).toHaveURL(/\/login$/)
     await login(page, 2)

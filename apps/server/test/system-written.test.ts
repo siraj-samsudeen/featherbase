@@ -321,6 +321,7 @@ describe('#432: every write entry point is covered', () => {
     'POST /api/web_form/:route': 'web form insert through the guarded save',
     'POST /api/method/:path{.+}': 'server methods write through the guarded save',
     'POST /api/oauth/session': 'sign-in',
+    'POST /api/open_admin': 'sign-in: mints a hand-off to the Admin address (#489)',
     'POST /api/sales_target/embed_session': 'sign-in',
     'POST /api/events': 'internal writer: the caller\'s own usage events',
     'POST /api/saved_views': 'saved views',

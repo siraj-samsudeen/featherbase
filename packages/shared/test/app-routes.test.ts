@@ -38,6 +38,6 @@ import { ADMIN_STATIC_PAGES, adminPageTitle } from '../src/index'
 test('every static admin page has a unique slug and a title', () => {
   const slugs = ADMIN_STATIC_PAGES.map((p) => p.slug)
   expect(new Set(slugs).size).toBe(slugs.length)
-  expect(adminPageTitle('sign-in-methods')).toBe('Sign-in methods')
+  expect(adminPageTitle('access-tokens')).toBe('Access tokens')
   expect(adminPageTitle('nope')).toBeUndefined()
 })

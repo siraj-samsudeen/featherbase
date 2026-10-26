@@ -144,7 +144,7 @@ function BarName({ context, name }: { context: string; name: string }) {
   return (
     <a
       href={href}
-      className="flex min-h-control min-w-0 items-center gap-2 rounded-control focus-visible:outline-2 focus-visible:outline-focus"
+      className="flex min-h-control min-w-0 items-center gap-2 rounded-control focus-visible:outline-2 focus-visible:outline-focus max-sm:min-h-11"
       data-testid="top-bar-name"
     >
       <Logo className="h-7 w-7 shrink-0" />

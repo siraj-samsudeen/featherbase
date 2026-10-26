@@ -1,6 +1,8 @@
-// #72: the navbar avatar opens an account menu with Change password + Log
-// out. The full loop: change the password from the modal, log out, verify the
-// old password is rejected and the new one signs in.
+// #72: the navbar avatar opens an account menu; #489 left it the person's
+// name, Sign-in methods and Log out, and moved Change password to the Sign-in
+// methods page. The full loop: reach that page from the menu, change the
+// password from the modal, log out, verify the old password is rejected and
+// the new one signs in.
 //
 // Migrated to the feather-testing-core DSL
 // (docs/testing/e2e-dsl-migration.md): the account menu and modal are
@@ -33,7 +35,7 @@ test.afterEach(async ({ request }) => {
   await restorePassword(request)
 })
 
-test('ACCT-001: avatar menu changes the password end-to-end', async ({ session }) => {
+test('ACCT-001: the account menu leads to changing the password, end-to-end', async ({ session }) => {
   await signIn(session)
 
   // The avatar opens the account menu; Escape closes it.
@@ -54,8 +56,13 @@ test('ACCT-001: avatar menu changes the password end-to-end', async ({ session }
   })
 
   // Change password — a mismatched confirmation is blocked client-side.
-  await session.step('mismatched confirmation is blocked client-side', async ({ page }) => {
+  await session.step('the menu opens the Sign-in methods page', async ({ page }) => {
     await page.getByTestId('session-user').click()
+    await page.getByTestId('account-sign-in-methods').click()
+    await expect(page).toHaveURL(/\/featherbase\/account\/sign-in-methods$/)
+  })
+
+  await session.step('mismatched confirmation is blocked client-side', async ({ page }) => {
     await page.getByTestId('account-change-password').click()
     await expect(page.getByTestId('change-password-modal')).toBeVisible()
     await page.getByTestId('change-password-new').fill(TEMP_PWD)

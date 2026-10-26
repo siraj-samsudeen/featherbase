@@ -66,7 +66,10 @@ test('WEB-003: portal user sees only their own documents', async ({ session }) =
   await session.visit(`/portal/${encodeURIComponent(DT)}`)
   await session.step('sees only her own ticket', async ({ page }) => {
     await expect(page.getByTestId('portal-title')).toContainText(DT)
-    await expect(page.getByTestId('portal-user')).toContainText(ALICE)
+    // #489: who is signed in is in the top bar's Account menu.
+    await page.getByTestId('session-user').click()
+    await expect(page.getByTestId('account-identity')).toContainText(ALICE)
+    await page.keyboard.press('Escape')
     // Alice's own ticket is listed; Bob's is not.
     await expect(page.getByTestId('portal-list')).toContainText('Alice cannot log in')
     await expect(page.getByTestId('portal-list')).not.toContainText('Bob billing question')

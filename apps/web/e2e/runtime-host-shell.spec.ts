@@ -95,10 +95,12 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
       .assertHas('[data-testid="session-user"]')
       .assertHas('[data-testid="admin-sidebar"]')
       .refuteHas('a[aria-label="Tasker"]')
-      .assertSelected('Switch application', 'Featherbase Home')
+      // #489: in the Admin's own switcher, the Home destination reads as the
+      // shared top bar's name, "Featherbase Admin".
+      .assertSelected('Switch application', 'Featherbase Admin')
       .step('Admin lists the same authorized destinations', async ({ page }: { page: Page }) => {
         await expect.poll(async () => (await page.getByRole('combobox', { name: 'Switch application' })
-          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Other tasks', 'Tasker'])
+          .locator('option').allTextContents()).sort()).toEqual(['Featherbase Admin', 'Other tasks', 'Tasker'])
       })
       .step('narrow Admin keeps identifiable touch-sized controls and visible focus', async ({ page }: { page: Page }) => {
         await page.setViewportSize({ width: 375, height: 812 })
@@ -159,7 +161,7 @@ test('runtime shell leaves an app whose access disappears', async ({ session, re
         await page.evaluate(() => window.dispatchEvent(new Event('focus')))
         await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
       })
-      .assertSelected('Switch application', 'Featherbase Home')
+      .assertSelected('Switch application', 'Featherbase Admin')
   } finally {
     const restored = await request.post('/api/set_app_enabled', {
       headers: auth,

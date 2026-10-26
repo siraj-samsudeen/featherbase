@@ -71,7 +71,9 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
         .toBeGreaterThanOrEqual(0)
       await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('inert')
       await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('aria-hidden')
-      await page.getByTestId('session-user').focus()
+      // #489: on a phone the command bar is the header's last row, so it is
+      // the last header control in Tab order (visual order).
+      await page.getByRole('textbox', { name: 'Search or type a command' }).focus()
     })
     await session.pressKey('Tab')
     await session.step('focus enters the open drawer', async ({ page }) => {
