@@ -1,18 +1,21 @@
 import { useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { api, landingPath, setSession, type SessionUser } from '../lib/api'
+import { api, landingPath, rememberLogin, type SessionUser } from '../lib/api'
 
 // PLAT-006: the OAuth callback landing. The server redirects here with a
 // one-time handoff code — never the session token itself (#150), which used to
 // sit in this URL and therefore in browser history, referrers and proxy logs.
 // We POST the code back, get the session, and land where the server says —
-// the Admin, or a report viewer's report (#3783), exactly as password login does.
+// the Admin, the report of a report viewer (#3783), or — when the person
+// belongs on another address of the instance — that address's own
+// /featherbase/oauth-callback, with a hand-off code of its own (#488).
+// The same page redeems that one; it mints a new session for this address.
 
 // The redemption is memoised per code, module-side, out of reach of a remount.
 // A handoff code is good for exactly one POST, and React StrictMode runs the
 // effect below twice in development: the second attempt would 401, and a 401
 // clears the very session the first attempt just stored.
-type Redeemed = { token: string; user: SessionUser; landing?: string }
+type Redeemed = { token: string; user: SessionUser; landing?: string; handoff?: string }
 let redemption: { code: string; session: Promise<Redeemed> } | null = null
 function redeemOnce(code: string) {
   if (redemption?.code !== code)
@@ -28,10 +31,10 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
       return
     }
     redeemOnce(code)
-      .then(({ token, user, landing }) => {
-        const withLanding = landing ? { ...user, landing } : user
-        setSession(token, withLanding)
-        navigate({ to: landingPath(withLanding) })
+      .then((redeemed) => {
+        const user = rememberLogin(redeemed)
+        if (user.handoff) window.location.assign(user.handoff)
+        else navigate({ to: landingPath(user) })
       })
       .catch(() => navigate({ to: '/featherbase/login' }))
   }, [code, navigate])

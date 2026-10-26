@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
-import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser } from '../lib/api'
+import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
 import { Button, Field, Notice, TextInput, buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
 import { Logo } from '../components/Logo'
 
@@ -103,11 +103,17 @@ export function LoginPage() {
   }
 
   // Both sign-in forms end here: back to a safe deep link, else the landing.
-  async function signIn(attempt: () => Promise<SessionUser>, blank: string, showValidation = false) {
+  async function signIn(attempt: () => Promise<SignedIn>, blank: string, showValidation = false) {
     setError(null)
     setBusy(true)
     try {
       const user = await attempt()
+      // #488: this person belongs on another address of the instance; the
+      // hand-off signs them in there. It wins over a return path on this one.
+      if (user.handoff) {
+        window.location.assign(user.handoff)
+        return
+      }
       const returnTo = safeLoginNext(new URLSearchParams(window.location.search).get('next') ?? undefined)
       if (returnTo) {
         window.location.assign(returnTo)
