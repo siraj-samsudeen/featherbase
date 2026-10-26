@@ -127,10 +127,13 @@ test('PLAT-006: an invited Google address links the existing User (no duplicate)
 // A refused Google sign-in is a browser navigation: it lands back on the
 // sign-in page with a plain message, never a raw JSON error page.
 test('a Google account nobody set up lands on the sign-in page with a plain message', async ({ session, request }) => {
+  // Its own never-seen address and account ID, so no earlier spec's person or
+  // link can let it in.
+  const stranger = `oauth.e2e.stranger.${Date.now()}@gmail.com`
   await session.visit('/login')
   await session.step('sign in through the mock OAuth flow with an address nobody invited', async ({ page }) => {
     await page.getByTestId('google-login').click()
-    await page.getByTestId('mock-email').fill(EMAIL)
+    await page.getByTestId('mock-email').fill(stranger)
     await page.getByTestId('mock-approve').click()
   })
 
@@ -142,7 +145,9 @@ test('a Google account nobody set up lands on the sign-in page with a plain mess
     await expect(page.getByTestId('login-form')).toBeVisible()
   })
 
-  expect(await usersWithEmail(request)).toEqual([])
+  const headers = await adminAuth(request)
+  const filters = encodeURIComponent(JSON.stringify([['email', '=', stranger]]))
+  expect(((await (await request.get(`/api/table/Person?filters=${filters}`, { headers })).json()) as { data: unknown[] }).data).toEqual([])
 })
 
 test('PLAT-006: a tampered OAuth state is rejected', async ({ request }) => {
