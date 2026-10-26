@@ -412,7 +412,7 @@ async function main() {
       break
     }
     case 'leavers:check': {
-      const { formatLeaverPlan, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
+      const { formatLeaverPlan, formatSummaryDelivery, planLeaverCheck, runLeaverCheck } = await import('./leaver-check')
       if (!rest.includes('--apply')) {
         if (flags.accept !== undefined) throw new Error('--accept only means something with --apply')
         console.log(formatLeaverPlan(await planLeaverCheck()))
@@ -427,7 +427,7 @@ async function main() {
       await assertDatabaseEnvironment()
       const run = await runLeaverCheck({ acceptCount: accept })
       console.log(formatLeaverPlan(run.plan, { applied: run.disabled }))
-      console.log(`leaver check: summary sent to ${run.emailed} System Manager(s)`)
+      console.log(formatSummaryDelivery(run))
       break
     }
     case 'console':

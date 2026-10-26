@@ -1,20 +1,21 @@
 // data-warehouse #4336: the daily warehouse exit-date check disables people
 // whose StyleHR record shows they have left. It only ever disables, skips
 // System Managers, and refuses on a stale or implausible feed.
-import { afterEach, describe, expect } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
 import { applySeedPack } from '../src/seed-packs'
 import { issueSession } from '../src/auth'
 import { newIdentifierId } from '../src/person-identifiers'
-import { syncScheduledJobs } from '../src/jobs'
+import { enqueue, loadJobs, runOneJob, syncScheduledJobs } from '../src/jobs'
 import type { MailMessage } from '../src/email'
 import {
   LEAVER_CHECK_JOB,
   LEAVER_CHECK_SUBJECT,
   _setLeaverSummarySender,
   _setWarehouseReader,
+  formatSummaryDelivery,
   planLeavers,
   runLeaverCheck,
   type EmployeeRecord,
@@ -26,6 +27,7 @@ const TODAY = '2026-10-24'
 afterEach(() => {
   _setWarehouseReader(null)
   _setLeaverSummarySender(null)
+  vi.restoreAllMocks()
 })
 
 const rec = (key: string, code: string, over: Partial<EmployeeRecord> = {}): EmployeeRecord => ({
@@ -253,6 +255,49 @@ describe('the check on a live instance', () => {
     const mine = sent.filter((m) => m.to === 'mgr.lc@example.com')
     expect(mine).toHaveLength(1)
     expect(mine[0].body).toContain('1 could not be disabled')
+  })
+
+  test('with no System Manager to mail, the summary is recorded as undelivered, not dropped (#463)', async () => {
+    await applySeedPack('jeyarama')
+    await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
+    const p = await makePerson({ full_name: 'Gone Person' })
+    await link(p, 'stylehr-employee-id', '401')
+    warehouse('2026-10-20', [rec('401', 'C-401', { movement_active: false })])
+    const sent: MailMessage[] = []
+    _setLeaverSummarySender(async (m) => sent.push(m))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const run = await runLeaverCheck({ today: TODAY })
+
+    expect(sent).toEqual([])
+    expect(run.emailed).toBe('no recipients')
+    expect(formatSummaryDelivery(run)).toBe('leaver check: summary reached nobody — no System Manager has an email address')
+    const rows = await sql`select "user", operation from activity_log where operation like 'notice_undelivered:%'`
+    expect(rows).toEqual([{ user: 'system', operation: 'notice_undelivered: no System Manager has an email address (leaver-check summary)' }])
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('notice_undelivered'))
+    expect(lines.map((l) => JSON.parse(l))).toEqual([
+      { event: 'notice_undelivered', notice: 'leaver-check summary', reason: 'no System Manager has an email address' },
+    ])
+  })
+
+  test('the scheduled job keeps where the summary went on its Job Execution row (#463)', async () => {
+    await applySeedPack('jeyarama')
+    await loadJobs()
+    await sql`delete from background_job`
+    await sql`update person set email = null where row_id in (select parent from has_role where role = 'System Manager')`
+    const p = await makePerson({ full_name: 'Gone Person' })
+    await link(p, 'stylehr-employee-id', '402')
+    // A stale feed refuses, and a refusal is always reported.
+    warehouse('2020-01-01', [rec('402', 'C-402', { movement_active: false })])
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const job = await enqueue(LEAVER_CHECK_JOB, {})
+    await sql`update background_job set run_at = now() where row_id = ${job}`
+
+    expect(await runOneJob()).toBe(true)
+
+    const [exec] = await sql`select outcome, result from job_execution where job = ${job}`
+    expect(exec).toEqual({ outcome: 'success', result: 'leaver check: summary reached nobody — no System Manager has an email address' })
   })
 
   test('the schedule ships switched off', async () => {

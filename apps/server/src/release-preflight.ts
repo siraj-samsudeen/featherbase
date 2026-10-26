@@ -71,6 +71,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
+  passed.push(await noticeRecipients())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -121,6 +122,27 @@ async function assertPublicationsPublishGeneratedColumns(pending: string[]): Pro
     )
   }
   return 'no publication blocks updates on a table with stored generated columns'
+}
+
+/** 6. #463: a warning, never a refusal (a new instance, dev and test start
+ *  with only the built-in Administrator, which has no address). System
+ *  notices go to enabled System Managers with an email address; with none
+ *  besides the Administrator, they reach nobody. */
+export const NO_NOTICE_RECIPIENTS_WARNING =
+  'WARNING: no enabled System Manager other than the built-in Administrator has an email address, so system alerts (the leaver-check summary, waiting-for-access alerts) will reach nobody. Give a System Manager an email address on their Person page.'
+
+async function noticeRecipients(): Promise<string> {
+  const person = await locate('person')
+  const role = await locate('has_role')
+  if (!person || !role || !['email', 'enabled'].every((c) => person.columns.has(c)))
+    return 'notice recipient check skipped (no Person table yet)'
+  const current = person.columns.has('replaced_by') ? sql`and p.replaced_by is null` : sql``
+  const [found] = await sql`
+    select 1 from ${sql(person.relation)} p
+    join ${sql(role.relation)} r on r.parent = p.row_id and r.role = 'System Manager'
+    where p.row_id <> 'Administrator' and p.enabled ${current} and coalesce(trim(p.email), '') <> ''
+    limit 1`
+  return found ? 'a System Manager with an email address receives system alerts' : NO_NOTICE_RECIPIENTS_WARNING
 }
 
 /** Addresses anyone can register: admitting them creates a person for any

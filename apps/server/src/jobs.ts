@@ -43,6 +43,9 @@ export function cadenceSeconds(cadence: string): number {
 // JOB-005: handlers receive a context that can report progress to the client.
 export interface JobContext {
   setProgress: (percent: number, message?: string) => void
+  /** A one-line outcome kept on this attempt's Job Execution row, for what
+   *  success alone cannot say (e.g. a summary that reached nobody, #463). */
+  setResult: (text: string) => void
   /** The queue row being run, and why it exists. */
   job: { row_id: string; trigger: JobTrigger }
 }
@@ -99,6 +102,7 @@ interface ExecutionRecord {
   startedAt: Date
   durationMs: number
   error?: string
+  result?: string
 }
 
 // Every attempt is a Job Execution row, and the method's Scheduled Job row
@@ -115,6 +119,7 @@ async function logExecution(r: ExecutionRecord): Promise<void> {
       attempt: r.attempt,
       outcome: r.outcome,
       error: r.error ?? null,
+      result: r.result ?? null,
       started_at: r.startedAt,
       duration_ms: r.durationMs,
     })}`
@@ -172,7 +177,11 @@ async function runOneJobImpl(): Promise<boolean> {
   // prevent, just triggered by an upgrade instead of a restart.
   const trigger: JobTrigger =
     (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
+  let result: string | undefined
   const ctx: JobContext = {
+    setResult: (text) => {
+      result = text
+    },
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
         job: claimed.row_id,
@@ -192,6 +201,7 @@ async function runOneJobImpl(): Promise<boolean> {
     startedAt,
     durationMs: Date.now() - startedAt.getTime(),
     error,
+    result,
   })
 
   try {
