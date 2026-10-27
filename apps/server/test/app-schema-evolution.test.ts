@@ -212,7 +212,7 @@ describe('refusals', () => {
     } finally { await rm(wider, { recursive: true, force: true }) }
   })
 
-  test('a step that fails rolls back every step before it', async ({ admin }) => {
+  test('a step that would fail here is refused at the preview', async ({ admin }) => {
     const unfilled = await variant(3, (m) => { delete m.migrations[1].operations[3].backfill })
     try {
       await install(admin)
@@ -220,7 +220,24 @@ describe('refusals', () => {
       await upgrade(admin, '0.2.0')
       await discoverPackages([fixture(2), unfilled])
       await loadInstalledApps()
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.3.0' }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('1 row holds no value') })
+      expect(await sql`select count(legacy_code)::int as n from evolve.item`).toEqual([{ n: 2 }])
+    } finally { await rm(unfilled, { recursive: true, force: true }) }
+  })
+
+  test('a step that fails after the preview rolls back every step before it', async ({ admin }) => {
+    const unfilled = await variant(3, (m) => { delete m.migrations[1].operations[3].backfill })
+    try {
+      await install(admin)
+      await seed(admin)
+      await upgrade(admin, '0.2.0')
+      await sql`update evolve.item set title = 'Trolley' where title is null`
+      await discoverPackages([fixture(2), unfilled])
+      await loadInstalledApps()
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.3.0' })
+      // Saved between the preview and the upgrade: a row the step cannot fill.
+      await sql`insert into evolve.item (row_id, priority) values ('i3', 'Low')`
       await expect(admin.post('/api/upgrade_app', { name: 'evolve', version: '0.3.0', planId: plan.planId }))
         .rejects.toMatchObject({ status: 417, message: expect.stringContaining('1 row holds no value') })
       expect(await sql`select count(legacy_code)::int as n from evolve.item`).toEqual([{ n: 2 }])
@@ -229,7 +246,28 @@ describe('refusals', () => {
     } finally { await rm(unfilled, { recursive: true, force: true }) }
   })
 
-  test('a backfill the column cannot hold fails the upgrade and changes nothing', async ({ admin }) => {
+  test('a database failure after the preview rolls back the upgrade and says nothing changed', async ({ admin }) => {
+    await install(admin)
+    await seed(admin)
+    const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })
+    // A rule added outside the app between preview and upgrade: the
+    // priority backfill now breaks it.
+    await sql`alter table evolve.item add constraint b651_frozen check (false) not valid`
+    await expect(admin.post('/api/upgrade_app', { name: 'evolve', version: '0.2.0', planId: plan.planId }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('prior version and data are unchanged') })
+    expect(await sql`select to_regclass('evolve.supplier') as relation`).toEqual([{ relation: null }])
+    expect(await sql`select package_version from installed_app where name = 'evolve'`).toEqual([{ package_version: '0.1.0' }])
+  })
+
+  test('a database failure the preview meets is refused, naming it', async ({ admin }) => {
+    await install(admin)
+    await seed(admin)
+    await sql`alter table evolve.item add constraint b651_frozen check (false) not valid`
+    await expect(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('The upgrade would fail here: ') })
+  })
+
+  test('a backfill the column cannot hold is refused at the preview', async ({ admin }) => {
     const misfilled = await variant(2, (m) => {
       const item = m.tables.find((t: { name: string }) => t.name === 'evolve.item')
       item.columns.push({ column_name: 'shelf', label: 'Shelf', column_type: 'Int' })
@@ -241,11 +279,9 @@ describe('refusals', () => {
       await seed(admin)
       await discoverPackages([fixture(1), misfilled])
       await loadInstalledApps()
-      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })
-      await expect(admin.post('/api/upgrade_app', { name: 'evolve', version: '0.2.0', planId: plan.planId }))
-        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('prior version and data are unchanged') })
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('the backfill "top shelf" is not a value evolve.item.shelf accepts') })
       expect(await sql`select to_regclass('evolve.supplier') as relation`).toEqual([{ relation: null }])
-      expect(await sql`select package_version from installed_app where name = 'evolve'`).toEqual([{ package_version: '0.1.0' }])
     } finally { await rm(misfilled, { recursive: true, force: true }) }
   })
 
@@ -255,6 +291,64 @@ describe('refusals', () => {
       const failures = await discoverPackages([unmarked])
       expect(failures).toEqual([{ path: unmarked, error: expect.stringContaining('mark the operation destructive: true') }])
     } finally { await rm(unmarked, { recursive: true, force: true }) }
+  })
+})
+
+describe('a dropped Table takes its grants with it', () => {
+  // swap 0.1.0: Tables a (no grants) and b (Clerk may read).
+  const a = { name: 'swap.a', label: 'A', id_pattern: 'prompt', columns: [{ column_name: 'x', label: 'X', column_type: 'Data' }] }
+  const b = { name: 'swap.b', label: 'B', id_pattern: 'prompt', columns: [{ column_name: 'y', label: 'Y', column_type: 'Data' }] }
+  const clerkReadsB = { table: 'swap.b', role: 'Swap Clerk', can_read: true }
+  const base = { manifestVersion: 1, platformVersion: '2026-10', name: 'swap', title: 'Swap', roles: ['Swap Clerk'] }
+  const directories: string[] = []
+  async function version(v: string, manifest: Record<string, unknown>) {
+    const directory = await mkdtemp(resolve('test/.swap-'))
+    directories.push(directory)
+    await writeFile(resolve(directory, 'package.json'), JSON.stringify({ name: '@featherbase-fixtures/swap', version: v }))
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify({ ...base, ...manifest }))
+    return directory
+  }
+  const first = () => version('0.1.0', { entryTable: 'swap.a', tables: [a, b], permissions: [clerkReadsB] })
+  const drop = { kind: 'dropTable', table: b, destructive: true }
+  async function installFirst(admin: Client, ...later: string[]) {
+    const v1 = await first()
+    await discoverPackages([v1])
+    await admin.post('/api/install_app', { name: 'swap' })
+    await discoverPackages([v1, ...later])
+    await loadInstalledApps()
+  }
+  const grants = () => sql`select ref_table, role, can_read from permission where owner_app = 'swap' order by ref_table, role`
+
+  test('a Table renamed into a dropped Table\'s name does not inherit its grants', async ({ admin }) => {
+    try {
+      const v2 = await version('0.2.0', { entryTable: 'swap.b', tables: [{ ...a, name: 'swap.b' }], permissions: [clerkReadsB],
+        migrations: [{ id: 'swap', fromVersion: '0.1.0', toVersion: '0.2.0', operations: [drop, { kind: 'renameTable', from: 'swap.a', to: 'swap.b' }] }] })
+      await installFirst(admin, v2)
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'swap', version: '0.2.0' }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('Permission') })
+    } finally { for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true }) }
+  })
+
+  test('a new Table under a dropped Table\'s name gets its declared grants, as a fresh install does', async ({ admin }) => {
+    try {
+      const fresh = { ...b, columns: [{ column_name: 'z', label: 'Z', column_type: 'Data' }] }
+      const v2 = await version('0.2.0', { entryTable: 'swap.a', tables: [a, fresh], permissions: [clerkReadsB],
+        migrations: [{ id: 'swap', fromVersion: '0.1.0', toVersion: '0.2.0', operations: [drop, { kind: 'addTable', table: fresh }] }] })
+      let installed: unknown
+      const rollback = new Error('fresh install measured')
+      await expect(withTransaction(async () => {
+        await discoverPackages([v2])
+        await admin.post('/api/install_app', { name: 'swap' })
+        installed = await grants()
+        throw rollback
+      })).rejects.toBe(rollback)
+      invalidateMeta()
+      await installFirst(admin, v2)
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'swap', version: '0.2.0' })
+      await admin.post('/api/upgrade_app', { name: 'swap', version: '0.2.0', planId: plan.planId })
+      expect(await grants()).toEqual(installed)
+      expect(installed).toEqual([{ ref_table: 'swap.b', role: 'Swap Clerk', can_read: true }])
+    } finally { for (const d of directories.splice(0)) await rm(d, { recursive: true, force: true }) }
   })
 })
 
@@ -269,6 +363,22 @@ describe('the release guard and the rehearsal report losses per instance', () =>
       expect(lines).toContain('WARNING: upgrading app evolve from 0.2.0 to 0.3.0 removes data here: prune #1 dropColumn evolve.item.legacy_code: 2 values; prune #2 dropTable evolve.memo: 2 rows; prune #3 alterColumn evolve.item.grade: 1 value')
       expect(lines.join('\n')).not.toContain('LEG-0001')
     } finally { vi.unstubAllEnvs() }
+  })
+
+  test('the release guard names a shipped upgrade that would fail here', async ({ admin }) => {
+    await install(admin)
+    await seed(admin)
+    await upgrade(admin, '0.2.0')
+    const directory = await mkdtemp(resolve('test/.evolve-'))
+    await cp(fixture(3), directory, { recursive: true })
+    const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+    delete manifest.migrations[1].operations[3].backfill
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(2), directory]))
+    try {
+      expect(await preflightRelease({ environment: 'test' })).toContain(
+        'WARNING: upgrading app evolve from 0.2.0 to 0.3.0 would fail here: alterColumn evolve.item.title: 1 row holds no value; give the operation a backfill')
+    } finally { vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }) }
   })
 
   test('the release guard says so when no shipped upgrade removes data', async ({ admin }) => {

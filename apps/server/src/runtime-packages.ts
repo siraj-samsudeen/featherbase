@@ -18,7 +18,7 @@ import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './a
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
-import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, describeLoss, estimateLosses, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
+import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, countLosses, describeLoss, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
 interface PackageHookContext {
@@ -404,7 +404,7 @@ export function declaredPackageActions() {
     ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
-async function upgradePlan(name: string, version: string) {
+async function upgradePlan(name: string, version: string, preview = true) {
   const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
   if (!row) refuse('Upgrade requires an installed runtime application')
   const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
@@ -427,17 +427,18 @@ async function upgradePlan(name: string, version: string) {
     refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
   // apply) but never add or widen one on a Table the app already had; those
-  // still need a reviewed install. A renamed Table's grants follow it. #651:
-  // a Table the upgrade adds arrives with exactly the grants this version
-  // declares for it, listed in the preview.
-  const { added, follow } = tableFates(operations)
-  const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: { ...p, table: follow(p.table) } }))
-  const held = new Set(priorGrants.map(g => canonical(g.now)))
+  // still need a reviewed install. #651: a renamed Table's grants follow it,
+  // a dropped Table's grants end with it (a Table later given its name does
+  // not inherit them), and a Table the upgrade adds arrives with exactly the
+  // grants this version declares for it, listed in the preview.
+  const { added, follow } = tableFates(prior.manifest.tables.map(t => t.name), operations)
+  const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: follow(p.table) === undefined ? null : { ...p, table: follow(p.table)! } }))
+  const held = new Set(priorGrants.flatMap(g => g.now ? [canonical(g.now)] : []))
   if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p))) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
-  const withdrawn = priorGrants.filter(g => !kept.has(canonical(g.now))).map(g => g.prior)
+  const withdrawn = priorGrants.filter(g => !g.now || !kept.has(canonical(g.now))).map(g => g.prior)
   const granted = target.manifest.permissions.filter(p => added.has(p.table))
   const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
@@ -447,34 +448,40 @@ async function upgradePlan(name: string, version: string) {
     permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs: [], indexes: [], destructive,
     dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
     codeOnly: operations.length === 0 }
-  // What this instance would lose, counted now, outside the plan's identity:
-  // rows written between preview and apply must not make the review stale.
-  const losses = await estimateLosses(name, pending)
-  const unmarked = losses.filter(l => !l.destructive && (l.values ?? 0) > 0)
-  if (unmarked.length)
-    refuse(unmarked.map(l => `${l.kind} ${l.table}.${l.column} would clear ${l.values} ${l.values === 1 ? 'value' : 'values'} outside its new choices; mark the operation destructive: true`).join('; '))
+  // What this instance would lose: the steps run in a rolled-back
+  // transaction, so a step the upgrade would refuse here (an unmarked
+  // narrowing that rows still use, a required column left empty) is refused
+  // now. Kept outside the plan's identity: rows written between preview and
+  // apply must not make the review stale. Applying runs the steps for real
+  // in its own transaction, so it does not count them first.
+  const losses = preview ? await countLosses(name, pending, { ownsClient: typeof target.manifest.client === 'string' }) : []
   return { row, target, prior, pending, ledger, withdrawn, granted,
     plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
 }
 
-// #651: where an upgrade's operations take the app's Tables: the name each
-// existing Table ends up with, and the Tables it adds.
-function tableFates(operations: Operation[]) {
-  const renames: [string, string][] = []
-  const added = new Set<string>()
+// #651: where an upgrade's operations take the app's Tables, by identity,
+// not by name: each installed Table ends under its final name, or is dropped
+// (undefined); the names that end up holding a Table this upgrade added.
+// A Table that is not the app's own keeps its name.
+function tableFates(installed: string[], operations: Operation[]) {
+  // Name held now -> the installed Table it is, or null when this upgrade added it.
+  const holds = new Map<string, string | null>(installed.map(name => [name, name]))
   for (const op of operations) {
-    if (op.kind === 'addTable') added.add(op.table.name)
-    if (op.kind === 'dropTable') added.delete(op.table.name)
+    if (op.kind === 'addTable') holds.set(op.table.name, null)
+    if (op.kind === 'dropTable') holds.delete(op.table.name)
     if (op.kind === 'renameTable') {
-      renames.push([op.from, op.to])
-      if (added.delete(op.from)) added.add(op.to)
+      holds.set(op.to, holds.get(op.from) ?? null)
+      holds.delete(op.from)
     }
   }
-  return { added, follow: (name: string) => renames.reduce((current, [from, to]) => current === from ? to : current, name) }
+  const finalName = new Map([...holds].flatMap(([name, origin]) => origin === null ? [] : [[origin, name] as const]))
+  return { added: new Set([...holds].flatMap(([name, origin]) => origin === null ? [name] : [])),
+    follow: (table: string) => installed.includes(table) ? finalName.get(table) : table }
 }
 
+// Exclusive: the preview runs the steps (and their DDL) to count what they remove.
 export function previewAppUpgrade(name: string, version: string) {
-  return appOperation(async () => (await upgradePlan(name, version)).plan)
+  return appOperation(async () => (await upgradePlan(name, version)).plan, true)
 }
 
 export function upgradeApp(name: string, version: string, planId: string, actor = 'Administrator') {
@@ -485,7 +492,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
       if (!matchesInstalled(target, done)) refuse('Restore the exact committed artifact before retrying')
       return { name, version, activationPending: done.activation_pending }
     }
-    const prepared = await upgradePlan(name, version)
+    const prepared = await upgradePlan(name, version, false)
     if (prepared.plan.planId !== planId) throw new AppError('ConflictError', 'Upgrade plan is stale; preview and review again')
     if (prepared.row.enabled) await assertOnlyScopeProvider(prepared.target)
     try {
@@ -566,7 +573,12 @@ const removesData = (loss: Loss) => (loss.rows ?? 0) + (loss.childRows ?? 0) + (
  *  data on this instance, counted before anything runs; null when it removes
  *  none. Counts only, never values. */
 export async function upgradeLossWarning(upgrade: Awaited<ReturnType<typeof shippedUpgrades>>[number]): Promise<string | null> {
-  const losses = (await estimateLosses(upgrade.name, upgrade.migrations)).filter(removesData)
+  let losses: Loss[]
+  try {
+    losses = (await countLosses(upgrade.name, upgrade.migrations, { ownsClient: upgrade.ownsClient })).filter(removesData)
+  } catch (error) {
+    return `WARNING: upgrading app ${upgrade.name} from ${upgrade.from} to ${upgrade.to} would fail here: ${(error as Error).message}`
+  }
   return losses.length
     ? `WARNING: upgrading app ${upgrade.name} from ${upgrade.from} to ${upgrade.to} removes data here: ${losses.map(describeLoss).join('; ')}`
     : null

@@ -5,7 +5,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
 import { changeColumnType, createTable, deleteTable, renameColumn, renameTable } from '../src/table-engine'
-import { applyMigrations, describeLoss, estimateLosses, migrationSchema } from '../src/runtime-migrations'
+import { applyMigrations, describeLoss, countLosses, migrationSchema } from '../src/runtime-migrations'
 
 // App Tables answer only while their app is provisioning or active.
 const shopTest = (name: string, body: () => Promise<void>) => test(name, () => provisionApp('shop', body))
@@ -71,6 +71,19 @@ describe('renameTable', () => {
     expect(await sql`select decides_scope from table_def where name = 'shop.vendor'`).toEqual([{ decides_scope: true }])
   })
 
+  shopTest('a Table holding links to Tables can be renamed while empty', async () => {
+    await createTable({ name: 'shop.audit', label: 'Audit', columns: [{ column_name: 'about', label: 'About', column_type: 'Reference', reference_table: 'Table' }] }, 'shop')
+    await renameTable('shop.audit', 'shop.trail', 'shop')
+    expect(await sql`select to_regclass('shop.trail') is not null as renamed`).toEqual([{ renamed: true }])
+  })
+
+  shopTest('a Table holding links to Tables keeps its rows, and a link to itself follows the rename', async () => {
+    await createTable({ name: 'shop.audit', label: 'Audit', columns: [{ column_name: 'about', label: 'About', column_type: 'Reference', reference_table: 'Table' }] }, 'shop')
+    await sql`insert into shop.audit (row_id, about) values ('a1', 'shop.audit'), ('a2', 'Person')`
+    await renameTable('shop.audit', 'shop.trail', 'shop')
+    expect(await sql`select row_id, about from shop.trail order by row_id`).toEqual([{ row_id: 'a1', about: 'shop.trail' }, { row_id: 'a2', about: 'Person' }])
+  })
+
   shopTest('a Table the app does not own is refused', async () => {
     await shop()
     await expect(renameTable('shop.supplier', 'shop.vendor', 'other')).rejects.toThrow(/belongs to shop/)
@@ -117,20 +130,25 @@ describe('renameColumn', () => {
   })
 })
 
+const step = (operations: unknown[]) => migrationSchema.parse({ id: 'prune', fromVersion: '0.1.0', toVersion: '0.2.0', operations })
+const lines = { column_name: 'lines', label: 'Lines', column_type: 'Sub-table', row_table: 'shop.line' }
+// The shop Tables, registered as an installed app's, without shop.order.
+async function registered() {
+  await shop()
+  await sql`delete from column_def where parent = 'shop.order'`
+  await sql`delete from table_def where name = 'shop.order'`
+  await sql`drop table shop."order"`
+  await sql`insert into installed_app (name, tables) values ('shop', ${sql.json(['shop.line', 'shop.supplier'])})`
+}
+const run = (...operations: unknown[]) => applyMigrations([step(operations)], 'shop')
+const choice = (column_name: string, extra: Record<string, unknown> = {}) =>
+  ({ column_name, label: column_name, column_type: 'Choice', choices: 'A\nB\nC', ...extra })
+
 describe('Sub-table losses', () => {
-  const step = (operations: unknown[]) => migrationSchema.parse({ id: 'prune', fromVersion: '0.1.0', toVersion: '0.2.0', operations })
-  const lines = { column_name: 'lines', label: 'Lines', column_type: 'Sub-table', row_table: 'shop.line' }
-  async function registered() {
-    await shop()
-    await sql`delete from column_def where parent = 'shop.order'`
-    await sql`delete from table_def where name = 'shop.order'`
-    await sql`drop table shop."order"`
-    await sql`insert into installed_app (name, tables) values ('shop', ${sql.json(['shop.line', 'shop.supplier'])})`
-  }
 
   shopTest('dropping a Sub-table column counts its child rows before anything runs', async () => {
     await registered()
-    const losses = await estimateLosses('shop', [step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])])
+    const losses = await countLosses('shop', [step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])])
     expect(losses.map(describeLoss)).toEqual(['prune #1 dropColumn shop.supplier.lines: 1 value'])
   })
 
@@ -142,8 +160,86 @@ describe('Sub-table losses', () => {
 
   shopTest('dropping a Table counts the Sub-table rows that go with it', async () => {
     await registered()
-    const losses = await estimateLosses('shop', [step([{ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true }])])
+    const losses = await countLosses('shop', [step([{ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true }])])
     expect(losses.map(describeLoss)).toEqual(['prune #1 dropTable shop.supplier: 1 row and 1 Sub-table row'])
+  })
+})
+
+describe('backfills keep the column\'s own rules', () => {
+  shopTest('a backfill outside the column\'s choices is refused', async () => {
+    await registered()
+    await expect(run({ kind: 'addColumn', table: 'shop.supplier', column: choice('tier'), backfill: 'Other' }))
+      .rejects.toThrow(/backfill "Other" is not a value shop.supplier.tier accepts/)
+  })
+
+  shopTest('a backfill among the column\'s choices fills the rows already there', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('tier'), backfill: 'B' })
+    expect(await sql`select tier from shop.supplier`).toEqual([{ tier: 'B' }])
+  })
+
+  shopTest('a link backfill naming a row the target does not hold is refused', async () => {
+    await registered()
+    const parent = { column_name: 'parent_supplier', label: 'Parent', column_type: 'Reference', reference_table: 'shop.supplier' }
+    await expect(run({ kind: 'addColumn', table: 'shop.supplier', column: parent, backfill: 'nobody' }))
+      .rejects.toThrow(/backfill "nobody" names no row of shop.supplier/)
+  })
+
+  shopTest('a link backfill naming a row the target holds fills the rows already there', async () => {
+    await registered()
+    const parent = { column_name: 'parent_supplier', label: 'Parent', column_type: 'Reference', reference_table: 'shop.supplier' }
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: parent, backfill: 's1' })
+    expect(await sql`select parent_supplier from shop.supplier`).toEqual([{ parent_supplier: 's1' }])
+  })
+
+  shopTest('a required default outside the column\'s choices is refused', async () => {
+    await registered()
+    await expect(run({ kind: 'addColumn', table: 'shop.supplier', column: choice('tier', { reqd: true, default_value: 'Z' }) }))
+      .rejects.toThrow(/backfill "Z" is not a value shop.supplier.tier accepts/)
+  })
+})
+
+describe('a required column stays filled', () => {
+  shopTest('narrowing a required Choice fills the cleared rows with its default', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade', { reqd: true, default_value: 'A' }) })
+    await sql`update shop.supplier set grade = 'C'`
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', destructive: true, from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } })
+    expect(await sql`select grade from shop.supplier`).toEqual([{ grade: 'A' }])
+  })
+
+  shopTest('narrowing a required Choice without a default is refused while a row would be left empty', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade', { reqd: true }), backfill: 'C' })
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', destructive: true, from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } }))
+      .rejects.toThrow(/1 row holds no value/)
+  })
+
+  shopTest('an empty text counts as no value for a required column', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'note', label: 'Note', column_type: 'Data' } })
+    await sql`update shop.supplier set note = ''`
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'note', from: { reqd: null }, to: { reqd: true } }))
+      .rejects.toThrow(/1 row holds no value/)
+  })
+})
+
+describe('losses are counted after the steps before them', () => {
+  shopTest('a widening after a marked narrowing loses nothing of its own', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade') })
+    await sql`update shop.supplier set grade = 'C'`
+    const losses = await countLosses('shop', [step([
+      { kind: 'alterColumn', table: 'shop.supplier', column: 'grade', destructive: true, from: { choices: 'A\nB\nC' }, to: { choices: 'A\nB' } },
+      { kind: 'alterColumn', table: 'shop.supplier', column: 'grade', backfill: 'A', from: { choices: 'A\nB' }, to: { choices: 'A\nB\nD' } },
+    ])])
+    expect(losses.map(describeLoss)).toEqual(['prune #1 alterColumn shop.supplier.grade: 1 value', 'prune #2 alterColumn shop.supplier.grade: 0 values'])
+  })
+
+  shopTest('counting changes nothing', async () => {
+    await registered()
+    await countLosses('shop', [step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])])
+    expect(await sql`select row_id from shop.line`).toEqual([{ row_id: 'l1' }])
   })
 })
 

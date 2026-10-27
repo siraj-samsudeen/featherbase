@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto'
 import { quoteIdent } from './sql-identifier'
 import { z } from 'zod'
 import { AppError } from './errors'
-import { sql } from './db'
-import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, tableDefSchema, updateTable, type TableDef } from './table-engine'
+import { sql, withTransaction } from './db'
+import { provisionApp } from './app-lifecycle'
+import { tableSchemaToZod } from 'shared'
+import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, tableDefSchema, tableRelation, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
-import { COLUMN_TYPE_VALUES, invalidateMeta } from './meta'
+import { COLUMN_TYPE_VALUES, invalidateMeta, physicalRowKey } from './meta'
 
 export const packageVersion = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)
 export function compareVersions(a: string, b: string): number {
@@ -370,69 +372,27 @@ const outsideChoices = (table: Stored, column: string, choices: string[]) =>
 const narrowsChoices = (op: Extract<Operation, { kind: 'alterColumn' }>) =>
   op.to.choices !== undefined || (op.to.column_type === 'Choice' && op.from.column_type !== 'Choice')
 
+const DRY_RUN = new Error('counting what an upgrade removes')
+
 /** #651: what each destructive step of `migrations` would remove from this
- *  instance, counted against its rows as they are now, before anything runs.
- *  Read-only. Names are followed through earlier renames in the same upgrade;
- *  a Table or column the upgrade itself adds holds nothing yet. */
-export async function estimateLosses(owner: string, migrations: PackageMigration[]): Promise<Loss[]> {
-  // Logical name -> the stored Table and column names it has now (null: new).
-  const tables = new Map<string, { stored: string | null; columns: Map<string, string | null> }>()
-  async function track(name: string) {
-    if (!tables.has(name)) {
-      const found = await stored(name, owner)
-      tables.set(name, { stored: found ? name : null, columns: new Map([...(found?.columns.keys() ?? [])].map(c => [c, c])) })
+ *  instance, before anything runs. The steps run for real inside a
+ *  transaction that is always rolled back, so each one meets the rows the
+ *  steps before it left, and a step the upgrade would refuse is refused here
+ *  too. Counts only, never values. */
+export async function countLosses(owner: string, migrations: PackageMigration[], opts: { ownsClient?: boolean } = {}): Promise<Loss[]> {
+  let losses: Loss[] = []
+  try {
+    await withTransaction(() => provisionApp(owner, async () => {
+      losses = await applyMigrations(migrations, owner, 'Administrator', opts)
+      throw DRY_RUN
+    }))
+  } catch (error) {
+    if (error !== DRY_RUN) {
+      if (error instanceof AppError) throw error
+      refuse(`The upgrade would fail here: ${error instanceof Error ? error.message : String(error)}`)
     }
-    return tables.get(name)!
-  }
-  const losses: Loss[] = []
-  for (const migration of migrations) for (const [index, op] of migration.operations.entries()) {
-    const base = { migration: migration.id, operation: index + 1, kind: op.kind, destructive: 'destructive' in op && op.destructive === true }
-    switch (op.kind) {
-      case 'addTable':
-        tables.set(op.table.name, { stored: null, columns: new Map() })
-        break
-      case 'renameTable':
-        tables.set(op.to, await track(op.from))
-        tables.set(op.from, { stored: null, columns: new Map() })
-        break
-      case 'addColumn':
-        (await track(op.table)).columns.set(op.column.column_name, null)
-        break
-      case 'renameColumn': {
-        const entry = await track(op.table)
-        entry.columns.set(op.to, entry.columns.get(op.from) ?? null)
-        entry.columns.delete(op.from)
-        break
-      }
-      case 'dropTable': {
-        const entry = await track(op.table.name)
-        const found = entry.stored ? await stored(entry.stored, owner) : null
-        losses.push({ ...base, table: op.table.name,
-          rows: found ? await count(`select count(*)::int as n from ${found.relation}`) : 0,
-          childRows: found ? await childRows(entry.stored!, owner, found) : 0 })
-        tables.set(op.table.name, { stored: null, columns: new Map() })
-        break
-      }
-      case 'dropColumn': {
-        const entry = await track(op.table)
-        const column = entry.columns.get(op.column.column_name)
-        const found = entry.stored && column ? await stored(entry.stored, owner) : null
-        const type = found?.columns.get(column!)?.column_type
-        losses.push({ ...base, table: op.table, column: op.column.column_name,
-          values: !found ? 0 : type === 'Sub-table' ? await childRows(entry.stored!, owner, found, column!)
-            : pgType(type!) ? await count(`select count(*)::int as n from ${found.relation} where ${quoteIdent(column!)} is not null`) : 0 })
-        entry.columns.delete(op.column.column_name)
-        break
-      }
-      case 'alterColumn': {
-        if (!narrowsChoices(op)) break
-        const entry = await track(op.table)
-        const column = entry.columns.get(op.column)
-        const found = entry.stored && column ? await stored(entry.stored, owner) : null
-        const choices = choiceList(op.to.choices ?? found?.columns.get(column!)?.choices)
-        losses.push({ ...base, table: op.table, column: op.column, values: found ? await outsideChoices(found, column!, choices) : 0 })
-      }
-    }
+  } finally {
+    invalidateMeta()
   }
   return losses
 }
@@ -453,9 +413,23 @@ async function owned(name: string, owner: string, what: string): Promise<Stored>
   return found
 }
 
-async function fillEmpty(table: Stored, column: string, value: unknown) {
+// No value: NULL, or empty text (a save stores "" as no value too).
+const isEmpty = (column: string) => `(${quoteIdent(column)} is null or ${quoteIdent(column)}::text = '')`
+
+// A backfill, or a required column's default, lands in rows no save ever
+// checked, so it meets the column's own rules first: its kind, its choices,
+// and for a link, a row the target holds.
+async function writeFill(found: Stored, table: string, column: Column, value: unknown, what: string) {
   if (value === undefined || value === null) return
-  await sql.unsafe(`update ${table.relation} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} is null`, [value as never])
+  const name = column.column_name
+  const parsed = tableSchemaToZod([{ ...column, reqd: true }]).safeParse({ [name]: value })
+  if (!parsed.success) refuse(`${what}: the backfill ${JSON.stringify(value)} is not a value ${table}.${name} accepts`)
+  if (column.column_type === 'Reference') {
+    const target = column.reference_table!
+    const rows = await sql.unsafe(`select 1 from ${quoteRelation(await tableRelation(target))} where ${quoteIdent(physicalRowKey(target))} = $1`, [String(value)])
+    if (!rows.length) refuse(`${what}: the backfill ${JSON.stringify(value)} names no row of ${target}`)
+  }
+  await sql.unsafe(`update ${found.relation} set ${quoteIdent(name)} = $1 where ${isEmpty(name)}`, [(parsed.data as Record<string, never>)[name]])
 }
 
 async function applyOperation(owner: string, op: Operation, actor: string, base: Omit<Loss, 'table'>, ownsClient: boolean): Promise<Loss | null> {
@@ -492,7 +466,7 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       const def = await definition(op.table)
       def.columns.splice((op.position ?? def.columns.length + 1) - 1, 0, op.column)
       await updateTable(op.table, def)
-      await fillEmpty(found, op.column.column_name, op.backfill ?? (op.column.reqd ? op.column.default_value : undefined))
+      await writeFill(found, op.table, op.column, op.backfill ?? (op.column.reqd ? op.column.default_value : undefined), what)
       return null
     }
     case 'alterColumn': {
@@ -513,9 +487,11 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       const target = def.columns.find(c => c.column_name === op.column)!
       const { column_type: _type, ...properties } = op.to
       setProperties(target, properties)
-      await fillEmpty(found, op.column, op.backfill ?? (op.to.reqd ? target.default_value : undefined))
-      if (op.to.reqd) {
-        const empty = await count(`select count(*)::int as n from ${found.relation} where ${quoteIdent(op.column)} is null`)
+      // The column as it ends up decides: a narrowing can empty a column
+      // that was already required.
+      await writeFill(found, op.table, target, op.backfill ?? (target.reqd ? target.default_value : undefined), what)
+      if (target.reqd) {
+        const empty = await count(`select count(*)::int as n from ${found.relation} where ${isEmpty(op.column)}`)
         if (empty) refuse(`${what}: ${empty} ${empty === 1 ? 'row holds' : 'rows hold'} no value; give the operation a backfill`)
       }
       await updateTable(op.table, def)

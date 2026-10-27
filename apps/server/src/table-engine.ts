@@ -949,7 +949,10 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       and td.kind <> 'settings' and td.data_source is null
     order by 1, 2`
   const relations = new Map<string, string>()
-  for (const p of pointers) relations.set(p.parent, quoteRelation(await tableRelation(p.parent)))
+  // The Table being renamed may hold such a link itself: by the time the
+  // sweep runs, its rows live under the new name.
+  for (const p of pointers)
+    relations.set(p.parent, p.parent === from ? quoteRelation(`${meta.physical_schema}.${to.split('.')[1]}`) : quoteRelation(await tableRelation(p.parent)))
   const children: string[] = []
   for (const c of meta.columns)
     if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await tableRelation(c.row_table)))

@@ -62,6 +62,23 @@ comparing table and column definitions, stored columns (by name: Postgres
 cannot reorder stored columns), indexes, constraints, read policies, grants
 and the app's table registry.
 
+## After Codex review round 1 (27-Oct-2026)
+
+- **Losses are counted by running the steps** inside a transaction that is
+  always rolled back, so each step meets the rows the earlier steps left and a
+  step the upgrade would refuse is refused at the preview. The preview
+  therefore takes the exclusive app lifecycle lock; applying does not count
+  first. The release check uses the same count and says when an upgrade would
+  fail here.
+- **A backfill or required default meets the column's own rules** (its kind,
+  its choices, and for a link a row the target holds) before it is written.
+- **"Required" is decided by the column as it ends up**: a narrowing that
+  empties an already-required column fills it from the default or fails the
+  upgrade. Empty text counts as no value.
+- **Grants follow Table identity, not name.** A drop ends a Table and its
+  grants; a Table renamed into a dropped Table's name does not inherit them.
+- `renameTable` handles a Table that holds links to Tables itself.
+
 ## Not done here
 
 - Changing a table's own properties (label, title column, row naming,
