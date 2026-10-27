@@ -86,9 +86,10 @@ const DASH = 'feather_dash'
  *  Feather Dash if they can open it, else the platform. Undefined until
  *  whoami answers.
  *
- *  Other installed apps never name the page: an app opened through a Table
- *  grant of the person's own already makes them an Admin user, and one every
- *  person can open (Tasker grants All) is no one's in particular. */
+ *  Other installed apps never name the page: one every person can open
+ *  (Tasker grants All) is no one's in particular. Since #659 a reader of
+ *  another app alone is not an Admin user either (an app's own Tables do not
+ *  open the Admin), so their page carries the platform's name. */
 function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
   if (caps.admin) return ADMIN_NAME

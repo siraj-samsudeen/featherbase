@@ -30,7 +30,8 @@ interface Landing {
   handoff?: string
 }
 
-/** Can this person use Admin at all: manage it, or reach some Table in it.
+/** Can this person use Admin at all: manage it, or reach some Table in it
+ *  that no installed app owns (#659: tableAccessFor's `admin` is the rule).
  *  The same facts /api/whoami's capabilities draw the shell from. */
 async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
