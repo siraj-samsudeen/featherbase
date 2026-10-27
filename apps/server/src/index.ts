@@ -1526,7 +1526,7 @@ app.delete('/api/table_def/:name', async (c) => {
 
 // #209 (issue #197): rename a column in place, keeping its data. PUT
 // /api/table_def/:name matches columns BY NAME, so a changed name there reads
-// as delete-plus-add and silently orphans the rows — hence its own route.
+// as delete-plus-add, which it refuses (#250) — hence this route.
 app.post('/api/table_def/:name/rename_column', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as { from?: unknown; to?: unknown }
@@ -1537,10 +1537,12 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
 
 app.put('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
+  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean; remove_columns?: unknown }
   rejectSystemClaim(body)
-  const { drop_columns, ...def } = body
-  return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
+  const { drop_columns, remove_columns, ...def } = body
+  if (remove_columns !== undefined && !(Array.isArray(remove_columns) && remove_columns.every((c) => typeof c === 'string')))
+    throw new AppError('ValidationError', 'remove_columns must be a list of column names')
+  return c.json(await updateTable(c.req.param('name'), def, { drop_columns, remove_columns }))
 })
 
 app.post('/api/save_row', async (c) => {
