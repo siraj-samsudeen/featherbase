@@ -322,7 +322,7 @@ export function FormView({
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
-      else if (asksRowId && err instanceof ApiError && err.type === 'ConflictError')
+      else if (asksRowId && err instanceof ApiError && err.type === 'ConflictError' && err.message.endsWith(' already exists'))
         setErrors({ [ROW_ID_FIELD.column_name]: 'Already in use' })
       setBanner(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
