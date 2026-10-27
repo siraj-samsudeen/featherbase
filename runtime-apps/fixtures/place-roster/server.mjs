@@ -11,6 +11,11 @@ export const scopeProviders = {
     // An instance Table the provider declared; tests mark it, or not.
     if (faults.readInstance) await documents.list('Roster Extra')
     if (faults.readUndeclared) await documents.list('scopeproof.object')
+    if (faults.parallel) await Promise.all([documents.list('placeroster.position'), documents.list('placeroster.position')])
+    if (faults.getRow) {
+      const row = await documents.get('placeroster.position', faults.getRow)
+      return [{ label: row.place, filters: { store: [row.store] } }]
+    }
     const rows = await documents.list('placeroster.position', {
       filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed'], order_by: 'place asc',
     })

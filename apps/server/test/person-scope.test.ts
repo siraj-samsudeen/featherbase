@@ -145,6 +145,22 @@ describe("the scope provider's read context", () => {
     expect(response.status).toBe(status)
   })
 
+  test('reads one row of a declared Table by its id', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await position(admin, 'roster-row', 'West', 'W1', 'kids')
+    roster.faults.getRow = 'roster-row-West'
+    const answer = await user.post<{ result: { places: unknown[] } }>(read + 'places', { payload: {} })
+    expect(answer.result.places).toEqual([{ label: 'West', filters: { store: ['W1'] } }])
+  })
+
+  test('refuses reads that are not awaited one at a time', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.parallel = true
+    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
   test('passes confirmation statuses through to the handler', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids', { assumed: true })
