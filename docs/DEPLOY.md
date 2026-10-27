@@ -198,8 +198,10 @@ package:
 - `ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>`: one tag per
   commit on `main`, published only after that commit's `test` workflow passed
   (`.github/workflows/publish-image.yml`). Pin this one.
-- `ghcr.io/siraj-samsudeen/featherbase-server:main`: the newest published
-  commit. It moves, so never deploy from it.
+- `ghcr.io/siraj-samsudeen/featherbase-server:main`: follows `main`. It is
+  moved to a commit's image only while that commit is still main's tip, so it
+  never goes back to an older commit, but it can lag a merge or two behind. It
+  moves, so never deploy from it.
 
 It is the Dockerfile's `platform` target: the server, the built SPA and the
 start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its

@@ -2,7 +2,7 @@
 # design D7 "Delivery" of openspec/changes/feather-dash-installed-app):
 #
 #   ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>
-#   ghcr.io/siraj-samsudeen/featherbase-server:main   (the newest published main commit)
+#   ghcr.io/siraj-samsudeen/featherbase-server:main   (follows main's tip; never pin it)
 #
 # It is the `platform` target of apps/server/Dockerfile: the server, the built
 # SPA and the start command, with no app and no FEATHERBASE_APP_PATHS. A client
@@ -13,6 +13,13 @@
 # builds exactly the commit that run tested (workflow_run.head_sha), so a
 # client never builds on an untested image. Branches, pull requests (forks
 # included) and manual runs of `test` never publish.
+#
+# Two jobs, so `:main` never moves backwards when runs for quick merges finish
+# out of order:
+#   publish       pushes only `:<sha>`; runs for different commits overlap.
+#   promote-main  retags that pushed digest as `:main`, one at a time across
+#                 every run (one shared concurrency group), and only if the
+#                 commit is still main's tip at that moment.
 name: publish-image
 
 on:
@@ -21,7 +28,7 @@ on:
     types: [completed]
     branches: [main]
 
-# Nothing by default; the job below asks for exactly what it needs.
+# Nothing by default; each job asks for exactly what it needs.
 permissions: {}
 
 concurrency:
@@ -31,6 +38,7 @@ concurrency:
 
 env:
   IMAGE: ghcr.io/siraj-samsudeen/featherbase-server
+  SHA: ${{ github.event.workflow_run.head_sha }}
 
 jobs:
   publish:
@@ -46,6 +54,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,26 +64,13 @@ jobs:
 
       # The platform-version label is read from the code's
       # SUPPORTED_PLATFORM_VERSIONS, never hard-coded here.
-      #
-      # `:main` moves only when this commit is still main's tip: runs for two
-      # quick merges can finish out of order, and an older commit must not
-      # take the tag back from a newer one.
-      - name: Decide tags and labels
+      - name: Decide labels
         id: meta
         env:
-          SHA: ${{ github.event.workflow_run.head_sha }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           versions=$(node tools/platform-versions.mjs)
-          tip=$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)
-          tags="$IMAGE:$SHA"
-          if [ "$tip" = "$SHA" ]; then
-            tags="$tags,$IMAGE:main"
-          else
-            echo "main has moved on to $tip; publishing $SHA without the main tag" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
           {
-            echo "tags=$tags"
             echo "labels<<EOF"
             echo "org.opencontainers.image.source=$REPO_URL"
             echo "org.opencontainers.image.revision=$SHA"
@@ -83,7 +80,7 @@ jobs:
             echo "dev.featherbase.platform-versions=$versions"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          echo "Publishing $tags (platform versions $versions)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Publishing $IMAGE:$SHA (platform versions $versions)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -94,13 +91,61 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           file: apps/server/Dockerfile
           target: platform
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.IMAGE }}:${{ env.SHA }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=platform-image
           cache-to: type=gha,scope=platform-image,mode=max
+
+  promote-main:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One group for every run of this workflow: promotions run one at a time,
+    # so the tip check below and the retag cannot interleave with another
+    # commit's. GitHub keeps at most one promotion waiting and cancels the one
+    # it replaces, so with three or more promotions queued, `:main` can stay
+    # on an older commit until the next merge promotes. It never moves back.
+    concurrency:
+      group: publish-image-promote-main
+      cancel-in-progress: false
+    permissions:
+      packages: write
+    steps:
+      - name: Check this commit is still main's tip
+        id: tip
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          tip=$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)
+          if [ "$tip" = "$SHA" ]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "main has moved on to $tip; $IMAGE:$SHA is published but :main stays where it is" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.tip.outputs.promote == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - if: steps.tip.outputs.promote == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Retags the digest the publish job pushed; nothing is rebuilt.
+      - name: Point :main at this commit's image
+        if: steps.tip.outputs.promote == 'true'
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          docker buildx imagetools create -t "$IMAGE:main" "$IMAGE@$DIGEST"
+          echo "$IMAGE:main → $IMAGE:$SHA ($DIGEST)" | tee -a "$GITHUB_STEP_SUMMARY"
