@@ -21,8 +21,9 @@ The release step takes a Postgres advisory lock
 (`hashtext('featherbase-release')`) for its whole run, so N instances that
 all execute it on boot serialize instead of racing. It runs a **preflight**
 before the first migration (`src/release-preflight.ts`: environment stamp,
-test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods); any
-refusal stops the release before it has changed anything. Each migration then
+test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods, and
+every installed, enabled app); any refusal stops the release before it has
+changed anything. Each migration then
 runs in its own transaction; the release exits non-zero on the first failure
 without recording the failed step, so the next release retries it. The
 release also prints the [instance health](#instance-health) checks; a failing
@@ -99,7 +100,7 @@ variable.
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
 | `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
-| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin; overridable only for a local stub |
+| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
 | `DIVE_ID` | no | no |  | the sales-target Dive |
 | `DIVE_VERSION` | no | no |  | the sales-target Dive version |
 | `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
@@ -252,7 +253,13 @@ ENV FEATHERBASE_APP_PATHS='["/app/client-apps/acme_board-1.0.0","/app/client-app
 ```
 
 Each directory holds the app's `package.json`, `featherbase.json` and the
-built files its manifest names. The start command, `NODE_ENV` and port come
+built files its manifest names. **An image that leaves out a version still
+installed and enabled on the instance is refused:** the release stops before
+its first migration, naming the app and version, so the deployment already
+running keeps serving it. The server's start and `cli boot-check` refuse the
+same way, except on a `development` server, which starts with the app
+unavailable and warns how to bring it back. A disabled app never blocks a
+release. The start command, `NODE_ENV` and port come
 from the platform image; the release step and `cli boot-check` run in the
 client image exactly as described above.
 
@@ -529,9 +536,11 @@ An instance's non-secret settings are kept in one reviewed file in the
 instance's own private repository, `featherbase/instance-settings.json`. It
 manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 `privacy_notice`, `invitation_email_intro`), `Sign In Method` rows by `row_id`,
-and `Scheduled Job` rows (`enabled` only). Values that differ by environment go
-in that environment's section; when the file has sections, every apply must
-name one. Secrets never go in it.
+and `Scheduled Job` rows (`enabled` only), and installed apps' declared
+settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only).
+Values that differ by environment go in that environment's section; when the
+file has sections, every apply must name one. Secrets never go in it: an app's
+declared secrets are deployment variables, set like any other.
 
 ```bash
 pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
@@ -556,7 +565,8 @@ on every Admin page while one fails. The release prints the same checks, and
 the `check_instance_health` job runs them every 15 minutes. Checks: a System
 Manager with an email address; recommended variables set; settings file
 applied; settings match the file; each enabled scheduled job ran recently;
-Administrator not on the default password.
+each enabled app has its required settings and secrets; Administrator not on
+the default password.
 
 ## Sign-in methods and linked identities
 
@@ -618,6 +628,11 @@ curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer 
 curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>","planId":"<reviewed planId>"}'
 curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>"}'
 ```
+
+An app's role suggestions (`roleDefaults`) become App Role Binding rows once,
+at install; an upgrade never writes them again, so a binding an admin removed
+stays removed. Edit bindings in Admin (*App Role Binding*); a binding to `All`
+or `Guest` is refused, and a release that finds one refuses to start.
 
 Back up first. **After the upgrade commits, restoring the old code alone is not
 recovery:** restore the exact target artifact and activate it. There is no

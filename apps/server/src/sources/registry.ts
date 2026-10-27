@@ -65,6 +65,7 @@ export async function getSource(name: string): Promise<SourceConfig> {
       60000,
     ),
     allowlist: parseAllowlist(row.table_allowlist),
+    read_scaling_token: row.read_scaling_token === true,
   }
   cache.set(name, cfg)
   return cfg

@@ -12,6 +12,7 @@ import { cadenceSeconds } from './jobs'
 import { checkVariables, DEV_ENVIRONMENTS } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
+import { appSetupState } from './app-settings'
 
 export const HEALTH_CHECK_JOB = 'check_instance_health'
 
@@ -229,6 +230,26 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
   return { ...base, ok: true, message: 'The Administrator does not use the default password.', fix: null }
 }
 
+/** #620 (E2): one check per enabled app that declares settings or secrets.
+ *  Names what is missing, never a value. */
+async function appsSetUp(): Promise<HealthCheck[]> {
+  return (await appSetupState()).map(({ app, title, missing }) => {
+    const base = {
+      key: `app-setup:${app}`,
+      title: `App set up: ${title}`,
+      severity: 'warning' as const,
+      why: 'An app that lacks a required setting, secret or data source answers "not set up yet" instead of working.',
+    }
+    if (!missing.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: `${title} answers "not set up yet": missing ${missing.join(', ')}.`,
+      fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, and add each data source in Admin (Data Source), then restart.',
+    }
+  })
+}
+
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
@@ -238,6 +259,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     await settingsApplied(),
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
+    ...(await appsSetUp()),
     await administratorPassword(environment),
   ]
 }

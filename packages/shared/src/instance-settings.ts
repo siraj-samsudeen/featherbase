@@ -3,7 +3,7 @@
 // lock and the Admin form all read these, so the wording cannot drift.
 
 /** The Tables whose fields an instance settings file may manage. */
-export const INSTANCE_SETTINGS_TABLES = ['System Settings', 'Sign In Method', 'Scheduled Job'] as const
+export const INSTANCE_SETTINGS_TABLES = ['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'] as const
 
 /** The instance's settings file, as the instance repository names it (D1). */
 export const INSTANCE_SETTINGS_FILE = 'instance-settings.json'

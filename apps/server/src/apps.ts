@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
+import { asNameList } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -133,21 +134,6 @@ export function registerApp(manifest: AppManifest): void {
 
 export function getAvailableApps(): string[] {
   return [...available.keys()]
-}
-
-// The jsonb ledger columns (tables/roles/perms) round-trip as arrays, but
-// tolerate a stored JSON string too (defensive against double-encoding).
-function asNameList(v: unknown): string[] {
-  if (Array.isArray(v)) return v as string[]
-  if (typeof v === 'string') {
-    try {
-      const parsed = JSON.parse(v)
-      return Array.isArray(parsed) ? (parsed as string[]) : []
-    } catch {
-      return []
-    }
-  }
-  return []
 }
 
 // A fixture row's identity in the install ledger: enough to delete exactly
@@ -530,6 +516,9 @@ export async function installApp(name: string): Promise<InstallResult> {
           await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
             migration_ledger = ${sql.json(ledger)} where name = ${name}`
         }
+        // #620 (D4): the app's role suggestions, written once, here.
+        const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
+        await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
         return result
       })
     } catch (error) {
@@ -668,7 +657,11 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
     await deleteDoc('Data Source', src).catch(() => {})
     invalidateSources(src)
   }
-  await sql`delete from installed_app where name = ${name}`
+  // #620: its role bindings go in the same transaction as its ledger row.
+  await withTransaction(async () => {
+    await (await import('./app-role-bindings')).removeRoleBindings(name, 'Administrator')
+    await sql`delete from installed_app where name = ${name}`
+  })
   return { name, removed: tables }
 }
 
