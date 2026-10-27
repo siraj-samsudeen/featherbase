@@ -228,7 +228,7 @@ async function runRead(app: string, name: string, user: string, handler: Runtime
   documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferView?: (write: () => Promise<void>) => void) {
   const { title, settings, secrets, kept } = setup
   const { datasets, recordView } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
-    places: authorization.places, outbound: !inAppTransaction(), deferView })
+    places: authorization.places, outbound: !inAppTransaction(), deferView, scopeProvider: contribution.operations.get(name)?.scopeProvider })
   const json = await withSecretsKept(kept, async () => {
     try {
       return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))

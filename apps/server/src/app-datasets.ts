@@ -478,6 +478,42 @@ export interface DatasetReadRequest {
    *  are written with the final check that the app still serves the version
    *  the read ran under, under one lock, or not at all. */
   deferView?: (write: () => Promise<void>) => void
+  /** #667: the instance's scope provider, named when a place is dropped. */
+  scopeProvider?: () => Promise<{ app: string; version: string } | undefined>
+}
+
+/** How long a recorded drop stands before a read records it again. */
+const DROP_RECORD_INTERVAL = '1 hour'
+
+/**
+ * #667: record that `places` hold some a dataset cannot apply, by the keys it
+ * cannot apply: never the person, the place or a value. A drop already
+ * recorded under the same versions within the last hour is not written again,
+ * so a busy report reads one row and writes nothing.
+ */
+async function recordPlaceDrops(app: string, dataset: DatasetDeclaration, places: PersonScope | undefined,
+  scopeProvider: DatasetReadRequest['scopeProvider']): Promise<void> {
+  const keySets = new Map<string, string[]>()
+  for (const place of places ?? []) {
+    const keys = unappliableKeys(dataset, place)
+    if (keys.length) keySets.set(keys.join(','), keys)
+  }
+  if (!keySets.size) return
+  const provider = await scopeProvider?.()
+  if (!provider) return
+  const [installed] = await sql`select package_version from installed_app where name = ${app}`
+  const version = String(installed?.package_version ?? '')
+  for (const keys of keySets.values()) {
+    const [fresh] = await sql`select 1 from dataset_place_drop
+      where app = ${app} and dataset = ${dataset.name} and provider = ${provider.app} and filter_keys = ${keys}
+        and app_version = ${version} and provider_version = ${provider.version}
+        and last_seen > now() - ${DROP_RECORD_INTERVAL}::interval`
+    if (fresh) continue
+    await sql`insert into dataset_place_drop (app, dataset, provider, filter_keys, app_version, provider_version)
+      values (${app}, ${dataset.name}, ${provider.app}, ${keys}, ${version}, ${provider.version})
+      on conflict (app, dataset, provider, filter_keys) do update set last_seen = now(),
+        app_version = excluded.app_version, provider_version = excluded.provider_version`
+  }
 }
 
 /**
@@ -486,7 +522,7 @@ export interface DatasetReadRequest {
  * from the app: it names a dataset and filter values, and the query is the
  * declared one.
  */
-export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferView }: DatasetReadRequest) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferView, scopeProvider }: DatasetReadRequest) {
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
@@ -504,6 +540,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
     async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      await recordPlaceDrops(app, dataset, places, scopeProvider)
       const snapshot = await activeSnapshot(datasetKey(app, name))
       if (!snapshot) {
         await recordMiss(datasetKey(app, name))
@@ -519,6 +556,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       if (!outbound) throw new AppError('ValidationError', 'A live dataset read calls out to its data source: declare the read outbound')
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      await recordPlaceDrops(app, dataset, places, scopeProvider)
       const at = new Date().toISOString()
       const rows = shapeRows(dataset, await runQuery(dataset, where))
       served.set(name, { served: 'live' })

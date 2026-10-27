@@ -255,6 +255,47 @@ async function appsSetUp(): Promise<HealthCheck[]> {
   })
 }
 
+/** How long a dropped place stays named after reads last met it. */
+const DROP_WINDOW = '7 days'
+
+/** #667: one check per enabled app with datasets. A scope place naming a
+ *  filter a dataset cannot apply adds nothing from it (fail closed); reads
+ *  record the drop by its keys, and this names the provider, the dataset and
+ *  the keys, never a person. A drop counts only while both apps still run the
+ *  versions it was seen under, and for a week after reads last met it. */
+async function placeDrops(): Promise<HealthCheck[]> {
+  const apps = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and jsonb_typeof(manifest->'datasets') = 'array' and jsonb_array_length(manifest->'datasets') > 0
+    order by name`
+  if (!apps.length) return []
+  const providers = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider'`
+  const provider = providers.length === 1 ? providers[0] : undefined
+  const drops = provider ? await sql`select d.app, d.dataset, d.filter_keys from dataset_place_drop d
+    join installed_app a on a.name = d.app and a.package_version = d.app_version
+    where d.provider = ${provider.name} and d.provider_version = ${provider.package_version}
+      and d.last_seen > now() - ${DROP_WINDOW}::interval
+    order by d.app, d.dataset, d.filter_keys` : []
+  return apps.map((row) => {
+    const app = String(row.name)
+    const title = String(row.title ?? app)
+    const base = {
+      key: `scope-place-drops:${app}`,
+      title: `Every place reaches the datasets: ${title}`,
+      severity: 'warning' as const,
+      why: 'A place that names a filter a dataset does not map adds nothing from that dataset, so the people it covers can see an empty report with no explanation.',
+    }
+    const mine = drops.filter((drop) => drop.app === app)
+    if (!mine.length) return { ...base, ok: true, message: `No place has been dropped from ${title}'s datasets.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: mine.map((drop) => `${String(drop.dataset)} drops places from ${String(provider!.title ?? provider!.name)} that name ${(drop.filter_keys as string[]).join(', ')}, which it cannot apply, so those places add nothing from it.`).join(' '),
+      fix: 'A place must use the dataset\'s filter keys: change the scope provider to name only filters each dataset maps, or map the filter in the dataset. A System Manager can see whose places are dropped with the person scope read (GET /api/people/<person>/scope?app=<app>).',
+    }
+  })
+}
+
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
@@ -265,6 +306,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
     ...(await appsSetUp()),
+    ...(await placeDrops()),
     await administratorPassword(environment),
   ]
 }

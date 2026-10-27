@@ -89,6 +89,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   // #625: an app dataset's rows: warehouse figures, no person in them.
   app_dataset_row: { '*': code },
   dataset_miss: { '*': code },
+  // #667: which filter keys a dataset could not apply; no person, label or value.
+  dataset_place_drop: { '*': code },
   dataset_snapshot: { dataset: code, state: code, definition_version: code, triggered_by: id, error: text },
   email_account: { '*': code },
   email_queue: {

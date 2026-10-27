@@ -29,6 +29,7 @@ import { datasetsDue } from '../src/jobs/refresh-datasets'
 import { guardRefusal, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
+import { runHealthChecks } from '../src/instance-health'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -1013,6 +1014,61 @@ describe('a place a dataset cannot apply', () => {
   ] as const)('answers not found for %s', async ([, person, app], { admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
+  })
+
+  const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
+
+  test('after a read drops a place, Instance health names the provider, the dataset and the keys', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    expect(await dropsCheck()).toMatchObject({ ok: false, severity: 'warning',
+      message: 'sales drops places from Place roster proof that name floor, which it cannot apply, so those places add nothing from it.' })
+  })
+
+  // Fail closed, as before: recording the drop changes no one's rows.
+  test.for([['cached', 'inside', 'active'], ['live', 'outside', 'live']] as const)(
+    'a %s read still gets nothing from the dropped place', async ([, operation, method], { admin, createUser }) => {
+      const { reader, app } = await setup(admin, createUser)
+      await buildSnapshot('datasetproof.sales')
+      app.hooks.run = (context: Context) => context.datasets[method]('sales')
+      const answer = await withPlaces(FLOOR_PLACES, () => reader.post<{ result: { rows: unknown[] } }>(read + operation, { payload: {} }))
+      expect(answer.result.rows).toEqual([row('S1', 'kids', '2026-10-01', 40, 2, 'south kids')])
+    })
+
+  test('what a drop records names no person, place or filter value', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    const recorded = await sql`select app, dataset, provider, filter_keys, app_version, provider_version from dataset_place_drop`
+    expect(recorded.map(r => ({ ...r }))).toEqual([{ app: 'datasetproof', dataset: 'sales', provider: 'placeroster',
+      filter_keys: ['floor'], app_version: '1.0.0', provider_version: '1.0.0' }])
+    expect(JSON.stringify(await dropsCheck())).not.toContain(reader.user!)
+  })
+
+  test('before any read drops a place, the check passes', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('explaining a person\'s scope records no drop', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('a drop seen under an earlier version of the app no longer counts', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    await upgradeSales(admin, fixture, {})
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('an app with no datasets gets no check', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const keys = (await runHealthChecks()).map(check => check.key).filter(key => key.startsWith('scope-place-drops:'))
+    expect(keys).toEqual(['scope-place-drops:datasetproof'])
   })
 
   test('the Access Log records which System Manager looked at whose places, for which app', async ({ admin, createUser }) => {
