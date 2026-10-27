@@ -175,6 +175,8 @@ const datasetSchema = z.object({
   columns: z.array(z.object({ name: identifier, type: z.enum(DATASET_COLUMN_TYPES) }).strict()).min(1)
     .refine(columns => distinct(columns.map(column => column.name)), 'Dataset column names must be distinct'),
   keys: z.array(identifier).refine(distinct, 'Dataset keys must be distinct'),
+  // Scope filter key → column. A place must use these keys: one naming any
+  // other key adds no rows from this dataset (#667).
   filters: z.record(identifier, identifier).refine(filters => Object.keys(filters).length > 0, 'A dataset maps at least one scope filter'),
   guard: z.array(guardSchema).optional(),
 }).strict().superRefine((dataset, context) => {

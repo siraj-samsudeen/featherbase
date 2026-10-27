@@ -49,6 +49,28 @@ for that.
 - **WHEN** a person's place is a floor, and the report has no floor column
 - **THEN** that place adds no figures, rather than the whole store's
 
+### Requirement: A place left out of a report is never left out silently
+
+A place must use the report's own filters: one that names a filter the report cannot
+split by adds no figures, and Featherbase SHALL show an admin which places were left
+out and why, without showing any figures. Seeing why SHALL never change what anyone
+sees.
+
+#### Scenario: Finding out why a person sees an empty report
+
+- **WHEN** a person's places are floors, and the report splits only by store and
+  category
+- **THEN** an admin can look up that person and see each of their places, which ones
+  the report used, and which it left out because it cannot split by floor
+- **AND** the person themself, or anyone else who is not an admin, cannot look it up
+
+#### Scenario: An admin is warned before anyone complains
+
+- **WHEN** people have opened a report that left some of their places out
+- **THEN** the instance's health page warns that the report leaves out places from the
+  app that provides people's places, naming the filter it cannot split by
+- **AND** the warning names no person
+
 ### Requirement: A failed refresh never replaces the last good copy
 
 A scheduled refresh of an app's report data that fails or looks incomplete SHALL never
