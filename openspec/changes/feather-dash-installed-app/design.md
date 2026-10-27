@@ -645,7 +645,7 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
 14. **Order:** B1–B5; the #462 design in parallel; #246 items 1–2 after B2; C1
     (#449's section and mapping Tables, with the provider swap); the #462 build;
     B6/B7; D; the cut-over (D8).
-15. **Feather Dash is a client app** for JeyaRama, in the client's private
+15. **Feather Dash is a client app** for one client, in the client's private
     repository ([ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md)).
     B6 and B7 merge into B6′ there. Product apps (Feather Tickets, Feather Tasker)
     stay generic.
