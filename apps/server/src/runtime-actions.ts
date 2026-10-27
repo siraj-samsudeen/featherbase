@@ -12,7 +12,7 @@ import { getList } from './query'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup } from './app-settings'
 import { appDatasets, type DatasetDeclaration } from './app-datasets'
 
-const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] } }
+const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] }, optionalSecrets: [] }
 
 export interface DeclaredOperations<H = RuntimeActionHandler> {
   entryTable: string
@@ -154,7 +154,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
           where caller = ${user} and app = ${app} and action = ${name} and idempotency_key = ${idempotencyKey}`
         return { result: previous.result }
       }
-      const { settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      const { settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       const context = callerDocuments(app, contribution.tables, user)
       const result = await withSecretsKept(secrets, async () => {
         try { return await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject })) }
@@ -183,7 +183,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       contribution: contribution.operations.get(name),
     }, async (authorization, payload): Promise<{ answer: unknown } | { outbound: Outbound }> => {
       if (discovery) return { answer: { storeCodes: authorization.storeCodes } }
-      const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       // #625 (E5): an outbound read stops here. Its authorization, payload,
       // setup and the app version serving it are decided and frozen; the
       // handler runs once this transaction AND the request's lifecycle lock

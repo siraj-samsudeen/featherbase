@@ -275,8 +275,11 @@ async function appsSetUp(): Promise<string[]> {
   const identifierSystems = await locate('identifier_system')
   const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null, sources: sources?.relation ?? null,
     identifierSystems: identifierSystems?.relation ?? null }))
-    .filter(({ missing }) => missing.length)
-    .map(({ app, missing }) => `WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`)
+    .flatMap(({ app, missing, optional }) => [
+      ...(missing.length ? [`WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`] : []),
+      // #666: a missing optional secret holds up only what needs it.
+      ...(optional.length ? [`WARNING: app ${app} lacks ${optional.join(', ')}. Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.`] : []),
+    ])
   return warnings.length ? warnings : ['every enabled app has its required settings and secrets']
 }
 

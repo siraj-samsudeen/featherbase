@@ -20,9 +20,23 @@ const distinct = (values: string[]) => new Set(values).size === values.length
 export const settingsDeclaration = z.array(z.object({ name: settingName, required: z.boolean() }).strict())
   .refine(rows => distinct(rows.map(row => row.name)), 'Setting names must be distinct')
 
-/** The manifest's `secrets`: the deployment variables the app reads. */
-export const secretsDeclaration = z.array(z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/))
-  .refine(distinct, 'Secret names must be distinct')
+export const secretName = z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/)
+
+/** The manifest's `secrets`: the deployment variables the app reads. A bare
+ *  name is a required secret. #666: `{ name, optional: true }` is one the app
+ *  can work without; only the operations that name it in `needs` wait for it. */
+export const secretsDeclaration = z.array(z.union([secretName, z.object({ name: secretName, optional: z.boolean() }).strict()]))
+  .refine(entries => distinct(secretEntries(entries).map(entry => entry.name)), 'Secret names must be distinct')
+
+export type SecretsDeclaration = z.infer<typeof secretsDeclaration>
+
+/** Each declared secret as `{ name, optional }`, from a manifest's `secrets`
+ *  (parsed, or as stored on an installed app). */
+export function secretEntries(declared: unknown): { name: string; optional: boolean }[] {
+  if (!Array.isArray(declared)) return []
+  return declared.flatMap(entry => typeof entry === 'string' ? [{ name: entry, optional: false }]
+    : entry && typeof entry === 'object' && typeof entry.name === 'string' ? [{ name: entry.name, optional: entry.optional === true }] : [])
+}
 
 export interface AppSetupDeclaration {
   title: string
@@ -36,8 +50,10 @@ export interface AppSetup {
   title: string
   settings: Readonly<Record<string, string>>
   secrets: Readonly<Record<string, string>>
-  /** Required settings and secrets with no value, by name. */
+  /** Required settings, and every declared secret, with no value, by name. */
   missing: { settings: string[]; secrets: string[] }
+  /** #666: the secrets declared optional, by name. */
+  optionalSecrets: readonly string[]
 }
 
 const present = (value: string | null | undefined): value is string => typeof value === 'string' && value.trim() !== ''
@@ -58,12 +74,14 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
     if (present(value)) settings[name] = value
     else if (required) missing.settings.push(name)
   }
-  for (const name of declaration.secrets ?? []) {
+  const optionalSecrets: string[] = []
+  for (const { name, optional } of secretEntries(declaration.secrets)) {
+    if (optional) optionalSecrets.push(name)
     const value = readNamedVariable(name)
     if (present(value)) secrets[name] = value
     else missing.secrets.push(name)
   }
-  return { title: declaration.title, settings: Object.freeze(settings), secrets: Object.freeze(secrets), missing }
+  return { title: declaration.title, settings: Object.freeze(settings), secrets: Object.freeze(secrets), missing, optionalSecrets }
 }
 
 /** Each enabled, installed app that declares settings, secrets, datasets or
@@ -71,7 +89,7 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
  *  name (`setting x`, `secret Y`, `identifier system z`). Never a
  *  value. The release check (before migrations) names where the tables are
  *  now, or that App Setting does not exist yet. */
-export async function appSetupState(where: { installed?: string; settings?: string | null; sources?: string | null; identifierSystems?: string | null } = {}): Promise<{ app: string; title: string; missing: string[] }[]> {
+export async function appSetupState(where: { installed?: string; settings?: string | null; sources?: string | null; identifierSystems?: string | null } = {}): Promise<{ app: string; title: string; missing: string[]; optional: string[] }[]> {
   const installed = where.installed ?? platformRelation('installed_app')
   const settings = where.settings === undefined ? platformRelation('app_setting') : where.settings
   const sources = where.sources === undefined ? platformRelation('data_source') : where.sources
@@ -79,11 +97,16 @@ export async function appSetupState(where: { installed?: string; settings?: stri
   const rows = await sql`select name, manifest from ${sql(installed)}
     where enabled and (manifest ? 'settings' or manifest ? 'secrets' or manifest ? 'datasets'
       or jsonb_typeof(manifest->'scopeProvider'->'identifiers') = 'array') order by name`
-  const gaps: { app: string; title: string; missing: string[] }[] = []
+  const gaps: { app: string; title: string; missing: string[]; optional: string[] }[] = []
   for (const row of rows) {
     const app = String(row.name)
-    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: string[]; datasets?: { source: string }[]
-      scopeProvider?: { identifiers?: string[] } }
+    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: unknown; datasets?: { source: string }[]
+      scopeProvider?: { identifiers?: string[] }; reads?: { operations?: Record<string, { needs?: string[] }> }
+      actions?: { operations?: Record<string, { needs?: string[] }> } }
+    const unset = secretEntries(declared.secrets).filter(({ name }) => !present(readNamedVariable(name)))
+    // #666: the reads and actions that wait for each missing optional secret.
+    const neededBy = (secret: string) => [['read', declared.reads?.operations], ['action', declared.actions?.operations]]
+      .flatMap(([kind, operations]) => Object.entries(operations ?? {}).filter(([, o]) => o?.needs?.includes(secret)).map(([name]) => `${kind} ${name}`))
     const required = (declared.settings ?? []).filter(s => s.required).map(s => s.name)
     const filled = settings && required.length
       ? new Set((await sql`select setting from ${sql(settings)} where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
@@ -105,13 +128,17 @@ export async function appSetupState(where: { installed?: string; settings?: stri
       : new Map<string, string | null>()
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
-      ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
+      ...unset.filter(({ optional }) => !optional).map(({ name }) => `secret ${name}`),
       ...wanted.map(name => found.has(name) ? (datasetSourceReadOnly(found.get(name)!) ? null : `read-only data source ${name}`) : `data source ${name}`)
         .filter((gap): gap is string => gap !== null),
       ...systems.filter(system => foundSystems.get(system) !== null)
         .map(system => foundSystems.has(system) ? `identifier system ${system} ${foundSystems.get(system)}` : `identifier system ${system}`),
     ]
-    gaps.push({ app, title: declared.title ?? app, missing })
+    const optional = unset.filter(({ optional }) => optional).map(({ name }) => {
+      const operations = neededBy(name)
+      return `optional secret ${name} (needed by ${operations.length ? operations.join(', ') : 'no read or action'})`
+    })
+    gaps.push({ app, title: declared.title ?? app, missing, optional })
   }
   return gaps
 }
@@ -119,24 +146,46 @@ export async function appSetupState(where: { installed?: string; settings?: stri
 /** The secrets installed apps declare that are set here, with their values,
  *  so a settings export can withhold a setting that holds one. */
 export async function declaredAppSecrets(): Promise<{ name: string; value: string }[]> {
-  const rows = await sql`select distinct jsonb_array_elements_text(manifest->'secrets') as name
-    from installed_app where jsonb_typeof(manifest->'secrets') = 'array' order by name`
-  return rows.flatMap(row => {
-    const value = readNamedVariable(String(row.name))?.trim()
-    return value ? [{ name: String(row.name), value }] : []
+  const rows = await sql`select manifest->'secrets' as secrets from installed_app where jsonb_typeof(manifest->'secrets') = 'array'`
+  const names = [...new Set(rows.flatMap(row => secretEntries(row.secrets).map(entry => entry.name)))].sort()
+  return names.flatMap(name => {
+    const value = readNamedVariable(name)?.trim()
+    return value ? [{ name, value }] : []
   })
 }
 
-/** The app's setup, or its "not set up yet" answer when a required setting
- *  or secret has no value: never a crash in the app's handler. The answer
- *  names no setting or secret; the server log names the missing ones (names
- *  only, never a value). */
-export async function readyAppSetup(app: string, setup: AppSetup): Promise<AppSetup> {
-  const { settings, secrets } = setup.missing
-  if (!settings.length && !secrets.length) return setup
-  console.warn(`[apps] ${app} is not set up yet; missing ${[
-    ...settings.map(name => `setting ${name}`), ...secrets.map(name => `secret ${name}`)].join(', ')}`)
-  throw new AppError('NotSetUpError', `${setup.title} is not set up yet. An administrator needs to finish setting it up.`)
+/** The app's setup for one read or action, or its "not set up yet" answer
+ *  when a required setting or secret, or an optional secret the operation
+ *  `needs` (#666), has no value: never a crash in the app's handler. The
+ *  answer names no setting or secret; the server log names the missing ones
+ *  (names only, never a value).
+ *
+ *  The handler gets the required secrets and the optional ones it needs. An
+ *  optional secret it does not declare it needs is withheld even when set,
+ *  and reaching for it fails the operation, so a missing declaration shows
+ *  up while the secret is set, not first on an instance that lacks it. */
+export async function readyAppSetup(app: string, setup: AppSetup, needs: readonly string[] = []): Promise<AppSetup> {
+  const optional = new Set(setup.optionalSecrets)
+  const used = (name: string) => !optional.has(name) || needs.includes(name)
+  const settings = setup.missing.settings
+  const secrets = setup.missing.secrets.filter(used)
+  if (settings.length || secrets.length) {
+    console.warn(`[apps] ${app} is not set up yet; missing ${[
+      ...settings.map(name => `setting ${name}`), ...secrets.map(name => `secret ${name}`)].join(', ')}`)
+    throw new AppError('NotSetUpError', `${setup.title} is not set up yet. An administrator needs to finish setting it up.`)
+  }
+  const withheld = setup.optionalSecrets.filter(name => !used(name))
+  if (!withheld.length) return setup
+  const handed = Object.freeze(Object.fromEntries(Object.entries(setup.secrets).filter(([name]) => used(name))))
+  return { ...setup, secrets: new Proxy(handed, {
+    get(target, key, receiver) {
+      if (typeof key === 'string' && withheld.includes(key)) {
+        console.warn(`[apps] ${app} used the secret ${key} in a read or action that does not declare it needs it`)
+        throw new AppError('InternalError', `${setup.title} used a secret this read or action does not declare it needs. The app needs to declare it.`)
+      }
+      return Reflect.get(target, key, receiver)
+    },
+  }) }
 }
 
 // A secret must never leave in what the app answers, raises or has logged.
