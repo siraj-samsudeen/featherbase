@@ -43,6 +43,10 @@ const alterable = z.object({
   description: z.string().nullable(),
   column_type: z.enum(COLUMN_TYPE_VALUES),
 }).partial().strict()
+// What only changes what people read: a step naming nothing else writes the
+// definition and no row (#663).
+const DISPLAY_ONLY = new Set(['label', 'description', 'hidden'])
+const displayOnly = (to: z.infer<typeof alterable>) => Object.keys(to).every(key => DISPLAY_ONLY.has(key))
 
 // #651: every operation carries what it removes or replaces (a dropped Table
 // or column as it stood, an altered column's `from`), so a history replays
@@ -70,6 +74,9 @@ export const migrationSchema = z.object({
     const from = Object.keys(op.from).sort().join(',')
     if (!from || from !== Object.keys(op.to).sort().join(','))
       ctx.addIssue({ code: 'custom', path: ['operations', index], message: 'alterColumn names the same properties in from and to' })
+    if (op.backfill !== undefined && displayOnly(op.to))
+      ctx.addIssue({ code: 'custom', path: ['operations', index, 'backfill'],
+        message: 'alterColumn changes only what people read (label, description, hidden), so it takes no backfill' })
   })
 })
 export type PackageMigration = z.infer<typeof migrationSchema>
@@ -479,6 +486,15 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
     case 'alterColumn': {
       const what = `alterColumn ${op.table}.${op.column}`
       let found = await owned(op.table, owner, what)
+      // A definition read back leaves an absent description out, so removing
+      // one is named.
+      const clearing = op.to.description === null ? { clear_descriptions: [op.column] } : {}
+      if (displayOnly(op.to)) {
+        const def = await definition(op.table)
+        setProperties(def.columns.find(c => c.column_name === op.column)!, op.to)
+        await updateTable(op.table, def, clearing)
+        return null
+      }
       if (op.to.column_type) await changeColumnType(op.table, op.column, op.to.column_type)
       found = await owned(op.table, owner, what)
       let loss: Loss | null = null
@@ -500,9 +516,7 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       // may fill many rows once unique is off, never while it turns on.
       const addsUnique = Boolean(target.unique) && !wasUnique
       if (addsUnique) target.unique = false
-      // A definition read back leaves an absent description out, so removing
-      // one is named (#663).
-      await updateTable(op.table, def, op.to.description === null ? { clear_descriptions: [op.column] } : {})
+      await updateTable(op.table, def, clearing)
       // The column as it ends up decides: a narrowing can empty a column
       // that was already required.
       await writeFill(found, op.table, target, op.backfill ?? automaticFill(target), what)

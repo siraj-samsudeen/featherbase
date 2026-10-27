@@ -4,8 +4,8 @@
 // column and two Tables, and changes types; 0.3.0 drops a column and a Table
 // and narrows choices (destructive), makes a column required with a backfill
 // and changes another type; 0.4.0 changes only what people read (#663): it
-// corrects a description 0.1.0 shipped, and renames and describes a column
-// while widening its type.
+// corrects one description 0.1.0 shipped and removes another, and renames and
+// describes a column while widening its type.
 import { describe, expect, vi } from 'vitest'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'

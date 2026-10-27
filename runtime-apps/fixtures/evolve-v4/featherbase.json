@@ -99,7 +99,9 @@
           "from": { "description": "The material group this item belongs to" }, "to": { "description": "The subcategory this item belongs to" } },
         { "kind": "alterColumn", "table": "evolve.region", "column": "zone_name",
           "from": { "column_type": "Text", "label": "Zone", "description": null },
-          "to": { "column_type": "Long Text", "label": "Zone name", "description": "How the floor team calls the zone" } }
+          "to": { "column_type": "Long Text", "label": "Zone name", "description": "How the floor team calls the zone" } },
+        { "kind": "alterColumn", "table": "evolve.item", "column": "on_hold",
+          "from": { "description": "Paused until the count is checked" }, "to": { "description": null } }
       ]
     }
   ]

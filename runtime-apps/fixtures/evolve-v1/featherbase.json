@@ -13,7 +13,7 @@
         { "column_name": "qty", "label": "Qty", "column_type": "Int" },
         { "column_name": "grade", "label": "Grade", "column_type": "Choice", "choices": "A\nB\nC" },
         { "column_name": "legacy_code", "label": "Legacy code", "column_type": "Data" },
-        { "column_name": "on_hold", "label": "On hold", "column_type": "Check" }
+        { "column_name": "on_hold", "label": "On hold", "column_type": "Check", "description": "Paused until the count is checked" }
       ]
     },
     {
