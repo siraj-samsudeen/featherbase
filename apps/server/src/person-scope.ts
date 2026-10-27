@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { personScopeSchema, type AppScopeProvider, type AppScopeProviderContext, type PersonScope, type ScopePlace } from 'shared'
-import { sql } from './db'
+import { inAppTransaction, sql, withTransaction } from './db'
 import { getMeta } from './meta'
 import { getDoc } from './document'
 import { getList } from './query'
@@ -30,9 +30,20 @@ export class NoPersonScope extends Error {
  *  declared, an invalid shape and an empty scope all throw NoPersonScope:
  *  an empty scope is never read as everything, for an administrator too.
  *  #660: a declared identifier system the instance lacks answers "not set
- *  up yet" before the provider runs, so no one gets a scope either. */
+ *  up yet" before the provider runs, so no one gets a scope either.
+ *
+ *  Codex round 2 on #661: the declared systems' rows are locked FOR SHARE
+ *  before they are checked, and the lock lasts until the transaction ends,
+ *  after the provider has answered. An admin turning a system off or making
+ *  it Secret waits until then, and the next request sees the change. A
+ *  request already runs in a transaction (withAppAuthorization), so the lock
+ *  is taken in it; called outside one, this opens its own. The rows are taken
+ *  in key order, after whatever the request already holds: the app lifecycle
+ *  lock (on its own connection) and any idempotency lock. Saving an
+ *  Identifier System takes neither, so the wait cannot turn into a cycle. */
 export async function resolvePersonScope(user: string, binding: ScopeProviderBinding | undefined): Promise<PersonScope> {
   if (!binding) throw new NoPersonScope('configuration')
+  if (!inAppTransaction()) return withTransaction(() => resolvePersonScope(user, binding))
   await assertIdentifierSystems(binding)
   const [person] = await sql`select row_id, email from person where row_id = ${user}`
   let answer: unknown
@@ -53,8 +64,9 @@ async function assertIdentifierSystems(binding: ScopeProviderBinding) {
   // values; it is treated exactly as a missing one. Codex round 1: so is a
   // Secret system, whose rows may still hold a plain value recorded before
   // it was made Secret; no value or hint of one ever reaches an app.
-  const on = new Set((await sql`select row_id from identifier_system
-    where row_id in ${sql(binding.identifiers)} and enabled and sensitivity <> 'Secret'`).map(row => String(row.row_id)))
+  const locked = await sql`select row_id, enabled, sensitivity from identifier_system
+    where row_id in ${sql(binding.identifiers)} order by row_id for share`
+  const on = new Set(locked.filter(row => row.enabled === true && row.sensitivity !== 'Secret').map(row => String(row.row_id)))
   const missing = binding.identifiers.filter(system => !on.has(system))
   if (!missing.length) return
   console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}, present and turned on`)
