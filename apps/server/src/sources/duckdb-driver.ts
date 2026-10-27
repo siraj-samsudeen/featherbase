@@ -1,4 +1,5 @@
 import { AppError } from '../errors'
+import { datasetQueryText } from './dataset-query'
 import { readNamedVariable } from '../env'
 import type {
   Binding,
@@ -164,6 +165,13 @@ const READ_ONLY = () => {
 export const duckdbDriver: SourceDriver = {
   engine: 'duckdb',
   writable: false,
+
+  // #625: an app's dataset query (MotherDuck in production). Wrapped as a
+  // sub-query, so only a query that reads can run.
+  async query(cfg, query, where) {
+    const { text, values } = datasetQueryText(query, where, { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)` })
+    return run(cfg, text, values)
+  },
 
   async test(cfg) {
     await run(cfg, 'select 1', [])

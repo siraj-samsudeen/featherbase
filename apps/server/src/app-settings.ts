@@ -69,22 +69,29 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
  *  required ones it lacks, by name (`setting x`, `secret Y`). Never a
  *  value. The release check (before migrations) names where the tables are
  *  now, or that App Setting does not exist yet. */
-export async function appSetupState(where: { installed?: string; settings?: string | null } = {}): Promise<{ app: string; title: string; missing: string[] }[]> {
+export async function appSetupState(where: { installed?: string; settings?: string | null; sources?: string | null } = {}): Promise<{ app: string; title: string; missing: string[] }[]> {
   const installed = where.installed ?? platformRelation('installed_app')
   const settings = where.settings === undefined ? platformRelation('app_setting') : where.settings
+  const sources = where.sources === undefined ? platformRelation('data_source') : where.sources
   const rows = await sql`select name, manifest from ${sql(installed)}
-    where enabled and (manifest ? 'settings' or manifest ? 'secrets') order by name`
+    where enabled and (manifest ? 'settings' or manifest ? 'secrets' or manifest ? 'datasets') order by name`
   const gaps: { app: string; title: string; missing: string[] }[] = []
   for (const row of rows) {
     const app = String(row.name)
-    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: string[] }
+    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: string[]; datasets?: { source: string }[] }
     const required = (declared.settings ?? []).filter(s => s.required).map(s => s.name)
     const filled = settings && required.length
       ? new Set((await sql`select setting from ${sql(settings)} where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
       : new Set<string>()
+    // #625 (E3): a dataset names a Data Source the instance must declare.
+    const wanted = [...new Set((declared.datasets ?? []).map(d => d.source))]
+    const declaredSources = sources && wanted.length
+      ? new Set((await sql`select row_id from ${sql(sources)} where row_id in ${sql(wanted)}`).map(r => String(r.row_id)))
+      : new Set<string>()
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
       ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
+      ...wanted.filter(name => !declaredSources.has(name)).map(name => `data source ${name}`),
     ]
     gaps.push({ app, title: declared.title ?? app, missing })
   }

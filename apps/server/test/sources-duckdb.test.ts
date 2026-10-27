@@ -120,6 +120,20 @@ describe('Read and write through a connected table: a warehouse', () => {
   })
 })
 
+// #625: an app's dataset query runs on a warehouse, limited to what a read may
+// see. The same where shape as the postgres driver's, in DuckDB's dialect.
+describe('An app dataset query on a warehouse', () => {
+  test('runs the declared query limited to the given places and filters', async () => {
+    const cfg = { name: 'duck-dataset', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
+      access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
+    const rows = await duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', {
+      any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
+      all: [{ column: 'business_date', values: ['2026-07-02'] }],
+    })
+    expect(rows).toEqual([{ store: 'KKL', business_date: '2026-07-02', amount: '1200.00' }])
+  })
+})
+
 describe('Connect a data source: a warehouse', () => {
   test('testing the connection reports success, and failure when the file is missing', async ({ admin }) => {
     await makeDuckSource(admin)

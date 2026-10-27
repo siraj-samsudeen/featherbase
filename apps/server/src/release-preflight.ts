@@ -205,7 +205,8 @@ async function appsSetUp(): Promise<string[]> {
   const apps = await locate('installed_app')
   if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return ['app setup check skipped (no installed apps yet)']
   const settings = await locate('app_setting')
-  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null }))
+  const sources = await locate('data_source')
+  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null, sources: sources?.relation ?? null }))
     .filter(({ missing }) => missing.length)
     .map(({ app, missing }) => `WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`)
   return warnings.length ? warnings : ['every enabled app has its required settings and secrets']

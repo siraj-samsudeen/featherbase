@@ -23,6 +23,7 @@ import { activeSnapshot, buildSnapshot, pendingMisses } from '../src/dataset-sna
 import { expectApiError } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
+import { appSetupState } from '../src/app-settings'
 import { inAppTransaction, sql } from '../src/db'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
@@ -109,6 +110,17 @@ describe('the snapshot of an app dataset', () => {
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused' })
     expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
+
+  // The rows hold every place's figures; the scope-checked read is the only way out.
+  test('is not a Table, so no generic read or export reaches its rows', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    for (const name of ['app_dataset_row', 'App Dataset Row', 'datasetproof.sales'])
+      expect((await admin.fetch(`/api/table/${encodeURIComponent(name)}`)).status).toBe(404)
+    const exported = await admin.fetch('/api/instance-settings/export')
+    expect(exported.status).toBe(200)
+    expect(await exported.text()).not.toContain('north kids')
+  })
 })
 
 async function position(admin: TestClient, person: string, place: string, store: string, section: string) {
@@ -175,6 +187,12 @@ describe('a cached dataset read', () => {
     app.hooks.run = (context: Context) => context.datasets.active('sales')
     expect(await reader.post(read + 'inside', { payload: {} })).toEqual({ result: null })
     expect(await pendingMisses()).toContain('datasetproof.sales')
+  })
+
+  test('the release check and Instance health name a dataset\'s missing data source', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const state = (await appSetupState()).find(({ app }) => app === 'datasetproof')
+    expect(state?.missing).toEqual(['data source datasetproof-missing'])
   })
 
   test('a dataset whose data source the instance does not have answers "not set up yet"', async ({ admin, createUser }) => {
