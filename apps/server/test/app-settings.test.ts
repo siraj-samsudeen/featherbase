@@ -221,11 +221,11 @@ describe('an app secret', () => {
   class Outer { constructor(readonly inner: Inner) {} }
   const PLAIN = 'plain-secret-620'
   test.for([
-    ['a Headers', () => new Headers({ authorization: `Bearer ${PLAIN}` })],
-    ['a Map', () => new Map([['token', PLAIN]])],
-    ['a Set', () => new Set([PLAIN])],
-    ['a nested class instance', () => new Outer(new Inner(PLAIN))],
-    ['a format string', () => PLAIN],
+    ['a Headers', (): unknown => new Headers({ authorization: `Bearer ${PLAIN}` })],
+    ['a Map', (): unknown => new Map([['token', PLAIN]])],
+    ['a Set', (): unknown => new Set([PLAIN])],
+    ['a nested class instance', (): unknown => new Outer(new Inner(PLAIN))],
+    ['a format string', (): unknown => PLAIN],
   ] as const)('a handler logging %s has the secret redacted', async ([label, make]) => {
     await withSecretsKept({ TOKEN: PLAIN }, async () => {
       if (label === 'a format string') console.log('token: %s', make())
