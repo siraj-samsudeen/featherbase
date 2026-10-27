@@ -180,10 +180,14 @@ that fills it).
   `"scopeProvider": { "name": "<export>", "tables": [...] }` and its server module
   exports the function under `scopeProviders`. The function gets the person and a
   read context limited to the Tables it declared, each of which must be marked as
-  deciding scope; it reads as the platform, so a manager needs no read grant on the
-  roster. Exactly one enabled app may provide the scope on an instance: a second is
-  refused at install and enable, the release preflight refuses an instance with two,
-  and two at run time mean no scope for anyone. Feather Dash is a client app in the
+  deciding scope and hold no Sub-tables (a row read would hand over undeclared child
+  rows). It reads as the platform, so a manager needs no read grant on the roster,
+  and under the provider app's own installed version, whatever the consuming
+  request named. Exactly one enabled app may provide the scope on an instance: a
+  second is refused at install, enable, upgrade and activation, the release
+  preflight refuses an instance with two, and two at run time mean no scope for
+  anyone. A replayed action answers from its stored result, so it is admitted only
+  while the caller's scope still covers every place and value that run used. Feather Dash is a client app in the
   client's private repository (ADR 0013) and supplies the client's roster derivation
   (B6′). That derivation never moves into the platform. #449 decides where the
   roster Tables live; the provider follows them. **No consuming app changes either

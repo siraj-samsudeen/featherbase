@@ -31,6 +31,12 @@ it.
 - **THEN** the request is refused and nothing about store 13 is shown
 - **AND** the refusal is recorded in the Access Log
 
+#### Scenario: A repeated request after losing a store
+
+- **WHEN** a manager repeats an earlier request after one of the stores it covered was
+  taken from them
+- **THEN** the repeat is refused, and the earlier answer is not shown again
+
 #### Scenario: A narrower question gets a narrower answer
 
 - **WHEN** a manager of two stores asks for one of them

@@ -113,8 +113,8 @@ only the records it declared, and only records marked as deciding scope.
 ### Requirement: Only one app provides people's scope
 
 An instance SHALL have at most one enabled app that provides people's scope.
-Featherbase SHALL refuse to install or enable a second one, and a release SHALL refuse
-to start on an instance that has two.
+Featherbase SHALL refuse to install, enable or upgrade into a second one, and a release
+SHALL refuse to start on an instance that has two.
 
 #### Scenario: A second roster app is refused
 
