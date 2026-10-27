@@ -73,14 +73,16 @@ export async function servingIdentity(app: string): Promise<string> {
 /** #625 (E5): after an outbound handler ran outside every lock, is its app
  *  still enabled, active and serving the version it was authorized under?
  *  Checked under the shared lifecycle lock, before anything it produced is
- *  written or answered. */
-export function assertStillServing(app: string, identity: string): Promise<void> {
+ *  answered; `then` (its view records) runs under that same lock, only when
+ *  the check passes, so nothing is written for an app changed meanwhile. */
+export function assertStillServing(app: string, identity: string, then: () => Promise<void> = async () => {}): Promise<void> {
   return appOperation(async () => {
     const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
     if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
       throw new AppError('PermissionError', `App ${app} is disabled or unavailable`)
     if (await servingIdentity(app) !== identity)
       throw new AppError('ConflictError', `App ${app} was upgraded while this read ran. Reload its current client and retry`)
+    await then()
   })
 }
 

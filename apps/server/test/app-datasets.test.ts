@@ -350,14 +350,24 @@ describe('an outbound read', () => {
     for (const answer of pending) expect(await answer).toEqual({ result: 'answered' })
   })
 
+  const nothing = async () => {}
+  const view = async (context: Context) => { await context.recordView({ dataset: 'sales' }) }
   test.for([
-    ['its answer', async () => 'answered'],
-    ['its view record', async (context: Context) => { await context.recordView({ dataset: 'sales' }); return 'answered' }],
-  ] as const)('an app disabled while the handler waited has %s refused', async ([, finish], { admin, createUser }) => {
+    ['its answer', nothing, nothing],
+    ['its view record', nothing, view],
+    // The view is held until the answer, and written only if the app still serves it then.
+    ['a view it recorded before the wait', view, nothing],
+  ] as const)('an app disabled while the handler waited has %s refused', async ([, before, after], { admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     const call = stall()
-    app.hooks.run = async (context: Context) => { call.entered(); await call.gate; return finish(context) }
+    app.hooks.run = async (context: Context) => {
+      await before(context)
+      call.entered()
+      await call.gate
+      await after(context)
+      return 'answered'
+    }
     const pending = reader.post(read + 'outside', { payload: {} })
     try {
       await call.inside

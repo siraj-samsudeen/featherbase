@@ -200,9 +200,11 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
   // Outside every lock. Whatever the handler produced is written or answered
   // only if the app is still enabled and serving the version it ran under.
   const { handler, contribution, frozen, identity } = decided.outbound
-  const guard = () => assertStillServing(app, identity)
-  const answer = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS, async () => {}, guard)
-  await guard()
+  const views: (() => Promise<void>)[] = []
+  const answer = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS, async () => {}, (write) => views.push(write))
+  // One shared lifecycle lock for the final check and the view records, so
+  // the app cannot be disabled or upgraded between them.
+  await assertStillServing(app, identity, async () => { for (const write of views) await write() })
   return answer
 }
 
@@ -222,10 +224,10 @@ const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: c
 
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
   { authorization, payload, setup }: { authorization: AppAuthorizationContext; payload: unknown; setup: AppSetup },
-  documents: RuntimeReadContext['documents'], close: () => Promise<void>, guard?: () => Promise<void>) {
+  documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferView?: (write: () => Promise<void>) => void) {
   const { title, settings, secrets } = setup
   const { datasets, recordView } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
-    places: authorization.places, outbound: !inAppTransaction(), guard })
+    places: authorization.places, outbound: !inAppTransaction(), deferView })
   const json = await withSecretsKept(secrets, async () => {
     try {
       return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))

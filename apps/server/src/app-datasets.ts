@@ -223,9 +223,10 @@ export interface DatasetReadRequest {
   places: PersonScope | undefined
   /** Only an outbound read, which holds no transaction, may call the source. */
   outbound: boolean
-  /** An outbound read's check that its app still serves the version it ran
-   *  under, before a view is recorded. */
-  guard?: () => Promise<void>
+  /** An outbound read holds its view records here until its answer: they
+   *  are written with the final check that the app still serves the version
+   *  the read ran under, under one lock, or not at all. */
+  deferView?: (write: () => Promise<void>) => void
 }
 
 /**
@@ -234,7 +235,7 @@ export interface DatasetReadRequest {
  * from the app: it names a dataset and filter values, and the query is the
  * declared one.
  */
-export function appDatasets({ app, operation, user, title, declarations, places, outbound, guard }: DatasetReadRequest) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferView }: DatasetReadRequest) {
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
@@ -281,14 +282,15 @@ export function appDatasets({ app, operation, user, title, declarations, places,
         (dataset !== undefined && !declarations.some((d) => d.name === dataset)))
       throw new AppError('ValidationError', "recordView takes { dataset } naming one of the app's datasets")
     const what = typeof dataset === 'string' ? served.get(dataset) : undefined
-    await guard?.()
-    await logAccess(user, 'view_report', {
+    const write = () => logAccess(user, 'view_report', {
       table: datasetKey(app, typeof dataset === 'string' ? dataset : operation),
       row_id: what?.snapshot,
       method: what?.served,
       scope: places ? places.map((place) => place.label).join('; ').slice(0, 140) : undefined,
       required: true,
     })
+    if (deferView) deferView(write)
+    else await write()
   }
   return { datasets, recordView }
 }
