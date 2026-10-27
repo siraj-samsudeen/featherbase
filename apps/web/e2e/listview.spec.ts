@@ -232,6 +232,43 @@ test.describe('ListView toolbar phone layout', () => {
   })
 })
 
+// #581: the column picker pop-up stays inside a phone screen.
+async function assertColumnPickerInside(page: Page, width: number): Promise<void> {
+  await page.getByTestId('list-columns').click()
+  const popup = page.getByTestId('list-columns-popup')
+  await expect(popup).toBeVisible()
+  const box = (await popup.boundingBox())!
+  expect(box.x, 'column picker must not start left of the screen').toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width, 'column picker must not end right of the screen').toBeLessThanOrEqual(width)
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+    'the page must not scroll sideways with the picker open',
+  ).toBe(true)
+}
+
+test.describe('ListView pop-ups on a phone', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('the column picker opens inside the screen', async ({ session }) => {
+    await openResponsiveList(session)
+    await session.step('measure the column picker', async ({ page }) => assertColumnPickerInside(page, 375))
+  })
+})
+
+test.describe('ListView pop-ups on desktop', () => {
+  test.use({ viewport: { width: 1280, height: 800 } })
+
+  test('the column picker lines up with the right edge of its button', async ({ session }) => {
+    await openResponsiveList(session)
+    await session.step('measure the column picker', async ({ page }) => {
+      await assertColumnPickerInside(page, 1280)
+      const button = (await page.getByTestId('list-columns').boundingBox())!
+      const popup = (await page.getByTestId('list-columns-popup').boundingBox())!
+      expect(Math.abs(popup.x + popup.width - (button.x + button.width))).toBeLessThanOrEqual(1)
+    })
+  })
+})
+
 test.describe('ListView toolbar desktop layout', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
