@@ -161,7 +161,7 @@ function QuickTable({ collapsed, refreshedAt, children }: {
   )
 }
 
-// Every opening bumps this; a response whose number is no longer current
+// Every identity call bumps this; a response whose number is no longer current
 // belongs to an earlier opening (or an earlier account) and is dropped.
 let openingSeq = 0
 
@@ -180,7 +180,6 @@ function SalesTargetReport() {
   const [embed, setEmbed] = useState<Embed>({ kind: 'loading' })
   const [pre, setPre] = useState<Pre>({ kind: 'loading' })
   const [showNoTargetNoSale, setShowNoTargetNoSale] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
   // #500: one retry, shared by every failing card (the live report's and the cached numbers'). A
   // press re-runs only what failed — the identity call, the cached read, the live report, or both
   // reads — without a page reload, so a working live report is never reopened to fix the cache.
@@ -196,6 +195,9 @@ function SalesTargetReport() {
   // Which reads the next opening re-runs; read once by that opening, so a later one (a store
   // fallback) is a full opening again.
   const retryPartsRef = useRef<{ embed: boolean; pre: boolean } | null>(null)
+  // #564: the request in flight for each half of the page. A Try again that re-runs one half
+  // replaces only that half's, so the other half, still opening, is never cancelled.
+  const halvesRef = useRef<{ pre: AbortController | null; embed: AbortController | null }>({ pre: null, embed: null })
   useEffect(() => {
     const r = retrying
     if (!r) return
@@ -211,7 +213,6 @@ function SalesTargetReport() {
   useEffect(() => {
     const seq = ++openingSeq
     const controller = new AbortController()
-    abortRef.current = controller
     const current = () => seq === openingSeq && !controller.signal.aborted
     ;(async () => {
       try {
@@ -233,12 +234,19 @@ function SalesTargetReport() {
   // One opening per store: the cached table and a fresh embed session, for the store on show.
   useEffect(() => {
     if (!me) return
-    const seq = ++openingSeq
-    const controller = new AbortController()
-    abortRef.current = controller
-    const current = () => seq === openingSeq && !controller.signal.aborted
+    // A new account (the identity call bumps the number) drops this opening's answers.
+    const seq = openingSeq
+    const current = (signal: AbortSignal) => seq === openingSeq && !signal.aborted
     const parts = retryPartsRef.current
     retryPartsRef.current = null
+    const halves = halvesRef.current
+    const start = (half: 'pre' | 'embed') => {
+      halves[half]?.abort()
+      halves[half] = new AbortController()
+      return halves[half].signal
+    }
+    const preSignal = !parts || parts.pre ? start('pre') : null
+    const embedSignal = !parts || parts.embed ? start('embed') : null
     if (!parts) {
       setPre({ kind: 'loading' })
       setEmbed({ kind: 'loading' })
@@ -249,12 +257,12 @@ function SalesTargetReport() {
     // only /me itself refusing is "no access"; a store that dropped off the list falls back to
     // the default store with a note. Once per opening, though both calls may answer 403.
     let forbidden = false
-    const onForbidden = async () => {
+    const onForbidden = async (signal: AbortSignal) => {
       if (forbidden) return
       forbidden = true
       try {
         const fresh = await api.get<Me>('/api/sales_target/me')
-        if (!current()) return
+        if (!current(signal)) return
         const lost = query && store ? me.stores.find((s) => s.plant_code === store) : undefined
         if (lost && !fresh.stores.some((s) => s.plant_code === lost.plant_code)) {
           rememberStore(user?.row_id, null)
@@ -265,7 +273,7 @@ function SalesTargetReport() {
         }
         setEmbed({ kind: 'error' })
       } catch (err) {
-        if (!current()) return
+        if (!current(signal)) return
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
         else setEmbed({ kind: 'error' })
       }
@@ -274,38 +282,38 @@ function SalesTargetReport() {
       try {
         // Deliberately NOT awaited before the embed call: the snapshot read is
         // the fast path and must not queue behind a session mint.
-        if (!parts || parts.pre) void (async () => {
+        if (preSignal) void (async () => {
           const t0 = performance.now()
           try {
             const res = await fetch(`/api/sales_target/report${query}`, {
               headers: { authorization: `Bearer ${getToken() ?? ''}` },
-              signal: controller.signal,
+              signal: preSignal,
             })
             const body = (await res.json().catch(
               /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path */
               () => ({}),
             )) as Report & { no_assignment?: boolean }
             const ms = performance.now() - t0
-            if (!current()) return
-            if (res.status === 403) void onForbidden() // never a red "Numbers unavailable"
+            if (!current(preSignal)) return
+            if (res.status === 403) void onForbidden(preSignal) // never a red "Numbers unavailable"
             else if (body.no_assignment) setPre({ kind: 'no-assignment' })
             else if (res.ok) setPre({ kind: 'ready', report: body, ms })
             else setPre({ kind: 'error' })
           } catch {
             // A client-side fetch failure: nothing reached the server, so nothing is logged.
-            if (!current()) return
+            if (!current(preSignal)) return
             /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
             setPre({ kind: 'error' })
           }
         })()
 
         // A retry of the cached numbers alone leaves a working live report where it is.
-        if (parts && !parts.embed) return
+        if (!embedSignal) return
 
         const res = await fetch(`/api/sales_target/embed_session${query}`, {
           method: 'POST',
           headers: { authorization: `Bearer ${getToken() ?? ''}` },
-          signal: controller.signal,
+          signal: embedSignal,
         })
         const body = (await res.json().catch(
           /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path */
@@ -315,26 +323,32 @@ function SalesTargetReport() {
           no_assignment?: boolean
           not_configured?: boolean
         }
-        if (!current()) return
+        if (!current(embedSignal)) return
         if (res.status === 401) {
           clearSession()
           window.location.href = '/featherbase/login'
           return
         }
         // Role taken away mid-session (the same plain card as at the start, #404), or the store is no longer theirs.
-        if (res.status === 403) void onForbidden()
+        if (res.status === 403) void onForbidden(embedSignal)
         else if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
         else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
           setEmbed({ kind: 'frame', src: `${me.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
         else setEmbed({ kind: 'error' })
       } catch (err) {
-        if (!current()) return
+        if (!embedSignal || !current(embedSignal)) return
         /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
         setEmbed({ kind: 'error' })
       }
     })()
-    return () => controller.abort()
+    // Leaving the page, or a new store or account, cancels both halves; a Try again replaces
+    // only the halves it re-runs (above).
+    return () => {
+      if (retryPartsRef.current) return
+      halves.pre?.abort()
+      halves.embed?.abort()
+    }
   }, [me, store, openingAttempt])
 
   function tryAgain() {
