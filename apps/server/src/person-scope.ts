@@ -30,7 +30,7 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
   let answer: unknown
   try {
     answer = await withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, async documents =>
-      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null }), documents }))))
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers: Object.freeze({}) }), documents }))))
   } catch { throw new NoPersonScope('provider') }
   const parsed = personScopeSchema.safeParse(answer)
   if (!parsed.success) throw new NoPersonScope('provider')

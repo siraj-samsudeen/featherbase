@@ -72,7 +72,13 @@ export interface RuntimeActionAuthorization {
 // declared, each marked as deciding scope, and returns the person's places;
 // the platform validates the answer against the scope shape.
 export interface AppScopeProviderContext {
-  readonly person: { readonly id: string; readonly email: string | null }
+  readonly person: {
+    readonly id: string
+    readonly email: string | null
+    /** #660: the person's current values in each identifier system the
+     *  manifest's `scopeProvider.identifiers` names, and no other system. */
+    readonly identifiers: Readonly<Record<string, readonly string[]>>
+  }
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>

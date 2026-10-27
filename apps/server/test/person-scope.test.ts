@@ -38,6 +38,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Sc
   const app = await fixtureModule('scopeproof', consumer, 'server.mjs')
   for (const key of Object.keys(roster.faults)) delete roster.faults[key]
   roster.calls.provider = 0
+  roster.calls.person = undefined
   app.calls.handler = 0
   return { user, roster, app }
 }
@@ -216,6 +217,17 @@ describe("the scope provider's read context", () => {
   })
 })
 
+// #660: a provider that declares identifier systems gets the person's
+// current values for those systems, and nothing else about the person.
+describe("the person's identifiers a provider receives", () => {
+  test('a provider that declares no identifier systems gets none', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await user.post(read + 'places', { payload: {} })
+    expect(roster.calls.person).toEqual({ id: user.user, email: 'placed@example.test', identifiers: {} })
+  })
+})
+
 // A second provider: the place-roster fixture under another app name.
 async function withSecondProvider(fn: (directory: string) => Promise<void>) {
   const copy = await mkdtemp(resolve('test/.second-provider-'))
@@ -333,6 +345,24 @@ describe('declaring a scope provider', () => {
     const copy = await variant(change as never)
     try {
       expect(await discoverPackages([copy])).toMatchObject([{ error }])
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+
+  // #660: the identifier systems the provider needs, by key.
+  test('an app declaring the identifier systems its provider needs is loaded', async () => {
+    const copy = await variant((m, s) => [{ ...m, scopeProvider: { ...m.scopeProvider, identifiers: ['roster-code', 'other-code'] } }, s])
+    try {
+      expect(await discoverPackages([copy])).toEqual([])
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+
+  test.for([
+    ['a name that is not an identifier system key', ['Roster Code']],
+    ['the same system twice', ['roster-code', 'roster-code']],
+  ] as const)('an app whose provider declares %s is not loaded', async ([, identifiers]) => {
+    const copy = await variant((m, s) => [{ ...m, scopeProvider: { ...m.scopeProvider, identifiers } }, s])
+    try {
+      expect(await discoverPackages([copy])).toMatchObject([{ error: expect.stringContaining('scopeProvider') }])
     } finally { await rm(copy, { recursive: true, force: true }) }
   })
 })
