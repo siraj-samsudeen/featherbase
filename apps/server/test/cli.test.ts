@@ -558,6 +558,17 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
     expect(out).toMatch(/boot-check: release preflight — database environment matches "test"/)
   })
 
+  // #467: the rehearsal shows the same warning the release would.
+  test('a set ADMIN_PASSWORD that is not the live password is warned of, and the server will still start', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await setUserPassword('Administrator', 'the-live-password-467')
+    vi.stubEnv('ADMIN_PASSWORD', 'not-the-live-password-467')
+    const out = await cli(['boot-check'])
+    expect(out).toMatch(/boot-check: release preflight — WARNING: ADMIN_PASSWORD is set but is not the Administrator's live password/)
+    expect(out).toMatch(/the server will start/)
+    expect(out).not.toContain('not-the-live-password-467')
+  })
+
   test('a production configuration with a forbidden switch on fails and names the switch', async () => {
     vi.stubEnv('FEATHERBASE_ENV', 'production')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '1')

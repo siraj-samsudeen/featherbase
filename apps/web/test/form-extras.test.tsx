@@ -1,11 +1,14 @@
 // The FormView paths the merged web coverage report (ADR 0012) showed no test
 // taking: editing a yes/no, a date and a date-time and reordering sub-table
 // rows; jumping to a linked row; renaming a row (and a rename the server
-// refuses); client scripts that fail on load or while running (and one
-// pinned defect in onload); and
-// backing out of the delete confirmation three ways. Each asserts the stored
+// refuses); client scripts that run on load, or fail on load or while
+// running; and backing out of the delete confirmation three ways. Each asserts the stored
 // row, or the page the user is left on.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { RouterProvider, createMemoryHistory, createRouter } from '@tanstack/react-router'
+import { routeTree } from '../src/router'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
@@ -111,10 +114,10 @@ test('renaming a row moves the links to it; a name already taken is refused and 
 })
 
 // SPEC (CUST-003): an onload handler sees the loaded row and its changes add to
-// it. Suspected defect, see report: onload fires before the row has loaded
-// (frm.doc is {}), and its set_value then replaces the loaded values — the
-// form opens with every other field blank and "Not saved".
-test.fails('a client script runs on load against the loaded row, keeping its values', async ({ admin }) => {
+// it (#538: it used to fire against the empty pre-load doc, and its set_value
+// then replaced the loaded values, opening the form with every other field
+// blank).
+test('a client script runs on load against the loaded row, keeping its values', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/save_row', {
     table: 'Client Script',
@@ -129,6 +132,67 @@ test.fails('a client script runs on load against the loaded row, keeping its val
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('note')).toHaveValue('opened visit-1'), { timeout: 3000 })
   expect(field('store')).toHaveValue('store-1')
+})
+
+// #538: on-load runs once per row opened — the refetch after the user's own
+// save must not run it again and mark the just-saved form "Not saved".
+test('a client script runs on load once: after saving, the form stays saved', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', {
+    table: 'Client Script',
+    row: {
+      row_id: 'fx-onload-once',
+      ref_table: 'Fx Visit',
+      enabled: true,
+      script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('qty', Number(frm.doc.qty || 0) + 1) } })`,
+    },
+  })
+  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('qty')).toHaveValue(1), { timeout: 3000 })
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+
+  fireEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Saved'))
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Saved')
+  expect(field('qty')).toHaveValue(1)
+  expect(Number((await stored(admin)).qty)).toBe(1)
+})
+
+// #538 (Codex review): the dev app mounts under StrictMode, which replays
+// effects. Reopening a row whose row and scripts are already cached must
+// still keep what on-load set, not reset it on the replay.
+test('a client script runs on load against a cached row under StrictMode, keeping its change', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', {
+    table: 'Client Script',
+    row: {
+      row_id: 'fx-onload-strict',
+      ref_table: 'Fx Visit',
+      enabled: true,
+      script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('note', 'opened ' + frm.doc.row_id) } })`,
+    },
+  })
+  const path = `/featherbase/admin/${enc('Fx Visit')}/visit-1`
+  const first = await renderApp(path, admin)
+  await waitFor(() => expect(field('note')).toHaveValue('opened visit-1'), { timeout: 8000 })
+  const { queryClient } = first
+  cleanup()
+
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [path] }) })
+  render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router as never} />
+      </QueryClientProvider>
+    </StrictMode>,
+  )
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('note')).toHaveValue('opened visit-1'), { timeout: 3000 })
+  expect(field('store')).toHaveValue('store-1')
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
 })
 
 test('a client script that fails while running says so, can be dismissed, and the form still saves', async ({ admin }) => {

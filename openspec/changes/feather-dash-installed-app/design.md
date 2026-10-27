@@ -154,33 +154,58 @@ Each is generic: none names Feather Dash or a client. Each joins the
 extension-point catalogue (ADR 0011), which is generated from the manifest schema
 and checked in CI.
 
-**E1. The scope shape and a swappable provider.**
+**E1. The scope shape and an app-declared provider** (owner decision 27-Oct-2026,
+#559: the platform defines the shape and enforces it; an app declares the provider
+that fills it).
 
 - **The shape** is a list of *places* the person covers. Each place has a label and
   the filter values that go with it. For a Team Leader of one section:
-  `{ place: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
+  `{ label: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
   A place may also carry the basis (section staff, team leader, department manager,
-  floor manager, store manager) for display.
-- **A `person_scope` operation policy** sits beside `table` and `stores`. The platform
-  computes the caller's scope fresh on every request and hands it to the handler,
-  frozen. Naming a store or section outside it refuses the *whole* request, records
-  the refusal in the Access Log, and reveals nothing. An empty scope is never read
-  as all stores, for an administrator too. An ambiguous employee code still yields
-  no scope.
-- **The provider** fills the shape. Stage B moves today's derivation (the nine
-  tables) into it unchanged. #449 decides where the roster lives (the platform, or
-  a "store structure" app) and swaps the provider. **No app changes either way.**
-  The provider's output in this shape is also #449's parity target.
+  floor manager, store manager) for display, and a confirmation status
+  (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
+  always names at least one filter value, and labels are unique within a scope. The
+  shape is a shared type, validated at the boundary.
+- **A `person_scope` operation policy** sits beside `table` and `stores`, with read
+  and action roles like `stores`. The platform calls the provider fresh on every
+  request, validates and freezes the answer, and hands it to the handler. A request
+  may narrow it by naming places or filter values (`payload.scope`); naming a place
+  or value outside it, or values that no single place covers together, refuses the
+  *whole* request, records the refusal in the Access Log, and reveals nothing. It
+  **fails closed**: no provider, a provider that throws or reads outside what it
+  declared, an invalid shape, or an empty scope all mean no access. An empty scope
+  is never read as everything, for an administrator too. An ambiguous employee code
+  still yields no scope.
+- **The provider is declared by an app.** Its manifest says
+  `"scopeProvider": { "name": "<export>", "tables": [...] }` and its server module
+  exports the function under `scopeProviders`. The function gets the person and a
+  read context limited to the Tables it declared, each of which must be marked as
+  deciding scope and hold no Sub-tables (a row read would hand over undeclared child
+  rows). It reads as the platform, so a manager needs no read grant on the roster,
+  and under the provider app's own installed version, whatever the consuming
+  request named. Exactly one enabled app may provide the scope on an instance: a
+  second is refused at install, enable, upgrade and activation, the release
+  preflight refuses an instance with two, and two at run time mean no scope for
+  anyone. A replayed action answers from its stored result, so it is admitted only
+  while the caller's scope still covers every place and value that run used. Feather Dash is a client app in the
+  client's private repository (ADR 0013) and supplies the client's roster derivation
+  (B6′). That derivation never moves into the platform. #449 decides where the
+  roster Tables live; the provider follows them. **No consuming app changes either
+  way.** The provider's output in this shape is also #449's parity target.
 - **The report definition maps filters to query columns**, for example
   `subcategory` → the hierarchy code. So the app and the platform never learn the
   client's column names.
-- **One-way knowledge in the security list.** `security-tables.ts` stops naming the
-  client's roster tables. The provider's own tables are marked as scope-deciding by
-  their definition, not by a platform list of names.
+- **One-way knowledge in the security list.** A Table whose rows decide scope is
+  marked by its own definition (`decides_scope`), and the platform guards a marked
+  Table like the named security Tables. The client's roster table names leave
+  `security-tables.ts` only once the client's instance setup marks those Tables, in
+  the go-live cut-over (task 5.2). Today's platform report keeps its current code
+  until the clean-up release.
 - Rejected: the platform computing retail scope itself (it would know store, floor
   and section, which a CRM client does not have). Also rejected: each app reading
   the roster tables (the readings drift, and client table names would enter the
-  app).
+  app). Also rejected (27-Oct-2026): moving today's derivation into a platform
+  provider for a while; it would put the client's roster logic in this repository.
 
 **E2. Declared settings and secrets.**
 
@@ -463,12 +488,39 @@ builds a **client image on top of the platform's image**: it starts from a pinne
 platform image, adds the built app (every version installed on any instance, the
 predecessor pattern), and sets `FEATHERBASE_APP_PATHS`. E7 turns a missing version
 into a refused release. This repository's build never takes a private input.
-*Open detail, awaiting the owner:* how the platform image is published. Proposed: a
-GitHub Action here publishes a public image tagged by commit, and the client's
-small Dockerfile starts `FROM` that tag. Bumping the tag by pull request would
-replace today's manual commit pin on prod. Railway already builds this repository
+**Publishing the platform image** (owner decision 27-Oct-2026, #587). A GitHub
+Action here publishes the server image to the GitHub Container Registry, tagged by
+commit SHA, once that commit's tests have passed. The published image is the
+Dockerfile's `platform` target, with no app. The client's repository has a
+small Dockerfile: `FROM` that tag, copy the built app, set `FEATHERBASE_APP_PATHS`.
+Moving an instance to a newer platform is a pull request that bumps the tag, which
+replaces today's manual commit pin on prod. Railway already builds this repository
 from `apps/server/Dockerfile`; its own builders build one repository and cannot
-combine two. **Nothing from a client's repository enters this one**: #310's
+combine two.
+
+*Considered: Featherbase as an npm package.* The client's repository would depend
+on it and build its own server, with Railpack or its own Dockerfile, the pattern
+the client's dbt runner uses. The image won, for three reasons:
+
+- **Clients run the exact artifact that was tested.** A package rebuilt in each
+  client's pipeline is a new, untested build.
+- **The platform owns the operating system, Node and certificate layers.** With a
+  package, every client would choose and patch them. (The image finds Chromium for
+  printing at run time, as today; it does not ship one.)
+- **Featherbase is the host program, and apps are its plug-ins.** It is not a
+  library a client calls.
+
+The app contract (the manifest, `platformVersion`, `FEATHERBASE_APP_PATHS`) is the
+same either way, so a package can be added later without changing any app.
+
+**Local development of a client app** (owner requirement 27-Oct-2026). A developer
+working on a client app in the client's repository runs it locally, with hot reload,
+against a featherbase checkout or a chosen featherbase version, without building
+Docker images. That was the one real advantage of the npm-package route, and it is
+kept. The mechanism is decided with B6′: for example, a featherbase dev command that
+takes an app path, or pnpm-linking a local featherbase checkout.
+
+**Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
 code, must be dropped from that PR.
 
@@ -537,7 +589,8 @@ to the trial first. The order of work:
   the cache-in-Dive contract (D6); today's query and roster derivation, moved out of
   this repository; the scope provider; the role suggestions and the binding
   stand-in; the Dive's few lines for `cached` and the live-ready notice; the client
-  image.
+  image; and local development of the app with hot reload against a featherbase
+  checkout or version, without Docker images (D7), whose mechanism is decided here.
 - *Check on dev:* install beside the platform page. On a restored dev snapshot, for
   every person with a scope today, the app's `me` and `report` answers must equal the
   platform endpoints' (same scope, rows and totals), and the embed's scope state must
@@ -619,7 +672,7 @@ Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
    first answer, "the app's code in the private repository", once the split removed
    everything private from the app.)
 2. **Scope** is a fixed platform shape with a swappable provider; #449 decides where
-   the roster lives.
+   the roster lives. (Revised 27-Oct-2026: an app declares the provider, #559.)
 3. **Section edits** are change requests applied by a reviewer who is not a System
    Manager. The generic role is #462, and stage D waits for it.
 4. **Emails** link to the address marked for emails (dash). Anyone landing on the
@@ -653,4 +706,6 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
     shape and enforces `person_scope`; the client's roster derivation lives in the
     client app and never moves into the platform.
 17. **A client app reaches the server in a client image** built on the platform's
-    image (Q2 = (a)). How the platform image is published is still open (D7).
+    image (Q2 = (a)). The platform image is published to the GitHub Container
+    Registry, tagged by commit; an npm package was considered and not chosen (D7,
+    #587).

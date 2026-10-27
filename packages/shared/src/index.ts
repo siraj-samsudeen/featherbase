@@ -8,7 +8,7 @@ export type { WebFormColumn, WebFormConfig } from './webform'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, type SignInMethodKind, type NewPersonRule } from './sign-in'
 export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs } from './runtime-actions'
-export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization } from './app-access'
+export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization, AppScopeProvider, AppScopeProviderContext } from './app-access'
 export {
   autoMapColumns,
   autoMapImportColumns,
@@ -42,3 +42,4 @@ export {
 } from './import'
 export { SCOPE_BASES, type ScopeBasis } from './sales-target'
 export { REALTIME_MAX_FRAME_BYTES, realtimeFrames } from './realtime'
+export { personScopeSchema, scopePlaceSchema, SCOPE_CONFIRMATIONS, type ScopePlace, type PersonScope, type ScopeConfirmation } from './person-scope'
