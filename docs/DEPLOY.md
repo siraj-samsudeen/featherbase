@@ -338,7 +338,8 @@ restart, and every instance of a service must carry the same value.
   `<read-from-secret-store> | pnpm --filter server cli set-password <person-id> --stdin`
   ([Locked out](#locked-out) shows the remote pipe), then set `ADMIN_PASSWORD`
   to the new value or remove it. Verify the new password works and the old one
-  is refused.
+  is refused. While `ADMIN_PASSWORD` is set but is not the live password, the
+  release and `cli boot-check` print a warning (never either value).
 - **Access tokens** (`fbt_…`) are unaffected by password or `JWT_SECRET`
   changes. `pnpm --filter server cli list-tokens [<principal>]`, then
   `cli issue-token <principal> --label "<purpose>" [--expires <days>]` (prints
