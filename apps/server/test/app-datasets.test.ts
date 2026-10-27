@@ -26,7 +26,7 @@ import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { guardRefusal, shapeRows, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
+import { guardRefusal, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 
@@ -61,8 +61,10 @@ beforeAll(async () => {
   warehouse = postgres(EXTERNAL_DATABASE_URL, { max: 2, onnotice: () => {} })
   await warehouse.unsafe('drop schema if exists b4_dataset cascade')
   await warehouse.unsafe('create schema b4_dataset')
+  // `amount` is unbounded numeric so a test can hold more digits than a
+  // JavaScript number does (#676).
   await warehouse.unsafe(`create table b4_dataset.sales (plant_code text, section_code text, business_day date,
-    amount numeric(12,2), units integer, note text)`)
+    amount numeric, units integer, note text)`)
   // Adjacent ids above 2^53 (where a JavaScript number cannot tell them
   // apart), booked at times of day that a date column holds as days.
   await warehouse.unsafe(`create table b4_dataset.accounts (account_id bigint, booked_at timestamp, amount numeric(12,2));
@@ -276,6 +278,24 @@ describe('the sum guard on an app dataset', () => {
   })
 })
 
+// #676 (Codex round 1): a money value with more digits than a JavaScript
+// number holds is stored exactly, so a drop that Number() would round away
+// still counts.
+describe('the sum guard on high-precision values', () => {
+  test.for([
+    ['a whole number above 2^53', '9007199254740993', '9007199254740992',
+      'sales: amount total dropped more than 0% (9,00,71,99,25,47,40,993 → 9,00,71,99,25,47,40,992), limit 0%'],
+    ['a fraction finer than a double', '1.00000000000000001', '1', 'sales: amount total dropped more than 0% (1.00000000000000001 → 1), limit 0%'],
+  ] as const)('refuses a one-unit drop in %s at a limit of 0', async ([, before, now, reason], { admin }) => {
+    await setupGuarded(admin, [{ kind: 'max_sum_drop_pct', column: 'amount', value: 0 }])
+    await fillWarehouse(withFigures(...month('2026-10', before, '0', '0', '0')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month('2026-10', now, '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused', reason })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+})
+
 // #676: `within` keeps a drop comparison inside one period, read from the
 // stored rows of the candidate and the active snapshot.
 describe('a drop guard within a period', () => {
@@ -311,6 +331,20 @@ describe('a drop guard within a period', () => {
     await setupGuarded(admin, [guards[1]])
     await fillWarehouse(withFigures(...figures))
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused', reason })
+  })
+
+  // Codex round 1: a blank period is a missing one, not a new one, so a
+  // collapsed refresh cannot skip the comparison by blanking its month.
+  test.for([
+    ['an empty-text period', ''], ['a blank period', '   '],
+  ] as const)('refuses a candidate holding %s on every row', async ([, blank], { admin }) => {
+    await setupGuarded(admin, [guards[1]])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month(blank, '1', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: note holds 0 values and 4 empty, but amount is compared within one note' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
 
   test('compares nothing against an active snapshot of more than one period', async ({ admin, createUser }) => {
@@ -693,6 +727,24 @@ describe('the shaping function', () => {
   test('refuses an integer value column holding a number above 2^53', () => {
     expect(() => shapeRows(dataset([{ name: 'store', type: 'text' }, { name: 'units', type: 'integer' }]),
       [{ store: 'N1', units: '9007199254740993' }])).toThrow(/units holds a value that is not integer/)
+  })
+
+  // #676: the stored copy keeps a figure's exact decimal for the guards'
+  // sums, yet reads back as the very row a live read shapes.
+  test('stores a row that reads back as its shaped row, with each figure\'s exact digits', () => {
+    const probe = dataset([{ name: 'store', type: 'text' }, { name: 'amount', type: 'money' }, { name: 'ratio', type: 'number' },
+      { name: 'units', type: 'integer' }, { name: 'gap', type: 'money' }])
+    // Text that is not plain decimal ('0x10') keeps the shaped number.
+    const raw = [
+      { store: 'N1', amount: '9007199254740993.10', ratio: 0.25, units: 3, gap: null },
+      { store: 'S1', amount: '-0012.5e1', ratio: '0x10', units: null, gap: '.5' },
+    ]
+    const json = storedRowJson(probe, raw)
+    expect(json).toEqual([
+      '{"store":"N1","amount":9007199254740993.10,"ratio":0.25,"units":3,"gap":null}',
+      '{"store":"S1","amount":-12.5e1,"ratio":16,"units":null,"gap":0.5}',
+    ])
+    expect(json.map(row => JSON.parse(row))).toEqual(shapeRows(probe, raw))
   })
 
   test('holds each value to its declared type', () => {

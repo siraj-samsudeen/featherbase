@@ -82,7 +82,14 @@ const percent = (value: number) => `${Math.round(value * 10) / 10}%`
  *  two decimals. Formatted from its decimal text, so it is never rounded
  *  through a float. */
 const total = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
-const formatTotal = (decimal: string) => total.format(decimal as unknown as number)
+const exactTotal = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 100 })
+/** Two totals for a message: to the paisa, or in every digit when the paisa
+ *  cannot tell them apart. */
+function formatTotals(before: string, now: string): string {
+  const [b, n] = [before, now].map(decimal => total.format(decimal as unknown as number))
+  if (b !== n) return `${b} → ${n}`
+  return `${exactTotal.format(before as unknown as number)} → ${exactTotal.format(now as unknown as number)}`
+}
 
 /** #676: a decimal text as an integer count of 10^-scale units. */
 function scaled(decimal: string, scale: number): bigint {
@@ -146,7 +153,7 @@ export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], c
       // no share to take, so there is nothing to compare.
       if (before === undefined || scaled(before, scaleOf(before)) <= 0n) continue
       const drop = sumDrop(before, candidate.sums[column], guard.value!)
-      if (drop) return `${dataset}: ${column} total dropped ${drop} (${formatTotal(before)} → ${formatTotal(candidate.sums[column])}), limit ${percent(guard.value!)}`
+      if (drop) return `${dataset}: ${column} total dropped ${drop} (${formatTotals(before, candidate.sums[column])}), limit ${percent(guard.value!)}`
       continue
     }
     const before = baseline?.nonZero[column]
@@ -248,6 +255,30 @@ export function shapeRows(dataset: DatasetDeclaration, raw: Record<string, unkno
   })
 }
 
+/** #676: a source's decimal text as a JSON number literal, digit for digit;
+ *  null when it is not plain decimal text. */
+function decimalLiteral(text: string): string | null {
+  const [, sign, whole = '', fraction = '', exponent] = /^\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?\s*$/.exec(text) ?? []
+  if (sign === undefined || !(whole + fraction)) return null
+  return `${sign === '-' ? '-' : ''}${whole.replace(/^0+(?=\d)/, '') || '0'}${fraction ? `.${fraction}` : ''}${exponent ? `e${exponent}` : ''}`
+}
+
+/**
+ * #676: the rows a snapshot stores, as JSON text. Each is the shaped row,
+ * except that a money or number figure is written with the digits its
+ * source gave, so the stored copy keeps what a JavaScript number cannot and
+ * the guards' SQL numeric sums are exact. Parsed, it is the shaped row: a
+ * cached read answers the same numbers a live read does.
+ */
+export function storedRowJson(dataset: DatasetDeclaration, raw: Record<string, unknown>[]): string[] {
+  const shaped = shapeRows(dataset, raw)
+  return shaped.map((row, i) => `{${dataset.columns.map(({ name, type }) => {
+    const value = raw[i][name]
+    const exact = (type === 'money' || type === 'number') && typeof value === 'string' ? decimalLiteral(value) : null
+    return `${JSON.stringify(name)}:${exact ?? JSON.stringify(row[name])}`
+  }).join(',')}}`)
+}
+
 /** Run the declared query on its source, read-only, limited to `where`. */
 async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   const source = await getSource(dataset.source)
@@ -268,8 +299,10 @@ async function guardCounts(snapshotId: string, guards: readonly DatasetGuard[]):
   const parts = [
     ...columns.map((column, i) => sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}
       , coalesce(sum((row->>${column})::numeric), 0)::text as ${sql(`s${i}`)}`),
-    ...periods.map((column, i) => sql`, count(distinct row->>${column}) as ${sql(`pd${i}`)}
-      , count(*) filter (where row->>${column} is null) as ${sql(`pe${i}`)}, min(row->>${column}) as ${sql(`pv${i}`)}`),
+    // Codex round 1: blank text is no period, as an empty value is not.
+    ...periods.map((column, i) => sql`, count(distinct row->>${column}) filter (where btrim(row->>${column}) <> '') as ${sql(`pd${i}`)}
+      , count(*) filter (where coalesce(btrim(row->>${column}), '') = '') as ${sql(`pe${i}`)}
+      , min(row->>${column}) filter (where btrim(row->>${column}) <> '') as ${sql(`pv${i}`)}`),
   ]
   const [counted] = await sql`
     select count(*) as rows ${parts.length ? parts.reduce((all, one) => sql`${all} ${one}`) : sql``}
@@ -304,15 +337,16 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
   for (const key of registered.get(app) ?? []) unregisterDataset(key)
   registered.set(app, datasets.map((dataset) => datasetKey(app, dataset.name)))
   for (const dataset of datasets) {
-    registerDataset<DatasetRow>({
+    registerDataset<string>({
       name: datasetKey(app, dataset.name),
       version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
       async fetch() {
-        return { rows: shapeRows(dataset, await runQuery(dataset)), sourceAsOf: null }
+        return { rows: storedRowJson(dataset, await runQuery(dataset)), sourceAsOf: null }
       },
       async load(snapshotId, rows) {
         for (let i = 0; i < rows.length; i += CHUNK)
-          await sql`insert into app_dataset_row ${sql(rows.slice(i, i + CHUNK).map((row) => ({ snapshot_id: snapshotId, row: sql.json(row) })))}`
+          await sql`insert into app_dataset_row (snapshot_id, row)
+            select ${snapshotId}, value::jsonb from unnest(${rows.slice(i, i + CHUNK)}::text[]) as value`
         return rows.length
       },
       async sizeOf(snapshotId) {
