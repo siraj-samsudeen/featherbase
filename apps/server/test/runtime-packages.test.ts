@@ -464,7 +464,23 @@ describe('Removing an app isn’t offered yet', () => {
   })
 })
 
-describe('App data is reachable only through the app', () => {
+describe("Dashboards reach an app's data only while it is on", () => {
+  test('while the app is on, a member who can read its table gets a count and a chart, and is refused once that read is taken away', async ({ admin, createUser }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-1', quantity: 5 } })
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'counted-2', quantity: 5 } })
+    const reader = await createUser({ email: 'dashboard-reader@example.com', roles: ['All'] })
+    expect(await reader.post('/api/dashboard/count', { table: 'other.task' })).toEqual({ count: 2 })
+    expect(await reader.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' }))
+      .toEqual({ data: [{ label: '5', value: 2 }] })
+    // Every member holds 'All', which the app's manifest lets read; take that
+    // read away and the same member can no longer count or chart the table.
+    await sql`update permission set can_read = false where ref_table = 'other.task' and role = 'All'`
+    await expect(reader.post('/api/dashboard/count', { table: 'other.task' })).rejects.toMatchObject({ status: 403 })
+    await expect(reader.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' })).rejects.toMatchObject({ status: 403 })
+  })
+
   test('a generic dashboard count or chart over a turned-off app’s table is refused, and its rows stay', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })

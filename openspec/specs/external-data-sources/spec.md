@@ -120,7 +120,7 @@ connected table can't be submitted or cancelled.
 - **THEN** the table appears in Featherbase, and the database it came from is
   exactly as it was before
 
-### Requirement: Read and write through a connected table
+### Requirement: Read and write a connected table at its source
 
 Listing, filtering, sorting and paging a connected table SHALL run against
 the data source directly, not a local copy. Where the data source allows
@@ -144,12 +144,14 @@ is saved.
 - **THEN** the answer reflects what the data source holds right now, with no
   local copy involved
 
-#### Scenario: "Rows I own" can't be granted here
+### Requirement: "Rows I own" is refused on a connected table
 
-- **WHEN** a builder tries to limit a person's access to a connected table to
-  only the rows they created
-- **THEN** the permission is refused: a connected table can't be limited to
-  rows a person created
+A permission limiting a person to the rows they created SHALL save on a connected table, but every read and write through it SHALL be refused, since a connected table can't be limited to the rows a person created. Nothing is shown through such a grant.
+
+#### Scenario: "Rows I own" is refused when it's used
+
+- **WHEN** a builder limits a person's access to a connected table to only the rows they created, and that person opens the table
+- **THEN** the permission saved, but the person is refused, and is refused again when they try to change a row
 
 ### Requirement: Concurrent edits are caught when the source can tell
 
