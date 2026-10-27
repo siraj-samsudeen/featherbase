@@ -134,6 +134,18 @@ beforeAll(async () => {
   await cli.query(`
     create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
     for each row set new.code = concat('x-', new.code)`)
+  // #154: every way the database refuses a write for a constraint. Its
+  // `status` column is renamed on reflection (status is a Featherbase field),
+  // so a refusal must be translated from the source column to the field.
+  await cli.query(`
+    create table ext_mysql.gauge (
+      id int auto_increment primary key,
+      status varchar(20),
+      level int,
+      vehicle_id int,
+      constraint gauge_level_range check (level between 0 and 10),
+      foreign key (vehicle_id) references vehicle(id)
+    )`)
   // A revision stored to the microsecond, while a loaded row echoes it to
   // the millisecond: the conflict check must compare whole milliseconds.
   await cli.query(`
@@ -904,6 +916,115 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     expect(patch.status).toBe(403)
     const del = await admin.fetch(`/api/table/Ext%20Tenant/${id}`, { method: 'DELETE' })
     expect(del.status).toBe(403)
+  })
+})
+
+describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
+  // A refusal must reach the user as a plain error on the field; the
+  // database's own text goes to the server log only.
+  const RAW = /cannot be null|doesn't have a default|foreign key constraint|is violated|for column|ext_mysql/i
+
+  async function refusal(res: Response) {
+    const body = (await res.json()) as { error: { type: string; message: string; fields?: Record<string, string> } }
+    expect(body.error.message).not.toMatch(RAW)
+    for (const text of Object.values(body.error.fields ?? {})) expect(text).not.toMatch(RAW)
+    return { status: res.status, ...body.error }
+  }
+
+  async function gaugeTable(admin: Parameters<typeof makeSource>[0] & Parameters<typeof reflectOne>[0]) {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'gauge')
+    return `/api/table/${encodeURIComponent(name)}`
+  }
+
+  const post = (admin: Parameters<typeof makeSource>[0], path: string, body: unknown) =>
+    admin.fetch(path, { method: 'POST', body: JSON.stringify(body) })
+
+  test('a value the database requires comes back as a required field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    // The database starts requiring it after the table was connected.
+    await cli.query(`alter table ext_mysql.gauge modify status varchar(20) not null`)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const omitted = await refusal(await post(admin, path, { level: 1 }))
+      expect(omitted).toMatchObject({ status: 417, type: 'ValidationError', fields: { status_1: 'Required' } })
+      const blank = await refusal(await post(admin, path, { level: 1, status_1: null }))
+      expect(blank).toMatchObject({ status: 417, fields: { status_1: 'Required' } })
+      // The server log keeps what the database said.
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/status/)
+    } finally {
+      warn.mockRestore()
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a link to a row the database does not have comes back on that field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const res = await refusal(await post(admin, path, { status_1: 'ok', vehicle_id: 999 }))
+      expect(res).toMatchObject({ status: 417, type: 'ValidationError', fields: { vehicle_id: expect.any(String) } })
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a value that breaks one of the database rules is refused in plain words', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const res = await refusal(await post(admin, path, { status_1: 'ok', level: 50 }))
+      expect(res).toMatchObject({ status: 417, type: 'ValidationError' })
+      expect(res.message).toContain('gauge_level_range')
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a value too long or of the wrong kind comes back on its field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const long = await refusal(await post(admin, path, { status_1: 'x'.repeat(30) }))
+      expect(long).toMatchObject({ status: 417, fields: { status_1: expect.any(String) } })
+      const big = await refusal(await post(admin, path, { status_1: 'ok', level: 99999999999 }))
+      expect(big).toMatchObject({ status: 417, fields: { level: expect.any(String) } })
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('deleting a row other rows at the database still point at is refused in plain words', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'vehicle')
+    const path = `/api/table/${encodeURIComponent(name)}/1`
+    const loaded = (await admin.get(path)) as Record<string, unknown>
+    const res = await refusal(
+      await admin.fetch(`${path}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`, { method: 'DELETE' }),
+    )
+    expect(res).toMatchObject({ status: 417, type: 'ValidationError' })
+    expect(res.message).toMatch(/still point/)
+    const [rows] = await cli.query(`select 1 from ext_mysql.vehicle where id = 1`)
+    expect(rows as unknown[]).toHaveLength(1)
+  })
+
+  test('each refusal arrives from the driver in the shared shape', async () => {
+    const gauge = bindFor('gauge', 'id')
+    const shape = (values: Record<string, unknown>) => mysqlDriver.insert(gauge, values, null).catch((e) => e)
+    try {
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) not null`)
+      expect(await shape({ level: 1 })).toMatchObject({ code: '23502', column_name: 'status' })
+      expect(await shape({ status: null })).toMatchObject({ code: '23502', column_name: 'status' })
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      expect(await shape({ vehicle_id: 999 })).toMatchObject({ code: '23503', column_name: 'vehicle_id' })
+      expect(await shape({ level: 50 })).toMatchObject({ code: '23514', constraint_name: 'gauge_level_range' })
+      expect(await shape({ status: 'x'.repeat(30) })).toMatchObject({ code: '22001', column_name: 'status' })
+      expect(await shape({ level: 'abc' })).toMatchObject({ code: '22003', column_name: 'level' })
+      const stillUsed = await mysqlDriver.remove(bindFor('vehicle', 'id'), '1', null).catch((e) => e)
+      expect(stillUsed).toMatchObject({ code: '23503' })
+    } finally {
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      await cli.query(`delete from ext_mysql.gauge`)
+      await mysqlDriver.dispose('ext-mysql-direct')
+    }
   })
 })
 

@@ -3,6 +3,7 @@ import { readNamedVariable } from '../env'
 import type { Pool } from 'mysql2/promise'
 import { AppError } from '../errors'
 import { fkKey, singleColumnFks } from './fk'
+import { REFUSAL_CODE } from './types'
 import type {
   Binding,
   IntrospectedTable,
@@ -10,6 +11,7 @@ import type {
   SourceConfig,
   SourceDriver,
   SourceFilter,
+  SourceRefusal,
   SourceRow,
 } from './types'
 
@@ -158,32 +160,56 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
 }
 
 // EDS-11: name the source in every failure instead of leaking driver noise.
-// MySQL speaks errno, not SQLSTATE class 23/22 the way mapDbError in
-// document.ts reads it — translate the constraint errnos into the
-// postgres-shaped codes so field-wise errors work identically.
-//   1062 ER_DUP_ENTRY:  "Duplicate entry 'acme' for key 'tenant.slug'"
-//   1264/1406/1366: value out of range / data too long / incorrect value
+// MySQL speaks errno, not SQLSTATE — translate each constraint errno into the
+// shared refusal shape (types.ts) so connected-table saves explain them
+// field-wise exactly as they do for a Postgres source.
+//   1062 ER_DUP_ENTRY:            Duplicate entry 'acme' for key 'tenant.slug'
+//   1048 ER_BAD_NULL_ERROR:       Column 'status' cannot be null
+//   1364 ER_NO_DEFAULT_FOR_FIELD: Field 'status' doesn't have a default value
+//   1452 / 1451:                  a foreign key fails on a save / on a delete
+//   3819 ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'gauge_level_range' is violated.
+//   1406 / 1264 / 1366 / 1292 / 1265: too long / out of range / incorrect or
+//                                 truncated value ... for column 'level'
+const NOT_NULL = new Set([1048, 1364])
+const FOREIGN_KEY = new Set([1451, 1452])
+const BAD_VALUE = new Set([1264, 1366, 1292, 1265])
+
+function refusal(e: { errno?: number; message?: string }): SourceRefusal | null {
+  const message = e.message ?? ''
+  const shaped = (code: SourceRefusal['code'], extra: Partial<SourceRefusal> = {}) =>
+    Object.assign(new Error(message || 'the data source refused the write'), { code, ...extra }) as SourceRefusal
+  const quoted = (re: RegExp) => re.exec(message)?.[1]
+  const column = (name: string | undefined) => (name ? { column_name: name } : {})
+  const errno = e.errno ?? 0
+  if (errno === 1062) {
+    const m = /Duplicate entry '(.*)' for key '(?:[^'.]+\.)?([^']+)'/.exec(message)
+    // A single-column unique index is named after its column by default; the
+    // PRIMARY key names no column, and the dispatcher then blames the row id.
+    return shaped(REFUSAL_CODE.unique, m && m[2] !== 'PRIMARY' ? { detail: `Key (${m[2]})=(${m[1]}) already exists.` } : {})
+  }
+  if (NOT_NULL.has(errno))
+    return shaped(REFUSAL_CODE.notNull, column(quoted(/^(?:Column|Field) '([^']+)'/)))
+  if (FOREIGN_KEY.has(errno)) {
+    const constraint = quoted(/CONSTRAINT `([^`]+)`/)
+    return shaped(REFUSAL_CODE.foreignKey, {
+      ...column(quoted(/FOREIGN KEY \(`([^`]+)`\)/)),
+      ...(constraint ? { constraint_name: constraint } : {}),
+    })
+  }
+  if (errno === 3819) {
+    const constraint = quoted(/constraint '([^']+)'/i)
+    return shaped(REFUSAL_CODE.check, constraint ? { constraint_name: constraint } : {})
+  }
+  if (errno === 1406) return shaped(REFUSAL_CODE.tooLong, column(quoted(/for column '([^']+)'/)))
+  if (BAD_VALUE.has(errno)) return shaped(REFUSAL_CODE.outOfRange, column(quoted(/for column '([^']+)'/)))
+  return null
+}
+
 function wrapError(cfg: SourceConfig, err: unknown): never {
   if (err instanceof AppError) throw err
   const e = err as { errno?: number; message?: string }
-  if (e?.errno === 1062) {
-    const m = /Duplicate entry '(.*)' for key '(?:[^'.]+\.)?([^']+)'/.exec(e.message ?? '')
-    // A single-column unique index is named after its column by default;
-    // mapDbError falls back to blaming `name` when the shape doesn't match —
-    // the same fallback the postgres path has for exotic constraint names.
-    const shaped = new Error(e.message ?? 'duplicate key') as Error & {
-      code: string
-      detail?: string
-    }
-    shaped.code = '23505'
-    if (m && m[2] !== 'PRIMARY') shaped.detail = `Key (${m[2]})=(${m[1]}) already exists.`
-    throw shaped
-  }
-  if (e?.errno === 1264 || e?.errno === 1406 || e?.errno === 1366) {
-    const shaped = new Error(e.message ?? 'value out of range') as Error & { code: string }
-    shaped.code = e.errno === 1406 ? '22001' : '22003'
-    throw shaped
-  }
+  const refused = e ? refusal(e) : null
+  if (refused) throw refused
   const message = e?.message ?? String(err)
   const secret = cfg.url_env ? readNamedVariable(cfg.url_env) : undefined
   const pwd = secret ? /^[a-z+]+:\/\/[^:/@]+:([^@]+)@/i.exec(secret)?.[1] : undefined

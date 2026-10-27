@@ -10,7 +10,8 @@ import {
 } from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
-import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRow } from './types'
+import { REFUSAL_CODE } from './types'
+import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRefusal, SourceRow } from './types'
 
 // The read half of the storage seam (M3): when a Table's metadata carries a
 // data_source, list/count/get dispatch here instead of the control database.
@@ -131,6 +132,66 @@ export function mapValuesIn(bind: Binding, values: SourceRow): SourceRow {
   for (const c of bind.columns)
     if (c.column_name in values) out[c.source_column] = values[c.column_name]
   return out
+}
+
+// EDS-6 (#154): a write the data source refused for a constraint reason
+// becomes a plain ValidationError, on the field it concerns where the source
+// names a column this Table maps. The source's own text goes to the server
+// log only. Anything that isn't a refusal passes through untouched.
+export function explainRefusal(
+  meta: TableMeta,
+  bind: Binding,
+  err: unknown,
+  // The row id, when the refused write was deleting that row.
+  deleting?: string,
+): never {
+  const e = err as Partial<SourceRefusal> | null
+  const codes: string[] = Object.values(REFUSAL_CODE)
+  if (err instanceof AppError || !e || typeof e.code !== 'string' || !codes.includes(e.code)) throw err
+  console.warn(`Data source ${bind.source.name} refused a write to ${meta.name}: ${e.message ?? ''}`)
+  const field = (sourceColumn: string) => bind.columns.find((c) => c.source_column === sourceColumn)?.column_name
+  const label = (name: string) => meta.columns.find((c) => c.column_name === name)?.label || name
+  // Postgres names a foreign key's column only in its detail line.
+  const sourceColumn = e.column_name ?? /^Key \(([^),]+)\)=/.exec(e.detail ?? '')?.[1]
+  const named = sourceColumn ? field(sourceColumn) : undefined
+  const refuse = (message: string, fields?: Record<string, string>) => {
+    throw new AppError('ValidationError', message, fields)
+  }
+  switch (e.code) {
+    case REFUSAL_CODE.unique: {
+      // Same wording as a native Table's unique rule (mapDbError).
+      const cols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]?.split(', ').map((c) => c.replace(/^"|"$/g, ''))
+      const fields = cols?.map((c) => field(c) ?? c) ?? [ROW_KEY]
+      const list = fields.join(', ')
+      return refuse(`Duplicate value for ${list}`, Object.fromEntries(fields.map((f) => [f, `${list} must be unique`])))
+    }
+    case REFUSAL_CODE.notNull:
+      if (named) return refuse(`${label(named)} is required`, { [named]: 'Required' })
+      return refuse(
+        sourceColumn
+          ? `The data source needs a value for ${sourceColumn}, which this table does not show`
+          : 'The data source needs a value this save did not give',
+      )
+    case REFUSAL_CODE.foreignKey:
+      if (deleting != null)
+        return refuse(`Cannot delete ${meta.name} ${deleting}: other rows at the data source still point at it`)
+      if (named) return refuse(`Invalid links for ${meta.name}`, { [named]: 'No such row at the data source' })
+      return refuse(`${meta.name} links to a row the data source does not have`)
+    case REFUSAL_CODE.check:
+      return refuse(
+        e.constraint_name
+          ? `These values break the data source's rule ${e.constraint_name}`
+          : "These values break one of the data source's rules",
+      )
+    case REFUSAL_CODE.tooLong:
+      return refuse('Value too long for a field', named ? { [named]: 'Too long for the data source' } : undefined)
+    default:
+      // outOfRange / invalidText — same wording as a native Table (mapDbError).
+      return refuse(
+        'Value out of range for a field',
+        named ? { [named]: 'Not a value the data source accepts' } : undefined,
+      )
+  }
 }
 
 const OPS = new Set(['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'])

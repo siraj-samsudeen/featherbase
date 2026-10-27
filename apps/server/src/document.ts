@@ -34,6 +34,7 @@ import {
 import {
   assertBoundScope,
   boundFetchDoc,
+  explainRefusal,
   isBound,
   mapRowOut,
   mapValuesIn,
@@ -858,7 +859,7 @@ async function saveBoundDoc(
   await assertUserPermissions(user, meta, hctx.row)
   const inserted = await ctx.driver
     .insert(ctx.bind, mapValuesIn(ctx.bind, columnValues(meta, hctx.row)), providedName)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   const doc = mapRowOut(ctx.bind, inserted)
   hctx.row = { ...doc }
   await runHooks('after_insert', hctx)
@@ -930,7 +931,7 @@ async function updateBoundDoc(
   const expect = ctx.bind.modified ? expectedStamp(values.updated_at) : null
   const updated = await ctx.driver
     .update(ctx.bind, name, sourceValues, expect)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   if (updated === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (updated === 'conflict')
@@ -1396,7 +1397,9 @@ async function deleteBoundDoc(
     tx: sql,
   }
   await runHooks('on_trash', hctx)
-  const outcome = await ctx.driver.remove(ctx.bind, name, expectUpdatedAt)
+  const outcome = await ctx.driver
+    .remove(ctx.bind, name, expectUpdatedAt)
+    .catch((err) => explainRefusal(meta, ctx.bind, err, name))
   if (outcome === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (outcome === 'conflict')
