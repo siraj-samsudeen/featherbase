@@ -45,21 +45,35 @@ async function fingerprintBeforeRename() {
 const BEFORE_RENAME = 'd5b9fd5b8b564b8d639b5bb9ea6d104bf407ba6e'
 const repo = resolve('../..')
 
+// vite's client bundle depends on NODE_ENV. CI sets NODE_ENV=test for the
+// whole job, `pnpm apps:prepare` included, and local runs do not, so the
+// prepared dist/ differs between them. Both sides of a built comparison are
+// therefore built here, the same way: with `source`'s installed packages, and
+// the app's own build with NODE_ENV stripped.
+async function buildIn(directory: string, source: string) {
+  await symlink(resolve(source, 'node_modules'), resolve(directory, 'node_modules'))
+  const { NODE_ENV: _runner, ...env } = process.env
+  execFileSync('npm', ['run', 'build', '--silent'], { cwd: directory, stdio: 'ignore', env })
+}
+
 // The real files of an app directory at BEFORE_RENAME, laid out as init.sh
-// uses them; `build` runs the app's own build, reusing its installed packages.
+// uses them; `build` runs the app's own build.
 async function realFilesBeforeRename(directory: string, build: boolean) {
   const old = await mkdtemp(resolve('test/.migration-0125-origin-'))
   const path = relative(repo, directory)
   const archive = execFileSync('git', ['archive', BEFORE_RENAME, path], { cwd: repo, maxBuffer: 50 * 1024 * 1024 })
   execFileSync('tar', ['-x', '-C', old, '--strip-components', String(path.split('/').length)], { input: archive })
-  if (build) {
-    await symlink(resolve(directory, 'node_modules'), resolve(old, 'node_modules'))
-    // As `pnpm apps:prepare` runs it: not under the test runner's NODE_ENV,
-    // which would make vite emit a different client bundle.
-    const { NODE_ENV: _runner, ...env } = process.env
-    execFileSync('npm', ['run', 'build', '--silent'], { cwd: old, stdio: 'ignore', env })
-  }
+  if (build) await buildIn(old, directory)
   return old
+}
+
+// This branch's files of an app directory, built here rather than taken from
+// the prepared dist/ (see buildIn).
+async function builtCopyOf(source: string) {
+  const copy = await mkdtemp(resolve('test/.migration-0125-branch-'))
+  await cp(source, copy, { recursive: true, filter: (file) => !['node_modules', 'dist'].includes(relative(source, file).split('/')[0]) })
+  await buildIn(copy, source)
+  return copy
 }
 
 // Tasker 2.2.0 as the live trial holds it before this release.
@@ -146,23 +160,29 @@ describe('0125: installed apps follow apiVersion becoming platformVersion', () =
   // Codex round 2: init.sh points FEATHERBASE_APP_PATHS at the source
   // directories, so the recorded fingerprint covers src/ too. These take the
   // real files from origin/main as init.sh lays them out (the 2.2 fixture as
-  // committed; Tasker 2.3.0 built as `pnpm apps:prepare` builds it), record
-  // that fingerprint, and swap in this branch's files.
-  for (const [version, directory, build] of [['2.2.0', predecessor, false], ['2.3.0', current, true]] as const)
+  // committed; Tasker 2.3.0 built by its own build), record that fingerprint,
+  // and swap in this branch's files. A built version's renamed side is built
+  // here too, the same way (see buildIn).
+  for (const [version, source, build] of [['2.2.0', predecessor, false], ['2.3.0', current, true]] as const)
     test(`a checkout that installed Tasker ${version} from origin/main rebinds and boots`, async ({ admin }) => {
-      const old = await realFilesBeforeRename(directory, build)
+      const old = await realFilesBeforeRename(source, build)
+      const renamed = build ? await builtCopyOf(source) : source
+      const paths = build ? [predecessor, renamed] : [predecessor, current]
       try {
-        await discoverPackages([directory])
+        await discoverPackages([renamed])
         await admin.post('/api/install_app', { name: 'tasker' })
         await sql`update installed_app
           set manifest = (manifest - 'platformVersion') || '{"apiVersion": 1}'::jsonb, artifact_digest = ${await artifactDigest(old)}
           where name = 'tasker'`
-        await migrate([predecessor, current])
-        await discoverPackages([predecessor, current])
+        await migrate(paths)
+        await discoverPackages(paths)
         await loadInstalledApps()
         expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${version}`])
-      } finally { await rm(old, { recursive: true, force: true }) }
-    }, 120_000)
+      } finally {
+        await rm(old, { recursive: true, force: true })
+        if (build) await rm(renamed, { recursive: true, force: true })
+      }
+    }, 180_000)
 
   test('boot after the migration selects the installed 2.2.0, and an upgrade moves it to 2.3.0', async ({ admin }) => {
     await installedBeforeRename(admin, await fingerprintBeforeRename())
