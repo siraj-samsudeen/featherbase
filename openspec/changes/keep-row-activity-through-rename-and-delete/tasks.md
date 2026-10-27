@@ -9,7 +9,7 @@
 
 ## 3. History index (#446)
 
-- [ ] 3.1 Migration 0126 adds the index on a row's history; check the timeline query plan uses it on a fresh and a migrated database.
+- [x] 3.1 Migration 0126 adds the index on a row's history; check the timeline query plan uses it on a fresh and a migrated database.
 
 ## 4. Verification
 
