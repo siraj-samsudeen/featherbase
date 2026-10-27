@@ -261,8 +261,9 @@ that fills it).
   above 2^53 never round into each other's scope. Any other integer must be one a
   JavaScript number holds exactly, or the build or read fails loudly.
 - **Read-only sources (Codex round 1).** Postgres runs the query in a `read only`
-  transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode for app
-  datasets (its own instance; the Admin browser's is unchanged). A MotherDuck
+  transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode, one
+  instance per source shared by browsing, connection tests and dataset queries
+  (the driver never writes; round 2). A MotherDuck
   connection cannot be opened read-only: its guarantee is a read-scaling token
   (MotherDuck: such a token "grants permission for read operations" while
   "restricting write and administrative operations"), which the platform cannot
@@ -296,8 +297,13 @@ authorization decided and frozen inside the platform transaction; its handler ru
   while it authorizes (the request middleware no longer wraps `/api/app_reads/*`),
   so stalled outbound handlers cannot exhaust the lifecycle pool or hold off an
   install, upgrade or enable (Codex round 1). The serving app version is frozen
-  with the authorization; the handler's view record and its answer are accepted
-  only if the app is still enabled and serving that version. Document reads would lock rows, so in an outbound handler they fail
+  with the authorization. The handler's view records are held until it answers,
+  then written under one shared lifecycle lock together with the check that the
+  app is still enabled and serving that version; if the check fails, nothing is
+  written and the answer is refused (round 2).
+- **Retired datasets (round 2).** The refresh closes the asks for a dataset no
+  app version declares any more, and skips and closes those of a disabled or
+  mid-upgrade app, so the shared refresh job never fails on them. Document reads would lock rows, so in an outbound handler they fail
   loudly; `context.datasets.live` is allowed only there. Actions cannot be
   outbound.
 - `context.recordView({ dataset })` writes one `view_report` Access Log row for
