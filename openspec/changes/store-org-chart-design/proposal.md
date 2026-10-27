@@ -83,6 +83,4 @@ through their own changes.
 - **Pending the business owner's answers** (marked in the spec):
   - extra jobs for cashiers and assistant titles;
   - how Floor Managers map to floors;
-  - the details of seasonal redeployment;
-  - how a two-Team-Leader section's sales and target are split, if Team Leaders carry
-    targets.
+  - the details of seasonal redeployment.

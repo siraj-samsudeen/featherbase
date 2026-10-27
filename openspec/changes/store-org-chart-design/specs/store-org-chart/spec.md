@@ -220,9 +220,16 @@ the database only once a store's list is empty and the instance owner switches t
 When a section genuinely has two Team Leaders, both SHALL cover the whole section, and each
 Staff member SHALL report to one of them.
 
-*(Pending the business owner: if Team Leaders carry targets or incentives, how a two-Team-
-Leader section's sales and target are split between them: both get the whole section,
-split equally, or split by the staff who report to each.)*
+A section's target SHALL be split equally among its current non-acting Team Leaders
+(instance owner, 27-Oct-2026). Coverage is not split: each of them still sees the whole
+section.
+
+#### Scenario: A two-Team-Leader section's target is split equally
+
+- **WHEN** LKS "Sarees" allows 2, P-110 and P-111 lead it, and its October target is
+  ₹10,00,000
+- **THEN** each of them carries a target of ₹5,00,000, and each still sees all of
+  "Sarees" 
 
 #### Scenario: More Team Leaders than the section allows
 

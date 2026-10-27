@@ -227,8 +227,7 @@ back to the old sheets, which stay read-only until every store is live.
 3. Seasonal redeployment: who moves, who decides, how long, and whose target they work
    against.
 4. *(Settled 27-Oct-2026: within a store the Store Manager is final; see D9.)*
-5. If Team Leaders carry targets or incentives, how is a two-Team-Leader section's sales
-   and target split between them: both get the whole section, split equally, or split by
-   the staff who report to each?
+5. *(Settled 27-Oct-2026 by the instance owner: a two-Team-Leader section's target is
+   split equally between its Team Leaders.)*
 
 **For the instance owner to confirm:** the per-section `team_leaders_allowed` number (D7).
