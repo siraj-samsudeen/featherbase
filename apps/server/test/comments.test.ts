@@ -191,6 +191,43 @@ describe('See a row\'s whole history in order', () => {
     )
   })
 
+  // #421: a Date is a calendar day, so history records the day itself, not a UTC midnight timestamp.
+  test('a date change is recorded as the days themselves', async ({ admin }) => {
+    const doc = await commentWorld(admin)
+    await admin.post('/api/save_row', {
+      table: CMT_DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, due: '2026-12-15' },
+    })
+    const activity = await admin.get<{ versions: { data: { changed: [string, unknown, unknown][] } }[] }>(
+      `/api/activity/${encodeURIComponent(CMT_DT)}/${doc.row_id}`,
+    )
+    expect(activity.versions[0].data.changed).toEqual([['due', '2026-11-01', '2026-12-15']])
+  })
+
+  test('a date set or cleared is recorded as the day or empty; a date and time keeps its instant', async ({ admin }) => {
+    const name = 'Cmt Req Moments'
+    await admin.post('/api/table_def', {
+      name,
+      columns: [
+        { column_name: 'due', column_type: 'Date' },
+        { column_name: 'met_at', column_type: 'Datetime' },
+      ],
+    })
+    const doc = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: name, row: {} })
+    const second = await admin.post<{ updated_at: string }>('/api/save_row', {
+      table: name,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, due: '2026-10-23', met_at: '2026-10-22T20:30:00Z' },
+    })
+    await admin.post('/api/save_row', { table: name, row: { row_id: doc.row_id, updated_at: second.updated_at, due: null } })
+    const activity = await admin.get<{ versions: { data: { changed: [string, unknown, unknown][] } }[] }>(
+      `/api/activity/${encodeURIComponent(name)}/${doc.row_id}`,
+    )
+    expect(activity.versions.map((v) => v.data.changed)).toEqual([
+      [['due', null, '2026-10-23'], ['met_at', null, '2026-10-22T20:30:00.000Z']],
+      [['due', '2026-10-23', null]],
+    ])
+  })
+
   test('a Table that does not keep change history shows comments only', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Cmt Req NoHist', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await sql`update table_def set track_changes = false where name = 'Cmt Req NoHist'`
