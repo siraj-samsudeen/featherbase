@@ -10,11 +10,10 @@ import { test, expect, renderApp } from './pg-test'
 const DT = 'Typed Id Shelf'
 
 describe('Choose how new rows are named', () => {
-  // SPEC: Choose how new rows are named — suspected defect, see report. The
-  // form drops any row id on a new row and offers no place to type one, so a
-  // Table named "by whoever creates the row" refuses every save from the form
-  // ("requires a Row ID").
-  test.fails('a row in a typed-in-name Table can be created from the form', async ({ admin }) => {
+  // SPEC: Choose how new rows are named. #324: the form used to drop any row
+  // id on a new row and offer no place to type one, so a Table named "by
+  // whoever creates the row" refused every save from the form.
+  test('a row in a typed-in-name Table can be created from the form', async ({ admin }) => {
     await admin.post('/api/table_def', {
       name: DT,
       id_pattern: 'prompt',
