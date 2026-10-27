@@ -39,13 +39,16 @@ async function boundAppRoles(held: string[]): Promise<string[]> {
     bindingsExist = true
   }
   const rows = await sql`
-    select distinct b.app_role from app_role_binding b
+    select distinct b.app, b.app_role from app_role_binding b
     join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
     where b.bound_role in ${sql(held.filter((role) => !OPEN_ROLES.includes(role)).concat(''))}
       and b.app_role not in ${sql(PLATFORM_ROLES)}
       and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
     order by b.app_role`
-  return rows.map((r) => r.app_role as string).filter((role) => !held.includes(role))
+  // The same availability assertAppAvailable requires: enabled, not pending
+  // activation, and its exact files loaded (activeApps).
+  const roles = rows.filter((r) => activeApps.has(String(r.app))).map((r) => r.app_role as string)
+  return [...new Set(roles)].filter((role) => !held.includes(role))
 }
 
 // PERM-002/003/009: role-based Table permissions from Permission rows.

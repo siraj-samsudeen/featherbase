@@ -12,6 +12,8 @@ import { test as pgTest } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
+import { getRoles, hasPermission } from '../src/permissions'
+import { suspendRuntimeApp } from '../src/apps'
 import { expectApiError } from './fixtures'
 
 const v1 = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
@@ -89,6 +91,28 @@ describe('the role check honours bindings', () => {
 })
 
 const bind = (client: TestClient, row: Record<string, unknown>) => client.post('/api/save_row', { table: 'App Role Binding', row: { app: 'setupproof', app_role: 'Setup Reader', ...row } })
+
+// Codex review on #623: the bound role follows the app's availability, the
+// same state an app's own operations check.
+describe('an app that is unavailable', () => {
+  test('confers no bound role, and none of the grants that come with it', async ({ admin, createUser }) => {
+    await install(admin)
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Identifier System', role: 'Setup Reader', can_read: true } })
+    const staff = await createUser({ email: 'staff@example.test', roles: ['Setup Staff'] })
+    expect(await getRoles(staff.user!)).toContain('Setup Reader')
+    expect(await hasPermission(staff.user!, 'Identifier System', 'read')).toBe(true)
+    suspendRuntimeApp('setupproof')
+    expect(await getRoles(staff.user!)).not.toContain('Setup Reader')
+    expect(await hasPermission(staff.user!, 'Identifier System', 'read')).toBe(false)
+  })
+
+  test('whose files are no longer found confers no bound role', async ({ admin, createUser }) => {
+    await install(admin)
+    const staff = await createUser({ email: 'staff@example.test', roles: ['Setup Staff'] })
+    expect(await discoverPackages([])).toEqual([])
+    expect(await getRoles(staff.user!)).not.toContain('Setup Reader')
+  })
+})
 
 describe('editing bindings in Admin', () => {
   test('a System Manager adds a binding the app did not suggest', async ({ admin }) => {
