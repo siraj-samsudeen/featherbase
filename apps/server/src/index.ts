@@ -739,7 +739,11 @@ app.use('/api/*', async (c, next) => {
   try {
     // Do not await here: only synchronous identity parsing failures belong to
     // this refusal path, not admitted asynchronous business-handler errors.
-    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+    // #625 (E5): an app read takes the lifecycle lock itself, only while it
+    // authorizes (and, unless outbound, runs), so an outbound handler waiting
+    // on an outside call holds no lifecycle connection.
+    const appRead = c.req.path.startsWith('/api/app_reads/')
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')

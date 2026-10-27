@@ -28,6 +28,7 @@ import { drainJobs, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
 import { shapeRows, type DatasetDeclaration } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
+import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -135,6 +136,19 @@ async function position(admin: TestClient, person: string, place: string, store:
 }
 
 type Context = RuntimeReadContext
+
+/** A handler's outside call that the test lets finish: `inside` settles once
+ *  the handler is waiting, `release` lets it go on. */
+function stall() {
+  let entered!: () => void
+  let release!: () => void
+  const inside = new Promise<void>(resolve => { entered = resolve })
+  const gate = new Promise<void>(resolve => { release = resolve })
+  return { inside, gate, entered, release }
+}
+/** Settles with `work`, or fails if it is still blocked after a few seconds. */
+const within = <T>(work: Promise<T>, ms = 3000) => Promise.race([work,
+  new Promise<never>((_, reject) => setTimeout(() => reject(new Error('blocked: still waiting')), ms))])
 
 const row = (plant_code: string, section_code: string, business_day: string, amount: number, units: number, note: string) =>
   ({ plant_code, section_code, business_day, amount, units, note })
@@ -298,6 +312,62 @@ describe('an outbound read', () => {
     await expectApiError(reader.post(read + 'outside', { payload: {} }), { status: 417, message: expect.stringMatching(/transaction has closed/) })
   })
 
+  test('while its handler waits on an outside call, a save and an app lifecycle change both complete', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    const call = stall()
+    app.hooks.run = async () => { call.entered(); await call.gate; return 'answered' }
+    const pending = reader.post(read + 'outside', { payload: {} })
+    try {
+      await call.inside
+      await within(position(admin, 'someone', 'South', 'S1', 'mens'))
+      await within(admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: true }))
+    } finally { call.release() }
+    expect(await pending).toEqual({ result: 'answered' })
+  })
+
+  // The lifecycle lock's pool holds ten connections.
+  test('ten outbound handlers waiting at once do not hold up an ordinary read', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    const calls = Array.from({ length: 10 }, stall)
+    let next = 0
+    app.hooks.run = async () => { const call = calls[next++]; call.entered(); await call.gate; return 'answered' }
+    const pending: Promise<unknown>[] = []
+    try {
+      for (const call of calls) {
+        pending.push(reader.post(read + 'outside', { payload: {} }))
+        await within(call.inside)
+      }
+      await within(admin.get('/api/table/placeroster.position'))
+    } finally { for (const call of calls) call.release() }
+    for (const answer of pending) expect(await answer).toEqual({ result: 'answered' })
+  })
+
+  test.for([
+    ['its answer', async () => 'answered'],
+    ['its view record', async (context: Context) => { await context.recordView({ dataset: 'sales' }); return 'answered' }],
+  ] as const)('an app disabled while the handler waited has %s refused', async ([, finish], { admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    const call = stall()
+    app.hooks.run = async (context: Context) => { call.entered(); await call.gate; return finish(context) }
+    const pending = reader.post(read + 'outside', { payload: {} })
+    try {
+      await call.inside
+      await within(admin.post('/api/set_app_enabled', { name: 'datasetproof', enabled: false }))
+    } finally { call.release() }
+    await expect(pending).rejects.toMatchObject({ status: 403 })
+    expect(await sql`select 1 from access_log where "user" = ${reader.user} and operation = 'view_report'`).toHaveLength(0)
+  })
+
+  test('an app now serving another version than the one a handler ran under has its answer refused', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const ran = await servingIdentity('datasetproof')
+    await sql`update installed_app set artifact_digest = 'another-artifact' where name = 'datasetproof'`
+    await expect(assertStillServing('datasetproof', ran)).rejects.toMatchObject({ type: 'ConflictError' })
+  })
+
   test('recordView writes one Access Log row for the viewing person, saying what was served', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
@@ -359,6 +429,12 @@ describe('an outbound declaration', () => {
 describe('the shaping function', () => {
   const dataset = (columns: DatasetDeclaration['columns']): DatasetDeclaration =>
     ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name } })
+
+  // A count or amount is answered as a number, so it must be one a number holds exactly.
+  test('refuses an integer value column holding a number above 2^53', () => {
+    expect(() => shapeRows(dataset([{ name: 'store', type: 'text' }, { name: 'units', type: 'integer' }]),
+      [{ store: 'N1', units: '9007199254740993' }])).toThrow(/units holds a value that is not integer/)
+  })
 
   test('holds each value to its declared type', () => {
     const shaped = shapeRows(dataset([

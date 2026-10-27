@@ -60,7 +60,6 @@ function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: 
   // each other. Any other integer must be one a number holds exactly.
   if (type === 'integer' && exact) {
     if (typeof value === 'number' ? Number.isSafeInteger(value) : typeof value === 'string' && /^-?\d+$/.test(value)) return BigInt(value as number | string).toString()
-    if (typeof value === 'bigint') return value.toString()
     throw new Error(`column ${column} holds a value that is not integer`)
   }
   switch (type) {
@@ -224,6 +223,9 @@ export interface DatasetReadRequest {
   places: PersonScope | undefined
   /** Only an outbound read, which holds no transaction, may call the source. */
   outbound: boolean
+  /** An outbound read's check that its app still serves the version it ran
+   *  under, before a view is recorded. */
+  guard?: () => Promise<void>
 }
 
 /**
@@ -232,7 +234,7 @@ export interface DatasetReadRequest {
  * from the app: it names a dataset and filter values, and the query is the
  * declared one.
  */
-export function appDatasets({ app, operation, user, title, declarations, places, outbound }: DatasetReadRequest) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound, guard }: DatasetReadRequest) {
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
@@ -279,6 +281,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
         (dataset !== undefined && !declarations.some((d) => d.name === dataset)))
       throw new AppError('ValidationError', "recordView takes { dataset } naming one of the app's datasets")
     const what = typeof dataset === 'string' ? served.get(dataset) : undefined
+    await guard?.()
     await logAccess(user, 'view_report', {
       table: datasetKey(app, typeof dataset === 'string' ? dataset : operation),
       row_id: what?.snapshot,

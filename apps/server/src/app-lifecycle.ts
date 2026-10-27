@@ -63,6 +63,27 @@ export async function appOperation<T>(fn: () => Promise<T>, exclusive = false): 
   }) as Promise<T>
 }
 
+/** #625 (E5): the installed version and artifact an app is serving now. An
+ *  outbound read records it before its handler runs outside every lock. */
+export async function servingIdentity(app: string): Promise<string> {
+  const [row] = await sql`select package_version, artifact_digest from installed_app where name = ${app}`
+  return `${String(row?.package_version)}:${String(row?.artifact_digest)}`
+}
+
+/** #625 (E5): after an outbound handler ran outside every lock, is its app
+ *  still enabled, active and serving the version it was authorized under?
+ *  Checked under the shared lifecycle lock, before anything it produced is
+ *  written or answered. */
+export function assertStillServing(app: string, identity: string): Promise<void> {
+  return appOperation(async () => {
+    const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
+    if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
+      throw new AppError('PermissionError', `App ${app} is disabled or unavailable`)
+    if (await servingIdentity(app) !== identity)
+      throw new AppError('ConflictError', `App ${app} was upgraded while this read ran. Reload its current client and retry`)
+  })
+}
+
 export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> {
   return appOperation(() => scope.run({ exclusive: true, provisioning: name }, fn), true)
 }
