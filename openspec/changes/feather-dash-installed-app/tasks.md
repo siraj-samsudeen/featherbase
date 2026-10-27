@@ -23,19 +23,19 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 1.8 `docs/DEPLOY.md`: prod deploys from `main`; `INSTANCE_ADDRESSES` replaces `SITE_URL`.
 - [ ] 1.9 Tests: server (matching, a header cannot invent an origin, redirects, OAuth state, hand-off replay and expiry, list validation), browser (manager on the app address, System Manager on both, sign-out per address, the bar on every address).
 
-## 2. Stage B — Feather Dash as a generic app
+## 2. Stage B — Feather Dash as a client app (revised 27-Oct-2026, ADR 0013)
 
 - [ ] 2.1 E1 scope shape and `person_scope` policy, with today's derivation moved unchanged into a provider; refusal and audit as for `stores`; `security-tables.ts` stops naming the client's roster tables.
 - [ ] 2.2 E2 declared settings (`App Setting`, a security Table) and secrets in the handler context; release warning for missing required secrets.
-- [ ] 2.3 E3 report definitions supplied by the instance: declared shape in the app, definition installed through the instance manifest, snapshot and live read through one shaping function.
+- [ ] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function.
 - [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.
 - [ ] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log.
 - [ ] 2.6 E7 release refuses when an installed, enabled app's exact version is missing.
 - [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address).
 - [x] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
 - [ ] 2.9 D4 app-role bindings (`App Role Binding`, a security Table, Admin-editable; manifest suggestions written once; role checks honour bindings); stand-in binding `Sales Target Viewer → Feather Dash Reader`.
-- [ ] 2.10 `runtime-apps/feather-dash` 1.0.0: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; Dockerfile and `FEATHERBASE_APP_PATHS`.
-- [ ] 2.11 In the client's repository: the report definition (today's query moved out of this repository), the Dive settings, the stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there, not here.
+- [ ] 2.10 B6′, in the client's repository (ADR 0013): Feather Dash 1.0.0 as a client app, with today's query and roster derivation moved out of this repository, the scope provider, the role suggestions and stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there. The app's spec moves there with it. The app: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; a client image built on the platform image, with `FEATHERBASE_APP_PATHS`.
+- [ ] 2.11 Publish the platform image for client images to build on: a GitHub Action publishes the server image to the GitHub Container Registry, tagged by commit SHA, after that commit's tests pass; `docs/DEPLOY.md` shows a client Dockerfile (D7, #587).
 - [ ] 2.12 Parity check on a restored dev snapshot: for every person with a scope, the app's answers equal the platform endpoints' (scope, rows, totals, embed scope state).
 - [ ] 2.13 Install on dev, switch the dev address to the app; then prod with approval. Done in the go-live cut-over (5.1), together with stage D, not on its own.
 - [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
