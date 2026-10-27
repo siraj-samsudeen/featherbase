@@ -147,8 +147,14 @@ function stall() {
   return { inside, gate, entered, release }
 }
 /** Settles with `work`, or fails if it is still blocked after a few seconds. */
-const within = <T>(work: Promise<T>, ms = 3000) => Promise.race([work,
-  new Promise<never>((_, reject) => setTimeout(() => reject(new Error('blocked: still waiting')), ms))])
+const outstanding: Promise<unknown>[] = []
+const within = <T>(work: Promise<T>, ms = 3000) => {
+  outstanding.push(work)
+  return Promise.race([work, new Promise<never>((_, reject) => setTimeout(() => reject(new Error('blocked: still waiting')), ms))])
+}
+/** Let every request a test started finish inside its sandbox, even when the
+ *  test failed, so none writes after the sandbox has rolled back. */
+const settle = (...more: Promise<unknown>[]) => Promise.allSettled([...outstanding.splice(0), ...more])
 
 const row = (plant_code: string, section_code: string, business_day: string, amount: number, units: number, note: string) =>
   ({ plant_code, section_code, business_day, amount, units, note })
@@ -322,7 +328,7 @@ describe('an outbound read', () => {
       await call.inside
       await within(position(admin, 'someone', 'South', 'S1', 'mens'))
       await within(admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: true }))
-    } finally { call.release() }
+    } finally { call.release(); await settle(pending) }
     expect(await pending).toEqual({ result: 'answered' })
   })
 
@@ -340,7 +346,7 @@ describe('an outbound read', () => {
         await within(call.inside)
       }
       await within(admin.get('/api/table/placeroster.position'))
-    } finally { for (const call of calls) call.release() }
+    } finally { for (const call of calls) call.release(); await settle(...pending) }
     for (const answer of pending) expect(await answer).toEqual({ result: 'answered' })
   })
 
@@ -356,7 +362,7 @@ describe('an outbound read', () => {
     try {
       await call.inside
       await within(admin.post('/api/set_app_enabled', { name: 'datasetproof', enabled: false }))
-    } finally { call.release() }
+    } finally { call.release(); await settle(pending) }
     await expect(pending).rejects.toMatchObject({ status: 403 })
     expect(await sql`select 1 from access_log where "user" = ${reader.user} and operation = 'view_report'`).toHaveLength(0)
   })
