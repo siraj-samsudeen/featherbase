@@ -74,8 +74,8 @@ it. Feather Dash is the first app designed against it.
 
 - **Server:** `runtime-packages.ts`, `runtime-actions.ts`, `app-access.ts`,
   `dataset-snapshot.ts`, `runtime-shell.ts`, `config.ts` and `index.ts` (addresses,
-  landing, OAuth, CSP), `security-tables.ts`, `release-preflight.ts`, and a new scope
-  provider that takes today's derivation out of `sales-target.ts`. `sales-target*.ts`
+  landing, OAuth, CSP), `security-tables.ts`, `release-preflight.ts`, and the scope
+  provider extension point (the client's derivation is supplied by its app). `sales-target*.ts`
   and `datasets/sales-target-mtd.ts` are deleted at the end of stage B.
 - **Web:** a shared top bar replaces the separate headers in `SalesTarget.tsx`,
   `RestrictedShell.tsx` and `Portal.tsx`. `SalesTarget.tsx` and `lib/api.ts`

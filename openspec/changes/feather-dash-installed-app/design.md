@@ -154,33 +154,54 @@ Each is generic: none names Feather Dash or a client. Each joins the
 extension-point catalogue (ADR 0011), which is generated from the manifest schema
 and checked in CI.
 
-**E1. The scope shape and a swappable provider.**
+**E1. The scope shape and an app-declared provider** (owner decision 27-Oct-2026,
+#559: the platform defines the shape and enforces it; an app declares the provider
+that fills it).
 
 - **The shape** is a list of *places* the person covers. Each place has a label and
   the filter values that go with it. For a Team Leader of one section:
-  `{ place: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
+  `{ label: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
   A place may also carry the basis (section staff, team leader, department manager,
-  floor manager, store manager) for display.
-- **A `person_scope` operation policy** sits beside `table` and `stores`. The platform
-  computes the caller's scope fresh on every request and hands it to the handler,
-  frozen. Naming a store or section outside it refuses the *whole* request, records
-  the refusal in the Access Log, and reveals nothing. An empty scope is never read
-  as all stores, for an administrator too. An ambiguous employee code still yields
-  no scope.
-- **The provider** fills the shape. Stage B moves today's derivation (the nine
-  tables) into it unchanged. #449 decides where the roster lives (the platform, or
-  a "store structure" app) and swaps the provider. **No app changes either way.**
-  The provider's output in this shape is also #449's parity target.
+  floor manager, store manager) for display, and a confirmation status
+  (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
+  always names at least one filter value, and labels are unique within a scope. The
+  shape is a shared type, validated at the boundary.
+- **A `person_scope` operation policy** sits beside `table` and `stores`, with read
+  and action roles like `stores`. The platform calls the provider fresh on every
+  request, validates and freezes the answer, and hands it to the handler. A request
+  may narrow it by naming places or filter values (`payload.scope`); naming a place
+  or value outside it, or values that no single place covers together, refuses the
+  *whole* request, records the refusal in the Access Log, and reveals nothing. It
+  **fails closed**: no provider, a provider that throws or reads outside what it
+  declared, an invalid shape, or an empty scope all mean no access. An empty scope
+  is never read as everything, for an administrator too. An ambiguous employee code
+  still yields no scope.
+- **The provider is declared by an app.** Its manifest says
+  `"scopeProvider": { "name": "<export>", "tables": [...] }` and its server module
+  exports the function under `scopeProviders`. The function gets the person and a
+  read context limited to the Tables it declared, each of which must be marked as
+  deciding scope; it reads as the platform, so a manager needs no read grant on the
+  roster. Exactly one enabled app may provide the scope on an instance: a second is
+  refused at install and enable, the release preflight refuses an instance with two,
+  and two at run time mean no scope for anyone. Feather Dash is a client app in the
+  client's private repository (ADR 0013) and supplies the client's roster derivation
+  (B6′). That derivation never moves into the platform. #449 decides where the
+  roster Tables live; the provider follows them. **No consuming app changes either
+  way.** The provider's output in this shape is also #449's parity target.
 - **The report definition maps filters to query columns**, for example
   `subcategory` → the hierarchy code. So the app and the platform never learn the
   client's column names.
-- **One-way knowledge in the security list.** `security-tables.ts` stops naming the
-  client's roster tables. The provider's own tables are marked as scope-deciding by
-  their definition, not by a platform list of names.
+- **One-way knowledge in the security list.** A Table whose rows decide scope is
+  marked by its own definition (`decides_scope`), and the platform guards a marked
+  Table like the named security Tables. The client's roster table names leave
+  `security-tables.ts` only once the client's instance setup marks those Tables, in
+  the go-live cut-over (task 5.2). Today's platform report keeps its current code
+  until the clean-up release.
 - Rejected: the platform computing retail scope itself (it would know store, floor
   and section, which a CRM client does not have). Also rejected: each app reading
   the roster tables (the readings drift, and client table names would enter the
-  app).
+  app). Also rejected (27-Oct-2026): moving today's derivation into a platform
+  provider for a while; it would put the client's roster logic in this repository.
 
 **E2. Declared settings and secrets.**
 
@@ -638,7 +659,7 @@ Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
    first answer, "the app's code in the private repository", once the split removed
    everything private from the app.)
 2. **Scope** is a fixed platform shape with a swappable provider; #449 decides where
-   the roster lives.
+   the roster lives. (Revised 27-Oct-2026: an app declares the provider, #559.)
 3. **Section edits** are change requests applied by a reviewer who is not a System
    Manager. The generic role is #462, and stage D waits for it.
 4. **Emails** link to the address marked for emails (dash). Anyone landing on the
