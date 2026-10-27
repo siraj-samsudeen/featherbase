@@ -66,16 +66,17 @@ test('Controls are clearly named: every control in the top bar and the search ba
   expect(unnamedControls(screen.getByRole('banner'))).toEqual([])
 })
 
-// SPEC: Controls are clearly named — suspected defect, see report.
-// On a Table's list the filter pickers, the select-all and per-row checkboxes
-// and the bulk "Edit field" picker carry no name at all.
-test.fails('Controls are clearly named: every control on a Table\'s list has a name, including the row checkboxes and filter pickers', async ({ admin }) => {
+test('Controls are clearly named: every control on a Table\'s list has a name, including the row checkboxes and filter pickers', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/save_row', { table: 'Named Thing', row: { title: 'two', stage: 'Closed' } })
   await renderApp('/featherbase/admin/Named%20Thing', admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
-  fireEvent.click(await screen.findAllByTestId('row-check').then((l) => l[0]))
+  // Each row's checkbox says which row it selects.
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Select one' }))
   await screen.findByTestId('bulk-bar')
   expect(unnamedControls(screen.getByTestId('list-view'))).toEqual([])
   expect(within(screen.getByTestId('list-view')).getAllByRole('checkbox').length).toBeGreaterThan(1)
+  expect(screen.getByRole('checkbox', { name: 'Select one' })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: 'Select two' })).not.toBeChecked()
 })
+
