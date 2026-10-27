@@ -193,9 +193,10 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     })
     await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Resolve' })
 
-    // The queue stores the raw template — rendering happens at delivery
-    // time, in the email job. (A workflow "Approval required" notification
-    // rides the same queue, hence contains rather than equals.)
+    // #340: the rule renders its subject when it fires, against the row
+    // without its restricted columns, so the queue holds the finished text.
+    // (A workflow "Approval required" notification rides the same queue,
+    // hence contains rather than equals.)
     const queued = await admin.get<{ data: { recipient: string; subject: string }[] }>(
       `/api/table/${encodeURIComponent('Email Queue')}?fields=${encodeURIComponent(
         JSON.stringify(['recipient', 'subject']),
@@ -203,7 +204,7 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     )
     expect(queued.data).toContainEqual({
       recipient: customer.user,
-      subject: 'Your ticket {{ doc.row_id }} has been resolved',
+      subject: `Your ticket ${doc.row_id} has been resolved`,
     })
   })
 })

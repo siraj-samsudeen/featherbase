@@ -5,6 +5,7 @@ import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
 import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { ROW_ATTACHED_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
 export type Filter = [string, string, unknown]
@@ -178,6 +179,9 @@ export async function scopedWhere(
   // caller cannot read at all contributes no branch, hiding its children.
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
+  // #342: likewise a comment or an edit is only as visible as its row.
+  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+    extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
     if (upMap.size) {
@@ -387,6 +391,52 @@ async function parentScopeCond(
   return { frag: sql`(${anyParent})` }
 }
 
+// #342: one OR-branch per Table that rows of this Comment/Version Table are
+// attached to: the rows of it the caller may list (the same scoping a list
+// of that Table applies, own-rows, Data Scopes and parents included) plus
+// any row shared with them for reading. A Settings Table's single row goes
+// with read on it. A Table the caller cannot read contributes only its
+// shared rows; for Version, so does a Table with a column the caller's tiers
+// do not reach (seesEveryColumn). A row on a Table that no longer exists,
+// or one bound to an outside source, is left to the row's activity, which
+// opens the row itself. Columns are qualified so the predicate also holds
+// inside a 'related' subquery.
+// A list that names its Table (the row's panels and apps all do) builds that
+// one branch, without first reading which Tables the rows hang on.
+async function attachedRowScopeCond(
+  table: string,
+  user: string,
+  callerFilters: Filter[],
+): Promise<{ frag: ReturnType<typeof sql> }> {
+  const rel = sql(await tableRelation(table))
+  const pinned = callerFilters.find(
+    (f) => Array.isArray(f) && f[0] === 'ref_table' && f[1] === '=' && typeof f[2] === 'string',
+  )?.[2] as string | undefined
+  const targets = pinned !== undefined
+    ? [pinned]
+    : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
+  const branches: ReturnType<typeof sql>[] = []
+  for (const target of targets) {
+    const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
+    if (!targetMeta) continue
+    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+      select share_name from share where share_table = ${target} and read = true
+        and (person = ${user} or service_account = ${user})))`)
+    if (isBound(targetMeta)) continue
+    if ((await permissionScope(user, target, 'read')) === 'none') continue
+    if (table === 'Version' && !(await seesEveryColumn(user, targetMeta))) continue
+    if (targetMeta.kind === 'settings') {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
+    const scoped = await scopedWhere(target, user, [])
+    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${scoped.where}))`)
+  }
+  if (!branches.length) return { frag: sql`false` }
+  return { frag: sql`(${branches.reduce((acc, b) => sql`${acc} or ${b}`)})` }
+}
+
 // DASH: count of matching rows (number card). Same permission scoping as
 // getList; returns a single integer.
 export function countDocs(...args: Parameters<typeof countDocsImpl>) {
@@ -472,6 +522,75 @@ async function aggregateDocsImpl(
     select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::text as sum
     from ${sql(tbl)} where ${where}`
   return { count: row.count as number, sum: row.sum as string }
+}
+
+// #330: a summary view's totals — the count and the chosen sums overall and
+// per value of one column, over EVERY matching row (same permission scope and
+// filters as the list), so a report never adds up only the page it fetched.
+// Groups come in the order the list sorts that column (empty last). Sums are
+// strings for the same precision reason as aggregateDocs.
+export interface Summary {
+  count: number
+  sums: Record<string, string>
+  groups: { value: string | null; count: number; sums: Record<string, string> }[]
+}
+export function summarizeDocs(...args: Parameters<typeof summarizeDocsImpl>) {
+  return appOperation(() => summarizeDocsImpl(...args))
+}
+async function summarizeDocsImpl(
+  table: string,
+  filters: Filter[] = [],
+  groupBy: string | undefined,
+  sumFields: string[] = [],
+  user = 'Administrator',
+): Promise<Summary> {
+  // Bound Tables: counts push down to the driver; sums are not implemented
+  // on the source path yet, as for :aggregate.
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) {
+    if (sumFields.length)
+      throw new AppError(
+        'ValidationError',
+        `${table} is bound to data source ${boundMeta.data_source} — :summary sums are not supported on bound Tables yet`,
+      )
+    const count = await boundCountDocs(boundMeta, filters, user)
+    // The driver orders by count and names an empty value ''; a summary lists
+    // groups in the column's order, empty last, like every other Table.
+    const groups = groupBy
+      ? (await boundGroupCount(boundMeta, groupBy, filters, user))
+          .map((g) => ({ value: g.label === '' ? null : g.label, count: g.value, sums: {} }))
+          .sort((a, b) => (a.value === null ? 1 : b.value === null ? -1 : a.value < b.value ? -1 : a.value > b.value ? 1 : 0))
+      : []
+    return { count, sums: {}, groups }
+  }
+  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  for (const f of sumFields) {
+    assertColumn(cols, f, 'sum')
+    const col = meta.columns.find((c) => c.column_name === f)
+    if (!col || !SUMMABLE_TYPES.has(col.column_type))
+      throw new AppError('ValidationError', `sum must name an Int, Float, or Currency column`, {
+        sum: `${f} is not a summable column`,
+      })
+  }
+  if (groupBy) assertColumn(cols, groupBy, 'group_by')
+  const sumSelect = sumFields.reduce(
+    (acc, f, i) => sql`${acc}, coalesce(sum(${sql(phys(f))}), 0)::text as ${sql(`s${i}`)}`,
+    sql``,
+  )
+  const sumsOf = (row: Record<string, unknown>) =>
+    Object.fromEntries(sumFields.map((f, i) => [f, row[`s${i}`] as string]))
+  const [total] = await sql`
+    select count(*)::int as count ${sumSelect} from ${sql(tbl)} where ${where}`
+  const groups = groupBy
+    ? (
+        await sql`
+          select ${sql(phys(groupBy))}::text as value, count(*)::int as count ${sumSelect}
+          from ${sql(tbl)} where ${where}
+          group by ${sql(phys(groupBy))}
+          order by ${sql(phys(groupBy))} asc`
+      ).map((r) => ({ value: (r.value as string | null) ?? null, count: r.count as number, sums: sumsOf(r) }))
+    : []
+  return { count: total.count as number, sums: sumsOf(total), groups }
 }
 
 export function getList(...args: Parameters<typeof getListImpl>) {

@@ -221,10 +221,11 @@ export async function assertNoManagedReference(
 }
 
 /** For a writer outside the save path (a workflow action, an assignment
- *  rule's stamp): refuse writing `field` of a locked row. */
-export async function assertFieldNotManaged(table: string, rowId: string, field: string, user: string): Promise<void> {
+ *  rule's stamp): refuse writing `field` of a locked row. Call inside the
+ *  write's transaction, after holdManagedSet (#493). */
+export async function assertFieldNotManaged(db: typeof sql, table: string, rowId: string, field: string, user: string): Promise<void> {
   if (mayChangeManaged(user)) return
-  if (!(await managedFieldsOf(table, rowId)).includes(field)) return
+  if (!(await managedFieldsOf(table, rowId, db)).includes(field)) return
   const { getMeta } = await import('./meta')
   throw lockedError(await getMeta(table), rowId, [field])
 }

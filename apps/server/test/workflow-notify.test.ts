@@ -158,4 +158,74 @@ describe('WF-004: pending-approval notifications', () => {
     const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-3'`
     expect(emails.map((e) => e.recipient)).toEqual(['wf-notify-other@x.com'])
   })
+
+  // #336 (owner decision 26-Sep-2026): a row created straight into a state
+  // that waits on someone notifies them, as moving it there would.
+  describe('a row created in a pending state', () => {
+    async function setupStartsPending(admin: TestClient, createUser: CreateUserFn, waitsForApproval = true): Promise<TestClient> {
+      const approver = await setup(admin, createUser)
+      const flow = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+      // The first state now awaits the Approver: a new row is pending at once.
+      await admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
+          ...flow,
+          states: [
+            { state: 'Pending', target_status: 'draft', waits_for_approval: waitsForApproval },
+            { state: 'Approved', target_status: 'submitted' },
+          ],
+          transitions: [{ state: 'Pending', action: 'Approve', next_state: 'Approved', allowed: APPROVER_ROLE }],
+        },
+      })
+      return approver
+    }
+
+    test('emails the approvers, linking to the row', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser)
+      const created = await admin.post<{ workflow_state: string }>(`/api/table/${encodeURIComponent(DT)}`, {
+        row_id: 'wf-notify-new',
+        title: 'Created pending',
+      })
+      expect(created.workflow_state).toBe('Pending')
+
+      const emails = await sql`
+        select recipient, subject, body from email_queue
+        where ref_table = ${DT} and reference_name = 'wf-notify-new'`
+      expect(emails.map((e) => e.recipient)).toEqual([APPROVER])
+      expect(String(emails[0].subject)).toContain('Approval required')
+      expect(String(emails[0].body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-new`)
+      expect(String(emails[0].body)).toContain('Approve')
+    })
+
+    test('the approver who creates it is not emailed', async ({ admin, createUser }) => {
+      const approver = await setupStartsPending(admin, createUser)
+      await admin.post('/api/save_row', {
+        table: 'Permission',
+        row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_create: true },
+      })
+      await createUser({ email: 'wf-notify-peer@x.com', roles: [APPROVER_ROLE] })
+      await approver.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-own', title: 'Own request' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-own'`
+      expect(emails.map((e) => e.recipient)).toEqual(['wf-notify-peer@x.com'])
+    })
+
+    test('a row created in an unmarked state emails no one, even with role-restricted actions', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser, false)
+      await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-unmarked', title: 'Ordinary draft' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-unmarked'`
+      expect(emails).toEqual([])
+    })
+
+    test('a row created in a state with no further actions emails no one', async ({ admin, createUser }) => {
+      await setup(admin, createUser)
+      const flow = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+      await admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: { ...flow, states: [{ state: 'Logged', target_status: 'draft' }], transitions: [] },
+      })
+      await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-final', title: 'Nothing to decide' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-final'`
+      expect(emails).toEqual([])
+    })
+  })
 })

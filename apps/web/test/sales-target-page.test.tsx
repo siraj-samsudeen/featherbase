@@ -732,3 +732,56 @@ test('a retry where only the live report recovers leaves the numbers card ready 
   await waitFor(() => expect(within(again).getByRole('button', { name: 'Try again', hidden: true })).toBeEnabled())
   expect(again).toHaveTextContent(PLAIN_NUMBERS)
 })
+
+// #564: a Try again on the cached numbers alone must not cancel a live report still opening.
+test('retrying the cached numbers while the live report is still opening lets the live report finish', async ({ admin, api }) => {
+  let reads = 0
+  let embeds = 0
+  let released = false
+  let wake: () => void = () => {}
+  _setSourceReader(async () => (++reads === 1 ? failingSource() : []))
+  _setEmbedFetch(async () => {
+    embeds++
+    if (!released) await new Promise<void>((resolve) => (wake = resolve))
+    return Response.json({ session: 'stub-session' })
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  try {
+    const numbers = await numbersUnavailableCard()
+    await waitFor(() => expect(embeds).toBe(1))
+    expect(screen.getByTestId('embed-state')).toHaveAttribute('data-state', 'loading')
+    await userEvent.click(within(numbers).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+  } finally {
+    released = true
+    wake()
+  }
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  expect(embeds).toBe(1)
+})
+
+test('retrying the live report while the cached numbers are still loading lets the numbers finish', async ({ admin, api }) => {
+  let embeds = 0
+  let released = false
+  let wake: () => void = () => {}
+  _setSourceReader(async () => {
+    if (!released) await new Promise<void>((resolve) => (wake = resolve))
+    return []
+  })
+  _setEmbedFetch(async () => (++embeds === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const reportCalls = countCalls('/api/sales_target/report')
+  await openAsViewer(admin, api)
+  try {
+    const report = await unavailableCard()
+    expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'loading')
+    await userEvent.click(within(report).getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  } finally {
+    released = true
+    wake()
+  }
+  await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+  expect(reportCalls.n).toBe(1)
+})
