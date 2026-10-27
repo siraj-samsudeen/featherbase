@@ -18,7 +18,8 @@ import type {
 // parameter (IV2/IV4). Dialect differences with the postgres driver stay
 // INSIDE this file — same seam, different adapter: `?` placeholders,
 // backtick quoting, `<=>` for null-safe equality, and no RETURNING (writes
-// re-select the row through the pk instead).
+// re-select the row through the pk instead, inside the write's own
+// transaction — see `inTransaction`).
 
 const pools = new Map<string, Pool>()
 
@@ -191,9 +192,18 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
   throw new AppError('DataSourceError', `Data source ${cfg.name} failed: ${scrubbed}`)
 }
 
-async function run(cfg: SourceConfig, text: string, values: unknown[]): Promise<SourceRow[]> {
+// One statement, through whatever runs it: the pool (autocommit) or the
+// connection holding a write's transaction.
+type Querier = { query: Pool['query'] }
+
+async function run(
+  cfg: SourceConfig,
+  text: string,
+  values: unknown[],
+  on: Querier = pool(cfg),
+): Promise<SourceRow[]> {
   try {
-    const [rows] = await pool(cfg).query(text, values)
+    const [rows] = await on.query(text, values)
     return rows as SourceRow[]
   } catch (err) {
     wrapError(cfg, err)
@@ -204,20 +214,60 @@ async function exec(
   cfg: SourceConfig,
   text: string,
   values: unknown[],
+  on: Querier,
 ): Promise<{ affectedRows: number; insertId: number }> {
   try {
-    const [result] = await pool(cfg).query(text, values)
+    const [result] = await on.query(text, values)
     return result as { affectedRows: number; insertId: number }
   } catch (err) {
     wrapError(cfg, err)
   }
 }
 
+// #155: MySQL has no RETURNING, so a write is a statement plus a re-read.
+// Both run on one pooled connection in one transaction: the statement's row
+// lock holds until the re-read, so the row handed back is the one this save
+// wrote — never another writer's change landing in between, and never
+// 'missing' because someone deleted it in between. A failure (or a throw from
+// `work`, such as a new row that can't be found again) rolls the write back.
+async function inTransaction<T>(cfg: SourceConfig, work: (conn: Querier) => Promise<T>): Promise<T> {
+  let conn: Awaited<ReturnType<Pool['getConnection']>>
+  try {
+    conn = await pool(cfg).getConnection()
+  } catch (err) {
+    wrapError(cfg, err)
+  }
+  try {
+    await conn.beginTransaction().catch((err) => wrapError(cfg, err))
+    // `work` runs its statements through run/exec, which shape their own errors.
+    const result = await work(conn)
+    await conn.commit().catch((err) => wrapError(cfg, err))
+    return result
+  } catch (err) {
+    await conn.rollback().catch(() => {})
+    throw err
+  } finally {
+    conn.release()
+  }
+}
+
+function selectByPk(bind: Binding): string {
+  return `select * from ${relation(bind)} where cast(${quoteIdent(bind.pk)} as char) = ? limit 1`
+}
+
+async function readRow(bind: Binding, pk: string, on: Querier): Promise<SourceRow | null> {
+  const rows = await run(bind.source, selectByPk(bind), [pk], on)
+  return rows[0] ?? null
+}
+
 // The client echoes updated_at as millisecond ISO; DATETIME columns store
-// second or microsecond precision. Compare within the same millisecond
-// (postgres: date_trunc('milliseconds', ...) on both sides).
+// second or microsecond precision. Both sides are cut to the same whole
+// millisecond and compared for equality (postgres: date_trunc('milliseconds',
+// ...) on both sides) — a write stamped a fraction of a millisecond away, in
+// a different millisecond, is a change.
 function modifiedMatch(bind: Binding): string {
-  return `abs(timestampdiff(microsecond, ${quoteIdent(bind.modified!)}, ?)) < 1000`
+  const ms = (expr: string) => `left(date_format(${expr}, '%Y-%m-%d %H:%i:%s.%f'), 23)`
+  return `${ms(quoteIdent(bind.modified!))} = ${ms('?')}`
 }
 
 export const mysqlDriver: SourceDriver = {
@@ -327,12 +377,7 @@ export const mysqlDriver: SourceDriver = {
   },
 
   async getDoc(bind, pk) {
-    const rows = await run(
-      bind.source,
-      `select * from ${relation(bind)} where cast(${quoteIdent(bind.pk)} as char) = ? limit 1`,
-      [pk],
-    )
-    return rows[0] ?? null
+    return readRow(bind, pk, pool(bind.source))
   },
 
   async count(bind, filters) {
@@ -364,26 +409,30 @@ export const mysqlDriver: SourceDriver = {
     const ph = entries.map(() => '?').join(', ')
     // No RETURNING in MySQL — insert, then read the row back through the pk
     // (LAST_INSERT_ID() for auto_increment keys, the given value otherwise).
-    const result = await exec(
-      bind.source,
-      entries.length
-        ? `insert into ${relation(bind)} (${cols}) values (${ph})`
-        : `insert into ${relation(bind)} () values ()`,
-      entries.map(([, v]) => v),
-    )
-    const key = pkValue ?? (result.insertId ? String(result.insertId) : null)
-    if (key == null)
-      throw new AppError(
-        'DataSourceError',
-        `Data source ${bind.source.name}: inserted a row into ${bind.table} but cannot address it — the primary key has no auto_increment and no value was given`,
+    // A row that can't be read back is rolled back rather than left behind.
+    return inTransaction(bind.source, async (conn) => {
+      const result = await exec(
+        bind.source,
+        entries.length
+          ? `insert into ${relation(bind)} (${cols}) values (${ph})`
+          : `insert into ${relation(bind)} () values ()`,
+        entries.map(([, v]) => v),
+        conn,
       )
-    const row = await this.getDoc(bind, String(key))
-    if (!row)
-      throw new AppError(
-        'DataSourceError',
-        `Data source ${bind.source.name}: inserted row ${key} not found on re-read`,
-      )
-    return row
+      const key = pkValue ?? (result.insertId ? String(result.insertId) : null)
+      if (key == null)
+        throw new AppError(
+          'DataSourceError',
+          `Data source ${bind.source.name}: inserted a row into ${bind.table} but cannot address it — the primary key has no auto_increment and no value was given`,
+        )
+      const row = await readRow(bind, String(key), conn)
+      if (!row)
+        throw new AppError(
+          'DataSourceError',
+          `Data source ${bind.source.name}: inserted row ${key} not found on re-read`,
+        )
+      return row
+    })
   },
 
   async update(bind, pk, values, expectModified) {
@@ -394,27 +443,24 @@ export const mysqlDriver: SourceDriver = {
     // the postgres driver); now(3) carries millisecond precision so two
     // same-second saves still conflict.
     if (bind.modified) sets.push(`${quoteIdent(bind.modified)} = now(3)`)
-    if (!sets.length) {
-      const row = await this.getDoc(bind, pk)
-      return row ?? 'missing'
-    }
+    if (!sets.length) return (await this.getDoc(bind, pk)) ?? 'missing'
     let where = `cast(${quoteIdent(bind.pk)} as char) = ?`
     params.push(pk)
     if (bind.modified && expectModified != null) {
       where += ` and ${modifiedMatch(bind)}`
       params.push(new Date(expectModified))
     }
-    const result = await exec(
-      bind.source,
-      `update ${relation(bind)} set ${sets.join(', ')} where ${where}`,
-      params,
-    )
-    if (result.affectedRows > 0) {
-      const row = await this.getDoc(bind, pk)
-      return row ?? 'missing'
-    }
-    const still = await this.getDoc(bind, pk)
-    return still ? 'conflict' : 'missing'
+    return inTransaction(bind.source, async (conn) => {
+      const result = await exec(
+        bind.source,
+        `update ${relation(bind)} set ${sets.join(', ')} where ${where}`,
+        params,
+        conn,
+      )
+      const row = await readRow(bind, pk, conn)
+      if (result.affectedRows > 0) return row ?? 'missing'
+      return row ? 'conflict' : 'missing'
+    })
   },
 
   async remove(bind, pk, expectModified) {
@@ -424,10 +470,11 @@ export const mysqlDriver: SourceDriver = {
       where += ` and ${modifiedMatch(bind)}`
       params.push(new Date(expectModified))
     }
-    const result = await exec(bind.source, `delete from ${relation(bind)} where ${where}`, params)
-    if (result.affectedRows > 0) return
-    const still = await this.getDoc(bind, pk)
-    return still ? 'conflict' : 'missing'
+    return inTransaction(bind.source, async (conn) => {
+      const result = await exec(bind.source, `delete from ${relation(bind)} where ${where}`, params, conn)
+      if (result.affectedRows > 0) return
+      return (await readRow(bind, pk, conn)) ? 'conflict' : 'missing'
+    })
   },
 
   dispose(sourceName) {

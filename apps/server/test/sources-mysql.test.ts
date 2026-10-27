@@ -8,12 +8,16 @@
 // Needs a running MySQL and MYSQL_TEST_URL (e.g. mysql://root@127.0.0.1:3306
 // — no database path; the suite creates/drops ext_mysql itself). Without the
 // variable the whole file skips: CI and checkouts without MySQL stay green.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
 import { mysqlDriver } from '../src/sources/mysql-driver'
 import type { Binding } from '../src/sources/types'
+
+// mysql2's promise wrappers; their typings leave the classes out.
+type QueryProto = { prototype: { query: (...args: unknown[]) => Promise<unknown> } }
+const { PromisePool, PromiseConnection } = mysql as unknown as Record<'PromisePool' | 'PromiseConnection', QueryProto>
 
 const MYSQL_URL = process.env.MYSQL_TEST_URL
 const EXT_URL_ENV = 'EXT_MYSQL_URL'
@@ -130,6 +134,14 @@ beforeAll(async () => {
   await cli.query(`
     create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
     for each row set new.code = concat('x-', new.code)`)
+  // A revision stored to the microsecond, while a loaded row echoes it to
+  // the millisecond: the conflict check must compare whole milliseconds.
+  await cli.query(`
+    create table ext_mysql.revisioned (
+      id int auto_increment primary key,
+      note varchar(50),
+      changed_at datetime(6) not null
+    )`)
 })
 
 afterAll(async () => {
@@ -726,6 +738,9 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
         type: 'DataSourceError',
         message: expect.stringContaining('cannot address it'),
       })
+      // #155: the row it could not address is not left behind at the source.
+      const [left] = await cli.query(`select count(*) as n from ext_mysql.nokey`)
+      expect(Number((left as { n: number }[])[0].n)).toBe(0)
     } finally {
       await cli.query(`delete from ext_mysql.nokey`)
     }
@@ -746,8 +761,109 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
         type: 'DataSourceError',
         message: expect.stringContaining('inserted row k1 not found on re-read'),
       })
+      const [left] = await cli.query(`select count(*) as n from ext_mysql.shifty`)
+      expect(Number((left as { n: number }[])[0].n)).toBe(0)
     } finally {
       await cli.query(`delete from ext_mysql.shifty`)
+    }
+  })
+
+  // #155: run `concurrent` (another writer, through the unsandboxed CLI
+  // connection) right after the driver's own statement matching `after`, and
+  // give it a moment to land before the driver carries on. A driver that
+  // re-reads its row outside the statement's transaction then sees the other
+  // writer's change; one that holds its row until it has read it back makes
+  // the other writer wait instead.
+  async function withWriterAfter<T>(after: RegExp, concurrent: string, work: () => Promise<T>) {
+    let other: Promise<unknown> | null = null
+    const spies = [PromisePool.prototype, PromiseConnection.prototype].map((proto) => {
+      const original = proto.query
+      return vi.spyOn(proto, 'query').mockImplementation(async function (this: unknown, ...args: unknown[]) {
+        const result = await original.apply(this, args)
+        if (this !== cli && !other && after.test(String(args[0]))) {
+          other = cli.query(concurrent)
+          await Promise.race([other, new Promise((r) => setTimeout(r, 300))])
+        }
+        return result
+      } as never)
+    })
+    try {
+      const outcome = await work()
+      expect(other, `no statement matched ${after}`).not.toBeNull()
+      await other
+      return outcome
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+  }
+
+  test('a save returns the row it wrote, even when another writer changes it straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const [ins] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('raced', 1)`)
+    const id = (ins as { insertId: number }).insertId
+    try {
+      const saved = await withWriterAfter(/^update /, `update ext_mysql.plain set note = 'other writer' where id = ${id}`, () =>
+        mysqlDriver.update(bind, String(id), { note: 'mine' }, null),
+      )
+      expect(saved).toMatchObject({ id, note: 'mine' })
+      // The other writer still lands — after the save, not inside it.
+      const [after] = await cli.query(`select note from ext_mysql.plain where id = ?`, [id])
+      expect((after as { note: string }[])[0].note).toBe('other writer')
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [id])
+    }
+  })
+
+  test('a save is not reported missing when another writer deletes the row straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const [ins] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('raced', 1)`)
+    const id = (ins as { insertId: number }).insertId
+    try {
+      const saved = await withWriterAfter(/^update /, `delete from ext_mysql.plain where id = ${id}`, () =>
+        mysqlDriver.update(bind, String(id), { note: 'mine' }, null),
+      )
+      expect(saved).toMatchObject({ id, note: 'mine' })
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [id])
+    }
+  })
+
+  test('a new row comes back as inserted, even when another writer changes it straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const created = await withWriterAfter(
+      /^insert /,
+      `update ext_mysql.plain set note = 'other writer' where note = 'brand new'`,
+      () => mysqlDriver.insert(bind, { note: 'brand new', qty: 4 }, null),
+    )
+    try {
+      expect(created).toMatchObject({ note: 'brand new', qty: 4 })
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [created.id])
+    }
+  })
+
+  test('the conflict check compares whole milliseconds, as the Postgres driver does', async () => {
+    const bind = bindFor('revisioned', 'id', 'changed_at')
+    const [ins] = await cli.query(
+      `insert into ext_mysql.revisioned (note, changed_at) values ('loaded', '2026-01-01 00:00:00.123456')`,
+    )
+    const id = String((ins as { insertId: number }).insertId)
+    try {
+      const loaded = await mysqlDriver.getDoc(bind, id)
+      const echo = (loaded!.changed_at as Date).toISOString()
+      expect(echo).toBe('2026-01-01T00:00:00.123Z')
+      // Another writer stamps the row 0.3ms away, in the millisecond before.
+      await cli.query(
+        `update ext_mysql.revisioned set note = 'other writer', changed_at = '2026-01-01 00:00:00.122700' where id = ?`,
+        [id],
+      )
+      expect(await mysqlDriver.update(bind, id, { note: 'stale save' }, echo)).toBe('conflict')
+      expect(await mysqlDriver.remove(bind, id, echo)).toBe('conflict')
+      // The echo of what is there now, in the same millisecond, is accepted.
+      const saved = await mysqlDriver.update(bind, id, { note: 'fresh save' }, '2026-01-01T00:00:00.122Z')
+      expect(saved).toMatchObject({ note: 'fresh save' })
+    } finally {
+      await cli.query(`delete from ext_mysql.revisioned where id = ?`, [id])
     }
   })
 
