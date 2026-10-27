@@ -1,6 +1,7 @@
 // The process side of src/index.ts: booting the HTTP server, and serving a
 // built web app beside the API when the image ships one (apps/web/dist).
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { artifactDigest } from '../src/runtime-packages'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
@@ -50,6 +51,23 @@ describe('booting without an installed app', () => {
       await expect(startServer(0)).rejects.toThrow('App acme_board version 1.2.0 is installed and enabled, but this release does not ship it.')
     } finally {
       vi.unstubAllEnvs()
+    }
+  })
+
+  // Codex round 1 on #643: boot drops a version shipped twice with different files.
+  test('two different artifacts for the installed version refuse the start, though one of them matches', async () => {
+    const other = join(process.cwd(), '../../runtime-apps/other')
+    const conflicting = mkdtempSync(join(process.cwd(), 'test/.b5-642-conflict-'))
+    try {
+      cpSync(other, conflicting, { recursive: true })
+      writeFileSync(join(conflicting, 'client', 'extra.txt'), 'different files, same version')
+      vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([other, conflicting]))
+      await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+        values ('other', ${sql.json({ name: 'other' })}, true, true, '0.0.1', ${await artifactDigest(realpathSync(other))})`
+      await expect(startServer(0)).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(conflicting, { recursive: true, force: true })
     }
   })
 })

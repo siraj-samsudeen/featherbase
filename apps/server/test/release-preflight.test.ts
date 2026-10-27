@@ -18,7 +18,7 @@ import { makePerson } from './fixtures'
 import { withNamedVariable } from '../src/env'
 import { createTable } from '../src/table-engine'
 import { artifactDigest } from '../src/runtime-packages'
-import { realpath } from 'node:fs/promises'
+import { cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -230,6 +230,21 @@ describe('release preflight: installed apps ship in the release', () => {
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER]))
     await install('0.0.1', 'the-fingerprint-of-different-files')
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+  })
+
+  // Codex round 1 on #643: boot drops a version shipped twice with different
+  // files, so it is not shipped, even when one copy matches.
+  test('two different artifacts for the installed version refuse, though one of them matches', async () => {
+    const conflicting = await mkdtemp(resolve(dirname(fileURLToPath(import.meta.url)), '.b5-642-conflict-'))
+    try {
+      await cp(OTHER, conflicting, { recursive: true })
+      await writeFile(resolve(conflicting, 'client', 'extra.txt'), 'different files, same version')
+      vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER, conflicting]))
+      await install('0.0.1', await artifactDigest(await realpath(OTHER)))
+      await expect(preflightRelease({ environment: 'test' })).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+    } finally {
+      await rm(conflicting, { recursive: true, force: true })
+    }
   })
 
   test('a disabled app that is not shipped does not block the release', async () => {

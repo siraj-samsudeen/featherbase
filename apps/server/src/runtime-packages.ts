@@ -330,14 +330,39 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined }
 }
 
+// The apps on `paths`, by name@version, as boot takes them: each loaded and
+// validated, and a version shipped twice with different files dropped as a
+// conflict (Codex round 1 on #643: the release guard must agree with boot).
+// Registers nothing.
+async function loadArtifacts(paths: string[]) {
+  const loaded = new Map<string, RuntimePackage>()
+  const failures: { path: string; error: string }[] = []
+  const duplicates = new Set<string>()
+  for (const directory of paths) {
+    try {
+      const pkg = await loadArtifact(directory)
+      const key = `${pkg.name}@${pkg.version}`
+      if (duplicates.has(key)) refuse('Duplicate different artifacts for one package version')
+      const duplicate = loaded.get(key)
+      if (duplicate) {
+        if (duplicate.digest === pkg.digest) continue
+        loaded.delete(key)
+        duplicates.add(key)
+        refuse('Duplicate different artifacts for one package version')
+      }
+      loaded.set(key, pkg)
+    } catch (error) {
+      failures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return { loaded, failures }
+}
+
 /** #642 (E7): the installed rows (`name`, `package_version`,
  *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
- *  `paths` ships. Loads the apps as boot would, registering nothing. */
+ *  `paths` ships, as boot would take them. */
 export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
-  const shipped: RuntimePackage[] = []
-  for (const directory of paths) {
-    try { shipped.push(await loadArtifact(directory)) } catch { /* boot would reject it too: it ships nothing */ }
-  }
+  const shipped = [...(await loadArtifacts(paths)).loaded.values()]
   return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
 }
 
@@ -350,24 +375,11 @@ export function discoverPackages(paths: string[]) {
     packages.clear()
     artifacts.clear()
     packageFailures.length = 0
-    const duplicates = new Set<string>()
-    for (const directory of paths) {
-      try {
-        const pkg = await loadArtifact(directory)
-        const key = `${pkg.name}@${pkg.version}`
-        if (duplicates.has(key)) refuse('Duplicate different artifacts for one package version')
-        const duplicate = artifacts.get(key)
-        if (duplicate) {
-          if (duplicate.digest === pkg.digest) continue
-          artifacts.delete(key)
-          duplicates.add(key)
-          refuse('Duplicate different artifacts for one package version')
-        }
-        artifacts.set(key, pkg)
-      } catch (error) {
-        packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
-        console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))
-      }
+    const { loaded, failures } = await loadArtifacts(paths)
+    for (const [key, pkg] of loaded) artifacts.set(key, pkg)
+    for (const failure of failures) {
+      packageFailures.push(failure)
+      console.warn('[runtime-packages] Artifact rejected:', failure.path, failure.error)
     }
     const installed = await sql`select * from installed_app where runtime_package`
     for (const pkg of artifacts.values()) {
