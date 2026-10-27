@@ -203,7 +203,7 @@ describe('runtime upgrades', () => {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
       const edits = [
-        { ...manifest, apiVersion: 99 },
+        { ...manifest, platformVersion: '2099-01' },
         { ...manifest, dependencies: ['absent'] },
         { ...manifest, migrations: [{ ...manifest.migrations[0], operations: [{ kind: 'dropColumn', table: 'other.task', column: 'quantity' }] }] },
         { ...manifest, migrations: [manifest.migrations[0], manifest.migrations[0]] },
@@ -241,7 +241,7 @@ describe('runtime upgrades', () => {
       expect(await admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).toEqual(plan)
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
       await expect(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: plan.planId })).rejects.toMatchObject({ status: 409 })
-      await writeFile(resolve(directory, 'server.mjs'), 'export const apiVersion = 99')
+      await writeFile(resolve(directory, 'server.mjs'), "export const platformVersion = '2099-01'")
       await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('changed') })
       await rm(directory, { recursive: true })
       await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('missing') })

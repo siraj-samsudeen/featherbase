@@ -72,6 +72,13 @@ that version ends.
   still supported platform version
 - **THEN** the app keeps working as before
 
+#### Scenario: An app built for an unsupported platform version is refused
+
+- **WHEN** an app's manifest names a platform version this Featherbase does not
+  support, or its server module names a different one from its manifest
+- **THEN** the app is not loaded
+- **AND** the refusal names both versions
+
 ### Requirement: Deploying never silently takes an installed app away
 
 A new release of Featherbase SHALL refuse to start when it lacks the exact version of

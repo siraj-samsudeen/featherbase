@@ -32,7 +32,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log.
 - [ ] 2.6 E7 release refuses when an installed, enabled app's exact version is missing.
 - [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address).
-- [ ] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
+- [x] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
 - [ ] 2.9 D4 app-role bindings (`App Role Binding`, a security Table, Admin-editable; manifest suggestions written once; role checks honour bindings); stand-in binding `Sales Target Viewer → Feather Dash Reader`.
 - [ ] 2.10 `runtime-apps/feather-dash` 1.0.0: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; Dockerfile and `FEATHERBASE_APP_PATHS`.
 - [ ] 2.11 In the client's repository: the report definition (today's query moved out of this repository), the Dive settings, the stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there, not here.

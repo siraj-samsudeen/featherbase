@@ -1,4 +1,4 @@
-export const apiVersion = 1
+export const platformVersion = '2026-10'
 export let escapedDocuments
 export const actions = {
   async transform({ payload, documents, reject }) {

@@ -47,7 +47,7 @@ var actions = {
 };
 
 // src/server.ts
-var apiVersion = 1;
+var platformVersion = "2026-10";
 var validators = { "tasker.task": prepareTask };
 function prepareTask(ctx) {
   if (ctx.row.project && ctx.row.personal_tasks_owner)
@@ -80,6 +80,6 @@ function prepareTask(ctx) {
 }
 export {
   actions,
-  apiVersion,
+  platformVersion,
   validators
 };

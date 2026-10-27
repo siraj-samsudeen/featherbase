@@ -4,7 +4,7 @@ interface Context {
   old?: Record<string, unknown>
   reject(message: string, fields?: Record<string, string>): never
 }
-export const apiVersion = 1
+export const platformVersion = '2026-10'
 export const validators = { 'tasker.task': prepareTask }
 export { actions } from './actions'
 

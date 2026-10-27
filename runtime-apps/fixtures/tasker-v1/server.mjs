@@ -1,4 +1,4 @@
-const apiVersion = 1;
+const platformVersion = "2026-10";
 const validators = { "tasker.task": prepareTask };
 function prepareTask(ctx) {
   if (ctx.row.project && ctx.row.personal_tasks_owner)
@@ -30,6 +30,6 @@ function prepareTask(ctx) {
   }
 }
 export {
-  apiVersion,
+  platformVersion,
   validators
 };

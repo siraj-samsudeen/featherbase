@@ -15,7 +15,7 @@ const tables = [
   ['effect', [{ column_name: 'value', column_type: 'Data' }]],
 ].map(([name, columns]) => ({ name: `scopeproof.${name}`, label: name, id_pattern: 'prompt', columns }))
 await writeFile(new URL('featherbase.json', import.meta.url), JSON.stringify({
-  manifestVersion: 1, apiVersion: 1, name: 'scopeproof', title: 'App scope proof',
+  manifestVersion: 1, platformVersion: '2026-10', name: 'scopeproof', title: 'App scope proof',
   entryTable: 'scopeproof.object', server: 'server.mjs', tables,
   roles: ['Scope Reader', 'Scope Planner'],
   permissions: [

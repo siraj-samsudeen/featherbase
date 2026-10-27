@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 1, "apiVersion": 1,
+  "manifestVersion": 1, "platformVersion": "2026-10",
   "name": "tasker", "title": "Tasker",
   "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task",
   "actions": {"version": 1, "names": ["promote", "delete_accidental"], "tables": ["tasker.task", "tasker.project"]},
