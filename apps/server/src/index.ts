@@ -21,7 +21,7 @@ import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, se
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -49,6 +49,7 @@ import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
+import './actions/collection-bulk'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
@@ -69,7 +70,7 @@ import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
-import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
+import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -182,12 +183,16 @@ app.get('/api/brand', async (c) => {
 // SPA stores. Either credential authenticates a request; the cookie keeps the
 // token out of reach of page scripts and lets plain browser requests (file
 // links, the print page) carry the session.
+// #353: `secure` by the sign-in challenge cookies' rule (externalOrigin): on
+// whenever the instance is reached over https, off on a plain-http local
+// origin, where a browser would silently drop a Secure cookie.
 function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
     maxAge: maxAgeSeconds,
+    secure: externalOrigin(c).protocol === 'https:',
   })
 }
 
@@ -210,7 +215,7 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const issued = await passwordSignIn(usr, pwd)
+  const issued = await passwordSignIn(usr, pwd, clientAddress(c))
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -240,7 +245,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   // The shared pipeline (sign-in.ts) does the rest: an outage never falls
   // back to another way in, and a leaver is disabled everywhere.
   const status = await checkWithProvider(cfg, id, pwd)
-  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode() })
+  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -275,7 +280,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     return String(created.row_id)
   })
   // The same tail as every other sign-in (sign-in.ts).
-  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null }, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session), 201)
@@ -294,7 +299,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // but the caller must not be told the session ended when it did not.
 app.post('/api/logout', async (c) => {
   const sid = getCookie(c, 'sid')
-  deleteCookie(c, 'sid', { path: '/' })
+  deleteCookie(c, 'sid', { path: '/', secure: externalOrigin(c).protocol === 'https:' })
   let incomplete = false
   for (const credential of new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])) {
     const session = await sessionToRevoke(credential)
@@ -371,7 +376,7 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
   // still an attachment, so opened directly it downloads and its script never runs.
   const type = mimeEssence(row.mime_type as string)
-  const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
+  const inPlace = SHOWN_IN_PLACE.has(type)
   const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
     'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
@@ -379,8 +384,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   })
 }
 
+// #562: sound and video are a fixed list too, never a wildcard: an uploader
+// could otherwise pick a type such as `video/xhtml+xml` that a browser may
+// render as a document.
 const SHOWN_IN_PLACE = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
 ])
 
 // A declared type reduced to its bare `type/subtype`, lowercased, with nothing
@@ -594,7 +604,7 @@ async function googleCallback(c: Context) {
     }
   }
   const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const issued = await completeSignIn(google, verified, null)
+  const issued = await completeSignIn(google, verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -624,7 +634,7 @@ app.post('/api/oauth/session', async (c) => {
   deleteCookie(c, HANDOFF_NONCE_COOKIE, { path: '/' })
   // Signed out, expired, or ended by a password reset since: no hand-off.
   const source = await resolveToken(`Bearer ${redeemed.sourceToken}`)
-  const issued = await issueSession(source.row_id, sessionOptionsOf(source))
+  const issued = await issueSession(source.row_id, { ...sessionOptionsOf(source), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session, { handOff: false }))
@@ -701,7 +711,7 @@ app.get('/preview', async (c) => {
   const person = await resolvePreviewPerson(config.user)
   if (!person) return c.notFound()
   // Marked, so the click-through cannot add lasting access (review B-M2).
-  const issued = await issueSession(person, { preview: true })
+  const issued = await issueSession(person, { preview: true, ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
@@ -1868,15 +1878,19 @@ app.post('/api/assign', async (c) => {
     assign_to?: string
     description?: string
   }
-  if (!table || !name || !assign_to)
+  if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
-  const [target] = await sql`select row_id from person where row_id = ${assign_to}`
-  if (!target) throw new AppError('NotFoundError', `Person ${assign_to} not found`)
+  // The assign box invites an email address (#512), so a person is found by
+  // their id or, failing that, by an email the assigner may read.
+  const asked = assign_to.trim()
+  const [byId] = await sql`select row_id from person where row_id = ${asked}`
+  const target = byId ? String(byId.row_id) : await personByEmail(asked, who(c))
+  if (!target) throw new AppError('NotFoundError', `Person ${asked} not found`)
 
-  const todo = await createAssignment(table, name, assign_to, who(c), description)
+  const todo = await createAssignment(table, name, target, who(c), description)
   return c.json({ todo }, 201)
 })
 

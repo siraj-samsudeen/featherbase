@@ -154,7 +154,7 @@ const overdueAfterMs = (cadence: string) => (2 * cadenceSeconds(cadence) + 600) 
 
 async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
   const rows = await sql`
-    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.updated_at,
+    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.last_result, j.updated_at,
       (select e.error from job_execution e where e.method = j.method and e.outcome = 'error'
         order by e.started_at desc nulls last, e.created_at desc limit 1) as last_error
     from scheduled_job j order by j.method`
@@ -191,6 +191,16 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
         ok: false,
         message: `The last run failed${error}`,
         fix: 'Open Jobs in Admin to see the error, fix its cause, then run the job again. The check passes after a run succeeds.',
+      }
+    }
+    // #464: a run that refused to act is treated like a failure.
+    if (r.last_outcome === 'refused') {
+      const reason = typeof r.last_result === 'string' && r.last_result.trim() ? `: ${r.last_result.trim().slice(0, 200)}` : '.'
+      return {
+        ...base,
+        ok: false,
+        message: `The last run refused to act${reason}`,
+        fix: 'Open Jobs in Admin to see why, fix its cause, then run the job again. The check passes after a run succeeds.',
       }
     }
     if (!lastRun) return { ...base, ok: true, message: 'Has not run yet.', fix: null }

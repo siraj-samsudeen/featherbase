@@ -71,10 +71,11 @@ A PR environment's database is empty, and there is no convenient moment to
 pre-deploy step of every deploy (`railway.json`):
 
 ```
-pnpm --filter server release && pnpm --filter server seed:preview
+pnpm --filter server pre-deploy
 ```
 
-`seed:preview` is gated on the same resolution the `/preview` route uses:
+It runs the release, then the preview seed, and fails the deploy if either
+fails. The seed is gated on the same resolution the `/preview` route uses:
 **where preview sign-in is not configured, it prints that and does nothing.**
 A production deploy does not grow a preview account as a side effect of this
 step. Where it *is* configured it creates the named user and a demo
@@ -186,7 +187,7 @@ own state — a disabled account still cannot sign in through it.
 ## Turning it off, and rotating
 
 Delete `PREVIEW_LOGIN_KEY`. The route 404s again on the next deploy, and
-`seed:preview` goes back to doing nothing.
+the pre-deploy step's preview seed goes back to doing nothing.
 
 To rotate the link, change the key — old links stop working on the next
 deploy.

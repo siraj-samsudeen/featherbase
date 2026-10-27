@@ -141,3 +141,56 @@ test('A read-only data source keeps its tables view-only: the row form names the
   // The values are still there to read.
   expect((await screen.findAllByDisplayValue('Karaikal')).length).toBeGreaterThan(0)
 })
+
+// #328 (Concurrent edits are caught when the source can tell): with no
+// last-changed column a save overwrites whatever the source holds, so the
+// form must say so instead of saving over someone else's edit silently.
+test('A writable connected row with no last-changed time says its saves are not checked for edits made elsewhere', async ({
+  admin,
+}) => {
+  const table = await bindCsv(admin, 'read_write')
+  await sql`update table_def set external_modified = null where name = ${table}`
+  invalidateMeta(table)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await screen.findByTestId('form-view', undefined, { timeout: 8000 })
+
+  const notice = await screen.findByTestId('unchecked-saves-notice')
+  expect(notice).toHaveTextContent('lifecycle-fixture')
+  expect(notice).toHaveTextContent(/changes made there.*are not detected/i)
+  expect(notice).toHaveTextContent(/saving replaces/i)
+})
+
+test('A connected row whose source tells when it last changed carries no unchecked-save notice', async ({
+  admin,
+}) => {
+  const table = await bindCsv(admin, 'read_write')
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await screen.findByTestId('form-view', undefined, { timeout: 8000 })
+  await screen.findByTestId('source-badge')
+  expect(screen.getByTestId('form-save')).toBeInTheDocument()
+  expect(screen.queryByTestId('unchecked-saves-notice')).toBeNull()
+})
+
+test('A new row on a connected table with no last-changed time carries no unchecked-save notice: nothing is there to overwrite', async ({
+  admin,
+}) => {
+  const table = await bindCsv(admin, 'read_write')
+  await sql`update table_def set external_modified = null where name = ${table}`
+  invalidateMeta(table)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/new`, admin)
+  await screen.findByTestId('form-view', undefined, { timeout: 8000 })
+  await screen.findByTestId('source-badge')
+  expect(screen.queryByTestId('unchecked-saves-notice')).toBeNull()
+})
+
+test('A read-only connected row with no last-changed time carries no unchecked-save notice: it cannot be saved', async ({
+  admin,
+}) => {
+  const table = await bindCsv(admin, 'read_only')
+  await sql`update table_def set external_modified = null where name = ${table}`
+  invalidateMeta(table)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await screen.findByTestId('form-view', undefined, { timeout: 8000 })
+  await screen.findByTestId('source-badge')
+  expect(screen.queryByTestId('unchecked-saves-notice')).toBeNull()
+})

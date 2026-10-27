@@ -151,17 +151,19 @@ Each table an app declares SHALL belong to that app alone.
   to call "Task," and a row with the same id exists in both
 - **THEN** opening one never shows the other's data
 
-### Requirement: App data is reachable only through the app
+### Requirement: Dashboards reach an app's data only while it is on
 
-Data an installed app owns SHALL be reachable only by going through that
-app itself — never through a raw data query or a generic report — whether
-the app is on, off, or unavailable.
+While an installed app is on, a dashboard number card or chart SHALL be able to count its data, showing only what the person's own permissions let them read. While the app is off or unavailable, its data SHALL NOT be counted or charted at all, and it stays stored for when the app is turned back on.
 
-#### Scenario: A raw query can't read around the app
+#### Scenario: Count an app's data on a dashboard
 
-- **WHEN** someone tries to read an installed app's data through a generic
-  report instead of the app's own screens
-- **THEN** it's refused, regardless of whether the app is enabled
+- **WHEN** a member who can read an app's tasks adds a card counting them while the app is on
+- **THEN** the card shows how many tasks there are, and a member who can't read those tasks is refused
+
+#### Scenario: A turned-off app's data is kept out of dashboards
+
+- **WHEN** an administrator turns the app off and someone opens that card or a chart of the same tasks
+- **THEN** it's refused, and the tasks themselves are kept
 
 ### Requirement: An app owns its own screen
 
