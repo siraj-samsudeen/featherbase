@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
@@ -9,6 +9,7 @@ import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 import { configureGoogle, inviteGoogleRaw } from './identity-fixtures'
+import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
 // provider (no google_client_id in System Settings, ALLOW_MOCK_OAUTH=1 from
@@ -460,5 +461,20 @@ describe('exchanging a code with Google itself', () => {
     expect(await message(json({ error: 'x' }))).toBe('Google token exchange failed')
     expect(await message(json({ access_token: 'at' }, 200), json({}, 500))).toBe('Google userinfo fetch failed')
     expect(await message(json({ access_token: 'at' }), json({ email: 'a@b.com' }))).toBe('Google did not return an account ID')
+  })
+})
+
+describe('#396: the sign-in records the client address', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  test('a Google sign-in records the address its callback came from', async ({ api }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    await setAllowedDomains('*')
+    const { state, cookie } = await beginLogin(api)
+    const approve = await api.fetch(approveUrl(state, 'google.address@gmail.com', 'Google Address'), { headers: { cookie } })
+    const res = await api.fetch(approve.headers.get('location') as string, { headers: { cookie, ...FROM_CLIENT } })
+    expect(res.status).toBe(302)
+    const [person] = await sql`select row_id from person where email = 'google.address@gmail.com'`
+    expect(await signInAddresses(person.row_id as string)).toEqual([CLIENT])
   })
 })

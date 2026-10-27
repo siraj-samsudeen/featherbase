@@ -272,3 +272,18 @@ describe('#387: a Date must be a real calendar day', () => {
     expect(schema.safeParse({ due: v }).success).toBe(true)
   })
 })
+
+describe('tableSchemaToZod: a column named after an Object.prototype key (#436)', () => {
+  it('reads a missing constructor column as absent, not as the built-in', () => {
+    const s = tableSchemaToZod([col('constructor', 'Data'), col('title', 'Data')])
+    const r = s.safeParse({ title: 'only a title' })
+    expect(r.success).toBe(true)
+    expect(r.success && r.data.constructor).toBeUndefined()
+    expect(s.safeParse({ constructor: 'built', title: 'x' })).toMatchObject({ success: true, data: { constructor: 'built' } })
+  })
+
+  it('still requires a required constructor column', () => {
+    const s = tableSchemaToZod([col('constructor', 'Data', { reqd: true })])
+    expect(s.safeParse({}).success).toBe(false)
+  })
+})

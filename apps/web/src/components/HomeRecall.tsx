@@ -31,6 +31,11 @@ function loadWorkspace(user: string): WorkspaceTarget[] {
   }
 }
 
+/** One routine's identity: its destinations, in any order. */
+function signatureOf(targets: WorkspaceTarget[]): string {
+  return targets.map((t) => t.key).sort().join('|')
+}
+
 export function ResumeStrip() {
   const router = useRouter()
   const user = getSessionUser()
@@ -115,7 +120,7 @@ export function RoutineCard() {
   })
   if (!user) return null
 
-  // A pinned workspace replaces the suggestion permanently.
+  // A pinned workspace replaces the suggestion until the user unpins it.
   if (workspace.length > 0)
     return (
       <div className="flex flex-wrap items-center gap-2" data-testid="workspace-chips">
@@ -135,11 +140,30 @@ export function RoutineCard() {
             {displayEntry(t).sub ? <span className="ml-1 opacity-70">· {displayEntry(t).sub}</span> : null}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            // Unpinning also answers the offer for this same routine with
+            // "Not now", so the card doesn't ask again straight away.
+            try {
+              localStorage.removeItem(WORKSPACE_KEY(user.row_id))
+              localStorage.setItem(DISMISS_KEY(user.row_id), signatureOf(workspace))
+            } catch {
+              /* ignore */
+            }
+            setWorkspace([])
+            setDismissed(true)
+          }}
+          data-testid="workspace-unpin"
+          className={buttonClasses({ variant: 'quiet', className: 'text-xs' })}
+        >
+          Unpin
+        </button>
       </div>
     )
 
   const targets = suggestion.data?.targets ?? []
-  const signature = targets.map((t) => t.key).sort().join('|')
+  const signature = signatureOf(targets)
   let dismissedBefore = false
   try {
     dismissedBefore = localStorage.getItem(DISMISS_KEY(user.row_id)) === signature

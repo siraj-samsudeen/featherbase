@@ -30,7 +30,7 @@ export async function evaluateAssignmentRules(
   for (const rule of rules) {
     // #437: refused when the rule is saved; a rule saved before that check
     // existed never acts on access either.
-    if (isAccessTarget(table, String(rule.assign_to_field ?? '').trim())) {
+    if (await isAccessTarget(table, String(rule.assign_to_field ?? '').trim())) {
       console.warn(`[assignment-rules] ${String(rule.row_id)} targets ${table} access data; skipped`)
       continue
     }

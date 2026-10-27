@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
+import { ShownName } from '../lib/people'
 import { buttonClasses, cardClasses, inputClasses } from './ui'
 
 interface ToDoRow {
@@ -59,7 +60,7 @@ export function Assignments({ table, name }: { table: string; name: string }) {
         )}
         {todos.data?.data.map((t) => (
           <li key={t.row_id} className="text-sm text-ink" data-testid="assignee">
-            {t.allocated_to}
+            <ShownName id={t.allocated_to} />
           </li>
         ))}
       </ul>
@@ -68,6 +69,7 @@ export function Assignments({ table, name }: { table: string; name: string }) {
           value={assignTo}
           onChange={(e) => setAssignTo(e.target.value)}
           placeholder="user@example.com"
+          aria-label="Assign to (email address)"
           className={inputClasses('flex-1')}
           data-testid="assign-to"
         />

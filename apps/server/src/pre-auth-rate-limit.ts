@@ -41,7 +41,12 @@ export function preAuthPolicy(env: Record<string, string | undefined> = processE
     if (!address) throw new Error('TRUSTED_PROXY_IPS must contain only explicit IP addresses, not CIDRs or hostnames')
     return address
   })
-  return { limits, windowMs: positiveInteger(env, 'PREAUTH_WINDOW_MS', 900_000), trusted }
+  // #396: a header the instance's edge overwrites with the client's address
+  // (Railway's edge publishes no stable proxy addresses to list above).
+  const header = env.CLIENT_ADDRESS_HEADER?.trim().toLowerCase() || null
+  if (header && !/^[a-z0-9-]+$/.test(header))
+    throw new Error('CLIENT_ADDRESS_HEADER must be one header name, such as x-real-ip')
+  return { limits, windowMs: positiveInteger(env, 'PREAUTH_WINDOW_MS', 900_000), trusted, clientHeader: header }
 }
 
 // Fail configuration at boot, not on the first attacked request. Read again
@@ -102,15 +107,27 @@ function rejection(c: Context, retryAfter: number) {
   return c.json({ error: { type: 'RateLimitError', message: 'Too many attempts; retry later' } }, 429)
 }
 
-function source(c: Context, trusted: string[]) {
-  return sourceAddress(c.env?.incoming?.socket?.remoteAddress, c.req.header('x-forwarded-for'), trusted)
+/** The client's network address, or null when none can be told (#396). The
+ *  header named by CLIENT_ADDRESS_HEADER wins when it holds exactly one
+ *  address; otherwise the socket peer, or behind TRUSTED_PROXY_IPS the
+ *  right-most hop they did not append. Sign-ins record it; the pre-auth
+ *  budgets count by it. */
+export function clientAddress(c: Context, policy = preAuthPolicy()): string | null {
+  const named = policy.clientHeader ? ip(c.req.header(policy.clientHeader)?.trim()) : null
+  if (named) return named
+  const address = sourceAddress(c.env?.incoming?.socket?.remoteAddress, c.req.header('x-forwarded-for'), policy.trusted)
+  return address === 'unknown' ? null : address
+}
+
+function source(c: Context, policy: ReturnType<typeof preAuthPolicy>) {
+  return clientAddress(c, policy) ?? 'unknown'
 }
 
 export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>) {
   return async (c: Context, next: Next) => {
     const policy = preAuthPolicy()
     await cleanExpiredBuckets()
-    const ticket = await admit(bucketKey([kind, source(c, policy.trusted)]), policy.limits[kind], policy.windowMs)
+    const ticket = await admit(bucketKey([kind, source(c, policy)]), policy.limits[kind], policy.windowMs)
     if (!ticket.revision) return rejection(c, ticket.retryAfter)
     await next()
   }
@@ -120,6 +137,6 @@ export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>) {
 // delegated sign-in provider (delegated-login.ts) never share one budget.
 export async function passwordAttempt(c: Context, username: string, scope: 'password' | 'delegated' = 'password') {
   const policy = preAuthPolicy()
-  const ticket = await admit(bucketKey(['PASSWORD', scope, source(c, policy.trusted), username.trim().toLowerCase()]), policy.limits.PASSWORD, policy.windowMs)
+  const ticket = await admit(bucketKey(['PASSWORD', scope, source(c, policy), username.trim().toLowerCase()]), policy.limits.PASSWORD, policy.windowMs)
   return { ticket, refusal: ticket.revision ? null : rejection(c, ticket.retryAfter) }
 }

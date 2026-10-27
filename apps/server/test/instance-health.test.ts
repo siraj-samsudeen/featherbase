@@ -133,6 +133,15 @@ describe('the checks (5.1)', () => {
     expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').ok).toBe(true)
   })
 
+  test('scheduled jobs: a last run that refused to act fails the check like a failure (#464)', async () => {
+    const now = new Date()
+    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused',
+      last_result = 'disabled nobody: the feed is stale' where method = 'disable_leavers'`
+    const refused = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    expect(refused).toMatchObject({ ok: false, severity: 'error', message: 'The last run refused to act: disabled nobody: the feed is stale' })
+    expect(refused.fix).toContain('Jobs')
+  })
+
   test('scheduled jobs: a switched-off job passes; an enabled one that stopped running fails', async () => {
     const now = new Date()
     await sql`update scheduled_job set enabled = false, last_outcome = 'error' where method = 'disable_leavers'`
