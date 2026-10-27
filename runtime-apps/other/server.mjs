@@ -1,4 +1,4 @@
-export const apiVersion = 1
+export const platformVersion = '2026-10'
 export const validators = {
   'other.task'(ctx) {
     if (Number(ctx.row.quantity) <= 0)

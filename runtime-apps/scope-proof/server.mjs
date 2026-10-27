@@ -1,4 +1,4 @@
-export const apiVersion = 1
+export const platformVersion = '2026-10'
 export const calls = { handler: 0, resolver: 0, authorizer: 0, upstream: 0 }
 export const faults = {}
 export let escapedFacts

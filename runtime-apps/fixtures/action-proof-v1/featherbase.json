@@ -1,6 +1,6 @@
 {
   "manifestVersion": 1,
-  "apiVersion": 1,
+  "platformVersion": "2026-10",
   "name": "actionproof",
   "title": "Transactional action proof",
   "entryTable": "actionproof.work",

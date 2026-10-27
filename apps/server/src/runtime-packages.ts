@@ -26,9 +26,13 @@ interface PackageHookContext {
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
 
+// #551 (ADR 0011): an app names the platform version it was built for, dated by
+// month. These are the versions this Featherbase runs apps on.
+export const SUPPORTED_PLATFORM_VERSIONS: readonly string[] = ['2026-10']
+
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
-  apiVersion: z.literal(1),
+  platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
   name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
   title: z.string().min(1),
   tables: z.array(tableDefSchema).min(1),
@@ -91,7 +95,10 @@ async function contained(root: string, name: string): Promise<string> {
 }
 
 // Shipped files, never operator directory spelling, identify an artifact.
-async function artifactDigest(root: string) {
+// `transform` may rewrite a file's bytes (by its path relative to the root)
+// before hashing; only migration 0125 uses it, to fingerprint files as they
+// were before a rename.
+export async function artifactDigest(root: string, transform?: (file: string, bytes: Buffer) => Buffer) {
   const hash = createHash('sha256')
   async function walk(directory: string) {
     for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -99,7 +106,10 @@ async function artifactDigest(root: string) {
       if (entry.isSymbolicLink()) refuse('Package artifact must not contain symbolic links')
       const file = resolve(directory, entry.name)
       if (entry.isDirectory()) await walk(file)
-      else hash.update(canonical([relative(root, file), (await readFile(file)).toString('base64')]))
+      else {
+        const bytes = await readFile(file)
+        hash.update(canonical([relative(root, file), (transform ? transform(relative(root, file), bytes) : bytes).toString('base64')]))
+      }
     }
   }
   await walk(root)
@@ -137,6 +147,24 @@ function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
   return canonical(stored) === canonical(pkg.app.runtime_manifest)
 }
 
+// An app's directory: its npm identity and its parsed manifest.
+async function readArtifact(directory: string) {
+  const root = await realpath(directory)
+  const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
+  if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string')
+    throw new Error('Expected npm package name and version')
+  packageVersion.parse(pkg.version)
+  const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
+  const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
+  return { root, pkg: pkg as { name: string; version: string }, manifest }
+}
+
+/** An app directory's name, version and resolved root (migration 0125). */
+export async function artifactIdentity(directory: string) {
+  const { root, pkg, manifest } = await readArtifact(directory)
+  return { name: manifest.name, version: pkg.version, root }
+}
+
 // Boot discovery indexes versions without upgrading an installed application.
 // Importing any server module grants full Node privileges, deliberately.
 export function discoverPackages(paths: string[]) {
@@ -148,13 +176,9 @@ export function discoverPackages(paths: string[]) {
     const duplicates = new Set<string>()
     for (const directory of paths) {
       try {
-        const root = await realpath(directory)
-        const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
-        if (typeof pkg.name !== 'string' || typeof pkg.version !== 'string')
-          throw new Error('Expected npm package name and version')
-        packageVersion.parse(pkg.version)
-        const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
-        const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
+        const { root, pkg, manifest } = await readArtifact(directory)
+        if (!SUPPORTED_PLATFORM_VERSIONS.includes(manifest.platformVersion))
+          throw new Error(`App ${manifest.name} was built for platform version ${manifest.platformVersion}; this Featherbase supports ${SUPPORTED_PLATFORM_VERSIONS.join(', ')}`)
         if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
           throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
         validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
@@ -202,7 +226,8 @@ export function discoverPackages(paths: string[]) {
           const modulePath = await contained(root, manifest.server)
           if (!/\.(mjs|js)$/.test(modulePath)) throw new Error('Server module must be compiled JavaScript')
           const module = await import(/* @vite-ignore */ `${pathToFileURL(modulePath).href}?artifact=${digest}`)
-          if (module.apiVersion !== 1) throw new Error('Incompatible server API version')
+          if (module.platformVersion !== manifest.platformVersion)
+            throw new Error(`App ${manifest.name}'s server module was built for platform version ${String(module.platformVersion)}, but its manifest says ${manifest.platformVersion}`)
           handlers = namedFunctions(module.actions, manifest.actions?.version === 1 ? manifest.actions.names : Object.keys(actionOperations))
           readHandlers = namedFunctions(module.reads, Object.keys(readOperations))
           resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))

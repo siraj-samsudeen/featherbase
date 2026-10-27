@@ -316,7 +316,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await cp(source, directory, { recursive: true })
       const file = resolve(directory, 'featherbase.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
-      await writeFile(file, JSON.stringify({ ...manifest, apiVersion: 99 }))
+      await writeFile(file, JSON.stringify({ ...manifest, platformVersion: '2099-01' }))
       expect(await discoverPackages([directory])).toHaveLength(1)
       await loadInstalledApps()
       await expect(admin.post('/api/set_app_enabled', { name: 'other', enabled: true }))
@@ -398,6 +398,57 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       // The withdrawal is on the record.
       expect(await sql`select operation from activity_log where operation like 'app_grant_withdrawn tasker@2.3.0: All on Person%'`).toHaveLength(1)
     })
+})
+
+// #551 (ADR 0011, design E9): an app states the platform version it was built
+// for, dated by month. The manifest and the compiled server module both say it.
+describe('An app states the platform version it was built for', () => {
+  async function appBuiltFor(manifestFields: Record<string, unknown>, serverVersion: string, serverLine = `export const platformVersion = '${serverVersion}'`) {
+    const directory = await mkdtemp(resolve('test/.platform-version-'))
+    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    const file = resolve(directory, 'featherbase.json')
+    const { platformVersion: _builtFor, ...manifest } = JSON.parse(await readFile(file, 'utf8'))
+    await writeFile(file, JSON.stringify({ ...manifest, ...manifestFields }))
+    const server = resolve(directory, 'server.mjs')
+    const body = (await readFile(server, 'utf8')).split('\n').slice(1).join('\n')
+    await writeFile(server, `${serverLine}\n${body}`)
+    return directory
+  }
+
+  test('an app built for 2026-10 installs', async ({ admin }) => {
+    const directory = await appBuiltFor({ platformVersion: '2026-10' }, '2026-10')
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'built-for', quantity: 3 } }))
+        .toMatchObject({ validation_runs: '1' })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('an unknown platform version is refused, naming both versions', async () => {
+    const directory = await appBuiltFor({ platformVersion: '2027-01' }, '2027-01')
+    try {
+      const [failure] = await discoverPackages([directory])
+      expect(failure.error).toContain('2027-01')
+      expect(failure.error).toContain('2026-10')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('an app still declaring the retired apiVersion is refused', async () => {
+    const directory = await appBuiltFor({ apiVersion: 1 }, '', 'export const apiVersion = 1')
+    try {
+      expect(await discoverPackages([directory])).toHaveLength(1)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('a server module built for another platform version is refused', async () => {
+    const directory = await appBuiltFor({ platformVersion: '2026-10' }, '2025-01')
+    try {
+      const [failure] = await discoverPackages([directory])
+      expect(failure.error).toContain('2025-01')
+      expect(failure.error).toContain('2026-10')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
 })
 
 describe('Removing an app isn’t offered yet', () => {
