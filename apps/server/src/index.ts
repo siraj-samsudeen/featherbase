@@ -368,11 +368,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // The stored type is an editable field, so it is reduced again here and the
   // header is built from that, never sent as stored: a browser reads
   // `text/plain,text/html` as its LAST type and would run it as a page.
+  // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
+  // still an attachment, so opened directly it downloads and its script never runs.
   const type = mimeEssence(row.mime_type as string)
   const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
   const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
-    'content-type': inPlace ? type : 'application/octet-stream',
+    'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
     'content-disposition': `${disposition}; filename="${(row.file_name as string).replace(/"/g, '')}"`,
   })
 }

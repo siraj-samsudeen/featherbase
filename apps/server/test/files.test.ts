@@ -105,6 +105,27 @@ describe('FILE-001: file upload + storage', () => {
     }
   })
 
+  // #561: an <img> will not draw an SVG served as octet-stream, so an SVG keeps its own type —
+  // and still downloads when opened directly, so its script never runs as a page of the app.
+  test('an SVG is served as an image a form can show, and still never opens as a page', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const declared of ['image/svg+xml', 'IMAGE/SVG+XML; charset=utf-8']) {
+        const doc = (await (
+          await upload(admin, 'logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', declared)
+        ).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.status).toBe(200)
+        expect(res.headers.get('content-type')).toBe('image/svg+xml')
+        expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
+        expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
   test('a type list that ends in HTML is served as one plain type, whether uploaded or edited onto the File row', async ({
     admin,
     api,
