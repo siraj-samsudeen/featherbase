@@ -64,7 +64,7 @@ for (const [change, update] of [
       expect(await Promise.race([admin, waitingOnLock(f.system)])).toBe('blocked')
       f.release()
       expect(await request).toEqual(place)
-      expect(f.seen[0].identifiers).toEqual({ [f.system]: ['NAT-1'] })
+      expect(f.seen[0].identifiers).toEqual({ [f.system]: [{ value: 'NAT-1', shared: false }] })
       expect(await admin).toBe('done')
       await expect(resolvePersonScope(f.p, f.binding)).rejects.toMatchObject({ type: 'NotSetUpError' })
       expect(f.seen).toHaveLength(1)

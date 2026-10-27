@@ -221,7 +221,9 @@ responsible for, so other apps on the instance can rely on that answer. It SHALL
 only the records it declared, and only records marked as deciding scope. It MAY also
 declare the kinds of identifier it needs, such as employee codes. It SHALL then be
 given the person's identifiers of those kinds that are valid today, read afresh each
-time, and nothing else about the person. If the instance does not have a kind it
+time, and nothing else about the person. Each identifier SHALL say whether another
+person holds the same one today, and SHALL say nothing about who that is or how many
+there are. If the instance does not have a kind it
 declared, has turned that kind off, or keeps that kind secret, the app SHALL answer
 that it is not set up yet, and no one SHALL get a scope from it. A secret kind's
 values SHALL never be given to an app.
@@ -244,6 +246,18 @@ values SHALL never be given to an app.
 - **THEN** it is given the employee codes the manager holds today
 - **AND** it is not given a code the manager no longer holds, a code that starts
   later, or any other kind of identifier
+
+#### Scenario: Two people hold the same employee code
+
+- **WHEN** two people in different firms both hold an employee code today, and a
+  roster app that declared employee codes works out one of their scopes
+- **THEN** it is told that the code is shared
+- **AND** it is not told who else holds the code, or how many people do
+
+#### Scenario: A code another person held in the past
+
+- **WHEN** a manager's employee code was another person's until yesterday
+- **THEN** the roster app is told that the code is not shared
 
 #### Scenario: An instance without the kind of identifier a roster app needs
 

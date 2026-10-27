@@ -75,9 +75,11 @@ export interface AppScopeProviderContext {
   readonly person: {
     readonly id: string
     readonly email: string | null
-    /** #660: the person's current values in each identifier system the
-     *  manifest's `scopeProvider.identifiers` names, and no other system. */
-    readonly identifiers: Readonly<Record<string, readonly string[]>>
+    /** #660: the person's values valid today in each identifier system the
+     *  manifest's `scopeProvider.identifiers` names, and no other system.
+     *  #662: each says whether another person holds it today too, and
+     *  nothing about who. */
+    readonly identifiers: Readonly<Record<string, readonly Readonly<{ value: string; shared: boolean }>[]>>
   }
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>

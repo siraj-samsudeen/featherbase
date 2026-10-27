@@ -250,6 +250,8 @@ describe("the person's identifiers a provider receives", () => {
       valid, verified: true, one_holder: false, one_per_person: false,
       source: 'test', recorded_by: 'test' } as unknown as Record<string, never>)}`
   }
+  // #662: each value says whether another person holds it today too.
+  const unshared = (...values: string[]) => values.map(value => ({ value, shared: false }))
   // Today in India, the day the platform counts, and a day either side.
   const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(Date.now() + offset * 86_400_000))
@@ -264,7 +266,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(other.user!, 'roster-code', 'R-9')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1', 'R-2'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1', 'R-2') })
     })
   })
 
@@ -276,16 +278,16 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'roster-code', 'R-NEW')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-NEW'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-NEW') })
     })
   })
 
   // Owner decision 27-Oct-2026 (provisional): current means valid today.
   test.for([
     ['a value that starts tomorrow is not passed', { from: day(1) }, []],
-    ['a value that started today is passed', { from: day(0) }, ['R-1']],
+    ['a value that started today is passed', { from: day(0) }, unshared('R-1')],
     ['a value that ends today is not passed', { to: day(0) }, []],
-    ['a value that ends tomorrow is passed', { to: day(1) }, ['R-1']],
+    ['a value that ends tomorrow is passed', { to: day(1) }, unshared('R-1')],
   ] as const)('%s', async ([, validity, expected], { admin, createUser }) => {
     await declaring(['roster-code'], async providerAt => {
       await system(admin, 'roster-code')
@@ -294,6 +296,95 @@ describe("the person's identifiers a provider receives", () => {
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
       expect(roster.calls.person.identifiers).toEqual({ 'roster-code': expected })
+    })
+  })
+
+  // #662: whether a value is shared, and nothing about who shares it.
+  async function sharing(admin: TestClient, createUser: CreateUserFn, fn: (user: TestClient, other: TestClient, seen: () => unknown) => Promise<void>) {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      const other = await createUser({ email: 'other@example.test', roles: ['Scope Reader'] })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await fn(user, other, () => roster.calls.person.identifiers)
+    })
+  }
+
+  test('a value two people hold today is shared for each of them', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await position(admin, other.user!, 'South / Mens', 'S1', 'mens')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+      await other.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+    })
+  })
+
+  test('a value only one person holds is not shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-2')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
+  test.for([
+    ['ended', { to: day(0) }],
+    ['starts tomorrow', { from: day(1) }],
+  ] as const)("a value whose other holder's row %s is not shared", async ([, validity], { admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1', validity)
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
+  // A record merged into another is replaced: inert, pointing at its
+  // survivor. Holders are counted by the person they resolve to, so a
+  // person's own replaced record is not someone else.
+  test("a value also on the person's own replaced record is not shared", async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await sql`update person set enabled = false, replaced_by = ${user.user} where row_id = ${other.user}`
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
+  test('a value on a record replaced by a third person is shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      const third = await createUser({ email: 'third@example.test' })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await sql`update person set enabled = false, replaced_by = ${third.user} where row_id = ${other.user}`
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+    })
+  })
+
+  test('each value reaches the provider as its value and the shared flag, and nothing else', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await user.post(read + 'places', { payload: {} })
+      const [entry] = (seen() as Record<string, object[]>)['roster-code']
+      expect(Reflect.ownKeys(entry).sort()).toEqual(['shared', 'value'])
+      expect(Object.isFrozen(entry)).toBe(true)
+    })
+  })
+
+  test('the same text in another system is not shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await system(admin, 'payroll-code')
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'payroll-code', 'R-1')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
     })
   })
 
@@ -306,7 +397,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'payroll-code', 'P-1')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1') })
     })
   })
 
@@ -378,7 +469,7 @@ describe("the person's identifiers a provider receives", () => {
       await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 409 })
       await sql`update identifier_system set enabled = true where row_id = 'roster-code'`
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1') })
     })
   })
 

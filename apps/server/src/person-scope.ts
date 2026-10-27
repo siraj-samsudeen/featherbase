@@ -78,15 +78,25 @@ async function assertIdentifierSystems(binding: ScopeProviderBinding) {
 // valid today (owner decision 27-Oct-2026, provisional): started on or before
 // today and not yet ended, so a value with a future start is not passed.
 // Today is India's day, as the leaver check and the access alerts count it.
-async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
-  const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
+async function currentIdentifiers(user: string, systems: readonly string[]): Promise<AppScopeProviderContext['person']['identifiers']> {
+  const values: Record<string, { value: string; shared: boolean }[]> = Object.fromEntries(systems.map(system => [system, []]))
   if (systems.length) {
     // The system's state is checked again here, in the same read, so a
     // system turned off or made Secret since the check passes nothing.
-    for (const row of await sql`select i.system, i.value from person_identifier i
+    // #662: `shared` says another person holds the same value in the same
+    // system today. Holders are counted by the person they resolve to (a
+    // replaced record counts as its survivor), so a person's own merged-away
+    // record is not someone else. Only the boolean leaves this query: never
+    // who, or how many.
+    for (const row of await sql`select i.system, i.value,
+        exists (select 1 from person_identifier o join person op on op.row_id = o.person_id
+          where o.system = i.system and o.value = i.value and o.valid @> (now() at time zone 'Asia/Kolkata')::date
+            and coalesce(op.replaced_by, op.row_id) <> coalesce(me.replaced_by, me.row_id)) as shared
+      from person_identifier i
       join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
+      join person me on me.row_id = i.person_id
       where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
-      values[String(row.system)].push(String(row.value))
+      values[String(row.system)].push(Object.freeze({ value: String(row.value), shared: row.shared === true }))
   }
   return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))
 }

@@ -194,8 +194,15 @@ that fills it).
   resolution and frozen with the rest. *Current* means valid today: started on or
   before today, with no end or an end after today, where today is India's day (as
   the leaver check counts it), so a value with a future start is not passed (owner
-  decision 27-Oct-2026, provisional, for review 28-Oct). It gets nothing else about
-  the person, and `identifiers` is empty when it names none. A named system the
+  decision 27-Oct-2026, provisional, for review 28-Oct). Each value comes as
+  `{ value, shared }` (#662): `shared` is true when the same value in the same
+  system is valid today on another person, so a derivation can refuse a code that
+  cannot say whose rows are whose. Holders are counted by the person they resolve
+  to: a record merged away (`replaced_by`) counts as its survivor, so a person's own
+  replaced record is not someone else. Only the boolean is passed, never who else
+  holds the value or how many, and it is worked out in the same read as the values,
+  under the same locks. It gets nothing else about the person, and `identifiers` is
+  empty when it names none. A named system the
   instance does not have, or has turned off (owner decision 27-Oct-2026,
   provisional: a turned-off system passes no values and counts as missing), or has
   made Secret (Codex round 1 on #661: a system made Secret after values were
