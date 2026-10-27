@@ -268,8 +268,7 @@ async function exec(
 
 // #155: MySQL has no RETURNING, so a write is a statement plus a re-read.
 // These guarantees hold for tables that support transactions (InnoDB, the
-// default); a MyISAM table has neither row locks nor rollback (#566 lists
-// the follow-up).
+// default); a MyISAM table has neither row locks nor rollback (#602).
 // Both run on one pooled connection in one transaction: the statement's row
 // lock holds until the re-read, so the row handed back is the one this save
 // wrote — never another writer's change landing in between, and never
