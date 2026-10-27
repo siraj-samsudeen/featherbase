@@ -12,44 +12,51 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (principal === 'Guest') return ['Guest']
   // The server's own actor (system-actor.ts), only inside its operation.
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
+  // Migrations before App Role Binding's own (0133) resolve roles too.
+  if (!bindingsExist) {
+    const [{ ok }] = await sql`select to_regclass('featherbase.app_role_binding') is not null as ok`
+    if (!ok) {
+      const rows = await sql`
+        select role from has_role
+        where parent = ${principal} and parenttype in ('Person', 'Service Account')
+        order by role`
+      return ['All', ...rows.map((r) => r.role as string)]
+    }
+    bindingsExist = true
+  }
+  // One round trip: the roles held directly (app null), then the app roles
+  // bound to them (#620, D4). getRoles runs on nearly every permission check.
   const rows = await sql`
-    select role from has_role
-    where parent = ${principal} and parenttype in ('Person', 'Service Account')
-    order by role`
-  const held = ['All', ...rows.map((r) => r.role as string)]
-  return [...held, ...(await boundAppRoles(held))]
+    with held as (
+      select role from has_role
+      where parent = ${principal} and parenttype in ('Person', 'Service Account'))
+    select role, null as app from held
+    union all
+    select distinct b.app_role as role, b.app from app_role_binding b
+    join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
+    where b.bound_role in (select role from held)
+      and b.bound_role not in ${sql(OPEN_ROLES)}
+      and b.app_role not in ${sql(PLATFORM_ROLES)}
+      and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
+    order by app nulls first, role`
+  const held = ['All', ...rows.filter((r) => r.app === null).map((r) => r.role as string)]
+  // The same availability assertAppAvailable requires: enabled, not pending
+  // activation, and its exact files loaded (activeApps).
+  const bound = rows.filter((r) => r.app !== null && activeApps.has(String(r.app))).map((r) => r.role as string)
+  return [...held, ...[...new Set(bound)].filter((role) => !held.includes(role)).sort()]
 }
 
 // #620 (D4): an app role is held through any role bound to it (App Role
 // Binding), read fresh on every call. Only a role the app itself declares, of
-// an enabled app, and never a platform role: a binding cannot hand out System
-// Manager. One level: a role held only through a binding binds nothing further.
+// an enabled and available app, and never a platform role: a binding cannot
+// hand out System Manager. One level: a role held only through a binding
+// binds nothing further.
 /** Roles no binding may involve as the app role: the platform's own. */
 export const PLATFORM_ROLES: readonly string[] = ['Administrator', 'System Manager', 'All', 'Guest']
 /** Roles no binding may carry an app role through: every signed-in person
  *  holds All, and anyone holds Guest. */
 export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
 let bindingsExist = false
-
-async function boundAppRoles(held: string[]): Promise<string[]> {
-  // Migrations before App Role Binding's own (0133) resolve roles too.
-  if (!bindingsExist) {
-    const [{ ok }] = await sql`select to_regclass('featherbase.app_role_binding') is not null as ok`
-    if (!ok) return []
-    bindingsExist = true
-  }
-  const rows = await sql`
-    select distinct b.app, b.app_role from app_role_binding b
-    join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
-    where b.bound_role in ${sql(held.filter((role) => !OPEN_ROLES.includes(role)).concat(''))}
-      and b.app_role not in ${sql(PLATFORM_ROLES)}
-      and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
-    order by b.app_role`
-  // The same availability assertAppAvailable requires: enabled, not pending
-  // activation, and its exact files loaded (activeApps).
-  const roles = rows.filter((r) => activeApps.has(String(r.app))).map((r) => r.app_role as string)
-  return [...new Set(roles)].filter((role) => !held.includes(role))
-}
 
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
