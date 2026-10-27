@@ -525,6 +525,9 @@ export async function installApp(name: string): Promise<InstallResult> {
           await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
             migration_ledger = ${sql.json(ledger)} where name = ${name}`
         }
+        // #620 (D4): the app's role suggestions, written once, here.
+        const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
+        await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
         return result
       })
     } catch (error) {

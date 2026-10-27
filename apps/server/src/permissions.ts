@@ -16,7 +16,36 @@ export async function getRoles(principal: string): Promise<string[]> {
     select role from has_role
     where parent = ${principal} and parenttype in ('Person', 'Service Account')
     order by role`
-  return ['All', ...rows.map((r) => r.role as string)]
+  const held = ['All', ...rows.map((r) => r.role as string)]
+  return [...held, ...(await boundAppRoles(held))]
+}
+
+// #620 (D4): an app role is held through any role bound to it (App Role
+// Binding), read fresh on every call. Only a role the app itself declares, of
+// an enabled app, and never a platform role: a binding cannot hand out System
+// Manager. One level: a role held only through a binding binds nothing further.
+/** Roles no binding may involve as the app role: the platform's own. */
+export const PLATFORM_ROLES: readonly string[] = ['Administrator', 'System Manager', 'All', 'Guest']
+/** Roles no binding may carry an app role through: every signed-in person
+ *  holds All, and anyone holds Guest. */
+export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
+let bindingsExist = false
+
+async function boundAppRoles(held: string[]): Promise<string[]> {
+  // Migrations before App Role Binding's own (0133) resolve roles too.
+  if (!bindingsExist) {
+    const [{ ok }] = await sql`select to_regclass('featherbase.app_role_binding') is not null as ok`
+    if (!ok) return []
+    bindingsExist = true
+  }
+  const rows = await sql`
+    select distinct b.app_role from app_role_binding b
+    join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
+    where b.bound_role in ${sql(held.filter((role) => !OPEN_ROLES.includes(role)).concat(''))}
+      and b.app_role not in ${sql(PLATFORM_ROLES)}
+      and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
+    order by b.app_role`
+  return rows.map((r) => r.app_role as string).filter((role) => !held.includes(role))
 }
 
 // PERM-002/003/009: role-based Table permissions from Permission rows.

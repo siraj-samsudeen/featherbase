@@ -13,7 +13,7 @@ import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } fro
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretsDeclaration, settingsDeclaration } from './app-settings'
-import { roleDefaultsDeclaration } from './app-role-bindings'
+import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -225,6 +225,7 @@ export function discoverPackages(paths: string[]) {
           duplicates.add(key)
           refuse('Duplicate different artifacts for one package version')
         }
+        validateRoleDefaults(manifest.roleDefaults, manifest.roles)
         const names = new Set(manifest.tables.map((t) => t.name))
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
           throw new Error('Duplicate Tables or unknown entryTable')
