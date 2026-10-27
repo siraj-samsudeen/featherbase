@@ -297,7 +297,9 @@ describe('the check on a live instance', () => {
     expect(await runOneJob()).toBe(true)
 
     const [exec] = await sql`select outcome, result from job_execution where job = ${job}`
-    expect(exec).toEqual({ outcome: 'success', result: 'leaver check: summary reached nobody — no System Manager has an email address' })
+    // #464: a refusal is recorded like a failure, with why it refused.
+    expect(exec.outcome).toBe('refused')
+    expect(exec.result).toMatch(/^disabled nobody: the warehouse's StyleHR data is stale .*; leaver check: summary reached nobody — no System Manager has an email address$/)
   })
 
   test('the schedule ships switched off', async () => {

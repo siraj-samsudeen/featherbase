@@ -283,7 +283,7 @@ export async function completeSignIn(
   method: SignInMethod,
   v: VerifiedIdentity,
   found: Found | null,
-  opts: { testMode?: boolean } = {},
+  opts: { testMode?: boolean; ipAddress?: string | null } = {},
 ): Promise<IssuedSession> {
   if (!method.enabled) throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   if (v.status === 'unavailable') throw unavailableError(method)
@@ -305,6 +305,7 @@ export async function completeSignIn(
     method: method.key,
     ...(person.identity ? { identity: person.identity } : {}),
     ...(opts.testMode ? { testMode: true } : {}),
+    ipAddress: opts.ipAddress ?? null,
   })
 }
 
@@ -355,7 +356,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
 // first and is resolved by subject.
 
 /** Featherbase's own password: the User id (or contact email) and its hash. */
-export async function passwordSignIn(usr: string, pwd: string): Promise<IssuedSession> {
+export async function passwordSignIn(usr: string, pwd: string, ipAddress: string | null = null): Promise<IssuedSession> {
   const method = await methodOfKind('password')
   const account = await findPasswordAccount(usr)
   if (!method?.enabled || !account?.password_hash) {
@@ -364,5 +365,5 @@ export async function passwordSignIn(usr: string, pwd: string): Promise<IssuedSe
     throw new AppError('AuthenticationError', INVALID_CREDENTIALS)
   }
   const ok = verifyPassword(pwd, String(account.password_hash))
-  return completeSignIn(method, { status: ok ? 'verified' : 'rejected' }, { user: String(account.row_id), identity: null })
+  return completeSignIn(method, { status: ok ? 'verified' : 'rejected' }, { user: String(account.row_id), identity: null }, { ipAddress })
 }

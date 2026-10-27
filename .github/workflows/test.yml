@@ -143,6 +143,10 @@ jobs:
       - name: Check for retired vocabulary
         run: pnpm check:vocabulary
 
+      # publish-image.yml labels the platform image with these versions.
+      - name: Platform versions read from the code
+        run: node --test tools/platform-versions.test.mjs
+
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 
@@ -324,7 +328,7 @@ jobs:
       # The design-system ratchet (test/design-guards.test.ts) compares the
       # pending pins with origin/main's; without this ref it silently skips.
       - name: Fetch main for the design-system ratchet
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --no-tags --depth=1 origin +main:refs/remotes/origin/main
 
       - uses: pnpm/action-setup@v4
 

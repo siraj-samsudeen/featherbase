@@ -49,6 +49,10 @@ export const reads = {
   },
   object: result,
   product: result,
+  places(context) {
+    calls.handler++
+    return { places: context.authorization.places }
+  },
 }
 export const actions = {
   async write(context) {
@@ -62,4 +66,10 @@ export const actions = {
     return output
   },
   product: result,
+  async place(context) {
+    calls.handler++
+    const labels = context.authorization.places.map(place => place.label).join(',')
+    await context.documents.create('scopeproof.effect', { row_id: context.payload.effect, value: labels })
+    return { places: labels }
+  },
 }

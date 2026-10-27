@@ -34,6 +34,32 @@ export interface SourceConfig {
   allowlist: string[] | null
 }
 
+// EDS-6: the shape of a write the data source refused for a constraint
+// reason. The codes are Postgres SQLSTATEs: the postgres driver passes its
+// own errors through as they are, and every other driver translates its
+// dialect into them (mysql: errno -> code). `column_name` is the SOURCE
+// column when the source names one; the dispatcher translates it to the
+// field (explainRefusal in dispatch.ts). `message` is the driver's raw text,
+// for the server log only.
+export const REFUSAL_CODE = {
+  unique: '23505',
+  notNull: '23502',
+  foreignKey: '23503',
+  check: '23514',
+  tooLong: '22001',
+  outOfRange: '22003',
+  invalidText: '22P02',
+} as const
+
+export interface SourceRefusal extends Error {
+  code: (typeof REFUSAL_CODE)[keyof typeof REFUSAL_CODE]
+  column_name?: string
+  constraint_name?: string
+  // Postgres's detail line, "Key (col, ...)=(value, ...) ..."; the mysql
+  // driver writes one for a unique refusal.
+  detail?: string
+}
+
 // The per-Table binding the dispatcher hands a driver, resolved from
 // table_def.data_source/external_* and column_def.source_column.
 export interface Binding {

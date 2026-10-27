@@ -5,6 +5,7 @@ import { useRealtime } from '../lib/realtime'
 import { buttonClasses, cardClasses } from './ui'
 
 // JOB-004: monitor background jobs and retry failed ones from the Admin UI.
+// The Queue section of the Jobs page (#464).
 
 interface Job {
   row_id: string
@@ -60,7 +61,7 @@ export function JobMonitor() {
   return (
     <div data-testid="job-monitor" className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-ink">Background Jobs</h1>
+        <h2 className="text-base font-semibold text-ink">Queue</h2>
       </div>
 
       {progress && (

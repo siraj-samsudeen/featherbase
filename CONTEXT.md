@@ -194,7 +194,7 @@ _Avoid_: generic app, universal app
 An app built for one client, kept in that client's own repository. It may carry
 the client's terms, values and examples directly. The next client gets a copy to
 adapt. Quicker to build and easier to follow; the cost is that the copies drift
-apart. For example, Feather Dash for JeyaRama.
+apart. For example, Feather Dash, built for its first client.
 _Avoid_: custom app, bespoke app, instance app
 
 **Instance**:
