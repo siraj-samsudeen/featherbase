@@ -1873,10 +1873,17 @@ app.post('/api/assign', async (c) => {
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
-  const [target] = await sql`select row_id from person where row_id = ${assign_to}`
-  if (!target) throw new AppError('NotFoundError', `Person ${assign_to} not found`)
+  // The assign box invites an email address (#512), so a person is found by
+  // their id or, failing that, by their email in any letter case.
+  const asked = assign_to.trim()
+  const [target] = await sql`
+    select row_id from person
+    where row_id = ${asked} or lower(trim(email)) = lower(${asked})
+    order by (row_id = ${asked}) desc
+    limit 1`
+  if (!target) throw new AppError('NotFoundError', `Person ${asked} not found`)
 
-  const todo = await createAssignment(table, name, assign_to, who(c), description)
+  const todo = await createAssignment(table, name, String(target.row_id), who(c), description)
   return c.json({ todo }, 201)
 })
 
