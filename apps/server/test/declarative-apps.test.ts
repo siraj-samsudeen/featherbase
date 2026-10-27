@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { loadInstalledApps, uninstallApp, isInstalled, registerApp } from '../src/apps'
+import { loadInstalledApps, uninstallApp, isInstalled, registerApp, listInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 
 // PLAT-005 (#55): an app can be installed from a JSON manifest over the API —
@@ -131,6 +131,17 @@ describe('PLAT-005: declarative app install over the API', () => {
       expect((await install([first, second('Decl Retry First')])).status).toBe(201)
     } finally {
       await uninstallApp(PARTIAL).catch(() => {})
+    }
+  })
+
+  test('installing a manifest that is already installed is refused and leaves the app active', async ({ admin }) => {
+    const install = () => admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: MANIFEST }) })
+    try {
+      expect((await install()).status).toBe(201)
+      expect((await install()).status).toBe(409)
+      expect((await listInstalledApps()).find((a) => a.name === APP)?.active).toBe(true)
+    } finally {
+      await unwire()
     }
   })
 

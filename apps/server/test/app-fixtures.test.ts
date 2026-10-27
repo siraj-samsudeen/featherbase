@@ -13,6 +13,7 @@ import {
   installApp,
   uninstallApp,
   isInstalled,
+  listInstalledApps,
 } from '../src/apps'
 import { saveDoc, deleteDoc } from '../src/document'
 import { sql } from '../src/db'
@@ -208,6 +209,25 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
     try {
       await expect(installApp(APP)).rejects.toMatchObject({ type: 'ValidationError' })
       expect(await sql`select name from table_def where name = ${DT}`).toEqual([])
+    } finally {
+      await unwire()
+    }
+  })
+
+  test('installing an app that is already installed is refused and leaves its hooks running', async () => {
+    const saved: string[] = []
+    registerApp(
+      manifest({
+        fixtures: [],
+        doc_events: { [DT]: { after_insert: ({ row }) => void saved.push(row.row_id as string) } },
+      }),
+    )
+    try {
+      await installApp(APP)
+      await expect(installApp(APP)).rejects.toMatchObject({ type: 'ConflictError' })
+      expect((await listInstalledApps()).find((a) => a.name === APP)?.active).toBe(true)
+      await saveDoc(DT, { row_id: 'after-retry', title: 'still hooked' }, 'Administrator')
+      expect(saved).toEqual(['after-retry'])
     } finally {
       await unwire()
     }

@@ -503,12 +503,13 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
 // An install is all or nothing: a table that fails late (a link to a table
 // the app doesn't declare, #511) must not leave the app's earlier tables
 // behind with no ledger row to uninstall them by. A rollback also undoes the
-// hooks and the cached metadata the attempt set up.
+// hooks this attempt wired (never a live install's) and the cached metadata.
 async function installAtomically<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  const wiredBefore = wired.has(name)
   try {
     return await withTransaction(fn)
   } catch (error) {
-    unwireHooks(name)
+    if (!wiredBefore) unwireHooks(name)
     invalidateMeta()
     throw error
   }
@@ -518,8 +519,10 @@ export async function installApp(name: string): Promise<InstallResult> {
   const manifest = available.get(name)
   if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
   return provisionApp(name, async () => {
-    if (!manifest.runtime_package) return installAtomically(name, () => materialize(manifest, null))
+    // A duplicate is answered before any transaction starts, so the live
+    // install's wiring is never in reach of a rollback.
     if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+    if (!manifest.runtime_package) return installAtomically(name, () => materialize(manifest, null))
     await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
     return installAtomically(name, async () => {
       const result = await materialize(manifest, manifest.runtime_manifest ?? null)
@@ -626,7 +629,11 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
       'ConflictError',
       `App ${parsed.data.name} is registered in code — install it with { name } instead`,
     )
-  return installAtomically(parsed.data.name, () => materialize(parsed.data as AppManifest, parsed.data))
+  const manifest = parsed.data as AppManifest
+  return provisionApp(manifest.name, async () => {
+    if (await isInstalled(manifest.name)) throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
+    return installAtomically(manifest.name, () => materialize(manifest, parsed.data))
+  })
 }
 
 export function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
