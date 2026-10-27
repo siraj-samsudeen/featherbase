@@ -73,3 +73,8 @@ edit showing what changed from and to.
 - **WHEN** a row of a Table not set up to keep history is edited and
   commented on
 - **THEN** its timeline shows the comment but no edits
+
+#### Scenario: A date change reads as days
+
+- **WHEN** a row's start date is moved from 23-Oct-2026 to 24-Oct-2026
+- **THEN** the timeline shows the change as 23-Oct-2026 → 24-Oct-2026, with no time or zone

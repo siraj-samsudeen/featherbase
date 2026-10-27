@@ -6,5 +6,5 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Independent screenshot verifier at 1280 and 375 px, light and dark, against the checklists on #390, #421 and #539; independent reviewer for the server half of #421.
-- [ ] 2.2 Server, web and shared suites, both typechecks and the repository checks; archive this change in the same PR.
+- [x] 2.1 Independent screenshot verifier at 1280 and 375 px, light and dark, against the checklists on #390, #421 and #539; independent reviewer for the server half of #421.
+- [x] 2.2 Server, web and shared suites, both typechecks and the repository checks; archive this change in the same PR.
