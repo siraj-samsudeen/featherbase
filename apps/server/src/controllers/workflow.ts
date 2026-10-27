@@ -15,7 +15,7 @@ const controller: TableController = {
       await assertTargetNotSystemWritten(row.ref_table, 'put under a workflow')
       // #437: a transition writes its state field directly, as whoever acts.
       if (typeof row.ref_table === 'string' && row.ref_table)
-        assertNotAccessTarget(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
+        await assertNotAccessTarget(row.ref_table, String(row.state_field ?? '').trim() || 'workflow_state', 'A workflow')
       const states = (row.states as WorkflowState[] | undefined) ?? []
       const transitions = (row.transitions as WorkflowTransition[] | undefined) ?? []
       validateWorkflow(states, transitions)

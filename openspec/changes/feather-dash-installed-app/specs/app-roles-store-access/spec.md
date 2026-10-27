@@ -2,11 +2,11 @@
 
 ### Requirement: Scope comes from what a person is responsible for
 
-An app SHALL be able to rely on Featherbase to work out which places a person is
-responsible for, from the instance's own records of who holds which job and where.
-Every app SHALL get the same answer for the same person, in the same form, worked out
-afresh on every request. A person whose records cannot be matched to them alone SHALL
-get no scope, never a partial one.
+An app SHALL be able to rely on Featherbase for the places a person is responsible
+for. One app on the instance works them out from the instance's records of who holds
+which job and where, and Featherbase asks it afresh on every request. Every app SHALL
+get the same answer for the same person, in the same form. A person whose records
+cannot be matched to them alone SHALL get no scope, never a partial one.
 
 #### Scenario: Two apps agree on a manager's sections
 
@@ -18,6 +18,69 @@ get no scope, never a partial one.
 
 - **WHEN** a person's employee record also belongs to someone else
 - **THEN** every app refuses to show them any store until the records are corrected
+
+### Requirement: A request outside a person's scope is refused whole
+
+When a request names a place or a value outside the person's scope, Featherbase SHALL
+refuse the whole request, record the refusal in the Access Log, and show nothing from
+it.
+
+#### Scenario: A Team Leader asks for another store
+
+- **WHEN** a Team Leader of one section in store 12 asks an app for store 13's figures
+- **THEN** the request is refused and nothing about store 13 is shown
+- **AND** the refusal is recorded in the Access Log
+
+#### Scenario: A repeated request after losing a store
+
+- **WHEN** a manager repeats an earlier request after one of the stores it covered was
+  taken from them
+- **THEN** the repeat is refused, and the earlier answer is not shown again
+
+#### Scenario: A narrower question gets a narrower answer
+
+- **WHEN** a manager of two stores asks for one of them
+- **THEN** the app answers for that store only
+
+### Requirement: No scope means no access
+
+A person whose scope cannot be worked out, or comes back empty, SHALL get no access to
+anything scoped by place. This SHALL hold for an administrator too: an empty scope
+never means everything.
+
+#### Scenario: An administrator with no places
+
+- **WHEN** an administrator who holds no job in any store opens a report scoped by
+  place
+- **THEN** the report refuses to show any store
+
+#### Scenario: The scope cannot be worked out
+
+- **WHEN** no app on the instance provides people's scope, or the one that does fails
+  or gives a malformed answer
+- **THEN** every request scoped by place is refused, and the refusal is recorded
+
+### Requirement: A scope says which links are confirmed
+
+A person's scope SHALL say, for each section it covers, whether the person's link to
+it is confirmed or only assumed, so an app can show the difference.
+
+#### Scenario: An assumed section is shown as assumed
+
+- **WHEN** a manager's section is linked to them only by an assumption the roster has
+  not confirmed
+- **THEN** an app that shows their sections marks that one as assumed
+
+### Requirement: The records that decide scope are protected
+
+Records that decide people's scope SHALL be marked as such where they are defined, and
+only a System Manager SHALL change them, whatever other permissions say.
+
+#### Scenario: A staff member cannot widen their own scope
+
+- **WHEN** a staff member who may edit other records tries to add themselves to a
+  store's roster
+- **THEN** the change is refused
 
 ### Requirement: Apps keep working when the roster changes shape
 

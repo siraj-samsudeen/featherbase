@@ -19,7 +19,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
+import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -417,7 +417,7 @@ async function assertAccessColumnsUnchanged(
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
-    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (!(await isSecurityTable(input.childTable))) continue
     if (existing === null) {
       if (input.rows.length) changed.push(input.columnName)
       continue
@@ -1257,6 +1257,20 @@ async function amendDocImpl(
   return saveDoc(table, values, user)
 }
 
+// #559: deleting or renaming a row removes or re-points its child rows
+// directly, outside saveChildren. A Sub-table marked decides_scope guards
+// those rows as a save would. (A named security child such as a Person's
+// roles goes with its parent, under the parent's own delete rule.)
+async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: string, user: string): Promise<void> {
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !(await getMeta(f.row_table!)).decides_scope) continue
+    const [held] = await tx`
+      select 1 from ${tx(await tableRelation(f.row_table!))}
+      where parent = ${name} and parenttype = ${meta.name} limit 1`
+    if (held) await assertSecurityWriter(f.row_table!, user)
+  }
+}
+
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
@@ -1335,6 +1349,7 @@ async function deleteDocImpl(
     await runHooks('on_trash', ctx)
 
     // Remove this row's own child rows, then the row.
+    await assertChildRowsWritable(stx, meta, name, user)
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       await tx`
@@ -1467,6 +1482,7 @@ async function renameDocImpl(
     await assertRowNotManaged(stx, meta, target, user)
     await assertNoManagedReference(stx, table, oldName, user)
 
+    await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 

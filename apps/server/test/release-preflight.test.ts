@@ -15,6 +15,7 @@ import { migrationBatches } from '../src/migrate'
 import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
+import { createTable } from '../src/table-engine'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -142,6 +143,27 @@ describe('release preflight', () => {
   })
 })
 
+// #559: exactly one enabled app may provide people's scope.
+describe('release preflight: the scope provider', () => {
+  async function installed(name: string, provides: boolean, enabled = true) {
+    const manifest = { name, ...(provides ? { scopeProvider: { name: 'positions', tables: [`${name}.position`] } } : {}) }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values (${name}, ${sql.json(manifest)}, ${enabled}, true)`
+  }
+
+  test('one enabled provider passes and says which app it is', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true, false)
+    await installed('consumer', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('one app provides people\'s scope: rostera')
+  })
+
+  test('two enabled providers refuse, naming both', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true)
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/rostera, rosterb/)
+  })
+})
+
 // #467: ADMIN_PASSWORD only provisions a null hash, so changing it rotates
 // nothing. A release that finds the variable set but not live says so,
 // without ever printing either value, and still goes ahead.
@@ -236,6 +258,12 @@ describe('release preflight: access configuration', () => {
   test('(a) Guest writing a security Table refuses', async () => {
     await grant('Guest', 'Data Scope', { can_create: true })
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) All writing a Table marked as deciding scope refuses (#559)', async () => {
+    await createTable({ name: 'Shift Roster 559', decides_scope: true, columns: [{ column_name: 'place', column_type: 'Data' }] })
+    await grant('All', 'Shift Roster 559', { can_write: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(write\)/)
   })
 
   test('(a) a grant with every action off, or to another role, passes', async () => {

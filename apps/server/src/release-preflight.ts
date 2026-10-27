@@ -88,6 +88,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
+  passed.push(await assertOneScopeProvider())
   passed.push(await noticeRecipients())
   passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
@@ -181,6 +182,19 @@ export function publicationRefusal(blocking: BlockingPublication[]): string {
   return `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`
 }
 
+/** #559: exactly one enabled app may provide people's scope. Install and
+ *  enable refuse a second one; this catches an instance that got there any
+ *  other way. At run time two providers already mean no scope for anyone. */
+async function assertOneScopeProvider(): Promise<string> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return 'scope provider check skipped (no installed apps yet)'
+  const providers = (await sql`
+    select name from ${sql(apps.relation)} where enabled and manifest ? 'scopeProvider' order by name`).map((r) => String(r.name))
+  if (providers.length > 1)
+    throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
+  return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
+}
+
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start
  *  with only the built-in Administrator, which has no address). System
  *  notices go to enabled System Managers with an email address; with none
@@ -263,10 +277,15 @@ async function assertAccessConfiguration(environment: string, pending: string[] 
   if (found) {
     const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
+    // #559: a Table marked as deciding scope is a security Table too (0131 on).
+    const definitions = await locate('table_def')
+    const marked = definitions?.columns.has('decides_scope')
+      ? (await sql`select name from ${sql(definitions.relation)} where decides_scope`).map((r) => String(r.name))
+      : []
     const rows = await sql`
       select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
       from ${sql(found.relation)}
-      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES])}
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES, ...marked])}
       order by role, ref_table, row_id`
     for (const r of rows) {
       const granted = flags.filter((a) => r[`can_${a}`] === true)

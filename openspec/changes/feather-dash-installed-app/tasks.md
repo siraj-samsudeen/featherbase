@@ -25,7 +25,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 
 ## 2. Stage B — Feather Dash as a client app (revised 27-Oct-2026, ADR 0013)
 
-- [ ] 2.1 E1 scope shape and `person_scope` policy, with today's derivation moved unchanged into a provider; refusal and audit as for `stores`; `security-tables.ts` stops naming the client's roster tables.
+- [x] 2.1 E1 scope shape, the app-declared scope provider (one enabled provider per instance; install, enable, upgrade, activation and the release preflight refuse a second; a replay must still be covered by the places it ran under) and the `person_scope` policy, failing closed; refusal and audit as for `stores`; Tables marked `decides_scope` are guarded as security Tables (#559, migration 0131). The client's derivation is supplied by its app (B6′), never by the platform.
 - [ ] 2.2 E2 declared settings (`App Setting`, a security Table) and secrets in the handler context; release warning for missing required secrets.
 - [ ] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function.
 - [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.
@@ -62,6 +62,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 ## 5. Go-live cut-over (owner decision 27-Oct-2026)
 
 - [ ] 5.1 One cut-over for B, C1 and D: the parity check (2.12), install 1.0.0 and upgrade to 1.1.0 on dev, switch the dev address; then prod with the owner's approval. Then the clean-up release (2.14).
+- [ ] 5.2 In the same cut-over: the client's instance setup marks its roster Tables `decides_scope`; then a platform release removes their names from `security-tables.ts` (#559).
 
 ## 6. Close-out
 
