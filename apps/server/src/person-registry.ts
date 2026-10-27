@@ -221,8 +221,8 @@ export async function classifyColumns(db: Sql | TxSql = sql): Promise<Classifica
     const owner = tableByRelation.get(`${schema}.${relation}`) ?? null
     const push = (spec: ColumnSpec, rule: string) =>
       out.classified.push({ ...spec, ...(c.generated ? { generated: true } : {}), schema, relation, column, table: owner?.name ?? null, rule })
-    const explicit = schema === PLATFORM_SCHEMA ? EXPLICIT[relation] : undefined
-    if (explicit?.[column]) {
+    const explicit = schema === PLATFORM_SCHEMA && Object.hasOwn(EXPLICIT, relation) ? EXPLICIT[relation] : undefined
+    if (explicit && Object.hasOwn(explicit, column)) {
       push(explicit[column], 'declared')
       continue
     }

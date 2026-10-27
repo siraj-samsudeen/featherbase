@@ -122,7 +122,7 @@ export function mapRowOut(bind: Binding, row: SourceRow): SourceRow {
     position: 0,
   }
   for (const c of bind.columns)
-    if (c.source_column in row) out[c.column_name] = row[c.source_column]
+    if (Object.hasOwn(row, c.source_column)) out[c.column_name] = row[c.source_column]
   return out
 }
 
@@ -130,7 +130,7 @@ export function mapRowOut(bind: Binding, row: SourceRow): SourceRow {
 export function mapValuesIn(bind: Binding, values: SourceRow): SourceRow {
   const out: SourceRow = {}
   for (const c of bind.columns)
-    if (c.column_name in values) out[c.source_column] = values[c.column_name]
+    if (Object.hasOwn(values, c.column_name)) out[c.source_column] = values[c.column_name]
   return out
 }
 

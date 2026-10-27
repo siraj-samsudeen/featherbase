@@ -92,6 +92,7 @@ variable.
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
 | `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
+| `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
@@ -254,9 +255,12 @@ still lists the app's `platformVersion`
 ### Railway
 
 `railway.json` at the repo root encodes this shape: Dockerfile build, a
-pre-deploy step of `pnpm --filter server release && pnpm --filter server
-seed:preview` (the preview seed does nothing unless the preview variables are
-set), and `/api/ping` as the healthcheck. Other platforms map the same
+pre-deploy step of `pnpm --filter server pre-deploy` (the release, then the
+preview seed, which does nothing unless the preview variables are set; either
+failing fails the deploy), and `/api/ping` as the healthcheck. Keep the
+pre-deploy step one command: Railway may run each entry as argv rather than
+through a shell, and a second command chained with `&&` was observed never to
+run while the deploy still went green (#307). Other platforms map the same
 settings onto their own vocabulary. Turn on the host's **deploy-failure
 notification** for each environment (Railway: project notification settings,
 deploy failed, to the owners): a failed release leaves the old code serving,

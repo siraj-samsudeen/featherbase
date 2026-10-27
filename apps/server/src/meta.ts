@@ -1,4 +1,4 @@
-import { sql } from './db'
+import { sql, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
@@ -76,7 +76,7 @@ export const ROW_KEY = 'row_id'
 const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
 
 export function physicalRowKey(table: string): string {
-  return PHYSICAL_ROW_KEY_OVERRIDES[table] ?? ROW_KEY
+  return Object.hasOwn(PHYSICAL_ROW_KEY_OVERRIDES, table) ? PHYSICAL_ROW_KEY_OVERRIDES[table] : ROW_KEY
 }
 
 export interface TableMeta {
@@ -149,6 +149,13 @@ let backlinksCache: Map<string, Backlink[]> | null = null
 let generation = 0
 
 export function invalidateMeta(name?: string) {
+  clearMeta(name)
+  // #448: and again once the change commits, so nothing read in between —
+  // the old definition, from another connection — outlives it.
+  whenTransactionEnds(() => clearMeta(name))
+}
+
+function clearMeta(name?: string) {
   generation++
   if (name) cache.delete(name)
   else cache.clear()

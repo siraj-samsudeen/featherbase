@@ -41,13 +41,19 @@ import {
   writableContext,
 } from './sources/dispatch'
 
+// #436: a row's value for a column, read only from the row itself: a column
+// named after an Object.prototype key (constructor) must not find the built-in.
+function own(row: RowValues, column: string): unknown {
+  return Object.hasOwn(row, column) ? row[column] : undefined
+}
+
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
 function columnValues(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (f.column_name in row) out[f.column_name] = row[f.column_name]
+    if (Object.hasOwn(row, f.column_name)) out[f.column_name] = row[f.column_name]
   }
   return out
 }
@@ -73,6 +79,10 @@ function validateValues(
   // undefined; write them back as explicit nulls so updates can clear values.
   for (const key of Object.keys(values))
     if (parsed[key] === undefined) parsed[key] = null
+  // #436: zod keeps a key the input only inherits (constructor) as undefined;
+  // a column the row left out stays out.
+  for (const key of Object.keys(parsed))
+    if (parsed[key] === undefined && !Object.hasOwn(values, key)) delete parsed[key]
   return parsed
 }
 
@@ -128,7 +138,7 @@ async function resolveRowId(
   }
   if (rule.startsWith('field:')) {
     const columnName = rule.slice('field:'.length)
-    const value = String(values[columnName] ?? '').trim()
+    const value = String(own(values, columnName) ?? '').trim()
     if (!value)
       throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
         [columnName]: `${columnName} is required for naming`,
@@ -178,7 +188,7 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
   const out = { ...values }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (out[f.column_name] != null) continue
+    if (own(out, f.column_name) != null) continue
     if (f.default_value == null) continue
     if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
       out[f.column_name] = Number(f.default_value)
@@ -250,7 +260,7 @@ async function validateLinks(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference') continue
-    const value = fieldValues[f.column_name]
+    const value = own(fieldValues, f.column_name)
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
@@ -342,7 +352,7 @@ function pickChildInputs(meta: TableMeta, values: RowValues) {
   const out: { columnName: string; childTable: string; rows: RowValues[] }[] = []
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table') continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) continue
     if (!Array.isArray(raw))
       throw new AppError('ValidationError', 'Invalid child table payload', {
@@ -390,7 +400,7 @@ function assertRequiredChildren(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table' || !f.reqd) continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) {
       if (mode === 'insert') errors[f.column_name] = 'Required'
       continue
@@ -425,7 +435,7 @@ async function assertAccessColumnsUnchanged(
     }
     const childMeta = await getMeta(input.childTable)
     const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
-    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (r[f.column_name] == null ? '' : String(r[f.column_name]))))
+    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
       select * from ${tx(await tableRelation(childMeta.name))}
       where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
@@ -571,7 +581,7 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
   // line — API responses, the Admin, tests — sees `row_id` and nothing else.
-  if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
+  if (meta.row_key !== ROW_KEY && Object.hasOwn(row, meta.row_key)) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
   return out
@@ -1116,8 +1126,8 @@ async function recordVersion(
   const changed: [string, unknown, unknown][] = []
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    const b = norm(before[f.column_name])
-    const a = norm(after[f.column_name])
+    const b = norm(own(before, f.column_name))
+    const a = norm(own(after, f.column_name))
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
@@ -1244,7 +1254,7 @@ async function amendDocImpl(
     if (f.column_name === 'amended_from') continue
     if (f.column_type === 'Section Break' || f.column_type === 'Column Break') continue
     if (f.column_type === 'Sub-table') {
-      const rows = (source[f.column_name] as RowValues[] | undefined) ?? []
+      const rows = (own(source, f.column_name) as RowValues[] | undefined) ?? []
       values[f.column_name] = rows.map((r) => {
         const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
@@ -1252,7 +1262,7 @@ async function amendDocImpl(
         return copy
       })
     } else {
-      values[f.column_name] = source[f.column_name]
+      values[f.column_name] = own(source, f.column_name)
     }
   }
   return saveDoc(table, values, user)
