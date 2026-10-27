@@ -22,4 +22,4 @@ None.
 
 ## Impact
 
-Server only: the import's match lookup and its key index, and table deletion. No migration.
+Server only: the import's match lookup and its key index (migration 0130 drops the indexes built on the untrimmed value), and table deletion.

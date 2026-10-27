@@ -172,13 +172,9 @@ async function ensureKeyIndex(table: string, keyColumn: string): Promise<void> {
   const cacheKey = `${table}:${keyColumn}`
   if (ensuredKeyIndexes.has(cacheKey)) return
   const tbl = await tableRelation(table)
-  const name = (seed: string) =>
-    `${tbl}_${keyColumn}`.slice(0, 46) + `_${createHash('sha256').update(seed).digest('hex').slice(0, 8)}_ukidx`
-  // #517 changed the expression, so the index is named afresh; the one built
-  // on the untrimmed cast before it serves nothing and is dropped.
-  const schema = tbl.slice(0, tbl.lastIndexOf('.'))
-  await sql.unsafe(`drop index if exists ${quoteIdent(schema)}.${quoteIdent(name(cacheKey))}`)
-  await sql.unsafe(`create index if not exists ${quoteIdent(name(`${cacheKey}:trimmed`))} on ${quoteRelation(tbl)} ((${storedKey(keyColumn)}))`)
+  const suffix = createHash('sha256').update(cacheKey).digest('hex').slice(0, 8)
+  const idx = `${tbl}_${keyColumn}`.slice(0, 46) + `_${suffix}_ukidx`
+  await sql.unsafe(`create index if not exists ${quoteIdent(idx)} on ${quoteRelation(tbl)} ((${storedKey(keyColumn)}))`)
   ensuredKeyIndexes.add(cacheKey)
 }
 

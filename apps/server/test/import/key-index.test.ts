@@ -4,6 +4,7 @@ import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
 import { KEY_PADDING } from '../../src/actions/collection-import'
+import { applyMigrationFile } from '../../src/migrate'
 
 // #145 (ruled 2026-08-11): the match key gets an expression index on
 // (key::text) — the exact cast resolveRows compares with — the first time
@@ -56,17 +57,27 @@ describe('#145: index-on-demand on the match key', () => {
     expect(await keyIndexes()).toHaveLength(1)
   })
 
-  test('an index on the untrimmed cast, built before #517, is replaced by the trimmed one', async ({ admin }) => {
+  test('migration 0130 drops a key index built on the untrimmed cast, and the next keyed run builds the trimmed one', async ({ admin }) => {
+    const MIGRATION = '0130_import_key_index_trimmed.sql'
     // The pop key: an earlier test already ensured zone's index in this
     // process, and the process cache would skip it.
     await setup(admin)
     await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 1 }] })
-    const before = `featherbase.index_demand_target_pop_${createHash('sha256').update(`${DT}:pop`).digest('hex').slice(0, 8)}_ukidx`
-    await sql.unsafe(`create index "${before}" on featherbase.index_demand_target (((pop)::text))`)
+    const name = `featherbase.index_demand_target_pop_${createHash('sha256').update(`${DT}:pop`).digest('hex').slice(0, 8)}_ukidx`
+    await sql.unsafe(`create index "${name}" on featherbase.index_demand_target (((pop)::text))`)
+    await sql`delete from migration where name = ${MIGRATION}`
+    await sql.begin(() => applyMigrationFile(MIGRATION))
+    expect(await keyIndexes()).toEqual([])
+
     await admin.post(PATH, { key_column: 'pop', rows: [{ pop: 1, zone: 'Beta' }] })
     const defs = await keyIndexes()
     expect(defs).toHaveLength(1)
     expect(defs[0]).toContain('btrim')
+
+    // Applying it again keeps the trimmed index.
+    await sql`delete from migration where name = ${MIGRATION}`
+    await sql.begin(() => applyMigrationFile(MIGRATION))
+    expect(await keyIndexes()).toHaveLength(1)
 
     // The query resolveRows runs is served by it.
     await sql`set local enable_seqscan = off`

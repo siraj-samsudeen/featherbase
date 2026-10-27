@@ -2,7 +2,7 @@
 
 ## 1. Import match values
 
-- [x] 1.1 The stored match value is trimmed of the same whitespace as the file's value; the key index is built on that expression, and the one built before it is dropped (#517).
+- [x] 1.1 The stored match value is trimmed of the same whitespace as the file's value, and the key index is built on that expression; migration 0130 drops the indexes built before it (#517).
 
 ## 2. App tables
 
