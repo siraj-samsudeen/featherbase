@@ -167,8 +167,7 @@ export async function listBatches(
       // `table_created` is stamped on the FIRST part of the first sheet only,
       // so it is an OR across the target rather than a per-part fact.
       target.created ||= part.table_created === true
-      // Int columns are bigint in Postgres and come back as strings; `+=`
-      // on those concatenates ("0" + "1" + "2" = "012") rather than adding.
+      // Counts are coerced so a missing count adds as zero.
       target.inserted += count(part.inserted)
       target.updated += count(part.updated)
       target.failed += count(part.failed)

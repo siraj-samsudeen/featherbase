@@ -157,7 +157,6 @@ async function runOneJobImpl(): Promise<boolean> {
   if (!claimed) return false
 
   const method = claimed.method as string
-  // Int columns come back as strings (bigint) — coerce before arithmetic.
   const attempt = Number(claimed.attempts) + 1
   const maxAttempts = Number(claimed.max_attempts)
   const handler = registry.get(method)
