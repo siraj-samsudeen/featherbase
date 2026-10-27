@@ -128,7 +128,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     // The version trail records the prior value — UPS-H1's recovery path.
     expect(versions.data.length).toBe(1)
     const changed = versions.data[0].data.changed as [string, unknown, unknown][]
-    expect(changed.find(([col]) => col === 'pop')).toEqual(['pop', '12000', '99'])
+    expect(changed.find(([col]) => col === 'pop')).toEqual(['pop', 12000, 99])
   })
 
   test('UPS-R1: create-only caller mixing updates in is refused whole — nothing written', async ({
@@ -586,9 +586,7 @@ describe('UPS-R5: the key is remembered per Table', () => {
     // Latest row (the keyless run) records the truthful zero count but no
     // match-key configuration…
     expect(logs.data[0].updated).not.toBeNull()
-    expect(logs.data[0].updated).toBeTypeOf('string')
-    expect(logs.data[0].updated).toBe('0')
-    expect(Number(logs.data[0].updated)).toBe(0)
+    expect(logs.data[0].updated).toBe(0)
     expect(logs.data[0].key_column).toBeNull()
     expect(logs.data[0].empty_cells).toBeNull()
     // …and the wizard's lookup — newest row WITH a key — still finds the

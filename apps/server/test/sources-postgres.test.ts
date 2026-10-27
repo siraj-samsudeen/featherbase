@@ -26,6 +26,8 @@ beforeAll(async () => {
   await cli.unsafe(`create schema ext_fixture`)
   await cli.unsafe(`create table ext_fixture.business (code integer primary key, name text);
     insert into ext_fixture.business values (1, 'Zulu'), (9, 'Alpha')`)
+  await cli.unsafe(`create table ext_fixture.stock (sku text primary key, on_hand bigint);
+    insert into ext_fixture.stock values ('tea', 13)`)
   await cli.unsafe(`
     create table ext_fixture.tenant (
       id uuid primary key default gen_random_uuid(),
@@ -234,6 +236,18 @@ describe('EDS-5: reading bound rows', () => {
     expect(doc.slug).toBe('acme')
     expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
     expect(doc.status).toBe('draft')
+  })
+
+  // #541: a bigint on the source is a whole-number column, read back as a number.
+  test('a whole number on the source reads back as a number', async ({ admin }) => {
+    await makeSource(admin)
+    const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['stock'] }),
+    })
+    const [{ name }] = ((await res.json()) as { created: { name: string }[] }).created
+    const doc = (await admin.get(`/api/table/${encodeURIComponent(name)}/tea`)) as Record<string, unknown>
+    expect(doc.on_hand).toBe(13)
   })
 
   test('unknown filter/selected fields are rejected before touching the source', async ({

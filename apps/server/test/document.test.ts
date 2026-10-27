@@ -25,10 +25,22 @@ describe('DOC-001: save_row inserts through the Document engine', () => {
     expect(doc.updated_at).toBe(doc.created_at) // same stamp on insert
     expect(doc.status).toBe('draft')
     expect(doc.title).toBe('hello')
-    expect(doc.qty).toBe('3')
+    expect(doc.qty).toBe(3)
 
     const read = await admin.get<Record<string, unknown>>(dt.rowUrl(String(doc.row_id)))
     expect(read.title).toBe('hello')
+  })
+
+  // #541: a whole-number column is stored as bigint, which the database
+  // client hands back as text unless told otherwise.
+  test('a whole number reads back as a number, from the row and from the list', async ({ admin }) => {
+    const dt = await makeDT(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row: { title: 'n', qty: 13 } })
+    expect((await admin.get<Record<string, unknown>>(dt.rowUrl(String(doc.row_id)))).qty).toBe(13)
+    const list = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["qty"]')}`,
+    )
+    expect(list.data.map((r) => r.qty)).toEqual([13])
   })
 
   test('rejects unknown fields with a field-wise error', async ({ admin }) => {

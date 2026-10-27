@@ -17,8 +17,7 @@ describe('PKG-R2: independent app-owned Task storage', () => {
       await admin.post('/api/save_row', { table: 'tasker.task', row: { row_id: 'same', title: 'Review returns' } })
       await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'same', quantity: 37 } })
       expect(await admin.get('/api/table/tasker.task/same')).toMatchObject({ title: 'Review returns' })
-      // Int is PostgreSQL bigint and uses the existing lossless string wire format.
-      expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: '37' })
+      expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: 37 })
       expect(await admin.get('/api/table/tasker.task:meta')).toMatchObject({
         name: 'tasker.task', label: 'Task', owner_app: 'tasker', physical_schema: 'tasker', physical_relation: 'task',
       })
@@ -30,7 +29,7 @@ describe('PKG-R2: independent app-owned Task storage', () => {
       const row = await admin.get<Record<string, unknown>>('/api/table/tasker.task/same')
       await admin.post('/api/save_row', { table: 'tasker.task', row: { ...row, title: 'Moved storage' } })
       expect(await admin.get('/api/table/tasker.task/same')).toMatchObject({ title: 'Moved storage' })
-      expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: '37' })
+      expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: 37 })
     } finally {
       await uninstallApp('other')
       await uninstallApp('tasker')

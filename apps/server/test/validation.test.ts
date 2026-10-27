@@ -45,7 +45,7 @@ describe('DOC-011: field-wise validation errors', () => {
       fields: { title: expect.anything() },
     })
     const ok = await save(admin, { title: 'works', qty: '7', severity: 'High', due: '2026-08-01' })
-    expect(ok.qty).toBe('7')
+    expect(ok.qty).toBe(7)
     const [row] = await sql.unsafe(`select qty from ${TABLE} where row_id='${ok.row_id}'`)
     expect(Number(row.qty)).toBe(7)
   })
