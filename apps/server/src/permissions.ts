@@ -1,8 +1,8 @@
 import { sql } from './db'
 import { AppError } from './errors'
-import { activeApps, opensAtOwnRoot } from './app-lifecycle'
+import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
-import { asNameList } from './installed-app-ledger'
+import { asNameList, declaresOwnPages } from './installed-app-ledger'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -167,7 +167,9 @@ export async function assertPermission(
  * `admin` is THE rule for "can use Admin" (#659): whoami's capability, the
  * sign-in landing and "Open Admin" all read it. It needs a Table grant of the
  * principal's own, or a shared row, on a Table that no installed app opening
- * at its own root owns (opensAtOwnRoot, the app catalog's test). Such an
+ * at its own root owns: its installation declares pages of its own
+ * (declaresOwnPages, read from the installed_app row, so it never depends on
+ * the app's files loading). Such an
  * app's Tables (enabled or not) are reached through the app: every reader of
  * an app reads its entry Table, so counting them would hand the Admin to
  * everyone who can open an app. An app without pages of its own is used
@@ -205,11 +207,11 @@ export async function tableAccessFor(
   }
 }
 
-/** #659: the Tables of installed apps that open at their own root, enabled or
- *  not, read through the ledger's one decoder. */
+/** #659: the Tables of installed apps that declare pages of their own,
+ *  enabled or not, loaded here or not, read through the ledger's one decoder. */
 async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
-  const rows = await sql`select name, tables from installed_app`
-  return new Set(rows.filter((r) => opensAtOwnRoot(String(r.name))).flatMap((r) => asNameList(r.tables)))
+  const rows = await sql`select tables, runtime_package, manifest from installed_app`
+  return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
 }
 
 /** Administrator, or a principal of either kind holding System Manager. */

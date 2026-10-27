@@ -7,7 +7,7 @@ import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeAp
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
-import { appOperation, appsWithOwnPages, opensAtOwnRoot, provisionApp, withAppIdentity } from './app-lifecycle'
+import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -176,8 +176,6 @@ async function verifyArtifact(pkg: RuntimePackage | undefined): Promise<RuntimeP
 function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
-  if (pkg.clientRoot) appsWithOwnPages.add(pkg.name)
-  else appsWithOwnPages.delete(pkg.name)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
@@ -381,7 +379,6 @@ export function discoverPackages(paths: string[]) {
     forgetRuntimePackages()
     forgetAppDatasets()
     packages.clear()
-    appsWithOwnPages.clear()
     artifacts.clear()
     packageFailures.length = 0
     const { loaded, failures } = await loadArtifacts(paths)
@@ -623,7 +620,9 @@ export async function appCatalog(user: string) {
   const result = []
   for (const item of installed) {
     const pkg = packages.get(item.name)
-    if (item.active && pkg && opensAtOwnRoot(pkg.name) && await hasPermission(user, pkg.entryTable, 'read'))
+    // Its installation declares pages of its own (#659's classification), and
+    // this process holds them to serve.
+    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
       result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
   }
   return result

@@ -220,6 +220,70 @@ describe('an app whose ledger holds its Tables as a JSON string', () => {
   })
 })
 
+// Codex round 2 on #675 (standard P2, adversarial high): whether an app has
+// pages of its own is what its installation declared, never whether this
+// process managed to load its files. An artifact missing or rejected at a
+// restart must not hand its Tables back to the Admin: that would fail open.
+describe("a client app whose artifact is not loaded after a restart", () => {
+  const restarts = {
+    'missing': async () => {
+      await discoverPackages([])
+    },
+    'rejected (another fingerprint)': async () => {
+      await sql`update installed_app set artifact_digest = 'another-artifact' where name = 'feather_dash'`
+      await discoverPackages([DASH_STAND_IN])
+    },
+  }
+  /** Who could fail open: a manual grant on the app's Table to an instance
+   *  role (`owner_app` null), or a row of it shared with them. */
+  const holders = {
+    'a manual grant on its Table': async (_admin: TestClient, createUser: CreateUserFn, email: string) =>
+      createUser({ email, roles: [ROLE] }),
+    'a row of its Table shared with them': async (admin: TestClient, createUser: CreateUserFn, email: string) => {
+      const row = await admin.post<{ row_id: string }>('/api/save_row', { table: APP_TABLE, row: { row_id: `row-${email}`, body: 'shared' } })
+      const guest = await createUser({ email })
+      await admin.post('/api/save_row', { table: 'Share', row: { share_table: APP_TABLE, share_name: row.row_id, person: guest.user, read: true } })
+      return guest
+    },
+  }
+
+  let n = 0
+  for (const [artifact, restart] of Object.entries(restarts))
+    for (const [holding, holder] of Object.entries(holders)) {
+      const email = `artifact.${++n}.659@example.com`
+      test(`artifact ${artifact}, ${holding}: whoami says no Admin`, async ({ admin, createUser }) => {
+        await installAppWithReaderRole(admin)
+        const person = await holder(admin, createUser, email)
+        await restart()
+        expect((await capsOf(person)).admin).toBe(false)
+      })
+
+      test(`artifact ${artifact}, ${holding}: opening the Admin is refused`, async ({ admin, createUser }) => {
+        await installAppWithReaderRole(admin)
+        const person = await holder(admin, createUser, email)
+        await restart()
+        await expect(person.post('/api/open_admin', {})).rejects.toMatchObject({ status: 403 })
+      })
+    }
+
+  test("an installation whose own-pages declaration cannot be read is treated as an app's, never as ordinary Tables", async ({ admin, createUser }) => {
+    await installAppWithReaderRole(admin)
+    await sql`update installed_app set manifest = null where name = 'feather_dash'`
+    const reader = await createUser({ email: 'unreadable.manifest.659@example.com', roles: [ROLE] })
+    expect((await capsOf(reader)).admin).toBe(false)
+  })
+
+  test("an instance grant on a Table of an app without pages of its own still opens the Admin", async ({ admin, createUser }) => {
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/evolve-v1')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Evolve Helper' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'evolve.item', role: 'Evolve Helper', can_read: true } })
+    await discoverPackages([])
+    const clerk = await createUser({ email: 'artifact.gone.clerk@example.com', roles: ['Evolve Helper'] })
+    expect((await capsOf(clerk)).admin).toBe(true)
+  })
+})
+
 test("a disabled app's Tables still do not count towards Admin", async ({ admin, createUser }) => {
   await installAppWithReaderRole(admin)
   await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
