@@ -1,4 +1,5 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { test, expect, adminAuth, adminToken, type APIRequestContext } from './fixtures'
+import { deleteTableIfExists } from './cleanup'
 
 const DT = 'Calendar header responsiveness with a very long Table name'
 
@@ -14,6 +15,9 @@ const DAY_TO = `${monthPrefix}-20`
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const headers = await adminAuth(request)
+  // A leftover run's dragged event has history, which blocks deleting it
+  // (#321), so the leftover Table goes as a whole.
+  await deleteTableIfExists(request, await adminToken(request), DT)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -25,9 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
-  const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { row_id: string }[] }
-  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.row_id}`, { headers })
+  if (dt.status() !== 201) throw new Error(`table: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: 'evt-1', title: 'Deadline', due: DAY_FROM } })
 })
 
