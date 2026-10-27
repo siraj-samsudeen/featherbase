@@ -401,6 +401,18 @@ describe('#559: a Table marked as deciding scope', () => {
     expect(rows.data).toHaveLength(1)
   })
 
+  // Codex round 1: a marked Sub-table's rows are written through the parent.
+  test('a marked Sub-table refuses a non-manager saving its parent, and its rows stay as they were', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Roster Line 559', kind: 'sub_table', decides_scope: true, columns: ['place'] })
+    await makeTable(admin, { name: 'Roster Sheet 559', columns: ['title', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Line 559' }] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Sheet Writer 559', table: ['Roster Sheet 559'], ...ALL_ACTIONS })
+    await expectApiError(user.post(tableRef('Roster Sheet 559').url, { title: 'mine', lines: [{ place: 'North' }] }), { status: 403 })
+    const sheet = await admin.post<{ row_id: string; updated_at: string }>(tableRef('Roster Sheet 559').url, { title: 'shared', lines: [{ place: 'South' }] })
+    await expectApiError(patchDoc(user, tableRef('Roster Sheet 559').rowUrl(sheet.row_id), { updated_at: sheet.updated_at, lines: [{ place: 'North' }] }), { status: 403 })
+    const after = await admin.get<{ lines: { place: string }[] }>(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
+    expect(after.lines.map((line) => line.place)).toEqual(['South'])
+  })
+
   test('an Assignment Rule or a Workflow may not target it', async ({ admin }) => {
     await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
     await expectApiError(admin.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 559', ref_table: 'Shift Roster 559', assign_to_field: 'person' } }),

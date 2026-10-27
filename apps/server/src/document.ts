@@ -19,7 +19,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
+import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -406,7 +406,7 @@ async function assertAccessColumnsUnchanged(
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
-    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (!(await isSecurityTable(input.childTable))) continue
     if (existing === null) {
       if (input.rows.length) changed.push(input.columnName)
       continue
