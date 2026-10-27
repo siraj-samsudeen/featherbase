@@ -122,6 +122,97 @@ describe('a scheduled job that fails emails the System Managers', () => {
   })
 })
 
+describe('one email per episode, not per run', () => {
+  test('a job failing run after run mails once; after a run that worked, the next failure mails again', async ({ createUser }) => {
+    await setup()
+    await createUser({ email: 'boss.episode@example.com', roles: ['System Manager'] })
+    let fail = true
+    registerJob(METHOD, async () => {
+      if (fail) throw new Error('down')
+    })
+    const runOnce = async () => {
+      await enqueue(METHOD, {}, { trigger: 'schedule', maxAttempts: 1 })
+      await runDue()
+      await sql`delete from background_job where method = ${METHOD} and job_status = 'queued'`
+    }
+    const mine = () => sent.filter((m) => m.to === 'boss.episode@example.com')
+    await runOnce()
+    await runOnce()
+    await runOnce()
+    expect(mine()).toHaveLength(1)
+    fail = false
+    await runOnce()
+    fail = true
+    await runOnce()
+    expect(mine()).toHaveLength(2)
+  })
+
+  test('a refusal after a failure is a new problem and mails', async ({ createUser }) => {
+    await setup()
+    await createUser({ email: 'boss.change@example.com', roles: ['System Manager'] })
+    let refuse = false
+    registerJob(METHOD, async (_p, ctx) => {
+      if (refuse) return ctx.refuse('feed stale')
+      throw new Error('down')
+    })
+    await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue()
+    refuse = true
+    await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue()
+    expect(sent.filter((m) => m.to === 'boss.change@example.com').map((m) => m.subject)).toEqual([
+      `${JOB_ALERT_SUBJECT.failed}: Alert probe`,
+      `${JOB_ALERT_SUBJECT.refused}: Alert probe`,
+    ])
+  })
+})
+
+describe('what the email says', () => {
+  test('a run started by hand that fails on its last attempt mails too, with the first line of the error only', async ({ createUser }) => {
+    await setup({ enabled: false })
+    await createUser({ email: 'boss.manual@example.com', roles: ['System Manager'] })
+    registerJob(METHOD, async () => {
+      throw new Error(`duplicate key\n${'detail '.repeat(100)}`)
+    })
+    await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue()
+    const mine = sent.filter((m) => m.to === 'boss.manual@example.com')
+    expect(mine).toHaveLength(1)
+    expect(mine[0].body).toContain('What failed: duplicate key\n')
+    expect(mine[0].body).not.toContain('detail')
+  })
+
+  test('a refusal keeps its reason even if the job sets a result afterwards', async () => {
+    await setup()
+    registerJob(METHOD, async (_p, ctx) => {
+      ctx.refuse('too many at once')
+      ctx.setResult('done')
+    })
+    await syncScheduledJobs(METHOD)
+    await runDue()
+    expect(await scheduledRow()).toEqual({ last_outcome: 'refused', last_result: 'too many at once' })
+  })
+})
+
+describe('only a System Manager can switch or run a job', () => {
+  test('anyone else is refused', async ({ admin, createUser }) => {
+    await setup()
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Shelf Clerk' } })
+    const clerk = await createUser({ email: 'clerk.jobs@example.com', roles: ['Shelf Clerk'] })
+    const [row] = await sql`select updated_at from scheduled_job where method = ${METHOD}`
+    await expect(
+      clerk.post('/api/save_row', {
+        table: 'Scheduled Job',
+        row: { row_id: METHOD, method: METHOD, cadence: 'hourly', enabled: false, updated_at: (row.updated_at as Date).toISOString() },
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+    await expect(clerk.post('/api/enqueue_job', { method: METHOD })).rejects.toMatchObject({ status: 403 })
+    const [after] = await sql`select enabled from scheduled_job where method = ${METHOD}`
+    expect(after.enabled).toBe(true)
+    expect(await sql`select 1 from background_job where method = ${METHOD}`).toHaveLength(0)
+  })
+})
+
 describe('a run that refuses to act is treated like a failure', () => {
   test('it is recorded as refused, not retried, emails once, and the schedule carries on', async ({ createUser }) => {
     await setup()

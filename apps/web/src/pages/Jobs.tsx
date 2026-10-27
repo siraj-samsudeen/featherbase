@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { jobTitle } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { fmtInstantIST } from '../lib/inr'
 import { JobMonitor } from '../components/JobMonitor'
-import { Button, DataList, Notice, StatusPill, cx, type DataColumn, type StatusTone } from '../components/ui'
+import { Button, DataList, Notice, StatusPill, cx, useMediaQuery, type DataColumn, type StatusTone } from '../components/ui'
 
 // #464: the Jobs page. Every scheduled job in one list: an on/off switch, its
 // schedule, its last run (time, OK / Failed / Refused and the one-line
@@ -137,6 +137,16 @@ export function Jobs() {
   const [notice, setNotice] = useState<{ tone: 'positive' | 'negative'; text: string } | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [asked, setAsked] = useState<Set<string>>(new Set())
+  // The width at which DataList reads as cards: the switch then sits beside
+  // the job's name rather than in a row of its own (item 11).
+  const cards = useMediaQuery('(width < 40rem)')
+
+  // A confirmation goes after a few seconds; a failure stays until the next try.
+  useEffect(() => {
+    if (notice?.tone !== 'positive') return
+    const t = setTimeout(() => setNotice(null), 6000)
+    return () => clearTimeout(t)
+  }, [notice])
 
   const jobs = useQuery({
     queryKey: ['scheduled-jobs'],
@@ -199,9 +209,12 @@ export function Jobs() {
       phone: 'title',
       cell: (j) => (
         <div className="min-w-0">
-          <div className="font-semibold text-ink">{jobTitle(j.method)}</div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-semibold text-ink">{jobTitle(j.method)}</span>
+            {cards && <OnSwitch job={j} busy={saving === j.method} onToggle={() => void toggle(j)} />}
+          </div>
           {j.description && (
-            <p className="line-clamp-2 text-xs font-normal text-ink-muted" title={j.description}>
+            <p className="mb-1 line-clamp-2 text-xs font-normal text-ink-muted sm:mb-0" title={j.description}>
               {j.description}
             </p>
           )}
@@ -211,7 +224,7 @@ export function Jobs() {
     {
       key: 'on',
       header: 'On',
-      phone: 'status',
+      phone: 'hidden',
       cell: (j) => <OnSwitch job={j} busy={saving === j.method} onToggle={() => void toggle(j)} />,
     },
     {
@@ -219,7 +232,7 @@ export function Jobs() {
       header: 'Schedule',
       phone: 'meta',
       cell: (j) => (
-        <span>
+        <span className="whitespace-nowrap">
           <span className="text-ink">{capitalised(j.cadence)}</span>
           <span className="block text-ink-muted">
             {j.enabled ? (j.nextRun ? `Next run ${fmtInstantIST(j.nextRun)}` : 'Next run not queued yet') : 'Not scheduled'}

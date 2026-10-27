@@ -20,12 +20,17 @@ A job SHALL be able to refuse a run when acting would be unsafe. A refused run c
 
 ### Requirement: A failed run emails the System Managers
 
-When a scheduled job's run fails for good or refuses, Featherbase SHALL email every System Manager once, in plain words: which job, when, and what failed. When no System Manager has an email address, that is recorded rather than lost.
+When a scheduled job's run fails for good or refuses, Featherbase SHALL email every System Manager once, in plain words: which job, when, and what failed. A job that keeps failing the same way run after run is emailed about once, when it starts. When no System Manager has an email address, that is recorded rather than lost.
 
 #### Scenario: A nightly job fails
 
 - **WHEN** a scheduled job fails on every attempt
 - **THEN** each System Manager gets one email naming the job and the error, not one per attempt
+
+#### Scenario: A job keeps failing
+
+- **WHEN** a job that runs every 15 minutes fails all morning
+- **THEN** the System Managers get one email when it starts failing, and another only if it fails again after a run that worked
 
 ## MODIFIED Requirements
 

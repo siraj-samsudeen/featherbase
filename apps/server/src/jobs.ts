@@ -149,9 +149,15 @@ async function scheduledJob(method: string): Promise<{ cadence: string; enabled:
 
 // Loaded on first use: job-alerts reaches email.ts, which registers its own
 // job against this module at import, so a static import would be a cycle.
+// Never throws: the run is already recorded and its recurrence queued, and a
+// mail problem must not turn a finished run back into a failed one.
 async function alertProblem(p: import('./job-alerts').JobProblem): Promise<void> {
-  const { alertJobProblem } = await import('./job-alerts')
-  await alertJobProblem(p)
+  try {
+    const { alertJobProblem } = await import('./job-alerts')
+    await alertJobProblem(p)
+  } catch (err) {
+    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
+  }
 }
 
 // Claim and run a single due job. Returns true if one was processed.
@@ -197,7 +203,8 @@ async function runOneJobImpl(): Promise<boolean> {
   let refused = false
   const ctx: JobContext = {
     setResult: (text) => {
-      result = text
+      // A refusal's reason is the run's result; nothing after it replaces it.
+      if (!refused) result = text
     },
     refuse: (reason) => {
       refused = true
@@ -249,8 +256,6 @@ async function runOneJobImpl(): Promise<boolean> {
     // otherwise enforces (found in review, 19-Sep-2026). Those triggers still
     // did the work; they just don't get to move the clock.
     const administered = await scheduledJob(method)
-    if (administered && refused)
-      await alertProblem({ method, outcome: 'refused', message: result ?? 'no reason given', attempts: attempt, at: startedAt })
     if (administered) {
       if (trigger === 'schedule' && administered.enabled) {
         const every = cadenceSeconds(administered.cadence)
@@ -271,6 +276,8 @@ async function runOneJobImpl(): Promise<boolean> {
           trigger: 'schedule',
         })
     }
+    if (administered && refused)
+      await alertProblem({ job: claimed.row_id as string, method, outcome: 'refused', message: result ?? 'no reason given', attempts: attempt, at: startedAt })
     return true
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -281,11 +288,7 @@ async function runOneJobImpl(): Promise<boolean> {
       set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
       where row_id = ${claimed.row_id as string}`
     await logExecution(record('error', message))
-    // #464: a run that has failed for good tells the System Managers once;
-    // an attempt that will be retried does not.
     const administered = nextStatus === 'failed' ? await scheduledJob(method) : null
-    if (administered)
-      await alertProblem({ method, outcome: 'failed', message, attempts: attempt, at: startedAt })
     // A recurrence must survive its own failure. Before Scheduled Job, a run
     // that exhausted its attempts ended the recurrence until the next restart
     // re-seeded it from a literal — a schedule that silently stopped. Now the
@@ -304,6 +307,10 @@ async function runOneJobImpl(): Promise<boolean> {
         })
       }
     }
+    // #464: a run that has failed for good tells the System Managers; an
+    // attempt that will be retried does not.
+    if (administered)
+      await alertProblem({ job: claimed.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
     return true
   }
 }
