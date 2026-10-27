@@ -12,4 +12,4 @@
 
 ## 3. Close out
 
-- [ ] 3.1 Verify the change against the code and tests, sync the delta into the specs and archive this change.
+- [x] 3.1 Verify the change against the code and tests, sync the delta into the specs and archive this change.
