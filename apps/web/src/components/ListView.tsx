@@ -461,7 +461,13 @@ export function ListView({
               Show columns
             </button>
             {colPickerOpen && (
-              <div className={cardClasses('absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2')}>
+              <div
+                // #581: on a phone the button starts the wrapped toolbar,
+                // so the pop-up opens from its left edge; from sm up it
+                // lines up with the button's right edge as before.
+                className={cardClasses('absolute left-0 z-10 mt-1 max-h-72 w-52 max-w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:left-auto sm:right-0')}
+                data-testid="list-columns-popup"
+              >
                 {allColumns.map((col) => (
                   <label
                     key={col.column_name}

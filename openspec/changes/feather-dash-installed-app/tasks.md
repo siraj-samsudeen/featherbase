@@ -27,11 +27,11 @@ the owner reviews. Server, security and data logic gets a Codex review.
 
 - [x] 2.1 E1 scope shape, the app-declared scope provider (one enabled provider per instance; install, enable, upgrade, activation and the release preflight refuse a second; a replay must still be covered by the places it ran under) and the `person_scope` policy, failing closed; refusal and audit as for `stores`; Tables marked `decides_scope` are guarded as security Tables (#559, migration 0131). The client's derivation is supplied by its app (B6′), never by the platform.
 - [x] 2.2 E2 declared settings (`App Setting`, a security Table, set through the instance settings file) and secrets in the handler context; "not set up yet" before the handler; release warning and Instance health check for a missing required setting or secret (#620, migration 0133).
-- [ ] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function.
-- [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.
-- [ ] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log.
-- [ ] 2.6 E7 release refuses when an installed, enabled app's exact version is missing.
-- [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address).
+- [x] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function (#625, migration 0135).
+- [x] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source. The Sales Target page keeps MotherDuck, page-scoped, until B9 (#642).
+- [x] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log (#625).
+- [x] 2.6 E7 release refuses when an installed, enabled app's exact version is missing; so does the server's start (#642).
+- [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address). Server side done (#642): manifest validation and `GET /api/app_bar/:app`; the top bar's picker waits for the owner's checklist.
 - [x] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
 - [x] 2.9 D4 app-role bindings (`App Role Binding`, a security Table, Admin-editable; manifest suggestions written once; role checks honour bindings; release refuses All/Guest) (#620, migration 0133). The stand-in binding `Sales Target Viewer → Feather Dash Reader` ships as Feather Dash's own `roleDefaults` in B6′ (2.10, ADR 0013).
 - [ ] 2.10 B6′, in the client's repository (ADR 0013): Feather Dash 1.0.0 as a client app, with today's query and roster derivation moved out of this repository, the scope provider, the role suggestions and stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there. The app's spec moves there with it. The app: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; a client image built on the platform image, with `FEATHERBASE_APP_PATHS`.

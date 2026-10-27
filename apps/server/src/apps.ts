@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
+import { asNameList } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -133,21 +134,6 @@ export function registerApp(manifest: AppManifest): void {
 
 export function getAvailableApps(): string[] {
   return [...available.keys()]
-}
-
-// The jsonb ledger columns (tables/roles/perms) round-trip as arrays, but
-// tolerate a stored JSON string too (defensive against double-encoding).
-function asNameList(v: unknown): string[] {
-  if (Array.isArray(v)) return v as string[]
-  if (typeof v === 'string') {
-    try {
-      const parsed = JSON.parse(v)
-      return Array.isArray(parsed) ? (parsed as string[]) : []
-    } catch {
-      return []
-    }
-  }
-  return []
 }
 
 // A fixture row's identity in the install ledger: enough to delete exactly

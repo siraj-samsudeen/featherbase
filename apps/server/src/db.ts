@@ -55,6 +55,13 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   return sql.begin((tx) => transactions.run(tx as unknown as Sql, fn)) as Promise<T>
 }
 
+/** #625: is this async context inside an app transaction? While it is, `sql`
+ *  runs on that transaction's connection, holding its locks; an outbound
+ *  read's handler must see false. */
+export function inAppTransaction(): boolean {
+  return transactions.getStore() !== undefined
+}
+
 export function _setSqlDelegate(tx: TxSql | null) {
   delegate = (tx as unknown as Sql) ?? root
 }
