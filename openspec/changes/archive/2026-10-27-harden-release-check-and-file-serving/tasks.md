@@ -14,4 +14,4 @@
 
 ## 4. Close
 
-- [ ] 4.1 Verify the change against the code and tests, then archive it.
+- [x] 4.1 Verify the change against the code and tests, then archive it.
