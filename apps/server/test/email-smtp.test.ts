@@ -9,7 +9,7 @@ import { test } from './pg-test'
 import { runMain } from './command-io'
 import { main as cliMain } from '../src/cli'
 import { sql } from '../src/db'
-import { drainJobs, loadJobs } from '../src/jobs'
+import { drainJobs, loadJobs, retryJob } from '../src/jobs'
 import {
   _setSmtpTestOverrides,
   flushPendingMail,
@@ -481,6 +481,63 @@ describe('#395: delivery through a real SMTP server', () => {
       expect(await statusOf(name)).toMatchObject({ send_status: 'error', error: 'Mail delivery failed (EENVELOPE 550)' })
     } finally {
       await smtp.close()
+    }
+  })
+
+  const jobOf = async (name: string) =>
+    (await sql`select row_id, job_status, attempts, error from background_job where method = 'send_email' and payload->>'queue' = ${name}`)[0]
+
+  test('#334: a refused send fails its background job with the reason, after one attempt, not "done"', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const smtp = await startSmtp({}, 550)
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(smtp.port), MAIL_FROM: FROM })
+      const name = await queueOne('gone@example.test')
+      await drainDue()
+      const job = await jobOf(name)
+      expect(job).toMatchObject({ job_status: 'failed', error: 'Mail delivery failed (EENVELOPE 550)' })
+      expect(Number(job.attempts)).toBe(1)
+      const execs = await sql`select outcome from job_execution where job = ${job.row_id as string}`
+      expect(execs.map((e) => e.outcome)).toEqual(['error'])
+    } finally {
+      await smtp.close()
+    }
+  })
+
+  test("#334: a transient failure on the job's last attempt fails the job too", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(await closedPort()), MAIL_FROM: FROM })
+    const name = await queueOne('last@example.test')
+    await drainDue()
+    expect((await statusOf(name)).send_status).toBe('error')
+    expect(await jobOf(name)).toMatchObject({ job_status: 'failed', error: expect.stringMatching(/^Mail delivery failed/) })
+  })
+
+  test('#334: retrying a failed send by hand sends it again, once', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const refusing = await startSmtp({}, 550)
+    let name = ''
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(refusing.port), MAIL_FROM: FROM })
+      name = await queueOne('fixed@example.test')
+      await drainDue()
+      expect((await jobOf(name)).job_status).toBe('failed')
+    } finally {
+      await refusing.close()
+    }
+    const ok = await startSmtp()
+    try {
+      setSmtpEnv({ SMTP_HOST: '127.0.0.1', SMTP_PORT: String(ok.port), MAIL_FROM: FROM })
+      expect(await retryJob((await jobOf(name)).row_id as string)).toBe(true)
+      await drainDue()
+      expect(await statusOf(name)).toMatchObject({ send_status: 'sent' })
+      expect((await jobOf(name)).job_status).toBe('done')
+      expect(ok.received).toHaveLength(1)
+      // A second worker pass sends nothing more.
+      await drainDue()
+      expect(ok.received).toHaveLength(1)
+    } finally {
+      await ok.close()
     }
   })
 

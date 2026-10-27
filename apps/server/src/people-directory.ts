@@ -46,6 +46,27 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   return out
 }
 
+/** The person an email address belongs to, read as the viewer (like the
+ *  picker): never a built-in or merged-away account, and nobody when the
+ *  viewer may not read Person or its email (so an address can't be probed
+ *  past what the viewer could already look up). Any letter case. */
+export async function personByEmail(address: string, viewer: string): Promise<string | null> {
+  let scoped
+  try {
+    scoped = await scopedWhere('Person', viewer, [['built_in', '=', false]])
+  } catch (error) {
+    if (error instanceof AppError && error.type === 'PermissionError') return null
+    throw error
+  }
+  if (!scoped.cols.has('email')) return null
+  const [row] = await sql`
+    select p.row_id from ${sql(scoped.table)} p
+    where ${scoped.where} and p.replaced_by is null and lower(trim(p.email)) = lower(${address.trim()})
+    order by p.row_id
+    limit 1`
+  return row ? String(row.row_id) : null
+}
+
 interface PickedPerson {
   row_id: string
   label: string

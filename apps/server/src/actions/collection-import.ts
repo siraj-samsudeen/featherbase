@@ -214,7 +214,7 @@ function updateValues(
   const values: Record<string, unknown> = { ...row }
   if (upsert.emptyCells === 'clear')
     for (const col of upsert.columns!)
-      if (col !== ROW_KEY && col !== upsert.keyColumn && !(col in values)) values[col] = null
+      if (col !== ROW_KEY && col !== upsert.keyColumn && !Object.hasOwn(values, col)) values[col] = null
   values[ROW_KEY] = matched.row_id
   // The optimistic-concurrency stamp updateDoc demands; saveDoc normalizes it.
   values.updated_at = matched.updated_at

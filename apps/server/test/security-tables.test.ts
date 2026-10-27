@@ -8,6 +8,7 @@ import { SECURITY_TABLES } from '../src/security-tables'
 import { saveDoc, deleteDoc } from '../src/document'
 import { evaluateAssignmentRules } from '../src/assignment-rules'
 import { sql } from '../src/db'
+import { tableRelation } from '../src/table-engine'
 import type { TestClient } from 'feather-testing-postgres'
 
 const PERSON = tableRef('Person')
@@ -386,5 +387,71 @@ describe('Only a System Manager changes who can do what', () => {
     const doc = await loaded(admin, created.row_id)
     expect(doc.enabled).toBe(true)
     expect(doc.roles).toEqual([])
+  })
+})
+
+// #559: a Table whose rows decide people's scope is marked by its own
+// definition, not by a platform list of names.
+describe('#559: a Table marked as deciding scope', () => {
+  test('refuses a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Roster Writer 559', table: ['Shift Roster 559'], ...ALL_ACTIONS })
+    await expectApiError(user.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-1' }), { status: 403 })
+    await admin.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-2' })
+    const rows = await user.get<{ data: unknown[] }>(tableRef('Shift Roster 559').listUrl({ fields: ['row_id'] }))
+    expect(rows.data).toHaveLength(1)
+  })
+
+  // Codex round 1: a marked Sub-table's rows are written through the parent.
+  test('a marked Sub-table refuses a non-manager saving its parent, and its rows stay as they were', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Roster Line 559', kind: 'sub_table', decides_scope: true, columns: ['place'] })
+    await makeTable(admin, { name: 'Roster Sheet 559', columns: ['title', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Line 559' }] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Sheet Writer 559', table: ['Roster Sheet 559'], ...ALL_ACTIONS })
+    await expectApiError(user.post(tableRef('Roster Sheet 559').url, { title: 'mine', lines: [{ place: 'North' }] }), { status: 403 })
+    const sheet = await admin.post<{ row_id: string; updated_at: string }>(tableRef('Roster Sheet 559').url, { title: 'shared', lines: [{ place: 'South' }] })
+    await expectApiError(patchDoc(user, tableRef('Roster Sheet 559').rowUrl(sheet.row_id), { updated_at: sheet.updated_at, lines: [{ place: 'North' }] }), { status: 403 })
+    const after = await admin.get<{ lines: { place: string }[] }>(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
+    expect(after.lines.map((line) => line.place)).toEqual(['South'])
+  })
+
+  // Codex round 2: deleting or renaming a parent removes or re-points its
+  // child rows directly, so a marked Sub-table guards those too.
+  async function sheetWithMarkedLines(admin: TestClient, createUser: Parameters<typeof createUserWithRole>[1]) {
+    await makeTable(admin, { name: 'Roster Line 559', kind: 'sub_table', decides_scope: true, columns: ['place'] })
+    await makeTable(admin, { name: 'Roster Sheet 559', columns: ['title', { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Line 559' }] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Sheet Writer 559', table: ['Roster Sheet 559'], ...ALL_ACTIONS })
+    const sheet = await admin.post<{ row_id: string }>(tableRef('Roster Sheet 559').url, { title: 'shared', lines: [{ place: 'South' }] })
+    const lines = async (id: string) => (await sql`select place from ${sql(await tableRelation('Roster Line 559'))} where parent = ${id}`).map((r) => r.place)
+    return { user, sheet, lines }
+  }
+
+  test('a non-manager cannot delete a parent that holds marked child rows; a System Manager can', async ({ admin, createUser }) => {
+    const { user, sheet, lines } = await sheetWithMarkedLines(admin, createUser)
+    await expectApiError(user.delete(tableRef('Roster Sheet 559').rowUrl(sheet.row_id)), { status: 403 })
+    expect(await admin.get(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))).toMatchObject({ title: 'shared' })
+    expect(await lines(sheet.row_id)).toEqual(['South'])
+    await admin.delete(tableRef('Roster Sheet 559').rowUrl(sheet.row_id))
+    expect(await lines(sheet.row_id)).toEqual([])
+  })
+
+  test('a non-manager cannot rename a parent that holds marked child rows', async ({ admin, createUser }) => {
+    const { user, sheet, lines } = await sheetWithMarkedLines(admin, createUser)
+    await expectApiError(user.post(`${tableRef('Roster Sheet 559').rowUrl(sheet.row_id)}:rename`, { new_name: 'renamed-559' }), { status: 403 })
+    expect(await lines(sheet.row_id)).toEqual(['South'])
+  })
+
+  test('a non-manager may delete a parent whose marked Sub-table holds no rows', async ({ admin, createUser }) => {
+    const { user } = await sheetWithMarkedLines(admin, createUser)
+    const empty = await admin.post<{ row_id: string }>(tableRef('Roster Sheet 559').url, { title: 'empty' })
+    await user.delete(tableRef('Roster Sheet 559').rowUrl(empty.row_id))
+    await expectApiError(admin.get(tableRef('Roster Sheet 559').rowUrl(empty.row_id)), { status: 404 })
+  })
+
+  test('an Assignment Rule or a Workflow may not target it', async ({ admin }) => {
+    await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
+    await expectApiError(admin.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 559', ref_table: 'Shift Roster 559', assign_to_field: 'person' } }),
+      { status: 417, message: expect.stringMatching(/decides who can do what/) })
+    await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'Wf 559', ref_table: 'Shift Roster 559', is_active: false, ...FLOW } }),
+      { status: 417, message: expect.stringMatching(/decides who can do what/) })
   })
 })

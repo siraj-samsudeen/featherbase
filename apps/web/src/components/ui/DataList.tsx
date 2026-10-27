@@ -35,6 +35,7 @@ export function DataList<Row>({
   rows,
   columns,
   rowKey,
+  rowTestId,
   layout = 'auto',
   state = 'ready',
   error,
@@ -47,6 +48,8 @@ export function DataList<Row>({
   rows: Row[]
   columns: DataColumn<Row>[]
   rowKey: (row: Row) => string
+  /** A test id for each row's card or table row. */
+  rowTestId?: (row: Row) => string
   layout?: 'auto' | 'table' | 'cards'
   state?: 'loading' | 'error' | 'ready'
   error?: ReactNode
@@ -85,11 +88,13 @@ export function DataList<Row>({
           // inherited, and the descendant rule beats any nowrap a cell brings.
           <li
             key={rowKey(row)}
+            data-testid={rowTestId?.(row)}
             className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
           >
             {/* Wraps, so a status too wide to sit beside the title moves under it. */}
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              <div className="min-w-0 font-semibold text-ink">
+              {/* With no status beside it, the title takes the whole row. */}
+              <div className={cx('min-w-0 font-semibold text-ink', !statuses.length && 'flex-1')}>
                 {titles.map((c) => (
                   <div key={c.key} className="wrap-anywhere">
                     {c.cell(row)}
@@ -160,7 +165,7 @@ export function DataList<Row>({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-border last:border-b-0">
+            <tr key={rowKey(row)} data-testid={rowTestId?.(row)} className="border-b border-border last:border-b-0">
               {columns.map((c, i) => {
                 const cls = cx('px-3 py-2.5 text-ink', c.align === 'end' && 'text-right tabular-nums', i === 0 && 'text-left font-semibold')
                 // The first cell names its row for screen readers.

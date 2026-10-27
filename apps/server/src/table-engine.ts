@@ -109,6 +109,10 @@ export const tableDefSchema = z.object({
   // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
   system: z.boolean().nullish().transform((v) => v ?? undefined),
+  // #559: the Table's rows decide which places people cover. Writing them is
+  // System Manager work (security-tables.ts), and only a marked Table can be
+  // read by an app's scope provider. Kept when an update leaves it out.
+  decides_scope: z.boolean().nullish().transform((v) => v ?? undefined),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
@@ -425,6 +429,8 @@ export async function updateTable(
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
       description: def.description ?? null,
+      // Only when given: migrations before 0131 update Tables without the column.
+      ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
 
@@ -625,6 +631,8 @@ export async function createTable(
       description: def.description ?? null,
       system: def.system ?? false,
     }
+    // Only when marked: migrations before 0131 create Tables without the column.
+    if (def.decides_scope) tableRow.decides_scope = true
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
       tableRow.owner_app = ownerApp
