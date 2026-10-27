@@ -251,7 +251,9 @@ test.describe('1. Local login', () => {
           expect(o.kind).toBe('error')
           const text = (o as { text: string }).text
           expect(text).toContain('Report unavailable')
-          expect(text).toContain(`HTTP ${live.upstream}`) // the upstream refusal, verbatim — never a zero
+          // #500: one plain sentence; the upstream refusal is in the server log, never on the page — and never a zero.
+          expect(text).toContain("The report couldn't load right now. Try again in a few minutes.")
+          expect(text).not.toContain('HTTP')
           expect(text).not.toMatch(/₹/)
         }
       })

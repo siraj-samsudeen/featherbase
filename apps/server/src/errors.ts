@@ -43,6 +43,23 @@ export class AppError extends Error {
   }
 }
 
+/** The HTTP status errorResponse answers `err` with — for a log line that names it. */
+export function statusOf(err: unknown): number {
+  if (err instanceof AppError) return STATUS[err.type]
+  if ((err as { code?: string })?.code === '23P01') return 409
+  if (err instanceof SyntaxError) return 400
+  return 500
+}
+
+// Errors a route has already logged with its own context, so errorResponse does not log them
+// a second time (one failure, one log line).
+const alreadyLogged = new WeakSet<object>()
+
+/** Record that `err` has been logged where it was caught; errorResponse then answers without logging it. */
+export function markLogged(err: unknown): void {
+  if (typeof err === 'object' && err !== null) alreadyLogged.add(err)
+}
+
 export function errorResponse(c: Context, err: unknown) {
   if (err instanceof AppError) {
     return c.json(
@@ -65,6 +82,6 @@ export function errorResponse(c: Context, err: unknown) {
   if (err instanceof SyntaxError) {
     return c.json({ error: { type: 'BadRequestError', message: 'Malformed JSON body' } }, 400)
   }
-  console.error(err)
+  if (!(typeof err === 'object' && err !== null && alreadyLogged.has(err))) console.error(err)
   return c.json({ error: { type: 'InternalError', message: 'Internal server error' } }, 500)
 }
