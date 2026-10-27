@@ -58,7 +58,7 @@ export function renderTemplate(
   row: Record<string, unknown> | undefined,
 ): string {
   return template.replace(/\{\{\s*doc\.([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = row?.[key]
+    const v = row && Object.hasOwn(row, key) ? row[key] : undefined
     return v == null ? '' : String(v)
   })
 }

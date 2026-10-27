@@ -76,7 +76,7 @@ export const ROW_KEY = 'row_id'
 const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
 
 export function physicalRowKey(table: string): string {
-  return PHYSICAL_ROW_KEY_OVERRIDES[table] ?? ROW_KEY
+  return Object.hasOwn(PHYSICAL_ROW_KEY_OVERRIDES, table) ? PHYSICAL_ROW_KEY_OVERRIDES[table] : ROW_KEY
 }
 
 export interface TableMeta {
