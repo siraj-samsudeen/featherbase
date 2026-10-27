@@ -754,7 +754,8 @@ app.use('/api/*', async (c, next) => {
     // #625 (E5): an app read takes the lifecycle lock itself, only while it
     // authorizes (and, unless outbound, runs), so an outbound handler waiting
     // on an outside call holds no lifecycle connection.
-    const appRead = c.req.path.startsWith('/api/app_reads/')
+    // #642: the top bar's options are app reads too (Codex round 1 on #643).
+    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
     return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)

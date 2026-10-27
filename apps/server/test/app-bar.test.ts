@@ -8,7 +8,8 @@ import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
-import { discoverPackages } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
+import { pathToFileURL } from 'node:url'
 import { sql } from '../src/db'
 
 const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
@@ -92,6 +93,33 @@ describe("declared bar controls: the picker's options", () => {
     await admin.post('/api/install_app', { name: 'barproof' })
     await expect(admin.get('/api/app_bar/barproof')).rejects.toMatchObject({ status: 500,
       message: expect.stringContaining("App barproof's read malformed answered options the bar cannot show: it must answer a list of { value, label }") })
+  })
+
+  // Codex round 1 on #643: an outbound options read calls out after its
+  // authorization, holding no lifecycle lock, as an app read does (#625).
+  test('while an outbound options read waits on an outside call, an app lifecycle change completes', async ({ admin }) => {
+    const directory = await barProof((manifest) => ({ ...manifest, bar: [{ picker: 'Store', options: 'waiting', sets: 'store' }] }))
+    expect(await discoverPackages([directory, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const digest = availableRuntimeVersions().find((p) => p.name === 'barproof')!.digest
+    const app = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
+    let entered!: () => void
+    let release!: () => void
+    const inside = new Promise<void>((done) => { entered = done })
+    const gate = new Promise<void>((done) => { release = done })
+    app.hooks.wait = async () => { entered(); await gate }
+    const pending = admin.get('/api/app_bar/barproof')
+    const changed = inside.then(() => admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: true }))
+    try {
+      await inside
+      await Promise.race([changed, new Promise((_, reject) => setTimeout(() => reject(new Error('blocked: still waiting')), 3000))])
+    } finally {
+      release()
+      // Every request this test started finishes inside its sandbox.
+      await Promise.allSettled([pending, changed])
+    }
+    expect(await pending).toEqual({ controls: [{ picker: 'Store', sets: 'store', options: [{ value: 'N1', label: 'North' }] }] })
   })
 
   test('an app that declared no bar controls has none', async ({ admin }) => {

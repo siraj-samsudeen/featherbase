@@ -25,7 +25,8 @@
         "authorization": { "kind": "generic" }
       },
       "malformed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
-      "broken": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+      "broken": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "waiting": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true }
     }
   },
   "bar": [{ "picker": "Store", "options": "stores", "sets": "store" }]

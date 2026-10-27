@@ -526,9 +526,13 @@ export async function appCatalog(user: string) {
  *  client, so there is no client version to name). */
 export async function appBar(name: string, user: string) {
   // The bar is drawn on the app's own pages: the same gate as serving them.
-  if (!(await appCatalog(user)).some((entry) => entry.name === name))
-    throw new AppError('NotFoundError', 'App is unavailable')
-  const pkg = packages.get(name)!
+  // The request holds no lifecycle lock (index.ts), so the check takes its
+  // own; each read below takes it again only while it authorizes.
+  const pkg = await appOperation(async () => {
+    if (!(await appCatalog(user)).some((entry) => entry.name === name))
+      throw new AppError('NotFoundError', 'App is unavailable')
+    return packages.get(name)!
+  })
   const controls = []
   for (const { picker, options, sets } of pkg.manifest.bar ?? []) {
     let result: unknown
