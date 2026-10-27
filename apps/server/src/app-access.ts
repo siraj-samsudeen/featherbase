@@ -29,10 +29,13 @@ const storePolicy = z.object({ kind: z.literal('stores'), storeTable: text,
 const personScopePolicy = z.object({ kind: z.literal('person_scope'),
   readRoles: z.array(text).refine(distinct), actionRoles: z.array(text).refine(distinct),
 }).strict().refine(p => p.readRoles.length + p.actionRoles.length > 0)
+// #625 (E5): a read declared outbound is authorized inside the transaction
+// and runs its handler after the transaction has closed.
+const outbound = z.literal(true).optional()
 const operationSchema = z.union([
-  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product }).strict(),
-  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional() }).strict(),
-  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict() }).strict(),
+  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound }).strict(),
+  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound }).strict(),
+  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound }).strict(),
 ])
 /** #559: the manifest's `scopeProvider`: the server module's export under
  *  `scopeProviders`, and the Tables it reads. */
@@ -43,7 +46,7 @@ export const readDeclaration = z.object({ version: z.literal(1), tables: z.array
 export const actionDeclaration = z.union([
   z.object({ version: z.literal(1), names: z.array(name).min(1).refine(distinct), tables: z.array(text).min(1).refine(distinct) }).strict(),
   readDeclaration.extend({ version: z.literal(2) }).refine(d => Object.values(d.operations).every(o =>
-    !('discoverStoreAccess' in o) && (o.authorization.kind !== 'product' || ('scope' in o && o.scope.kind === 'resolver')))),
+    !('discoverStoreAccess' in o) && !o.outbound && (o.authorization.kind !== 'product' || ('scope' in o && o.scope.kind === 'resolver')))),
 ])
 
 export interface DeclaredAppOperation {

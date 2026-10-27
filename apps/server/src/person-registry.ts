@@ -86,6 +86,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   dashboard: { label: text, config: text },
   data_scope: { person: id, service_account: id, allow_table: code, for_value: on('allow_table') },
   data_source: { '*': code, last_error: text },
+  // #625: an app dataset's rows: warehouse figures, no person in them.
+  app_dataset_row: { '*': code },
   dataset_miss: { '*': code },
   dataset_snapshot: { dataset: code, state: code, definition_version: code, triggered_by: id, error: text },
   email_account: { '*': code },

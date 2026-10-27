@@ -2,6 +2,7 @@ import postgres from 'postgres'
 import { readNamedVariable } from '../env'
 import { AppError } from '../errors'
 import { fkKey } from './fk'
+import { datasetQueryText } from './dataset-query'
 import { assertNotPlatformDatabase } from './platform-guard'
 import type {
   Binding,
@@ -157,6 +158,19 @@ async function run(cfg: SourceConfig, text: string, values: unknown[]): Promise<
 export const postgresDriver: SourceDriver = {
   engine: 'postgres',
   writable: true,
+
+  // #625: an app's dataset query, in a read-only transaction, so the source
+  // is used read-only whatever its access mode and whatever the query says.
+  async query(cfg, query, where) {
+    const { text, values } = datasetQueryText(query, where, { placeholder: (n) => `$${n}`, asText: (column) => `${column}::text` })
+    try {
+      const client = pool(cfg)
+      await vet(cfg, client)
+      return (await client.begin('read only', (tx) => tx.unsafe(text, values))) as unknown as SourceRow[]
+    } catch (err) {
+      wrapError(cfg, err)
+    }
+  },
 
   async test(cfg) {
     await run(cfg, 'select 1', [])

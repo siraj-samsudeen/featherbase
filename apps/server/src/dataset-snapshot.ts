@@ -22,14 +22,14 @@ import { enqueue, type JobTrigger } from './jobs'
 // history — while the per-dataset ROWS tables stay raw and app-internal, because
 // they hold every store's figures and generic row scoping is fail-open (#246).
 
-interface DatasetDefinition {
+interface DatasetDefinition<Row = unknown[]> {
   name: string
   /** Bump when the SQL changes: it is part of snapshot identity, so a redefinition never silently reuses old rows. */
   version: string
   /** Pull the superset from the source. `sourceAsOf` is the warehouse's own as-of, never the build time. */
-  fetch: () => Promise<{ rows: unknown[][]; sourceAsOf: string | null }>
+  fetch: () => Promise<{ rows: Row[]; sourceAsOf: string | null }>
   /** Write the fetched rows under this snapshot id. Returns the row count written. */
-  load: (snapshotId: string, rows: unknown[][]) => Promise<number>
+  load: (snapshotId: string, rows: Row[]) => Promise<number>
   /** Last gate before activation. Return a reason to refuse, or null to accept. */
   validate?: (rowCount: number, previous: SnapshotRecord | null) => string | null
   /** Bytes this snapshot's rows occupy, for the registry. Optional: a dataset that cannot say leaves it null. */
@@ -52,10 +52,15 @@ export interface SnapshotRecord {
   triggered_by: string | null
 }
 
-const registry = new Map<string, DatasetDefinition>()
+const registry = new Map<string, DatasetDefinition<never>>()
 
-export function registerDataset(def: DatasetDefinition): void {
-  registry.set(def.name, def)
+export function registerDataset<Row = unknown[]>(def: DatasetDefinition<Row>): void {
+  registry.set(def.name, def as unknown as DatasetDefinition<never>)
+}
+
+/** #625: an app's dataset leaves with the app version that declared it. */
+export function unregisterDataset(name: string): void {
+  registry.delete(name)
 }
 
 export function registeredDatasets(): string[] {

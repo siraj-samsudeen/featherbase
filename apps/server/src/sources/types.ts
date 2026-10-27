@@ -115,6 +115,19 @@ export interface IntrospectedTable {
   columns: IntrospectedColumn[]
 }
 
+// #625 (design E3): which rows of an app's declared dataset query a read may
+// see. A row passes when it matches every condition in `all` and every
+// condition of at least one group in `any`. No group means no row: the
+// reader's scope fails closed. Values are compared as text.
+export interface DatasetCondition {
+  column: string // a declared column, validated against the declaration
+  values: string[]
+}
+export interface DatasetWhere {
+  any: DatasetCondition[][]
+  all: DatasetCondition[]
+}
+
 export interface SourceDriver {
   engine: SourceEngine
   // Whether the driver implements insert/update/remove at all. A source's
@@ -145,4 +158,8 @@ export interface SourceDriver {
   remove(bind: Binding, pk: string, expectModified: string | null): Promise<void | 'conflict' | 'missing'>
   // Drop any cached pool/instance for this source (config changed).
   dispose(sourceName: string): void
+  // #625: run an app's declared dataset query, read-only, limited to `where`
+  // (the whole result when omitted: a snapshot build). Engines without it
+  // cannot back a dataset.
+  query?(source: SourceConfig, text: string, where?: DatasetWhere): Promise<SourceRow[]>
 }
