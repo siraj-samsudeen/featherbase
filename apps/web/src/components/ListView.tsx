@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
@@ -115,6 +115,20 @@ export function ListView({
   const [bulkError, setBulkError] = useState<string | null>(null)
   // #327: bulk delete asks first, like deleting one row or the whole Table.
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
+  const bulkDeleteButton = useRef<HTMLButtonElement>(null)
+  // Escape closes it wherever focus has wandered, and focus goes back to the
+  // Delete that opened it.
+  useEffect(() => {
+    if (!confirmingBulkDelete || bulkBusy) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setConfirmingBulkDelete(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmingBulkDelete, bulkBusy])
+  useEffect(() => {
+    if (!confirmingBulkDelete) return
+    const opener = bulkDeleteButton.current
+    return () => opener?.focus()
+  }, [confirmingBulkDelete])
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
@@ -614,7 +628,6 @@ export function ListView({
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
           onClick={() => !bulkBusy && setConfirmingBulkDelete(false)}
-          onKeyDown={(e) => e.key === 'Escape' && !bulkBusy && setConfirmingBulkDelete(false)}
         >
           <div
             role="dialog"
@@ -669,6 +682,7 @@ export function ListView({
             {fmtCount(selected.size)} selected
           </span>
           <button
+            ref={bulkDeleteButton}
             onClick={() => setConfirmingBulkDelete(true)}
             disabled={bulkBusy}
             className={buttonClasses({ variant: 'danger' })}
@@ -676,7 +690,7 @@ export function ListView({
           >
             Delete
           </button>
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}

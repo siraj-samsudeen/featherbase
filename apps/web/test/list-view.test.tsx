@@ -192,9 +192,13 @@ test('Act on many rows at once: backing out of the delete confirmation deletes n
   fireEvent.click(screen.getByTestId('bulk-delete-cancel'))
   expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
 
+  // Escape closes it even once focus has left the dialog, and focus returns
+  // to the Delete that opened it.
   fireEvent.click(screen.getByTestId('bulk-delete'))
-  fireEvent.keyDown(screen.getByTestId('bulk-delete-dialog'), { key: 'Escape' })
+  ;(document.activeElement as HTMLElement).blur()
+  fireEvent.keyDown(document.body, { key: 'Escape' })
   expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
+  expect(screen.getByTestId('bulk-delete')).toHaveFocus()
 
   fireEvent.click(screen.getByTestId('bulk-delete'))
   fireEvent.click(screen.getByTestId('bulk-delete-dialog').parentElement!)
