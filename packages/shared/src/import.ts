@@ -220,7 +220,7 @@ export function autoMapColumns(
 // wizard says where the data goes instead.
 const RETIRED_COLUMNS: Record<string, Record<string, string>> = {
   Person: {
-    employee_code: 'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+    employee_code: 'employee_code is no longer a Person field — add codes on the Identifiers panel of the Person form',
     stylehr_username: 'stylehr_username is no longer a Person field — link StyleHR under the person’s Sign-in methods',
   },
 }
