@@ -83,11 +83,18 @@ async function currentIdentifiers(user: string, systems: readonly string[]): Pro
   if (systems.length) {
     // The system's state is checked again here, in the same read, so a
     // system turned off or made Secret since the check passes nothing.
+    // #662: `shared` says another person holds the same value in the same
+    // system today. Holders are counted by the person they resolve to (a
+    // replaced record counts as its survivor), so a person's own merged-away
+    // record is not someone else. Only the boolean leaves this query: never
+    // who, or how many.
     for (const row of await sql`select i.system, i.value,
-        exists (select 1 from person_identifier o where o.system = i.system and o.value = i.value and o.person_id <> i.person_id
-          and o.valid @> (now() at time zone 'Asia/Kolkata')::date) as shared
+        exists (select 1 from person_identifier o join person op on op.row_id = o.person_id
+          where o.system = i.system and o.value = i.value and o.valid @> (now() at time zone 'Asia/Kolkata')::date
+            and coalesce(op.replaced_by, op.row_id) <> coalesce(me.replaced_by, me.row_id)) as shared
       from person_identifier i
       join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
+      join person me on me.row_id = i.person_id
       where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
       values[String(row.system)].push(Object.freeze({ value: String(row.value), shared: row.shared === true }))
   }

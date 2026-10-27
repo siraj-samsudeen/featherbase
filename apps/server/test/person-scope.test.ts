@@ -343,6 +343,30 @@ describe("the person's identifiers a provider receives", () => {
     })
   })
 
+  // A record merged into another is replaced: inert, pointing at its
+  // survivor. Holders are counted by the person they resolve to, so a
+  // person's own replaced record is not someone else.
+  test("a value also on the person's own replaced record is not shared", async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await sql`update person set enabled = false, replaced_by = ${user.user} where row_id = ${other.user}`
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
+  test('a value on a record replaced by a third person is shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      const third = await createUser({ email: 'third@example.test' })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await sql`update person set enabled = false, replaced_by = ${third.user} where row_id = ${other.user}`
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+    })
+  })
+
   test('the same text in another system is not shared', async ({ admin, createUser }) => {
     await sharing(admin, createUser, async (user, other, seen) => {
       await system(admin, 'payroll-code')
