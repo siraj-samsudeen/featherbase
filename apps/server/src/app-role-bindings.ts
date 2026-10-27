@@ -42,20 +42,37 @@ export function validateRoleDefaults(defaults: Record<string, string[]> | undefi
 /** Install only: write the app's suggestions as binding rows. A suggested
  *  role this instance does not have is skipped (a binding names a Role). An
  *  upgrade never calls this, so it never re-imposes a suggestion an admin
- *  removed. Returns what was written and what was skipped. */
+ *  removed. A binding that already exists is skipped, not refused. Returns
+ *  what was written and what was skipped. */
 export async function seedRoleBindings(app: string, defaults: Record<string, string[]> | undefined, actor: string) {
   const seeded: string[] = []
   const skipped: string[] = []
+  const notes: string[] = []
   for (const [appRole, bound] of Object.entries(defaults ?? {})) {
     for (const boundRole of bound) {
       const label = `${appRole} <- ${boundRole}`
-      const [exists] = await sql`select 1 from role where row_id = ${boundRole}`
-      if (!exists) { skipped.push(label); continue }
+      const [role] = await sql`select 1 from role where row_id = ${boundRole}`
+      const [same] = role ? await sql`select 1 from app_role_binding where app = ${app} and app_role = ${appRole} and bound_role = ${boundRole}` : []
+      if (!role || same) {
+        skipped.push(label)
+        notes.push(`skipped ${label} (${role ? 'already bound' : 'no such role'})`)
+        continue
+      }
       await saveDoc('App Role Binding', { app, app_role: appRole, bound_role: boundRole }, actor, 'insert')
       seeded.push(label)
+      notes.push(label)
     }
   }
-  if (seeded.length || skipped.length)
-    await logActivity(actor, `app_role_bindings_seeded ${app}: ${[...seeded, ...skipped.map(s => `skipped ${s} (no such role)`)].join('; ')}`.slice(0, 140))
+  if (notes.length) await logActivity(actor, `app_role_bindings_seeded ${app}: ${notes.join('; ')}`.slice(0, 140))
   return { seeded, skipped }
+}
+
+/** Uninstall: the app's bindings go with it, recorded in the Activity Log. A
+ *  later install seeds fresh from the app's suggestions; the instance's own
+ *  edits are lost, which is what removing an app means. */
+export async function removeRoleBindings(app: string, actor: string) {
+  const gone = await sql`delete from app_role_binding where app = ${app} returning app_role, bound_role`
+  if (!gone.length) return
+  const labels = gone.map(r => `${String(r.app_role)} <- ${String(r.bound_role)}`).sort()
+  await logActivity(actor, `app_role_bindings_removed ${app}: ${labels.join('; ')}`.slice(0, 140))
 }

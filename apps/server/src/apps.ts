@@ -666,7 +666,11 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
     await deleteDoc('Data Source', src).catch(() => {})
     invalidateSources(src)
   }
-  await sql`delete from installed_app where name = ${name}`
+  // #620: its role bindings go in the same transaction as its ledger row.
+  await withTransaction(async () => {
+    await (await import('./app-role-bindings')).removeRoleBindings(name, 'Administrator')
+    await sql`delete from installed_app where name = ${name}`
+  })
   return { name, removed: tables }
 }
 

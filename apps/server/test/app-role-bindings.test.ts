@@ -13,7 +13,8 @@ import { discoverPackages } from '../src/runtime-packages'
 import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { getRoles, hasPermission } from '../src/permissions'
-import { suspendRuntimeApp } from '../src/apps'
+import { suspendRuntimeApp, uninstallApp } from '../src/apps'
+import { seedRoleBindings } from '../src/app-role-bindings'
 import { expectApiError } from './fixtures'
 
 const v1 = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
@@ -179,6 +180,28 @@ describe('an upgrade never re-imposes the suggestions', () => {
   })
 })
 
+
+// Codex review on #623: uninstall is the honest end of an app's bindings.
+describe('uninstalling and reinstalling an app', () => {
+  test('uninstall removes its bindings and records it; a reinstall seeds fresh from the suggestions', async ({ admin }) => {
+    await install(admin, { roles: ['Setup Staff', 'Setup Visitor'] })
+    await bind(admin, { bound_role: 'Setup Visitor' })
+    await uninstallApp('setupproof')
+    expect(await bindings()).toEqual([])
+    const [logged] = await sql`select operation from activity_log where operation like 'app_role_bindings_removed%' order by created_at desc limit 1`
+    expect(logged.operation).toBe('app_role_bindings_removed setupproof: Setup Reader <- Setup Staff; Setup Reader <- Setup Visitor')
+    await admin.post('/api/install_app', { name: 'setupproof' })
+    expect(await bindings()).toEqual(['setupproof: Setup Reader <- Setup Staff'])
+  })
+
+  test('seeding skips a binding that already exists instead of failing', async ({ admin }) => {
+    await install(admin, { roles: ['Setup Staff', 'Setup Visitor'] })
+    await bind(admin, { bound_role: 'Setup Visitor' })
+    const result = await seedRoleBindings('setupproof', { 'Setup Reader': ['Setup Visitor'] }, 'Administrator')
+    expect(result).toEqual({ seeded: [], skipped: ['Setup Reader <- Setup Visitor'] })
+    expect(await bindings()).toEqual(['setupproof: Setup Reader <- Setup Staff', 'setupproof: Setup Reader <- Setup Visitor'])
+  })
+})
 
 describe('declaring role suggestions', () => {
   async function variant(change: (manifest: Record<string, any>) => Record<string, any>) {
