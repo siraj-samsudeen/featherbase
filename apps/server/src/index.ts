@@ -75,7 +75,7 @@ import { rateLimit } from './rate-limit'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isAppInstalled, installedAppNames } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
 import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
@@ -181,7 +181,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isAppInstalled(opened))?.title ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #489: what this address opens — `admin`, an app's name, or null for a
@@ -796,7 +796,7 @@ app.get('*', async (c, next) => {
   if (!entry || entry.opens === ADMIN) return next()
   // #671: by the installation every process shares, never this process's
   // serving state, so replicas agree and a disabled app keeps its root.
-  const target = addressRedirect(entry, c.req.path, await isAppInstalled(entry.opens))
+  const target = addressRedirect(entry, c.req.path, await isInstalled(entry.opens))
   return target ? c.redirect(target, 302) : next()
 })
 

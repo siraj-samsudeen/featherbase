@@ -18,7 +18,7 @@ import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
 import { appCatalog } from './runtime-packages'
-import { isAppInstalled } from './apps'
+import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 
 /** What a sign-in answer carries besides the session: a path on this address
@@ -43,7 +43,7 @@ async function canUseAdmin(person: string): Promise<boolean> {
  *  report gate (design D8); an installed app is open to whoever its catalog
  *  lists, and to no one while it is disabled or not loaded here. */
 async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'feather_dash' && !(await isAppInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
+  if (app === 'feather_dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -68,9 +68,9 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
-    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, await isAppInstalled(here.opens)) }
+    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
     if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
-    return { landing: appRoot(here.opens, await isAppInstalled(here.opens)) }
+    return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
   }
 
   if (await canUseAdmin(person)) return {}
@@ -83,7 +83,7 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   // No list (development and test), or a host the list does not name: that
   // host is served as one address holding everything, as before #488, so a
   // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isAppInstalled('feather_dash')) }
+  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isInstalled('feather_dash')) }
   return {}
 }
 

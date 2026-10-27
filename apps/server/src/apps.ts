@@ -359,16 +359,12 @@ async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
   }
 }
 
+/** Whether an app of this name is installed, from the database record every
+ *  process shares — enabled or not, pending activation or not, loaded by this
+ *  process or not. One primary-key lookup, uncached, so it is never stale.
+ *  Installing asks it, and so does an app address's routing (#671); serving
+ *  the app is a separate question (activeApps). */
 export async function isInstalled(name: string): Promise<boolean> {
-  const [row] = await sql`select 1 from installed_app where name = ${name}`
-  return Boolean(row)
-}
-
-/** #671: whether an app of this name is installed, from the database record
- *  every process shares — enabled or not, pending activation or not, loaded
- *  by this process or not. One primary-key lookup, uncached, so it is never
- *  stale. Serving it is a separate question (activeApps). */
-export async function isAppInstalled(name: string): Promise<boolean> {
   const [row] = await sql`select 1 from installed_app where name = ${name}`
   return Boolean(row)
 }
