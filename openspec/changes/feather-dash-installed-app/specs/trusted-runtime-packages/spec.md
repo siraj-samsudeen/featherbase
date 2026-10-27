@@ -146,6 +146,18 @@ only choices the reader is allowed.
   picker
 - **THEN** the top bar shows no store picker
 
+#### Scenario: One store is shown, not offered
+
+- **WHEN** a manager responsible for one store opens an app that declared a store
+  picker
+- **THEN** the top bar shows that store as plain text, with nothing to choose
+
+#### Scenario: The chosen store is kept in the address
+
+- **WHEN** a reader chooses a store in the top bar
+- **THEN** the address carries the choice without the page reloading, so a refresh
+  or a shared link keeps it and the back button returns to the earlier choice
+
 ### Requirement: An app states the platform version it was built for
 
 Every app SHALL state the platform version it was built for. Featherbase SHALL keep

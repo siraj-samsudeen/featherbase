@@ -96,6 +96,16 @@ describe('A column can be marked unique', () => {
       `/api/table/${encodeURIComponent('Flag Late Unique')}:meta`,
     )
     expect(meta.columns.find((c) => c.column_name === 'code')?.unique).toBe(false)
+    // The refusal adds no constraint behind the definition's back.
+    await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
+  })
+
+  test('a column whose filled-in values are distinct becomes unique, however many rows leave it empty', async ({ admin }) => {
+    const T = 'Flag Distinct Unique'
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (const code of ['A', 'B', null, null]) await admin.post('/api/save_row', { table: T, row: { code } })
+    await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'code', column_type: 'Data', unique: true }] })
+    await expect(admin.post('/api/save_row', { table: T, row: { code: 'A' } })).rejects.toMatchObject({ status: 417 })
   })
 
   test('putting a removed column back as unique over its kept repeats is refused the same way', async ({ admin }) => {

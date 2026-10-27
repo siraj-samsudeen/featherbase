@@ -5,6 +5,7 @@ import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
 import { getScopeMap, isPrivileged, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { ROW_ATTACHED_TABLES, seesEveryColumn } from './row-readers'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
 export type Filter = [string, string, unknown]
@@ -178,6 +179,9 @@ export async function scopedWhere(
   // caller cannot read at all contributes no branch, hiding its children.
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
+  // #342: likewise a comment or an edit is only as visible as its row.
+  if (ROW_ATTACHED_TABLES.has(meta.name) && !bypass)
+    extraConds.push((await attachedRowScopeCond(meta.name, user, callerFilters)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
     if (upMap.size) {
@@ -385,6 +389,52 @@ async function parentScopeCond(
   // tighter than the ORs inside it.
   const anyParent = branches.reduce((acc, b) => sql`${acc} or ${b}`)
   return { frag: sql`(${anyParent})` }
+}
+
+// #342: one OR-branch per Table that rows of this Comment/Version Table are
+// attached to: the rows of it the caller may list (the same scoping a list
+// of that Table applies, own-rows, Data Scopes and parents included) plus
+// any row shared with them for reading. A Settings Table's single row goes
+// with read on it. A Table the caller cannot read contributes only its
+// shared rows; for Version, so does a Table with a column the caller's tiers
+// do not reach (seesEveryColumn). A row on a Table that no longer exists,
+// or one bound to an outside source, is left to the row's activity, which
+// opens the row itself. Columns are qualified so the predicate also holds
+// inside a 'related' subquery.
+// A list that names its Table (the row's panels and apps all do) builds that
+// one branch, without first reading which Tables the rows hang on.
+async function attachedRowScopeCond(
+  table: string,
+  user: string,
+  callerFilters: Filter[],
+): Promise<{ frag: ReturnType<typeof sql> }> {
+  const rel = sql(await tableRelation(table))
+  const pinned = callerFilters.find(
+    (f) => Array.isArray(f) && f[0] === 'ref_table' && f[1] === '=' && typeof f[2] === 'string',
+  )?.[2] as string | undefined
+  const targets = pinned !== undefined
+    ? [pinned]
+    : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
+  const branches: ReturnType<typeof sql>[] = []
+  for (const target of targets) {
+    const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
+    if (!targetMeta) continue
+    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+      select share_name from share where share_table = ${target} and read = true
+        and (person = ${user} or service_account = ${user})))`)
+    if (isBound(targetMeta)) continue
+    if ((await permissionScope(user, target, 'read')) === 'none') continue
+    if (table === 'Version' && !(await seesEveryColumn(user, targetMeta))) continue
+    if (targetMeta.kind === 'settings') {
+      branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
+    const scoped = await scopedWhere(target, user, [])
+    branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
+      select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${scoped.where}))`)
+  }
+  if (!branches.length) return { frag: sql`false` }
+  return { frag: sql`(${branches.reduce((acc, b) => sql`${acc} or ${b}`)})` }
 }
 
 // DASH: count of matching rows (number card). Same permission scoping as

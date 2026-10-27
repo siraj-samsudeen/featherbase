@@ -12,21 +12,23 @@ interface CommentRow {
   created_at: string
 }
 
-/** A row's comments, oldest first — one query, read by this panel and by the
- *  activity timeline beside it (they share the cache key). */
-export function commentsQuery(table: string, name: string) {
+export interface VersionRow {
+  created_by: string
+  created_at: string
+  data: { changed?: [string, unknown, unknown][] } | null
+}
+
+/** A row's comments and edits, oldest first — one query, read by this panel
+ *  and by the activity timeline beside it (they share the cache key). It
+ *  goes through the row's own access (#342): the server opens the row first
+ *  and leaves out changes to columns the reader cannot see. */
+export function activityQuery(table: string, name: string) {
   return queryOptions({
-    queryKey: ['comments', table, name],
+    queryKey: ['activity', table, name],
     queryFn: () =>
-      listResource<CommentRow>('Comment', {
-        filters: [
-          ['ref_table', '=', table],
-          ['ref_name', '=', name],
-        ],
-        fields: ['row_id', 'content', 'created_by', 'created_at'],
-        order_by: 'created_at asc',
-        limit_page_length: 200,
-      }),
+      api.get<{ comments: CommentRow[]; versions: VersionRow[] }>(
+        `/api/activity/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
+      ),
   })
 }
 
@@ -44,7 +46,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
   const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const comments = useQuery(commentsQuery(table, name))
+  const activity = useQuery(activityQuery(table, name))
 
   // @mention candidates from the people list, filtered by the token being
   // typed. person-rename: ids are opaque, so a mention names the person —
@@ -113,7 +115,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
         row: { ref_table: table, ref_name: name, content },
       })
       setDraft('')
-      await queryClient.invalidateQueries({ queryKey: ['comments', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Comment failed')
     } finally {
@@ -144,10 +146,10 @@ export function Comments({ table, name }: { table: string; name: string }) {
       </div>
 
       <div className="mb-3 space-y-3" data-testid="comment-list">
-        {comments.data?.data.length === 0 && (
+        {activity.data?.comments.length === 0 && (
           <p className="text-xs text-ink-subtle">No comments yet</p>
         )}
-        {comments.data?.data.map((c) => (
+        {activity.data?.comments.map((c) => (
           <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
             <AuthorInitials id={c.created_by} />
             <div className="min-w-0 flex-1">

@@ -364,8 +364,19 @@ reads it. An app never runs its own code in the bar (ADR 0011).
   their own scope as the app's serving version, and must be a list of
   `{ value, label }`, both text, in the read's order; any other answer fails
   the request. A person the read refuses gets no options, so the bar leaves
-  the control out; the read has logged the refusal. The top bar's picker is
-  built once the owner confirms its checklist (#642).
+  the control out; the read has logged the refusal.
+- **As built, the bar (#642, to the owner's checklist and mockup).** On an
+  app's address the shared top bar draws each declared picker after the app's
+  name: the declared word as a muted label, then a select-only combobox whose
+  list is the read's options in order (the current one ticked and bold). One
+  option shows as plain text; none hides the control. The choice is written to
+  the address through the router (`?<sets>=<value>`, a history entry, no
+  reload); with no valid choice in the address the picker shows the first
+  option and leaves the address alone (an open question for the owner on
+  #642: the app then sees no choice). On a phone the label is visually hidden
+  but stays the accessible name, and the value is cut with an ellipsis. On an
+  installed app's address the page that carries the shared bar today is the
+  account page; the app's own pages still carry the runtime shell's header.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
