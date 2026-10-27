@@ -297,14 +297,28 @@ export function ReportView({
     return String(v)
   }
 
+  // Every matching row for the export. Pages are read in row-id order, which
+  // is unique, so no row repeats or goes missing at a page boundary when many
+  // rows tie on the view's own sort; the view's order is restored afterwards.
   async function allRows(): Promise<Row[]> {
     if (data.length >= matching) return data
+    const fields = groupBy ? listArgs.fields : [...new Set([...listArgs.fields, 'updated_at'])]
     const all: Row[] = []
     for (let start = 0; ; start += PAGE) {
-      const page = await listResource<Row>(table, { ...listArgs, limit_start: start, limit_page_length: PAGE })
+      const page = await listResource<Row>(table, {
+        fields,
+        filters: listArgs.filters,
+        order_by: 'row_id asc',
+        limit_start: start,
+        limit_page_length: PAGE,
+      })
       all.push(...page.data)
-      if (page.data.length < PAGE || all.length >= page.total) return all
+      if (page.data.length < PAGE || all.length >= page.total) break
     }
+    // Grouped, the groups take the server's order and rows keep row-id order
+    // inside each; ungrouped, newest change first, as on screen.
+    if (!groupBy) all.sort((a, b) => Date.parse(String(b.updated_at)) - Date.parse(String(a.updated_at)))
+    return all
   }
 
   async function exportRows(): Promise<(string | number)[][]> {

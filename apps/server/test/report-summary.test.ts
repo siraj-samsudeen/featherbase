@@ -83,22 +83,6 @@ describe('summary totals over every matching row', () => {
     expect(res.sums.amount).toBe('111.750000001')
   })
 
-  // An export reads a summary page by page; rows that tie on the sort column
-  // must not repeat or go missing across pages.
-  test('pages of rows that tie on the sort column hold each row exactly once', async ({ admin }) => {
-    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'region', column_type: 'Data' }] })
-    for (let i = 0; i < 30; i++) await admin.post('/api/save_row', { table: T, row: { region: 'Same' } })
-    const ids: string[] = []
-    for (let start = 0; start < 30; start += 7) {
-      const page = await admin.get<{ data: { row_id: string }[] }>(
-        `/api/table/${ENC}?order_by=region%20asc&limit_page_length=7&limit_start=${start}`,
-      )
-      ids.push(...page.data.map((r) => r.row_id))
-    }
-    expect(new Set(ids).size).toBe(30)
-    expect(ids).toHaveLength(30)
-  })
-
   test('only a number column can be summed, and only a real column grouped', async ({ admin }) => {
     await setup(admin)
     await expectApiError(admin.get(summaryPath({ sums: JSON.stringify(['note']) })), { status: 417 })

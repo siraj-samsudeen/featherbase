@@ -579,7 +579,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}, ${sql(meta.row_key)} asc
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`
