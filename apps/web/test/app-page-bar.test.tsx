@@ -9,13 +9,14 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { discoverPackages } from 'server/src/runtime-packages'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { setSession } from '../src/lib/api'
 import { BAR_CHANGE_EVENT } from '../src/lib/bar-address'
 import { mountBar } from '../src/bar/mount'
+import { PHONE_QUERY } from '../src/components/TopBar'
 import { test, expect } from './pg-test'
 
 const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
@@ -115,6 +116,31 @@ test("Open Admin is offered on an app's page to someone who can use Admin, on an
   await admin.post('/api/install_app', { name: 'barproof' })
   const bar = openAppPage(admin)
   expect(await bar.findByTestId('open-admin')).toBeVisible()
+})
+
+// #659 (owner decision, 28-Oct-2026): an app's own Tables do not open the
+// Admin. A Bar Reader reads only the app's Tables, so the bar offers no Admin.
+test("Open Admin is not offered on an app's page to a person who only reads the app", async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser))
+  await bar.findByTestId('session-user')
+  await settle()
+  expect(bar.queryByTestId('open-admin')).toBeNull()
+})
+
+test("at phone width the Account menu offers no Open Admin to a person who only reads the app", async ({ admin, createUser }) => {
+  vi.spyOn(window, 'matchMedia').mockImplementation((q: string) => ({
+    matches: q === PHONE_QUERY, media: q, onchange: null,
+    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+  }) as MediaQueryList)
+  try {
+    const bar = openAppPage(await readerOf(admin, createUser))
+    await userEvent.click(await bar.findByTestId('session-user'))
+    const menu = within(await bar.findByTestId('account-menu'))
+    await menu.findByTestId('theme-toggle')
+    expect(menu.queryByTestId('open-admin')).toBeNull()
+  } finally {
+    vi.restoreAllMocks()
+  }
 })
 
 test('a link out of the bar loads the platform page in full, leaving the app', async ({ admin, createUser }) => {

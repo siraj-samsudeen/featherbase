@@ -157,12 +157,19 @@ export async function assertPermission(
 
 /**
  * What Tables a principal can use, for drawing the shell (#410): the Tables
- * they can read or create in, and whether they hold any Table grant of their
- * own or a shared row. Display only — every request is still checked by its own
- * route. Sub-tables and dropped Tables never count (same filter as
+ * they can read or create in, and whether they can use the Admin screens.
+ * Sub-tables and dropped Tables never count (same filter as
  * /api/navigable_tables). Grants to the implicit built-in `All` role (they come
  * from runtime apps) make a Table listable but do not by themselves earn the
  * Admin shell.
+ *
+ * `admin` is THE rule for "can use Admin" (#659): whoami's capability, the
+ * sign-in landing and "Open Admin" all read it. It needs a Table grant of the
+ * principal's own, or a shared row, on a Table no installed app owns. An
+ * installed app's own Tables (enabled or not) are reached through the app:
+ * every reader of an app reads its entry Table, so counting them would hand
+ * the Admin to everyone who can open an app. They are still listed for anyone
+ * who can use Admin for another reason.
  */
 export async function tableAccessFor(
   principal: string,
@@ -170,6 +177,7 @@ export async function tableAccessFor(
 ): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.owner_app,
+      exists (select 1 from installed_app a where a.tables ? p.ref_table) as app_table,
       -- #432: a grant never makes a system-written Table creatable.
       (p.can_create and not d.system_written) as can_create,
       (p.can_read or p.can_write or p.can_create or p.can_delete
@@ -184,8 +192,9 @@ export async function tableAccessFor(
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
   const [shared] = await sql`
     select 1 from share
-    where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
-  const ownGrant = active.some((r) => r.role !== 'All')
+    where (person = ${principal} or service_account = ${principal}) and read = true
+      and not exists (select 1 from installed_app a where a.tables ? share_table) limit 1`
+  const ownGrant = active.some((r) => r.role !== 'All' && !r.app_table)
   return {
     readable: names((r) => r.can_read),
     creatable: names((r) => r.can_create),

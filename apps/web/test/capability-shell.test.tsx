@@ -7,10 +7,14 @@ import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
+import { resolve } from 'node:path'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { shellKindOf } from '../src/lib/session'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
+
+const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -98,6 +102,22 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 })
 
 // (1) A failed background refetch must not unmount a shell that already has its answer.
+// #659: an installed app's own Tables do not open the Admin. A person who
+// reads only an app's Table is refused the Admin like anyone without access.
+test("a person whose only grant is on an installed app's Table gets the no-access page in the Admin", async ({ admin, createUser }) => {
+  expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
+  try {
+    await admin.post('/api/install_app', { name: 'feather_dash' })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Dash Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'feather_dash.note', role: 'Dash Reader', can_read: true } })
+    const reader = await createUser({ email: 'dash.reader.shell@example.com', roles: ['Dash Reader'] })
+    await renderApp('/featherbase/admin', reader)
+    expect(await screen.findByTestId('no-access')).toBeInTheDocument()
+  } finally {
+    await discoverPackages([])
+  }
+})
+
 test('a failed refresh of whoami keeps the shell the person already has', () => {
   const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
