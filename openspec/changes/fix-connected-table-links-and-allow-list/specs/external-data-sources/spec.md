@@ -2,7 +2,7 @@
 
 ### Requirement: A Featherbase table can link to a connected table
 
-A link column in an ordinary Featherbase table SHALL be able to point at a connected table. Saving a row checks the linked row on the data source: the row saves when it is there, and the user is told the linked row does not exist when it is not.
+A Featherbase table SHALL be able to link its rows to rows of a connected table. Saving checks the linked row on the data source: the row saves when the linked row is there, and the user is told it does not exist when it is not.
 
 #### Scenario: Link a local row to a connected row
 
@@ -12,7 +12,7 @@ A link column in an ordinary Featherbase table SHALL be able to point at a conne
 #### Scenario: Link to a connected row that isn't there
 
 - **WHEN** the user saves a row whose account link names an account the data source does not have
-- **THEN** the row is not saved, and the account field says that account does not exist
+- **THEN** the row is not saved, and the user is told that account does not exist
 
 ## MODIFIED Requirements
 

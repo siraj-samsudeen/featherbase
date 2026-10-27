@@ -230,28 +230,33 @@ export async function reflectTables(
   // Every requested table is resolved, and the allow-list checked for each,
   // before any is created: one refused table refuses the whole request
   // instead of leaving the earlier ones connected (#518).
-  const resolved: { tableName: string; t: IntrospectedTable }[] = []
+  // Entries keep request order, so skipped reasons come back in that order.
+  const resolved: { tableName: string; t?: IntrospectedTable; skip?: string }[] = []
   for (const tableName of opts.tables) {
     let t = byQualified.get(tableName)
     if (!t) {
       const matches = byBareName.get(tableName) ?? []
       if (matches.length > 1) {
-        result.skipped.push({
-          table: tableName,
-          reason: `Ambiguous — qualify it: ${matches.map((m) => `${m.schema}.${m.table}`).join(' or ')}`,
+        resolved.push({
+          tableName,
+          skip: `Ambiguous — qualify it: ${matches.map((m) => `${m.schema}.${m.table}`).join(' or ')}`,
         })
         continue
       }
       t = matches[0]
     }
     if (!t) {
-      result.skipped.push({ table: tableName, reason: 'Not found on the source' })
+      resolved.push({ tableName, skip: 'Not found on the source' })
       continue
     }
     assertAllowed(cfg, t.schema, t.table)
     resolved.push({ tableName, t })
   }
-  for (const { tableName, t } of resolved) {
+  for (const { tableName, t, skip } of resolved) {
+    if (!t) {
+      result.skipped.push({ table: tableName, reason: skip! })
+      continue
+    }
     const candidate = await candidateFor(cfg, t, opts.prefix, reflected)
     if (!candidate.bindable) {
       result.skipped.push({ table: tableName, reason: candidate.reason! })

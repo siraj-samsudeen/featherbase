@@ -259,6 +259,8 @@ async function validateLinks(
     }
     // A source-bound target has no local table: ask its source (EDS-5). Like
     // the native lookup, this checks existence only, not the caller's access.
+    // It runs outside the save transaction, so it is best-effort: the source
+    // can drop the row before this save commits.
     if (targetMeta.data_source) {
       if (!(await boundFetchDoc(await getMeta(target), String(value))))
         errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`

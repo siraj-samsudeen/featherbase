@@ -681,10 +681,8 @@ describe('a bound Table keeps its binding', () => {
     expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
   })
 
-  // SPEC: a Reference column may point at a source-bound Table (the bound delete path
-  // checks such references) — suspected defect: saving a local row that refers to a
-  // bound row fails with a 500, because the link check reads a local table the bound
-  // Table does not have ("relation featherbase.sec_account does not exist").
+  // SPEC: a Reference column may point at a source-bound Table; the save checks the
+  // linked row on the source (#535).
   test('a local row can refer to a bound row', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
@@ -698,6 +696,18 @@ describe('a bound Table keeps its binding', () => {
     await expectApiError(
       admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-NOPE' } }),
       { status: 417, type: 'ValidationError', fields: { account: `${BOUND} ACC-NOPE does not exist` } },
+    )
+  })
+
+  test('a sub-table row that refers to a missing bound row names its own field', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder Line', kind: 'sub_table', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Sec Holder Line' }] })
+    const saved = await admin.post<{ lines: { account: string }[] }>('/api/save_row', { table: 'Sec Holder', row: { lines: [{ account: 'ACC-A' }] } })
+    expect(saved.lines.map((l) => l.account)).toEqual(['ACC-A'])
+    await expectApiError(
+      admin.post('/api/save_row', { table: 'Sec Holder', row: { lines: [{ account: 'ACC-A' }, { account: 'ACC-NOPE' }] } }),
+      { status: 417, type: 'ValidationError', fields: { 'lines.1.account': `${BOUND} ACC-NOPE does not exist` } },
     )
   })
 
