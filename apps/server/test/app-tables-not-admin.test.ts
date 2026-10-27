@@ -5,14 +5,13 @@
 // screens, and the endpoints that lead into them, refuse them.
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect } from 'vitest'
-import type { TestClient } from 'feather-testing-postgres'
+import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { config } from '../src/config'
 import { discoverPackages } from '../src/runtime-packages'
 import { landingAfterSignIn } from '../src/landing'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
-type CreateUser = (opts: { email?: string; roles?: string[] }) => Promise<TestClient & { user: string }>
 
 const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
 const APP_TABLE = 'feather_dash.note'
@@ -46,7 +45,7 @@ afterEach(async () => {
 })
 
 describe("a person whose only grant is on an installed app's Table", () => {
-  async function appReader(admin: TestClient, createUser: CreateUser, email: string) {
+  async function appReader(admin: TestClient, createUser: CreateUserFn, email: string) {
     await installAppWithReaderRole(admin)
     return createUser({ email, roles: [ROLE] })
   }
