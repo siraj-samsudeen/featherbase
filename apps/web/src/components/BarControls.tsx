@@ -58,9 +58,12 @@ function useAddressValue(key: string): [string | null, (value: string) => void, 
   function write(next: string, replace: boolean) {
     if (page) page.set(key, next, { replace })
     else {
-      const params = new URLSearchParams(location.searchStr)
+      // The address as it is now, not as this render saw it: another control
+      // may have just written its own value (Codex round 1 on #658).
+      const now = router.history.location
+      const params = new URLSearchParams(now.search)
       params.set(key, next)
-      const href = `${location.pathname}?${params.toString()}${location.hash ? `#${location.hash}` : ''}`
+      const href = `${now.pathname}?${params.toString()}${now.hash}`
       if (replace) router.history.replace(href)
       else router.history.push(href)
     }
@@ -79,11 +82,17 @@ function BarPicker({ control }: { control: BarControl }) {
   const chosen = options.some((option) => option.value === value)
   // Owner decision (27-Oct-2026, #650): with no choice in the address, or one
   // that is not among the reader's options, the first option is written in
-  // place, so the app and a shared link always see an explicit choice. Once
-  // per wrong value: a strict-mode second run must not announce it twice.
+  // place, so the app and a shared link always see an explicit choice. The
+  // guard only stops a strict-mode second run announcing it twice: once a
+  // valid value is seen it is cleared, so returning to a wrong value later
+  // (history, or the app's own navigation) is corrected again.
   const filledFor = useRef<string | null | undefined>(undefined)
   useEffect(() => {
-    if (chosen || filledFor.current === value) return
+    if (chosen) {
+      filledFor.current = undefined
+      return
+    }
+    if (filledFor.current === value) return
     filledFor.current = value
     fillValue(options[0].value)
   })

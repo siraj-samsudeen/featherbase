@@ -5,7 +5,8 @@
 // never runs app code, and its styles and theme never reach the app's page.
 // Widths, real styles and the fixture app's own page are in
 // e2e/app-page-bar.spec.ts.
-import { resolve } from 'node:path'
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach } from 'vitest'
@@ -200,6 +201,104 @@ for (const [what, path] of [['no store', '/barproof/report?tab=2'], ['a store th
 test('with exactly one store, the bar writes that store into the address', async ({ admin, createUser }) => {
   openAppPage(await readerOf(admin, createUser, [['Riverside', 'S101']]))
   await waitFor(() => expect(window.location.search).toBe('?store=S101'))
+})
+
+// Codex round 1 on #658: the picker and the address stay in step.
+
+test("the bar follows the app's own move to another store", async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser), '/barproof/?store=S102')
+  await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Hill Road'))
+  act(() => window.history.pushState(null, '', '/barproof/?store=S103'))
+  await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Lake View'))
+})
+
+test('after the app moves to another store, choosing the one shown before goes back to it', async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser), '/barproof/?store=S102')
+  await bar.findByRole('combobox', { name: 'Store' })
+  act(() => window.history.pushState(null, '', '/barproof/?store=S103'))
+  await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Lake View'))
+  await userEvent.click(await bar.findByRole('combobox', { name: 'Store' }))
+  await userEvent.click(await bar.findByRole('option', { name: 'Hill Road' }))
+  await waitFor(() => expect(window.location.search).toBe('?store=S102'))
+})
+
+test('the app setting a store of its own is not announced back to it', async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser), '/barproof/?store=S102')
+  await bar.findByRole('combobox', { name: 'Store' })
+  const heard: unknown[] = []
+  const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+  window.addEventListener(BAR_CHANGE_EVENT, listen)
+  try {
+    act(() => window.history.pushState(null, '', '/barproof/?store=S103'))
+    await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Lake View'))
+    await settle()
+    expect(heard).toEqual([])
+  } finally {
+    window.removeEventListener(BAR_CHANGE_EVENT, listen)
+  }
+})
+
+test('when the app drops the store from its address, the bar writes the first store back in place, once', async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser), '/barproof/?store=S103')
+  await waitFor(async () => expect(await bar.findByRole('combobox', { name: 'Store' })).toHaveTextContent('Lake View'))
+  const heard: unknown[] = []
+  const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+  window.addEventListener(BAR_CHANGE_EVENT, listen)
+  try {
+    const steps = window.history.length
+    act(() => window.history.replaceState(null, '', '/barproof/?tab=2'))
+    await waitFor(() => expect(window.location.search).toBe('?tab=2&store=S102'))
+    await settle()
+    expect([window.history.length, heard]).toEqual([steps, [{ key: 'store', value: 'S102' }]])
+  } finally {
+    window.removeEventListener(BAR_CHANGE_EVENT, listen)
+  }
+})
+
+test('going back to an entry with the same wrong store corrects it again', async ({ admin, createUser }) => {
+  const reader = await readerOf(admin, createUser)
+  window.history.replaceState(null, '', '/barproof/?store=S999')
+  window.history.pushState(null, '', '/barproof/?store=S999&n=2')
+  openAppPage(reader, '/barproof/?store=S999&n=2')
+  await waitFor(() => expect(window.location.search).toBe('?store=S102&n=2'))
+  act(() => window.history.back())
+  await waitFor(() => expect(window.location.search).toBe('?store=S102'))
+})
+
+test('two declared controls missing from the address both get their first option, each announced', async ({ admin, createUser }) => {
+  const copy = await mkdtemp(resolve('test/.b650-two-controls-'))
+  try {
+    await cp(BAR_PROOF, copy, { recursive: true })
+    const file = join(copy, 'featherbase.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.bar = [...manifest.bar, { picker: 'Region', options: 'stores', sets: 'region' }]
+    await writeFile(file, JSON.stringify(manifest))
+    expect(await discoverPackages([copy, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const reader = await createUser({ email: 'app-bar-two-controls@example.test', roles: ['Bar Reader'] })
+    for (const [place, store] of STORES)
+      await admin.post('/api/save_row', {
+        table: 'placeroster.position',
+        row: { row_id: `${reader.user}-${store}`, person: reader.user, place, store, section: 'all' },
+      })
+    const heard: { key: string; value: string }[] = []
+    const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+    window.addEventListener(BAR_CHANGE_EVENT, listen)
+    try {
+      openAppPage(reader, '/barproof/')
+      await waitFor(() => {
+        const params = new URLSearchParams(window.location.search)
+        expect([params.get('store'), params.get('region')]).toEqual(['S102', 'S102'])
+      })
+      await settle()
+      expect(heard.sort((a, b) => a.key.localeCompare(b.key))).toEqual([{ key: 'region', value: 'S102' }, { key: 'store', value: 'S102' }])
+    } finally {
+      window.removeEventListener(BAR_CHANGE_EVENT, listen)
+    }
+  } finally {
+    await rm(copy, { recursive: true, force: true })
+  }
 })
 
 test('with no stores, the bar writes nothing into the address', async ({ admin, createUser }) => {

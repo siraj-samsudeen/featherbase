@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { TopBar } from '../components/TopBar'
 import { ApiError } from '../lib/api'
 import { BarAddressContext, useDocumentAddress } from '../lib/bar-address'
+import { paintSavedTheme } from '../lib/theme'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
 import { paintOnto } from '../lib/theme-paint'
 import platformCss from '../index.css?inline'
@@ -45,6 +46,7 @@ export function mountBar(host: HTMLElement, { leave = (href) => window.location.
   root.className = 'font-sans text-ink'
   shadow.replaceChildren(style, root)
   paintOnto(root)
+  paintSavedTheme()
 
   const history = createMemoryHistory({ initialEntries: ['/'] })
   history.push = (href) => leave(href)

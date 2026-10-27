@@ -137,12 +137,12 @@ for (const scheme of ['light', 'dark'] as const) {
         const light = (r + g + b) / 3 > 128
         expect(light).toBe(scheme === 'light')
       })
-      await session.step("the app's page is untouched: its colours, its face, no theme on its root", async () => {
+      await session.step("the app's page is untouched: its colours, its face, its own theme on its root", async () => {
         const app = await page.evaluate(() => {
           const s = getComputedStyle(document.body)
           return { background: s.backgroundColor, color: s.color, serif: s.fontFamily.includes('Georgia'), theme: document.documentElement.getAttribute('data-theme') }
         })
-        expect(app).toEqual({ background: 'rgb(250, 245, 230)', color: 'rgb(120, 20, 20)', serif: true, theme: null })
+        expect(app).toEqual({ background: 'rgb(250, 245, 230)', color: 'rgb(120, 20, 20)', serif: true, theme: 'app-owned' })
       })
       await session.step('switching the theme in the bar repaints the bar only', async () => {
         const other = scheme === 'light' ? 'dark' : 'light'

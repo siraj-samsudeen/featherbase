@@ -164,6 +164,18 @@ only choices the reader is allowed.
 - **THEN** the app is told the new store straight away, without the page
   reloading, and shows that store's figures
 
+#### Scenario: A page opened without a store gets the first one
+
+- **WHEN** a reader opens an app's screen from a link with no store in it
+- **THEN** the top bar picks their first store for them, the app is told it as
+  it would be told any choice, and the back button still leads to the page
+  they came from
+
+#### Scenario: The bar follows the app
+
+- **WHEN** an app's screen moves to another store on its own
+- **THEN** the top bar shows that store
+
 ### Requirement: An app states the platform version it was built for
 
 Every app SHALL state the platform version it was built for. Featherbase SHALL keep

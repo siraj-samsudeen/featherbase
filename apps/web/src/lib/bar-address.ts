@@ -43,14 +43,41 @@ export function useBarAddress(): BarAddress | null {
   return useContext(BarAddressContext)
 }
 
-/** The document's own address, followed through the browser's history. A
- *  choice is a new history entry in the same document, never a reload. */
+// An app may move its own address (`history.pushState` / `replaceState`),
+// changing or dropping a bar control's key; the browser announces neither. So
+// the bar wraps the two, once, to hear of each write: the wrapper calls the
+// browser's own method unchanged and then tells the bar (Codex round 1 on
+// #658). The notice is private to the bar; the page sees no new event.
+const historyWrites = new EventTarget()
+let watchingHistory = false
+function watchHistoryWrites() {
+  if (watchingHistory) return
+  watchingHistory = true
+  for (const method of ['pushState', 'replaceState'] as const) {
+    const browsers = window.history[method]
+    window.history[method] = function (this: History, ...args: Parameters<History['pushState']>) {
+      const result = browsers.apply(this, args)
+      historyWrites.dispatchEvent(new Event('write'))
+      return result
+    }
+  }
+}
+
+/** The document's own address, followed through the browser's history and
+ *  the app's own history writes. A choice is a new history entry in the same
+ *  document, never a reload. */
 export function useDocumentAddress(): BarAddress {
   const [search, setSearch] = useState(window.location.search)
   useEffect(() => {
+    watchHistoryWrites()
     const follow = () => setSearch(window.location.search)
+    follow()
     window.addEventListener('popstate', follow)
-    return () => window.removeEventListener('popstate', follow)
+    historyWrites.addEventListener('write', follow)
+    return () => {
+      window.removeEventListener('popstate', follow)
+      historyWrites.removeEventListener('write', follow)
+    }
   }, [])
   function set(key: string, value: string, { replace = false } = {}) {
     const url = new URL(window.location.href)

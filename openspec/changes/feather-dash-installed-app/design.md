@@ -385,6 +385,28 @@ reads it. An app never runs its own code in the bar (ADR 0011).
     after the address has changed, and once for the first option the bar
     writes in on load. Moving through history fires the browser's own
     `popstate` only.
+  - **An app must listen for the event, not only read the address on load.**
+    The bar writes the first option in on load *after* the app's own startup
+    script may already have read the address, so on a page opened with no
+    choice the first store reaches the app only through the event. The
+    recommended pattern: read `location.search` on load, then update on every
+    `featherbase:bar-change` (and on `popstate`, for Back and Forward):
+
+    ```js
+    let store = new URLSearchParams(location.search).get('store')
+    window.addEventListener('featherbase:bar-change', ({ detail }) => {
+      if (detail.key === 'store') store = detail.value // then redraw
+    })
+    ```
+  - **An app may change `?<sets>=` itself** with `history.pushState` or
+    `replaceState`; the bar follows (it observes those writes; Codex round 1
+    on #658). A valid value the app sets is not announced back to it. If the
+    app drops the key, or sets a value the reader does not have, the bar
+    writes the first option back in place and announces it once, as on load.
+  - **No platform module paints as it loads** (GitHub Codex on #658). In a
+    production build the theme code can share a chunk with the Admin and load
+    before the bar has chosen its own root, so painting at load time would
+    overwrite the app's `<html data-theme>`. Each entry paints as it starts.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures

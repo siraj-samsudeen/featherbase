@@ -50,3 +50,22 @@ test("the built bar bundle draws the shared bar over an app's page, and the page
     expect((await versioned).headers()['x-featherbase-app-version']).toMatch(/barproof@/)
   })
 })
+
+// GitHub Codex on #658: in the built bundle the theme code shares a chunk with
+// the Admin, so it must not paint as it loads. The app's own <html data-theme>
+// survives the bar, and the bar's own root carries the person's theme.
+test.describe('in the dark', () => {
+  test.use({ colorScheme: 'dark' })
+
+  test("the built bar paints its own root and leaves the app's <html> theme alone", async ({ page }) => {
+    await page.goto('/featherbase/login')
+    await page.fill('input[name=email]', 'Administrator')
+    await page.fill('input[name=password]', process.env.ADMIN_PASSWORD ?? 'admin')
+    await page.click('button[type=submit]')
+    await expect(page.getByTestId('session-user')).toBeVisible()
+    await page.goto(PAGE)
+    await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
+    expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).toBe('app-owned')
+    await expect(page.getByTestId('bar-theme-root')).toHaveAttribute('data-theme', 'dark')
+  })
+})
