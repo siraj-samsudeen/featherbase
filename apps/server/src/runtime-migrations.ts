@@ -40,6 +40,7 @@ const alterable = z.object({
   unique: z.boolean().nullable(),
   default_value: z.string().nullable(),
   hidden: z.boolean().nullable(),
+  description: z.string().nullable(),
   column_type: z.enum(COLUMN_TYPE_VALUES),
 }).partial().strict()
 
@@ -499,7 +500,9 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       // may fill many rows once unique is off, never while it turns on.
       const addsUnique = Boolean(target.unique) && !wasUnique
       if (addsUnique) target.unique = false
-      await updateTable(op.table, def)
+      // A definition read back leaves an absent description out, so removing
+      // one is named (#663).
+      await updateTable(op.table, def, op.to.description === null ? { clear_descriptions: [op.column] } : {})
       // The column as it ends up decides: a narrowing can empty a column
       // that was already required.
       await writeFill(found, op.table, target, op.backfill ?? automaticFill(target), what)

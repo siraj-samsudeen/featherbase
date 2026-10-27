@@ -240,6 +240,53 @@ describe('a required column stays filled', () => {
   })
 })
 
+// #663: a description is display-only, so changing it touches the definition
+// and nothing else.
+describe('a description change is metadata-only', () => {
+  const described = (from: string | null, to: string | null) =>
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'rating', from: { description: from }, to: { description: to } })
+  const ratingDescription = () => sql`select description from column_def where parent = 'shop.supplier' and column_name = 'rating'`
+  // Where each row and the table's storage sit: a rewritten row moves (ctid),
+  // a rebuilt table gets new storage (relfilenode).
+  const storage = async () => ({
+    rows: await sql`select row_id, ctid::text as at, rating from shop.supplier order by row_id`,
+    file: await sql`select relfilenode from pg_class where oid = 'shop.supplier'::regclass`,
+  })
+
+  shopTest('the column records the new description', async () => {
+    await registered()
+    await run(described(null, 'Stars out of five'))
+    expect(await ratingDescription()).toEqual([{ description: 'Stars out of five' }])
+  })
+
+  shopTest('a null description removes it', async () => {
+    await registered()
+    await run(described(null, 'Stars out of five'))
+    await run(described('Stars out of five', null))
+    expect(await ratingDescription()).toEqual([{ description: null }])
+  })
+
+  shopTest('no row is rewritten and the table is not rebuilt', async () => {
+    await registered()
+    const before = await storage()
+    await run(described(null, 'Stars out of five'))
+    expect(await storage()).toEqual(before)
+  })
+
+  shopTest('it counts no losses', async () => {
+    await registered()
+    expect(await countLosses('shop', [step([described(null, 'Stars out of five')])])).toEqual([])
+  })
+
+  shopTest('it can travel with a type change', async () => {
+    await registered()
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'rating',
+      from: { column_type: 'Int', description: null }, to: { column_type: 'Float', description: 'Average stars' } })
+    expect(await sql`select column_type, description from column_def where parent = 'shop.supplier' and column_name = 'rating'`)
+      .toEqual([{ column_type: 'Float', description: 'Average stars' }])
+  })
+})
+
 describe('losses are counted after the steps before them', () => {
   shopTest('a widening after a marked narrowing loses nothing of its own', async () => {
     await registered()

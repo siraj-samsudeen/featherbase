@@ -20,7 +20,7 @@
     {
       "name": "evolve.item", "label": "Item", "id_pattern": "prompt", "title_column": "title",
       "columns": [
-        { "column_name": "title", "label": "Title", "column_type": "Data" },
+        { "column_name": "title", "label": "Title", "column_type": "Data", "description": "The material group this item belongs to" },
         { "column_name": "supplier", "label": "Supplier", "column_type": "Reference", "reference_table": "evolve.supplier" },
         { "column_name": "quantity", "label": "Quantity", "column_type": "Float" },
         { "column_name": "grade", "label": "Grade", "column_type": "Choice", "choices": "A\nB\nC\nD" },
