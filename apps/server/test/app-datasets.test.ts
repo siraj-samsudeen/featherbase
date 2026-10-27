@@ -26,7 +26,7 @@ import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { guardRefusal, shapeRows, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
+import { guardRefusal, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 
@@ -61,8 +61,10 @@ beforeAll(async () => {
   warehouse = postgres(EXTERNAL_DATABASE_URL, { max: 2, onnotice: () => {} })
   await warehouse.unsafe('drop schema if exists b4_dataset cascade')
   await warehouse.unsafe('create schema b4_dataset')
+  // `amount` is unbounded numeric so a test can hold more digits than a
+  // JavaScript number does (#676).
   await warehouse.unsafe(`create table b4_dataset.sales (plant_code text, section_code text, business_day date,
-    amount numeric(12,2), units integer, note text)`)
+    amount numeric, units integer, note text)`)
   // Adjacent ids above 2^53 (where a JavaScript number cannot tell them
   // apart), booked at times of day that a date column holds as days.
   await warehouse.unsafe(`create table b4_dataset.accounts (account_id bigint, booked_at timestamp, amount numeric(12,2));
@@ -244,6 +246,142 @@ describe('the guard on an app dataset', () => {
     await buildSnapshot('datasetproof.sales')
     await fillWarehouse(withUnits(3, 0, 0, null))
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated' })
+  })
+})
+
+/** SALES with `amount`, `units` and `note` set per row, in order. */
+const withFigures = (...figures: (readonly [string | null, number | null, string | null])[]) =>
+  SALES.map((r, i) => [...r.slice(0, 3), ...figures[i]])
+const month = (note: string | null, ...amounts: (string | null)[]) => amounts.map(amount => [amount, 1, note] as const)
+
+// #676: a total is summed from the stored rows in SQL numeric, so money
+// compares to the paisa: 0.10 + 0.20 is 0.30, where floats make it more.
+describe('the sum guard on an app dataset', () => {
+  const sumGuard: DatasetGuard[] = [{ kind: 'max_sum_drop_pct', column: 'amount', value: 50 }]
+
+  test('a refresh whose total drops exactly its limit activates', async ({ admin }) => {
+    await setupGuarded(admin, sumGuard)
+    await fillWarehouse(withFigures(...month('2026-10', '0.10', '0.20', '0', null)))
+    await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month('2026-10', '0.15', '0', '0', null)))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated' })
+  })
+
+  test('a refresh whose total drops just over its limit keeps the last good copy', async ({ admin }) => {
+    await setupGuarded(admin, sumGuard)
+    await fillWarehouse(withFigures(...month('2026-10', '0.10', '0.20', '0', null)))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month('2026-10', '0.14', '0', '0', null)))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: amount total dropped 53.3% (0.3 → 0.14), limit 50%' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+})
+
+// #676 (Codex round 1): a money value with more digits than a JavaScript
+// number holds is stored exactly, so a drop that Number() would round away
+// still counts.
+describe('the sum guard on high-precision values', () => {
+  test.for([
+    ['a whole number above 2^53', '9007199254740993', '9007199254740992',
+      'sales: amount total dropped more than 0% (9,00,71,99,25,47,40,993 → 9,00,71,99,25,47,40,992), limit 0%'],
+    ['a fraction finer than a double', '1.00000000000000001', '1', 'sales: amount total dropped more than 0% (1.00000000000000001 → 1), limit 0%'],
+  ] as const)('refuses a one-unit drop in %s at a limit of 0', async ([, before, now, reason], { admin }) => {
+    await setupGuarded(admin, [{ kind: 'max_sum_drop_pct', column: 'amount', value: 0 }])
+    await fillWarehouse(withFigures(...month('2026-10', before, '0', '0', '0')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month('2026-10', now, '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused', reason })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+})
+
+// #676: `within` keeps a drop comparison inside one period, read from the
+// stored rows of the candidate and the active snapshot.
+describe('a drop guard within a period', () => {
+  const guards: DatasetGuard[] = [
+    { kind: 'max_drop_pct', column: 'amount', value: 50, within: 'note' },
+    { kind: 'max_sum_drop_pct', column: 'amount', value: 50, within: 'note' },
+  ]
+
+  test('activates the first refresh of a new period, however small', async ({ admin }) => {
+    await setupGuarded(admin, guards)
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month('2026-11', '5', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated' })
+  })
+
+  test.for([
+    ['a count', [guards[0]], month('2026-10', '400', '0', '0', '0'), 'sales: amount values dropped 75% (4 → 1), limit 50%'],
+    ['a total', [guards[1]], month('2026-10', '100', '100', '100', '100'), 'sales: amount total dropped 60% (1,000 → 400), limit 50%'],
+  ] as const)('refuses %s dropping over its limit in the same period', async ([, guard, figures, reason], { admin }) => {
+    await setupGuarded(admin, [...guard])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...figures))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused', reason })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  test.for([
+    ['two periods', [...month('2026-10', '1', '1'), ...month('2026-11', '1', '1')], 'sales: note holds 2 values and 0 empty, but amount is compared within one note'],
+    ['an empty period', [...month('2026-10', '1', '1', '1'), ...month(null, '1')], 'sales: note holds 1 value and 1 empty, but amount is compared within one note'],
+  ] as const)('refuses a candidate holding %s', async ([, figures, reason], { admin }) => {
+    await setupGuarded(admin, [guards[1]])
+    await fillWarehouse(withFigures(...figures))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused', reason })
+  })
+
+  // Codex round 1: a blank period is a missing one, not a new one, so a
+  // collapsed refresh cannot skip the comparison by blanking its month.
+  test.for([
+    ['an empty-text period', ''], ['a blank period', '   '],
+    // Codex round 2: blank is any whitespace a JavaScript trim removes, not only spaces.
+    ['a tab', '\t'], ['a line feed', '\n'], ['a carriage return and line feed', '\r\n'],
+    ['mixed whitespace', ' \t\n'], ['a no-break space', ' '],
+  ] as const)('refuses a candidate holding %s on every row', async ([, blank], { admin }) => {
+    await setupGuarded(admin, [guards[1]])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month(blank, '1', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: note holds 0 values and 4 empty, but amount is compared within one note' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  // A padded period (a source's char(n) column, say) is the period it pads,
+  // so padding cannot pass a collapsed refresh off as a new period.
+  test('compares a padded period as the period it pads', async ({ admin }) => {
+    await setupGuarded(admin, [guards[1]])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month(' 2026-10\t', '1', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: amount total dropped 99.9% (1,000 → 1), limit 50%' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  test('compares nothing against an active snapshot of more than one period', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await fillWarehouse(withFigures(...month('2026-10', '100', '100'), ...month('2026-11', '100', '100')))
+    await buildSnapshot('datasetproof.sales')
+    await upgradeSales(admin, fixture, { guard: [guards[1]] })
+    await fillWarehouse(withFigures(...month('2026-11', '1', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated' })
+  })
+
+  // Like the guard it belongs to, a period decides which refresh may replace
+  // the copy, not what the copy holds.
+  test('an upgrade that adds one keeps the last good copy, and guards it', async ({ admin }) => {
+    const installed = await setupGuarded(admin, [{ kind: 'max_drop_pct', column: 'amount', value: 50 }])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await upgradeSales(admin, installed, { guard: guards })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+    await fillWarehouse(withFigures(...month('2026-10', '100', '100', '100', '100')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: amount total dropped 60% (1,000 → 400), limit 50%' })
   })
 })
 
@@ -528,7 +666,8 @@ describe('a dataset declaration', () => {
       await cp(fixture, copy, { recursive: true })
       const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
       manifest.datasets[0].guard = [
-        { kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'amount' }, { kind: 'max_drop_pct', column: 'units', value: 50 }]
+        { kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'amount' }, { kind: 'max_drop_pct', column: 'units', value: 50 },
+        { kind: 'max_sum_drop_pct', column: 'amount', value: 50, within: 'business_day' }, { kind: 'max_drop_pct', column: 'units', value: 0, within: 'note' }]
       await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
       expect(await discoverPackages([copy])).toEqual([])
     } finally {
@@ -550,6 +689,17 @@ describe('a dataset declaration', () => {
     ['guard gives a value to a check that takes none', { guard: [{ kind: 'not_all_zero', column: 'units', value: 1 }] }, /not_all_zero guard takes no value/],
     ['guard allows a fractional drop', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 7.5 }] }, /max_drop_pct value must be a whole percentage from 0 to 100/],
     ['guard checks a drop without naming a column', { guard: [{ kind: 'max_drop_pct', value: 50 }] }, /max_drop_pct guard needs a column/],
+    // #676: the sum guard is held to the same limits; `within` names a period column a drop guard compares inside.
+    ['guard allows a total to drop above 100%', { guard: [{ kind: 'max_sum_drop_pct', column: 'amount', value: 101 }] }, /max_sum_drop_pct value must be a whole percentage from 0 to 100/],
+    ['guard allows a total a fractional drop', { guard: [{ kind: 'max_sum_drop_pct', column: 'amount', value: 0.5 }] }, /max_sum_drop_pct value must be a whole percentage from 0 to 100/],
+    ['guard sums without naming a column', { guard: [{ kind: 'max_sum_drop_pct', value: 50 }] }, /max_sum_drop_pct guard needs a column/],
+    ['guard sums a text column', { guard: [{ kind: 'max_sum_drop_pct', column: 'note', value: 50 }] }, /sales's guard column note must be integer, number or money/],
+    ['guard compares within a column it does not declare', { guard: [{ kind: 'max_sum_drop_pct', column: 'amount', value: 50, within: 'month' }] },
+      /sales's guard within column month is not one of its columns/],
+    ['guard compares within a money column', { guard: [{ kind: 'max_drop_pct', column: 'units', value: 50, within: 'amount' }] },
+      /sales's guard within column amount must be text, integer or date/],
+    ['guard compares a minimum within a period', { guard: [{ kind: 'min_rows', value: 1, within: 'business_day' }] }, /only a drop guard compares within a column/],
+    ['guard checks for zeros within a period', { guard: [{ kind: 'not_all_zero', column: 'units', within: 'business_day' }] }, /only a drop guard compares within a column/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
     try {
@@ -594,6 +744,24 @@ describe('the shaping function', () => {
       [{ store: 'N1', units: '9007199254740993' }])).toThrow(/units holds a value that is not integer/)
   })
 
+  // #676: the stored copy keeps a figure's exact decimal for the guards'
+  // sums, yet reads back as the very row a live read shapes.
+  test('stores a row that reads back as its shaped row, with each figure\'s exact digits', () => {
+    const probe = dataset([{ name: 'store', type: 'text' }, { name: 'amount', type: 'money' }, { name: 'ratio', type: 'number' },
+      { name: 'units', type: 'integer' }, { name: 'gap', type: 'money' }])
+    // Text that is not plain decimal ('0x10') keeps the shaped number.
+    const raw = [
+      { store: 'N1', amount: '9007199254740993.10', ratio: 0.25, units: 3, gap: null },
+      { store: 'S1', amount: '-0012.5e1', ratio: '0x10', units: null, gap: '.5' },
+    ]
+    const json = storedRowJson(probe, raw)
+    expect(json).toEqual([
+      '{"store":"N1","amount":9007199254740993.10,"ratio":0.25,"units":3,"gap":null}',
+      '{"store":"S1","amount":-12.5e1,"ratio":16,"units":null,"gap":0.5}',
+    ])
+    expect(json.map(row => JSON.parse(row))).toEqual(shapeRows(probe, raw))
+  })
+
   test('holds each value to its declared type', () => {
     const shaped = shapeRows(dataset([
       { name: 'flag', type: 'boolean' }, { name: 'said', type: 'boolean' }, { name: 'ratio', type: 'number' },
@@ -616,7 +784,7 @@ describe('the shaping function', () => {
 // active snapshot's. Counts are of rows, and of values in a column that are
 // neither empty nor zero.
 describe('a dataset guard', () => {
-  const counts = (rows: number, target: number) => ({ rows, nonZero: { target } })
+  const counts = (rows: number, target: number) => ({ rows, nonZero: { target }, sums: {}, periods: {} })
   const check = (guard: DatasetGuard, candidate: ReturnType<typeof counts>, previous: ReturnType<typeof counts> | null = null) =>
     guardRefusal('sales', [guard], candidate, previous)
 
@@ -647,6 +815,74 @@ describe('a dataset guard', () => {
   ] as const)('max_drop_pct %i%% from %i to %i passes: %s', ([limit, before, now, passes]) => {
     const refusal = check({ kind: 'max_drop_pct', column: 'target', value: limit }, counts(10, now), counts(10, before))
     expect(refusal === null).toBe(passes)
+  })
+
+  // #676: max_sum_drop_pct compares a column's total, exactly: the totals
+  // are the snapshot's own decimal sums, never JavaScript floats.
+  const totals = (target: string) => ({ rows: 10, nonZero: { target: 10 }, sums: { target }, periods: {} })
+  const sumGuard = (value: number) => ({ kind: 'max_sum_drop_pct', column: 'target', value }) as DatasetGuard
+
+  test.for([
+    ['passes a drop of exactly its limit', 50, '12000000', '6000000', null],
+    ['refuses a drop just over its limit', 50, '12000000', '5999999.99',
+      'sales: target total dropped more than 50% (1,20,00,000 → 59,99,999.99), limit 50%'],
+    ['names a large drop in Indian grouping', 50, '12000000', '4560000', 'sales: target total dropped 62% (1,20,00,000 → 45,60,000), limit 50%'],
+    ['passes a rise', 0, '100.5', '100.51', null],
+    ['passes any drop from a total of zero', 10, '0', '-500', null],
+    ['passes any drop from a negative total', 10, '-100', '-500', null],
+  ] as const)('max_sum_drop_pct %s', ([, limit, before, now, refusal]) => {
+    expect(check(sumGuard(limit), totals(now), totals(before))).toBe(refusal)
+  })
+
+  test('max_sum_drop_pct passes a first refresh, with no active snapshot', () => {
+    expect(check(sumGuard(50), totals('1'), null)).toBeNull()
+  })
+
+  // 0.57 * 100 is 56.99999999999999 in floating point, so a float comparison
+  // would refuse a drop of exactly 43%; 0.1 + 0.2 is not 0.3.
+  test.for([
+    [43, '1.00', '0.57', true], [43, '1.00', '0.56', false],
+    [50, '0.30', '0.15', true], [50, '0.30', '0.14', false],
+    [7, '1234567.89', '1148148.1377', true], [7, '1234567.89', '1148148.1376', false],
+  ] as const)('max_sum_drop_pct %i%% from %s to %s passes: %s', ([limit, before, now, passes]) => {
+    expect(check(sumGuard(limit), totals(now), totals(before)) === null).toBe(passes)
+  })
+
+  // #676: `within` keeps a drop comparison inside one period, so the first
+  // refresh of a new month is not compared with the last one.
+  const inPeriod = (target: number, total: string, month: { distinct: number; empty: number; value: string | null }) =>
+    ({ rows: 10, nonZero: { target }, sums: { target: total }, periods: { month } })
+  const one = (value: string) => ({ distinct: 1, empty: 0, value })
+  const countWithin = { kind: 'max_drop_pct', column: 'target', value: 50, within: 'month' } as DatasetGuard
+  const sumWithin = { kind: 'max_sum_drop_pct', column: 'target', value: 50, within: 'month' } as DatasetGuard
+
+  test.for([
+    ['max_drop_pct refuses a drop over its limit in the same period', countWithin,
+      'sales: target values dropped 90% (100 → 10), limit 50%'],
+    ['max_sum_drop_pct refuses a drop over its limit in the same period', sumWithin,
+      'sales: target total dropped 90% (1,000 → 100), limit 50%'],
+  ] as const)('%s', ([, guard, refusal]) => {
+    expect(check(guard, inPeriod(10, '100', one('2026-10-01')), inPeriod(100, '1000', one('2026-10-01')))).toBe(refusal)
+  })
+
+  test.for([
+    ['max_drop_pct', countWithin], ['max_sum_drop_pct', sumWithin],
+  ] as const)('%s passes the first refresh of a new period, however small', ([, guard]) => {
+    expect(check(guard, inPeriod(10, '100', one('2026-11-01')), inPeriod(100, '1000', one('2026-10-01')))).toBeNull()
+  })
+
+  // An active snapshot that is not one period is no baseline for one.
+  test('a drop within a period passes against an active snapshot holding more than one', () => {
+    expect(check(sumWithin, inPeriod(10, '100', one('2026-10-01')), inPeriod(100, '1000', { distinct: 2, empty: 0, value: null }))).toBeNull()
+  })
+
+  // Declaring `within` says a complete refresh is one period: a candidate
+  // that is not cannot be judged, so it is refused, even with no baseline.
+  test.for([
+    ['more than one value', { distinct: 2, empty: 0, value: null }, 'sales: month holds 2 values and 0 empty, but target is compared within one month'],
+    ['an empty value', { distinct: 1, empty: 3, value: null }, 'sales: month holds 1 value and 3 empty, but target is compared within one month'],
+  ] as const)('a candidate whose period column holds %s is refused', ([, month, refusal]) => {
+    expect(check(sumWithin, inPeriod(10, '100', month), null)).toBe(refusal)
   })
 
   test('the first guard that fails is the one named', () => {
