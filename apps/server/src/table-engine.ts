@@ -419,6 +419,21 @@ export async function updateTable(
           where parent = ${name} and column_name = ${f.column_name}`
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
+          // #510: rows that already repeat a value would fail the constraint
+          // with a bare database error; name the value instead. Throwing here
+          // rolls the whole write back, so the Table is left as it was.
+          const col = quoteIdent(f.column_name)
+          const [repeat] = f.unique
+            ? ((await tx.unsafe(
+                `select ${col}::text as value, count(*)::int as n from ${relation}
+                 where ${col} is not null group by ${col} having count(*) > 1
+                 order by count(*) desc, ${col}::text limit 1`,
+              )) as unknown as { value: string; n: number }[])
+            : []
+          if (repeat)
+            throw new AppError('ValidationError', 'A unique column cannot repeat a value', {
+              [f.column_name]: `${JSON.stringify(repeat.value)} is held by ${repeat.n} rows; make each value distinct before marking the column unique`,
+            })
           if (f.unique)
             await tx.unsafe(
               `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,

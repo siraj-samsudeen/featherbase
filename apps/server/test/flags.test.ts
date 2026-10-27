@@ -79,10 +79,10 @@ describe('META-010: field flags', () => {
 })
 
 describe('A column can be marked unique', () => {
-  // SPEC: A column can be marked unique — suspected defect, see report.
-  // Turning unique on for a column whose rows already repeat a value fails
-  // with a bare internal error instead of a refusal naming the column.
-  test.fails('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
+  // SPEC: A column can be marked unique (#510) — turning unique on over
+  // repeated values is refused naming the column and the value, and the
+  // Table is left as it was.
+  test('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++)
       await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
@@ -91,6 +91,10 @@ describe('A column can be marked unique', () => {
       body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
     })
     expect(res.status).toBe(417)
-    expect((await res.json()).error.fields.code).toBeTruthy()
+    expect((await res.json()).error.fields.code).toMatch(/"A" is held by 2 rows/)
+    const meta = await admin.get<{ columns: { column_name: string; unique: boolean }[] }>(
+      `/api/table/${encodeURIComponent('Flag Late Unique')}:meta`,
+    )
+    expect(meta.columns.find((c) => c.column_name === 'code')?.unique).toBe(false)
   })
 })
