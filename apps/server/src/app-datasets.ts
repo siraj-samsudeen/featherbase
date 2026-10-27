@@ -26,7 +26,7 @@ const FILTERABLE: readonly string[] = ['text', 'integer', 'date']
 
 /** #669: the completeness checks a dataset may declare. Each is checked on a
  *  refresh's candidate before it can replace the active snapshot. */
-export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct'] as const
+export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 'max_sum_drop_pct'] as const
 /** A guarded column holds figures, so "zero" and "a drop" mean something. */
 const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
 
@@ -34,8 +34,13 @@ const guardSchema = z.object({
   kind: z.enum(DATASET_GUARD_KINDS, { errorMap: () => ({ message: `A dataset guard kind must be one of ${DATASET_GUARD_KINDS.join(', ')}` }) }),
   column: identifier.optional(),
   value: z.number().optional(),
+  within: identifier.optional(),
 }).strict().superRefine((guard, context) => {
   const issue = (message: string) => context.addIssue({ code: 'custom', message })
+  // #676: a period bounds a comparison with the active snapshot; the absolute
+  // checks compare nothing.
+  if (guard.within !== undefined && guard.kind !== 'max_drop_pct' && guard.kind !== 'max_sum_drop_pct')
+    issue(`A ${guard.kind} guard compares nothing with the active snapshot; only a drop guard compares within a column`)
   if (guard.kind === 'min_rows') {
     if (guard.column !== undefined) issue('A min_rows guard counts rows, so it names no column')
     if (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0)
@@ -45,27 +50,76 @@ const guardSchema = z.object({
   if (guard.column === undefined) issue(`A ${guard.kind} guard needs a column`)
   if (guard.kind === 'not_all_zero' && guard.value !== undefined) issue('A not_all_zero guard takes no value')
   // Whole percentages, so the limit is checked in integers, exactly.
-  if (guard.kind === 'max_drop_pct' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
-    issue('A max_drop_pct value must be a whole percentage from 0 to 100')
+  if (guard.kind !== 'not_all_zero' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
+    issue(`A ${guard.kind} value must be a whole percentage from 0 to 100`)
 })
 
 export type DatasetGuard = z.infer<typeof guardSchema>
 
-/** What a guard reads of a snapshot: its rows, and per guarded column how
- *  many of its values are neither empty nor zero. */
+/** What a guard reads of a snapshot: its rows; per guarded column how many
+ *  of its values are neither empty nor zero, and their exact total as decimal
+ *  text; and per `within` column what values it holds. */
 export interface GuardCounts {
   rows: number
   nonZero: Record<string, number>
+  /** #676: SQL numeric sums, as text, so no total is ever a float. */
+  sums: Record<string, string>
+  periods: Record<string, GuardPeriod>
+}
+
+/** #676: what a snapshot holds in a `within` column: how many different
+ *  values, how many rows have none, and the value when every row holds the
+ *  same one (null otherwise). */
+export interface GuardPeriod {
+  distinct: number
+  empty: number
+  value: string | null
 }
 
 const whole = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
 const percent = (value: number) => `${Math.round(value * 10) / 10}%`
+/** A total keeps its paise: the same Indian grouping as `whole`, with up to
+ *  two decimals. Formatted from its decimal text, so it is never rounded
+ *  through a float. */
+const total = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
+const formatTotal = (decimal: string) => total.format(decimal as unknown as number)
+
+/** #676: a decimal text as an integer count of 10^-scale units. */
+function scaled(decimal: string, scale: number): bigint {
+  const [, sign, digits, fraction = ''] = /^(-?)(\d+)(?:\.(\d+))?$/.exec(decimal.trim()) ?? []
+  if (digits === undefined) throw new Error(`not a decimal total: ${decimal}`)
+  const units = BigInt(digits + fraction.padEnd(scale, '0'))
+  return sign ? -units : units
+}
+const scaleOf = (decimal: string) => decimal.split('.')[1]?.length ?? 0
+
+/**
+ * #676: the drop from `before` to `now`, both decimal text, against a whole
+ * percentage `limit`, decided in integers: both totals are scaled to the
+ * same whole number of units, so neither 0.1 + 0.2 nor 0.57 * 100 can move
+ * the boundary. Null when the drop is within the limit; otherwise the drop
+ * in words, to a tenth, or "more than" the limit when a tenth cannot show it.
+ */
+function sumDrop(before: string, now: string, limit: number): string | null {
+  const scale = Math.max(scaleOf(before), scaleOf(now))
+  const b = scaled(before, scale)
+  const n = scaled(now, scale)
+  if (n * 100n >= b * BigInt(100 - limit)) return null
+  const tenths = ((b - n) * 2000n + b) / (2n * b)  // rounded half up; b > 0
+  if (tenths <= BigInt(limit * 10)) return `more than ${limit}%`
+  return `${tenths / 10n}${tenths % 10n ? `.${tenths % 10n}` : ''}%`
+}
 
 /**
  * #669: the first of `guards` that the candidate fails, said in words that
  * name the dataset, the guard and the numbers; null when every guard passes.
  * A drop is measured against the active snapshot, so a first refresh, with
  * none to compare, cannot fail one.
+ *
+ * #676: a drop guard `within` a column compares only when the candidate and
+ * the active snapshot each hold one and the same value there, so a new
+ * period starts without a baseline. A candidate that is not one period is
+ * refused; an active snapshot that is not one is no baseline.
  */
 export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], candidate: GuardCounts, previous: GuardCounts | null): string | null {
   for (const guard of guards) {
@@ -79,7 +133,23 @@ export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], c
       if (now === 0) return `${dataset}: every ${column} value is empty or zero (${whole.format(candidate.rows)} rows)`
       continue
     }
-    const before = previous?.nonZero[column]
+    let baseline = previous
+    if (guard.within) {
+      const period = candidate.periods[guard.within]
+      if (period.distinct !== 1 || period.empty !== 0)
+        return `${dataset}: ${guard.within} holds ${whole.format(period.distinct)} value${period.distinct === 1 ? '' : 's'} and ${whole.format(period.empty)} empty, but ${column} is compared within one ${guard.within}`
+      if (previous?.periods[guard.within].value !== period.value) baseline = null
+    }
+    if (guard.kind === 'max_sum_drop_pct') {
+      const before = baseline?.sums[column]
+      // A drop is a share of a positive total: from zero or below there is
+      // no share to take, so there is nothing to compare.
+      if (before === undefined || scaled(before, scaleOf(before)) <= 0n) continue
+      const drop = sumDrop(before, candidate.sums[column], guard.value!)
+      if (drop) return `${dataset}: ${column} total dropped ${drop} (${formatTotal(before)} → ${formatTotal(candidate.sums[column])}), limit ${percent(guard.value!)}`
+      continue
+    }
+    const before = baseline?.nonZero[column]
     if (!before) continue
     // Decided in integers: a computed percentage is not exact (100 → 93 is
     // 7.000000000000001%), and a drop of exactly the limit must pass.
@@ -107,6 +177,13 @@ const datasetSchema = z.object({
     if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} is not one of its columns` })
     else if (!GUARDABLE.includes(types.get(column)!))
       context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} must be integer, number or money` })
+  }
+  // #676: a period is compared as text, like a key, so it takes a key's types.
+  for (const { within } of dataset.guard ?? []) {
+    if (within === undefined) continue
+    if (!types.has(within)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard within column ${within} is not one of its columns` })
+    else if (!FILTERABLE.includes(types.get(within)!))
+      context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard within column ${within} must be text, integer or date` })
   }
   for (const [what, column] of [...dataset.keys.map(key => ['key', key]), ...Object.values(dataset.filters).map(c => ['scope filter', c])]) {
     if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s ${what} ${column} is not one of its columns` })
@@ -179,15 +256,34 @@ async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   return driver.query(source, dataset.query, dataset.columns, where)
 }
 
-/** A stored snapshot's counts for its guards, in one pass over its rows. */
+/**
+ * A stored snapshot's counts for its guards, in one pass over its rows.
+ * #676: a total is summed in SQL numeric from each value's JSON decimal
+ * text and returned as text, so it is exact; a period is read as text, as
+ * the snapshot stores it.
+ */
 async function guardCounts(snapshotId: string, guards: readonly DatasetGuard[]): Promise<GuardCounts> {
   const columns = [...new Set(guards.flatMap((guard) => (guard.column ? [guard.column] : [])))]
-  const nonZero = columns.map((column, i) =>
-    sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}`)
+  const periods = [...new Set(guards.flatMap((guard) => (guard.within ? [guard.within] : [])))]
+  const parts = [
+    ...columns.map((column, i) => sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}
+      , coalesce(sum((row->>${column})::numeric), 0)::text as ${sql(`s${i}`)}`),
+    ...periods.map((column, i) => sql`, count(distinct row->>${column}) as ${sql(`pd${i}`)}
+      , count(*) filter (where row->>${column} is null) as ${sql(`pe${i}`)}, min(row->>${column}) as ${sql(`pv${i}`)}`),
+  ]
   const [counted] = await sql`
-    select count(*) as rows ${nonZero.length ? nonZero.reduce((all, one) => sql`${all} ${one}`) : sql``}
+    select count(*) as rows ${parts.length ? parts.reduce((all, one) => sql`${all} ${one}`) : sql``}
     from app_dataset_row where snapshot_id = ${snapshotId}`
-  return { rows: Number(counted.rows), nonZero: Object.fromEntries(columns.map((column, i) => [column, Number(counted[`c${i}`])])) }
+  return {
+    rows: Number(counted.rows),
+    nonZero: Object.fromEntries(columns.map((column, i) => [column, Number(counted[`c${i}`])])),
+    sums: Object.fromEntries(columns.map((column, i) => [column, String(counted[`s${i}`])])),
+    periods: Object.fromEntries(periods.map((column, i) => {
+      const distinct = Number(counted[`pd${i}`])
+      const empty = Number(counted[`pe${i}`])
+      return [column, { distinct, empty, value: distinct === 1 && empty === 0 ? String(counted[`pv${i}`]) : null }]
+    })),
+  }
 }
 
 /** The registry name of an app's dataset: `<app>.<dataset>`. */

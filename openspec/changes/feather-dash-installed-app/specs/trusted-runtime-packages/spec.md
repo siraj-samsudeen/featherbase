@@ -65,9 +65,12 @@ replace the last good copy, and an admin SHALL be able to see why it was refused
 An app SHALL be able to declare checks a refresh of its report data must pass before it
 replaces the last good copy: at least so many rows, a figure that is not empty or zero
 everywhere, or a figure that has not fallen by more than a stated share since the last
-good copy. A refresh that fails one SHALL be refused, and the refusal SHALL name the
-check and the numbers. Featherbase SHALL refuse to install an app whose checks name a
-figure the report does not have.
+good copy, counted in rows or in its total. A total SHALL be compared exactly, to the
+paisa. A check on a fall SHALL be able to stay within one reporting period: it then
+compares a refresh only with a last good copy of the same period, and a refresh that
+does not hold exactly one period SHALL be refused. A refresh that fails one SHALL be
+refused, and the refusal SHALL name the check and the numbers. Featherbase SHALL refuse
+to install an app whose checks name a figure or a period the report does not have.
 
 #### Scenario: Targets half missing after an upstream rebuild
 
@@ -81,6 +84,39 @@ figure the report does not have.
 
 - **WHEN** a report with that check is refreshed for the first time
 - **THEN** the refresh is kept, since there is no earlier copy to compare it with
+
+#### Scenario: Targets' total half missing after an upstream rebuild
+
+- **WHEN** a report says its target total may not fall by more than half, and a
+  refresh keeps every row but its targets total 45,60,000 where the last good copy's
+  totalled 1,20,00,000
+- **THEN** readers keep getting the last good copy
+- **AND** an admin sees that the refresh was refused because the target total dropped
+  62%, against a limit of 50%
+
+#### Scenario: A total that falls by exactly the limit
+
+- **WHEN** a report's total may not fall by more than 43%, and a refresh totals 0.57
+  where the last good copy totalled 1.00
+- **THEN** the refresh is kept
+
+#### Scenario: A new month starts smaller than the last one ended
+
+- **WHEN** a report's checks on a fall stay within its month, and the first refresh of
+  November holds far fewer targets than October's last good copy
+- **THEN** the refresh is kept, since November has no earlier copy to fall from
+
+#### Scenario: Targets fall within the month
+
+- **WHEN** a report's checks on a fall stay within its month, and a refresh for the
+  same month has lost more than the limit allows
+- **THEN** readers keep getting the last good copy, and the refusal names the drop
+
+#### Scenario: A refresh that holds two months
+
+- **WHEN** a report's checks on a fall stay within its month, and a refresh holds rows
+  for two months, or rows with no month
+- **THEN** the refresh is refused, naming the month column and what it held
 
 ### Requirement: An app says what settings and secrets it needs
 
