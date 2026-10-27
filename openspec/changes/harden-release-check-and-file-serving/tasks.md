@@ -6,7 +6,7 @@
 
 ## 2. Sound and video files (#562)
 
-- [ ] 2.1 A fixed list of sound and video types opens in place; any other declared sound or video type downloads as an attachment.
+- [x] 2.1 A fixed list of sound and video types opens in place; any other declared sound or video type downloads as an attachment.
 
 ## 3. Secure session cookie (#353)
 

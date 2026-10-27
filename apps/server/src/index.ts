@@ -371,7 +371,7 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
   // still an attachment, so opened directly it downloads and its script never runs.
   const type = mimeEssence(row.mime_type as string)
-  const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
+  const inPlace = SHOWN_IN_PLACE.has(type)
   const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
     'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
@@ -379,8 +379,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   })
 }
 
+// #562: sound and video are a fixed list too, never a wildcard: an uploader
+// could otherwise pick a type such as `video/xhtml+xml` that a browser may
+// render as a document.
 const SHOWN_IN_PLACE = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
 ])
 
 // A declared type reduced to its bare `type/subtype`, lowercased, with nothing
