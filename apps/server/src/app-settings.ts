@@ -177,8 +177,10 @@ function redactConsole(): void {
     if (redactors.has(current)) continue
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const secrets = runningSecrets.getStore()
-      if (!secrets?.length || !args.some(arg => holdsSecret(secrets, arg))) return current.apply(this, args)
-      return current.call(this, redact(formatWithOptions({ depth: 8 }, ...args), secrets))
+      if (!secrets?.length) return current.apply(this, args)
+      // No precheck: a Headers, a Map or JSON text can print a secret that no
+      // walk of its keys would find. Format as console would, then redact.
+      return current.call(this, redact(formatWithOptions({}, ...args), secrets))
     }
     redactors.add(wrapped)
     console[level] = wrapped

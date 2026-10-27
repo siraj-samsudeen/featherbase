@@ -216,6 +216,36 @@ describe('an app secret', () => {
     ])
   })
 
+  // Codex round 2 on #623: console prints values a key walk cannot see.
+  class Inner { constructor(readonly token: string) {} }
+  class Outer { constructor(readonly inner: Inner) {} }
+  const PLAIN = 'plain-secret-620'
+  test.for([
+    ['a Headers', () => new Headers({ authorization: `Bearer ${PLAIN}` })],
+    ['a Map', () => new Map([['token', PLAIN]])],
+    ['a Set', () => new Set([PLAIN])],
+    ['a nested class instance', () => new Outer(new Inner(PLAIN))],
+    ['a format string', () => PLAIN],
+  ] as const)('a handler logging %s has the secret redacted', async ([label, make]) => {
+    await withSecretsKept({ TOKEN: PLAIN }, async () => {
+      if (label === 'a format string') console.log('token: %s', make())
+      else console.log(make())
+    })
+    expect(logged.join('\n')).toContain('[secret withheld]')
+    expect(logged.join('\n')).not.toContain(PLAIN)
+  })
+
+  test.for(ESCAPED)('a handler logging JSON text of a secret that %s has it redacted', async ([, token]) => {
+    await withSecretsKept({ TOKEN: token }, async () => { console.log(JSON.stringify({ token })) })
+    expect(logged).toEqual(['{"token":"[secret withheld]"}'])
+  })
+
+  test('outside an app handler the console is left alone', async () => {
+    await withSecretsKept({ TOKEN: PLAIN }, async () => {})
+    console.log('count', 3, { a: 1 })
+    expect(logged).toEqual([`count 3 ${inspect({ a: 1 })}`])
+  })
+
   test('the Access Log never records it', async ({ admin, createUser }) => {
     const { reader } = await setup(admin, createUser)
     await setting(admin, 'report_id', 'R-1')
