@@ -142,6 +142,27 @@ describe('release preflight', () => {
   })
 })
 
+// #559: exactly one enabled app may provide people's scope.
+describe('release preflight: the scope provider', () => {
+  async function installed(name: string, provides: boolean, enabled = true) {
+    const manifest = { name, ...(provides ? { scopeProvider: { name: 'positions', tables: [`${name}.position`] } } : {}) }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values (${name}, ${sql.json(manifest)}, ${enabled}, true)`
+  }
+
+  test('one enabled provider passes and says which app it is', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true, false)
+    await installed('consumer', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('one app provides people\'s scope: rostera')
+  })
+
+  test('two enabled providers refuse, naming both', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true)
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/rostera, rosterb/)
+  })
+})
+
 // #437: the access configuration a release must never ship with.
 describe('release preflight: access configuration', () => {
   const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'

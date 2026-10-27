@@ -3,6 +3,7 @@
 // request, validates and freezes the answer, and fails closed. Fixtures:
 // runtime-apps/scope-proof consumes the scope, runtime-apps/fixtures/place-roster
 // provides it from its own roster Table.
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
@@ -10,6 +11,7 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
+import { expectApiError } from './fixtures'
 
 const consumer = resolve('../..', 'runtime-apps/scope-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -82,10 +84,18 @@ describe('a person_scope operation', () => {
     expect(await refusals(user)).toEqual(['scopeproof.places:scope'])
   })
 
-  test('an empty scope is not read as everything for an administrator either', async ({ admin, createUser }) => {
-    const { app } = await setup(admin, createUser)
-    await expect(admin.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+  test('an empty scope is not read as everything for a System Manager either', async ({ admin, createUser }) => {
+    const { user, app } = await setup(admin, createUser, { roles: ['System Manager', 'Scope Reader'] })
+    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
     expect(app.calls.handler).toBe(0)
+    expect(await refusals(user)).toEqual(['scopeproof.places:scope'])
+  })
+
+  test('a caller without one of the operation\'s roles is refused before the provider runs', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser, { roles: [] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    expect(roster.calls.provider).toBe(0)
   })
 
   test('with no app providing the scope, every request is refused', async ({ admin, createUser }) => {
@@ -114,6 +124,122 @@ describe('a person_scope operation', () => {
     await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
     expect(app.calls.handler).toBe(0)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+})
+
+describe("the scope provider's read context", () => {
+  test('refuses a Table the provider did not declare', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.readUndeclared = true
+    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
+  test.for([[false, 403], [true, 200]] as const)('reads a declared instance Table only when it is marked as deciding scope (marked: %s)', async ([marked, status], { admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Roster Extra', decides_scope: marked, columns: [{ column_name: 'note', column_type: 'Data' }] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    roster.faults.readInstance = true
+    const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
+    expect(response.status).toBe(status)
+  })
+
+  test('passes confirmation statuses through to the handler', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids', { assumed: true })
+    const answer = await user.post<{ result: { places: { confirmation: unknown }[] } }>(read + 'places', { payload: {} })
+    expect(answer.result.places[0].confirmation).toEqual({ section: { kids: 'assumed' } })
+  })
+})
+
+// A second provider: the place-roster fixture under another app name.
+async function withSecondProvider(fn: (directory: string) => Promise<void>) {
+  const copy = await mkdtemp(resolve('test/.second-provider-'))
+  try {
+    await cp(provider, copy, { recursive: true })
+    for (const file of ['featherbase.json', 'package.json']) {
+      const path = resolve(copy, file)
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('placeroster', 'otherroster').replaceAll('place-roster', 'other-roster'))
+    }
+    await fn(copy)
+  } finally { await rm(copy, { recursive: true, force: true }) }
+}
+
+describe('one scope provider per instance', () => {
+  test('a second providing app is refused at install', async ({ admin }) => {
+    await withSecondProvider(async second => {
+      expect(await discoverPackages([consumer, provider, second])).toEqual([])
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      await expectApiError(admin.post('/api/install_app', { name: 'otherroster' }),
+        { status: 409, message: expect.stringContaining("placeroster already does") })
+    })
+  })
+
+  test('a second providing app is refused at enable', async ({ admin }) => {
+    await withSecondProvider(async second => {
+      expect(await discoverPackages([consumer, provider, second])).toEqual([])
+      await admin.post('/api/install_app', { name: 'otherroster' })
+      await admin.post('/api/set_app_enabled', { name: 'otherroster', enabled: false })
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      await expectApiError(admin.post('/api/set_app_enabled', { name: 'otherroster', enabled: true }),
+        { status: 409, message: expect.stringContaining("placeroster already does") })
+    })
+  })
+
+  test('an instance that somehow has two enabled providers gives no one a scope', async ({ admin, createUser }) => {
+    const { user, app } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await sql`update installed_app set manifest = manifest || ${sql.json({ scopeProvider: { name: 'positions', tables: ['scopeproof.store'] } })} where name = 'scopeproof'`
+    await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+    expect(app.calls.handler).toBe(0)
+    expect(await refusals(user)).toEqual(['scopeproof.places:configuration'])
+  })
+})
+
+describe('declaring a scope provider', () => {
+  async function variant(change: (manifest: Record<string, any>, server: string) => [Record<string, any>, string]) {
+    const copy = await mkdtemp(resolve('test/.provider-variant-'))
+    await cp(provider, copy, { recursive: true })
+    const [manifest, server] = change(JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8')), await readFile(resolve(copy, 'server.mjs'), 'utf8'))
+    await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+    await writeFile(resolve(copy, 'server.mjs'), server)
+    return copy
+  }
+
+  test.for([
+    ['without the exported function', (m: Record<string, any>, s: string) => [m, s.replace('export const scopeProviders =', 'export const unused =')],
+      'Package handlers and authorization callbacks must match declared names'],
+    ['over an owned Table that is not marked as deciding scope', (m: Record<string, any>, s: string) =>
+      [{ ...m, tables: m.tables.map((t: Record<string, unknown>) => ({ ...t, decides_scope: false })) }, s],
+      'A scope provider reads only Tables marked decides_scope'],
+  ] as const)('an app declaring a provider %s is not loaded', async ([, change, error]) => {
+    const copy = await variant(change as never)
+    try {
+      expect(await discoverPackages([copy])).toMatchObject([{ error }])
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  })
+})
+
+describe('a person_scope action', () => {
+  const action = '/api/app_actions/scopeproof/place'
+  test('runs inside the scope, and a replay is authorized by the scope the caller has now', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    const body = { idempotencyKey: 'place-1', payload: { effect: 'effect-1', scope: { places: ['North / Kids'] } } }
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North / Kids' } })
+    expect((await sql`select value from scopeproof.effect where row_id = 'effect-1'`)[0].value).toBe('North / Kids')
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North / Kids' } })
+    await sql`delete from placeroster.position where person = ${user.user}`
+    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('a reader without an action role is refused', async ({ admin, createUser }) => {
+    const { user, app } = await setup(admin, createUser, { roles: ['Scope Reader'] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await expect(user.post(action, { idempotencyKey: 'place-2', payload: { effect: 'effect-2' } })).rejects.toMatchObject({ status: 403 })
+    expect(app.calls.handler).toBe(0)
+    expect(await refusals(user)).toEqual(['scopeproof.place:role'])
   })
 })
 

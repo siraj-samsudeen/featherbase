@@ -87,6 +87,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
+  passed.push(await assertOneScopeProvider())
   passed.push(await noticeRecipients())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
@@ -177,6 +178,19 @@ export function publicationRefusal(blocking: BlockingPublication[]): string {
       ? `  publication "${b.pubname}" lists columns for ${b.schemaname}.${b.tablename}: drop the column list (ALTER PUBLICATION ${quote(String(b.pubname))} SET TABLE … without one), or include every stored generated column after 0101;`
       : `  ALTER PUBLICATION ${quote(String(b.pubname))} SET (publish_generated_columns = stored);`))]
   return `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`
+}
+
+/** #559: exactly one enabled app may provide people's scope. Install and
+ *  enable refuse a second one; this catches an instance that got there any
+ *  other way. At run time two providers already mean no scope for anyone. */
+async function assertOneScopeProvider(): Promise<string> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return 'scope provider check skipped (no installed apps yet)'
+  const providers = (await sql`
+    select name from ${sql(apps.relation)} where enabled and manifest ? 'scopeProvider' order by name`).map((r) => String(r.name))
+  if (providers.length > 1)
+    throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
+  return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
 }
 
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start
