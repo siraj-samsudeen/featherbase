@@ -42,7 +42,7 @@ done.
 ## 5. Store org chart page (client app, with B6′ of #550)
 
 - [ ] 5.1 Tree, coverage and conflict lists per store; numbered spec checklist and an
-      independent verifier at 1280/375, light and dark.
+      independent verifier at 1280/375, light mode only.
 
 ## 6. Cut-over
 
