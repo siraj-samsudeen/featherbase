@@ -10,7 +10,7 @@
 
 ## 3. Secure session cookie (#353)
 
-- [ ] 3.1 The session cookie is Secure on a secure configured address and on a forwarded secure request, and not on a plain local one.
+- [x] 3.1 The session cookie is Secure on a secure configured address and on a forwarded secure request, and not on a plain local one.
 
 ## 4. Close
 

@@ -182,12 +182,16 @@ app.get('/api/brand', async (c) => {
 // SPA stores. Either credential authenticates a request; the cookie keeps the
 // token out of reach of page scripts and lets plain browser requests (file
 // links, the print page) carry the session.
+// #353: `secure` by the sign-in challenge cookies' rule (externalOrigin): on
+// whenever the instance is reached over https, off on a plain-http local
+// origin, where a browser would silently drop a Secure cookie.
 function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
     maxAge: maxAgeSeconds,
+    secure: externalOrigin(c).protocol === 'https:',
   })
 }
 
@@ -294,7 +298,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // but the caller must not be told the session ended when it did not.
 app.post('/api/logout', async (c) => {
   const sid = getCookie(c, 'sid')
-  deleteCookie(c, 'sid', { path: '/' })
+  deleteCookie(c, 'sid', { path: '/', secure: externalOrigin(c).protocol === 'https:' })
   let incomplete = false
   for (const credential of new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])) {
     const session = await sessionToRevoke(credential)

@@ -128,7 +128,9 @@ when it is unset outside development and test. A request's `Host` only
 *selects* a listed entry; every absolute URL the server builds (the Google
 `redirect_uri`, cookie `Secure`, emailed links) comes from the list. Each
 address keeps its own sign-in (the `sid` cookie is host-only). An address is
-presentation, never a security boundary.
+presentation, never a security boundary. With https addresses listed, every
+sign-in cookie is `Secure`, so signing in over plain http (an unlisted host
+such as the container's own IP) silently fails: use a listed address.
 
 **Register every address with Google.** Google sign-in on each address uses
 `<address>/api/oauth/google/callback` as its `redirect_uri`. In the Google
