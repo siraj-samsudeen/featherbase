@@ -491,9 +491,11 @@ An instance's non-secret settings are kept in one reviewed file in the
 instance's own private repository, `featherbase/instance-settings.json`. It
 manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 `privacy_notice`, `invitation_email_intro`), `Sign In Method` rows by `row_id`,
-and `Scheduled Job` rows (`enabled` only). Values that differ by environment go
-in that environment's section; when the file has sections, every apply must
-name one. Secrets never go in it.
+and `Scheduled Job` rows (`enabled` only), and installed apps' declared
+settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only).
+Values that differ by environment go in that environment's section; when the
+file has sections, every apply must name one. Secrets never go in it: an app's
+declared secrets are deployment variables, set like any other.
 
 ```bash
 pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
@@ -518,7 +520,8 @@ on every Admin page while one fails. The release prints the same checks, and
 the `check_instance_health` job runs them every 15 minutes. Checks: a System
 Manager with an email address; recommended variables set; settings file
 applied; settings match the file; each enabled scheduled job ran recently;
-Administrator not on the default password.
+each enabled app has its required settings and secrets; Administrator not on
+the default password.
 
 ## Sign-in methods and linked identities
 
@@ -580,6 +583,11 @@ curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer 
 curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>","planId":"<reviewed planId>"}'
 curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>"}'
 ```
+
+An app's role suggestions (`roleDefaults`) become App Role Binding rows once,
+at install; an upgrade never writes them again, so a binding an admin removed
+stays removed. Edit bindings in Admin (*App Role Binding*); a binding to `All`
+or `Guest` is refused, and a release that finds one refuses to start.
 
 Back up first. **After the upgrade commits, restoring the old code alone is not
 recovery:** restore the exact target artifact and activate it. There is no
