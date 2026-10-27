@@ -565,6 +565,38 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   return out
 }
 
+const ALL_TIERS: ReadonlySet<'basic' | 'restricted'> = new Set(['basic', 'restricted'])
+
+// #341: hide the columns a reader's tiers don't reach, on the row and on each
+// of its sub-table rows. A child row has no standing of its own (see
+// assertParentReadable), so it is read at the parent's tiers.
+async function withReadTiers(
+  meta: TableMeta,
+  row: RowValues,
+  tiers: ReadonlySet<'basic' | 'restricted'>,
+): Promise<RowValues> {
+  if (tiers.has('basic') && tiers.has('restricted')) return row
+  const out = filterReadFields(meta.columns, tiers as Set<'basic' | 'restricted'>, row) as RowValues
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !Array.isArray(out[f.column_name])) continue
+    const childMeta = await getMeta(f.row_table!)
+    out[f.column_name] = (out[f.column_name] as RowValues[]).map((r) =>
+      filterReadFields(childMeta.columns, tiers as Set<'basic' | 'restricted'>, r))
+  }
+  return out
+}
+
+// What a save hands back to the person who made it: the saved row as they
+// could read it, so a write never reveals what a read would hide (#341).
+async function savedAsReadBy(meta: TableMeta, row: RowValues, user: string, trusted: boolean): Promise<RowValues> {
+  if (trusted) return row
+  const name = String(row[meta.row_key] ?? row[ROW_KEY] ?? '')
+  const tiers = (await isSharedWith(user, meta.name, name, 'read'))
+    ? ALL_TIERS
+    : await permittedTiers(user, meta.name, 'read')
+  return withReadTiers(meta, row, tiers)
+}
+
 async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues> {
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table') continue
@@ -805,7 +837,7 @@ async function writeDoc(
     await evaluateWebhooks('after_insert', meta.name, insertResult)
     await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
   })
-  return insertResult
+  return savedAsReadBy(meta, insertResult, user, Boolean(opts.skipPermissions))
 }
 
 // EDS-6: the write path for source-bound Tables. Hooks run control-side
@@ -1084,7 +1116,7 @@ async function updateDoc(
       row: updateResult, old: previous, meta, user, isNew: false, tx: sql,
     })
   })
-  return updateResult
+  return savedAsReadBy(meta, updateResult, user, trusted)
 }
 
 // DOC-009: record a field-level diff in the Version Table on every
@@ -1191,7 +1223,7 @@ async function setStatus(
   await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
   // PLAT-005: fire webhooks for submit/cancel (post-commit).
   await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', table, result)
-  return result
+  return savedAsReadBy(meta, result, user, false)
 }
 
 export function submitDoc(table: string, name: string, user = 'Administrator') {
@@ -1530,8 +1562,7 @@ async function getDocImpl(
   const readTiers = shared
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
     : await permittedTiers(user, table, 'read')
-  const visible = filterReadFields(meta.columns, readTiers, row as RowValues)
-  return loadChildren(meta, { table, ...visible })
+  return withReadTiers(meta, await loadChildren(meta, { table, ...(row as RowValues) }), readTiers)
 }
 
 // SET-001: read a Settings Table's one instance from the EAV store, applying

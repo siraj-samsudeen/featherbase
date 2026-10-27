@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, makeTable, patchDoc, type TableRef } from './fixtures'
+import { createUserWithRole, grantRole, makeTable, patchDoc, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const DT = 'Pl Salary'
@@ -90,4 +90,69 @@ describe('PERM-006: field-level (tier) permissions', () => {
     expect(changed.some(([field]) => field === 'salary')).toBe(false)
     expect(JSON.stringify(activity)).not.toContain('6500')
   })
+})
+
+// #341: a restricted column on a sub-table row is hidden from a reader of the
+// parent row who lacks the restricted tier on that parent, exactly as the
+// parent's own restricted columns are.
+describe('restricted columns on sub-table rows', () => {
+  const ORDER = 'Pl Order'
+  const LINE = 'Pl Order Line'
+
+  async function world(admin: TestClient, createUser: CreateUserFn, tier: 'basic' | 'restricted') {
+    await admin.post('/api/table_def', {
+      name: LINE,
+      kind: 'sub_table',
+      columns: [
+        { column_name: 'item', column_type: 'Data' },
+        { column_name: 'unit_cost', column_type: 'Currency', tier: 'restricted' },
+      ],
+    })
+    const order = await makeTable(admin, {
+      name: ORDER,
+      columns: ['customer', { column_name: 'lines', column_type: 'Sub-table', row_table: LINE }],
+    })
+    // The restricted tier is a further grant on top of the basic one.
+    if (tier === 'restricted') await grantRole(admin, { role: ROLE, table: ORDER, tier: 'restricted', can_read: true })
+    const user = await createUserWithRole(admin, createUser, {
+      role: ROLE,
+      table: ORDER,
+      tier: 'basic',
+      can_read: true,
+    })
+    const saved = await admin.post<{ row_id: string }>(order.url, {
+      customer: 'Acme',
+      lines: [{ item: 'Bolt', unit_cost: 7 }],
+    })
+    return { user, order, rowId: saved.row_id }
+  }
+
+  test('a basic-tier reader of the parent row does not get the restricted child column', async ({ admin, createUser }) => {
+    const { user, order, rowId } = await world(admin, createUser, 'basic')
+    const doc = await user.get<{ lines: Record<string, unknown>[] }>(order.rowUrl(rowId))
+    expect(doc.lines).toHaveLength(1)
+    expect(doc.lines[0].item).toBe('Bolt')
+    expect('unit_cost' in doc.lines[0]).toBe(false)
+    const adminDoc = await admin.get<{ lines: Record<string, unknown>[] }>(order.rowUrl(rowId))
+    expect(Number(adminDoc.lines[0].unit_cost)).toBe(7)
+  })
+
+  test('a restricted-tier reader of the parent row gets the restricted child column', async ({ admin, createUser }) => {
+    const { user, order, rowId } = await world(admin, createUser, 'restricted')
+    const doc = await user.get<{ lines: Record<string, unknown>[] }>(order.rowUrl(rowId))
+    expect(Number(doc.lines[0].unit_cost)).toBe(7)
+  })
+})
+
+// #341: what a save hands back is the row as its saver could read it, so a
+// basic-tier writer never sees the restricted column through the response.
+test('a basic-tier writer does not get the restricted column back from a save', async ({ admin, createUser }) => {
+  const { user, dt } = await setup(admin, createUser)
+  const created = await user.post<Record<string, unknown>>(dt.url, { employee: 'Bob' })
+  expect('salary' in created).toBe(false)
+  const list = await admin.get<{ data: { row_id: string }[] }>(dt.listUrl({ fields: ['row_id'], filters: [['employee', '=', 'Alice']] }))
+  const cur = await admin.get<Record<string, unknown>>(dt.rowUrl(list.data[0].row_id))
+  const updated = await patchDoc(user, dt.rowUrl(list.data[0].row_id), { updated_at: cur.updated_at, employee: 'Alice B' })
+  expect(updated).toMatchObject({ employee: 'Alice B' })
+  expect('salary' in (updated as Record<string, unknown>)).toBe(false)
 })
