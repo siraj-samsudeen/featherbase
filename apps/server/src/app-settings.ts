@@ -41,9 +41,6 @@ export interface AppSetup {
 
 const present = (value: string | null | undefined): value is string => typeof value === 'string' && value.trim() !== ''
 
-/** The App Setting row ID for one app's setting. */
-export const appSettingId = (app: string, setting: string) => `${app}.${setting}`
-
 /** Read `app`'s declared settings and secrets fresh. Only declared names are
  *  read: a stored value for anything else never reaches the app. */
 export async function loadAppSetup(app: string, declaration: AppSetupDeclaration): Promise<AppSetup> {
