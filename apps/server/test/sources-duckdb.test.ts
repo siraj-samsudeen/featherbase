@@ -30,6 +30,8 @@ beforeAll(async () => {
   await conn.run(`create table kitchen (
     id integer, ratio double, price decimal(8,2), flag boolean, born date,
     seen timestamp, payload json, label varchar, at_time time)`)
+  // #625: a sequence an app's dataset query must not advance.
+  await conn.run(`create sequence probe`)
   conn.closeSync()
   inst.closeSync()
 })
@@ -121,34 +123,35 @@ describe('Read and write through a connected table: a warehouse', () => {
 })
 
 // #625: an app's dataset query runs on a warehouse, limited to what a read may
-// see, on a connection opened read-only. It has its own file: DuckDB will not
-// open one file twice in a process with different settings.
+// see, on the same file and the same read-only connection the Admin browses with.
 describe('An app dataset query on a warehouse', () => {
-  const DATASET_URL_ENV = 'DUCK_DATASET_URL'
-  const cfg = { name: 'duck-dataset', engine: 'duckdb' as const, url_env: DATASET_URL_ENV, root_path: null, default_schema: null,
+  const cfg = { name: 'duck-fixture', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
     access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
   const columns = [{ name: 'store', type: 'text' }, { name: 'business_date', type: 'date' }, { name: 'amount', type: 'money' }]
-  beforeAll(async () => {
-    const file = path.join(dir, 'dataset.duckdb')
-    process.env[DATASET_URL_ENV] = file
-    const { DuckDBInstance } = await import('@duckdb/node-api')
-    const inst = await DuckDBInstance.create(file)
-    const conn = await inst.connect()
-    await conn.run(`create table daily_sales (store varchar, business_date timestamp, amount decimal(12,2))`)
-    await conn.run(`insert into daily_sales values ('KKL', '2026-07-01 09:00:00', 1000.50),
-      ('KKL', '2026-07-02 18:30:00', 1200.00), ('TVM', '2026-07-01 10:00:00', 700.25)`)
-    await conn.run(`create sequence probe`)
-    conn.closeSync()
-    inst.closeSync()
+  const kklOnSecond = () => duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
+    any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
+    all: [{ column: 'business_date', values: ['2026-07-02'] }],
   })
-  afterAll(() => duckdbDriver.dispose('duck-dataset'))
+  const KKL_ON_SECOND = [{ store: 'KKL', business_date: '2026-07-02', amount: '1200.00' }]
 
   test('runs the declared query limited to the given places and filters', async () => {
-    const rows = await duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
-      any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
-      all: [{ column: 'business_date', values: ['2026-07-02'] }],
-    })
-    expect(rows).toEqual([{ store: 'KKL', business_date: '2026-07-02', amount: '1200.00' }])
+    invalidateSources()
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+  })
+
+  test('runs on a file the Admin has just browsed', async ({ admin }) => {
+    const name = await makeDuckSource(admin)
+    expect((await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(name)}`)).total).toBe(3)
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+  })
+
+  test('leaves the file browsable afterwards', async ({ admin }) => {
+    const name = await makeDuckSource(admin)
+    invalidateSources()
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+    expect((await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(name)}`)).total).toBe(3)
+    const ok = await admin.post<{ ok: boolean }>('/api/table/Data%20Source/duck-fixture:test_connection', {})
+    expect(ok.ok).toBe(true)
   })
 
   // Wrapping a query in a select does not stop it writing: nextval advances a sequence.
