@@ -331,6 +331,18 @@ describe("the person's identifiers a provider receives", () => {
     })
   })
 
+  test.for([
+    ['ended', { to: day(0) }],
+    ['starts tomorrow', { from: day(1) }],
+  ] as const)("a value whose other holder's row %s is not shared", async ([, validity], { admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1', validity)
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
   test('the same text in another system is not shared', async ({ admin, createUser }) => {
     await sharing(admin, createUser, async (user, other, seen) => {
       await system(admin, 'payroll-code')

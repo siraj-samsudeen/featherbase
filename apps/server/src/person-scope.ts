@@ -84,7 +84,8 @@ async function currentIdentifiers(user: string, systems: readonly string[]): Pro
     // The system's state is checked again here, in the same read, so a
     // system turned off or made Secret since the check passes nothing.
     for (const row of await sql`select i.system, i.value,
-        exists (select 1 from person_identifier o where o.system = i.system and o.value = i.value and o.person_id <> i.person_id) as shared
+        exists (select 1 from person_identifier o where o.system = i.system and o.value = i.value and o.person_id <> i.person_id
+          and o.valid @> (now() at time zone 'Asia/Kolkata')::date) as shared
       from person_identifier i
       join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
       where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
