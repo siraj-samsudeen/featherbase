@@ -240,6 +240,107 @@ describe('a required column stays filled', () => {
   })
 })
 
+// #663: a description is display-only, so changing it touches the definition
+// and nothing else.
+describe('a description change is metadata-only', () => {
+  const described = (from: string | null, to: string | null) =>
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'rating', from: { description: from }, to: { description: to } })
+  const ratingDescription = () => sql`select description from column_def where parent = 'shop.supplier' and column_name = 'rating'`
+  // Where each row and the table's storage sit: a rewritten row moves (ctid),
+  // a rebuilt table gets new storage (relfilenode).
+  const storage = async () => ({
+    rows: await sql`select row_id, ctid::text as at, rating from shop.supplier order by row_id`,
+    file: await sql`select relfilenode from pg_class where oid = 'shop.supplier'::regclass`,
+  })
+
+  shopTest('the column records the new description', async () => {
+    await registered()
+    await run(described(null, 'Stars out of five'))
+    expect(await ratingDescription()).toEqual([{ description: 'Stars out of five' }])
+  })
+
+  shopTest('a null description removes it', async () => {
+    await registered()
+    await run(described(null, 'Stars out of five'))
+    await run(described('Stars out of five', null))
+    expect(await ratingDescription()).toEqual([{ description: null }])
+  })
+
+  shopTest('no row is rewritten and the table is not rebuilt', async () => {
+    await registered()
+    const before = await storage()
+    await run(described(null, 'Stars out of five'))
+    expect(await storage()).toEqual(before)
+  })
+
+  shopTest('it counts no losses', async () => {
+    await registered()
+    expect(await countLosses('shop', [step([described(null, 'Stars out of five')])])).toEqual([])
+  })
+
+  shopTest('it can travel with a type change', async () => {
+    await registered()
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'rating',
+      from: { column_type: 'Int', description: null }, to: { column_type: 'Float', description: 'Average stars' } })
+    expect(await sql`select column_type, description from column_def where parent = 'shop.supplier' and column_name = 'rating'`)
+      .toEqual([{ column_type: 'Float', description: 'Average stars' }])
+  })
+})
+
+// #663 review round 1: a required column can hold empty rows (written before
+// it became required, or straight into storage). A step that changes only
+// what people read leaves them as they are: no fill, no required-value check.
+describe('a description change leaves a required column\'s rows alone', () => {
+  const grade = (from: string | null, to: string | null) =>
+    ({ kind: 'alterColumn', table: 'shop.supplier', column: 'grade', from: { description: from }, to: { description: to } })
+  const rows = async () => ({
+    rows: await sql`select row_id, ctid::text as at, grade from shop.supplier order by row_id`,
+    file: await sql`select relfilenode from pg_class where oid = 'shop.supplier'::regclass`,
+  })
+  // shop.supplier with a required grade, s1 holding no value and s2 an empty text.
+  async function emptyRequired(extra: Record<string, unknown>, backfill?: string) {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: choice('grade', { reqd: true, description: 'Material group grade', ...extra }),
+      ...(backfill ? { backfill } : {}) })
+    await sql`insert into shop.supplier (row_id, code, rating, grade) values ('s2', 'BOLT', 3, 'B')`
+    await sql`update shop.supplier set grade = case row_id when 's1' then null else '' end`
+  }
+
+  shopTest('replacing the description of a required column with a default rewrites no row', async () => {
+    await emptyRequired({ default_value: 'A' })
+    const before = await rows()
+    await run(grade('Material group grade', 'Subcategory grade'))
+    expect(await rows()).toEqual(before)
+  })
+
+  shopTest('removing the description of a required column with a default rewrites no row', async () => {
+    await emptyRequired({ default_value: 'A' })
+    const before = await rows()
+    await run(grade('Material group grade', null))
+    expect(await rows()).toEqual(before)
+  })
+
+  shopTest('replacing the description of a required column with a default counts no losses', async () => {
+    await emptyRequired({ default_value: 'A' })
+    expect(await countLosses('shop', [step([grade('Material group grade', 'Subcategory grade')])])).toEqual([])
+  })
+
+  shopTest('replacing the description of a required column without a default succeeds and rewrites no row', async () => {
+    await emptyRequired({}, 'C')
+    const before = await rows()
+    await run(grade('Material group grade', 'Subcategory grade'))
+    expect(await rows()).toEqual(before)
+  })
+
+  shopTest('a type change that carries a description still fills the empty rows', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'note', label: 'Note', column_type: 'Data' } })
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'note', backfill: 'none',
+      from: { column_type: 'Data', description: null }, to: { column_type: 'Text', description: 'Anything worth knowing' } })
+    expect(await sql`select note from shop.supplier`).toEqual([{ note: 'none' }])
+  })
+})
+
 describe('losses are counted after the steps before them', () => {
   shopTest('a widening after a marked narrowing loses nothing of its own', async () => {
     await registered()

@@ -3,7 +3,9 @@
 // Sub-table), adds link, Sub-table and required Choice columns, renames a
 // column and two Tables, and changes types; 0.3.0 drops a column and a Table
 // and narrows choices (destructive), makes a column required with a backfill
-// and changes another type.
+// and changes another type; 0.4.0 changes only what people read (#663): it
+// corrects one description 0.1.0 shipped and removes another, and renames and
+// describes a column while widening its type.
 import { describe, expect, vi } from 'vitest'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -17,7 +19,7 @@ import { rehearse } from '../src/migrate-rehearse'
 
 type Client = { post: <T = unknown>(path: string, body: unknown) => Promise<T> }
 const fixture = (v: number) => resolve('../..', `runtime-apps/fixtures/evolve-v${v}`)
-const versions = [fixture(1), fixture(2), fixture(3)]
+const versions = [fixture(1), fixture(2), fixture(3), fixture(4)]
 
 async function upgrade(admin: Client, version: string) {
   const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'evolve', version })
@@ -175,6 +177,52 @@ describe('app schema evolution', () => {
       'prune #2 dropTable evolve.memo: 0 rows',
       'prune #3 alterColumn evolve.item.grade: 0 values',
     ])
+  })
+})
+
+// #663: a description or label change is display-only.
+describe('an upgrade that changes only what people read', () => {
+  async function onThree(admin: Client) {
+    await install(admin)
+    await seed(admin)
+    await upgrade(admin, '0.2.0')
+    await upgrade(admin, '0.3.0')
+  }
+
+  test('installing 0.4.0 directly and upgrading through every version give an identical schema', async ({ admin }) => {
+    let fresh: Awaited<ReturnType<typeof schema>> | undefined
+    const rollback = new Error('fresh install measured')
+    await expect(withTransaction(async () => {
+      await discoverPackages([fixture(4)])
+      await admin.post('/api/install_app', { name: 'evolve' })
+      fresh = await schema()
+      throw rollback
+    })).rejects.toBe(rollback)
+    invalidateMeta()
+    await onThree(admin)
+    await upgrade(admin, '0.4.0')
+    expect(await schema()).toEqual(fresh)
+  })
+
+  test('the preview reports it as not destructive, with nothing lost', async ({ admin }) => {
+    await onThree(admin)
+    const plan = await admin.post('/api/preview_app_upgrade', { name: 'evolve', version: '0.4.0' })
+    expect(plan).toMatchObject({ destructive: false, losses: [], permissions: [] })
+  })
+
+  test('the upgraded Table definition reads the corrected description', async ({ admin }) => {
+    await onThree(admin)
+    await upgrade(admin, '0.4.0')
+    expect(await sql`select description from column_def where parent = 'evolve.item' and column_name = 'title'`)
+      .toEqual([{ description: 'The subcategory this item belongs to' }])
+  })
+
+  test('every grant stays as it was', async ({ admin }) => {
+    await onThree(admin)
+    const grants = () => sql`select ref_table, role, can_read, can_write, can_create from permission where owner_app = 'evolve' order by ref_table, role`
+    const before = await grants()
+    await upgrade(admin, '0.4.0')
+    expect(await grants()).toEqual(before)
   })
 })
 

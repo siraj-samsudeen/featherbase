@@ -357,7 +357,7 @@ async function assertNoRepeats(
 export async function updateTable(
   name: string,
   input: unknown,
-  opts: { drop_columns?: boolean; remove_columns?: string[] } = {},
+  opts: { drop_columns?: boolean; remove_columns?: string[]; clear_descriptions?: string[] } = {},
 ): Promise<TableMeta> {
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
@@ -484,8 +484,10 @@ export async function updateTable(
       // that call updateTable run before the column does (fresh databases).
       const sourceColumn = f.source_column ?? (old ? old.source_column : null)
       if (sourceColumn != null) row.source_column = sourceColumn
-      // Likewise a description (0121): kept when the update leaves it out.
+      // Likewise a description (0121): kept when the update leaves it out,
+      // unless the caller names the column to clear it (#663).
       if (f.description !== undefined) row.description = f.description
+      else if (opts.clear_descriptions?.includes(f.column_name)) row.description = null
       if (!old) {
         await tx`insert into column_def ${tx({
           parent: name,

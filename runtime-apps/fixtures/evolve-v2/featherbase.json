@@ -20,12 +20,12 @@
     {
       "name": "evolve.item", "label": "Item", "id_pattern": "prompt", "title_column": "title",
       "columns": [
-        { "column_name": "title", "label": "Title", "column_type": "Data" },
+        { "column_name": "title", "label": "Title", "column_type": "Data", "description": "The material group this item belongs to" },
         { "column_name": "supplier", "label": "Supplier", "column_type": "Reference", "reference_table": "evolve.supplier" },
         { "column_name": "quantity", "label": "Quantity", "column_type": "Float" },
         { "column_name": "grade", "label": "Grade", "column_type": "Choice", "choices": "A\nB\nC\nD" },
         { "column_name": "legacy_code", "label": "Legacy code", "column_type": "Data" },
-        { "column_name": "on_hold", "label": "On hold", "column_type": "Int" },
+        { "column_name": "on_hold", "label": "On hold", "column_type": "Int", "description": "Paused until the count is checked" },
         { "column_name": "lines", "label": "Lines", "column_type": "Sub-table", "row_table": "evolve.line" },
         { "column_name": "priority", "label": "Priority", "column_type": "Choice", "choices": "Low\nHigh", "reqd": true, "default_value": "Low" },
         { "column_name": "counted", "label": "Counted", "column_type": "Check", "reqd": true, "default_value": "1" }

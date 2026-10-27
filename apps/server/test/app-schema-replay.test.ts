@@ -130,6 +130,26 @@ describe('alterColumn', () => {
     expect(() => step([{ kind: 'alterColumn', table: 'shop.item', column: 'qty', from: { label: 'Qty' }, to: { hidden: true } }])).toThrow()
   })
 
+  test('a description change replays both ways', () => {
+    const final = item([{ ...qty, description: 'Units per subcategory' }])
+    expect(() => validateMigrations('shop', '0.2.0', [final], [step([{ kind: 'alterColumn', table: 'shop.item', column: 'qty',
+      from: { description: 'Units per material group' }, to: { description: 'Units per subcategory' } }])])).not.toThrow()
+  })
+
+  test('a description that is not text is refused', () => {
+    const parsed = migrationSchema.safeParse({ id: 'step_one', fromVersion: '0.1.0', toVersion: '0.2.0',
+      operations: [{ kind: 'alterColumn', table: 'shop.item', column: 'qty', from: { description: null }, to: { description: 5 } }] })
+    expect(parsed.error?.issues).toEqual([expect.objectContaining({ path: ['operations', 0, 'to', 'description'], message: expect.stringMatching(/expected string/i) })])
+  })
+
+  test('a step that changes only what people read takes no backfill', () => {
+    const parsed = migrationSchema.safeParse({ id: 'step_one', fromVersion: '0.1.0', toVersion: '0.2.0',
+      operations: [{ kind: 'alterColumn', table: 'shop.item', column: 'qty', backfill: 1,
+        from: { label: 'Qty', description: null }, to: { label: 'Quantity', description: 'Units counted' } }] })
+    expect(parsed.error?.issues).toEqual([expect.objectContaining({ path: ['operations', 0, 'backfill'],
+      message: 'alterColumn changes only what people read (label, description, hidden), so it takes no backfill' })])
+  })
+
   test('a null in to removes the property', () => {
     const tables = replayForward('shop', [item([{ ...qty, default_value: '1' }])], [{ kind: 'alterColumn', table: 'shop.item', column: 'qty',
       from: { default_value: '1' }, to: { default_value: null } }])
