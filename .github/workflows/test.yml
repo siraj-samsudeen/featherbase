@@ -143,6 +143,10 @@ jobs:
       - name: Check for retired vocabulary
         run: pnpm check:vocabulary
 
+      # publish-image.yml labels the platform image with these versions.
+      - name: Platform versions read from the code
+        run: node --test tools/platform-versions.test.mjs
+
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 

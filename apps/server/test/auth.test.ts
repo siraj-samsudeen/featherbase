@@ -1,6 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 const json = (body: unknown) => ({
@@ -102,6 +104,46 @@ describe('API-004: authentication', () => {
     const cleared = res.headers.get('set-cookie') ?? ''
     expect(cleared).toContain('sid=')
     expect(cleared.toLowerCase()).toContain('max-age=0')
+  })
+})
+
+// #353: the sid cookie follows the sign-in challenge cookies' rule: Secure
+// whenever the instance's external origin is https, and not on a plain-http
+// local origin, where a browser would silently drop a Secure cookie.
+describe('the sid cookie is sent only over a secure connection on a secure address', () => {
+  const sidOf = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith('sid=')) ?? ''
+  const signIn = (api: { fetch: (url: string, init?: RequestInit) => Promise<Response> }, url: string, headers: Record<string, string> = {}) =>
+    api.fetch(url, { ...json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }), headers })
+
+  test('a configured https address makes sign-in and sign-out cookies Secure, whatever the header says', async ({ api }) => {
+    const previous = config.instanceAddresses
+    config.instanceAddresses = parseInstanceAddresses('[{"address":"https://app.example.com","opens":"admin","emails":true}]', 'test')
+    try {
+      const login = await signIn(api, 'http://app.example.com/api/login', { 'x-forwarded-proto': 'http' })
+      expect(login.status).toBe(200)
+      expect(sidOf(login)).toMatch(/;\s*Secure(?:;|$)/i)
+      const logout = await api.fetch('http://app.example.com/api/logout', { method: 'POST' })
+      expect(sidOf(logout)).toMatch(/;\s*Secure(?:;|$)/i)
+    } finally {
+      config.instanceAddresses = previous
+    }
+  })
+
+  test('a request forwarded over https gets a Secure cookie, even through a proxy that appends its hop', async ({ api }) => {
+    for (const proto of ['https', 'https,http']) {
+      const login = await signIn(api, '/api/login', { 'x-forwarded-proto': proto })
+      expect(login.status).toBe(200)
+      expect(sidOf(login), proto).toMatch(/;\s*Secure(?:;|$)/i)
+    }
+  })
+
+  test('a plain-http local origin keeps a cookie without Secure, so signing in still works there', async ({ api }) => {
+    const login = await signIn(api, '/api/login')
+    expect(login.status).toBe(200)
+    expect(sidOf(login)).toMatch(/^sid=/)
+    expect(sidOf(login)).not.toMatch(/;\s*Secure/i)
+    const logout = await api.fetch('/api/logout', { method: 'POST' })
+    expect(sidOf(logout)).not.toMatch(/;\s*Secure/i)
   })
 })
 

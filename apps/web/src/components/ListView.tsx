@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
+import { rowDisplayTitle } from 'shared'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { RowTitle } from '../lib/row-titles'
@@ -11,7 +12,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
-import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
 
 export type Filter = [string, string, unknown]
@@ -99,6 +100,7 @@ export function ListView({
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkField, setBulkField] = useState('')
@@ -152,6 +154,7 @@ export function ListView({
   useEffect(() => {
     let cancelled = false
     setSettingsLoaded(false)
+    setSettingsUnsaved(false)
     api
       .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
@@ -177,12 +180,17 @@ export function ListView({
   }, [table])
 
   // Persist settings whenever the user changes them (after the initial load).
+  // A save that fails is said, not swallowed (#546): the change still shows
+  // now, but the list would open the old way next time.
   function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
     if (!settingsLoaded) return
-    void api.put(`/api/user_settings/${encodeURIComponent(table)}`, {
-      sort: next.sort !== undefined ? next.sort : sort,
-      hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
-    })
+    api
+      .put(`/api/user_settings/${encodeURIComponent(table)}`, {
+        sort: next.sort !== undefined ? next.sort : sort,
+        hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+      })
+      .then(() => setSettingsUnsaved(false))
+      .catch(() => setSettingsUnsaved(true))
   }
 
   const allColumns = meta.data ? listColumns(meta.data) : []
@@ -366,14 +374,18 @@ export function ListView({
             </span>
           )}
         </div>
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end">
+        <div
+          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end"
+          data-testid="list-toolbar"
+        >
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
               className={buttonClasses()}
+              aria-expanded={colPickerOpen}
               data-testid="list-columns"
             >
-              Columns
+              Show columns
             </button>
             {colPickerOpen && (
               <div className={cardClasses('absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2')}>
@@ -456,7 +468,7 @@ export function ListView({
               className={buttonClasses()}
               data-testid="open-columns"
             >
-              Columns
+              Edit columns
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
@@ -543,6 +555,13 @@ export function ListView({
           )}
         </div>
       </div>
+      {settingsUnsaved && (
+        <div className="mb-3" data-testid="list-settings-error">
+          <Notice tone="negative">
+            Couldn't save how this list is sorted and which columns show. It will open the old way next time.
+          </Notice>
+        </div>
+      )}
       {/* DEL-J1.2: a real dialog — labelled, Escape-dismissable — that names
           the Table and its live row count before anything irreversible. */}
       {confirmingDelete && (
@@ -624,6 +643,7 @@ export function ListView({
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
               className={inputClasses('w-40')}
+              aria-label="Field to edit"
               data-testid="bulk-edit-field"
             >
               <option value="">Edit field…</option>
@@ -640,6 +660,7 @@ export function ListView({
                   onChange={(e) => setBulkValue(e.target.value)}
                   placeholder="New value"
                   className={inputClasses('w-40')}
+                  aria-label="New value"
                   data-testid="bulk-edit-value"
                 />
                 <button
@@ -670,6 +691,7 @@ export function ListView({
                 <th className="w-8 border-b border-border px-3 py-2">
                   <input
                     type="checkbox"
+                    aria-label="Select all rows"
                     data-testid="select-all"
                     checked={rows.length > 0 && rows.every((r) => selected.has(String(r.row_id)))}
                     onChange={(e) =>
@@ -703,6 +725,7 @@ export function ListView({
                 table={table}
                 columns={columns}
                 settings={settings}
+                title={meta.data ? rowDisplayTitle(meta.data, row, String(row.row_id)) : String(row.row_id)}
                 selected={selected.has(String(row.row_id))}
                 onToggleSelect={() => toggleRow(String(row.row_id))}
                 selectable={!isRowsReadOnly(meta.data)}
@@ -801,6 +824,7 @@ function ListRow({
   table,
   columns,
   settings,
+  title,
   selected,
   onToggleSelect,
   selectable,
@@ -813,6 +837,8 @@ function ListRow({
   table: string
   columns: { column_name: string; label: string; column_type: string; reference_table?: string | null }[]
   settings: Settings
+  // What the row's checkbox names it (#514): the row's display title.
+  title: string
   selected: boolean
   onToggleSelect: () => void
   // Read-only sources have no bulk bar, so no selection either (EDS-13).
@@ -844,6 +870,7 @@ function ListRow({
           <td className="px-3 py-2">
             <input
               type="checkbox"
+              aria-label={`Select ${title}`}
               data-testid="row-check"
               checked={selected}
               onChange={onToggleSelect}
@@ -1151,6 +1178,7 @@ export function FilterBar({
         <select
           value={field}
           onChange={(e) => setField(e.target.value)}
+          aria-label="Filter by field"
           data-testid="filter-field"
           className={inputClasses('max-w-[10rem]')}
         >
@@ -1163,6 +1191,7 @@ export function FilterBar({
         <select
           value={op}
           onChange={(e) => setOp(e.target.value)}
+          aria-label="Filter condition"
           data-testid="filter-op"
           className={inputClasses('max-w-[10rem]')}
         >
@@ -1177,6 +1206,7 @@ export function FilterBar({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
           placeholder="Value"
+          aria-label="Filter value"
           data-testid="filter-value"
           className={inputClasses('max-w-[10rem]')}
         />
