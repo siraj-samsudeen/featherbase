@@ -346,7 +346,7 @@ export async function updateTable(
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
       description: def.description ?? null,
-      // Only when given: migrations before 0126 update Tables without the column.
+      // Only when given: migrations before 0131 update Tables without the column.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -538,7 +538,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       description: def.description ?? null,
       system: def.system ?? false,
     }
-    // Only when marked: migrations before 0126 create Tables without the column.
+    // Only when marked: migrations before 0131 create Tables without the column.
     if (def.decides_scope) tableRow.decides_scope = true
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]

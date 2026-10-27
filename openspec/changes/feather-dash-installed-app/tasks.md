@@ -25,7 +25,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 
 ## 2. Stage B — Feather Dash as a client app (revised 27-Oct-2026, ADR 0013)
 
-- [x] 2.1 E1 scope shape, the app-declared scope provider (one enabled provider per instance; install, enable and the release preflight refuse a second) and the `person_scope` policy, failing closed; refusal and audit as for `stores`; Tables marked `decides_scope` are guarded as security Tables (#559, migration 0126). The client's derivation is supplied by its app (B6′), never by the platform.
+- [x] 2.1 E1 scope shape, the app-declared scope provider (one enabled provider per instance; install, enable and the release preflight refuse a second) and the `person_scope` policy, failing closed; refusal and audit as for `stores`; Tables marked `decides_scope` are guarded as security Tables (#559, migration 0131). The client's derivation is supplied by its app (B6′), never by the platform.
 - [ ] 2.2 E2 declared settings (`App Setting`, a security Table) and secrets in the handler context; release warning for missing required secrets.
 - [ ] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function.
 - [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.

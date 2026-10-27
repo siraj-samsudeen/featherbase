@@ -255,7 +255,7 @@ async function assertAccessConfiguration(environment: string, pending: string[] 
   if (found) {
     const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
-    // #559: a Table marked as deciding scope is a security Table too (0126 on).
+    // #559: a Table marked as deciding scope is a security Table too (0131 on).
     const definitions = await locate('table_def')
     const marked = definitions?.columns.has('decides_scope')
       ? (await sql`select name from ${sql(definitions.relation)} where decides_scope`).map((r) => String(r.name))
