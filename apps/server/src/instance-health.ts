@@ -238,14 +238,14 @@ async function appsSetUp(): Promise<HealthCheck[]> {
       key: `app-setup:${app}`,
       title: `App set up: ${title}`,
       severity: 'warning' as const,
-      why: 'An app that lacks a required setting or secret answers "not set up yet" instead of working.',
+      why: 'An app that lacks a required setting, secret or data source answers "not set up yet" instead of working.',
     }
     if (!missing.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
     return {
       ...base,
       ok: false,
       message: `${title} answers "not set up yet": missing ${missing.join(', ')}.`,
-      fix: 'Set each setting in the instance settings file (App Setting) and apply it, and set each secret as a deployment variable, then restart.',
+      fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, and add each data source in Admin (Data Source), then restart.',
     }
   })
 }

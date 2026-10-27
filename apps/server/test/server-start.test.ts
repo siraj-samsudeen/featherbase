@@ -1,6 +1,7 @@
 // The process side of src/index.ts: booting the HTTP server, and serving a
 // built web app beside the API when the image ships one (apps/web/dist).
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { artifactDigest } from '../src/runtime-packages'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
@@ -35,6 +36,60 @@ describe('booting the server', () => {
       log.mockRestore()
       warn.mockRestore()
       vi.unstubAllEnvs()
+    }
+  })
+})
+
+// #642 (E7): the boot-check repeats the release's refusal, so a server whose
+// image lacks an installed, enabled app never starts serving without it.
+describe('booting without an installed app', () => {
+  test('the server refuses to start, naming the app and version', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    try {
+      await expect(startServer(0)).rejects.toThrow('App acme_board version 1.2.0 is installed and enabled, but this release does not ship it.')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  // A developer's server runs its apps from their source folders (init.sh), so
+  // editing an app or switching branches changes its fingerprint. There the
+  // server starts with the app unavailable, and says how to bring it back.
+  test('a development server starts, warning with the fix for a developer machine', async () => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    try {
+      const { stop } = await startServer(0)
+      await stop()
+      expect(warn.mock.calls.flat()).toContain('WARNING: App acme_board version 1.2.0 is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding acme_board 1.2.0 to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.')
+    } finally {
+      warn.mockRestore()
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  // Codex round 1 on #643: boot drops a version shipped twice with different files.
+  test('two different artifacts for the installed version refuse the start, though one of them matches', async () => {
+    const other = join(process.cwd(), '../../runtime-apps/other')
+    const conflicting = mkdtempSync(join(process.cwd(), 'test/.b5-642-conflict-'))
+    try {
+      cpSync(other, conflicting, { recursive: true })
+      writeFileSync(join(conflicting, 'client', 'extra.txt'), 'different files, same version')
+      vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([other, conflicting]))
+      await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+        values ('other', ${sql.json({ name: 'other' })}, true, true, '0.0.1', ${await artifactDigest(realpathSync(other))})`
+      await expect(startServer(0)).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+    } finally {
+      vi.unstubAllEnvs()
+      rmSync(conflicting, { recursive: true, force: true })
     }
   })
 })

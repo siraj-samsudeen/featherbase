@@ -21,8 +21,9 @@ The release step takes a Postgres advisory lock
 (`hashtext('featherbase-release')`) for its whole run, so N instances that
 all execute it on boot serialize instead of racing. It runs a **preflight**
 before the first migration (`src/release-preflight.ts`: environment stamp,
-test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods); any
-refusal stops the release before it has changed anything. Each migration then
+test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods, and
+every installed, enabled app); any refusal stops the release before it has
+changed anything. Each migration then
 runs in its own transaction; the release exits non-zero on the first failure
 without recording the failed step, so the next release retries it. The
 release also prints the [instance health](#instance-health) checks; a failing
@@ -99,7 +100,7 @@ variable.
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
 | `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
-| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin; overridable only for a local stub |
+| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
 | `DIVE_ID` | no | no |  | the sales-target Dive |
 | `DIVE_VERSION` | no | no |  | the sales-target Dive version |
 | `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
@@ -252,7 +253,13 @@ ENV FEATHERBASE_APP_PATHS='["/app/client-apps/acme_board-1.0.0","/app/client-app
 ```
 
 Each directory holds the app's `package.json`, `featherbase.json` and the
-built files its manifest names. The start command, `NODE_ENV` and port come
+built files its manifest names. **An image that leaves out a version still
+installed and enabled on the instance is refused:** the release stops before
+its first migration, naming the app and version, so the deployment already
+running keeps serving it. The server's start and `cli boot-check` refuse the
+same way, except on a `development` server, which starts with the app
+unavailable and warns how to bring it back. A disabled app never blocks a
+release. The start command, `NODE_ENV` and port come
 from the platform image; the release step and `cli boot-check` run in the
 client image exactly as described above.
 

@@ -11,6 +11,7 @@
     "coverage:merged": "node scripts/coverage-merge.mjs && nyc report --temp-dir .coverage --reporter=text-summary --reporter=json-summary --reporter=html --report-dir coverage-merged",
     "smoke": "playwright test e2e/smoke.spec.ts",
     "e2e": "E2E_ISOLATED=1 playwright test",
+    "e2e:served": "playwright test --config playwright.served.config.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {

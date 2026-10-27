@@ -542,12 +542,15 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       //     development, test or staging may have;
       //  2. the release preflight (release-preflight.ts): the same registry
       //     with the settings-dependent variables, the database's environment
-      //     stamp, its label for test mode, and the access configuration.
+      //     stamp, its label for test mode, and the access configuration;
+      //  3. (both) every installed, enabled app ships in this image (#642).
       const { assertServerStart } = await import('./env')
       const { delegatedTestMode } = await import('./delegated-login')
       const { config } = await import('./config')
-      const { settingsRequirements } = await import('./release-preflight')
+      const { installedAppsAtStart, settingsRequirements } = await import('./release-preflight')
       for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) io.out(`boot-check: ${line}`)
+      // #642 (E7): the server's start refuses without an installed app's version.
+      for (const line of await installedAppsAtStart()) io.out(`boot-check: ${line}`)
       io.out(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
       const { preflightRelease } = await import('./release-preflight')
       for (const line of await preflightRelease()) io.out(`boot-check: release preflight — ${line}`)

@@ -245,16 +245,82 @@ that fills it).
   same shaping function, so cached and live cannot disagree in layout or maths.
 - Reads get `context.datasets.active(name)`, with equality or `in` filters on
   declared keys only. No SQL crosses from the app to the platform.
+- **As built (#625, migration 0135).** The manifest's `datasets` entry is
+  `{ name, source, query, columns: [{ name, type }], keys, filters }`; `type` is
+  `text`, `integer`, `number`, `money`, `date` or `boolean`. Keys and mapped
+  columns must be `text`, `integer` or `date` (they compare as text), and the query
+  must be one statement. Each dataset registers on the snapshot engine as
+  `<app>.<name>`, with the declaration's hash as its definition version, so a
+  changed query never serves old rows. Rows are stored, shaped, in the raw
+  `app_dataset_row` relation; an empty candidate is refused like any failed build.
+  The query reaches its source wrapped twice: projected to its declared columns,
+  a `date` column cast to a day in the source (so a time of day lands on the same
+  day cached and live), then limited to the reader's rows as bound values.
+- **Exact keys (Codex round 1).** An integer key or scope-mapped column keeps its
+  exact digits, answered as text in both the cached and the live read, so ids
+  above 2^53 never round into each other's scope. Any other integer must be one a
+  JavaScript number holds exactly, or the build or read fails loudly.
+- **Read-only sources (Codex round 1).** Postgres runs the query in a `read only`
+  transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode, one
+  instance per source shared by browsing, connection tests and dataset queries
+  (the driver never writes; round 2). A MotherDuck
+  connection cannot be opened read-only: its guarantee is a read-scaling token
+  (MotherDuck: such a token "grants permission for read operations" while
+  "restricting write and administrative operations"), which the platform cannot
+  detect. So the Data Source gets a "Read-scaling token" checkbox (migration
+  0136); until an administrator ticks it, a MotherDuck source cannot back an app
+  dataset: reads answer "not set up yet" and the setup checks name a
+  `read-only data source`. Other engines cannot run a dataset query. Today's Sales
+  Target reader is untouched.
+- **The scope through the mapping.** Each of the reader's places is one group of
+  conditions; a place adds rows only when the dataset maps every filter it names
+  (an unmapped filter would widen it), and no place means no row. `active` answers
+  `{ dataset, served, at, rows }`, or `null` when nothing has built yet, recording
+  the miss. `live(name, filters)` answers the same shape and is available only in
+  an outbound read (E5). A dataset whose source the instance lacks answers "not set
+  up yet", and Instance health and the release check name the missing data source.
 
 **E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
 The platform allows them as frame sources only on that app's own pages. The global
 `EMBED_ORIGIN` entry goes away. The browser-level stub keeps working through a
 development-only setting.
 
+- **As built (#642).** `frameOrigins` must be exact `https` origins (the URL
+  parser's origin reads back the same text: no wildcard, path, trailing slash,
+  credentials or written-out default port); discovery refuses anything else.
+  Every response's policy is `frame-src 'self'` plus the origins of the app
+  whose page it is, set only on the HTML an app serves. There is no
+  instance-wide outside origin. Until B9 the Sales Target page
+  (`/featherbase/sales-target`) keeps `MOTHERDUCK_EMBED_ORIGIN` for that page
+  alone, which also keeps the browser-level stub working. A document keeps the
+  policy it was loaded with, so the report's route enters by a full load when
+  the document was loaded at another page (sign-in, the Admin hand-over).
+
 **E5. Reads that call out.** A read declared `"outbound": true` has its
 authorization decided and frozen inside the platform transaction; its handler runs
 *after* the transaction closes, so no row lock is held during a MotherDuck call.
 `context.recordView(...)` writes the Access Log row (platform-written, #441).
+
+- **As built (#625).** The places, payload, settings and secrets are decided and
+  frozen inside the authorization transaction, which then commits; the handler
+  runs after it on the pool, holding no transaction (`inAppTransaction()` is false
+  in it) and no lifecycle lock: an app read takes the lifecycle lock itself, only
+  while it authorizes (the request middleware no longer wraps `/api/app_reads/*`),
+  so stalled outbound handlers cannot exhaust the lifecycle pool or hold off an
+  install, upgrade or enable (Codex round 1). The serving app version is frozen
+  with the authorization. The handler's view records are held until it answers,
+  then written under one shared lifecycle lock together with the check that the
+  app is still enabled and serving that version; if the check fails, nothing is
+  written and the answer is refused (round 2).
+- **Retired datasets (round 2).** The refresh closes the asks for a dataset no
+  app version declares any more, and skips and closes those of a disabled or
+  mid-upgrade app, so the shared refresh job never fails on them. Document reads would lock rows, so in an outbound handler they fail
+  loudly; `context.datasets.live` is allowed only there. Actions cannot be
+  outbound.
+- `context.recordView({ dataset })` writes one `view_report` Access Log row for
+  the viewing person: the dataset (or the read), the places' labels, and what this
+  request actually served (cached with its snapshot, or live). The platform fills
+  each field; the app only names the dataset.
 
 **E6. App roles bound to jobs.** See D4.
 
@@ -263,11 +329,38 @@ app's exact installed version is missing from the image. A refused release keeps
 the previous deployment serving, so a deploy can never silently take the report
 away.
 
+- **As built (#642).** `preflightRelease` loads every app on
+  `FEATHERBASE_APP_PATHS` exactly as boot does (registering nothing) and
+  refuses when an installed, enabled app's `package_version` and fingerprint
+  (`artifact_digest`, or the recorded manifest for a legacy install) are not
+  among them, before the first migration. The message names the app and
+  version and says to ship them in the image or disable the app. A version
+  shipped twice with different files counts as not shipped, as boot drops it
+  (Codex round 1 on #643). The server's start and `cli boot-check` run the
+  same check and refuse, except on a `development` server: init.sh runs apps
+  from their source folders, so editing an app or switching branches changes
+  its fingerprint, and there the server starts with the app unavailable and
+  warns, naming the app, the version and how to bring it back (init.sh repeats
+  the warning). A disabled app never blocks, and a row with no recorded
+  version (mid-recovery, which no image can serve) is not checked.
+
 **E8. Bar controls.** An app may declare a control for the shared top bar:
 `"bar": [{ "picker": "Store", "options": "<one of the app's reads>", "sets": "store" }]`.
 The platform draws it in Shop Floor style, fills it from the app's own read (which
 is scope-checked), and puts the choice in the address (`?store=12`), where the app
 reads it. An app never runs its own code in the bar (ADR 0011).
+
+- **As built, server side (#642).** Discovery refuses a control whose
+  `options` is not one of the app's reads, whose `sets` is not a query-string
+  key (`^[a-z][a-z0-9_]{0,63}$`), or whose key another control already sets.
+  `GET /api/app_bar/:app` answers `{ controls: [{ picker, sets, options }] }`
+  for an app the person can open (the same gate as its pages; otherwise
+  404). Each picker's options are its read's answer, run for the person under
+  their own scope as the app's serving version, and must be a list of
+  `{ value, label }`, both text, in the read's order; any other answer fails
+  the request. A person the read refuses gets no options, so the bar leaves
+  the control out; the read has logged the refusal. The top bar's picker is
+  built once the owner confirms its checklist (#642).
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures

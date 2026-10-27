@@ -18,6 +18,9 @@ export type AppScopeSource = { kind: 'request' } | { kind: 'resolver'; name: str
 export type AppProductAuthorization = { kind: 'generic' } | { kind: 'product'; name: string; facts: AppFactDeclaration[] }
 export type AppOperationDeclaration = {
   authorization: AppProductAuthorization
+  /** #625 (E5): a read whose handler runs after its authorization
+   *  transaction has closed, so it may call out to a slow outside store. */
+  outbound?: true
 } & ({ policy: Extract<AppAccessPolicy, { kind: 'table' }> } | {
   policy: Extract<AppAccessPolicy, { kind: 'stores' }>
   scope: AppScopeSource
