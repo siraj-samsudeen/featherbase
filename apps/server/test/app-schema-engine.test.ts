@@ -4,7 +4,8 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { provisionApp } from '../src/app-lifecycle'
-import { changeColumnType, createTable, deleteTable, renameTable } from '../src/table-engine'
+import { changeColumnType, createTable, deleteTable, renameColumn, renameTable } from '../src/table-engine'
+import { applyMigrations, describeLoss, estimateLosses, migrationSchema } from '../src/runtime-migrations'
 
 // App Tables answer only while their app is provisioning or active.
 const shopTest = (name: string, body: () => Promise<void>) => test(name, () => provisionApp('shop', body))
@@ -104,6 +105,45 @@ describe('changeColumnType', () => {
   shopTest('a change outside the safe list is refused', async () => {
     await shop()
     await expect(changeColumnType('shop.supplier', 'rating', 'Date')).rejects.toThrow(/Int to Date is not a safe conversion/)
+  })
+})
+
+describe('renameColumn', () => {
+  shopTest('an Admin override on the column follows the rename', async () => {
+    await shop()
+    await sql`insert into metadata_override (row_id, table_name, column_name, property, value) values ('mo651', 'shop.supplier', 'rating', 'label', 'Stars')`
+    await renameColumn('shop.supplier', 'rating', 'score')
+    expect(await sql`select column_name from metadata_override where row_id = 'mo651'`).toEqual([{ column_name: 'score' }])
+  })
+})
+
+describe('Sub-table losses', () => {
+  const step = (operations: unknown[]) => migrationSchema.parse({ id: 'prune', fromVersion: '0.1.0', toVersion: '0.2.0', operations })
+  const lines = { column_name: 'lines', label: 'Lines', column_type: 'Sub-table', row_table: 'shop.line' }
+  async function registered() {
+    await shop()
+    await sql`delete from column_def where parent = 'shop.order'`
+    await sql`delete from table_def where name = 'shop.order'`
+    await sql`drop table shop."order"`
+    await sql`insert into installed_app (name, tables) values ('shop', ${sql.json(['shop.line', 'shop.supplier'])})`
+  }
+
+  shopTest('dropping a Sub-table column counts its child rows before anything runs', async () => {
+    await registered()
+    const losses = await estimateLosses('shop', [step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])])
+    expect(losses.map(describeLoss)).toEqual(['prune #1 dropColumn shop.supplier.lines: 1 value'])
+  })
+
+  shopTest('dropping a Sub-table column removes its child rows', async () => {
+    await registered()
+    await applyMigrations([step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])], 'shop')
+    expect(await sql`select row_id from shop.line`).toEqual([])
+  })
+
+  shopTest('dropping a Table counts the Sub-table rows that go with it', async () => {
+    await registered()
+    const losses = await estimateLosses('shop', [step([{ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true }])])
+    expect(losses.map(describeLoss)).toEqual(['prune #1 dropTable shop.supplier: 1 row and 1 Sub-table row'])
   })
 })
 

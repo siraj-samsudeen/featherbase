@@ -901,6 +901,9 @@ export async function renameColumn(
     // with "Naming field glor is required" for a column that is gone.
     if (meta.id_pattern === `field:${from}`)
       await tx`update table_def set id_pattern = ${`field:${target}`} where name = ${meta.name}`
+    // #651: an Admin override (a relabel, a hidden flag) belongs to the
+    // column, not to its old name.
+    await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 

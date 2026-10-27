@@ -117,6 +117,16 @@ describe('app schema evolution', () => {
     expect(plan.permissions).toEqual([{ grant: { table: 'evolve.supplier', role: 'Evolve Clerk', can_read: true } }])
   })
 
+  test('after the upgrade the role the new Table is granted to can read it', async ({ admin, createUser }) => {
+    await install(admin)
+    await upgrade(admin, '0.2.0')
+    await sql`insert into evolve.supplier (row_id, supplier_name) values ('s1', 'Acme Pallets')`
+    const clerk = await createUser({ email: 'evolve-reader@example.com', roles: ['Evolve Clerk'] })
+    const response = await clerk.fetch('/api/table/evolve.supplier/s1', { headers: { 'X-Featherbase-App-Version': 'evolve@0.2.0' } })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ supplier_name: 'Acme Pallets' })
+  })
+
   test('a renamed Table keeps its scope mark and the security guard', async ({ admin, createUser }) => {
     await install(admin)
     await upgrade(admin, '0.2.0')
@@ -219,6 +229,26 @@ describe('refusals', () => {
     } finally { await rm(unfilled, { recursive: true, force: true }) }
   })
 
+  test('a backfill the column cannot hold fails the upgrade and changes nothing', async ({ admin }) => {
+    const misfilled = await variant(2, (m) => {
+      const item = m.tables.find((t: { name: string }) => t.name === 'evolve.item')
+      item.columns.push({ column_name: 'shelf', label: 'Shelf', column_type: 'Int' })
+      m.migrations[0].operations.push({ kind: 'addColumn', table: 'evolve.item', backfill: 'top shelf',
+        column: { column_name: 'shelf', label: 'Shelf', column_type: 'Int' } })
+    })
+    try {
+      await install(admin)
+      await seed(admin)
+      await discoverPackages([fixture(1), misfilled])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'evolve', version: '0.2.0' })
+      await expect(admin.post('/api/upgrade_app', { name: 'evolve', version: '0.2.0', planId: plan.planId }))
+        .rejects.toMatchObject({ status: 417, message: expect.stringContaining('prior version and data are unchanged') })
+      expect(await sql`select to_regclass('evolve.supplier') as relation`).toEqual([{ relation: null }])
+      expect(await sql`select package_version from installed_app where name = 'evolve'`).toEqual([{ package_version: '0.1.0' }])
+    } finally { await rm(misfilled, { recursive: true, force: true }) }
+  })
+
   test('a destructive step without destructive: true keeps the version from loading', async () => {
     const unmarked = await variant(3, (m) => { delete m.migrations[1].operations[0].destructive })
     try {
@@ -239,6 +269,42 @@ describe('the release guard and the rehearsal report losses per instance', () =>
       expect(lines).toContain('WARNING: upgrading app evolve from 0.2.0 to 0.3.0 removes data here: prune #1 dropColumn evolve.item.legacy_code: 2 values; prune #2 dropTable evolve.memo: 2 rows; prune #3 alterColumn evolve.item.grade: 1 value')
       expect(lines.join('\n')).not.toContain('LEG-0001')
     } finally { vi.unstubAllEnvs() }
+  })
+
+  test('the release guard says so when no shipped upgrade removes data', async ({ admin }) => {
+    await install(admin)
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(1), fixture(2)]))
+    try {
+      expect(await preflightRelease({ environment: 'test' })).toContain('no app upgrade this release ships removes data here')
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  test('the rehearsal says so when the shipped upgrade removes no data', async ({ admin }) => {
+    await install(admin)
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(1), fixture(2)]))
+    const lines: string[] = []
+    try {
+      await rehearse((line) => lines.push(line))
+    } finally { vi.unstubAllEnvs() }
+    expect(lines).toContain('app evolve 0.1.0 to 0.2.0: rehearsed; it removes no data')
+    expect(await sql`select to_regclass('evolve.supplier') as relation`).toEqual([{ relation: null }])
+  })
+
+  test('the rehearsal names a shipped upgrade that would fail here', async ({ admin }) => {
+    await install(admin)
+    await seed(admin)
+    await upgrade(admin, '0.2.0')
+    const directory = await mkdtemp(resolve('test/.evolve-'))
+    await cp(fixture(3), directory, { recursive: true })
+    const manifest = JSON.parse(await readFile(resolve(directory, 'featherbase.json'), 'utf8'))
+    delete manifest.migrations[1].operations[3].backfill
+    await writeFile(resolve(directory, 'featherbase.json'), JSON.stringify(manifest))
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(2), directory]))
+    const lines: string[] = []
+    try {
+      await rehearse((line) => lines.push(line))
+    } finally { vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }) }
+    expect(lines).toContain('app evolve 0.2.0 to 0.3.0: the upgrade would fail: alterColumn evolve.item.title: 1 row holds no value; give the operation a backfill')
   })
 
   test('the rehearsal runs the shipped upgrade, reports what it removed, then rolls it back', async ({ admin }) => {
