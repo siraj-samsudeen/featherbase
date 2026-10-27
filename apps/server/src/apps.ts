@@ -477,8 +477,8 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
     fixtures = await provisionFixtures(manifest)
   } catch (err) {
     // A fixture that fails validation aborts the install; unwire the hooks so
-    // a half-installed app leaves no live code behind. (Created tables/roles
-    // remain, as with any mid-install failure — there is no ledger row yet.)
+    // a half-installed app leaves no live code behind. The caller's
+    // transaction (installAtomically) takes back the tables and roles.
     unwireHooks(manifest.name)
     throw err
   }
@@ -500,32 +500,40 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   }
 }
 
+// An install is all or nothing: a table that fails late (a link to a table
+// the app doesn't declare, #511) must not leave the app's earlier tables
+// behind with no ledger row to uninstall them by. A rollback also undoes the
+// hooks and the cached metadata the attempt set up.
+async function installAtomically<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await withTransaction(fn)
+  } catch (error) {
+    unwireHooks(name)
+    invalidateMeta()
+    throw error
+  }
+}
+
 export async function installApp(name: string): Promise<InstallResult> {
   const manifest = available.get(name)
   if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
   return provisionApp(name, async () => {
-    if (!manifest.runtime_package) return materialize(manifest, null)
+    if (!manifest.runtime_package) return installAtomically(name, () => materialize(manifest, null))
     if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
     await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
-    try {
-      return await withTransaction(async () => {
-        const result = await materialize(manifest, manifest.runtime_manifest ?? null)
-        await sql`update installed_app set runtime_package = true where name = ${name}`
-        if (manifest.runtime_identity) {
-          const { version, digest, ledger } = manifest.runtime_identity
-          await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
-            migration_ledger = ${sql.json(ledger)} where name = ${name}`
-        }
-        // #620 (D4): the app's role suggestions, written once, here.
-        const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
-        await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
-        return result
-      })
-    } catch (error) {
-      unwireHooks(name)
-      invalidateMeta()
-      throw error
-    }
+    return installAtomically(name, async () => {
+      const result = await materialize(manifest, manifest.runtime_manifest ?? null)
+      await sql`update installed_app set runtime_package = true where name = ${name}`
+      if (manifest.runtime_identity) {
+        const { version, digest, ledger } = manifest.runtime_identity
+        await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
+          migration_ledger = ${sql.json(ledger)} where name = ${name}`
+      }
+      // #620 (D4): the app's role suggestions, written once, here.
+      const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
+      await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
+      return result
+    })
   })
 }
 
@@ -618,7 +626,7 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
       'ConflictError',
       `App ${parsed.data.name} is registered in code — install it with { name } instead`,
     )
-  return materialize(parsed.data as AppManifest, parsed.data)
+  return installAtomically(parsed.data.name, () => materialize(parsed.data as AppManifest, parsed.data))
 }
 
 export function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {

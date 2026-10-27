@@ -194,6 +194,25 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
     }
   })
 
+  test('a later table\'s missing link target leaves none of a registered app\'s earlier tables behind (#511)', async () => {
+    const SECOND = 'Fixture Test Second'
+    registerApp(
+      manifest({
+        tables: [
+          { name: DT, module: 'Test', columns: [{ column_name: 'second', column_type: 'Reference', reference_table: SECOND }] },
+          { name: SECOND, module: 'Test', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: 'Fixture No Such Table' }] },
+        ],
+        fixtures: [],
+      }),
+    )
+    try {
+      await expect(installApp(APP)).rejects.toMatchObject({ type: 'ValidationError' })
+      expect(await sql`select name from table_def where name = ${DT}`).toEqual([])
+    } finally {
+      await unwire()
+    }
+  })
+
   test('an app table claiming system: true is refused — app tables are user-space', async () => {
     registerApp(
       manifest({

@@ -100,6 +100,39 @@ describe('PLAT-005: declarative app install over the API', () => {
     }
   })
 
+  test('a later table\'s missing link target leaves none of the app\'s earlier tables behind (#511)', async ({ admin }) => {
+    const PARTIAL = 'test-declarative-partial'
+    const first = { name: 'Decl Partial First', columns: [{ column_name: 'second', column_type: 'Reference', reference_table: 'Decl Partial Second' }] }
+    const second = (target: string) => ({ name: 'Decl Partial Second', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: target }] })
+    const install = (tables: object[]) =>
+      admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: { name: PARTIAL, tables } }) })
+    try {
+      const refused = await install([first, second('Decl No Such Table')])
+      expect(refused.status).toBe(417)
+      expect(await sql`select name from table_def where name = ${first.name}`).toEqual([])
+      expect(await sql`select column_name from column_def where parent = ${first.name}`).toEqual([])
+      expect((await sql`select to_regclass('featherbase.decl_partial_first')::text as r`)[0].r).toBeNull()
+      // No cached definition outlives the rollback.
+      expect((await admin.fetch(`/api/table/${encodeURIComponent(first.name)}:meta`)).status).toBe(404)
+    } finally {
+      await uninstallApp(PARTIAL).catch(() => {})
+    }
+  })
+
+  test('a manifest corrected after a refused install installs cleanly (#511)', async ({ admin }) => {
+    const PARTIAL = 'test-declarative-retry'
+    const first = { name: 'Decl Retry First', columns: [{ column_name: 'second', column_type: 'Reference', reference_table: 'Decl Retry Second' }] }
+    const second = (target: string) => ({ name: 'Decl Retry Second', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: target }] })
+    const install = (tables: object[]) =>
+      admin.fetch('/api/install_app', { method: 'POST', body: JSON.stringify({ manifest: { name: PARTIAL, tables } }) })
+    try {
+      expect((await install([first, second('Decl No Such Table')])).status).toBe(417)
+      expect((await install([first, second('Decl Retry First')])).status).toBe(201)
+    } finally {
+      await uninstallApp(PARTIAL).catch(() => {})
+    }
+  })
+
   test('an invalid manifest (no name, unknown keys) is rejected', async ({ admin }) => {
     const res = await admin.fetch('/api/install_app', {
       method: 'POST',
