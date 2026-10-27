@@ -44,8 +44,9 @@ const guardSchema = z.object({
   }
   if (guard.column === undefined) issue(`A ${guard.kind} guard needs a column`)
   if (guard.kind === 'not_all_zero' && guard.value !== undefined) issue('A not_all_zero guard takes no value')
-  if (guard.kind === 'max_drop_pct' && (guard.value === undefined || guard.value < 0 || guard.value > 100))
-    issue('A max_drop_pct value must be a percentage from 0 to 100')
+  // Whole percentages, so the limit is checked in integers, exactly.
+  if (guard.kind === 'max_drop_pct' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
+    issue('A max_drop_pct value must be a whole percentage from 0 to 100')
 })
 
 export type DatasetGuard = z.infer<typeof guardSchema>
@@ -80,9 +81,10 @@ export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], c
     }
     const before = previous?.nonZero[column]
     if (!before) continue
-    const drop = ((before - now) / before) * 100
-    if (drop > guard.value!)
-      return `${dataset}: ${column} values dropped ${percent(drop)} (${whole.format(before)} → ${whole.format(now)}), limit ${percent(guard.value!)}`
+    // Decided in integers: a computed percentage is not exact (100 → 93 is
+    // 7.000000000000001%), and a drop of exactly the limit must pass.
+    if (now * 100 < before * (100 - guard.value!))
+      return `${dataset}: ${column} values dropped ${percent(((before - now) / before) * 100)} (${whole.format(before)} → ${whole.format(now)}), limit ${percent(guard.value!)}`
   }
   return null
 }

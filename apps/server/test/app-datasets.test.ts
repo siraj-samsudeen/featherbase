@@ -495,11 +495,12 @@ describe('a dataset declaration', () => {
     // #669: a guard is declarative, so the manifest is the only place it can be wrong.
     ['guard checks a column it does not declare', { guard: [{ kind: 'not_all_zero', column: 'target' }] }, /sales's guard column target is not one of its columns/],
     ['guard checks a text column', { guard: [{ kind: 'max_drop_pct', column: 'note', value: 50 }] }, /sales's guard column note must be integer, number or money/],
-    ['guard allows a drop above 100%', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 150 }] }, /max_drop_pct value must be a percentage from 0 to 100/],
+    ['guard allows a drop above 100%', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 150 }] }, /max_drop_pct value must be a whole percentage from 0 to 100/],
     ['guard asks for fewer than no rows', { guard: [{ kind: 'min_rows', value: -1 }] }, /min_rows value must be a whole number of rows, 0 or more/],
     ['guard names an unknown kind', { guard: [{ kind: 'max_rows', value: 10 }] }, /guard kind must be one of min_rows, not_all_zero, max_drop_pct/],
     ['guard counts rows of a column', { guard: [{ kind: 'min_rows', column: 'units', value: 1 }] }, /min_rows guard counts rows, so it names no column/],
     ['guard gives a value to a check that takes none', { guard: [{ kind: 'not_all_zero', column: 'units', value: 1 }] }, /not_all_zero guard takes no value/],
+    ['guard allows a fractional drop', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 7.5 }] }, /max_drop_pct value must be a whole percentage from 0 to 100/],
     ['guard checks a drop without naming a column', { guard: [{ kind: 'max_drop_pct', value: 50 }] }, /max_drop_pct guard needs a column/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
@@ -588,6 +589,16 @@ describe('a dataset guard', () => {
     ['max_drop_pct passes a rise', { kind: 'max_drop_pct', column: 'target', value: 0 }, counts(10, 9), counts(10, 8), null],
   ] as const)('%s', ([, guard, candidate, previous, refusal]) => {
     expect(check(guard as DatasetGuard, candidate, previous)).toBe(refusal)
+  })
+
+  // A limit that is not exact in binary must still let a drop of exactly that much through.
+  test.for([
+    [3, 100, 97, true], [3, 100, 96, false],
+    [7, 100, 93, true], [7, 100, 92, false],
+    [33, 300, 201, true], [33, 300, 200, false],
+  ] as const)('max_drop_pct %i%% from %i to %i passes: %s', ([limit, before, now, passes]) => {
+    const refusal = check({ kind: 'max_drop_pct', column: 'target', value: limit }, counts(10, now), counts(10, before))
+    expect(refusal === null).toBe(passes)
   })
 
   test('the first guard that fails is the one named', () => {
