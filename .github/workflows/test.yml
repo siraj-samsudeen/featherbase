@@ -286,16 +286,17 @@ jobs:
       # disposable database (vitest.config.ts refuses any other name). The
       # workflow proof is not here: its guard requires a database server on
       # the loopback address, and CI's runs in a service container (#544).
-      - name: Prove runtime actions and the Tasker upgrade across real commits
+      - name: Prove runtime actions, the Tasker upgrade and the settings lock across real commits
         if: matrix.shard == 3
         run: |
-          for db in featherbase_ci_actions_commit_e2e featherbase_ci2_actions_commit_e2e; do
+          for db in featherbase_ci_actions_commit_e2e featherbase_ci2_actions_commit_e2e featherbase_ci_settings_commit_e2e; do
             createdb --maintenance-db="$DATABASE_URL" "$db"
             DATABASE_URL="${DATABASE_URL%/*}/$db" pnpm --filter server migrate
             DATABASE_URL="${DATABASE_URL%/*}/$db" pnpm --filter server patches
           done
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci_actions_commit_e2e" RUNTIME_ACTION_COMMIT_PROOF=1 pnpm --filter server test test/runtime-actions-commit.test.ts
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci2_actions_commit_e2e" TASKER_UPGRADE_ACTION_PROOF=1 pnpm --filter server test test/tasker-upgrade-action-commit.test.ts
+          DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci_settings_commit_e2e" SETTINGS_LOCK_COMMIT_PROOF=1 pnpm --filter server test test/managed-settings-commit.test.ts
 
   # The web component suite (it runs the server in-process against its own
   # database) and the shared package, each against its own coverage floor.
