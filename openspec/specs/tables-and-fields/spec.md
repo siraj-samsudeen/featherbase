@@ -431,3 +431,9 @@ value in that column.
   "NoSuchTable"
 - **THEN** the change is refused, naming "NoSuchTable", and the column is
   not added
+
+#### Scenario: A table links to itself
+
+- **WHEN** the user gives a category table a "parent" link column pointing
+  at that same category table
+- **THEN** the change is accepted
