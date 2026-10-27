@@ -107,6 +107,11 @@ for (const scheme of ['light', 'dark'] as const) {
         const here = await barLook(page)
         await page.goto(ACCOUNT)
         await expect(page.getByTestId('account-layout')).toBeVisible()
+        // #659: measured once the bar has settled, as it was on the app's page
+        // (its name, picker and Account avatar drawn). Open Admin used to hold
+        // the bar's height while the rest loaded; a Bar Reader no longer has it.
+        await expect(page.getByTestId('session-user')).toBeVisible()
+        await expect(picker(page)).toBeVisible()
         expect(await barLook(page)).toEqual(here)
       })
     })
@@ -211,6 +216,11 @@ for (const scheme of ['light', 'dark'] as const) {
         const here = await barLook(page)
         await page.goto(ACCOUNT)
         await expect(page.getByTestId('account-layout')).toBeVisible()
+        // #659: measured once the bar has settled, as it was on the app's page
+        // (its name, picker and Account avatar drawn). Open Admin used to hold
+        // the bar's height while the rest loaded; a Bar Reader no longer has it.
+        await expect(page.getByTestId('session-user')).toBeVisible()
+        await expect(picker(page)).toBeVisible()
         expect(await barLook(page)).toEqual(here)
       })
     })
