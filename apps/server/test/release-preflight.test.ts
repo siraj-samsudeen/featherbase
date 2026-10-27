@@ -15,6 +15,7 @@ import { migrationBatches } from '../src/migrate'
 import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
+import { withNamedVariable } from '../src/env'
 import { createTable } from '../src/table-engine'
 
 afterEach(() => vi.unstubAllEnvs())
@@ -161,6 +162,44 @@ describe('release preflight: the scope provider', () => {
     await installed('rostera', true)
     await installed('rosterb', true)
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/rostera, rosterb/)
+  })
+})
+
+// #620 (E2): an installed, enabled app that lacks a required setting or
+// secret is "not set up yet". The release warns, naming the app and what is
+// missing (names only), and still goes ahead.
+describe('release preflight: app settings and secrets', () => {
+  const manifest = { name: 'setupcheck', settings: [{ name: 'report_id', required: true }, { name: 'theme', required: false }], secrets: ['SETUPCHECK_TOKEN'] }
+  const install = (enabled = true) =>
+    sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupcheck', ${sql.json(manifest)}, ${enabled}, true)`
+
+  test('an enabled app missing a required setting and its secret warns, naming both', async () => {
+    await install()
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('WARNING: app setupcheck is not set up yet: missing setting report_id, secret SETUPCHECK_TOKEN. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
+  test('an app whose required setting and secret are set passes without printing either value', async () => {
+    await install()
+    await sql`insert into app_setting (row_id, app, setting, value) values ('setupcheck.report_id', 'setupcheck', 'report_id', 'R-77')`
+    const lines = await withNamedVariable('SETUPCHECK_TOKEN', 'token-value-620', () => preflightRelease({ environment: 'test' }))
+    expect(lines).toContain('every enabled app has its required settings and secrets')
+    expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
+  })
+
+  test('a disabled app is not checked', async () => {
+    await install(false)
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('every enabled app has its required settings and secrets')
+  })
+})
+
+// #620 (D4): All and Guest are held by every signed-in person or by anyone,
+// so binding an app role to either opens the app to everyone.
+describe('release preflight: app role bindings', () => {
+  test.for(['All', 'Guest'])('a binding to %s refuses the release', async (role) => {
+    await sql`insert into app_role_binding (row_id, app, app_role, bound_role) values ('b-1', 'someapp', 'Some Reader', ${role})`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(`An app role binding gives someapp's role Some Reader to ${role}`)
   })
 })
 

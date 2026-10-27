@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { sql } from './db'
 import { readNamedVariable } from './env'
 import { AppError } from './errors'
+import { platformRelation } from './platform-schema'
 
 const settingName = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const distinct = (values: string[]) => new Set(values).size === values.length
@@ -64,6 +65,32 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
     else missing.secrets.push(name)
   }
   return { title: declaration.title, settings: Object.freeze(settings), secrets: Object.freeze(secrets), missing }
+}
+
+/** Each enabled, installed app that declares settings or secrets, with the
+ *  required ones it lacks, by name (`setting x`, `secret Y`). Never a
+ *  value. The release check (before migrations) names where the tables are
+ *  now, or that App Setting does not exist yet. */
+export async function appSetupState(where: { installed?: string; settings?: string | null } = {}): Promise<{ app: string; title: string; missing: string[] }[]> {
+  const installed = where.installed ?? platformRelation('installed_app')
+  const settings = where.settings === undefined ? platformRelation('app_setting') : where.settings
+  const rows = await sql`select name, manifest from ${sql(installed)}
+    where enabled and (manifest ? 'settings' or manifest ? 'secrets') order by name`
+  const gaps: { app: string; title: string; missing: string[] }[] = []
+  for (const row of rows) {
+    const app = String(row.name)
+    const declared = (row.manifest ?? {}) as { title?: string; settings?: { name: string; required: boolean }[]; secrets?: string[] }
+    const required = (declared.settings ?? []).filter(s => s.required).map(s => s.name)
+    const filled = settings && required.length
+      ? new Set((await sql`select setting from ${sql(settings)} where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
+      : new Set<string>()
+    const missing = [
+      ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
+      ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
+    ]
+    gaps.push({ app, title: declared.title ?? app, missing })
+  }
+  return gaps
 }
 
 /** The secrets installed apps declare that are set here, with their values,
