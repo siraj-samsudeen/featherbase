@@ -8,7 +8,7 @@ export { parseFilters, type ListFilter } from './filters'
 export type { WebFormColumn, WebFormConfig } from './webform'
 export { INSTANCE_SETTINGS_TABLES, INSTANCE_SETTINGS_FILE, MANAGED_FIELD_HINT, SETUP_MAX_PEOPLE } from './instance-settings'
 export { SIGN_IN_METHOD_KINDS, NEW_PERSON_RULES, type SignInMethodKind, type NewPersonRule } from './sign-in'
-export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs } from './runtime-actions'
+export type { RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler, ActionRow, ActionListArgs, DatasetAnswer, DatasetFilters, DatasetRow } from './runtime-actions'
 export type { AppAccessPolicy, AppFactDeclaration, AppScopeSource, AppProductAuthorization, AppOperationDeclaration, AppScopeFacts, AppScopeResolutionContext, ResolvedAppScope, AppScopeResolver, AppAuthorizationContext, AppProductAuthorizationContext, AppProductAuthorizer, RuntimeActionAuthorization, AppScopeProvider, AppScopeProviderContext } from './app-access'
 export {
   autoMapColumns,

@@ -245,6 +245,24 @@ that fills it).
   same shaping function, so cached and live cannot disagree in layout or maths.
 - Reads get `context.datasets.active(name)`, with equality or `in` filters on
   declared keys only. No SQL crosses from the app to the platform.
+- **As built (#625, migration 0135).** The manifest's `datasets` entry is
+  `{ name, source, query, columns: [{ name, type }], keys, filters }`; `type` is
+  `text`, `integer`, `number`, `money`, `date` or `boolean`. Keys and mapped
+  columns must be `text`, `integer` or `date` (they compare as text), and the query
+  must be one statement. Each dataset registers on the snapshot engine as
+  `<app>.<name>`, with the declaration's hash as its definition version, so a
+  changed query never serves old rows. Rows are stored, shaped, in the raw
+  `app_dataset_row` relation; an empty candidate is refused like any failed build.
+  The query reaches its source wrapped as a sub-query with the reader's limits
+  added as bound values, in a read-only transaction on Postgres; Postgres and
+  DuckDB/MotherDuck sources can run it.
+- **The scope through the mapping.** Each of the reader's places is one group of
+  conditions; a place adds rows only when the dataset maps every filter it names
+  (an unmapped filter would widen it), and no place means no row. `active` answers
+  `{ dataset, served, at, rows }`, or `null` when nothing has built yet, recording
+  the miss. `live(name, filters)` answers the same shape and is available only in
+  an outbound read (E5). A dataset whose source the instance lacks answers "not set
+  up yet", and Instance health and the release check name the missing data source.
 
 **E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
 The platform allows them as frame sources only on that app's own pages. The global
@@ -255,6 +273,17 @@ development-only setting.
 authorization decided and frozen inside the platform transaction; its handler runs
 *after* the transaction closes, so no row lock is held during a MotherDuck call.
 `context.recordView(...)` writes the Access Log row (platform-written, #441).
+
+- **As built (#625).** The places, payload, settings and secrets are decided and
+  frozen inside the authorization transaction, which then commits; the handler
+  runs after it on the pool, holding no transaction (`inAppTransaction()` is false
+  in it). Document reads would lock rows, so in an outbound handler they fail
+  loudly; `context.datasets.live` is allowed only there. Actions cannot be
+  outbound.
+- `context.recordView({ dataset })` writes one `view_report` Access Log row for
+  the viewing person: the dataset (or the read), the places' labels, and what this
+  request actually served (cached with its snapshot, or live). The platform fills
+  each field; the app only names the dataset.
 
 **E6. App roles bound to jobs.** See D4.
 

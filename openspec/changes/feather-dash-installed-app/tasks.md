@@ -27,9 +27,9 @@ the owner reviews. Server, security and data logic gets a Codex review.
 
 - [x] 2.1 E1 scope shape, the app-declared scope provider (one enabled provider per instance; install, enable, upgrade, activation and the release preflight refuse a second; a replay must still be covered by the places it ran under) and the `person_scope` policy, failing closed; refusal and audit as for `stores`; Tables marked `decides_scope` are guarded as security Tables (#559, migration 0131). The client's derivation is supplied by its app (B6′), never by the platform.
 - [x] 2.2 E2 declared settings (`App Setting`, a security Table, set through the instance settings file) and secrets in the handler context; "not set up yet" before the handler; release warning and Instance health check for a missing required setting or secret (#620, migration 0133).
-- [ ] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function.
+- [x] 2.3 E3 cached datasets declared by an app (source, query, columns, keys, filter mapping); snapshot and live read through one shaping function (#625, migration 0135).
 - [ ] 2.4 E4 declared outside sites on the app's own pages; remove the global embed frame source.
-- [ ] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log.
+- [x] 2.5 E5 outbound reads run after the authorization transaction; `recordView` writes the Access Log (#625).
 - [ ] 2.6 E7 release refuses when an installed, enabled app's exact version is missing.
 - [ ] 2.7 E8 declared bar controls (picker filled from the app's read, choice in the address).
 - [x] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
