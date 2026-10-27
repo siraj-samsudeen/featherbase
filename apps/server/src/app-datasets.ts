@@ -287,6 +287,20 @@ async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   return driver.query(source, dataset.query, dataset.columns, where)
 }
 
+/** The whitespace a JavaScript trim removes, as a Postgres regex class:
+ *  `\s` alone is locale-dependent in Postgres and misses U+00A0. */
+const SPACE = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]'
+const TRIM = `^${SPACE}+|${SPACE}+$`
+
+/**
+ * #676 (Codex rounds 1 and 2): the one definition of a stored row's period,
+ * read by every period aggregate: its text, trimmed of whitespace, and null
+ * when nothing is left. So a blank period is a missing one, never a new one,
+ * and a padded period (a source's char(n), say) is the period it pads. Text
+ * shaping does not trim, so this is the only place "blank" is defined.
+ */
+const periodValue = (column: string) => sql`nullif(regexp_replace(row->>${column}, ${TRIM}, '', 'g'), '')`
+
 /**
  * A stored snapshot's counts for its guards, in one pass over its rows.
  * #676: a total is summed in SQL numeric from each value's JSON decimal
@@ -299,10 +313,11 @@ async function guardCounts(snapshotId: string, guards: readonly DatasetGuard[]):
   const parts = [
     ...columns.map((column, i) => sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}
       , coalesce(sum((row->>${column})::numeric), 0)::text as ${sql(`s${i}`)}`),
-    // Codex round 1: blank text is no period, as an empty value is not.
-    ...periods.map((column, i) => sql`, count(distinct row->>${column}) filter (where btrim(row->>${column}) <> '') as ${sql(`pd${i}`)}
-      , count(*) filter (where coalesce(btrim(row->>${column}), '') = '') as ${sql(`pe${i}`)}
-      , min(row->>${column}) filter (where btrim(row->>${column}) <> '') as ${sql(`pv${i}`)}`),
+    ...periods.map((column, i) => {
+      const period = periodValue(column)
+      return sql`, count(distinct ${period}) as ${sql(`pd${i}`)}
+        , count(*) filter (where ${period} is null) as ${sql(`pe${i}`)}, min(${period}) as ${sql(`pv${i}`)}`
+    }),
   ]
   const [counted] = await sql`
     select count(*) as rows ${parts.length ? parts.reduce((all, one) => sql`${all} ${one}`) : sql``}

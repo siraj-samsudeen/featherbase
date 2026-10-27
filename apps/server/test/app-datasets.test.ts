@@ -337,6 +337,9 @@ describe('a drop guard within a period', () => {
   // collapsed refresh cannot skip the comparison by blanking its month.
   test.for([
     ['an empty-text period', ''], ['a blank period', '   '],
+    // Codex round 2: blank is any whitespace a JavaScript trim removes, not only spaces.
+    ['a tab', '\t'], ['a line feed', '\n'], ['a carriage return and line feed', '\r\n'],
+    ['mixed whitespace', ' \t\n'], ['a no-break space', ' '],
   ] as const)('refuses a candidate holding %s on every row', async ([, blank], { admin }) => {
     await setupGuarded(admin, [guards[1]])
     await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
@@ -344,6 +347,18 @@ describe('a drop guard within a period', () => {
     await fillWarehouse(withFigures(...month(blank, '1', '0', '0', '0')))
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
       status: 'refused', reason: 'sales: note holds 0 values and 4 empty, but amount is compared within one note' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  // A padded period (a source's char(n) column, say) is the period it pads,
+  // so padding cannot pass a collapsed refresh off as a new period.
+  test('compares a padded period as the period it pads', async ({ admin }) => {
+    await setupGuarded(admin, [guards[1]])
+    await fillWarehouse(withFigures(...month('2026-10', '100', '200', '300', '400')))
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withFigures(...month(' 2026-10\t', '1', '0', '0', '0')))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: amount total dropped 99.9% (1,000 → 1), limit 50%' })
     expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
   })
 
