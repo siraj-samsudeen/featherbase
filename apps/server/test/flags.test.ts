@@ -97,4 +97,32 @@ describe('A column can be marked unique', () => {
     )
     expect(meta.columns.find((c) => c.column_name === 'code')?.unique).toBe(false)
   })
+
+  test('putting a removed column back as unique over its kept repeats is refused the same way', async ({ admin }) => {
+    const T = 'Flag Back Unique'
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data' }] })
+    for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { title: `t${i}`, code: 'B' } })
+    await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'title', column_type: 'Data' }], remove_columns: ['code'] })
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data', unique: true }] }),
+    })
+    expect(res.status).toBe(417)
+    expect((await res.json()).error.fields.code).toMatch(/"B" is held by 2 rows/)
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${encodeURIComponent(T)}:meta`)
+    expect(meta.columns.map((c) => c.column_name)).toEqual(['title'])
+  })
+
+  test('a long repeated value is shortened in the refusal', async ({ admin }) => {
+    const T = 'Flag Long Unique'
+    const long = 'x'.repeat(130)
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { code: long } })
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
+    })
+    const message = (await res.json()).error.fields.code as string
+    expect(message).toMatch(/^"x{60}…" is held by 2 rows/)
+  })
 })
