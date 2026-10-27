@@ -465,7 +465,8 @@ predecessor pattern), and sets `FEATHERBASE_APP_PATHS`. E7 turns a missing versi
 into a refused release. This repository's build never takes a private input.
 **Publishing the platform image** (owner decision 27-Oct-2026, #587). A GitHub
 Action here publishes the server image to the GitHub Container Registry, tagged by
-commit SHA, once that commit's tests have passed. The client's repository has a
+commit SHA, once that commit's tests have passed. The published image is the
+Dockerfile's `platform` target, with no app. The client's repository has a
 small Dockerfile: `FROM` that tag, copy the built app, set `FEATHERBASE_APP_PATHS`.
 Moving an instance to a newer platform is a pull request that bumps the tag, which
 replaces today's manual commit pin on prod. Railway already builds this repository
@@ -478,14 +479,21 @@ the client's dbt runner uses. The image won, for three reasons:
 
 - **Clients run the exact artifact that was tested.** A package rebuilt in each
   client's pipeline is a new, untested build.
-- **The platform owns the operating system, Node and certificate layers**, as well
-  as the Chromium that printing needs. With a package, every client would choose
-  and patch them.
+- **The platform owns the operating system, Node and certificate layers.** With a
+  package, every client would choose and patch them. (The image finds Chromium for
+  printing at run time, as today; it does not ship one.)
 - **Featherbase is the host program, and apps are its plug-ins.** It is not a
   library a client calls.
 
 The app contract (the manifest, `platformVersion`, `FEATHERBASE_APP_PATHS`) is the
 same either way, so a package can be added later without changing any app.
+
+**Local development of a client app** (owner requirement 27-Oct-2026). A developer
+working on a client app in the client's repository runs it locally, with hot reload,
+against a featherbase checkout or a chosen featherbase version, without building
+Docker images. That was the one real advantage of the npm-package route, and it is
+kept. The mechanism is decided with B6′: for example, a featherbase dev command that
+takes an app path, or pnpm-linking a local featherbase checkout.
 
 **Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
@@ -556,7 +564,8 @@ to the trial first. The order of work:
   the cache-in-Dive contract (D6); today's query and roster derivation, moved out of
   this repository; the scope provider; the role suggestions and the binding
   stand-in; the Dive's few lines for `cached` and the live-ready notice; the client
-  image.
+  image; and local development of the app with hot reload against a featherbase
+  checkout or version, without Docker images (D7), whose mechanism is decided here.
 - *Check on dev:* install beside the platform page. On a restored dev snapshot, for
   every person with a scope today, the app's `me` and `report` answers must equal the
   platform endpoints' (same scope, rows and totals), and the embed's scope state must
