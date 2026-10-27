@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readVariable } from './env'
 import { Hono, type Context } from 'hono'
 import { sql } from './db'
-import { AppError, statusOf } from './errors'
+import { AppError, markLogged, statusOf } from './errors'
 import { getRoles } from './permissions'
 import { logAccess } from './audit'
 import type { SessionUser } from './auth'
@@ -660,7 +660,7 @@ salesTargetRoutes.get('/report', async (c) => {
   } catch (err) {
     // #500: the page tells the reader only that the numbers couldn't load; the detail is here.
     // A refusal (a store that is no longer theirs) is not a failure and is not logged.
-    if (!(err instanceof AppError && err.type === 'PermissionError'))
+    if (!(err instanceof AppError && err.type === 'PermissionError')) {
       console.error(JSON.stringify({
         event: 'sales_target_report_failed',
         person: user.row_id,
@@ -668,6 +668,9 @@ salesTargetRoutes.get('/report', async (c) => {
         status: statusOf(err),
         message: err instanceof Error ? err.message : String(err),
       }))
+      // This line is the failure's one log line: the generic handler answers without logging it again.
+      markLogged(err)
+    }
     throw err
   }
 })

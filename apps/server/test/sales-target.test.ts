@@ -415,6 +415,25 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       _setSourceReader(null)
     }
   })
+
+  // #503 verifier check 7: the route's line carries the context, so the generic handler stays quiet.
+  test('a report read that fails on the server writes exactly one error log line', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    _setSourceReader(async () => {
+      throw new Error('source read failed: connection reset')
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(res.status).toBe(500)
+      expect(error).toHaveBeenCalledTimes(1)
+    } finally {
+      error.mockRestore()
+      _setSourceReader(null)
+    }
+  })
 })
 
 describe('#3783 sales-target host: the assignment is derived from the Store Sections maps', () => {

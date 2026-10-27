@@ -436,10 +436,11 @@ function SalesTargetReport() {
           table folds away behind a line that says how old it is. The cache is refreshed a few
           times a day while the warehouse loads sales intraday, so shown side by side the two
           disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
-          live report is not there — not configured, failed, or still opening. */}
+          live report is not there — not configured, failed, or still opening — and whenever the
+          cached read itself failed, so its card and Try again are not folded out of sight (#503). */}
       {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
       {me && embed.kind !== 'no-access' && (
-      <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
+      <QuickTable collapsed={embed.kind === 'frame' && pre.kind !== 'error'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className={cardClasses('mb-3 overflow-x-auto p-0')} data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
           <p className="p-4 text-sm text-ink-muted">Reading your numbers…</p>

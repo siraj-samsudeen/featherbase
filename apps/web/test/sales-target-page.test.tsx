@@ -574,6 +574,16 @@ test('cached numbers that cannot be read say so in one plain sentence, without t
   expect(card).not.toHaveTextContent(/HTTP|500|source|connection|sales figure/i)
 })
 
+// #503 verifier: with the live report on the page, a failed cache read must not hide its card in the fold.
+test('with the live report open, the cached numbers card is shown without expanding anything', async ({ admin, api }) => {
+  _setSourceReader(failingSource)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  const card = await numbersUnavailableCard()
+  expect(card).toBeVisible()
+})
+
 test('Try again on the cached numbers reads them again without reopening the live report', async ({ admin, api }) => {
   delete process.env.DIVE_ID
   let reads = 0
