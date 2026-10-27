@@ -276,6 +276,25 @@ export async function applyWorkflowAction(
   return result
 }
 
+// WF-004 / #336: a row created straight into a state that waits on someone's
+// action notifies them, by the same rule as moving a row there. Called after
+// the create commits; the creator is skipped like any acting user.
+export async function notifyApproversOfNewRow(
+  table: string,
+  row: Record<string, unknown>,
+  creator: string,
+): Promise<void> {
+  // The row is already saved: a failure to notify is logged, never reported
+  // as a failed create, and never skips the effects that follow.
+  try {
+    const wf = await getActiveWorkflow(table)
+    if (!wf?.states.length) return
+    await notifyPendingApprovers(wf, table, String(row.row_id), currentState(wf, row), creator)
+  } catch (err) {
+    console.error(`[workflow] ${table} ${String(row.row_id)}: approvers not notified:`, err)
+  }
+}
+
 // WF-004: notify the users who can act on a row that has just entered a
 // pending state. Approvers are the holders of the roles named on the outgoing
 // transitions from `state`. The acting user is skipped (no self-notification),

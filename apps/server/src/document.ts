@@ -13,7 +13,7 @@ import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
-import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workflow'
+import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApproversOfNewRow } from './workflow'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
@@ -801,6 +801,7 @@ async function writeDoc(
   await afterDocumentCommit(async () => {
     await evaluateEmailRules('on_create', meta.name, insertResult)
     await evaluateEmailRules('on_save', meta.name, insertResult)
+    await notifyApproversOfNewRow(meta.name, insertResult, user)
     await evaluateAssignmentRules(meta.name, insertResult)
     await evaluateWebhooks('after_insert', meta.name, insertResult)
     await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
