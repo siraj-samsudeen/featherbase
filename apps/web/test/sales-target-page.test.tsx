@@ -543,3 +543,95 @@ test('Try again after the identity call failed asks again and opens the report',
   await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
   expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
 })
+
+// #500, the cached table's own failure: the same plain words, and a Try again that shares one retry
+// with the live report's card — it re-reads only what failed, and settles once all of it answered.
+const PLAIN_NUMBERS = "The numbers couldn't load right now. Try again in a few minutes."
+const failingSource = async (): Promise<never> => {
+  throw new Error('source read failed: connection reset')
+}
+/** Counts the page's own calls to one sales-target route. */
+function countCalls(route: string) {
+  const real = globalThis.fetch
+  const counter = { n: 0 }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes(route)) counter.n++
+    return real(input, init)
+  })
+  return counter
+}
+async function numbersUnavailableCard() {
+  return screen.findByTestId('snapshot-error')
+}
+
+test('cached numbers that cannot be read say so in one plain sentence, without the server wording', async ({ admin, api }) => {
+  delete process.env.DIVE_ID // no live report: the cached table is the report and stays open
+  _setSourceReader(failingSource)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await numbersUnavailableCard()
+  expect(card).toHaveTextContent(`Numbers unavailable${PLAIN_NUMBERS}Try again`)
+  expect(card).not.toHaveTextContent(/HTTP|500|source|connection|sales figure/i)
+})
+
+test('Try again on the cached numbers reads them again without reopening the live report', async ({ admin, api }) => {
+  delete process.env.DIVE_ID
+  let reads = 0
+  _setSourceReader(async () => (++reads === 1 ? failingSource() : []))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const embedCalls = countCalls('/api/sales_target/embed_session')
+  await openAsViewer(admin, api)
+  const card = await numbersUnavailableCard()
+  await waitFor(() => expect(screen.getByTestId('embed-state')).toHaveAttribute('data-state', 'not-configured'))
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+  expect(embedCalls.n).toBe(1)
+})
+
+test('with both cards failing, one press retries both and both show they are working', async ({ admin, api }) => {
+  let reads = 0
+  let embeds = 0
+  // Held until released; a release before the read starts sticks, so no request is left open.
+  let released = false
+  let wake: () => void = () => {}
+  const releaseRead = () => {
+    released = true
+    wake()
+  }
+  _setSourceReader(async () => {
+    if (++reads === 1) return failingSource()
+    if (!released) await new Promise<void>((resolve) => (wake = resolve))
+    return []
+  })
+  _setEmbedFetch(async () => (++embeds === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const numbers = await numbersUnavailableCard()
+  const report = await unavailableCard()
+  await userEvent.click(within(report).getByRole('button', { name: 'Try again' }))
+  try {
+    // The live report answered; the numbers are still being read, so neither card's button is free yet.
+    await waitFor(() => expect(embeds).toBe(2))
+    await waitFor(() => expect(reads).toBe(2))
+    expect(within(numbers).getByRole('button', { name: 'Try again' })).toHaveAttribute('aria-busy', 'true')
+  } finally {
+    releaseRead()
+  }
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+})
+
+test('a retry where only the live report recovers leaves the numbers card ready to press again', async ({ admin, api }) => {
+  let embeds = 0
+  _setSourceReader(failingSource)
+  _setEmbedFetch(async () => (++embeds === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  await numbersUnavailableCard()
+  await userEvent.click(within(await unavailableCard()).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  // The live report is on the page, so the cache folds away — its card is still there, and free.
+  const again = await numbersUnavailableCard()
+  await waitFor(() => expect(within(again).getByRole('button', { name: 'Try again', hidden: true })).toBeEnabled())
+  expect(again).toHaveTextContent(PLAIN_NUMBERS)
+})
