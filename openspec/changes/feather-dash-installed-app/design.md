@@ -463,10 +463,11 @@ builds a **client image on top of the platform's image**: it starts from a pinne
 platform image, adds the built app (every version installed on any instance, the
 predecessor pattern), and sets `FEATHERBASE_APP_PATHS`. E7 turns a missing version
 into a refused release. This repository's build never takes a private input.
-*Open detail, awaiting the owner:* how the platform image is published. Proposed: a
-GitHub Action here publishes a public image tagged by commit, and the client's
-small Dockerfile starts `FROM` that tag. Bumping the tag by pull request would
-replace today's manual commit pin on prod. Railway already builds this repository
+*How the platform image is published* (owner decision 27-Oct-2026, #587): a
+GitHub Action here publishes a public image to GHCR, tagged by full commit SHA,
+only after that commit's tests pass on `main`. It is the Dockerfile's `platform`
+target, with no app. The client's small Dockerfile starts `FROM` that tag.
+Bumping the tag by pull request replaces today's manual commit pin on prod. Railway already builds this repository
 from `apps/server/Dockerfile`; its own builders build one repository and cannot
 combine two. **Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
@@ -653,4 +654,4 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
     shape and enforces `person_scope`; the client's roster derivation lives in the
     client app and never moves into the platform.
 17. **A client app reaches the server in a client image** built on the platform's
-    image (Q2 = (a)). How the platform image is published is still open (D7).
+    image (Q2 = (a)). It is published to GHCR by commit, after tests pass (D7, #587).
