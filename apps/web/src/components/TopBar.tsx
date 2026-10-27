@@ -8,6 +8,7 @@ import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
+import { BarControls } from './BarControls'
 import { Logo } from './Logo'
 import { buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
 import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
@@ -139,9 +140,15 @@ export function TopBar({
         className="flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0"
         data-testid="top-bar"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:w-60 md:shrink-0 md:px-3" data-testid="top-bar-left">
+        {/* The name's block lines up with the Admin sidebar; an app's address
+            has none, so there the declared controls follow the name (#642). */}
+        <div
+          className={`flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:px-3 ${onAppAddress ? 'md:shrink-0' : 'md:w-60 md:shrink-0'}`}
+          data-testid="top-bar-left"
+        >
           {left ?? (context && name && <BarName context={context} name={name} />)}
         </div>
+        {onAppAddress && caps && brand?.opens && <BarControls app={brand.opens} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
