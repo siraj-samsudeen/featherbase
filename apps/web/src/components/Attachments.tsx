@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
-import { cardClasses, iconButtonClasses } from './ui'
+import { cardClasses, iconButtonClasses, touchLinkClasses } from './ui'
 
 interface FileRow {
   row_id: string
@@ -77,7 +77,7 @@ export function Attachments({ table, name }: { table: string; name: string }) {
           onClick={() => inputRef.current?.click()}
           disabled={busy}
           data-testid="attach-file"
-          className="text-xs font-medium text-action hover:underline disabled:opacity-40"
+          className={touchLinkClasses('text-xs font-medium text-action hover:underline disabled:opacity-40')}
         >
           {busy ? 'Uploading…' : '+ Attach'}
         </button>

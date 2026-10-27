@@ -121,12 +121,15 @@ export function PermissionManager({ table }: { table: string }) {
                 <td className="px-3 py-2 font-medium text-ink">{role}</td>
                 {FLAGS.map((f) => (
                   <td key={f.key} className="px-3 py-2 text-center">
-                    <input
-                      type="checkbox"
-                      data-testid={`perm-${role}-${f.key}`}
-                      checked={matrix[role]?.[f.key] ?? false}
-                      onChange={() => toggle(role, f.key)}
-                    />
+                    {/* The label is the thumb-sized target on a touch screen (index.css). */}
+                    <label className="cursor-pointer justify-center">
+                      <input
+                        type="checkbox"
+                        data-testid={`perm-${role}-${f.key}`}
+                        checked={matrix[role]?.[f.key] ?? false}
+                        onChange={() => toggle(role, f.key)}
+                      />
+                    </label>
                   </td>
                 ))}
               </tr>

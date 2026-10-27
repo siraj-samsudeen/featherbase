@@ -23,7 +23,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -314,13 +314,13 @@ export function FormView({
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
           to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
-          className="hover:underline"
+          className={touchLinkClasses('hover:underline')}
         >
           {table}
         </RouterLink>
@@ -716,13 +716,17 @@ function FieldControl({
   switch (field.column_type) {
     case 'Check':
       return wrap(
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4"
-          {...common}
-        />,
+        // On a touch screen the label around the box (no text of its own, so
+        // the field's name is unchanged) is the thumb-sized target (index.css).
+        <label className="inline-flex cursor-pointer items-center">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+            className="h-4 w-4"
+            {...common}
+          />
+        </label>,
       )
     case 'Choice':
       return wrap(

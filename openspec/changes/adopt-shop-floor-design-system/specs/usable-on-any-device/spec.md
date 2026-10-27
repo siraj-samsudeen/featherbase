@@ -42,6 +42,13 @@ page zoom in.
 - **WHEN** the user taps a text box on a phone and starts typing
 - **THEN** the page stays at its size, and the box and the buttons near it are easy to hit with a thumb
 
+#### Scenario: Tap a menu row, a link or a checkbox on a phone
+
+- **WHEN** the user taps a row of the menu, a breadcrumb, a checkbox or any other control on a phone
+- **THEN** its tap area is at least 44 pixels each way, while under a mouse the screen keeps its compact size
+- **AND** only a link inside a sentence, or the small remove mark inside a chip (32 pixels, so it cannot reach the next
+  chip), is smaller
+
 ### Requirement: Amounts, counts and dates read the Indian way
 
 Amounts SHALL show in rupees with Indian digit grouping; a summary amount reads in lakh or crore, and an amount that

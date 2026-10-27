@@ -33,7 +33,7 @@ import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { useSetupOffer } from './FirstRunSetup'
-import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, useMediaQuery } from '../components/ui'
+import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
 import { Bell, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
@@ -671,10 +671,9 @@ function AdminShell() {
                 to="/featherbase/admin/home/$name"
                 params={{ name: p.row_id }}
                 data-testid={`home-page-link-${p.row_id}`}
-                className="block rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle"
+                className={touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle')}
                 activeProps={{
-                  className:
-                    'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint',
+                  className: touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint'),
                 }}
               >
                 {p.icon ? `${p.icon} ` : ''}
@@ -787,7 +786,7 @@ export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
   items: SidebarItem[]
 }) {
   if (items.length === 0) return null
-  const base = 'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm'
+  const base = touchRowClasses('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm')
   return (
     <div className="border-t border-border px-2 py-2" data-testid={testid}>
       <h2 className="flex items-center gap-1.5 px-2 pb-0.5 pt-1 text-xs font-medium text-ink-subtle" data-testid="sidebar-group-heading">
@@ -846,7 +845,7 @@ function SidebarRecentRow({
       }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
       title={shown.row || isOpaqueId(shown.label) ? shown.sub : shown.sub ? `${shown.label} — ${shown.sub}` : shown.label}
-      className="block w-full rounded-md px-2 py-1 text-left hover:bg-subtle"
+      className={touchRowClasses('flex w-full flex-col justify-center rounded-md px-2 py-1 text-left hover:bg-subtle')}
     >
       <span className="flex min-w-0 items-center gap-1.5 text-sm text-ink">
         <KindIcon kind={shown.kind} tone="grey" />

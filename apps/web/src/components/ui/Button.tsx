@@ -68,6 +68,29 @@ export function iconButtonClasses(className?: string): string {
 }
 
 /**
+ * A row in a menu or a list of links (the sidebar, a Home card, All tables):
+ * its own height under a mouse, the control height on a touch screen, so a
+ * dense list stays dense on a laptop and every row takes a thumb on a phone.
+ * The row must centre its content itself (flex, items-center or
+ * justify-center), as the call sites do.
+ */
+export function touchRowClasses(className?: string): string {
+  return cx('pointer-coarse:min-h-control', className)
+}
+
+/**
+ * A link that stands on its own in a line of text-sized links (a breadcrumb,
+ * "+ Attach"): it looks the same, and on a touch screen it is a control-sized
+ * box around its text.
+ */
+export function touchLinkClasses(className?: string): string {
+  return cx(
+    'pointer-coarse:inline-flex pointer-coarse:min-h-control pointer-coarse:min-w-control pointer-coarse:items-center',
+    className,
+  )
+}
+
+/**
  * For a small glyph that must stay inside a chip (a tag's ×): an invisible 32px
  * hit area centred on it, so a thumb can hit it without the chip growing. Kept
  * below the control size so it cannot reach a neighbouring chip; chips that

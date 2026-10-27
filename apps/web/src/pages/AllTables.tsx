@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useShellTables, type TableSummary } from '../lib/session'
-import { cardClasses } from '../components/ui'
+import { cardClasses, touchRowClasses } from '../components/ui'
 
 // #80: with the sidebar flipped to Home Pages, this page keeps EVERY table
 // reachable — it is the sidebar's "All tables" entry. Same curation as the
@@ -43,10 +43,8 @@ export function AllTablesPage() {
   }
   const appModules = [...byModule.keys()].sort()
 
-  const linkClass =
-    'block rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle'
-  const activeClass =
-    'block rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint'
+  const linkClass = touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle')
+  const activeClass = touchRowClasses('flex items-center rounded-md px-2 py-1.5 text-sm font-medium text-action bg-action-tint')
 
   return (
     <div className="max-w-3xl" data-testid="all-tables-page">
@@ -81,7 +79,7 @@ export function AllTablesPage() {
               onClick={toggleSystemGroup}
               aria-expanded={systemOpen}
               data-testid="system-group-toggle"
-              className="flex w-full items-center gap-1.5 rounded-md px-2 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle hover:text-ink-muted"
+              className={touchRowClasses('flex w-full items-center gap-1.5 rounded-md px-2 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle hover:text-ink-muted')}
             >
               <span
                 aria-hidden="true"

@@ -78,6 +78,25 @@
   }
 }
 
+/* #380 4.5: on a touch screen a checkbox or radio is a 20px box, and the label
+   around it is at least the control size, so the label is the thumb-sized
+   target. In the base layer, so a screen's own display or size classes still
+   win; a box with no label around it gets one at the call site. */
+@layer base {
+  @media (pointer: coarse) {
+    input:is([type='checkbox'], [type='radio']) {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    label:has(> input:is([type='checkbox'], [type='radio'])) {
+      display: inline-flex;
+      align-items: center;
+      min-height: var(--spacing-control);
+      min-width: var(--spacing-control);
+    }
+  }
+}
+
 /* Dark mode: the same roles, re-valued, on screen only, so a page printed in
    dark mode comes out as dark ink on white paper. */
 @media screen {

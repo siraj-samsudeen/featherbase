@@ -294,7 +294,8 @@ export function LoginPage() {
         <div className="mb-6 flex flex-col items-center gap-2">
           {logo ? (
             // Decorative: the name under it already says whose page this is.
-            <img src={logo} alt="" data-testid="login-logo" className="max-h-16 max-w-48 object-contain" />
+            // A logo that will not load (a deleted file) falls back to the mark.
+            <img src={logo} alt="" data-testid="login-logo" className="max-h-16 max-w-48 object-contain" onError={() => setLogo(null)} />
           ) : (
             <span data-testid="login-mark">
               <Logo className="h-11 w-11 rounded-xl shadow-sm" />
@@ -348,7 +349,7 @@ export function LoginPage() {
               <button
                 type="button"
                 data-testid="refused-other-ways"
-                className="inline-flex min-h-10 items-center text-sm text-action hover:underline"
+                className="inline-flex min-h-control items-center text-sm text-action hover:underline"
                 onClick={() => switchMode('password')}
               >
                 Other ways to sign in
@@ -513,7 +514,7 @@ export function LoginPage() {
             {!forgot ? (
               <button
                 type="button"
-                className="text-sm text-action hover:underline"
+                className="inline-flex min-h-control items-center text-sm text-action hover:underline"
                 data-testid="forgot-password"
                 onClick={() => setForgot(true)}
               >

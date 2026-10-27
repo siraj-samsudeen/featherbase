@@ -48,7 +48,7 @@ describe('the instance logo on the sign-in page', () => {
   test('a private file, or anything that is not a file this instance serves, is never named before sign-in', async ({ admin, api }) => {
     const priv = await uploadLogo(admin, { is_private: '1' })
     try {
-      for (const logo of [priv, 'https://elsewhere.example/logo.png', '//elsewhere.example/logo.png', '/files/../private/files/x.png', 'javascript:alert(1)']) {
+      for (const logo of [priv, 'https://elsewhere.example/logo.png', '//elsewhere.example/logo.png', '/files/../private/files/x.png', '/files/a/b.png', '/files/x.png?y', '/files/a\\b.png', '/files/', 'javascript:alert(1)', '']) {
         await admin.post('/api/save_row', { table: 'System Settings', row: { logo } })
         expect((await brand(api)).logo, logo).toBeNull()
       }

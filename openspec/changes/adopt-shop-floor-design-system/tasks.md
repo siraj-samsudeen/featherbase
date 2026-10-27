@@ -41,5 +41,5 @@
 - [x] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
 - [ ] 4.3 Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).
 - [ ] 4.4 A tab bar for staff roles on phones.
-- [ ] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
+- [x] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
   check that measures controls at phone width.

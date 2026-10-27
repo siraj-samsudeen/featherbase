@@ -237,8 +237,8 @@ describe('the "We couldn\'t sign you in" panel (#474)', () => {
     const retry = screen.getByTestId('refused-google-retry')
     // The form's buttons are sized `w-full justify-center py-2`.
     for (const el of [stylehr, retry]) expect(el.className).toMatch(/(^|\s)py-2(\s|$)/)
-    // At least 40px tall to tap, though it still looks like a link.
-    expect(screen.getByTestId('refused-other-ways').className).toMatch(/(^|\s)min-h-10(\s|$)/)
+    // A control's height to tap (48px on a touch screen, #380 4.5), though it still looks like a link.
+    expect(screen.getByTestId('refused-other-ways').className).toMatch(/(^|\s)min-h-control(\s|$)/)
     await userEvent.click(screen.getByTestId('refused-other-ways'))
     expect(screen.getByTestId('login-submit').className).toMatch(/(^|\s)py-2(\s|$)/)
   })
@@ -284,6 +284,9 @@ describe('the instance logo', () => {
     const name = screen.getByRole('heading', { level: 1, name: 'Corner Store' })
     expect(logo.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByTestId('login-mark')).not.toBeInTheDocument()
+    // A logo that will not load falls back to the mark.
+    fireEvent.error(logo)
+    expect(await screen.findByTestId('login-mark')).toBeInTheDocument()
   })
 
   test('without a logo the page shows the Featherbase mark', async () => {

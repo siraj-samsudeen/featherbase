@@ -11,7 +11,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
-import { Button, DataCards, NARROW_QUERY, Select, buttonClasses, cardClasses, inputClasses, pillClasses, useMediaQuery, type DataColumn } from './ui'
+import { Button, DataCards, NARROW_QUERY, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
 import { ArrowDown, ArrowUp } from './ui/icons'
 import { fmtCount } from '../lib/inr'
 
@@ -745,16 +745,18 @@ export function ListView({
                   source has neither (EDS-13: absent, not disabled). */}
               {!isRowsReadOnly(meta.data) && (
                 <th className="w-8 border-b border-border px-3 py-2">
-                  <input
-                    type="checkbox"
-                    data-testid="select-all"
-                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.row_id)))}
-                    onChange={(e) =>
-                      setSelected(
-                        e.target.checked ? new Set(rows.map((r) => String(r.row_id))) : new Set(),
-                      )
-                    }
-                  />
+                  <label className="cursor-pointer">
+                    <input
+                      type="checkbox"
+                      data-testid="select-all"
+                      checked={rows.length > 0 && rows.every((r) => selected.has(String(r.row_id)))}
+                      onChange={(e) =>
+                        setSelected(
+                          e.target.checked ? new Set(rows.map((r) => String(r.row_id))) : new Set(),
+                        )
+                      }
+                    />
+                  </label>
                 </th>
               )}
               {expandable && <th className="w-7 border-b border-border" />}
@@ -881,12 +883,14 @@ function ListRow({
         )}
         {selectable && (
           <td className="px-3 py-2">
-            <input
-              type="checkbox"
-              data-testid="row-check"
-              checked={selected}
-              onChange={onToggleSelect}
-            />
+            <label className="cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="row-check"
+                checked={selected}
+                onChange={onToggleSelect}
+              />
+            </label>
           </td>
         )}
         {columns.map((col, i) => (
@@ -933,9 +937,9 @@ function ListCell({
         to="/featherbase/admin/$table/$name"
         search={{ prefill: undefined }}
         params={{ table, name: String(row.row_id) }}
-        className={`font-medium text-action hover:underline ${
+        className={touchLinkClasses(`font-medium text-action hover:underline ${
           col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-        }`}
+        }`)}
       >
         {col.column_name === 'row_id' && isPrincipalTable(table) ? (
           <PrincipalName id={String(row.row_id)} />
@@ -1445,7 +1449,7 @@ function RecentStrip({
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
-          className="rounded-full border border-border-control bg-surface px-2.5 py-0.5 text-xs text-ink-muted hover:border-action hover:text-action"
+          className={touchRowClasses('inline-flex items-center rounded-full border border-border-control bg-surface px-2.5 py-0.5 text-xs text-ink-muted hover:border-action hover:text-action')}
         >
           <RowTitle table={table} rowId={r.label} />
         </Link>
@@ -1457,7 +1461,7 @@ function RecentStrip({
           onClick={() => onApply(parsed)}
           data-testid="recent-strip-view"
           title={entry.sub}
-          className="max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80"
+          className={touchRowClasses('max-w-72 truncate rounded-full bg-action-tint px-2.5 py-0.5 text-xs font-medium text-action hover:opacity-80')}
         >
           {entry.sub}
         </button>
@@ -1712,7 +1716,7 @@ function ExploreSplitButton({ table }: { table: string }) {
           onClick={() => setOpen((o) => !o)}
           aria-label="Explore with a chain"
           aria-expanded={open}
-          className={buttonClasses({ className: 'rounded-l-none border-l-0 !px-1.5' })}
+          className={buttonClasses({ className: 'rounded-l-none border-l-0 pointer-fine:px-1.5 pointer-coarse:min-w-control' })}
           data-testid="explore-split-toggle"
         >
           ▾
