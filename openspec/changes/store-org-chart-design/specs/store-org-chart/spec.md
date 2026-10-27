@@ -18,9 +18,15 @@ never shown.
 
 A section SHALL belong to one store and SHALL have a name that is unique within that
 store. It SHALL have an optional floor, which must be one of that store's floors, and a
-section type of `selling` or `support`. The same name in two stores SHALL mean two
-different sections. Moving a section to another floor SHALL be one edit to its floor,
-which keeps its job assignments and history attached.
+section type of `selling` or `support`, and a `team_leaders_allowed` number that defaults to
+1. The same name in two stores SHALL mean two different sections. Moving a section to
+another floor SHALL be one edit to its floor, which keeps its job assignments and history
+attached. A section SHALL NOT be split into "virtual" sections to give each of its Team
+Leaders one of their own: when two Team Leaders genuinely share a section, the section stays
+whole and allows 2.
+
+*(Recommended by the instance owner's manager thread, not yet confirmed by the instance
+owner: the per-section `team_leaders_allowed` number.)*
 
 #### Scenario: A second section with the same name is refused
 
@@ -118,8 +124,8 @@ back-dated assignments SHALL be allowed, and the edit history SHALL keep every c
 
 An acting job assignment SHALL be an ordinary dated row with `acting` set. The absent
 person's assignment SHALL stay open. A person's coverage SHALL be the union of all their
-current assignments, acting included. The rules that allow one Team Leader per section
-and one Store Manager per store SHALL ignore acting rows.
+current assignments, acting included. The rules that limit a section's Team Leaders to its
+`team_leaders_allowed` number, and a store to one Store Manager, SHALL ignore acting rows.
 
 #### Scenario: A Floor Manager acts as Store Manager
 
@@ -197,7 +203,7 @@ coverage SHALL be stored in a table.
 Featherbase SHALL list each store's org-chart conflicts, each with its reason. A
 conflict SHALL NOT widen or narrow anyone's coverage. The conflicts SHALL include:
 
-- a section with more than one non-acting Team Leader;
+- a section with more non-acting Team Leaders than its `team_leaders_allowed` number;
 - a Team Leader on more than one section;
 - a Team Leader, Department Manager or Floor Manager with no reporting line;
 - a section with no Team Leader;
@@ -208,14 +214,31 @@ conflict SHALL NOT widen or narrow anyone's coverage. The conflicts SHALL includ
   section's floor (the fix is to move the subcategory, or to split the area into a
   separately named section).
 
-One Team Leader per section, and one section per Team Leader, SHALL be enforced by the
-database only once a store's list is empty and the instance owner switches the rule on.
+The Team Leader limit per section, and one section per Team Leader, SHALL be enforced by
+the database only once a store's list is empty and the instance owner switches the rule on.
 
-#### Scenario: Two Team Leaders on one section
+When a section genuinely has two Team Leaders, both SHALL cover the whole section, and each
+Staff member SHALL report to one of them.
 
-- **WHEN** P-108 and P-109 both hold non-acting Team Leader rows on LKS "Tops"
-- **THEN** LKS's conflict list shows "Tops has two Team Leaders: P-108, P-109"
+*(Pending the business owner: if Team Leaders carry targets or incentives, how a two-Team-
+Leader section's sales and target are split between them: both get the whole section,
+split equally, or split by the staff who report to each.)*
+
+#### Scenario: More Team Leaders than the section allows
+
+- **WHEN** P-108 and P-109 both hold non-acting Team Leader rows on LKS "Tops", and
+  "Tops" allows 1
+- **THEN** LKS's conflict list shows "Tops has 2 Team Leaders, allows 1: P-108, P-109"
 - **AND** both still cover "Tops"
+
+#### Scenario: A section that genuinely has two Team Leaders
+
+- **WHEN** LKS "Sarees" allows 2, and P-110 and P-111 both hold non-acting Team Leader
+  rows on it
+- **THEN** no conflict is raised, both cover "Sarees", and each Sarees Staff member reports
+  to one of them
+- **WHEN** a third person, P-112, is left on "Sarees" after moving to another section
+- **THEN** the conflict list shows "Sarees has 3 Team Leaders, allows 2"
 
 #### Scenario: A Department Manager under the wrong Floor Manager
 

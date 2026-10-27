@@ -122,9 +122,22 @@ only where a Team Leader or Staff member holds a section.
   `confirmation` field marks a place as `assumed` while its store is "not live yet".
 
 ### D7. Allow and flag, then enforce
-- The one-owner rules (one Team Leader per section, one section per Team Leader) are
-  listed as conflicts while the data is being cleaned. The database enforces them once a
-  store's list is empty and the instance owner switches the rule on.
+- The one-owner rules (a section's Team Leaders up to its `team_leaders_allowed` number,
+  and one section per Team Leader) are listed as conflicts while the data is being
+  cleaned. The database enforces them once a store's list is empty and the instance owner
+  switches the rule on.
+- **Two Team Leaders on one section can be genuine** (instance owner, after meeting the
+  business owner, 27-Oct-2026). A subcategory can be big enough to fill a section that two
+  Team Leaders share, with no clean division of the merchandise between them. So:
+  - the section is not split into virtual sections, because the Team Leaders don't
+    divide the merchandise;
+  - there are two `job_assignment` rows on the same section, and both cover it;
+  - each Staff member reports to one of the two.
+- **`team_leaders_allowed` (default 1) on `section`.** It is set to 2 through
+  maker-and-checker where the store confirms it, so a Team Leader left on an old section is
+  still flagged elsewhere. *Recommended, not yet confirmed by the instance owner.*
+  - *Rejected:* dropping the rule altogether, which would hide real errors.
+  - *Rejected:* virtual sections.
 - The one-store-at-a-time rule, the job-to-floor/section shape and non-overlapping
   placement are enforced from the start, because clean rows can always satisfy them.
 
@@ -204,3 +217,8 @@ back to the old sheets, which stay read-only until every store is live.
    against.
 4. Who approves a Store Manager's placement change: the Category Head, the Cluster
    Manager, or parallel store-side and category-side approvals.
+5. If Team Leaders carry targets or incentives, how is a two-Team-Leader section's sales
+   and target split between them: both get the whole section, split equally, or split by
+   the staff who report to each?
+
+**For the instance owner to confirm:** the per-section `team_leaders_allowed` number (D7).
