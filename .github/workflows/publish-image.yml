@@ -4,6 +4,9 @@
 #   ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>
 #   ghcr.io/siraj-samsudeen/featherbase-server:main   (follows main's tip; never pin it)
 #
+# GHCR creates the package private; a person makes it public once, after the
+# first publish (docs/DEPLOY.md, "Building a client image"). This token can't.
+#
 # It is the `platform` target of apps/server/Dockerfile: the server, the built
 # SPA and the start command, with no app and no FEATHERBASE_APP_PATHS. A client
 # image starts `FROM` a SHA tag, copies its built app and sets

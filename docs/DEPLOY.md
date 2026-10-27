@@ -193,7 +193,7 @@ then irrelevant. The server-owned prefixes (`/api`, `/files`,
 A client app lives in the client's own repository (ADR 0013), so it reaches the
 server in a **client image built on the platform image**. This repository
 publishes that platform image to the GitHub Container Registry as a public
-package:
+package (made public by hand once; see below):
 
 - `ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>`: one tag per
   commit on `main`, published only after that commit's `test` workflow passed
@@ -202,6 +202,20 @@ package:
   moved to a commit's image only while that commit is still main's tip, so it
   never goes back to an older commit, but it can lag a merge or two behind. It
   moves, so never deploy from it.
+
+**Once, after the first publish:** GHCR creates a new package as private. A
+person must make it public, because neither the workflow nor its
+`GITHUB_TOKEN` can change a package's visibility. On the package page, open
+Package settings → Change visibility → Public. Then check that a pull works
+without credentials:
+
+```sh
+docker logout ghcr.io
+docker pull ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+```
+
+Until then, a client build fails at its `FROM` line with an authentication
+error (`unauthorized` or `denied`) from `ghcr.io`, even though the tag exists.
 
 It is the Dockerfile's `platform` target: the server, the built SPA and the
 start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its
