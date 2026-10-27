@@ -43,6 +43,8 @@ test('the way back to the sheet overview closes once a Table has been imported (
   // imported", so the way back is gone and the stepper says why.
   expect(screen.queryByTestId('iw-back-to-overview')).not.toBeInTheDocument()
   expect(screen.getByTestId('iw-sheets-fixed')).toHaveTextContent('Sheets are fixed once a Table is imported.')
+  expect(screen.getByTestId('iw-import')).toHaveTextContent('Import the remaining 1 Table')
+  expect(screen.getByTestId('iw-import')).not.toHaveTextContent('1 Tables')
   // The stepper itself still works: it walked on to the Table still waiting,
   // and steps back to the one that landed.
   await waitFor(() => expect(screen.getByTestId('iw-step-of')).toHaveTextContent('Table 2 of 2'))
@@ -73,6 +75,8 @@ test('a different file dropped onto saved work is held back and asked about (#32
   sessionStorage.removeItem(IMPORT_DATA_KEY)
   await renderApp('/featherbase/admin/import', admin)
   await screen.findByTestId('iw-resume', {}, { timeout: 8000 })
+  // The live region is there before anything goes into it, so the warning is read out.
+  expect(document.querySelector('[aria-live="polite"]')).toBeInTheDocument()
 
   // A different file: the saved work is kept and the user is asked.
   await drop(uploadWorkbook(OTHER, 'other.xlsx'))
@@ -80,7 +84,10 @@ test('a different file dropped onto saved work is held back and asked about (#32
   // Announced, not just painted.
   expect(within(warning).getByRole('status')).toBeInTheDocument()
   expect(warning).toHaveTextContent("other.xlsx isn't the file your saved work is for.")
-  expect(warning).toHaveTextContent('Your work on two.xlsx (2 Tables planned, 1 already imported) is still saved.')
+  expect(warning).toHaveTextContent(
+    "Your work on two.xlsx (2 Tables planned, 1 already imported) is still saved. Its sheets, headings or row counts don't match it.",
+  )
+  expect(warning.parentElement).toHaveAttribute('aria-live', 'polite')
   expect(screen.getByTestId('iw-resume')).toHaveTextContent('Your work on two.xlsx is saved.')
   expect(screen.getByTestId('iw-file-name')).toHaveTextContent('Drop two.xlsx again to carry on')
   expect(screen.queryByTestId('iw-ov-master')).not.toBeInTheDocument()
@@ -89,6 +96,13 @@ test('a different file dropped onto saved work is held back and asked about (#32
   await user.click(screen.getByTestId('iw-mismatch-keep'))
   expect(screen.queryByTestId('iw-mismatch')).not.toBeInTheDocument()
   expect(screen.getByTestId('iw-resume')).toBeInTheDocument()
+
+  // A changed copy under the same name is called a copy, not "two.xlsx isn't two.xlsx".
+  await drop(uploadWorkbook({ 'Ikw A': [['Ikw Aisle Renamed'], ['1']], 'Ikw B': [['Ikw Bay'], ['2']] }, 'two.xlsx'))
+  expect(await screen.findByTestId('iw-mismatch', {}, { timeout: 8000 })).toHaveTextContent(
+    "This copy of two.xlsx isn't the one your saved work is for.",
+  )
+  await user.click(screen.getByTestId('iw-mismatch-keep'))
 
   // Dropping the right file while the warning is up resumes as before.
   await drop(uploadWorkbook(OTHER, 'other.xlsx'))

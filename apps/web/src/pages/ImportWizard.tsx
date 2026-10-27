@@ -1611,39 +1611,49 @@ export function ImportWizard() {
 
       {/* #326: the file dropped isn't the saved work's file. Replacing that
           work is the user's call, made here, never a side effect of a drop. */}
-      {needsFile && mismatch && (
-        <div className="mb-3" data-testid="iw-mismatch">
-          <Notice tone="caution">
-            <strong>{mismatch.name} isn't the file your saved work is for.</strong>{' '}
-            Your work on {needsFile.fileName} (
-            {needsFile.plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null).length} Tables
-            planned
-            {needsFile.plans.some((p) => p.result) &&
-              `, ${needsFile.plans.filter((p) => p.result).length} already imported`}
-            ) is still saved. {mismatch.name}'s sheets, headings or row counts don't match it.
-            <span className="mt-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={buttonClasses({ variant: 'primary', className: 'py-1' })}
-                data-testid="iw-mismatch-replace"
-                onClick={() => {
-                  const file = mismatch
-                  startOver()
-                  void loadFile(file, null)
-                }}
-              >
-                Import {mismatch.name} instead
-              </button>
-              <button
-                type="button"
-                className={buttonClasses({ className: 'py-1' })}
-                data-testid="iw-mismatch-keep"
-                onClick={() => setMismatch(null)}
-              >
-                Keep my saved work
-              </button>
-            </span>
-          </Notice>
+      {/* The live region is on the page before the warning goes into it:
+          a status that arrives together with its text is often not read out. */}
+      {needsFile && (
+        <div aria-live="polite">
+          {mismatch && (
+            <div className="mb-3" data-testid="iw-mismatch">
+              <Notice tone="caution">
+                <strong>
+                  {mismatch.name === needsFile.fileName
+                    ? `This copy of ${mismatch.name} isn't the one your saved work is for.`
+                    : `${mismatch.name} isn't the file your saved work is for.`}
+                </strong>{' '}
+                Your work on {needsFile.fileName} (
+                {needsFile.plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null).length} Tables
+                planned
+                {needsFile.plans.some((p) => p.result) &&
+                  `, ${needsFile.plans.filter((p) => p.result).length} already imported`}
+                ) is still saved. Its sheets, headings or row counts don't match it.
+                <span className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={buttonClasses({ variant: 'primary', className: 'py-1' })}
+                    data-testid="iw-mismatch-replace"
+                    onClick={() => {
+                      const file = mismatch
+                      startOver()
+                      void loadFile(file, null)
+                    }}
+                  >
+                    Import {mismatch.name} instead
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonClasses({ className: 'py-1' })}
+                    data-testid="iw-mismatch-keep"
+                    onClick={() => setMismatch(null)}
+                  >
+                    Keep my saved work
+                  </button>
+                </span>
+              </Notice>
+            </div>
+          )}
         </div>
       )}
 
@@ -2703,7 +2713,10 @@ export function ImportWizard() {
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${fmtCount(blockingProblems)} bad rows)`
               : targetIndexes.length > 1
-                ? `Import the remaining ${targetIndexes.filter((i) => !plans[i]?.result).length} Tables`
+                ? (() => {
+                    const left = targetIndexes.filter((i) => !plans[i]?.result).length
+                    return `Import the remaining ${left} Table${left === 1 ? '' : 's'}`
+                  })()
                 : `Import ${fmtCount(
                     sheets.reduce(
                       (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
