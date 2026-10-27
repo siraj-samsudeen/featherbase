@@ -7,7 +7,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { sql } from './db'
-import type { PersonScope } from 'shared'
+import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError } from './errors'
 import { logAccess } from './audit'
@@ -424,11 +424,16 @@ export function datasetWhere(dataset: DatasetDeclaration, places: PersonScope | 
     return { column: key, values: list.map(String) }
   })
   const any = (places ?? []).flatMap((place) => {
-    const named = Object.entries(place.filters)
-    if (named.some(([name]) => !Object.hasOwn(dataset.filters, name))) return []
-    return [named.map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
+    if (unappliableKeys(dataset, place).length) return []
+    return [Object.entries(place.filters).map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
   })
   return { any, all }
+}
+
+/** #667: the filter keys a place names that the dataset maps to no column,
+ *  sorted. Any one drops the whole place from the dataset (fail closed). */
+export function unappliableKeys(dataset: DatasetDeclaration, place: ScopePlace): string[] {
+  return Object.keys(place.filters).filter((name) => !Object.hasOwn(dataset.filters, name)).sort()
 }
 
 // The same where, over the snapshot's stored rows.

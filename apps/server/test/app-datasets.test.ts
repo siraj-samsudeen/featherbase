@@ -964,3 +964,79 @@ describe('the refresh job', () => {
     }
   })
 })
+
+// #667: a place naming a filter a dataset cannot apply still adds no rows
+// (fail closed), but the drop is visible: a System Manager can ask why a
+// person sees nothing, and Instance health names what was dropped.
+describe('a place a dataset cannot apply', () => {
+  const FLOOR_PLACES = [{ label: 'North floor 1', filters: { store: ['N1'], floor: ['1'] } }, { label: 'South', filters: { store: ['S1'] } }]
+  async function withPlaces<T>(places: unknown, work: () => Promise<T>): Promise<T> {
+    const roster = await fixtureModule('placeroster', provider)
+    roster.faults.result = places
+    try { return await work() } finally { delete roster.faults.result }
+  }
+  interface ScopeExplanation {
+    provider: { app: string; title: string } | null
+    problem: string | null
+    places: { label: string; filters: string[] }[]
+    datasets: { name: string; applied: string[]; dropped: { place: string; keys: string[] }[] }[]
+  }
+  const scopeOf = (client: TestClient, person: string, app = 'datasetproof') =>
+    client.get<ScopeExplanation>(`/api/people/${encodeURIComponent(person)}/scope?app=${app}`)
+
+  test('a System Manager sees which places each dataset dropped, and the keys it could not apply', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const explained = await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(explained.datasets.find(d => d.name === 'sales')).toEqual({
+      name: 'sales', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] })
+  })
+
+  test.for(['the person being explained', 'another person without the System Manager role'] as const)(
+    'is refused to %s', async (who, { admin, createUser }) => {
+      const { reader } = await setup(admin, createUser)
+      const asker = who === 'the person being explained' ? reader : await createUser({ email: 'other@example.test', roles: ['Dataset Reader'] })
+      await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(asker, reader.user!), { status: 403 }))
+    })
+
+  test.for([
+    ['an empty scope', [], 'scope'],
+    ['a scope of the wrong shape', [{ label: 'North' }], 'provider'],
+  ] as const)('a provider answering %s is named as the reason, with no places', async ([, answer, reason], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const explained = await withPlaces(answer, () => scopeOf(admin, reader.user!))
+    expect({ problem: explained.problem, places: explained.places }).toEqual({ problem: reason, places: [] })
+  })
+
+  test.for([
+    ['a person who does not exist', 'psn_nobody', 'datasetproof'],
+    ['an app that is not installed', undefined, 'elsewhere'],
+  ] as const)('answers not found for %s', async ([, person, app], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
+  })
+
+  test('the Access Log records which System Manager looked at whose places, for which app', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    const rows = await sql`select "user", ref_table, reference_name, method from access_log where operation = 'view_person_scope'`
+    expect(rows.map(r => ({ ...r }))).toEqual([{ user: admin.user, ref_table: 'Person', reference_name: reader.user, method: 'datasetproof' }])
+  })
+
+  // Built, so there are figures it could leak; the whole answer is pinned.
+  test('the explanation holds the provider, place labels and filter keys, and nothing else', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    const explained = await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(explained).toEqual({
+      provider: { app: 'placeroster', title: 'Place roster proof' },
+      problem: null,
+      places: [{ label: 'North floor 1', filters: ['floor', 'store'] }, { label: 'South', filters: ['store'] }],
+      datasets: [
+        { name: 'sales', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] },
+        { name: 'accounts', applied: [], dropped: [
+          { place: 'North floor 1', keys: ['floor', 'store'] }, { place: 'South', keys: ['store'] }] },
+        { name: 'unplugged', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] },
+      ],
+    })
+  })
+})

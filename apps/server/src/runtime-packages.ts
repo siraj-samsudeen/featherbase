@@ -198,7 +198,7 @@ async function assertOnlyScopeProvider(pkg: RuntimePackage) {
 // #559: the instance's one scope provider: the enabled, active app whose
 // installed manifest declares it, running its exact installed artifact. None,
 // or more than one, is no provider at all.
-async function findScopeProvider(): Promise<ScopeProviderBinding | undefined> {
+export async function findScopeProvider(): Promise<ScopeProviderBinding | undefined> {
   const rows = await sql`select * from installed_app
     where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider'`
   if (rows.length !== 1) return undefined
@@ -608,6 +608,14 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
     }
   }
   return lines
+}
+
+/** #667: an installed app's declared datasets, or undefined when no such app
+ *  is installed. */
+export async function installedAppDatasets(name: string) {
+  const [row] = await sql`select 1 from installed_app where name = ${name} and runtime_package`
+  const pkg = packages.get(name)
+  return row && pkg ? pkg.manifest.datasets ?? [] : undefined
 }
 
 /** A discovered app package's title, for an address that opens it (#488). */
