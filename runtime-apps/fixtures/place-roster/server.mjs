@@ -19,11 +19,16 @@ export const scopeProviders = {
     const rows = await documents.list('placeroster.position', {
       filters: [['person', '=', person.id]], fields: ['place', 'store', 'section', 'basis', 'assumed'], order_by: 'place asc',
     })
-    return rows.map(row => ({
-      label: row.place,
-      filters: { store: [row.store], section: [row.section] },
-      ...(row.basis ? { basis: row.basis } : {}),
-      confirmation: { section: { [row.section]: row.assumed ? 'assumed' : 'confirmed' } },
-    }))
+    // Rows with one place label make one place covering all their values.
+    const places = new Map()
+    for (const row of rows) {
+      const place = places.get(row.place) ?? { label: row.place, filters: { store: [], section: [] }, confirmation: { section: {} } }
+      if (!place.filters.store.includes(row.store)) place.filters.store.push(row.store)
+      if (!place.filters.section.includes(row.section)) place.filters.section.push(row.section)
+      if (row.basis && !place.basis) place.basis = row.basis
+      place.confirmation.section[row.section] = row.assumed ? 'assumed' : 'confirmed'
+      places.set(row.place, place)
+    }
+    return [...places.values()]
   },
 }

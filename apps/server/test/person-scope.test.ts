@@ -250,6 +250,52 @@ describe('a person_scope action', () => {
     await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
   })
 
+  // Codex round 1: a replay returns the original cached result, so it must be
+  // authorized by the scope that result was computed under, not only by the
+  // scope the caller has now.
+  test('a replay after one of the places it covered was revoked is refused', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    await position(admin, user.user!, 'South / Mens', 'S1', 'mens')
+    const body = { idempotencyKey: 'place-partial', payload: { effect: 'effect-partial' } }
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North / Kids,South / Mens' } })
+    await sql`delete from placeroster.position where person = ${user.user} and place = 'South / Mens'`
+    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    expect(await refusals(user)).toEqual(['scopeproof.place:scope'])
+  })
+
+  test('a replay after a place kept its label but lost a filter value is refused', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    await position(admin, user.user!, 'North', 'N1', 'kids', { row_id: 'north-kids' })
+    await position(admin, user.user!, 'North', 'N1', 'baby', { row_id: 'north-baby' })
+    const body = { idempotencyKey: 'place-shrunk', payload: { effect: 'effect-shrunk' } }
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North' } })
+    await sql`delete from placeroster.position where row_id = 'north-baby'`
+    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    expect(await refusals(user)).toEqual(['scopeproof.place:scope'])
+  })
+
+  test('a replay whose original scope is still covered, even by a wider scope, is answered from the record', async ({ admin, createUser }) => {
+    const { user, app } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    await position(admin, user.user!, 'North', 'N1', 'kids', { row_id: 'north-kids' })
+    const body = { idempotencyKey: 'place-wider', payload: { effect: 'effect-wider' } }
+    await user.post(action, body)
+    await position(admin, user.user!, 'North', 'N1', 'baby', { row_id: 'north-baby' })
+    await position(admin, user.user!, 'South', 'S1', 'mens')
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North' } })
+    expect(app.calls.handler).toBe(1)
+  })
+
+  test('a replay whose record does not hold the places it ran under is refused', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    const body = { idempotencyKey: 'place-unrecorded', payload: { effect: 'effect-unrecorded' } }
+    await user.post(action, body)
+    await sql`update runtime_action_result set "authorization" = "authorization" - 'places' where idempotency_key = 'place-unrecorded'`
+    await expect(user.post(action, body)).rejects.toMatchObject({ status: 403 })
+    expect(await refusals(user)).toEqual(['scopeproof.place:replay'])
+  })
+
   test('a reader without an action role is refused', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser, { roles: ['Scope Reader'] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')

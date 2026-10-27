@@ -8,7 +8,8 @@ import { getMeta } from './meta'
 import { tableRelation, type TableDef } from './table-engine'
 import { AppError } from './errors'
 import { logAccess } from './audit'
-import { narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
+import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
+import { personScopeSchema } from 'shared'
 
 const name = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const text = z.string().min(1).refine(s => s.trim().length > 0)
@@ -227,8 +228,14 @@ export function withAppAuthorization<T>(request: AccessRequest,
               if (metadata.storeTable !== policy.storeTable) refuseAppAccess('replay')
               metadata.storeCodes = codes(metadata.storeCodes)
             } else if (metadata.storeTable || metadata.storeCodes.length) refuseAppAccess('replay')
-            // A replay is authorized by the caller's scope now, never by the stored one.
-            if (places) metadata.places = places
+            // A replay returns the stored result, which was computed under the
+            // stored places: the caller's scope now must still cover all of them.
+            if (places) {
+              const original = personScopeSchema.safeParse(parsed.data.places)
+              if (!original.success || !original.data.length) refuseAppAccess('replay')
+              if (!coversPersonScope(original.data, places)) refuseAppAccess('scope')
+              metadata.places = freezeJson(original.data)
+            }
           }
         } else {
           try {
