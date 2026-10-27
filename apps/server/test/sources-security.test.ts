@@ -702,6 +702,25 @@ describe('a bound Table keeps its binding', () => {
     )
   })
 
+  // SPEC: owner decision 27-Oct-2026 on #566 — the link can't be checked, so the save is refused.
+  test('a local row that refers to a bound row is refused while its source is down', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    const live = process.env[EXT_URL_ENV]
+    process.env[EXT_URL_ENV] = 'postgres://nobody:nothing@127.0.0.1:59999/nope'
+    invalidateSources()
+    try {
+      await expectApiError(
+        admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } }),
+        { status: 502, type: 'DataSourceError' },
+      )
+      expect(await sql`select 1 from ${sql(await tableRelation('Sec Holder'))}`).toHaveLength(0)
+    } finally {
+      process.env[EXT_URL_ENV] = live
+      invalidateSources()
+    }
+  })
+
   test('a sub-table row that refers to a missing bound row names its own field', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder Line', kind: 'sub_table', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
