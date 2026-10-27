@@ -242,6 +242,9 @@ export async function applyWorkflowAction(
   const target = wf.states.find((s) => s.state === transition.next_state)
   const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
 
+  // The whole row before the move, for the email rules below.
+  const before = await getDoc(table, name)
+
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
   const relation = await tableRelation(table)
@@ -280,7 +283,9 @@ export async function applyWorkflowAction(
   // A transition is a save of the state field: conditional on_save Email
   // Rules (e.g. "email the requester when status becomes Resolved") fire on
   // it, and list subscribers get the update over realtime.
-  await evaluateEmailRules('on_save', table, result, row)
+  // The whole row, as on any save: a rule may match on, or address from, a
+  // column the acting user cannot see; it strips those from what it sends.
+  await evaluateEmailRules('on_save', table, await getDoc(table, name), before)
   publishDocEvent(table, name, 'updated')
   return result
 }

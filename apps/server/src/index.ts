@@ -12,6 +12,7 @@ import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
+import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
@@ -1549,7 +1550,7 @@ app.post('/api/save_row', async (c) => {
   const hadRowId = Boolean(body.row[ROW_KEY])
   const saved = await saveDoc(body.table, body.row, who(c))
   publishDocEvent(body.table, String(saved.row_id), hadRowId ? 'updated' : 'created')
-  return c.json(saved, 201)
+  return c.json(await rowForCaller(body.table, saved, who(c)), 201)
 })
 
 // PRN-003: server-side PDF of any document / print format.
@@ -2161,7 +2162,7 @@ app.post('/api/table/:table', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   const saved = await saveDoc(table, doc, user.row_id, 'insert')
   publishDocEvent(table, String(saved.row_id), 'created')
-  return c.json(saved, 201)
+  return c.json(await rowForCaller(table, saved, user.row_id), 201)
 })
 
 app.get('/api/table/:table/:name', async (c) => {
@@ -2207,7 +2208,7 @@ app.patch('/api/table/:table/:name', async (c) => {
   doc.row_id = name
   const saved = await saveDoc(table, doc, user.row_id)
   publishDocEvent(table, String(saved.row_id), 'updated')
-  return c.json(saved)
+  return c.json(await rowForCaller(table, saved, user.row_id))
 })
 
 app.delete('/api/table/:table/:name', async (c) => {
