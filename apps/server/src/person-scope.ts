@@ -1,5 +1,75 @@
 import { z } from 'zod'
-import type { PersonScope, ScopePlace } from 'shared'
+import { personScopeSchema, type AppScopeProvider, type AppScopeProviderContext, type PersonScope, type ScopePlace } from 'shared'
+import { sql } from './db'
+import { getMeta } from './meta'
+import { getDoc } from './document'
+import { getList } from './query'
+
+/** The instance's one scope-providing app, bound by runtime-packages. */
+export interface ScopeProviderBinding {
+  app: string
+  tables: readonly string[]
+  provide: AppScopeProvider
+}
+
+/** Why a person has no usable scope. Every reason means no access. */
+export class NoPersonScope extends Error {
+  constructor(readonly reason: 'configuration' | 'provider' | 'scope') { super('No person scope') }
+}
+
+/** Ask the provider for `user`'s places and hold the answer to the scope
+ *  shape. No provider, a provider that throws or reads outside what it
+ *  declared, an invalid shape and an empty scope all throw NoPersonScope:
+ *  an empty scope is never read as everything, for an administrator too. */
+export async function resolvePersonScope(user: string, binding: ScopeProviderBinding | undefined): Promise<PersonScope> {
+  if (!binding) throw new NoPersonScope('configuration')
+  const [person] = await sql`select row_id, email from person where row_id = ${user}`
+  let answer: unknown
+  try {
+    answer = await withScopeReads(binding, async documents =>
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null }), documents })))
+  } catch { throw new NoPersonScope('provider') }
+  const parsed = personScopeSchema.safeParse(answer)
+  if (!parsed.success) throw new NoPersonScope('provider')
+  if (!parsed.data.length) throw new NoPersonScope('scope')
+  return parsed.data
+}
+
+// The provider reads as the platform, not as the person (a manager needs no
+// grant on the roster), so its reach is the declaration: only the Tables it
+// named, and only those marked as deciding scope. Reads are awaited one at a
+// time and end when the provider returns; any failure fails the whole scope.
+async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: AppScopeProviderContext['documents']) => Promise<T>): Promise<T> {
+  let open = true
+  let pending: Promise<unknown> | undefined
+  let failed = false
+  async function read<R>(table: string, work: () => Promise<R>): Promise<R> {
+    if (!open || pending) { failed = true; throw new Error('Scope provider reads must be awaited one at a time') }
+    const run = (async () => {
+      if (!binding.tables.includes(table)) throw new Error('Scope provider read an undeclared Table')
+      const meta = await getMeta(table)
+      if (!meta.decides_scope || meta.system || meta.data_source || meta.kind !== 'table') throw new Error('Scope provider read a Table not marked as deciding scope')
+      return JSON.parse(JSON.stringify(await work())) as R
+    })()
+    pending = run
+    try { return await run } catch (error) { failed = true; throw error } finally { pending = undefined }
+  }
+  const documents: AppScopeProviderContext['documents'] = Object.freeze({
+    get: (table, rowId) => read(table, () => {
+      if (typeof rowId !== 'string' || !rowId) throw new Error('A row ID is required')
+      return getDoc(table, rowId)
+    }),
+    list: (table, args = {}) => read(table, async () => {
+      if (args.filters?.some(([, operator]) => operator === 'related')) throw new Error('Scope provider lists do not support related filters')
+      return (await getList(table, args)).data
+    }),
+  })
+  try { return await fn(documents) } finally {
+    open = false
+    if (pending) { failed = true; await pending.catch(() => {}) }
+    if (failed) throw new Error('A scope provider read failed')
+  }
+}
 
 // #559 (design E1): what a `person_scope` request may name — places by their
 // label, and filter values. The platform narrows the person's scope to them
