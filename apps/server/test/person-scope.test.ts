@@ -12,6 +12,7 @@ import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { expectApiError, tableRef } from './fixtures'
+import { newIdentifierId } from '../src/person-identifiers'
 
 const consumer = resolve('../..', 'runtime-apps/scope-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -29,12 +30,12 @@ async function fixtureModule(name: string, directory: string, file: string) {
   return import(`${pathToFileURL(resolve(directory, file)).href}?artifact=${digest}`)
 }
 
-async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Scope Reader'], withProvider = true } = {}) {
-  expect(await discoverPackages([consumer, provider])).toEqual([])
+async function setup(admin: TestClient, createUser: CreateUserFn, { roles = ['Scope Reader'], withProvider = true, providerAt = provider } = {}) {
+  expect(await discoverPackages([consumer, providerAt])).toEqual([])
   await admin.post('/api/install_app', { name: 'scopeproof' })
   if (withProvider) await admin.post('/api/install_app', { name: 'placeroster' })
   const user = await createUser({ email: 'placed@example.test', roles })
-  const roster = await fixtureModule('placeroster', provider, 'server.mjs')
+  const roster = await fixtureModule('placeroster', providerAt, 'server.mjs')
   const app = await fixtureModule('scopeproof', consumer, 'server.mjs')
   for (const key of Object.keys(roster.faults)) delete roster.faults[key]
   roster.calls.provider = 0
@@ -225,6 +226,98 @@ describe("the person's identifiers a provider receives", () => {
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
     await user.post(read + 'places', { payload: {} })
     expect(roster.calls.person).toEqual({ id: user.user, email: 'placed@example.test', identifiers: {} })
+  })
+
+  // The place-roster fixture, its provider declaring `identifiers`.
+  async function declaring(identifiers: string[], fn: (providerAt: string) => Promise<void>) {
+    const copy = await mkdtemp(resolve('test/.identifier-provider-'))
+    try {
+      await cp(provider, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify({ ...manifest, scopeProvider: { ...manifest.scopeProvider, identifiers } }))
+      await fn(copy)
+    } finally { await rm(copy, { recursive: true, force: true }) }
+  }
+  async function system(admin: TestClient, key: string) {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: key, label: key, kind: 'employee-record' } })
+  }
+  async function identifier(person: string, system: string, value: string | null, { ended = false } = {}) {
+    await sql`insert into person_identifier ${sql({ id: newIdentifierId(), person_id: person, system, assigner: '', value, value_hint: value === null ? 'ends 12' : null,
+      valid: ended ? '[2020-01-01,2021-01-01)' : '[2020-01-01,)', verified: true, one_holder: false, one_per_person: false,
+      source: 'test', recorded_by: 'test' } as unknown as Record<string, never>)}`
+  }
+
+  test("passes the person's current values in a declared system", async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      const other = await createUser({ email: 'other@example.test' })
+      await identifier(user.user!, 'roster-code', 'R-2')
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-9')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1', 'R-2'] })
+    })
+  })
+
+  test('an ended value is not passed', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-OLD', { ended: true })
+      await identifier(user.user!, 'roster-code', 'R-NEW')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-NEW'] })
+    })
+  })
+
+  test('a system the provider did not declare is never passed', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      await system(admin, 'payroll-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(user.user!, 'payroll-code', 'P-1')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+    })
+  })
+
+  test('a declared system the person has no current value in is passed empty', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': [] })
+    })
+  })
+
+  // A Secret system stores only a hint, never the value.
+  test('a row that holds no value is not passed', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', null)
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': [] })
+    })
+  })
+
+  test('a provider that changes the values it was given gets no scope', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      roster.faults.addIdentifier = 'roster-code'
+      await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 403 })
+      expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+    })
   })
 })
 

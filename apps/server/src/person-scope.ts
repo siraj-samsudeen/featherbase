@@ -12,6 +12,8 @@ export interface ScopeProviderBinding {
   /** The provider app's installed version, verified against its artifact. */
   version: string
   tables: readonly string[]
+  /** #660: the identifier systems whose current values the provider gets. */
+  identifiers: readonly string[]
   provide: AppScopeProvider
 }
 
@@ -29,13 +31,27 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
   const [person] = await sql`select row_id, email from person where row_id = ${user}`
   let answer: unknown
   try {
+    const identifiers = await currentIdentifiers(user, binding.identifiers)
     answer = await withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, async documents =>
-      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers: Object.freeze({}) }), documents }))))
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers }), documents }))))
   } catch { throw new NoPersonScope('provider') }
   const parsed = personScopeSchema.safeParse(answer)
   if (!parsed.success) throw new NoPersonScope('provider')
   if (!parsed.data.length) throw new NoPersonScope('scope')
   return parsed.data
+}
+
+// #660: the person's current values in each system the provider declared,
+// read fresh with the scope, and nothing from any other system. Current is
+// person-resolution's rule: a row whose validity has no end.
+async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
+  const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
+  if (systems.length) {
+    for (const row of await sql`select system, value from person_identifier
+      where person_id = ${user} and system in ${sql(systems)} and upper_inf(valid) and value is not null order by system, value`)
+      values[String(row.system)].push(String(row.value))
+  }
+  return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))
 }
 
 // The provider reads as the platform, not as the person (a manager needs no
