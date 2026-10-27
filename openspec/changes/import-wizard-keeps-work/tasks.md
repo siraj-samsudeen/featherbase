@@ -5,8 +5,8 @@
 
 ## 2. A different file doesn't replace saved work (#326)
 
-- [ ] 2.1 Test first: a mismatched file leaves the saved work in place and asks; keeping it waits for the right file; the right file still resumes; choosing the new file starts it fresh.
-- [ ] 2.2 Hold a mismatched file back and ask, without touching the saved work or the kept rows.
+- [x] 2.1 Test first: a mismatched file leaves the saved work in place and asks; keeping it waits for the right file; the right file still resumes; choosing the new file starts it fresh.
+- [x] 2.2 Hold a mismatched file back and ask, without touching the saved work or the kept rows.
 
 ## 3. Verification
 
