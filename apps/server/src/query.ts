@@ -178,6 +178,10 @@ export async function scopedWhere(
   // caller cannot read at all contributes no branch, hiding its children.
   if (meta.kind === 'sub_table' && !bypass)
     extraConds.push((await parentScopeCond(meta.name, user)).frag)
+  // #342: a comment is only as visible as the row it is on, whatever the
+  // Comment grant says; history is read through the row's own activity.
+  if (ROW_ATTACHED.has(meta.name) && !bypass)
+    extraConds.push((await attachedRowCond(meta.name, user, callerFilters, relatedDepth, hopBudget)).frag)
   if (!bypass) {
     const upMap = await getScopeMap(user)
     if (upMap.size) {
@@ -349,6 +353,49 @@ export async function scopedWhere(
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
   return { meta, table: tbl, cols, where, phys }
+}
+
+// Tables whose rows hang on another row by ref_table/ref_name and carry no
+// standing of their own (#342).
+export const ROW_ATTACHED = new Set(['Comment', 'Version'])
+
+// Comment rows reachable through rows the caller can read. The list names
+// one Table (a ref_table filter); its comments are those on rows that Table's
+// own read scoping admits. A Version records changed fields a reader may not
+// be allowed to see, so it is read only through the row's activity, which
+// filters them.
+async function attachedRowCond(
+  table: string,
+  user: string,
+  callerFilters: Filter[],
+  relatedDepth: number,
+  hopBudget: { hops: number },
+): Promise<{ frag: ReturnType<typeof sql> }> {
+  if (table === 'Version')
+    throw new AppError('PermissionError', "A row's history is read through that row's activity")
+  const pinned = (field: string) =>
+    callerFilters.find((f) => Array.isArray(f) && f[0] === field && f[1] === '=' && typeof f[2] === 'string')?.[2] as string | undefined
+  const refTable = pinned('ref_table')
+  if (!refTable)
+    throw new AppError('PermissionError', 'Comments are listed for one Table at a time, filtered by ref_table')
+  const refMeta = await getMeta(refTable).catch(() => null)
+  if (!refMeta) return { frag: sql`false` }
+  if (isBound(refMeta) || refMeta.kind === 'settings') {
+    // No local rows to scope against: one named row, judged by its own read.
+    const refName = pinned('ref_name')
+    if (!refName) return { frag: sql`false` }
+    const { getDoc } = await import('./document')
+    const readable = await getDoc(refTable, refName, user).then(() => true, () => false)
+    return { frag: readable ? sql`true` : sql`false` }
+  }
+  const target = await scopedWhere(refTable, user, [], relatedDepth + 1, hopBudget).catch((err) => {
+    if (err instanceof AppError && err.type === 'PermissionError') return null
+    throw err
+  })
+  if (!target) return { frag: sql`false` }
+  return {
+    frag: sql`ref_name in (select ${sql(target.meta.row_key)}::text from ${sql(target.table)} where ${target.where})`,
+  }
 }
 
 // One OR-branch per Table that can own rows of this child Table: 'all' scope

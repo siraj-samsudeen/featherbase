@@ -742,6 +742,9 @@ async function commentAndMarkUrgent(as: TestClient, title: string) {
   await user.type(await within(panel).findByRole('textbox', { name: 'Add comment' }), 'Called the supplier')
   await user.click(within(panel).getByRole('button', { name: 'Comment' }))
   await within(panel).findByText('Called the supplier')
+  // The details stay disabled until the comment's refresh settles; a click
+  // before then is ignored.
+  await waitFor(() => expect(within(panel).getByRole('button', { name: 'Not urgent' })).toBeEnabled())
   await user.click(within(panel).getByRole('button', { name: 'Not urgent' }))
   await waitFor(() => expect(within(panel).getByTestId('task-activity')).toHaveTextContent('urgent: false → true'))
   const entries = within(within(panel).getByTestId('task-activity')).getAllByRole('listitem')

@@ -9,6 +9,7 @@ import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
+import { ROW_ATTACHED } from './query'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
@@ -322,6 +323,16 @@ async function assertParentReadable(row: RowValues, user: string) {
   await assertPermission(user, parentType, 'read')
   await assertDocPermission(user, parentType, 'read', String(parent.created_by))
   await assertUserPermissions(user, parentMeta, parent as RowValues)
+}
+
+// #342: a comment is only as readable as the row it is on; a version is read
+// only through the row's activity (see ROW_ATTACHED in query.ts).
+async function assertAttachedReadable(table: string, row: RowValues, user: string) {
+  if (await isPrivileged(user)) return
+  if (table === 'Version')
+    throw new AppError('PermissionError', "A row's history is read through that row's activity")
+  if (!row.ref_table || !row.ref_name) return
+  await getDocImpl(String(row.ref_table), String(row.ref_name), user)
 }
 
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
@@ -1557,6 +1568,7 @@ async function getDocImpl(
     await assertDocPermission(user, table, 'read', String(row.created_by))
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
+    if (ROW_ATTACHED.has(meta.name)) await assertAttachedReadable(meta.name, row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers.
   const readTiers = shared

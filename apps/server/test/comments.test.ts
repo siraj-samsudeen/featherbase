@@ -209,3 +209,56 @@ describe('See a row\'s whole history in order', () => {
     expect(activity.versions).toEqual([])
   })
 })
+
+// #342: comments and history follow the access of the row they belong to.
+// Comment rights alone (the role here may read every Comment) never reach a
+// comment on a row the person can't open, and history is read only through
+// the row's own activity, which hides the fields the reader can't see.
+describe('Comments and history follow the row they belong to', () => {
+  async function hiddenRowWorld(admin: TestClient, createUser: (o?: { roles?: string[] }) => Promise<TestClient>) {
+    const doc = await commentWorld(admin)
+    await postComment(admin, doc.row_id, 'about the secret row')
+    await admin.post('/api/save_row', {
+      table: CMT_DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, due: '2026-12-15' },
+    })
+    // May read every Comment, but not the row the comment is on.
+    const commenter = await createUser({ roles: ['Cmt Req Commenter'] })
+    const reader = await createUser({ roles: ['Cmt Req Reader'] })
+    return { doc, commenter, reader }
+  }
+
+  test('a comment on a row the person cannot open is not listed or opened for them', async ({ admin, createUser }) => {
+    const { doc, commenter, reader } = await hiddenRowWorld(admin, createUser)
+    const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', CMT_DT], ['ref_name', '=', doc.row_id]]))
+    const fields = encodeURIComponent(JSON.stringify(['row_id', 'content']))
+    const seen = await commenter.get<{ data: { row_id: string }[] }>(`/api/table/Comment?filters=${filters}&fields=${fields}`)
+    expect(seen.data).toEqual([])
+    const byTable = encodeURIComponent(JSON.stringify([['ref_table', '=', CMT_DT]]))
+    expect((await commenter.get<{ data: unknown[] }>(`/api/table/Comment?filters=${byTable}`)).data).toEqual([])
+    const [comment] = await sql`select row_id from comment where ref_name = ${doc.row_id}`
+    await expect(commenter.get(`/api/table/Comment/${comment.row_id}`)).rejects.toMatchObject({ status: 403 })
+    // Someone who can read the row still gets its comment both ways.
+    const ok = await reader.get<{ data: { content: string }[] }>(`/api/table/Comment?filters=${filters}&fields=${fields}`)
+    expect(ok.data.map((c) => c.content)).toEqual(['about the secret row'])
+    expect(await reader.get(`/api/table/Comment/${comment.row_id}`)).toMatchObject({ content: 'about the secret row' })
+  })
+
+  test('comments across every Table at once are refused to an ordinary member', async ({ admin, createUser }) => {
+    const { commenter } = await hiddenRowWorld(admin, createUser)
+    await expect(commenter.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
+    await expect(commenter.post('/api/dashboard/count', { table: 'Comment' })).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('history is read through the row, never through the generic list', async ({ admin, createUser }) => {
+    const { doc, reader } = await hiddenRowWorld(admin, createUser)
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: 'Version', role: 'Cmt Req Reader', tier: 'basic', can_read: true },
+    })
+    const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', CMT_DT], ['ref_name', '=', doc.row_id]]))
+    await expect(reader.get(`/api/table/Version?filters=${filters}`)).rejects.toMatchObject({ status: 403 })
+    const activity = await reader.get<{ versions: unknown[] }>(`/api/activity/${encodeURIComponent(CMT_DT)}/${doc.row_id}`)
+    expect(activity.versions).toHaveLength(1)
+  })
+})

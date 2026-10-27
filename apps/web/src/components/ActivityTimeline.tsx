@@ -1,16 +1,9 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { listResource } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
-import { commentsQuery } from './Comments'
+import { activityQuery } from './Comments'
 import { fmtInstantIST } from '../lib/inr'
-
-interface VersionRow {
-  created_by: string
-  created_at: string
-  data: { changed?: [string, unknown, unknown][] } | null
-}
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
@@ -20,26 +13,13 @@ type Entry =
 // their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
 export function ActivityTimeline({ table, name }: { table: string; name: string }) {
-  const comments = useQuery(commentsQuery(table, name))
-  const versions = useQuery({
-    queryKey: ['versions', table, name],
-    queryFn: () =>
-      listResource<VersionRow>('Version', {
-        filters: [
-          ['ref_table', '=', table],
-          ['ref_name', '=', name],
-        ],
-        fields: ['created_by', 'created_at', 'data'],
-        order_by: 'created_at asc',
-        limit_page_length: 200,
-      }),
-  })
+  const activity = useQuery(activityQuery(table, name))
 
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = []
-    for (const c of comments.data?.data ?? [])
+    for (const c of activity.data?.comments ?? [])
       out.push({ kind: 'comment', at: c.created_at, who: c.created_by, content: c.content })
-    for (const v of versions.data?.data ?? [])
+    for (const v of activity.data?.versions ?? [])
       out.push({
         kind: 'version',
         at: v.created_at,
@@ -47,7 +27,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         changes: v.data?.changed ?? [],
       })
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
-  }, [comments.data, versions.data])
+  }, [activity.data])
 
   const fmt = (v: unknown) => (v == null || v === '' ? '∅' : String(v))
 
