@@ -298,7 +298,11 @@ export function FormView({
         delete payload.row_id
       }
       suppressStaleUntil.current = Date.now() + 2000
-      const saved = await api.post<Row>('/api/save_row', { table, row: payload })
+      // A typed-in ID is a create, never an upsert: through save_row an ID
+      // already in use would be read as an update of that row (#324).
+      const saved = asksRowId
+        ? await api.post<Row>(`/api/table/${encodeURIComponent(table)}`, payload)
+        : await api.post<Row>('/api/save_row', { table, row: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
@@ -318,6 +322,8 @@ export function FormView({
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
+      else if (asksRowId && err instanceof ApiError && err.type === 'ConflictError')
+        setErrors({ [ROW_ID_FIELD.column_name]: 'Already in use' })
       setBanner(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
       setSaving(false)

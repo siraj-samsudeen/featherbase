@@ -326,7 +326,9 @@ test('A typed-in name is asked for on the new-row form: a name already in use is
   fireEvent.change(field('aisle'), { target: { value: 'Z' } })
   screen.getByTestId('form-save').click()
 
-  await screen.findByTestId('form-banner')
+  expect(await screen.findByTestId('form-banner')).toHaveTextContent('Core Shelf shelf-a1 already exists')
+  expect(screen.getByTestId('error-row_id')).toHaveTextContent('Already in use')
+  expect(field('aisle')).toHaveValue('Z')
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('New')
   const existing = await admin.get<{ aisle: string }>(`/api/table/${enc('Core Shelf')}/shelf-a1`)
   expect(existing.aisle).toBe('A')
