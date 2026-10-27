@@ -856,7 +856,7 @@ export function ListView({
               {columns.map((col) => (
                 <th key={col.column_name} className="border-b border-border">
                   <button
-                    className="w-full px-3 py-2 text-left font-medium text-ink-muted hover:text-ink"
+                    className={`w-full px-3 py-2 font-medium text-ink-muted hover:text-ink ${isFigure(col) ? 'text-right' : 'text-left'}`}
                     data-testid={`col-${col.column_name}`}
                     onClick={() => toggleSort(col.column_name)}
                   >
@@ -992,7 +992,7 @@ function ListRow({
           </td>
         )}
         {columns.map((col, i) => (
-          <td key={col.column_name} className="px-3 py-2">
+          <td key={col.column_name} className={`px-3 py-2 ${isFigure(col) ? 'text-right tabular-nums' : ''}`}>
             <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
           </td>
         ))}
@@ -1016,6 +1016,9 @@ type ListColumn = { column_name: string; label: string; column_type: string; ref
 // One value of a row, the same in both shapes: the first column links to the
 // row's form, a Choice reads as its status dot and words, a person shows
 // their name, and everything else goes through the display settings.
+/** A number column: right-aligned in the table and on a card, so figures line up. */
+const isFigure = (col: ListColumn) => ['Int', 'Float', 'Currency', 'Percent'].includes(col.column_type)
+
 function ListCell({
   row,
   col,
@@ -1115,7 +1118,7 @@ function PhoneList({
     key: col.column_name,
     header: col.label,
     phone: col === titleCol ? 'title' : col === statusColumn ? 'status' : col.column_name === 'row_id' ? 'meta' : 'value',
-    align: ['Int', 'Float', 'Currency', 'Percent'].includes(col.column_type) ? 'end' : 'start',
+    align: isFigure(col) ? 'end' : 'start',
     cell: (row) => <ListCell row={row} col={col} table={table} settings={settings} first={col === titleCol} quiet={col.column_name === 'row_id' && col !== titleCol} />,
   }))
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(key(r)))

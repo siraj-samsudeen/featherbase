@@ -192,9 +192,9 @@ export function DataCards<Row>({
               <div className="min-w-0 flex-1">
                 {/* Wraps, so a status too wide to sit beside the title moves under it. */}
                 <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-                  {/* The title takes the room the status leaves, down to 10rem; only
+                  {/* The title takes the room the status leaves, down to 8rem; only
                       then does the status move under it. */}
-                  <div className="min-w-0 flex-[1_1_10rem] font-semibold text-ink">
+                  <div className="min-w-0 flex-[1_1_8rem] font-semibold text-ink">
                     {titles.map((c) => (
                       <div key={c.key} className="wrap-anywhere">
                         {c.cell(row)}
