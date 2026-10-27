@@ -55,6 +55,13 @@ export type JobHandler = (
   ctx: JobContext,
 ) => unknown | Promise<unknown>
 
+/** Thrown by a handler whose job cannot succeed by running again: the job
+ *  is failed at once, with this message, without spending its other
+ *  attempts; a person can still retry it (#334: a refused email). Like
+ *  running out of attempts, it ends a recurrence that has no Scheduled Job
+ *  row. */
+export class FinalJobFailure extends Error {}
+
 const registry = new Map<string, JobHandler>()
 
 export function registerJob(method: string, handler: JobHandler): void {
@@ -252,8 +259,9 @@ async function runOneJobImpl(): Promise<boolean> {
     return true
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    // JOB-002: retry until max_attempts, then land in failed.
-    const nextStatus = attempt >= maxAttempts ? 'failed' : 'queued'
+    // JOB-002: retry until max_attempts, then land in failed. A final
+    // failure lands there now.
+    const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'
     await sql`
       update background_job
       set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()

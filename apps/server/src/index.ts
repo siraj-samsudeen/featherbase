@@ -69,7 +69,7 @@ import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
-import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
+import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
@@ -214,7 +214,7 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const issued = await passwordSignIn(usr, pwd)
+  const issued = await passwordSignIn(usr, pwd, clientAddress(c))
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -244,7 +244,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   // The shared pipeline (sign-in.ts) does the rest: an outage never falls
   // back to another way in, and a leaver is disabled everywhere.
   const status = await checkWithProvider(cfg, id, pwd)
-  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode() })
+  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -279,7 +279,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     return String(created.row_id)
   })
   // The same tail as every other sign-in (sign-in.ts).
-  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null }, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session), 201)
@@ -603,7 +603,7 @@ async function googleCallback(c: Context) {
     }
   }
   const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const issued = await completeSignIn(google, verified, null)
+  const issued = await completeSignIn(google, verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -633,7 +633,7 @@ app.post('/api/oauth/session', async (c) => {
   deleteCookie(c, HANDOFF_NONCE_COOKIE, { path: '/' })
   // Signed out, expired, or ended by a password reset since: no hand-off.
   const source = await resolveToken(`Bearer ${redeemed.sourceToken}`)
-  const issued = await issueSession(source.row_id, sessionOptionsOf(source))
+  const issued = await issueSession(source.row_id, { ...sessionOptionsOf(source), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session, { handOff: false }))
@@ -710,7 +710,7 @@ app.get('/preview', async (c) => {
   const person = await resolvePreviewPerson(config.user)
   if (!person) return c.notFound()
   // Marked, so the click-through cannot add lasting access (review B-M2).
-  const issued = await issueSession(person, { preview: true })
+  const issued = await issueSession(person, { preview: true, ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
