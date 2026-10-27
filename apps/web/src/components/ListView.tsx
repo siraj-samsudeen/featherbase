@@ -1047,6 +1047,9 @@ function ListCell({
       >
         {col.column_name === 'row_id' && isPrincipalTable(table) ? (
           <PrincipalName id={String(row.row_id)} />
+        ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
+          // A title column that names a person reads as their name, never the opaque id.
+          <PrincipalName id={String(row[col.column_name])} />
         ) : (
           cell(row[col.column_name], col.column_type, settings)
         )}

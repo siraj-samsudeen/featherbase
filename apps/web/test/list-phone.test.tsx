@@ -7,6 +7,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { afterEach, beforeEach, vi } from 'vitest'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -144,4 +145,24 @@ test('On a phone an empty list says so and offers the first row', async ({ admin
   expect(await screen.findByText(/No rows/)).toBeInTheDocument()
   expect(screen.getByTestId('list-empty-new')).toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
+})
+
+// Review on #641 (Codex, P2): a card titled by a person reads as their name,
+// never the opaque id, as the same column does in the wide table.
+test('On a phone a card titled by a person shows their name, linking to the row', async ({ admin }) => {
+  await sql`insert into person ${sql({ row_id: 'psn_lpcardownerlpcardown', created_by: 'Administrator', updated_by: 'Administrator', email: 'lp-owner@example.com', full_name: 'Meena Raman', enabled: true })}`
+  await admin.post('/api/table_def', {
+    name: 'Lp Owned',
+    title_column: 'owner',
+    columns: [
+      { column_name: 'owner', column_type: 'Reference', label: 'Owner', reference_table: 'Person', in_list_view: true },
+      { column_name: 'rank', column_type: 'Int', label: 'Rank', in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: 'Lp Owned', row: { owner: 'psn_lpcardownerlpcardown', rank: 1 } })
+  await openList(admin, 'Lp Owned')
+  await waitFor(() => expect(cards()).toHaveLength(1))
+  const link = await within(cards()[0]).findByRole('link', { name: 'Meena Raman' })
+  expect(link).toHaveAttribute('href', expect.stringMatching(/^\/featherbase\/admin\/Lp%20Owned\/.+/))
+  expect(within(cards()[0]).queryByText('psn_lpcardownerlpcardown')).toBeNull()
 })
