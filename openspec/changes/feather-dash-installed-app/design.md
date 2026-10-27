@@ -45,6 +45,11 @@ test for any file is whether a second client would have to change it.
   inside one transaction. Install, preview → upgrade → activate are operator calls.
   Discovery serves the installed *exact* version, identified by a fingerprint of its
   files (`artifact_digest`). Upgrades refuse new Tables and new or wider grants.
+  *(27-Oct-2026, #651: no longer true for new Tables. An upgrade can now add,
+  remove and rename the app's own Tables and add, change, rename and remove
+  columns; a Table it adds arrives with the grants its version declares. Wider
+  grants on Tables the app already had are still refused. See the archived
+  OpenSpec change `app-schema-evolution`.)*
 - **Measured on dev, 26-Oct-2026** (two runs, a Team Leader):
 
   | | cached numbers | embed session | Dive frame loaded | Dive numbers drawn |
@@ -673,6 +678,10 @@ a request.
 A new optional column is an `addColumn` migration. A new Table or a wider grant is
 refused by the upgrade planner, so **1.0.0 already declares the request Table and
 every grant stage D needs**.
+*(27-Oct-2026, #651: the upgrade planner now accepts a new Table, with the grants
+its version declares, and every other schema change in `app-schema-evolution`;
+only a wider grant on a Table the app already had is still refused. 1.0.0 no
+longer has to declare Tables a later version needs.)*
 
 **Delivery** (owner decision 27-Oct-2026, Q2 = (a)). The client's repository
 builds a **client image on top of the platform's image**: it starts from a pinned

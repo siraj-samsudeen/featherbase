@@ -15,7 +15,7 @@ import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 import { appSetupState } from './app-settings'
-import { unshippedApps } from './runtime-packages'
+import { shippedUpgrades, unshippedApps, upgradeLossWarning } from './runtime-packages'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -94,6 +94,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await assertInstalledAppsShipped())
   passed.push(await assertNoOpenAppRoleBinding())
   passed.push(...(await appsSetUp()))
+  passed.push(...(await appUpgradeLosses()))
   passed.push(await noticeRecipients())
   passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
@@ -242,6 +243,25 @@ async function installedNotShipped() {
   const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
   const missing = await unshippedApps(rows, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
   return { installed: rows.map(named), missing: missing.map(named) }
+}
+
+/** 5e. #651: a warning, never a refusal (the step's destructive: true is the
+ *  author's own declaration). For each installed app this release ships a
+ *  newer version of, what upgrading to it would remove here, counted per
+ *  instance before anything runs. Counts only: no value is ever printed. */
+async function appUpgradeLosses(): Promise<string[]> {
+  const apps = await locate('installed_app')
+  if (apps?.relation !== platformRelation('installed_app') ||
+      !['runtime_package', 'package_version', 'migration_ledger'].every((c) => apps.columns.has(c)))
+    return ['app upgrade loss check skipped (no app versions recorded yet)']
+  const installed = await sql`select name, package_version, migration_ledger from ${sql(apps.relation)}
+    where runtime_package and package_version is not null order by name`
+  const warnings: string[] = []
+  for (const upgrade of await shippedUpgrades(installed, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) {
+    const warning = await upgradeLossWarning(upgrade)
+    if (warning) warnings.push(warning)
+  }
+  return warnings.length ? warnings : ['no app upgrade this release ships removes data here']
 }
 
 /** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that

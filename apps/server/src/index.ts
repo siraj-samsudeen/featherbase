@@ -747,9 +747,10 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', rateLimit)
 
 // Lock the complete request, including internal SQL and post-commit work.
-// Lifecycle endpoints take the exclusive counterpart inside their handlers.
+// Lifecycle endpoints take the exclusive counterpart inside their handlers
+// (the upgrade preview too since #651: it runs the steps to count losses).
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
   try {
     // Do not await here: only synchronous identity parsing failures belong to
