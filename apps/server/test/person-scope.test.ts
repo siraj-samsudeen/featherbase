@@ -367,6 +367,17 @@ describe("the person's identifiers a provider receives", () => {
     })
   })
 
+  test('each value reaches the provider as its value and the shared flag, and nothing else', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await user.post(read + 'places', { payload: {} })
+      const [entry] = (seen() as Record<string, object[]>)['roster-code']
+      expect(Reflect.ownKeys(entry).sort()).toEqual(['shared', 'value'])
+      expect(Object.isFrozen(entry)).toBe(true)
+    })
+  })
+
   test('the same text in another system is not shared', async ({ admin, createUser }) => {
     await sharing(admin, createUser, async (user, other, seen) => {
       await system(admin, 'payroll-code')
