@@ -11,6 +11,7 @@
 
 import { ACCOUNT_ROOT, APP_ROOT_PATTERN, INTERIM_APPS, RESERVED_APP_ROOTS, appHref } from 'shared'
 import { DEV_ENVIRONMENTS } from './env'
+import { BAR_SCRIPT } from './runtime-shell'
 
 /** What an address opens: the Admin screens, or one app by name. */
 export const ADMIN = 'admin'
@@ -157,7 +158,7 @@ export function appRoot(app: string): string {
 // The Featherbase pages an app's address still serves: signing in, resetting a
 // password, the OAuth hand-back, the person's own account pages (#489), the
 // public web forms (#501: a form link is shared with anyone, whatever address
-// it was copied from), and the runtime shell's assets. The Portal, for
+// it was copied from), and the shared top bar's script (#650). The Portal, for
 // signed-in web-form users, is an Admin-address page and is not here.
 const SERVED_EVERYWHERE = [
   '/featherbase/login',
@@ -165,8 +166,7 @@ const SERVED_EVERYWHERE = [
   '/featherbase/oauth-callback',
   '/featherbase/form',
   ACCOUNT_ROOT,
-  '/featherbase/runtime-shell.css',
-  '/featherbase/runtime-shell.js',
+  BAR_SCRIPT,
 ]
 
 const under = (path: string, root: string) => {
