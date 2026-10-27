@@ -12,7 +12,7 @@
 import { createHash, createHmac } from 'node:crypto'
 import { z } from 'zod'
 import { AppError } from './errors'
-import { currentEnvironment, isSet, readNamedVariable, readVariable, VARIABLES, type Variable, type VariableName } from './env'
+import { currentEnvironment, DEV_ENVIRONMENTS, isSet, readNamedVariable, readVariable, VARIABLES, type Variable, type VariableName } from './env'
 import { lastApply } from './managed-settings'
 
 /** Long enough that nobody without the run's key can guess it. */
@@ -71,11 +71,16 @@ export async function variableReport(key: unknown): Promise<VariableReport> {
   // Imported here: release-preflight pulls in the release's whole dependency graph.
   const { settingsRequirements } = await import('./release-preflight')
   const { conditions, named } = await settingsRequirements()
+  // As the release judges this environment (env.ts checkVariables):
+  // development and test need nothing that has a working default, and only
+  // warn about a feature's secret.
+  const dev = DEV_ENVIRONMENTS.includes(currentEnvironment())
   const presenceOf = (v: Variable): Presence => {
     const req = v.required
+    if (typeof req === 'object') return !conditions?.has(req.when) ? 'optional' : dev ? 'recommended' : 'required'
+    if (dev) return 'optional'
     if (req === 'outside-dev') return 'required'
     if (req === 'recommended') return 'recommended'
-    if (typeof req === 'object') return conditions?.has(req.when) ? 'required' : 'optional'
     return 'optional'
   }
   const variables: VariableEntry[] = (VARIABLES as readonly Variable[]).map((v) => {
@@ -89,8 +94,14 @@ export async function variableReport(key: unknown): Promise<VariableReport> {
   })
   // A data source's connection string: the instance names the variable, and
   // the release warns while it is missing (release-preflight.ts).
-  for (const { name } of named ?? [])
-    if (!variables.some((v) => v.name === name)) variables.push({ name, secret: true, presence: 'recommended', set: Boolean(readNamedVariable(name)?.trim()) })
+  // It warns in every environment, so it is at least recommended, even when
+  // the source names a declared variable.
+  for (const { name } of named ?? []) {
+    const declared = variables.find((v) => v.name === name)
+    if (declared) {
+      if (declared.presence === 'optional') declared.presence = 'recommended'
+    } else variables.push({ name, secret: true, presence: 'recommended', set: Boolean(readNamedVariable(name)?.trim()) })
+  }
   return {
     environment: currentEnvironment(),
     key_id: createHash('sha256').update(key).digest('hex').slice(0, 8),

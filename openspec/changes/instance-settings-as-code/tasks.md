@@ -43,4 +43,4 @@
 
 ## 8. Integration
 
-- [ ] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in Admin, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.
+- [x] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in Admin, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.

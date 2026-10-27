@@ -471,9 +471,9 @@ KEY=$(openssl rand -hex 32)   # new every run; never stored (in Actions, ::add-m
 for env in dev prod; do        # each with its own System Manager service-account token
   printf '{"key":"%s"}' "$KEY" | curl --fail-with-body "https://<$env host>/api/instance-settings/variables" \
     -H "Authorization: Bearer <$env token>" -H 'Content-Type: application/json' \
-    --data @- > "$env.json"
+    --data @- > "$PWD/$env.json"
 done
-pnpm --filter server cli settings:compare dev=dev.json prod=prod.json
+pnpm --silent --filter server cli settings:compare dev="$PWD/dev.json" prod="$PWD/prod.json"
 ```
 
 A report says, for every declared variable, whether it is set, and for the
@@ -485,8 +485,9 @@ still match it. No value leaves the server. A new key each run means
 fingerprints cannot be collected and matched across runs, and are useless
 without that run's key. Whoever holds the key could still test guesses
 against them, so keep these secrets long and random. From a shell on the server (for
-example over `railway ssh`), `printf %s "$KEY" | pnpm --filter server cli
-settings:variables --stdin` prints the same report.
+example over `railway ssh`), `printf %s "$KEY" | pnpm --silent --filter server
+cli settings:variables --stdin` prints the same report. (`pnpm --filter`
+runs the command in `apps/server`, so give report files as absolute paths.)
 
 The comparison prints one line per variable that any environment sets, then
 the settings file:
@@ -504,8 +505,9 @@ Settings match the file  yes                 no                   PROBLEM: chang
 ```
 
 It exits 1 while there is a problem: a rule broken, a variable missing on an
-environment that needs it (required or recommended there, such as the Google
-secret where Google sign-in is on), an environment never applied, applied
+environment that needs it (required or recommended there as its release
+judges it, such as the Google secret where Google sign-in is on; a
+`development` environment needs almost nothing), an environment never applied, applied
 from another revision, or applied with another environment's section, or
 settings changed outside the file. A note (a variable set on one side only
 that the other does not need, such as real email on prod, or an apply with no

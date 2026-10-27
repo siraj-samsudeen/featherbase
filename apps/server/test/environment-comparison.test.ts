@@ -49,7 +49,7 @@ async function environment(vars: Record<string, string>, key = KEY): Promise<Var
 const APPLIED: VariableReport['settings'] = { applied: true, environment: null, revision: 'a'.repeat(40), matches_file: true }
 
 async function unapplied(vars: Record<string, string>, key = KEY): Promise<VariableReport> {
-  const base = { DATABASE_URL: '', JWT_SECRET: '', FILE_URL_SECRET: '', GOOGLE_CLIENT_SECRET: '', SMTP_HOST: '', INSTANCE_ADDRESSES: '' }
+  const base = { FEATHERBASE_ENV: 'production', DATABASE_URL: '', JWT_SECRET: '', FILE_URL_SECRET: '', GOOGLE_CLIENT_SECRET: '', SMTP_HOST: '', INSTANCE_ADDRESSES: '' }
   for (const [k, v] of Object.entries({ ...base, ...vars })) vi.stubEnv(k, v)
   try {
     return await variableReport(key)
@@ -75,6 +75,7 @@ describe('the variable report', () => {
     vi.stubEnv('SMTP_PASSWORD', 'smtp-app-password-value')
     vi.stubEnv('INSTANCE_ADDRESSES', '[{"address":"https://dev.example.test","opens":"admin","emails":true}]')
     vi.stubEnv('GOOGLE_CLIENT_SECRET', '')
+    vi.stubEnv('FEATHERBASE_ENV', 'production')
     const report = await variableReport(KEY)
     const text = JSON.stringify(report)
     for (const value of [JWT, DB, 'hunter2', 'smtp-app-password-value', 'dev.example.test', KEY]) expect(text).not.toContain(value)
@@ -86,7 +87,7 @@ describe('the variable report', () => {
     expect(entry(report, 'INSTANCE_ADDRESSES')).toEqual({ name: 'INSTANCE_ADDRESSES', secret: false, presence: 'required', set: true })
     // Unset (or blank) is unset, and has nothing to fingerprint.
     expect(entry(report, 'GOOGLE_CLIENT_SECRET')).toEqual({ name: 'GOOGLE_CLIENT_SECRET', secret: true, presence: 'optional', set: false, rule: 'must-match' })
-    expect(report.environment).toBe('test')
+    expect(report.environment).toBe('production')
     expect(report.key_id).toMatch(/^[0-9a-f]{8}$/)
   })
 
@@ -94,6 +95,15 @@ describe('the variable report', () => {
     await sql`update sign_in_method set enabled = true, client_id = 'client.apps.example' where row_id = 'google'`
     const report = await environment({})
     expect(entry(report, 'GOOGLE_CLIENT_SECRET').presence).toBe('required')
+  })
+
+  test('development and test need only what their release warns about, as the release judges them', async () => {
+    await sql`update sign_in_method set enabled = true, client_id = 'client.apps.example' where row_id = 'google'`
+    const report = await environment({ FEATHERBASE_ENV: 'development' })
+    expect(report.environment).toBe('development')
+    expect(entry(report, 'INSTANCE_ADDRESSES').presence).toBe('optional')
+    expect(entry(report, 'FILE_STORAGE_DIR').presence).toBe('optional')
+    expect(entry(report, 'GOOGLE_CLIENT_SECRET').presence).toBe('recommended')
   })
 
   test('a variable a data source names is reported, by presence', async () => {
@@ -105,6 +115,9 @@ describe('the variable report', () => {
     // A source naming a declared variable does not list it twice.
     await sql`insert into data_source (row_id, engine, url_env) values ('own', 'postgres', 'DATABASE_URL')`
     expect((await variableReport(KEY)).variables.filter((v) => v.name === 'DATABASE_URL')).toHaveLength(1)
+    // ...and an optional one it names becomes recommended, as the release warns about it.
+    await sql`insert into data_source (row_id, engine, url_env) values ('duck', 'postgres', 'MOTHERDUCK_TOKEN')`
+    expect(entry(await variableReport(KEY), 'MOTHERDUCK_TOKEN').presence).toBe('recommended')
   })
 
   test('says which file revision was last applied, and whether the settings still match it', async () => {
