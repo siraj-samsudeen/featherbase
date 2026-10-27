@@ -5,6 +5,7 @@ import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
+import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
 
@@ -203,6 +204,26 @@ function validateDef(def: TableDef) {
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
 }
 
+// #511: a link column must name a Table that exists — or its own Table, or
+// one being created alongside it (an app's install) — otherwise every later
+// save with a value in that column is refused. Only the columns given are
+// checked, so an update judges just the links it adds or retargets.
+async function assertLinkTargetsExist(
+  def: TableDef,
+  columns: TableDef['columns'],
+  alongside: readonly string[] = [],
+): Promise<void> {
+  const errs: Record<string, string> = {}
+  for (const f of columns) {
+    if (f.column_type !== 'Reference' || !f.reference_table) continue
+    if (f.reference_table === def.name || alongside.includes(f.reference_table)) continue
+    const [target] = await sql`select 1 from table_def where name = ${f.reference_table}`
+    if (!target) errs[f.column_name] = `Link target ${f.reference_table} does not exist`
+  }
+  if (Object.keys(errs).length)
+    throw new AppError('ValidationError', 'Invalid link column target', errs)
+}
+
 // Existing core Tables keep their bootstrap mapping. Qualified identities must
 // have persisted storage metadata; never infer their location from spelling.
 export async function tableRelation(name: string): Promise<string> {
@@ -273,14 +294,41 @@ async function applyRls(
   await tx.unsafe(`create policy fc_select on ${table} for select using (${predicate})`)
 }
 
+// #510: rows that already repeat a value would fail a unique constraint with
+// a bare database error; name the value instead (shortened, since it is
+// echoed back). Thrown inside the write's transaction, so the Table is left
+// as it was.
+async function assertNoRepeats(
+  tx: { unsafe: (q: string) => Promise<unknown> },
+  relation: string,
+  column: string,
+): Promise<void> {
+  const col = quoteIdent(column)
+  const [repeat] = (await tx.unsafe(
+    `select ${col}::text as value, count(*)::int as n from ${relation}
+     where ${col} is not null group by ${col} having count(*) > 1
+     order by count(*) desc, ${col}::text limit 1`,
+  )) as unknown as { value: string; n: number }[]
+  if (!repeat) return
+  const shown = repeat.value.length > 60 ? `${repeat.value.slice(0, 60)}…` : repeat.value
+  throw new AppError('ValidationError', 'A unique column cannot repeat a value', {
+    [column]: `${JSON.stringify(shown)} is held by ${repeat.n} rows; make each value distinct before marking the column unique`,
+  })
+}
+
 // META-004: sync an existing Table's columns to a new definition. Additions
 // create columns; property edits update column_def rows; removals delete the
 // column_def row but KEEP the physical column (data is never dropped without
 // the explicit drop_columns flag). Column-type changes are rejected.
+//
+// #251: a removal is never inferred from a column simply being absent — a
+// partial payload would otherwise erase every column it left out. Each one
+// must be named in remove_columns; an unnamed omission refuses the whole
+// write, naming the column and how many rows hold a value in it.
 export async function updateTable(
   name: string,
   input: unknown,
-  opts: { drop_columns?: boolean } = {},
+  opts: { drop_columns?: boolean; remove_columns?: string[] } = {},
 ): Promise<TableMeta> {
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
@@ -309,7 +357,11 @@ export async function updateTable(
   } else if (def.data_source) {
     throw new AppError('ValidationError', 'An existing Table cannot be bound to a data source')
   }
-  if (def.is_submittable && !def.columns.some((f) => f.column_name === 'amended_from'))
+  // An update that leaves is_submittable out keeps the stored value (below),
+  // so it keeps that value's Amended From column too.
+  const keptAmendedFrom = Boolean(def.is_submittable ?? existing.is_submittable) &&
+    !def.columns.some((f) => f.column_name === 'amended_from')
+  if (keptAmendedFrom)
     def.columns.push({
       column_name: 'amended_from',
       label: 'Amended From',
@@ -333,12 +385,44 @@ export async function updateTable(
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Unsupported schema change', errors)
+  await assertLinkTargetsExist(
+    def,
+    def.columns.filter((f) => before.get(f.column_name)?.reference_table !== f.reference_table),
+  )
 
   // A bound Table's column changes are metadata-only (BV1: no DDL against
   // anyone's storage, ours included).
   const isBound = Boolean(existing.data_source)
   const table = tableName(name)
   const relation = quoteRelation(await tableRelation(name))
+
+  const removing = new Set(opts.remove_columns ?? [])
+  for (const column_name of removing) {
+    if (!before.has(column_name)) errors[column_name] = 'not a column of this Table'
+    else if (column_name === 'amended_from' && keptAmendedFrom)
+      errors[column_name] = 'kept while the Table is submittable; turn is_submittable off to remove it'
+    else if (after.has(column_name)) errors[column_name] = 'still in the definition; leave it out to remove it'
+  }
+  for (const [column_name, old] of before) {
+    if (after.has(column_name) || removing.has(column_name)) continue
+    const stored = pgType(old.column_type) && existing.kind !== 'settings' && !isBound
+    const [{ n }] = stored
+      ? ((await sql.unsafe(
+          `select count(*)::int as n from ${relation} where ${quoteIdent(column_name)} is not null`,
+        )) as unknown as { n: number }[])
+      : [{ n: 0 }]
+    // #250: drop-one/add-one of the same type reads like a rename, but it is
+    // ambiguous, so it is never inferred — the refusal names the way to say it.
+    const renamedTo = def.columns
+      .filter((f) => !before.has(f.column_name) && f.column_type === old.column_type)
+      .map((f) => f.column_name)
+    errors[column_name] =
+      `left out of the definition${n ? ` while ${n} ${n === 1 ? 'row holds' : 'rows hold'} a value in it` : ''}; ` +
+      'name it in remove_columns to remove it' +
+      (renamedTo.length ? `, or use rename_column to rename it to ${renamedTo.join(' or ')}` : '')
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', 'Columns left out must be removed by name', errors)
   await sql.begin(async (tx) => {
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
@@ -383,15 +467,19 @@ export async function updateTable(
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound)
           await tx.unsafe(`alter table ${relation} add column if not exists ${quoteIdent(f.column_name)} ${type}`)
-        if (f.unique && type && !isBound)
+        if (f.unique && type && existing.kind !== 'settings' && !isBound) {
+          // A column put back keeps its old values, which may repeat (#510).
+          await assertNoRepeats(tx, relation, f.column_name)
           await tx.unsafe(
             `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
           )
+        }
       } else {
         await tx`update column_def set ${tx(row)}
           where parent = ${name} and column_name = ${f.column_name}`
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
+          if (f.unique) await assertNoRepeats(tx, relation, f.column_name)
           if (f.unique)
             await tx.unsafe(
               `alter table ${relation} add constraint ${quoteIdent(`${table}_${f.column_name}_uq`)} unique (${quoteIdent(f.column_name)})`,
@@ -410,14 +498,22 @@ export async function updateTable(
       const type = pgType(old.column_type)
       if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
         await tx.unsafe(`alter table ${relation} drop column if exists ${quoteIdent(column_name)}`)
-      // without drop_columns the column (and its data) is retained
+      // without drop_columns the column (and its data) is retained, but not
+      // its unique rule: a hidden constraint would keep refusing saves, and
+      // putting the column back unique re-checks its values (#510).
+      else if (type && existing.kind !== 'settings' && !isBound && old.unique)
+        await tx.unsafe(`alter table ${relation} drop constraint if exists ${quoteIdent(`${table}_${column_name}_uq`)}`)
     }
   })
   invalidateMeta(name)
   return getMeta(name)
 }
 
-export async function createTable(input: unknown, ownerApp?: string): Promise<TableMeta> {
+export async function createTable(
+  input: unknown,
+  ownerApp?: string,
+  opts: { alongside?: readonly string[] } = {},
+): Promise<TableMeta> {
   const parsed = tableDefSchema.safeParse(input)
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -508,6 +604,8 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       })),
     })
   }
+
+  await assertLinkTargetsExist(def, def.columns, opts.alongside)
 
   // Sub-table columns must point at an existing sub_table-kind Table.
   for (const f of def.columns) {
@@ -604,6 +702,19 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   assertNotSystemWritten(meta, 'deleted')
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
+
+  // #122: an installed app owns its tables as a set — the registry records
+  // them, and uninstalling removes them and the record together. Deleting
+  // one alone would leave the app recorded as installed without it.
+  // The ledger is read as uninstall reads it, so a row stored as a JSON
+  // string counts too.
+  const owner = (await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`)
+    .find((app) => asNameList(app.tables).includes(meta.name))
+  if (owner)
+    throw new AppError(
+      'ValidationError',
+      `Cannot delete ${meta.name}: it belongs to the installed app ${owner.name}. Uninstall the app to remove its tables.`,
+    )
 
   // DEL-R3: DOC-006's reverse lookup, one level up. Any OTHER Table whose
   // schema targets this one — a Reference column or a Sub-table's row

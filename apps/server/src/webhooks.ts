@@ -1,6 +1,8 @@
 import { createHmac } from 'node:crypto'
 import { sql } from './db'
 import { registerJob, enqueue } from './jobs'
+import { getMeta } from './meta'
+import { OUTSIDE_READER, restrictRow } from './row-readers'
 
 // PLAT-005: outbound webhooks. On a matching lifecycle event we enqueue a
 // delivery job per enabled Webhook; the job POSTs the row JSON to the
@@ -26,9 +28,13 @@ export async function evaluateWebhooks(
   const hooks = await sql`
     select row_id from webhook
     where webhook_table = ${table} and webhook_event = ${event} and enabled = true`
+  if (!hooks.length) return
+  // #340: the receiving system reads the row as nobody in particular, so a
+  // restricted column never leaves, on the row or its sub-table rows.
+  const body = await restrictRow(await getMeta(table), row, OUTSIDE_READER)
   for (const h of hooks) {
     // Snapshot the row so the payload reflects the state at event time.
-    await enqueue('deliver_webhook', { webhook: h.row_id as string, event, row }, { maxAttempts: 3 })
+    await enqueue('deliver_webhook', { webhook: h.row_id as string, event, row: body }, { maxAttempts: 3 })
   }
 }
 

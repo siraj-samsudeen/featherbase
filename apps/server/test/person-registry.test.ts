@@ -81,7 +81,7 @@ describe('person registry: classification', () => {
     const TITLE = { column_name: 'title', column_type: 'Data' }
     await admin.post('/api/table_def', { name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Data' }] })
     // Removed without drop_columns: the data stays in the table…
-    await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE] })
+    await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE], remove_columns: ['old_owner'] })
     // …and the name is reused for a Section Break, which has no storage of its own.
     await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Section Break' }] })
     const { c } = await cls()
