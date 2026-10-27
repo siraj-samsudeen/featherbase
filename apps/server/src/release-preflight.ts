@@ -8,7 +8,7 @@ import { sql } from './db'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { delegatedTestMode } from './delegated-login'
-import { checkVariables, readVariable, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { checkVariables, currentEnvironment, readVariable, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
 import { verifyPassword } from './auth'
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
@@ -202,21 +202,46 @@ async function assertOneScopeProvider(): Promise<string> {
 
 /** 5b. #642 (E7): an installed, enabled app whose exact version and
  *  fingerprint this release does not ship refuses the release (and the
- *  server's start), so the running release keeps serving it. A disabled app serves nobody and never blocks. A
- *  row with no recorded version is mid-recovery, which no image can serve. */
+ *  server's start, outside development), so the running release keeps serving
+ *  it. A disabled app serves nobody and never blocks. A row with no recorded
+ *  version is mid-recovery, which no image can serve. */
 export async function assertInstalledAppsShipped(): Promise<string> {
+  const found = await installedNotShipped()
+  if (!found) return 'shipped app check skipped (no app versions recorded yet)'
+  const { installed, missing } = found
+  if (missing.length)
+    throw new Error(missing.map(({ name, version }) =>
+      `App ${name} version ${version} is installed and enabled, but this release does not ship it. Ship ${name} ${version} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
+  return installed.length
+    ? `every installed, enabled app ships in this release: ${installed.map(({ name, version }) => `${name} ${version}`).join(', ')}`
+    : 'no installed, enabled app to find in this release'
+}
+
+/** The same check at the server's start: a refusal, except on a developer's
+ *  server. There init.sh runs apps from their source folders, so editing an
+ *  app or switching branches changes its fingerprint; the server starts with
+ *  the app unavailable, as before #642, and each line says how to bring it
+ *  back. Answers those warning lines. */
+export async function installedAppsAtStart(environment = currentEnvironment()): Promise<string[]> {
+  if (environment !== 'development') {
+    await assertInstalledAppsShipped()
+    return []
+  }
+  return ((await installedNotShipped())?.missing ?? []).map(({ name, version }) =>
+    `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`)
+}
+
+/** The installed, enabled apps with a recorded version, and those of them no
+ *  app on FEATHERBASE_APP_PATHS ships; null before 0095 records versions. */
+async function installedNotShipped() {
   const apps = await locate('installed_app')
   if (!apps || !['enabled', 'runtime_package', 'package_version', 'artifact_digest'].every((c) => apps.columns.has(c)))
-    return 'shipped app check skipped (no app versions recorded yet)'
-  const installed = await sql`select name, package_version, artifact_digest, manifest from ${sql(apps.relation)}
+    return null
+  const rows = await sql`select name, package_version, artifact_digest, manifest from ${sql(apps.relation)}
     where runtime_package and enabled and package_version is not null order by name`
-  const missing = await unshippedApps(installed, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
-  if (missing.length)
-    throw new Error(missing.map(({ name, package_version: version }) =>
-      `App ${String(name)} version ${String(version)} is installed and enabled, but this release does not ship it. Ship ${String(name)} ${String(version)} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
-  return installed.length
-    ? `every installed, enabled app ships in this release: ${installed.map((r) => `${String(r.name)} ${String(r.package_version)}`).join(', ')}`
-    : 'no installed, enabled app to find in this release'
+  const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
+  const missing = await unshippedApps(rows, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  return { installed: rows.map(named), missing: missing.map(named) }
 }
 
 /** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that

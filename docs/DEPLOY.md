@@ -257,7 +257,9 @@ built files its manifest names. **An image that leaves out a version still
 installed and enabled on the instance is refused:** the release stops before
 its first migration, naming the app and version, so the deployment already
 running keeps serving it. The server's start and `cli boot-check` refuse the
-same way. A disabled app never blocks a release. The start command, `NODE_ENV` and port come
+same way, except on a `development` server, which starts with the app
+unavailable and warns how to bring it back. A disabled app never blocks a
+release. The start command, `NODE_ENV` and port come
 from the platform image; the release step and `cli boot-check` run in the
 client image exactly as described above.
 

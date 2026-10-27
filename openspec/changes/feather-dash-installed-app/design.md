@@ -334,9 +334,15 @@ away.
   refuses when an installed, enabled app's `package_version` and fingerprint
   (`artifact_digest`, or the recorded manifest for a legacy install) are not
   among them, before the first migration. The message names the app and
-  version and says to ship them in the image or disable the app. The server's
-  start runs the same check. A disabled app never blocks, and a row with no
-  recorded version (mid-recovery, which no image can serve) is not checked.
+  version and says to ship them in the image or disable the app. A version
+  shipped twice with different files counts as not shipped, as boot drops it
+  (Codex round 1 on #643). The server's start and `cli boot-check` run the
+  same check and refuse, except on a `development` server: init.sh runs apps
+  from their source folders, so editing an app or switching branches changes
+  its fingerprint, and there the server starts with the app unavailable and
+  warns, naming the app, the version and how to bring it back (init.sh repeats
+  the warning). A disabled app never blocks, and a row with no recorded
+  version (mid-recovery, which no image can serve) is not checked.
 
 **E8. Bar controls.** An app may declare a control for the shared top bar:
 `"bar": [{ "picker": "Store", "options": "<one of the app's reads>", "sets": "store" }]`.

@@ -510,10 +510,10 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       const { assertServerStart } = await import('./env')
       const { delegatedTestMode } = await import('./delegated-login')
       const { config } = await import('./config')
-      const { assertInstalledAppsShipped, settingsRequirements } = await import('./release-preflight')
+      const { installedAppsAtStart, settingsRequirements } = await import('./release-preflight')
       for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) io.out(`boot-check: ${line}`)
       // #642 (E7): the server's start refuses without an installed app's version.
-      await assertInstalledAppsShipped()
+      for (const line of await installedAppsAtStart()) io.out(`boot-check: ${line}`)
       io.out(`boot-check: environment ${config.environment}; test mode ${delegatedTestMode() ? 'on' : 'off'}; the server will start`)
       const { preflightRelease } = await import('./release-preflight')
       for (const line of await preflightRelease()) io.out(`boot-check: release preflight — ${line}`)

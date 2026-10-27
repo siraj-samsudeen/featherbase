@@ -54,6 +54,28 @@ describe('booting without an installed app', () => {
     }
   })
 
+  // A developer's server runs its apps from their source folders (init.sh), so
+  // editing an app or switching branches changes its fingerprint. There the
+  // server starts with the app unavailable, and says how to bring it back.
+  test('a development server starts, warning with the fix for a developer machine', async () => {
+    vi.stubEnv('JOB_POLL_MS', '600000')
+    vi.stubEnv('FEATHERBASE_ENV', 'development')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    try {
+      const { stop } = await startServer(0)
+      await stop()
+      expect(warn.mock.calls.flat()).toContain('WARNING: App acme_board version 1.2.0 is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding acme_board 1.2.0 to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.')
+    } finally {
+      warn.mockRestore()
+      log.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   // Codex round 1 on #643: boot drops a version shipped twice with different files.
   test('two different artifacts for the installed version refuse the start, though one of them matches', async () => {
     const other = join(process.cwd(), '../../runtime-apps/other')

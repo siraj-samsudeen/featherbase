@@ -273,6 +273,10 @@ done
 # --- 5. Smoke test ----------------------------------------------------------
 SERVER_URL="http://localhost:$API_PORT" WEB_URL="http://localhost:$WEB_PORT" pnpm smoke
 
+# #642: an installed app this server does not have is unavailable; the server
+# says which and how to bring it back. Repeat it here, where it is seen.
+grep '^WARNING: App ' "$server_log" || true
+
 echo "==> init OK — server :$API_PORT, web :$WEB_PORT"
 # #488: INSTANCE_ADDRESSES is optional on a dev machine. Unset, every page is
 # served on one address, as before. To try two addresses, list *.localhost
