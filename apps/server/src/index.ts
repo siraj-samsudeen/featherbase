@@ -74,7 +74,7 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, INTERIM_APPS, adminPathTitle, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -1742,6 +1742,12 @@ app.get('/api/apps', async (c) => {
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// #642 (E8): the controls an app declared for the shared top bar, filled for
+// this person.
+app.get('/api/app_bar/:app', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await appBar(c.req.param('app'), who(c)))
+})
 // Authenticated bootstrap contains identities only, never manager metadata.
 app.get('/api/runtime_app_versions', async (c) => {
   c.header('Cache-Control', 'no-store')

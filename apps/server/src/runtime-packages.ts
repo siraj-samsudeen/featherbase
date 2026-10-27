@@ -7,7 +7,7 @@ import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeAp
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
-import { appOperation } from './app-lifecycle'
+import { appOperation, withAppIdentity } from './app-lifecycle'
 import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -48,6 +48,19 @@ const frameOrigin = z.string().refine((value) => {
   }
 }, 'frameOrigins must be absolute https origins, like https://embed.example.com, with no wildcard or path')
 
+// #642 (E8): a control the platform draws in the shared top bar. A picker is
+// named by its label, filled from one of the app's reads, and sets one
+// query-string key in the app's address.
+const barControl = z.object({
+  picker: z.string().min(1),
+  options: z.string().min(1),
+  sets: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/, 'A bar control sets a query-string key: lower case letters, digits and _, starting with a letter'),
+}).strict()
+
+// What a picker's read answers: its options, in order. The value goes into
+// the address, so it is text.
+const barOptions = z.array(z.object({ value: z.string().min(1), label: z.string().min(1) }).strict())
+
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
@@ -81,6 +94,8 @@ const manifestSchema = z.object({
   datasets: datasetsDeclaration.optional(),
   // #642 (E4): the outside sites the app's own pages may frame.
   frameOrigins: z.array(frameOrigin).optional(),
+  // #642 (E8): the app's controls in the shared top bar.
+  bar: z.array(barControl).optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -262,6 +277,13 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}
   const readOperations = manifest.reads?.operations ?? {}
   const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
+  const barKeys = new Set<string>()
+  for (const control of manifest.bar ?? []) {
+    if (!Object.hasOwn(readOperations, control.options))
+      throw new Error(`The bar's ${control.picker} picker is filled from ${control.options}, which is not one of the app's reads`)
+    if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
+    barKeys.add(control.sets)
+  }
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue
@@ -484,6 +506,34 @@ export async function appCatalog(user: string) {
       result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
   }
   return result
+}
+
+/** #642 (E8): an app's controls for the shared top bar, each picker with its
+ *  options: the answer of the app's own read, run for `user` under their own
+ *  scope, as the serving version (the platform draws the bar, not the app's
+ *  client, so there is no client version to name). */
+export async function appBar(name: string, user: string) {
+  // The bar is drawn on the app's own pages: the same gate as serving them.
+  if (!(await appCatalog(user)).some((entry) => entry.name === name))
+    throw new AppError('NotFoundError', 'App is unavailable')
+  const pkg = packages.get(name)!
+  const controls = []
+  for (const { picker, options, sets } of pkg.manifest.bar ?? []) {
+    let result: unknown
+    try {
+      ({ result } = await withAppIdentity(name, pkg.version, () => runPackageRead(name, options, { payload: {} }, user)) as { result: unknown })
+    } catch (error) {
+      // A person the read refuses (no role for it, no places) has nothing to
+      // choose; the read has already logged the refusal.
+      if (!(error instanceof AppError && error.type === 'PermissionError')) throw error
+      result = []
+    }
+    const parsed = barOptions.safeParse(result)
+    if (!parsed.success)
+      throw new AppError('InternalError', `App ${name}'s read ${options} answered options the bar cannot show: it must answer a list of { value, label }, both text`)
+    controls.push({ picker, sets, options: parsed.data })
+  }
+  return { controls }
 }
 
 export async function appAsset(name: string, asset: string, user: string, clientNavigation = false) {
