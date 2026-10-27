@@ -155,12 +155,37 @@ describe('migrate:rehearse on a database of its own', () => {
       await scratch.db.begin(async (tx) => {
         await tx`lock table public.installed_app in access share mode`
         const started = Date.now()
-        await expect(rehearseOn(scratch)).rejects.toThrow('canceling statement due to lock timeout')
+        await expect(rehearseOn(scratch)).rejects.toThrow(
+          '0089_app_enablement.sql waited more than 2s for a lock another session holds, so the rehearsal stopped: canceling statement due to lock timeout',
+        )
         expect(Date.now() - started).toBeLessThan(10_000)
       })
       expect((await scratch.db`select column_name from information_schema.columns
         where table_schema = 'public' and table_name = 'installed_app'`).map((r) => r.column_name)).toEqual(['name'])
     } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+  it('a session connected as another role counts too', async () => {
+    const role = `rehearse_other_${Date.now()}`
+    const scratch = await legacyCopy()
+    // The rehearsal connects as a role that cannot read other roles' session
+    // details; the session it must notice belongs to the test's superuser.
+    await scratch.db.unsafe(`create role ${role} login password 'x'; grant all on database "${new URL(scratch.url).pathname.slice(1)}" to ${role}`)
+    const url = new URL(scratch.url)
+    url.username = role
+    url.password = 'x'
+    const limited = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    try {
+      const [{ n }] = await limited`select count(*)::int as n from pg_stat_activity
+        where datname = current_database() and pid <> pg_backend_pid() and backend_type = 'client backend'`
+      // What made the check blind: other roles' sessions show no backend type.
+      expect(n).toBe(0)
+      await expect(scratch.rehearsal.assertNotLive(limited)).rejects.toThrow(/^Refusing to rehearse: 1 other session is connected/)
+    } finally {
+      await limited.end({ timeout: 5 })
+      await scratch.db.unsafe(`drop owned by ${role}; drop role ${role}`).catch(() => {})
       await scratch.close()
     }
   }, 60_000)

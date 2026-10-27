@@ -4,8 +4,8 @@
 
 An operator SHALL be able to try every pending database change on a copy of
 an instance, with nothing kept afterwards, and read what each change reported.
-The rehearsal SHALL run each change as the release would, whatever version the
-copy was taken at.
+The rehearsal SHALL run each change as the release would, on a copy of any
+version this release can bring up to date.
 
 #### Scenario: A copy of an instance last released long ago
 
@@ -35,5 +35,5 @@ behind someone else's work.
 #### Scenario: A change that would have to wait
 
 - **WHEN** someone else is using a table a pending change needs to alter
-- **THEN** the rehearsal stops within a few seconds and says it could not get
-  the table, instead of waiting
+- **THEN** the rehearsal stops within a few seconds and names the change that
+  could not get the table, instead of waiting

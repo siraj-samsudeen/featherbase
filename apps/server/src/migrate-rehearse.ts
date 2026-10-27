@@ -32,11 +32,15 @@ const STATEMENT_TIMEOUT = '5min'
 /** Refuse a database other sessions are connected to. A restored copy has
  *  none; a live instance always has its server's. A copy of production is
  *  stamped production, so the environment check alone can't tell them apart,
- *  and the rehearsal holds every change's locks until it rolls back. */
-async function assertNotLive(): Promise<void> {
-  const [{ n }] = await sql`
+ *  and the rehearsal holds every change's locks until it rolls back. This is
+ *  a heuristic: a live server whose pool has gone idle shows no sessions.
+ *  Other roles' sessions show no backend type to a role that may not read
+ *  their details, so a session with a role and no type counts as a client. */
+export async function assertNotLive(client: typeof sql = sql): Promise<void> {
+  const [{ n }] = await client`
     select count(*)::int as n from pg_stat_activity
-     where datname = current_database() and backend_type = 'client backend' and pid <> pg_backend_pid()`
+     where datname = current_database() and pid <> pg_backend_pid()
+       and (backend_type = 'client backend' or (backend_type is null and usesysid is not null))`
   if (n === 0) return
   throw new Error(
     `Refusing to rehearse: ${n} other session${n === 1 ? ' is' : 's are'} connected to this database, ` +
@@ -53,6 +57,11 @@ async function applyReporting(batch: string[], legacy: boolean, out: RehearsalOu
   console.log = (...args: unknown[]) => out(format(...args))
   try {
     await withTransaction(() => applyBatch(batch, legacy, (file) => out(`applied ${file}`)))
+  } catch (err) {
+    // 55P03 lock_not_available: say which change could not get its lock.
+    if ((err as { code?: string }).code === '55P03')
+      throw new Error(`${batch.join(', ')} waited more than ${LOCK_TIMEOUT} for a lock another session holds, so the rehearsal stopped: ${(err as Error).message}`)
+    throw err
   } finally {
     console.log = log
   }
