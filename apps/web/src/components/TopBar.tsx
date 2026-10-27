@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
-import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
+import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
@@ -77,20 +77,36 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
+/** The one app a person can belong to without a Table grant of their own:
+ *  Feather Dash, the report page until an app is installed under its name. */
+const DASH = 'feather_dash'
+
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
- *  the app they can open, else the platform. Undefined until whoami answers. */
-function personalName(caps: Capabilities | undefined): string | undefined {
+ *  Feather Dash if they can open it, else the platform. Undefined until
+ *  whoami answers.
+ *
+ *  Other installed apps never name the page: an app opened through a Table
+ *  grant of the person's own already makes them an Admin user, and one every
+ *  person can open (Tasker grants All) is no one's in particular. */
+function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
   if (caps.manage || caps.table_access) return ADMIN_NAME
-  // An installed app is opened through a Table grant, which already lets the
-  // person use Admin; the one app reached without one is Feather Dash.
-  if (caps.report) return INTERIM_APPS.feather_dash.title
+  // #671: once an app is installed under Feather Dash's name, its readers
+  // belong to it; until then, the report role does (design D8).
+  if (installed.includes(DASH)) {
+    const opened = apps.find((entry) => entry.name === DASH)
+    if (opened) return opened.title
+  } else if (caps.report) return INTERIM_APPS[DASH].title
   return PLATFORM_NAME
 }
 
-function homeHref(context: string): string {
+/** Where the bar's name leads. An app installed under an interim name
+ *  replaces its interim page (#671): the interim root stands in only while
+ *  no app of that name is installed. */
+function homeHref(context: string, installed: boolean): string {
   if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
+  if (installed) return appHref(context)
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
@@ -123,8 +139,14 @@ export function TopBar({
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
   const context = app ? app.name : address.context
-  const caps = useWhoAmI().data?.capabilities
-  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
+  const apps = whoami?.apps
+  // An app's own page is an installed app's (#650). Elsewhere the link follows
+  // the installation, as the server's address routing does (#671): a disabled
+  // app's root says it is unavailable, never the interim page.
+  const installed = Boolean(app) || Boolean(context && whoami?.installed_apps?.includes(context))
+  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps, whoami?.installed_apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
   // account page's own (item 3). The Portal and the no-access page on the
@@ -162,7 +184,7 @@ export function TopBar({
           className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (context && name && <BarName context={context} name={name} />)}
+          {left ?? (context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
         {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
@@ -199,8 +221,7 @@ function PreviewBanner() {
 
 /** The mark and the name, linking to this address's home. One line; a long
  *  name is cut with an ellipsis rather than wrapped. */
-function BarName({ context, name }: { context: string; name: string }) {
-  const href = homeHref(context)
+function BarName({ href, name }: { href: string; name: string }) {
   return (
     <a
       href={href}
