@@ -5,6 +5,7 @@ export {
   ArrowDown,
   ArrowUp,
   Bell,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   CircleCheck,

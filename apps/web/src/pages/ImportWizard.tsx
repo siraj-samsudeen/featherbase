@@ -27,7 +27,7 @@ import {
   shapeOf,
   type ImportDecisions,
 } from '../lib/import-session'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from '../components/ui'
 import { fmtCount } from '../lib/inr'
 
 /**
@@ -711,6 +711,9 @@ export function ImportWizard() {
   // sessionStorage, or a fresh tab. Everything the user DECIDED is intact;
   // only the data needs dropping again.
   const [needsFile, setNeedsFile] = useState<ImportDecisions<SheetPlan> | null>(null)
+  // #326: a file dropped while saved work waits, that turned out not to be
+  // that work's file. Held here, unread into the wizard, until the user picks.
+  const [mismatch, setMismatch] = useState<File | null>(null)
   // #206: minted once per file read and carried by every part of every
   // target, so "which Tables came from that import?" has an answer.
   const [batchId, setBatchId] = useState('')
@@ -846,6 +849,7 @@ export function ImportWizard() {
     pending.current = null
     clearSession()
     setNeedsFile(null)
+    setMismatch(null)
     setDataKept(true)
     setFileName(null)
     setSheets([])
@@ -869,9 +873,12 @@ export function ImportWizard() {
     setConfirmUpdates(null)
   }
 
-  async function loadFile(file: File) {
+  // `resumeFrom` is the saved work this file is meant to carry on; null reads
+  // the file as a fresh import.
+  async function loadFile(file: File, resumeFrom = needsFile) {
     setError(null)
     setDone(false)
+    setMismatch(null)
     if (!isImportableFile(file.name)) {
       setError(`${file.name}: not a CSV or Excel file`)
       return
@@ -879,13 +886,21 @@ export function ImportWizard() {
     // #204: whatever was on screen is about to be replaced, and parsing is
     // async — so clear it NOW rather than leaving a restored grid live and
     // clickable for the moment it takes to read the file. Editing something
-    // that is about to be thrown away is worse than a blank pause.
-    const resumeFrom = needsFile
+    // that is about to be thrown away is worse than a blank pause. Saved work
+    // waiting for its file has no grid on screen, and stays until the file is
+    // known to be the right one.
     setSheets([])
-    setPlans([])
-    setNeedsFile(null)
+    if (!resumeFrom) setPlans([])
     try {
       const parsed = await parseWorkbook(file)
+      // #326: a file that isn't the one the saved work is for must not
+      // replace that work silently. Nothing is touched — not even the stored
+      // rows — until the user says which to keep.
+      if (resumeFrom && !sameShape(resumeFrom.shape, shapeOf(parsed))) {
+        setMismatch(file)
+        return
+      }
+      setNeedsFile(null)
       // A drop can beat the targets query; suggestions need the real corpus.
       const tables = await queryClient.ensureQueryData({
         queryKey: ['import-targets'],
@@ -901,10 +916,10 @@ export function ImportWizard() {
       // original one back, so continuing an import stays ONE batch.
       setBatchId(crypto.randomUUID())
       // The same file, dropped again to carry on. Plans address sheets by
-      // INDEX, so this must be the same workbook before they are applied —
-      // otherwise a saved mapping would quietly point at another sheet's
-      // columns. Name, sheet names, headers and row counts all have to match.
-      if (resumeFrom && sameShape(resumeFrom.shape, shapeOf(parsed))) {
+      // INDEX, so the shape check above is what makes this safe — otherwise a
+      // saved mapping would quietly point at another sheet's columns. Name,
+      // sheet names, headers and row counts all have to match.
+      if (resumeFrom) {
         setPlans(resumeFrom.plans)
         natural.current = resumeFrom.natural
         setSelected(resumeFrom.selected)
@@ -1594,6 +1609,56 @@ export function ImportWizard() {
         </div>
       )}
 
+      {/* #326: the file dropped isn't the saved work's file. Replacing that
+          work is the user's call, made here, never a side effect of a drop. */}
+      {/* The live region is on the page before the warning goes into it:
+          a status that arrives together with its text is often not read out. */}
+      {needsFile && (
+        <div aria-live="polite">
+          {mismatch && (
+            <div className="mb-3" data-testid="iw-mismatch">
+              <Notice tone="caution">
+                <strong>
+                  {mismatch.name === needsFile.fileName
+                    ? `This copy of ${mismatch.name} isn't the one your saved work is for.`
+                    : `${mismatch.name} isn't the file your saved work is for.`}
+                </strong>{' '}
+                Your work on {needsFile.fileName} (
+                {needsFile.plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null).length} Tables
+                planned
+                {needsFile.plans.some((p) => p.result) &&
+                  `, ${needsFile.plans.filter((p) => p.result).length} already imported`}
+                ) is still saved. This file's sheets, headings or row counts don't match it.
+                <span className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={buttonClasses({ variant: 'primary', className: 'py-1' })}
+                    data-testid="iw-mismatch-replace"
+                    onClick={() => {
+                      const file = mismatch
+                      startOver()
+                      void loadFile(file, null)
+                    }}
+                  >
+                    {mismatch.name === needsFile.fileName
+                      ? 'Import this copy instead'
+                      : `Import ${mismatch.name} instead`}
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonClasses({ className: 'py-1' })}
+                    data-testid="iw-mismatch-keep"
+                    onClick={() => setMismatch(null)}
+                  >
+                    Keep my saved work
+                  </button>
+                </span>
+              </Notice>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Said BEFORE leaving the page, not discovered on returning to it. */}
       {!dataKept && sheets.length > 0 && (
         <p className="mb-3 text-xs text-ink-muted" data-testid="iw-too-big">
@@ -1666,7 +1731,10 @@ export function ImportWizard() {
       {stage === 'columns' && sheets.length > 0 && targetIndexes.length > 0 && (
         <div className={cardClasses('mb-3 p-3')} data-testid="iw-stepper">
           <div className="flex flex-wrap items-center gap-3">
-            {sheets.length > 1 && !done && (
+            {/* #325: the overview rebuilds every chosen sheet's plan, which
+                would reset one that already landed to "not imported" and let
+                it be sent again. So the way back closes at the first landing. */}
+            {sheets.length > 1 && !done && landedCount === 0 && (
               <button
                 type="button"
                 onClick={() => setStage('overview')}
@@ -1675,6 +1743,11 @@ export function ImportWizard() {
               >
                 ← Choose sheets
               </button>
+            )}
+            {sheets.length > 1 && !done && landedCount > 0 && (
+              <span className="text-xs text-ink-muted" data-testid="iw-sheets-fixed">
+                Sheets are fixed once a Table is imported.
+              </span>
             )}
             <span
               className="text-sm font-semibold text-ink"
@@ -2648,7 +2721,10 @@ export function ImportWizard() {
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${fmtCount(blockingProblems)} bad rows)`
               : targetIndexes.length > 1
-                ? `Import the remaining ${targetIndexes.filter((i) => !plans[i]?.result).length} Tables`
+                ? (() => {
+                    const left = targetIndexes.filter((i) => !plans[i]?.result).length
+                    return `Import the remaining ${left} Table${left === 1 ? '' : 's'}`
+                  })()
                 : `Import ${fmtCount(
                     sheets.reduce(
                       (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),

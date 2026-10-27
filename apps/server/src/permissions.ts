@@ -199,7 +199,7 @@ export function checkUserPermissions(
     if (!f.reference_table) continue
     const allowed = map.get(f.reference_table)
     if (!allowed) continue
-    const value = row[f.column_name]
+    const value = Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined
     if (value == null || value === '') continue
     if (!allowed.has(String(value)))
       throw new AppError(

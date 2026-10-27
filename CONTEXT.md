@@ -166,6 +166,42 @@ A public, optionally anonymous form over a whitelisted subset of one Table's
 Columns.
 _Avoid_: public form, survey
 
+## Platform, apps and instances
+
+These are the three layers of ADR 0011. Each layer knows only the layer below it.
+
+**Platform**:
+Featherbase itself: sign-in, Tables, forms, roles, the Admin screens, and the
+rules for installing apps. It is the same for every client, and it never names a
+client or an app.
+_Avoid_: core (as a layer name), framework
+
+**App**:
+Something installed on an instance, with its own pages, Tables, roles and code.
+It reaches the platform only through declared extension points. It comes in two
+kinds, product apps and client apps (ADR 0013).
+_Avoid_: runtime package (the code's name, used only when pointing at a file),
+plugin, module
+
+**Product app**:
+An app meant for any client, shipped with Featherbase as a first-party package.
+A client's values reach it as settings or instance setup; it never hard-codes one
+client's values. Worth it when the same app serves many clients. For example,
+Feather Tickets or Feather Tasker.
+_Avoid_: generic app, universal app
+
+**Client app**:
+An app built for one client, kept in that client's own repository. It may carry
+the client's terms, values and examples directly. The next client gets a copy to
+adapt. Quicker to build and easier to follow; the cost is that the copies drift
+apart. For example, Feather Dash, built for its first client.
+_Avoid_: custom app, bespoke app, instance app
+
+**Instance**:
+One running copy of Featherbase for one client: one server, one database, and
+that client's settings, data, people and choice of apps.
+_Avoid_: site, tenant, deployment (as the layer name)
+
 ## Extension
 
 **Workflow**:

@@ -36,7 +36,7 @@ const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
 
 export function tableName(table: string): string {
   const naive = table.toLowerCase().replace(/\s+/g, '_')
-  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
+  return Object.hasOwn(PHYSICAL_TABLE_OVERRIDES, naive) ? PHYSICAL_TABLE_OVERRIDES[naive] : naive
 }
 
 // #432: the storage a Table resolves to, as `schema.relation`. App Tables
