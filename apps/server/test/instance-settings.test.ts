@@ -421,3 +421,100 @@ describe('over HTTP (D3)', () => {
     expect(await res.text()).toContain('extra')
   })
 })
+
+describe('an environment section adds to the base', () => {
+  const row = (row_id: string, label: string) => ({ row_id, kind: 'delegated_password', label, enabled: false, service_url: 'https://hr.example.com/login' })
+
+  test('rows only the section names are added, a row it shares with the base takes the section\'s fields, and the rest of the base stays', async () => {
+    const file: InstanceSettingsFile = {
+      settings: { 'Sign In Method': [row('base_one', 'Base one')], 'System Settings': { app_name: 'Base Name', session_hours: 8 } },
+      environments: {
+        dev: {
+          settings: {
+            'Sign In Method': [{ row_id: 'base_one', label: 'Base one (dev)' }, row('dev_only', 'Dev only')],
+            'System Settings': { app_name: 'Dev Name' },
+            'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }],
+          },
+        },
+      },
+    }
+    await applyInstanceSettings(file, { by: 'Administrator', environment: 'dev' })
+    const methods = await sql`select row_id, label from sign_in_method where row_id in ('base_one', 'dev_only') order by row_id`
+    expect(methods).toEqual([{ row_id: 'base_one', label: 'Base one (dev)' }, { row_id: 'dev_only', label: 'Dev only' }])
+    const stored = Object.fromEntries((await sql`select field, value from single_value where table_name = 'System Settings' and field in ('app_name', 'session_hours')`).map((r) => [r.field, r.value]))
+    expect({ app_name: stored.app_name, session_hours: Number(stored.session_hours) }).toEqual({ app_name: 'Dev Name', session_hours: 8 })
+  })
+})
+
+describe('the shape of each Table in the file', () => {
+  test('a Settings Table given a list, or a row Table given an object, is refused naming the shape it takes', async () => {
+    const err = await problemsOf(applyInstanceSettings({ settings: { 'System Settings': [{ row_id: 'x' }], 'Sign In Method': { label: 'x' } } }, { by: 'Administrator' }))
+    expect(err.fields).toMatchObject({
+      'System Settings': 'System Settings takes one object of fields',
+      'Sign In Method': 'Sign In Method takes a list of rows, each with a row_id',
+    })
+  })
+})
+
+describe('a refusal that names no field', () => {
+  test('is reported against the row, in the refusal\'s own words, and nothing is saved', async () => {
+    const before = await snapshot()
+    const err = await problemsOf(applyInstanceSettings({
+      settings: { 'Sign In Method': [{ row_id: 'second_google', kind: 'google', label: 'Second Google', enabled: false }] },
+    }, { by: 'Administrator' }))
+    expect(err.fields).toEqual({ 'Sign In Method.second_google': expect.stringContaining('already a google sign-in method') })
+    expect(await snapshot()).toEqual(before)
+  })
+})
+
+describe('settings that differ from the file', () => {
+  test('a value changed outside the file is reported as drift, by Table, row and field', async () => {
+    const { settingsDrift } = await import('../src/instance-settings')
+    await applyInstanceSettings({ settings: { 'System Settings': { app_name: 'Filed Name' } } }, { by: 'Administrator' })
+    expect(await settingsDrift()).toEqual([])
+    await sql`update single_value set value = 'Edited Elsewhere' where table_name = 'System Settings' and field = 'app_name'`
+    expect(await settingsDrift()).toEqual([{ table: 'System Settings', row_id: 'System Settings', field: 'app_name' }])
+  })
+})
+
+describe('export reads text that only looks like JSON', () => {
+  test('a JSON setting holding text that is not JSON is exported as that text, and braces in ordinary prose are not a secret', async () => {
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'people_review', 'not json')
+      on conflict (table_name, field) do update set value = excluded.value`
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', 'invitation_email_intro', '{ welcome to the shop')
+      on conflict (table_name, field) do update set value = excluded.value`
+    const exported = await exportInstanceSettings()
+    expect(exported.file.settings['System Settings']).toMatchObject({ people_review: 'not json', invitation_email_intro: '{ welcome to the shop' })
+    expect(exported.withheld).toEqual([])
+  })
+})
+
+describe('a managed row\'s fields are compared too', () => {
+  test('a sign-in method field changed outside the file is reported as drift on that row', async () => {
+    const { settingsDrift } = await import('../src/instance-settings')
+    await applyInstanceSettings({ settings: { 'Sign In Method': [{ row_id: 'google', allowed_email_domains: DOMAINS }] } }, { by: 'Administrator' })
+    expect(await settingsDrift()).toEqual([])
+    await sql`update sign_in_method set allowed_email_domains = 'edited.example' where row_id = 'google'`
+    expect(await settingsDrift()).toEqual([{ table: 'Sign In Method', row_id: 'google', field: 'allowed_email_domains' }])
+  })
+})
+
+describe('a decimal setting', () => {
+  test('is applied as a number, a value of another type is refused naming the field, and export gives the number back', async () => {
+    await sql`insert into column_def ${sql({ parent: 'System Settings', position: 996, column_name: 'rate_test', label: null,
+      column_type: 'Float', reqd: false, unique: false, default_value: null, read_only: false, hidden: false, in_list_view: false, tier: 'basic' })}`
+    const { invalidateMeta } = await import('../src/meta')
+    invalidateMeta('System Settings')
+    try {
+      const refused = await problemsOf(applyInstanceSettings({ settings: { 'System Settings': { rate_test: '2.5' } } }, { by: 'Administrator' }))
+      expect(JSON.stringify(refused.fields)).toContain('a number')
+      const result = await applyInstanceSettings({ settings: { 'System Settings': { rate_test: 2.5 } } }, { by: 'Administrator' })
+      expect(result.changes).toContainEqual(expect.objectContaining({ field: 'rate_test', old: null, new: 2.5 }))
+      expect((await exportInstanceSettings()).file.settings['System Settings']).toMatchObject({ rate_test: 2.5 })
+      expect((await applyInstanceSettings({ settings: { 'System Settings': { rate_test: 2.5 } } }, { by: 'Administrator' })).changes).toEqual([])
+    } finally {
+      await sql`delete from column_def where parent = 'System Settings' and column_name = 'rate_test'`
+      invalidateMeta('System Settings')
+    }
+  })
+})

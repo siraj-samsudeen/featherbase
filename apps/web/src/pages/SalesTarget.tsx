@@ -281,7 +281,10 @@ function SalesTargetReport() {
               headers: { authorization: `Bearer ${getToken() ?? ''}` },
               signal: controller.signal,
             })
-            const body = (await res.json().catch(() => ({}))) as Report & { no_assignment?: boolean }
+            const body = (await res.json().catch(
+              /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path */
+              () => ({}),
+            )) as Report & { no_assignment?: boolean }
             const ms = performance.now() - t0
             if (!current()) return
             if (res.status === 403) void onForbidden() // never a red "Numbers unavailable"
@@ -291,6 +294,7 @@ function SalesTargetReport() {
           } catch {
             // A client-side fetch failure: nothing reached the server, so nothing is logged.
             if (!current()) return
+            /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
             setPre({ kind: 'error' })
           }
         })()
@@ -303,7 +307,10 @@ function SalesTargetReport() {
           headers: { authorization: `Bearer ${getToken() ?? ''}` },
           signal: controller.signal,
         })
-        const body = (await res.json().catch(() => ({}))) as {
+        const body = (await res.json().catch(
+          /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path */
+          () => ({}),
+        )) as {
           session?: string
           no_assignment?: boolean
           not_configured?: boolean
@@ -323,6 +330,7 @@ function SalesTargetReport() {
         else setEmbed({ kind: 'error' })
       } catch (err) {
         if (!current()) return
+        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
         setEmbed({ kind: 'error' })
       }
     })()

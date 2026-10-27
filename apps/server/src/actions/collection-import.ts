@@ -239,9 +239,9 @@ registerCollectionAction('import', {
     const meta = await getMeta(table)
     if (meta.kind !== 'table')
       throw new AppError('ValidationError', `Cannot import into a ${meta.kind} Table`)
-    // EDS: bulk import is not supported on source-bound Tables yet. The dry
-    // run already refused (checkRowForInsert); the real import must agree
-    // rather than fan 10k row-by-row writes at a foreign store.
+    // EDS: bulk import is not supported on source-bound Tables yet — refused
+    // here for the real run and the dry run alike, rather than fanning 10k
+    // row-by-row writes at a foreign store.
     if (meta.data_source)
       throw new AppError(
         'ValidationError',

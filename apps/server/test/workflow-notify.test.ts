@@ -125,4 +125,17 @@ describe('WF-004: pending-approval notifications', () => {
     const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-2'`
     expect(emails.map((e) => e.recipient)).toEqual([APPROVER])
   })
+
+  test('the person who took the action and anyone switched off are not emailed', async ({ admin, createUser }) => {
+    const approver = await setup(admin, createUser)
+    await createUser({ email: 'wf-notify-other@x.com', roles: [APPROVER_ROLE] })
+    const gone = await createUser({ email: 'wf-notify-gone@x.com', roles: [APPROVER_ROLE] })
+    await sql`update person set enabled = false where row_id = ${gone.user}`
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-3', title: 'Self submitted' })
+
+    // The approver submits it themselves: they already know, and one approver has left.
+    await approver.post(`/api/table/${encodeURIComponent(DT)}/wf-notify-3:apply_workflow_action`, { action: 'Submit' })
+    const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-3'`
+    expect(emails.map((e) => e.recipient)).toEqual(['wf-notify-other@x.com'])
+  })
 })

@@ -24,7 +24,7 @@ export function isBound(meta: TableMeta): boolean {
   return Boolean(meta.data_source)
 }
 
-export interface BoundContext {
+interface BoundContext {
   cfg: SourceConfig
   driver: SourceDriver
   bind: Binding
@@ -41,7 +41,7 @@ function narrowToTiers(bind: Binding, meta: TableMeta, tiers: Set<'basic' | 'res
   }
 }
 
-export async function boundContext(meta: TableMeta): Promise<BoundContext> {
+async function boundContext(meta: TableMeta): Promise<BoundContext> {
   const cfg = await getSource(meta.data_source!)
   const driver = getDriver(cfg)
   const schema = meta.external_schema ?? ''
@@ -192,7 +192,7 @@ async function boundScopeFilters(
   return filters
 }
 
-export interface BoundListArgs {
+interface BoundListArgs {
   filters?: unknown[]
   fields?: string[]
   order_by?: string

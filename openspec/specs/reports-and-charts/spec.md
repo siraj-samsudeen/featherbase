@@ -84,3 +84,58 @@ repeating schedule, attached as a file of its current rows.
 - **THEN** each recipient gets an email with the report's current rows
   attached
 - **AND** it is not sent again until a week has passed
+
+### Requirement: A scheduled email goes to everyone on the list, once each
+
+A scheduled report email SHALL be sent separately to each recipient, whether the list is separated by commas, semicolons or spaces. It SHALL be sent daily, weekly or monthly as chosen, and a schedule that is switched off, or has no recipients, SHALL send nothing.
+
+#### Scenario: Four recipients
+
+- **WHEN** a schedule lists four addresses and its time comes
+- **THEN** each of the four gets their own email
+
+#### Scenario: A switched-off schedule
+
+- **WHEN** a schedule is switched off and its time comes
+- **THEN** no email is sent
+
+### Requirement: The emailed file can be a spreadsheet file or a web table
+
+The attachment of a scheduled report SHALL be a CSV file by default, with values containing commas or quotes kept intact, or, when the schedule asks for it, the same rows as a table in a web page.
+
+#### Scenario: A value with a comma
+
+- **WHEN** a report row has the title "Bolt, hex"
+- **THEN** the CSV file keeps it as one cell
+
+### Requirement: A chart is drawn from a label, a value or counts
+
+A report chart SHALL show either one bar per row, labelled by one column and sized by another, or, when the chart groups by a column, one bar per distinct value sized by how many rows have it. When the chart is not told which columns to use, it SHALL label by the first column that is not the row's identifier and size by the first numeric column.
+
+#### Scenario: Counts by status
+
+- **WHEN** the user charts a report grouped by status
+- **THEN** each status gets a bar sized by the number of rows with that status
+
+#### Scenario: No columns chosen
+
+- **WHEN** a chart is made from a report with a text column followed by a numeric one, and no columns are chosen
+- **THEN** the bars are labelled by the text column and sized by the numeric one
+
+### Requirement: Pinning the same chart twice updates it
+
+Pinning a chart to a dashboard under a name that is already there SHALL replace that chart rather than add a second one, so pinning again after changing a report keeps the dashboard tidy.
+
+#### Scenario: Pin again
+
+- **WHEN** the user pins a chart called "Orders by status" to a dashboard that already has one by that name
+- **THEN** the dashboard still has one such chart, now the latest
+
+### Requirement: A script report is only for people who may read it
+
+A person SHALL be refused a script report they cannot read, and what a script report returns SHALL be limited to what the person running it could otherwise read.
+
+#### Scenario: No access to the report
+
+- **WHEN** a person with no access to a script report tries to run it
+- **THEN** they are refused and nothing runs

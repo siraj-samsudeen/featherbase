@@ -4,8 +4,7 @@ import { deleteTableIfExists } from './cleanup'
 
 // IMP-006: drag & drop a CSV/Excel file -> inferred Table + imported rows.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). The Table Builder's grid and dropzone
+// The Table Builder's grid and dropzone
 // are testid-addressed, not label-associated, so the walk stays inside named
 // steps; `session.visit` carries navigation.
 

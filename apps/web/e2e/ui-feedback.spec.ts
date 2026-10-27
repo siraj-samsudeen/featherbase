@@ -1,5 +1,4 @@
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// every test here drives route mocks, `page.evaluate`, keyboard/filechooser
+// Every test here drives route mocks, `page.evaluate`, keyboard/filechooser
 // events, or computed-style/DOM-identity checks — none of which any Session
 // verb expresses — so each stays as one named step operating on the raw
 // `page`; `session.visit` carries the first plain navigation into it.

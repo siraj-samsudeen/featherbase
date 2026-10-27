@@ -190,3 +190,15 @@ describe('declared transactional runtime actions', () => {
     expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
   })
 })
+
+describe('action_helpers_preserve_caller_authority', () => {
+  test('an action listing a declared table sees only the rows its caller may read', async ({ admin, createUser }) => {
+    await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
+    const owner = await createUser({ email: 'list-owner@example.com', roles: [] })
+    const other = await createUser({ email: 'list-other@example.com', roles: [] })
+    await owner.post('/api/save_row', { table: 'actionproof.work', row: { row_id: 'mine-17', title: '17 owned units' } })
+    await other.post('/api/save_row', { table: 'actionproof.work', row: { row_id: 'theirs-43', title: '43 private units' } })
+    const listed = await owner.post<any>(action + 'probe', { idempotencyKey: 'list-own', payload: { operation: 'list', table: 'actionproof.work', values: { fields: ['row_id', 'title'] } } })
+    expect(listed.result).toEqual([{ row_id: 'mine-17', title: '17 owned units' }])
+  })
+})

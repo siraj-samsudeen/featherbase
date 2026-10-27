@@ -4,12 +4,10 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc, submitDoc } from '../src/document'
 import { registerApp, installApp, uninstallApp } from '../src/apps'
-import { callMethod } from '../src/methods'
 
 // Frappe lifecycle parity: before_validate and on_update fire in Frappe's
-// order, doc_events["*"] hooks every Table, an app's scheduler_events get a
-// live recurring job, and override_whitelisted_methods swaps an RPC handler
-// (restored on uninstall).
+// order, doc_events["*"] hooks every Table, and an app's scheduler_events get
+// a live recurring job.
 
 const DT = 'Hook Parity Note'
 
@@ -140,22 +138,5 @@ describe('Frappe lifecycle + app-contract parity', () => {
       const rows = await sql`select 1 from background_job where method = ${METHOD} and job_status = 'queued'`
       expect(rows.length).toBe(0) // uninstall dropped the pending recurrence
     }
-  })
-
-  test('override_whitelisted_methods swaps an RPC handler and restores it on uninstall', async () => {
-    const APP = `hookp-override-${Date.now()}`
-    const guest = { row_id: 'Guest', kind: 'person' as const, email: 'guest@x', full_name: 'Guest' }
-    registerApp({
-      name: APP,
-      override_whitelisted_methods: { public_info: () => 'overridden by app' },
-    })
-    try {
-      expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
-      await installApp(APP)
-      expect(await callMethod('public_info', {}, guest)).toBe('overridden by app')
-    } finally {
-      await uninstallApp(APP).catch(() => {})
-    }
-    expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
   })
 })

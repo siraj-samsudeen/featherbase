@@ -191,7 +191,7 @@ export async function assertBindingIsValid(def: {
     throw new AppError('ValidationError', `Invalid binding for ${def.name}`, errors)
 }
 
-export interface ReflectResult {
+interface ReflectResult {
   created: { table: string; name: string }[]
   skipped: { table: string; reason: string }[]
 }

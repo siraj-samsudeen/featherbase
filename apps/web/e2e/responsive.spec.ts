@@ -31,8 +31,7 @@ async function expectVisibleFocusOutsideSidebar(page: Page): Promise<void> {
   ).toBe(true)
 }
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// supported keyboard and link actions use Session verbs. Focus setup,
+// Supported keyboard and link actions use Session verbs. Focus setup,
 // responsive measurements and focus-state assertions stay in named steps.
 test.describe('UI-025: responsive Admin (mobile)', () => {
   test.use({ viewport: { width: 375, height: 720 } })

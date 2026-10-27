@@ -11,8 +11,7 @@ import { deleteTableIfExists } from './cleanup'
 // 3..n unattempted and skipped the completion block — which held the sole
 // link to the log.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). The network stub (`page.route`) and
+// The network stub (`page.route`) and
 // every wizard control here stay inside named steps; `session.visit` carries
 // navigation.
 

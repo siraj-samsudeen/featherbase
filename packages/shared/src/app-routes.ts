@@ -48,9 +48,9 @@ export function adminPageNeedsManage(slug: string): boolean {
 }
 
 /** Admin first segments that are real pages but not worth remembering
- *  (home, builders, browsers, prototypes) — never logged as a Table's list. */
+ *  (home, builders, browsers) — never logged as a Table's list. */
 export const ADMIN_UNRECORDED_ROOTS = [
-  'new-table', 'import', 'jobs', 'setup', 'all-tables', 'naming', 'permissions', 'home', 'source', 'prototype', 'map',
+  'new-table', 'import', 'jobs', 'setup', 'all-tables', 'naming', 'permissions', 'home', 'source', 'map',
 ] as const
 
 /** Admin first segments whose second segment names the page (`/dashboard/Sales`). */

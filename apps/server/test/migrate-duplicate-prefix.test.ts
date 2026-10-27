@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { findDuplicateMigrationPrefixes } from '../src/migrate'
+import { assertUniqueMigrationNumbers, findDuplicateMigrationPrefixes } from '../src/migrate'
 
 // #149: two migration files sharing a numeric prefix apply silently — one
 // wins the slot in an arbitrary sort order, the other becomes an unreachable
@@ -65,5 +65,12 @@ describe('findDuplicateMigrationPrefixes', () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
     const files = readdirSync(dir).filter((f) => f.endsWith('.sql') || f.endsWith('.ts'))
     expect(findDuplicateMigrationPrefixes(files)).toEqual([])
+  })
+
+  it('the migrator refuses a listing with a duplicate number, naming every collision', () => {
+    expect(() => assertUniqueMigrationNumbers(['0001_init.sql', '0002_a.sql', '0002_b.ts'])).toThrow(
+      'duplicate migration numbers:\nmigration number "0002" is claimed by more than one file: 0002_a.sql, 0002_b.ts',
+    )
+    expect(() => assertUniqueMigrationNumbers(['0001_init.sql', '0002_a.sql'])).not.toThrow()
   })
 })

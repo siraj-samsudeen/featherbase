@@ -19,3 +19,8 @@ storage/
 # Playwright MCP scratch output (screenshots land at the repo root)
 .playwright-mcp/
 /*.png
+
+# Merged web coverage (ADR 0012): raw inputs, the merged map, the report.
+apps/web/.nyc_output/
+apps/web/.coverage/
+apps/web/coverage-merged/

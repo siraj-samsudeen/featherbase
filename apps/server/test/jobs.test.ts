@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, enqueue, loadJobs, runOneJob } from '../src/jobs'
+import { drainJobs, enqueue, loadJobs, runOneJob, startWorker, stopWorker } from '../src/jobs'
 
 // JOB-001: enqueue → worker processes → queue drains.
 // JOB-002: retries until success; permanent failure lands in `failed`.
@@ -55,6 +55,26 @@ describe('JOB-001: enqueue + worker + drain', () => {
   })
 })
 
+describe('Long work runs in the background', () => {
+  test('the worker picks up a queued job on its own, without anyone draining the queue', async () => {
+    await setup()
+    const id = await enqueue('ping_job', {})
+    await nudgeDueJobs()
+    startWorker(20)
+    try {
+      const deadline = Date.now() + 5000
+      let status = 'queued'
+      while (status !== 'done' && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50))
+        status = String((await sql`select job_status from background_job where row_id = ${id}`)[0].job_status)
+      }
+      expect(status).toBe('done')
+    } finally {
+      stopWorker()
+    }
+  })
+})
+
 describe('JOB-002: retries and failure state', () => {
   test('a job that throws twice then succeeds records 3 attempts', async () => {
     await setup()
@@ -92,5 +112,33 @@ describe('JOB-002: retries and failure state', () => {
     const [job] = await sql`select job_status, error from background_job where row_id = ${id}`
     expect(job.job_status).toBe('failed')
     expect(job.error).toContain('No job handler')
+  })
+})
+
+describe('See every job\'s status in one place', () => {
+  test('an admin\'s list of background jobs shows status, attempts and the error', async ({ admin, createUser }) => {
+    await setup()
+    const failed = await enqueue('demo_always_fails', {}, { maxAttempts: 2 })
+    const done = await enqueue('ping_job', {})
+    const waiting = await enqueue('ping_job', {}, { runAt: new Date(Date.now() + 3_600_000) })
+    await nudgeDueJobs()
+    await drainJobs()
+
+    const list = await admin.get<{ data: { row_id: string; job_status: string; attempts: number; error: string | null }[] }>(
+      `/api/table/Background%20Job?limit_page_length=50&fields=${encodeURIComponent(JSON.stringify(['row_id', 'job_status', 'attempts', 'error']))}`,
+    )
+    const byId = new Map(list.data.map((j) => [j.row_id, j]))
+    expect(byId.get(failed)?.job_status).toBe('failed')
+    expect(Number(byId.get(failed)?.attempts)).toBe(2)
+    expect(byId.get(failed)?.error).toContain('always fails')
+    expect(byId.get(done)?.job_status).toBe('done')
+    expect(Number(byId.get(done)?.attempts)).toBe(1)
+    expect(byId.get(done)?.error).toBeNull()
+    expect(byId.get(waiting)?.job_status).toBe('queued')
+    expect(Number(byId.get(waiting)?.attempts)).toBe(0)
+
+    // Someone with no role cannot open the list.
+    const outsider = await createUser({ roles: [] })
+    expect((await outsider.fetch('/api/table/Background%20Job')).status).toBe(403)
   })
 })

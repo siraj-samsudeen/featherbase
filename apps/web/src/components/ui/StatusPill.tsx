@@ -17,7 +17,7 @@ export function pillClasses(className?: string): string {
   return recipe('inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold', className)
 }
 
-export function statusClasses(tone: StatusTone = 'neutral', className?: string): string {
+function statusClasses(tone: StatusTone = 'neutral', className?: string): string {
   return pillClasses(`${TONE[tone]}${className ? ` ${className}` : ''}`)
 }
 

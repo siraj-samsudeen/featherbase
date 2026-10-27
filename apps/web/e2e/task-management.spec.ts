@@ -4,7 +4,6 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
   session,
 }) => {

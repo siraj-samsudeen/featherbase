@@ -8,7 +8,7 @@ import { DataList, type DataColumn } from '../components/ui'
 // #429: people a sign-in rule let in who hold no role yet, and see only the
 // no-access page. Opening one goes to their Person form to give roles.
 
-export interface WaitingPerson {
+interface WaitingPerson {
   person: string
   full_name: string | null
   email_domain: string | null
@@ -19,7 +19,7 @@ export interface WaitingPerson {
   last_sign_in: string | null
 }
 
-export const WAITING_QUERY_KEY = ['waiting-for-access'] as const
+const WAITING_QUERY_KEY = ['waiting-for-access'] as const
 export const WAITING_COUNT_QUERY_KEY = ['waiting-for-access-count'] as const
 
 /** Saving or deleting a person or a role assignment can change who is

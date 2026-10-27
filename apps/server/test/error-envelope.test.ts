@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { setUserPassword } from '../src/auth'
 
@@ -117,5 +117,39 @@ describe('API-006: consistent error envelope', () => {
     })
     expect(res.status).toBe(403)
     expect((await envelope(res)).type).toBe('PermissionError')
+  })
+})
+
+// Running an Instance / Every failure answers in one shape: a fault nobody
+// planned for is answered with the same envelope and no detail.
+describe('every failure answers in one shape: unexpected faults', () => {
+  const faulty = async (thrown: unknown) => {
+    const { Hono } = await import('hono')
+    const { errorResponse } = await import('../src/errors')
+    const probe = new Hono()
+    probe.onError((err, c) => errorResponse(c, err))
+    probe.get('/boom', () => {
+      throw thrown
+    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      return await probe.request('/boom')
+    } finally {
+      log.mockRestore()
+    }
+  }
+
+  test('500 InternalError says only that something went wrong, never the detail', async () => {
+    const res = await faulty(new Error('relation "secret_table" does not exist'))
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: { type: string; message: string } }
+    expect(body).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
+    expect(JSON.stringify(body)).not.toContain('secret_table')
+  })
+
+  test('409 ConflictError when the database refuses an overlapping period', async () => {
+    const res = await faulty(Object.assign(new Error('conflicting key value violates exclusion constraint'), { code: '23P01' }))
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
   })
 })

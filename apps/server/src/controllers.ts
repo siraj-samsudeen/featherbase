@@ -5,14 +5,14 @@ import type { sql } from './db'
 import type { TableMeta } from './meta'
 
 // DOC-003/DOC-004: per-Table controllers hook into the row lifecycle.
-// Hook chain (all inside the save transaction), matching Frappe's order:
+// Hook chain (all inside the save transaction), in this order:
 //   insert: before_insert -> before_validate -> validate -> before_save
 //           -> INSERT -> after_insert -> after_save -> on_update
 //   update: before_validate -> validate -> before_save
 //           -> UPDATE -> after_save -> on_update
 // Hooks may mutate ctx.row; a thrown error aborts the whole transaction.
-// (after_save is this codebase's historical name; on_update is Frappe's —
-// both fire, so hooks.py-style code ports over unchanged.)
+// (after_save and on_update both fire, one after the other; existing hooks
+// use either name.)
 
 export interface HookContext {
   row: Record<string, unknown>
@@ -49,9 +49,9 @@ export const HOOK_EVENTS = [
 ] as const
 export type HookEvent = (typeof HOOK_EVENTS)[number]
 
-// Frappe's doc_events["*"]: hooks registered under this Table key run for
+// Hooks registered under this Table key run for
 // EVERY Table's lifecycle (framework-wide extensions like audit trails).
-export const WILDCARD_TABLE = '*'
+const WILDCARD_TABLE = '*'
 
 export interface TableController {
   table: string
@@ -101,12 +101,8 @@ export async function loadControllers() {
   if (loaded) return
   loaded = true
   const dir = join(dirname(fileURLToPath(import.meta.url)), 'controllers')
-  let files: string[] = []
-  try {
-    files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
-  } catch {
-    return
-  }
+  // The directory ships with the source (the server runs src/ through tsx).
+  const files = readdirSync(dir).filter((f) => /\.(ts|js|mjs)$/.test(f))
   for (const file of files) {
     const mod = await import(pathToFileURL(join(dir, file)).href)
     const controller = mod.default as TableController | undefined

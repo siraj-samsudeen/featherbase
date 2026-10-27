@@ -72,8 +72,7 @@ async function cleanupFiles(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => cleanupFiles(request))
 test.afterEach(async ({ request }) => cleanupFiles(request))
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// file input by testid, an attribute/dimension check on the decoded
+// File input by testid, an attribute/dimension check on the decoded
 // thumbnail, and an absence check for a non-image row are all outside the
 // DSL's verbs, so the whole attach/verify round trip stays in one named
 // step; session.visit carries the plain navigation.

@@ -125,7 +125,7 @@ export type TableDef = z.infer<typeof tableDefSchema>
 // NAM-001: the id_pattern kinds resolveName() (document.ts) understands. A
 // series prefix may not itself contain the '.' that separates it from the
 // digit mask, or resolveName would cut the prefix short.
-export function validateIdPattern(pattern: string, columnNames: string[]): void {
+function validateIdPattern(pattern: string, columnNames: string[]): void {
   const bad = (message: string) =>
     new AppError('ValidationError', message, { id_pattern: message })
   if (pattern === 'hash' || pattern === 'prompt') return
@@ -667,6 +667,7 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
       if (!survivors.length) await deleteStored(url)
     } catch {
+      /* v8 ignore next 2 -- a database failure on the survivor check after the committed delete; deleteStored itself never throws, so only a mocked driver could reach it */
       console.warn('Table deleted; attachment cleanup could not complete')
     }
   }

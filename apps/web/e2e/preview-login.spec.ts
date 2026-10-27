@@ -13,7 +13,6 @@ const USER = process.env.PREVIEW_LOGIN_USER ?? ''
 test.describe('preview sign-in', () => {
   test.skip(!KEY || !USER, 'server not started with PREVIEW_LOGIN_KEY / PREVIEW_LOGIN_USER')
 
-  // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
   // Every check here is an attribute/URL/localStorage assertion the DSL has
   // no verb for, so each logical chunk stays a named step around
   // `session.visit`.

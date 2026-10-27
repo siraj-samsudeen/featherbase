@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { parseResolveFile, resolveStyleHrSubjects, runPeopleResolve } from '../src/people-resolve'
+import { formatResolveReport, parseResolveFile, resolveStyleHrSubjects, runPeopleResolve } from '../src/people-resolve'
 import { configureDelegated, linkDelegated } from './identity-fixtures'
 import { makePerson } from './fixtures'
 
@@ -93,4 +93,28 @@ describe('people:resolve', () => {
     expect(parseResolveFile('employee_code,assigner,stylehr_record_id\nRR-1,12,900001\n')).toEqual([{ employee_code: 'RR-1', assigner: '12', stylehr_record_id: '900001' }])
     expect(() => parseResolveFile('code,record\nRR-1,900001')).toThrow(/missing column employee_code/)
   })
+
+  test('the printed report names each person under what happened to their sign-in', async () => {
+    const p = await trial()
+    const report = await runPeopleResolve(csv(FILE), { dryRun: true })
+    const text = formatResolveReport(report, { dryRun: true })
+    expect(text.split('\n')[0]).toBe(`people:resolve (dry run — rolled back): ${report.live} live StyleHR sign-ins`)
+    expect(text).toContain(`  moved to the record number: 2`)
+    expect(text).toContain(`    devi (${p.devi}) — RR-0101 → record 900001`)
+    expect(text).toContain('  already on a record number: 0')
+    expect(text).toContain(`  kept by employee code — not in the file: 1\n    missing (${p.missing}) — employee code RR-9999 is not in the file`)
+    expect(text).toContain(`    collide (${p.collide}) — employee code RR-8001 has 2 StyleHR records (firms 12, 7) — resolve by hand`)
+    expect(text).toContain(`    taken (${p.taken}) — record 77777 (code RR-5000) is already held by holder`)
+    const empty = formatResolveReport({ live: 0, resolved: [], alreadyResolved: 0, notInFile: [], colliding: [],
+      heldElsewhere: [{ person: 'psn_x', full_name: null, detail: 'held' }] })
+    expect(empty).toBe([
+      'people:resolve: 0 live StyleHR sign-ins',
+      '  moved to the record number: 0 none',
+      '  already on a record number: 0',
+      '  kept by employee code — not in the file: 0 none',
+      '  kept by employee code — code on 2+ StyleHR records: 0 none',
+      "  kept by employee code — record already another person's: 1\n    psn_x — held",
+    ].join('\n'))
+  })
 })
+

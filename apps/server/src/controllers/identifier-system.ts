@@ -97,8 +97,6 @@ const controller: TableController = {
     on_trash: async ({ row, tx }) => {
       const [{ n }] = await tx`select count(*)::int as n from person_identifier where system = ${String(row.row_id)}`
       if (n > 0) throw new AppError('ConflictError', `${n} recorded value(s) use this identifier system; it cannot be deleted. Turn it off instead.`)
-      const [method] = await tx`select row_id from sign_in_method where identifier_system = ${String(row.row_id)} limit 1`
-      if (method) throw new AppError('ConflictError', `Sign-in method ${String(method.row_id)} uses this identifier system`)
     },
   },
 }

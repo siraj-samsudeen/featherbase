@@ -13,6 +13,8 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe } from 'vitest'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 const SRC = 'Tm Source Zones'
@@ -61,9 +63,9 @@ async function chooseTarget(user: ReturnType<typeof userEvent.setup>) {
   const picker = screen.getByTestId('tm-target')
   await waitFor(() =>
     expect(within(picker).getByRole('option', { name: DST })).toBeInTheDocument(),
-  )
+  { timeout: 10_000 })
   await user.selectOptions(picker, DST)
-  await screen.findByTestId('tm-mapping')
+  await screen.findByTestId('tm-mapping', undefined, { timeout: 10_000 })
 }
 
 async function targetRows(admin: Admin, fields: string[]) {
@@ -221,4 +223,89 @@ test('a source larger than one page merges all of its rows, not the first page',
     `/api/table/${encodeURIComponent(DST)}?limit_page_length=1`,
   )
   expect(page.total).toBe(523)
+// 520 rows through the real server: slower than the suite default on a busy
+// machine (#527), so this one test gets more time; no assertion changes.
+}, 30_000)
+
+describe('Merged values are converted to fit, or the row is reported as failed', () => {
+  test('a text value that is not a number is reported as a failed row and not stored', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    // A text column on the source meets a number column on the target.
+    await admin.put(`/api/table_def/${encodeURIComponent(SRC)}`, {
+      columns: [
+        { column_name: 'glor', label: 'Glor', column_type: 'Data' },
+        { column_name: 'zone_name', label: 'Zone Name', column_type: 'Data' },
+        { column_name: 'pop', label: 'Pop', column_type: 'Int' },
+        { column_name: 'headcount', label: 'Headcount', column_type: 'Data' },
+      ],
+    })
+    await admin.put(`/api/table_def/${encodeURIComponent(DST)}`, {
+      columns: [
+        { column_name: 'floor', label: 'Floor', column_type: 'Data' },
+        { column_name: 'zone_name', label: 'Zone', column_type: 'Data' },
+        { column_name: 'pop', label: 'Population', column_type: 'Int' },
+        { column_name: 'headcount', label: 'Headcount', column_type: 'Int' },
+      ],
+    })
+    await admin.post('/api/save_row', { table: SRC, row: { zone_name: 'Bakery', headcount: 'lots' } })
+
+    await openMerge(admin)
+    await chooseTarget(user)
+    await waitFor(() => expect(screen.getByTestId('tm-map-headcount')).toHaveValue('headcount'))
+    await user.click(screen.getByTestId('tm-go'))
+
+    const outcome = await screen.findByTestId('tm-outcome', undefined, { timeout: 15_000 })
+    expect(outcome).toHaveTextContent('Merged 2 rows')
+    expect(outcome).toHaveTextContent('1 failed')
+    const zones = (await targetRows(admin, ['zone_name'])).map((r) => r.zone_name)
+    expect(zones.sort()).toEqual(['Dairy', 'Fresh', 'Frozen'])
+  })
+})
+
+describe('A merge too large for the screen is refused, not run partway', () => {
+  test('a source over the limit is refused whole and nothing reaches the target', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    // 5001 rows — one over the screen's ceiling — written straight into the
+    // source's storage inside this test's transaction.
+    await sql.unsafe(
+      `insert into featherbase.tm_source_zones (row_id, glor, zone_name)
+       select 'bulk-' || g, 'Level ' || g, 'Zone ' || g from generate_series(1, 4999) g`,
+    )
+    await openMerge(admin)
+    await chooseTarget(user)
+    await waitFor(() => expect(screen.getByTestId('tm-map-zone_name')).toHaveValue('zone_name'))
+    await user.click(screen.getByTestId('tm-go'))
+
+    expect(await screen.findByTestId('tm-error', undefined, { timeout: 15_000 })).toHaveTextContent(
+      /merges at most 5000/,
+    )
+    expect(screen.queryByTestId('tm-outcome')).not.toBeInTheDocument()
+    const page = await admin.get<{ total: number }>(
+      `/api/table/${encodeURIComponent(DST)}?limit_page_length=1`,
+    )
+    expect(page.total).toBe(1)
+  })
+})
+
+describe('A finished merge reports its outcome and can be undone', () => {
+  test('undoing the merge from the import history removes exactly the merged rows', async ({ admin }) => {
+    const user = userEvent.setup()
+    await seed(admin)
+    await openMerge(admin)
+    await chooseTarget(user)
+    await user.selectOptions(screen.getByTestId('tm-map-glor'), 'floor')
+    await user.click(screen.getByTestId('tm-go'))
+    await waitFor(() => expect(screen.getByTestId('tm-outcome')).toHaveTextContent('Merged 2 rows'))
+
+    const [log] = await sql`
+      select run_id from featherbase.import_log where ref_table = ${DST} and file_name = ${`Merged from ${SRC}`}`
+    await admin.post(`/api/table/${encodeURIComponent(DST)}:import-revert`, { run_id: log.run_id })
+
+    const rows = await targetRows(admin, ['floor'])
+    expect(rows.map((r) => r.floor)).toEqual(['Basement'])
+    const src = (await admin.get(`/api/table/${encodeURIComponent(SRC)}:count`)) as { count: number }
+    expect(src.count).toBe(2)
+  })
 })

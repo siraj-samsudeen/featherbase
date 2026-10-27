@@ -97,6 +97,17 @@ describe('first-run setup (6.1)', () => {
     expect(sent.map((m) => m.to)).toEqual(['asha@example.com'])
   })
 
+  test('when the mail relay refuses the invitation, the person is still created and the result carries the reason and the link', async ({ admin }) => {
+    await noManagerEmails()
+    await googleOn()
+    process.env.SMTP_HOST = 'smtp.example.com'
+    _setInvitationDeliveryForTests(async () => { throw new Error('relay down') })
+    const res = await admin.post<{ people: Outcome[]; email_can_send: boolean }>(SETUP, { people: [{ full_name: 'Asha Keeper', email: 'asha@example.com' }] })
+    expect(res.people[0].invitation).toMatchObject({ status: 'failed', link: expect.stringMatching(/\/featherbase\/login$/) })
+    expect(res.people[0].invitation).toMatchObject({ error: 'The invitation email was not sent (EUNKNOWN)', method_label: 'Google' })
+    expect(await rolesOf('asha@example.com')).toContain('System Manager')
+  })
+
   test('an incomplete SMTP configuration still returns what was committed, each invitation with its link (Codex review)', async ({ admin }) => {
     await noManagerEmails()
     await googleOn()

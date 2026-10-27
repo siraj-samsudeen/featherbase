@@ -154,6 +154,18 @@ describe('runtime upgrades', () => {
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })
       await expect(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } })).rejects.toMatchObject({ status: 409 })
+      // A colleague's tab still running the previous version: refused on save and on read, told to reload.
+      const stale = (path: string, init: RequestInit = {}) => member.fetch(path, { ...init, headers: {
+        'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@0.0.1', ...init.headers,
+      } })
+      const reloadAsked = { error: { type: 'ConflictError', message: 'App other was upgraded. Reload its current client and retry with the installed application version' } }
+      const staleSave = await stale('/api/save_row', { method: 'POST', body: JSON.stringify({ table: 'other.task', row: { row_id: 'stale', quantity: 5 } }) })
+      expect(staleSave.status).toBe(409)
+      expect(await staleSave.json()).toMatchObject(reloadAsked)
+      const staleRead = await stale('/api/table/other.task/kept')
+      expect(staleRead.status).toBe(409)
+      expect(await staleRead.json()).toMatchObject(reloadAsked)
+      expect(await sql`select 1 from other.task where row_id = 'stale'`).toEqual([])
       const response = await admin.fetch('/api/save_row', { method: 'POST', headers: {
         'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@2.0.0',
       }, body: JSON.stringify({ table: 'other.task', row: { row_id: 'new', quantity: 19, notes: '**markdown**' } }) })
@@ -343,5 +355,48 @@ describe('runtime upgrades', () => {
       await admin.post('/api/activate_app_upgrade', { name: 'other', version: '3.0.0' })
       expect(await sql`select migration_ledger from installed_app where name = 'other'`).toMatchObject([{ migration_ledger: [{ id: 'add_notes' }, { id: 'client_refresh' }] }])
     } finally { await rm(directory, { recursive: true, force: true }); await rm(next, { recursive: true, force: true }) }
+  })
+})
+
+describe('An upgrade never goes backward', () => {
+  test('previewing an upgrade to the version already installed is refused and changes nothing', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    const [{ package_version: installed }] = await sql`select package_version from installed_app where name = 'other'`
+    await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: installed }))
+      .rejects.toMatchObject({ status: 417, message: expect.stringContaining('newer') })
+    expect(await sql`select package_version, activation_pending from installed_app where name = 'other'`)
+      .toEqual([{ package_version: installed, activation_pending: false }])
+  })
+})
+
+describe('explicit_runtime_policy_upgrade', () => {
+  test('a policy written into the installed version, without a new version, makes the app unavailable until the exact artifact returns', async ({ admin }) => {
+    const copy = await mkdtemp(resolve('test/.relabel-'))
+    const header = { 'X-Featherbase-App-Version': 'tasker@2.0.0' }
+    try {
+      await cp(resolve('../..', 'runtime-apps/fixtures/tasker-v2'), copy, { recursive: true })
+      expect(await discoverPackages([copy])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+      const file = resolve(copy, 'featherbase.json')
+      const original = await readFile(file, 'utf8')
+      const manifest = JSON.parse(original)
+      const policy = { policy: { kind: 'table' }, authorization: { kind: 'generic' } }
+      manifest.actions = { version: 2, operations: { promote: policy, delete_accidental: policy }, tables: manifest.actions.tables }
+      await writeFile(file, JSON.stringify(manifest))
+      await discoverPackages([copy])
+      await loadInstalledApps()
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(403)
+      const promote = await admin.fetch('/api/app_actions/tasker/promote', { method: 'POST',
+        headers: { ...header, 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'relabelled', payload: { row_id: 'x', updated_at: 'y' } }) })
+      expect(promote.status).toBe(403)
+      expect((await admin.get<{ installed: unknown[] }>('/api/apps')).installed)
+        .toContainEqual(expect.objectContaining({ name: 'tasker', available: false, active: false }))
+      await writeFile(file, original)
+      await discoverPackages([copy])
+      await loadInstalledApps()
+      expect((await admin.fetch('/api/table/tasker.task', { headers: header })).status).toBe(200)
+    } finally { await rm(copy, { recursive: true, force: true }) }
   })
 })

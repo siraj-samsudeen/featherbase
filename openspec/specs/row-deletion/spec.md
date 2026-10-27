@@ -52,3 +52,30 @@ exactly as it was.
 - **WHEN** a deletion is refused because another row still links to it
 - **THEN** the row and its data remain exactly as they were before the
   attempt
+
+### Requirement: A late deletion of an app row is refused
+
+If someone else has changed a row supplied by an installed app since the user opened it, deleting that row SHALL be refused rather than removing the newer version.
+
+#### Scenario: Someone else changed the app row first
+
+- **WHEN** the user tries to delete an installed app's row that another person changed after the user opened it
+- **THEN** the deletion is refused
+- **AND** the newer version remains unchanged
+
+### Requirement: Nested rows and settings are deleted only through what holds them
+
+A nested row — one line inside another row, such as an item on an order —
+SHALL NOT be deleted on its own; it goes when its parent row drops it or is
+deleted. A settings table's values SHALL NOT be deleted as if they were a
+row.
+
+#### Scenario: Delete one line of an order directly
+
+- **WHEN** a user tries to delete a single line of an order on its own
+- **THEN** the deletion is refused and the order keeps that line
+
+#### Scenario: Delete a settings table's row
+
+- **WHEN** a user tries to delete the one row of a settings table
+- **THEN** the deletion is refused, naming the table

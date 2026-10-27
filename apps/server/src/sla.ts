@@ -8,13 +8,13 @@ import type { TableMeta } from './meta'
 // code). A scheduled job (`check_sla`, src/jobs/sla-escalation.ts) escalates
 // rows past their resolution deadline.
 
-export interface SlaPriorityRow {
+interface SlaPriorityRow {
   priority: string
   response_hours: number | null
   resolution_hours: number | null
 }
 
-export interface ActiveSla {
+interface ActiveSla {
   row_id: string
   ref_table: string
   priority_field: string

@@ -97,3 +97,43 @@ describe('META-006: naming rules', () => {
     expect(row.title).toBe('v2')
   })
 })
+
+describe('A series never reuses a number', () => {
+  test('deleting the newest row and adding another continues after it', async ({ admin }) => {
+    await makeDT(admin, 'Nm Reuse', 'NMRU-.####')
+    const rows = []
+    for (const title of ['a', 'b', 'c', 'd', 'e']) rows.push(await save(admin, 'Nm Reuse', { title }))
+    expect(rows.at(-1)!.row_id).toBe('NMRU-0005')
+    await admin.delete(`/api/table/Nm%20Reuse/NMRU-0005`)
+    const next = await save(admin, 'Nm Reuse', { title: 'f' })
+    expect(next.row_id).toBe('NMRU-0006')
+  })
+})
+
+describe('A typed-in name must be unique', () => {
+  test('creating a row under a name already in use is refused and the existing row is untouched', async ({ admin }) => {
+    await makeDT(admin, PROMPT_DT, 'prompt')
+    await save(admin, PROMPT_DT, { row_id: 'Tools', title: 'original' })
+    // The explicit create path refuses outright...
+    await expect(
+      admin.post(`/api/table/${encodeURIComponent(PROMPT_DT)}`, { row_id: 'Tools', title: 'imposter' }),
+    ).rejects.toMatchObject({ status: 409 })
+    // ...and the form's save path, which carries no loaded version for a new row, refuses too.
+    await expect(save(admin, PROMPT_DT, { row_id: 'Tools', title: 'imposter' })).rejects.toMatchObject({ status: 417 })
+    const row = await admin.get<{ title: string }>(`/api/table/${encodeURIComponent(PROMPT_DT)}/Tools`)
+    expect(row.title).toBe('original')
+  })
+})
+
+describe("A name that comes from the row can't be left out", () => {
+  test('a row named after its own column is refused without it, calling the column out', async ({ admin }) => {
+    await makeTable(admin, { name: FIELD_DT, id_pattern: 'field:country', columns: ['country'] })
+    await expect(save(admin, FIELD_DT, {})).rejects.toMatchObject({ status: 417, fields: { country: expect.any(String) } })
+    expect(await admin.get<{ count: number }>(`/api/table/${encodeURIComponent(FIELD_DT)}:count`)).toEqual({ count: 0 })
+  })
+
+  test('a typed-in name is required', async ({ admin }) => {
+    await makeDT(admin, PROMPT_DT, 'prompt')
+    await expect(save(admin, PROMPT_DT, { title: 'no id' })).rejects.toMatchObject({ status: 417, fields: { row_id: expect.any(String) } })
+  })
+})

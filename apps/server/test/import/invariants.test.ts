@@ -3,8 +3,8 @@ import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { coerceRows, idPatternFor } from 'shared'
 
-// The invariants layer — docs/design/requirements-framework.md, Part II:
-// relationships that must hold across a whole import run, asserted as
+// The invariants layer of the import requirements
+// (openspec/specs/spreadsheet-import): relationships that must hold across a whole import run, asserted as
 // arithmetic. These re-execute the external review's *reported* findings.
 //
 // IMP-I1  rows in file = inserted + failed + dropped-blank, and every

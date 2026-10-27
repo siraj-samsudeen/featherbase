@@ -140,6 +140,7 @@ function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, row: Row): string
 // `chromium-<rev>` directory.
 const CHROMIUM_BINARIES = [
   'chrome-linux/chrome',
+  'chrome-linux64/chrome', // newer Playwright builds (#519)
   'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
   'chrome-win/chrome.exe',
 ]
@@ -149,7 +150,7 @@ const CHROMIUM_BINARIES = [
 // installs browsers under /opt/pw-browsers but does not always export
 // PLAYWRIGHT_BROWSERS_PATH to the server process, so that path is probed too —
 // but only when it actually exists, so other hosts fall through to the default.
-function resolveChromium(): string | undefined {
+export function resolveChromium(): string | undefined {
   const chromium = readVariable('CHROMIUM_PATH')
   if (chromium && existsSync(chromium)) return chromium
   const root = readVariable('PLAYWRIGHT_BROWSERS_PATH') ?? '/opt/pw-browsers'

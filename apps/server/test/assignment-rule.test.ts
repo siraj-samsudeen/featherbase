@@ -75,4 +75,15 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
     const doc = await saveDoc(DT, { title: 'off' }, 'Administrator')
     expect(await assignee(String(doc.row_id))).toBeUndefined()
   })
+
+  test('an existing row edited so that it now matches the condition is not assigned', async ({ admin }) => {
+    await setup(admin)
+    const row = await saveDoc(DT, { title: 'later', priority: 'Low' }, 'Administrator')
+    await saveDoc(
+      DT,
+      { row_id: row.row_id, updated_at: (row.updated_at as Date).toISOString(), priority: 'High' },
+      'Administrator',
+    )
+    expect(await assignee(String(row.row_id))).toBeUndefined()
+  })
 })

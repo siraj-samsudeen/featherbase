@@ -22,7 +22,7 @@ export async function getRoles(principal: string): Promise<string[]> {
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
 // Table with no Permission rows is still manageable.
-export type PermAction =
+type PermAction =
   | 'read'
   | 'write'
   | 'create'
@@ -43,7 +43,7 @@ const ACTION_COLUMN: Record<PermAction, string> = {
 
 // PERM-007: an own_rows_only grant applies only to rows the user created.
 // 'all' = unconditional grant, 'own_rows' = created_by-scoped only, 'none' = denied.
-export type PermScope = 'all' | 'own_rows' | 'none'
+type PermScope = 'all' | 'own_rows' | 'none'
 
 export async function permissionScope(
   user: string,
@@ -85,14 +85,6 @@ export async function isSharedWith(
     where share_table = ${table} and share_name = ${name}
       and (person = ${user} or service_account = ${user}) and ${sql(col)} = true limit 1`
   return Boolean(row)
-}
-
-// Names of rows of a table shared with the user (for list widening).
-export async function sharedNames(user: string, table: string): Promise<string[]> {
-  const rows = await sql`
-    select share_name from share
-    where share_table = ${table} and (person = ${user} or service_account = ${user}) and read = true`
-  return rows.map((r) => r.share_name as string)
 }
 
 // For operations on a specific existing row: own-rows-scoped grants

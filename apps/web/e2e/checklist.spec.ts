@@ -10,8 +10,7 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 // The checklists sample app installs through the real endpoint, exactly like
 // the helpdesk spec. Idempotent: an existing structure is left as-is.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the camera upload and viewport/box-model checks aren't expressible by DSL
+// The camera upload and viewport/box-model checks aren't expressible by DSL
 // verbs, so they stay in named steps.
 async function ensureChecklistStructure(request: APIRequestContext) {
   const H = await adminAuth(request)

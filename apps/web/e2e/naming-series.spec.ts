@@ -6,11 +6,9 @@ const DT = 'Naming Demo'
 // apps/server/test/naming.test.ts; what only the browser can see is the
 // builder's own derivation — the prefix it composes from the Table name, the
 // preview it renders for a digit count, and the fact that the pattern the UI
-// composed is the one that reaches the server. Cited as evidence for
-// IMP-R6.shape in docs/design/requirements-framework.md (Part II).
+// composed is the one that reaches the server.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the Table Builder and Table Naming dialogs are testid-addressed, so the
+// The Table Builder and Table Naming dialogs are testid-addressed, so the
 // mechanics stay in named steps; assertHas covers the plain presence checks.
 
 test('NAM-001: the builder derives the series prefix and preview from the Table name', async ({

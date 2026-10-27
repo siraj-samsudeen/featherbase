@@ -6,8 +6,11 @@ import { qualifyPlatformSql } from './platform-schema'
 export type Sql = postgres.Sql<Record<string, never>>
 export type TxSql = postgres.TransactionSql<Record<string, never>>
 
+/** Server NOTICEs (an `if exists` that found nothing, …) are not worth a log line. */
+export function ignoreNotice(): void {}
+
 const root: Sql = postgres(config.databaseUrl, {
-  onnotice: () => {},
+  onnotice: ignoreNotice,
   // META-004: schema sync ALTERs tables at runtime. Cached prepared
   // statements on warm pooled connections then fail with PG 0A000
   // ("cached plan must not change result type") on their next use, so
@@ -39,7 +42,9 @@ export function _getRootSql(): Sql {
 }
 
 function qualifiedClient(client: Sql): Sql {
-  return new Proxy((() => {}) as unknown as Sql, {
+  // The client itself is the proxy target (it is callable); every call and
+  // property read goes through the traps below.
+  return new Proxy(client, {
   apply(_target, _thisArg, args) {
     if (Array.isArray(args[0]) && Object.prototype.hasOwnProperty.call(args[0], 'raw')) {
       const strings = args[0] as unknown as TemplateStringsArray
@@ -70,13 +75,11 @@ export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
   get(_target, prop) {
     const current = transactions.getStore() ?? delegate
     if (prop === 'begin') {
-      return (first: unknown, second?: unknown) => {
-        const fn = (typeof first === 'function' ? first : second) as (s: TxSql) => unknown
+      // No caller passes begin() options (an isolation level): only the callback form.
+      return (fn: (s: TxSql) => unknown) => {
         const run = (tx: TxSql) => fn(qualifiedClient(tx as unknown as Sql) as unknown as TxSql)
         if (current !== root) return (current as unknown as TxSql).savepoint(run)
-        return typeof first === 'function'
-          ? root.begin(run)
-          : root.begin(first as never, run)
+        return root.begin(run)
       }
     }
     if (current !== root && prop === 'end') return async () => {}

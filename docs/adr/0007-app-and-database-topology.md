@@ -1,7 +1,7 @@
 # ADR 0007: App and database topology — one control DB, foreign data bound per DocType
 
 - **Status:** Proposed (2026-07-26)
-- **Context docs:** `docs/research/frappe-multi-app-and-multi-db.md`
+- **Context docs:** `docs/research/frappe-multi-app-and-multi-db.md` (removed Oct 2026; see git history)
 - **Specs that implement this:** `docs/specs/0001-external-data-sources.md`,
   `docs/specs/0002-virtual-doctypes.md`
 

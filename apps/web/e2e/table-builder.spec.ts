@@ -10,7 +10,6 @@ test.beforeAll(async ({ request }) => {
   await deleteTableIfExists(request, token, NEW_DT)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The Table Builder's grid rows and buttons are testid-addressed, not
 // labelled or named controls the DSL's click/fillIn verbs can reach, so the
 // build itself stays inside named steps; `session.visit`/`assertPath`/

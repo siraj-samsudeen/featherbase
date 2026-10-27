@@ -34,15 +34,44 @@ following that report's own filters and grouping as they change.
 
 ### Requirement: A home page groups links into cards
 
-A home page SHALL show its links grouped into labeled cards in the order
+A home page SHALL show its links grouped into headed cards in the order
 they were curated, and hide any link to a Table the viewer can't read rather
-than showing it disabled.
+than showing it disabled. Links curated before the first named card still
+sit under a heading.
 
 #### Scenario: A hidden link
 
 - **WHEN** a home page has a card with a link to a Table one viewer can't
   read
 - **THEN** that viewer sees the card's other links but not that one
+
+#### Scenario: Links before the first named card
+
+- **WHEN** a Table is added to a home page that has no named cards
+- **THEN** its link appears under a heading, not in a card with no title
+
+### Requirement: A card with nothing to show disappears
+
+A card whose links have all been hidden from the viewer, or point to a Table that no longer exists, SHALL NOT be shown, and the rest of the page SHALL still appear. A link to a part of a Table that has no list of its own SHALL NOT be shown.
+
+#### Scenario: Every link in a card is hidden
+
+- **WHEN** a card holds only links to Tables the viewer cannot read
+- **THEN** the card is not shown, and the page's other cards are
+
+#### Scenario: A Table has been removed
+
+- **WHEN** an app is uninstalled and a home page still links to one of its Tables
+- **THEN** the link is left out and the page opens normally
+
+### Requirement: Pages are listed Home first, the System page last
+
+The home pages SHALL be listed with the general Home page first, then one page for each module, then the System page.
+
+#### Scenario: Module pages before System
+
+- **WHEN** a viewer who can see the Warehouse module's page and the System page opens the navigation
+- **THEN** Warehouse is listed before System
 
 ### Requirement: A home page can be limited to certain roles
 
@@ -65,6 +94,15 @@ automatically, creating that page first if it doesn't exist yet.
 
 - **WHEN** the user builds a Table in a module with no home page yet
 - **THEN** a home page for that module appears with a link to the new Table
+
+### Requirement: Tables in the same module share one page
+
+A second Table built in a module SHALL be added to that module's existing home page, after the first, not to a new page. Tables filed under the default module SHALL go on the general Home page, and a Table that exists only as the rows of another Table SHALL get no link.
+
+#### Scenario: Two Tables in one module
+
+- **WHEN** the user builds two Tables in the Warehouse module
+- **THEN** one Warehouse page links both, in the order they were built
 
 ### Requirement: Resume where you left off
 
@@ -107,10 +145,69 @@ have opened and searched, visible to no one but them.
 
 A System Manager SHALL be able to switch the activity trail to a team view,
 which shows everyone's changes and sign-ins but never what a colleague
-merely looked at.
+merely looked at. Each row SHALL name the person and show their main role
+(System Manager if they hold it, otherwise another role they hold; nothing
+for someone with no role), and SHALL NOT show an opaque id or an email address.
 
 #### Scenario: The team view stays to changes, not views
 
 - **WHEN** a System Manager switches to the team view
 - **THEN** they see who changed what and who signed in, but not what anyone
   merely looked at
+
+#### Scenario: Rows name the person and their role
+
+- **WHEN** a System Manager opens the team view and a colleague with the
+  System Manager role has made a change
+- **THEN** the row shows that colleague's name followed by "System Manager"
+
+#### Scenario: A person with no name still reads as a person
+
+- **WHEN** a colleague has no full name on record
+- **THEN** the row shows the part of their email before the "@", never the
+  whole address or an internal id
+
+### Requirement: Remembered places read as names
+
+Wherever the home page or the sidebar points back to something the user
+opened, it SHALL show that thing's name: a page by its title, and a row by its
+title with its Table beneath. A row whose Table names no title column SHALL
+read as a few of its own values instead, never as an internal id.
+
+#### Scenario: A page remembered before page titles existed
+
+- **WHEN** the user opened the Explore page before page titles were
+  recorded, and later returns to the home page
+- **THEN** the tile back to it shows the page's title, not its address
+
+#### Scenario: A row whose Table has no title column
+
+- **WHEN** the user opened a store's row in a merchandise map whose Table has
+  no title column
+- **THEN** the tile reads as the store code and the subcategory name, with the
+  Table's name beneath, not as the row's internal id
+
+### Requirement: The activity trail reads by day, one sentence per row
+
+The activity trail SHALL group rows under the day they happened, naming the
+two most recent days today and yesterday and the rest by weekday and date.
+Each row SHALL read as one sentence that starts with who acted (the user
+themselves in their own trail), says what kind of thing was acted on, and
+shows the time.
+
+#### Scenario: The user's own trail
+
+- **WHEN** the user opened a page earlier today
+- **THEN** their trail shows it under today, as "You opened" and the page's
+  title, with the time it happened
+
+### Requirement: A repeated action shows once
+
+When the same person does the same thing to the same target several times
+in a row, the activity trail SHALL show it once, with how many times and the
+latest time. The same action separated by something else stays separate.
+
+#### Scenario: Opening the same page twice in a row
+
+- **WHEN** the user opens the same page twice in a row
+- **THEN** their trail shows one row for it, marked as two times

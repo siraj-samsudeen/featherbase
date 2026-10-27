@@ -2,8 +2,7 @@
 // friendly chips, and the type-specific detail control labelled inside the
 // card. Shares the grid view's column state; the grid remains the power
 // view (full engine type list), the cards speak spreadsheet.
-import { useQuery } from '@tanstack/react-query'
-import { listResource } from '../lib/api'
+import { useShellTables } from '../lib/session'
 import { BuilderColumn, ColumnVerdict, slugify } from '../lib/column-rules'
 import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, pillClasses } from './ui'
 
@@ -38,15 +37,11 @@ export function ColumnCards({
   onRemove: (i: number) => void
   onAdd: () => void
 }) {
-  const { data: tables } = useQuery({
-    queryKey: ['tables'],
-    queryFn: () =>
-      listResource<{ name: string }>('Table', {
-        filters: [['kind', '!=', 'sub_table']],
-        fields: ['name'],
-        limit_page_length: 500,
-      }),
-  })
+  // The shell's own list of Tables (sub-tables left out). This used to be a
+  // second query under the same ['tables'] key asking for a `name` field the
+  // Table list no longer has (#132 renamed it row_id), so the picker below
+  // offered no Table at all.
+  const tables = useShellTables()
 
   return (
     <div className="space-y-3">
@@ -125,9 +120,9 @@ export function ColumnCards({
                 <label className={labelClasses()}>Which table does it link to?</label>
                 <select value={c.target} onChange={(e) => onPatch(i, { target: e.target.value })} className={inputClasses()}>
                   <option value="">Choose a table…</option>
-                  {(tables?.data ?? []).map((t) => (
-                    <option key={t.name} value={t.name}>
-                      {t.name}
+                  {(tables ?? []).map((t) => (
+                    <option key={t.row_id} value={t.row_id}>
+                      {t.row_id}
                     </option>
                   ))}
                 </select>

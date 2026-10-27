@@ -4,12 +4,12 @@ import { AppError } from './errors'
 
 // CUST-004: sandboxed Server Scripts. Scripts run in a fresh V8 context
 // (node:vm). SECURITY: we expose NO host objects to the script — not even
-// built-ins. Injecting a host object (Object, Array, doc, frappe, …) would leak
+// built-ins. Injecting a host object (Object, Array, doc, featherbase, …) would leak
 // the host realm, because that object's `.constructor` is the host `Function`
 // and `hostFunction("return process")()` runs in the HOST realm. Instead, all
 // inputs cross the boundary as JSON string PRIMITIVES (whose `.constructor`
 // resolves to the context's own String), are `JSON.parse`d INSIDE the context,
-// and results come back as a JSON string. `frappe`/`console` are defined inside
+// and results come back as a JSON string. `featherbase`/`console` are defined inside
 // the context. So `Object`, `Function`, etc. seen by the script are the
 // context's own, and `process`/`require`/`fetch` are simply not defined.
 //
@@ -22,7 +22,7 @@ interface RunResult {
   resultJson?: string // API return value
 }
 
-// Builds the in-context bootstrap that parses inputs, defines the frappe API,
+// Builds the in-context bootstrap that parses inputs, defines the featherbase API,
 // runs the user code, and serializes outputs — all with context-native values.
 function wrap(userCode: string, kind: 'row' | 'api'): string {
   const inputs =
@@ -38,11 +38,11 @@ function wrap(userCode: string, kind: 'row' | 'api'): string {
   return `"use strict";
 (function () {
   ${inputs}
-  var frappe = { throw: function (m) { var e = new Error(String(m)); e.__frappeThrow = true; throw e; } };
+  var featherbase = { throw: function (m) { var e = new Error(String(m)); e.__featherbaseThrow = true; throw e; } };
   var console = { log: function () {}, warn: function () {}, error: function () {}, info: function () {} };
-  (function (doc, args, frappe, console) {
+  (function (doc, args, featherbase, console) {
 ${userCode}
-  })(doc, args, frappe, console);
+  })(doc, args, featherbase, console);
   ${outputs}
 })();`
 }
@@ -110,10 +110,10 @@ export function evalCondition(
   return (context as { __outResultJson: string | null }).__outResultJson === 'true'
 }
 
-export type RowEvent = 'validate' | 'before_save' | 'after_save'
+type RowEvent = 'validate' | 'before_save' | 'after_save'
 
 // Runs every enabled Row-Event script for this table+event, inside the
-// save transaction. A script that throws (or calls frappe.throw) aborts the
+// save transaction. A script that throws (or calls featherbase.throw) aborts the
 // save. Queries run on the caller's transaction connection (`db`) — the global
 // pool would deadlock, since the save already holds a pool connection while many
 // saves run concurrently.

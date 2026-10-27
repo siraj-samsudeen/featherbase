@@ -8,7 +8,7 @@ import { AppError } from './errors'
 import { scopedWhere } from './query'
 
 const MAX_NAMES = 500
-export const UNNAMED = 'Unnamed person'
+const UNNAMED = 'Unnamed person'
 
 /** A person's display name: full name, else @username — never an address
  *  (an address is personal data the name surfaces travel to), else
@@ -46,7 +46,7 @@ export async function principalNames(ids: unknown, viewer: string): Promise<Reco
   return out
 }
 
-export interface PickedPerson {
+interface PickedPerson {
   row_id: string
   label: string
 }

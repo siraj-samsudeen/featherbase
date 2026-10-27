@@ -9,8 +9,6 @@ import { readNamedVariable } from '../env'
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
 // config and pool, and invalidates the meta cache so bound Tables pick up a
 // flipped access mode without a restart.
-const ENGINES = new Set(['postgres', 'mysql', 'duckdb', 'csv-folder'])
-
 const controller: TableController = {
   table: 'Data Source',
   hooks: {
@@ -25,11 +23,7 @@ const controller: TableController = {
         throw new AppError('ValidationError', 'Invalid data source name', {
           name: 'Use lowercase letters, digits and hyphens, starting with a letter',
         })
-      const engine = String(row.engine ?? '')
-      if (!ENGINES.has(engine))
-        throw new AppError('ValidationError', 'Invalid engine', {
-          engine: 'engine must be postgres, mysql, duckdb or csv-folder',
-        })
+      const engine = String(row.engine)
       if (engine === 'csv-folder') {
         if (!String(row.root_path ?? '').trim())
           throw new AppError('ValidationError', 'csv-folder sources need a folder', {

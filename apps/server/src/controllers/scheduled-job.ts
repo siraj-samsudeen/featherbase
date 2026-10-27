@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { CADENCE_SECONDS, syncScheduledJobs } from '../jobs'
+import { syncScheduledJobs } from '../jobs'
 
 // A Scheduled Job row IS the schedule. Saving one re-times its queue entry
 // once the row is committed; deleting one withdraws the pending entry (a
@@ -12,11 +12,8 @@ const controller: TableController = {
       const method = String(row.method ?? '').trim()
       if (!method) throw new AppError('ValidationError', 'method is required', { method: 'required' })
       row.method = method
-      const cadence = String(row.cadence ?? '')
-      if (!(cadence in CADENCE_SECONDS))
-        throw new AppError('ValidationError', `Unknown cadence "${cadence}"`, {
-          cadence: `one of: ${Object.keys(CADENCE_SECONDS).join(', ')}`,
-        })
+      // cadence needs no check here: it is a required Choice column, so a
+      // missing or unknown value is refused before any hook runs.
     },
     // The queue must reflect the COMMITTED row: syncing inside the save
     // transaction would let a concurrent worker tick read the old cadence

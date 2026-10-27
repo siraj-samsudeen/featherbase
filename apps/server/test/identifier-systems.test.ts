@@ -36,6 +36,9 @@ describe('identifier systems: presets and Sensitivity', () => {
     })
     expect(await system('probe-record')).toMatchObject({ normalise: 'upper', sensitivity: 'Restricted, hidden', display: 'hidden', tier: 'restricted' })
     expect(kindPreset('national-id')).toMatchObject({ normalise: 'digits', one_holder_at_a_time: false, one_per_person: true, match: 'Suggest', sensitivity: 'Secret' })
+    expect(kindPreset('contact', 'phone')).toMatchObject({ normalise: 'indian-mobile', sensitivity: 'Restricted', edited_by: 'self' })
+    expect(kindPreset('contact', 'email')).toMatchObject({ normalise: 'lower', sensitivity: 'Normal', edited_by: 'self' })
+    expect(kindPreset('contact')).toMatchObject({ normalise: 'lower' })
     expect(assuranceOf('national-id')).toBe('strong')
     expect(assuranceOf('contact')).toBe('weak')
   })
@@ -81,6 +84,83 @@ describe('identifier systems: presets and Sensitivity', () => {
     })
     expect(perPerson.status).toBe(200)
     expect(await sql`select distinct one_per_person from person_identifier where system = 'probe-badge'`).toEqual([{ one_per_person: true }])
+  })
+})
+
+describe('identifier system guards', () => {
+  test('the kind cannot change once values are recorded, but can before', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-kind', label: 'Kind probe', kind: 'contact', match: 'Off' } })
+    const change = async () => {
+      const row = await admin.get<{ updated_at: string }>('/api/table/Identifier%20System/probe-kind')
+      return admin.fetch('/api/table/Identifier%20System/probe-kind', {
+        method: 'PATCH', body: JSON.stringify({ kind: 'employee-record', updated_at: row.updated_at }),
+      })
+    }
+    const holder = await makePerson({ email: 'kind.a@x.test' })
+    await addIdentifier(holder, { system: 'probe-kind', value: 'K-1' }, 'Administrator')
+    const refused = await change()
+    expect(refused.status).toBe(417)
+    expect(await refused.json()).toMatchObject({ error: { fields: { kind: 'fixed while values exist' } } })
+    await sql`delete from person_identifier where system = 'probe-kind'`
+    expect((await change()).status).toBe(200)
+    expect(await system('probe-kind')).toMatchObject({ kind: 'employee-record' })
+  })
+
+  test('a system a sign-in method points at cannot be deleted, and the method is named by the link check', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-linked', label: 'Linked probe', kind: 'external-record' } })
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, identifier_system) values ('probe-method', 'delegated_password', 'Probe', false, 'refuse', 'probe-linked')`
+    const res = await admin.fetch('/api/table/Identifier%20System/probe-linked', { method: 'DELETE' })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: { message: 'Cannot delete Identifier System probe-linked: it is linked from Sign In Method probe-method' } })
+    expect(await system('probe-linked')).toBeDefined()
+  })
+})
+
+describe('identifier systems: Advanced settings and their presets', () => {
+  test('a System Manager sees each setting’s preset, which ones differ, and which options are refused and why', async ({ admin, createUser }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-locker', label: 'Locker', kind: 'contact', match: 'Off', edited_by: 'system-manager' } })
+    expect(await admin.get('/api/identifier_systems/probe-locker/defaults')).toEqual({
+      preset: {
+        normalise: 'lower', one_holder_at_a_time: false, one_per_person: false, assigner_scoped: false, edited_by: 'self',
+        retain_after_leaving_days: null, match: 'Suggest', sensitivity: 'Normal',
+      },
+      differs: ['edited_by', 'match'],
+      forbidden: [{ field: 'sensitivity', reason: 'Secret is only for a national ID' }],
+      assurance: 'weak',
+    })
+    // Match on (the contact preset): one holder at a time is refused too.
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-mail', label: 'Work mail', kind: 'contact', match: 'Suggest' } })
+    expect(await admin.get('/api/identifier_systems/probe-mail/defaults')).toMatchObject({
+      differs: [],
+      forbidden: [
+        { field: 'one_holder_at_a_time', reason: 'Off while Match is on: a second holder must be accepted so the duplicate can be pointed out' },
+        { field: 'sensitivity', reason: 'Secret is only for a national ID' },
+      ],
+    })
+    // A national ID may be Secret, and is strong evidence.
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-aadhaar', label: 'Aadhaar', kind: 'national-id', match: 'Off' } })
+    expect(await admin.get('/api/identifier_systems/probe-aadhaar/defaults')).toMatchObject({ forbidden: [], assurance: 'strong' })
+    const clerk = await createUser({ email: 'clerk.defaults@x.test' })
+    expect((await clerk.fetch('/api/identifier_systems/probe-locker/defaults')).status).toBe(403)
+  })
+
+  // SPEC: person-resolution design D2 — "kind drives every other default": a
+  // contact or national-ID system's Match preset is Suggest — suspected defect:
+  // the column default (Off) is applied before the kind preset, so a system
+  // saved without Match is stored Off.
+  test.fails('a contact system saved without Match gets its kind’s preset, Suggest', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-unsaid', label: 'Unsaid', kind: 'contact' } })
+    expect(await system('probe-unsaid')).toMatchObject({ match: 'Suggest' })
+  })
+
+  // SPEC: person-resolution design D2 — each Advanced setting shows its preset
+  // and whether it differs — suspected defect: retain_after_leaving_days is read
+  // back as a string ('365') and compared with the preset number 365, so a
+  // national ID left at its default is reported as differing.
+  test.fails('a national ID left at its 365-day retention is not reported as differing from the preset', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-keep', label: 'Keep', kind: 'national-id', match: 'Suggest' } })
+    const { differs } = await admin.get<{ differs: string[] }>('/api/identifier_systems/probe-keep/defaults')
+    expect(differs).not.toContain('retain_after_leaving_days')
   })
 })
 

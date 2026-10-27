@@ -188,3 +188,12 @@ test('a create-only grant holder is not told "nothing is open to you"', async ({
   await waitFor(() => expect(screen.queryByTestId('admin-index-empty') ?? screen.queryByTestId('home-page')).not.toBeNull())
   expect(screen.queryByTestId('shared-only')).not.toBeInTheDocument()
 })
+
+test('a refused table list says the person cannot read it, rather than showing an empty list', async ({ admin, createUser }) => {
+  await seed(admin)
+  const clerk = await createUser({ email: 'clerk.refused@example.com', roles: ['Shelf Clerk'] })
+  await renderApp('/featherbase/admin/Back%20Office', clerk)
+  const refusal = await screen.findByTestId('list-error', {}, { timeout: 10_000 })
+  expect(refusal).toHaveTextContent(/no read permission on Back Office/i)
+  expect(screen.queryByText('No rows')).not.toBeInTheDocument()
+})

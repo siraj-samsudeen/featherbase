@@ -18,19 +18,19 @@ import { emailOrigin } from './instance-addresses'
 
 import { SETUP_MAX_PEOPLE as MAX_PEOPLE } from 'shared'
 
-export const SETUP_ROLE = 'System Manager'
+const SETUP_ROLE = 'System Manager'
 
 const requestSchema = z.object({
   people: z.array(z.object({ full_name: z.string().max(140).optional(), email: z.string().max(254) }).strict()).min(1).max(MAX_PEOPLE),
 }).strict()
 
-export type SetupInvitation =
+type SetupInvitation =
   | { status: 'sent' }
   | { status: 'link'; link: string; method_label: string }
   | { status: 'failed'; error: string; link: string | null; method_label: string }
   | { status: 'no_method' }
 
-export interface SetupOutcome {
+interface SetupOutcome {
   person: string
   full_name: string
   email: string
@@ -39,14 +39,14 @@ export interface SetupOutcome {
   invitation: SetupInvitation
 }
 
-export interface SetupResult {
+interface SetupResult {
   people: SetupOutcome[]
   /** False while outbound email is the sink: the links are shown instead. */
   email_can_send: boolean
 }
 
 /** Can this server send email? Without SMTP every message goes to the sink. */
-export function emailCanSend(): boolean {
+function emailCanSend(): boolean {
   return readSmtpConfig() !== null
 }
 

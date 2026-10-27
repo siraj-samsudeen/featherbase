@@ -83,7 +83,32 @@ describe('GET /api/home_pages: role scoping', () => {
   })
 })
 
+describe('Pages are listed Home first, the System page last', () => {
+  test('the general Home page comes first, then module pages, then System', async ({ admin }) => {
+    await makeTable(admin, 'HP Zone', 'Core')
+    await makeTable(admin)
+    const names = (await pages(admin)).map((p) => p.row_id)
+    expect(names.indexOf('home')).toBeGreaterThanOrEqual(0)
+    expect(names.indexOf('home')).toBeLessThan(names.indexOf('hp-mod'))
+    expect(names.indexOf('hp-mod')).toBeLessThan(names.indexOf('system'))
+  })
+})
+
 describe('GET /api/home_pages: link permission filtering', () => {
+  test('a link to a sub-table, which has no list of its own, is left out', async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'HP Child Row', module: 'Warehouse', kind: 'sub_table',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hp-sub', label: 'Sub Link Page' } })
+    await sql`insert into home_page_link ${sql({
+      row_id: 'hp-sub-link', parent: 'hp-sub', parenttype: 'Home Page', parentfield: 'links',
+      position: 1, label: 'Rows', type: 'Link', link_to: 'HP Child Row',
+    })}`
+    const page = (await pages(admin)).find((p) => p.row_id === 'hp-sub')!
+    expect(page.cards).toEqual([])
+  })
+
   test('a user who cannot read a Table does not see its link (Frappe is_item_allowed)', async ({
     admin,
     createUser,
@@ -224,6 +249,24 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
     })
     const page = (await pages(admin)).find((p) => p.module === 'Warehouse')
     expect(page).toBeUndefined()
+  })
+})
+
+describe('module pages never collide with the System page', () => {
+  test('a user module named System gets its own page, not the platform one', async ({ admin }) => {
+    await makeTable(admin, 'HP Sys Thing', 'System')
+    const all = await pages(admin)
+    const mine = all.find((p) => p.module === 'System')!
+    expect(mine.row_id).not.toBe('system')
+    expect(mine.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Sys Thing')
+    expect(all.find((p) => p.row_id === 'system')!.module).toBeNull()
+  })
+
+  test('a home page whose shortcuts are unreadable still opens, with no shortcuts', async ({ admin }) => {
+    await admin.post('/api/save_row', { table: 'Home Page', row: { row_id: 'hp-bad-shortcuts', label: 'Bad Shortcuts' } })
+    await sql`update home_page set shortcuts = ${'{not json'} where row_id = 'hp-bad-shortcuts'`
+    const page = (await pages(admin)).find((p) => p.row_id === 'hp-bad-shortcuts')!
+    expect(page.shortcuts).toEqual([])
   })
 })
 

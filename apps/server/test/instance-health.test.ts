@@ -146,6 +146,24 @@ describe('the checks (5.1)', () => {
     expect(stale.message).toContain('has not run since')
   })
 
+  test('scheduled jobs: a cadence the worker does not know fails, and a job switched on long ago that never ran says so', async () => {
+    const now = new Date()
+    await sql`update scheduled_job set enabled = true, cadence = 'every fortnight' where method = 'disable_leavers'`
+    const unknown = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    expect(unknown).toMatchObject({ ok: false, severity: 'error' })
+    expect(unknown.message).toBe('Its cadence "every fortnight" is not one the worker knows, so it never runs.')
+    expect(unknown.fix).toContain('choose one of the listed cadences')
+
+    const longAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
+    await sql`update scheduled_job set cadence = 'daily', last_run_at = null, last_outcome = null, updated_at = ${longAgo} where method = 'disable_leavers'`
+    const never = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    expect(never).toMatchObject({ ok: false, severity: 'error' })
+    expect(never.message).toContain('has not run since it was switched on')
+
+    await sql`update scheduled_job set updated_at = ${now} where method = 'disable_leavers'`
+    expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')).toMatchObject({ ok: true, message: 'Has not run yet.' })
+  })
+
   test('the Administrator default password: failing outside development and test, passing once rotated', async () => {
     await sql`update person set password_hash = ${hashPassword('admin')} where row_id = 'Administrator'`
     const weak = byKey(await runHealthChecks({ environment: 'production' }), 'administrator-password')

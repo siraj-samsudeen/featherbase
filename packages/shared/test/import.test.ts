@@ -612,7 +612,7 @@ describe('#408 retired Person columns', () => {
   ]
   test('employee_code and stylehr_username on Person carry a notice; other Tables and headers do not', () => {
     expect(retiredColumnNotice('Person', 'Employee Code')).toBe(
-      'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+      'employee_code is no longer a Person field — add codes on the Identifiers panel of the Person form',
     )
     expect(retiredColumnNotice('Person', 'stylehr_username')).toMatch(/^stylehr_username is no longer a Person field/)
     expect(retiredColumnNotice('Person', 'Full Name')).toBeNull()

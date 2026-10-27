@@ -29,13 +29,13 @@ const OLD_SETTINGS = [
 // they are cleared here (review minor 12).
 const SEED_EMAILS: Record<string, string> = { Administrator: 'admin@example.com', Guest: 'guest@example.com' }
 
-export interface Person {
+interface Person {
   row_id: string
   full_name: string | null
   detail?: string
 }
 
-export interface PersonIdentitiesPlan {
+interface PersonIdentitiesPlan {
   methods: { key: string; kind: string; label: string; enabled: boolean }[]
   emailsTrimmed: Person[]
   emailsCleared: Person[]

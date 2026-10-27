@@ -2,8 +2,7 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 
 // FILE-002: attach two files to a document via the form sidebar; both are
 // listed; deleting one removes its storage object too.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// file inputs, `href`/served-content checks, and hover-then-delete all stay
+// File inputs, `href`/served-content checks, and hover-then-delete all stay
 // in named steps; assertHas covers the plain presence/text checks.
 
 async function cleanup(request: APIRequestContext) {

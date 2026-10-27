@@ -7,7 +7,7 @@ import { registerJob, enqueue } from './jobs'
 // configured URL with an HMAC signature header, and the job system retries on
 // failure (non-2xx or network error) up to max_attempts.
 
-export type WebhookEvent = 'after_insert' | 'on_update' | 'on_submit' | 'on_cancel'
+type WebhookEvent = 'after_insert' | 'on_update' | 'on_submit' | 'on_cancel'
 
 function sign(secret: string, body: string): string {
   return createHmac('sha256', secret).update(body).digest('hex')

@@ -213,3 +213,98 @@ describe('workflow: initDocState backfill', () => {
     expect(row.note_status).toBe('Open')
   })
 })
+
+describe('Move a row forward with an allowed action', () => {
+  const url = (suffix = '') => `/api/table/${encodeURIComponent(DT)}/wf-srv-1${suffix}`
+
+  test('opening a row shows its state and only the actions the roles allow from it', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await makeDoc(admin)
+    const approver = await createUser({ roles: [APPROVER, VIEWER] })
+    const viewer = await createUser({ roles: [VIEWER] })
+
+    const asApprover = await approver.get<{ state: string; actions: { action: string }[] }>(
+      `/api/workflow/${encodeURIComponent(DT)}/wf-srv-1`,
+    )
+    expect(asApprover.state).toBe('Draft')
+    expect(asApprover.actions.map((a) => a.action)).toEqual(['Submit'])
+
+    // Someone who can edit the row but holds no workflow role sees the state and no actions.
+    const asViewer = await viewer.get<{ state: string; actions: unknown[] }>(
+      `/api/workflow/${encodeURIComponent(DT)}/wf-srv-1`,
+    )
+    expect(asViewer.state).toBe('Draft')
+    expect(asViewer.actions).toEqual([])
+  })
+
+  test('a user holding the approver role takes the action and is recorded as who did it', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await makeDoc(admin)
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: APPROVER, tier: 'basic', can_read: true },
+    })
+    const approver = await createUser({ roles: [APPROVER] })
+    await admin.post(url(':apply_workflow_action'), { action: 'Submit' })
+
+    const approved = await approver.post<{ workflow_state: string }>(url(':apply_workflow_action'), { action: 'Approve' })
+    expect(approved.workflow_state).toBe('Approved')
+
+    const [entry] = await sql`
+      select actor from workflow_action where ref_table = ${DT} and ref_name = 'wf-srv-1' and action = 'Approve'`
+    expect(entry.actor).toBe(approver.user)
+  })
+
+  test('a user who can edit the row but does not hold the approver role cannot approve it', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    await makeFlow(admin)
+    await makeDoc(admin)
+    await admin.post(url(':apply_workflow_action'), { action: 'Submit' })
+    const viewer = await createUser({ roles: [VIEWER] })
+
+    // The viewer can change the row's other fields…
+    const doc = await admin.get<{ updated_at: string }>(url())
+    const edit = await viewer.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: DT, row: { row_id: 'wf-srv-1', updated_at: doc.updated_at, title: 'edited' } }),
+    })
+    expect(edit.status).toBe(201)
+    // …but Approve is refused, and the row stays Pending.
+    await expect(viewer.post(url(':apply_workflow_action'), { action: 'Approve' })).rejects.toMatchObject({ status: 403 })
+    const after = await admin.get<{ workflow_state: string }>(url())
+    expect(after.workflow_state).toBe('Pending')
+  })
+})
+
+describe('Finalise a row instead of leaving it open to change', () => {
+  test('a submitted row cannot be edited and the user is told to cancel it first', async ({ admin }) => {
+    await admin.post('/api/table_def', {
+      name: 'Wf Fin Invoice',
+      is_submittable: true,
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Wf Fin Invoice', row: { row_id: 'fin-1', title: 'v1' } })
+    const submitted = await admin.post<{ updated_at: string }>(`/api/table/Wf%20Fin%20Invoice/${doc.row_id}:submit`)
+
+    await expect(
+      admin.post('/api/save_row', {
+        table: 'Wf Fin Invoice',
+        row: { row_id: 'fin-1', updated_at: submitted.updated_at, title: 'sneaky' },
+      }),
+    ).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cancel it first') })
+    const [row] = await sql`select title from featherbase.wf_fin_invoice where row_id = 'fin-1'`
+    expect(row.title).toBe('v1')
+  })
+})

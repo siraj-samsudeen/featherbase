@@ -59,6 +59,7 @@ describe('person registry: classification', () => {
         { column_name: 'owner_person', column_type: 'Reference', reference_table: 'Person' },
         { column_name: 'notes', column_type: 'Text' },
         { column_name: 'code', column_type: 'Data' },
+        { column_name: 'role_ref', column_type: 'Reference', reference_table: 'Role' },
       ],
     })
     const { c, byKey } = await cls()
@@ -66,6 +67,8 @@ describe('person registry: classification', () => {
     expect(byKey.get('registry_probe.owner_person')?.class).toBe('id')
     expect(byKey.get('registry_probe.notes')?.class).toBe('free-text')
     expect(byKey.get('registry_probe.code')?.class).toBe('code')
+    // A Reference to anything but a principal holds that Table's id, not a person's.
+    expect(byKey.get('registry_probe.role_ref')).toMatchObject({ class: 'code', rule: 'Reference → Role' })
   })
 
   test('an unknown raw platform column is reported unclassified', async () => {
@@ -73,4 +76,16 @@ describe('person registry: classification', () => {
     const { c } = await cls()
     expect(c.unclassified).toContainEqual(expect.objectContaining({ relation: 'access_token', column: 'mystery_principal' }))
   })
+
+  test('a kept column whose name a layout column now holds is reported unclassified', async ({ admin }) => {
+    const TITLE = { column_name: 'title', column_type: 'Data' }
+    await admin.post('/api/table_def', { name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Data' }] })
+    // Removed without drop_columns: the data stays in the table…
+    await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE] })
+    // …and the name is reused for a Section Break, which has no storage of its own.
+    await admin.put('/api/table_def/Registry%20Layout', { name: 'Registry Layout', columns: [TITLE, { column_name: 'old_owner', column_type: 'Section Break' }] })
+    const { c } = await cls()
+    expect(c.unclassified).toContainEqual({ schema: 'featherbase', relation: 'registry_layout', column: 'old_owner', data_type: 'character varying' })
+  })
 })
+

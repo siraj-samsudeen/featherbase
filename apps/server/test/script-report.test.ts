@@ -1,6 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectApiError } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
 import { loadScriptReports, runScriptReport, scriptReportMeta, registerScriptReport } from '../src/script-report'
 
 // RPT-005: script reports resolve a registered server function via the Report
@@ -31,16 +33,24 @@ async function setup(admin: TestClient) {
 describe('RPT-005: script reports', () => {
   test('exposes the registered report and its declared filters', async ({ admin }) => {
     await setup(admin)
-    const meta = await scriptReportMeta(REPORT, 'Administrator')
+    const meta = await admin.get<{ script: string; filters: unknown[] }>(`/api/script_report/${encodeURIComponent(REPORT)}`)
     expect(meta.script).toBe('Srv Echo')
     expect(meta.filters).toEqual([{ column_name: 'n', label: 'N', column_type: 'Int' }])
   })
 
   test('runs the registered execute() with the given filters', async ({ admin }) => {
     await setup(admin)
-    const res = await runScriptReport(REPORT, { n: 21 }, 'Administrator')
+    const res = await admin.post<{ columns: string[]; rows: unknown[] }>('/api/run_script_report', { report: REPORT, filters: { n: 21 } })
     expect(res.columns).toEqual(['n', 'doubled'])
     expect(res.rows).toEqual([{ n: 21, doubled: 42 }])
+    // With no filters sent, the report runs with none.
+    expect((await admin.post<{ rows: unknown[] }>('/api/run_script_report', { report: REPORT })).rows).toEqual([{ n: 0, doubled: 0 }])
+  })
+
+  test('running a script report without naming the report is refused', async ({ admin }) => {
+    await expectApiError(admin.post('/api/run_script_report', {}), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { report }'),
+    })
   })
 
   test('loads file-based reports (the Person Report sample) and scopes them', async ({ admin }) => {
@@ -71,5 +81,34 @@ describe('RPT-005: script reports', () => {
     await expect(runScriptReport('SR Srv Missing', {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',
     })
+  })
+
+  test('a choice filter narrows the rows: Enabled Yes returns only enabled people, No only the others', async ({ admin, createUser }) => {
+    await setup(admin)
+    const gone = await createUser({ email: 'sr.gone@example.com', fullName: 'Gone Person' })
+    await sql`update person set enabled = false where row_id = ${gone.user}`
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: 'SR Srv Enabled', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
+    })
+    const meta = await scriptReportMeta('SR Srv Enabled', 'Administrator')
+    expect(meta.filters.map((f) => f.label)).toEqual(['Enabled'])
+    const yes = await runScriptReport('SR Srv Enabled', { enabled: 'Yes' }, 'Administrator')
+    const no = await runScriptReport('SR Srv Enabled', { enabled: 'No' }, 'Administrator')
+    expect(yes.rows.every((r) => r.enabled === true)).toBe(true)
+    expect(yes.rows.some((r) => r.row_id === gone.user)).toBe(false)
+    expect(no.rows.map((r) => r.row_id)).toContain(gone.user)
+    expect(no.rows.every((r) => r.enabled === false)).toBe(true)
+  })
+
+  test('a person who may not read the Report cannot run its script', async ({ admin, createUser }) => {
+    await setup(admin)
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: { row_id: 'SR Srv Scoped', ref_table: 'Person', report_type: 'Script Report', report_script: 'Person Report' },
+    })
+    const nobody = await createUser({ email: 'sr.nobody@example.com', fullName: 'No Roles' })
+    // Without read access to the Report itself, the script never runs.
+    await expect(runScriptReport('SR Srv Scoped', {}, String(nobody.user))).rejects.toMatchObject({ type: 'PermissionError' })
   })
 })

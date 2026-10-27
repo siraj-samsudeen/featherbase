@@ -9,10 +9,7 @@ or moving its tasks.
 
 ### Requirement: Rename a project
 
-Any team member SHALL be able to rename a project. Its tasks stay with it, and
-the new name shows everywhere the project appears. If someone else changed the
-project after the user started renaming it, the rename is refused rather than
-overwriting their change.
+Any team member SHALL be able to rename a project without moving its tasks, with the new name shown everywhere the project appears. If someone else changed the project after the user started renaming it, the rename SHALL be refused with an explanation while keeping the user's unsaved name, even if the project refreshed during editing.
 
 #### Scenario: Rename keeps the tasks
 
@@ -22,6 +19,7 @@ overwriting their change.
 
 #### Scenario: A newer change wins
 
-- **WHEN** the user starts renaming a project, Shahul renames it first, and the user then saves
-- **THEN** the user's rename is refused
-- **AND** Shahul's name stays
+- **WHEN** the user starts renaming a project, Shahul renames it first, the project refreshes, and the user then saves
+- **THEN** the user's rename is refused with an explanation that the project changed
+- **AND** Shahul's name stays saved
+- **AND** the user's unsaved name remains available to edit or cancel

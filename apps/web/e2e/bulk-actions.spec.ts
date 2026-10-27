@@ -3,8 +3,7 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 const DT = 'Bulk DT'
 
 // UI-012: select rows, bulk edit a field, bulk delete.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// checkboxes and bulk controls are testid-addressed with no accessible label
+// Checkboxes and bulk controls are testid-addressed with no accessible label
 // distinct from their siblings, so the whole flow stays in named steps;
 // assertHas covers the plain count check around it.
 

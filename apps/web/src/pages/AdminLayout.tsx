@@ -56,7 +56,10 @@ connectEventSink({
   // user are ever posted with this user's credentials.
   currentUser: () => getSessionUser()?.row_id ?? null,
   post: (events) => {
-    void api.post('/api/events', { events }).catch(() => {})
+    void api.post('/api/events', { events }).catch(
+      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the recorder only sends batches the server accepts */
+      () => {},
+    )
   },
   beacon: (events) => {
     try {
@@ -67,7 +70,7 @@ connectEventSink({
   },
 })
 
-// Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
+// Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
 // #410: pick the layout from the server-computed capabilities BEFORE mounting
 // the Admin shell, so a person who cannot use it never fires its API calls.
@@ -162,7 +165,10 @@ function AdminShell() {
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
       .then((res) => mergeServerEntries(user.row_id, res.entries))
-      .catch(() => {})
+      .catch(
+        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the summary answers for every signed-in person */
+        () => {},
+      )
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
@@ -650,7 +656,7 @@ function AdminShell() {
             </Link>
           </div>
           )}
-          {/* #80: the sidebar is Home Pages only (Frappe parity). Every
+          {/* #80: the sidebar is Home Pages only. Every
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
           {/* The sidebar scrolls as ONE column: the Home Pages keep their full
@@ -772,7 +778,7 @@ interface SidebarItem {
  *  small icon (a heading, not a link), then each link with its grey icon.
  *  Renders nothing — heading included — when no item is visible. */
 /** Recently opened holds at most this many items, Frequent included. */
-export const SIDEBAR_RECENT_CAP = 5
+const SIDEBAR_RECENT_CAP = 5
 
 export function SidebarGroup({ heading, icon: HeadingIcon, testid, items }: {
   heading: string

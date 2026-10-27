@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { app } from '../src/index'
 import { sql } from '../src/db'
 import {
@@ -185,5 +185,43 @@ describe('the preview seed (person-rename)', () => {
     expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(302)
     configure(GOOD_KEY, 'nobody@example.com')
     expect((await api.fetch(`/preview?key=${GOOD_KEY}`)).status).toBe(404)
+  })
+})
+
+describe('the boot announcement says once whether preview sign-in is live', () => {
+  // Each case loads a fresh copy of the module: the once-only flag is module state.
+  async function announceFresh(key: string | undefined, user: string | undefined, calls = 1): Promise<string[]> {
+    configure(key, user)
+    vi.resetModules()
+    const { announcePreviewLogin } = await import('../src/preview')
+    const lines: string[] = []
+    for (let i = 0; i < calls; i++) announcePreviewLogin((m) => lines.push(m))
+    return lines
+  }
+
+  test('a refused configuration is reported with its reason, and only the first call speaks', async () => {
+    expect(await announceFresh(GOOD_KEY, 'Administrator', 2)).toEqual(['preview sign-in REFUSED: PREVIEW_LOGIN_USER must not be Administrator'])
+    expect(await announceFresh('short', 'jo')).toEqual([`preview sign-in REFUSED: PREVIEW_LOGIN_KEY must be at least ${PREVIEW_KEY_MIN_LENGTH} characters`])
+    expect(await announceFresh(GOOD_KEY, undefined)).toEqual(['preview sign-in REFUSED: PREVIEW_LOGIN_KEY and PREVIEW_LOGIN_USER must both be set'])
+  })
+
+  test('a live configuration names the user, and an unconfigured instance says nothing', async () => {
+    expect(await announceFresh(GOOD_KEY, 'jo')).toEqual(['preview sign-in enabled at /preview as jo'])
+    expect(await announceFresh(undefined, undefined)).toEqual([])
+  })
+
+  test('with no logger given it writes to the console', async () => {
+    configure(GOOD_KEY, 'jo')
+    vi.resetModules()
+    const { announcePreviewLogin } = await import('../src/preview')
+    const original = console.log
+    const seen: string[] = []
+    console.log = (...a: unknown[]) => void seen.push(a.join(' '))
+    try {
+      announcePreviewLogin()
+    } finally {
+      console.log = original
+    }
+    expect(seen).toEqual(['preview sign-in enabled at /preview as jo'])
   })
 })

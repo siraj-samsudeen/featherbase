@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PrincipalName, isOpaqueId, usePrincipalName } from '../lib/people'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { buttonClasses, cardClasses, inputClasses } from './ui'
@@ -10,6 +10,24 @@ interface CommentRow {
   content: string
   created_by: string
   created_at: string
+}
+
+/** A row's comments, oldest first — one query, read by this panel and by the
+ *  activity timeline beside it (they share the cache key). */
+export function commentsQuery(table: string, name: string) {
+  return queryOptions({
+    queryKey: ['comments', table, name],
+    queryFn: () =>
+      listResource<CommentRow>('Comment', {
+        filters: [
+          ['ref_table', '=', table],
+          ['ref_name', '=', name],
+        ],
+        fields: ['row_id', 'content', 'created_by', 'created_at'],
+        order_by: 'created_at asc',
+        limit_page_length: 200,
+      }),
+  })
 }
 
 // UI-018: a comment box on every row. Comments are Comment rows linked
@@ -26,19 +44,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
   const [mentionWarning, setMentionWarning] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const comments = useQuery({
-    queryKey: ['comments', table, name],
-    queryFn: () =>
-      listResource<CommentRow>('Comment', {
-        filters: [
-          ['ref_table', '=', table],
-          ['ref_name', '=', name],
-        ],
-        fields: ['row_id', 'content', 'created_by', 'created_at'],
-        order_by: 'created_at asc',
-        limit_page_length: 200,
-      }),
-  })
+  const comments = useQuery(commentsQuery(table, name))
 
   // @mention candidates from the people list, filtered by the token being
   // typed. person-rename: ids are opaque, so a mention names the person —
@@ -207,7 +213,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
 }
 
 /** What a mention of this person looks like in the comment text. */
-export function mentionToken(u: { full_name: string | null; username: string | null }): string {
+function mentionToken(u: { full_name: string | null; username: string | null }): string {
   return u.username ? u.username : `[${(u.full_name ?? '').trim()}]`
 }
 

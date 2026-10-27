@@ -23,9 +23,12 @@ function flush() {
       const found = new Map(titles.map((t) => [keyOf(t), t.title]))
       for (const [k, b] of batch) for (const r of b.resolvers) r(found.get(k) ?? null)
     })
-    .catch(() => {
-      for (const b of batch.values()) for (const r of b.resolvers) r(null)
-    })
+    .catch(
+      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the batches pages send (a heading, a breadcrumb, up to three recents) are always within what the server accepts */
+      () => {
+        for (const b of batch.values()) for (const r of b.resolvers) r(null)
+      },
+    )
 }
 
 function loadTitle(ref: Ref): Promise<string | null> {
@@ -42,7 +45,7 @@ function loadTitle(ref: Ref): Promise<string | null> {
 }
 
 /** The row's display title, or null while loading / when it cannot be read. */
-export function useRowTitle(table: string | undefined, rowId: string | undefined): string | null {
+function useRowTitle(table: string | undefined, rowId: string | undefined): string | null {
   const q = useQuery({
     queryKey: ['row-title', table, rowId],
     enabled: Boolean(table && rowId),

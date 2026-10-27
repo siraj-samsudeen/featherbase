@@ -35,7 +35,7 @@ export const SECURITY_TABLES: ReadonlySet<string> = new Set([
 /** Person columns that change what a person may do: only a System Manager
  *  sets them on an existing person (roles, and expecting Google sign-in, also
  *  on a new one: #473 — it lets a Google account link by address alone). */
-export const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in'] as const
+const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in'] as const
 
 /** Does writing `column` of `table` change who can do what? True for every
  *  column of a security Table and for a Person's access columns. Workflows

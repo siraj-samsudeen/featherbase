@@ -24,7 +24,7 @@ const SHAPE_HINT_COLUMNS = 6 // headers named inline before eliding the rest
 // of them, which is what eleven sheets of the same shape actually wanted.
 export type GroupMode = 'separate' | 'merge'
 
-export interface OverviewProps {
+interface OverviewProps {
   fileName: string
   sheets: ParsedSheet[]
   selected: boolean[]

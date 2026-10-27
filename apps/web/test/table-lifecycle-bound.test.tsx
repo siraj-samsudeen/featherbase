@@ -126,3 +126,18 @@ test('#176 ListView falls back to row_id for a no-revision binding without a sto
   expect(rows[0]).toHaveTextContent('Thiruvananthapuram')
   expect(rows[1]).toHaveTextContent('Karaikal')
 })
+
+test('A read-only data source keeps its tables view-only: the row form names the source and offers no save, rename or delete', async ({
+  admin,
+}) => {
+  const table = await bindCsv(admin, 'read_only')
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/1`, admin)
+  await screen.findByTestId('form-view', undefined, { timeout: 8000 })
+
+  expect(await screen.findByTestId('source-badge')).toHaveTextContent('lifecycle-fixture · read-only')
+  expect(screen.queryByTestId('form-save')).toBeNull()
+  expect(screen.queryByTestId('form-delete')).toBeNull()
+  expect(screen.queryByTestId('form-rename')).toBeNull()
+  // The values are still there to read.
+  expect((await screen.findAllByDisplayValue('Karaikal')).length).toBeGreaterThan(0)
+})

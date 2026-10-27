@@ -24,13 +24,13 @@ export const LEAVER_CHECK_SUBJECT = 'Leaver check: people disabled from the Styl
 const ACTOR = 'system'
 
 /** A run that would disable more than this share of linked people refuses. */
-export const MAX_SHARE = 0.05
+const MAX_SHARE = 0.05
 /** ...but a small instance may still lose this many in one run. */
-export const MIN_LIMIT = 2
+const MIN_LIMIT = 2
 /** The warehouse's latest StyleHR day may be at most this many days behind today. */
-export const MAX_FEED_AGE_DAYS = 1
+const MAX_FEED_AGE_DAYS = 1
 /** Someone who joined this recently may not be on a payroll run yet. */
-export const JOINER_GRACE_DAYS = 62
+const JOINER_GRACE_DAYS = 62
 
 /** One StyleHR employee record, as the warehouse holds it. */
 export interface EmployeeRecord {
@@ -52,7 +52,7 @@ export interface LinkedPerson {
   codes: string[]
 }
 
-export interface Leaver {
+interface Leaver {
   person: string
   full_name: string | null
   reason: string
@@ -60,7 +60,7 @@ export interface Leaver {
   basis: 'exit date' | 'inactive' | 'not on payroll'
 }
 
-export interface LeaverPlan {
+interface LeaverPlan {
   today: string
   latest_feed_day: string | null
   linked: number
@@ -77,13 +77,13 @@ export interface LeaverPlan {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** ISO day → DD-Mon-YYYY (ADR 844). */
-export function displayDate(iso: string): string {
+function displayDate(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}-${MONTHS[Number(m) - 1]}-${y}`
 }
 
 /** Today in India, as an ISO day. */
-export function istToday(now: Date = new Date()): string {
+function istToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
 }
 
@@ -111,7 +111,7 @@ type Verdict = { leaver: true; basis: Leaver['basis']; reason: string; rank: num
 
 /** Has this one record left, as of `today`? An exit date that has passed comes
  *  first, then an inactive status, then not being on payroll. */
-export function recordVerdict(r: EmployeeRecord, today: string): Verdict {
+function recordVerdict(r: EmployeeRecord, today: string): Verdict {
   if (r.exit_date && r.exit_date <= today)
     return { leaver: true, basis: 'exit date', reason: `exit date ${displayDate(r.exit_date)} has passed`, rank: 0 }
   if (r.movement_active === false) return { leaver: true, basis: 'inactive', reason: 'marked inactive in StyleHR', rank: 1 }
@@ -189,7 +189,7 @@ export function planLeavers(
 
 /** Every enabled person with a current StyleHR link: a record number or an
  *  employee code, from their identifiers or their StyleHR sign-in. */
-export async function linkedPeople(): Promise<LinkedPerson[]> {
+async function linkedPeople(): Promise<LinkedPerson[]> {
   const rows = await sql`
     with links as (
       select person_id, 'record' as kind, value from person_identifier
@@ -224,12 +224,12 @@ export async function linkedPeople(): Promise<LinkedPerson[]> {
 
 // The whole roster is small (tens of thousands of rows), so it is read in full:
 // no person data is ever written into warehouse SQL.
-export const RECORDS_SQL = `
+const RECORDS_SQL = `
   select e.employee_key, e.employee_code, e.payroll_active, e.movement_active, e.date_of_joining, x.exit_date
   from "gold"."hr"."employee" e
   left join "gold"."hr"."employee_exit" x on x.employee_key = e.employee_key and x.is_leaver`
 // A day with people present is a day StyleHR loaded and the warehouse built.
-export const FEED_DAY_SQL = `select max(date) from "gold"."hr"."attendance" where is_present`
+const FEED_DAY_SQL = `select max(date) from "gold"."hr"."attendance" where is_present`
 
 let reader: WarehouseReader | null = null
 /** Test seam: drive the check without MotherDuck. */
@@ -238,7 +238,7 @@ export function _setWarehouseReader(r: WarehouseReader | null): void {
 }
 const read: WarehouseReader = (q) => (reader ? reader(q) : readMotherDuck(q, 'run the leaver check'))
 
-export async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
+async function readWarehouse(): Promise<{ records: EmployeeRecord[]; latestFeedDay: string | null }> {
   const [feed] = await read(FEED_DAY_SQL)
   const rows = await read(RECORDS_SQL)
   return {
@@ -269,7 +269,7 @@ export async function planLeaverCheck(today = istToday()): Promise<LeaverPlan | 
 
 // ------------------------------------------------------------- acting
 
-export interface LeaverRun {
+interface LeaverRun {
   plan: LeaverPlan | null
   disabled: Leaver[]
   /** System Managers mailed; 0 when there was nothing to report, and
@@ -305,7 +305,7 @@ export function _setLeaverSummarySender(fn: Sender | null): void {
 
 const line = (l: Leaver) => `- ${l.full_name || l.person}: ${l.reason}`
 
-export function summaryBody(plan: LeaverPlan, disabled: Leaver[], failedCount = 0): string {
+function summaryBody(plan: LeaverPlan, disabled: Leaver[], failedCount = 0): string {
   const out = [`The daily leaver check ran on ${displayDate(plan.today)} against the StyleHR record in the warehouse (latest day ${plan.latest_feed_day ? displayDate(plan.latest_feed_day) : 'none'}).`, '']
   if (plan.refused) out.push(`It disabled nobody: ${plan.refused}.`, 'Check the warehouse feed. To act on a large but genuine batch, run the check by hand with the count it reports.', '')
   if (disabled.length) out.push(`Disabled ${disabled.length} of ${plan.linked} linked people:`, ...disabled.map(line), '')
@@ -336,7 +336,7 @@ export function formatSummaryDelivery(run: LeaverRun): string {
   return run.emailed ? `leaver check: summary sent to ${run.emailed} System Manager(s)` : 'leaver check: nothing to report; no summary sent'
 }
 
-export interface RunOpts {
+interface RunOpts {
   today?: string
   /** A human's override of the limit: act only if the count is exactly this. */
   acceptCount?: number

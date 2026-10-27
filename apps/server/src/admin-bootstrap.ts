@@ -24,8 +24,8 @@ export async function bootstrapAdministrator(env: string = environment) {
 
 // The default-password warning is now the "Administrator default password"
 // health check (instance-health.ts, #465 D8), printed by the release step.
-export async function diagnoseAdminBootstrap() {
-  if (['development', 'test'].includes(environment)) return
+export async function diagnoseAdminBootstrap(env: string = environment) {
+  if (['development', 'test'].includes(env)) return
   const [ready] = await sql`select 1 from person u
     where u.enabled and u.password_hash is not null
       and (u.row_id = 'Administrator' or exists (

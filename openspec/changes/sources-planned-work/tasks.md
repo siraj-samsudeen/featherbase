@@ -19,9 +19,9 @@
 
 ## 2. Connection console
 
-- [ ] 2.1 Promote the winning prototype (`apps/web/src/pages/
-      PrototypeConnectSource.tsx`) design to a real page wired to real
-      endpoints; retire the mock's simulated test/introspect.
+- [ ] 2.1 Build the connection console as a real page wired to real
+      endpoints (the `PrototypeConnectSource.tsx` prototype was removed on
+      2026-10-26; the console will be built fresh).
 - [ ] 2.2 Add typed connection fields (host, port, database, user, password)
       and encrypted storage for the password, with a write-only edit and no
       read path that returns it.

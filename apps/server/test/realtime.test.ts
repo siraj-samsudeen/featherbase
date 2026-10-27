@@ -53,6 +53,15 @@ describe('realtime event bus', () => {
     })
   })
 
+  test('a listener that throws does not stop delivery to the others', () => {
+    const stopBroken = onEvent(() => { throw new Error('broken listener') })
+    const { events, stop } = collect()
+    publishDocEvent('Task', 'TASK-3', 'updated')
+    stop()
+    stopBroken()
+    expect(events).toContainEqual({ channel: 'list:Task', event: 'updated', payload: { table: 'Task', row_id: 'TASK-3' } })
+  })
+
   test('unsubscribed listeners stop receiving events', () => {
     const { events, stop } = collect()
     stop()
@@ -126,6 +135,36 @@ describe('subscription acknowledgment', () => {
         event: 'subscribed',
         payload: { channels: ['list:User'] },
       })
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
+  test('a frame that is not JSON is ignored and the socket keeps serving', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${admin.token}` } })
+    const frames: RealtimeEvent[] = []
+    socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+    const frame = async (event: string): Promise<RealtimeEvent> => {
+      const deadline = Date.now() + 5_000
+      for (;;) {
+        const hit = frames.find((f) => f.event === event)
+        if (hit) return hit
+        if (Date.now() > deadline) throw new Error(`no '${event}' frame arrived; saw ${JSON.stringify(frames)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+    try {
+      await frame('ready')
+      socket.send('{not json')
+      socket.send(JSON.stringify({ subscribe: ['list:User'] }))
+      expect((await frame('subscribed')).payload).toEqual({ channels: ['list:User'] })
+      expect(socket.readyState).toBe(WebSocket.OPEN)
     } finally {
       socket.terminate()
       server.closeAllConnections()
@@ -237,4 +276,99 @@ describe('subscription acknowledgment', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }
   }, 20_000)
+})
+
+// Running an Instance / Open pages hear about changes as they happen: the
+// whole path, over real sockets — a row saved through the API reaches the
+// pages that watch its table, and a personal notice reaches only its person.
+describe('Open pages hear about changes as they happen', () => {
+  async function listen() {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const open: WebSocket[] = []
+    const connect = (token: string) => {
+      const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${token}` } })
+      const frames: RealtimeEvent[] = []
+      socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+      open.push(socket)
+      const waitFor = async (match: (f: RealtimeEvent) => boolean): Promise<RealtimeEvent> => {
+        const deadline = Date.now() + 5_000
+        for (;;) {
+          const hit = frames.find(match)
+          if (hit) return hit
+          if (Date.now() > deadline) throw new Error(`no matching frame; saw ${JSON.stringify(frames)}`)
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        }
+      }
+      return { socket, frames, waitFor }
+    }
+    const close = async () => {
+      for (const s of open) s.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+    return { connect, close }
+  }
+
+  test('someone else saves a row: a page watching that table is told, and a page that may not read it is not', async ({ admin, createUser }) => {
+    const outsider = await createUser({ email: 'rt.outsider@example.com' })
+    const live = await listen()
+    try {
+      const watcher = live.connect(admin.token!)
+      const blocked = live.connect(outsider.token!)
+      await watcher.waitFor((f) => f.event === 'ready')
+      await blocked.waitFor((f) => f.event === 'ready')
+      watcher.socket.send(JSON.stringify({ subscribe: ['list:Role'] }))
+      blocked.socket.send(JSON.stringify({ subscribe: ['list:Role'] }))
+      await watcher.waitFor((f) => f.event === 'subscribed')
+      // The page that may not read the table is refused: nothing is acknowledged.
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(blocked.frames.some((f) => f.event === 'subscribed')).toBe(false)
+
+      await admin.post('/api/table/Role', { row_id: 'Realtime Probe Role' })
+      const told = await watcher.waitFor((f) => f.channel === 'list:Role' && f.event === 'created')
+      expect(told.payload).toEqual({ table: 'Role', row_id: 'Realtime Probe Role' })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(blocked.frames.some((f) => f.channel === 'list:Role')).toBe(false)
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('a private notice reaches only that person, without asking to watch it', async ({ admin, createUser }) => {
+    const other = await createUser({ email: 'rt.other@example.com' })
+    const live = await listen()
+    try {
+      const mine = live.connect(admin.token!)
+      const theirs = live.connect(other.token!)
+      await mine.waitFor((f) => f.event === 'ready')
+      await theirs.waitFor((f) => f.event === 'ready')
+      publishUserEvent('Administrator', 'notification', { n: 1 })
+      expect((await mine.waitFor((f) => f.event === 'notification')).payload).toEqual({ n: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      expect(theirs.frames.some((f) => f.event === 'notification')).toBe(false)
+    } finally {
+      await live.close()
+    }
+  })
+
+  test('a page that is not signed in is refused', async () => {
+    const live = await listen()
+    try {
+      const anon = live.connect('not-a-session')
+      const code = await new Promise<number>((resolveCode, reject) => {
+        const timer = setTimeout(() => reject(new Error('socket was not closed')), 5_000)
+        anon.socket.on('close', (c) => {
+          clearTimeout(timer)
+          resolveCode(c)
+        })
+      })
+      expect(code).toBe(4001)
+      expect(anon.frames).toEqual([])
+    } finally {
+      await live.close()
+    }
+  })
 })

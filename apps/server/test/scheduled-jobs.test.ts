@@ -61,6 +61,17 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     }
   })
 
+  test('a sync drops stacked duplicate queue entries and keeps the soonest', async () => {
+    await setup()
+    await syncScheduledJobs('check_sla')
+    const [kept] = await liveEntries('check_sla')
+    await enqueue('check_sla', {}, { repeatEvery: CADENCE_SECONDS['every minute'], trigger: 'schedule', runAt: new Date(Date.now() + 3_600_000) })
+    await enqueue('check_sla', {}, { repeatEvery: CADENCE_SECONDS['every minute'], trigger: 'schedule', runAt: new Date(Date.now() + 7_200_000) })
+    expect(await liveEntries('check_sla')).toHaveLength(3)
+    await syncScheduledJobs('check_sla')
+    expect((await liveEntries('check_sla')).map((r) => r.row_id)).toEqual([kept.row_id])
+  })
+
   test('saving a row through the API re-times its queue entry; disabling withdraws it', async ({ admin }) => {
     await setup()
     registerJob(METHOD, async () => {})
@@ -107,6 +118,13 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
       }),
     ).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
     expect(await liveEntries(METHOD)).toHaveLength(0)
+  })
+
+  test('a schedule must name the job it runs', async ({ admin }) => {
+    await setup()
+    await expect(
+      admin.post('/api/save_row', { table: 'Scheduled Job', row: { method: '  ', cadence: 'hourly', enabled: true } }),
+    ).rejects.toMatchObject({ status: 417, type: 'ValidationError' })
   })
 
   test('after a run, the next interval follows the row, not the stale entry it was queued with', async () => {

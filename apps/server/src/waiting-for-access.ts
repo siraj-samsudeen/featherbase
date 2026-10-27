@@ -16,7 +16,7 @@ const ALERT_ACTOR = 'system'
 const alertOperation = (person: string) => `access_alert for ${person}`
 /** The day the cap counts: India's, whatever the database session's zone. */
 const ALERT_DAY_ZONE = 'Asia/Kolkata'
-export const WAITING_PATH = '/featherbase/admin/waiting-for-access'
+const WAITING_PATH = '/featherbase/admin/waiting-for-access'
 
 // A role of their own: `All` and `Guest` are implicit, so they do not count.
 const waitingWhere = () => sql`
@@ -25,7 +25,7 @@ const waitingWhere = () => sql`
     select 1 from has_role r
     where r.parent = p.row_id and r.parenttype = 'Person' and r.role not in ('All', 'Guest'))`
 
-export interface WaitingPerson {
+interface WaitingPerson {
   person: string
   full_name: string | null
   email_domain: string | null
@@ -38,7 +38,7 @@ export interface WaitingPerson {
 }
 
 /** A name that is still an address shows as its domain only (#429). */
-export function shownName(name: string | null | undefined): string | null {
+function shownName(name: string | null | undefined): string | null {
   if (!name) return null
   return name.includes('@') ? name.split('@').pop() || null : name
 }

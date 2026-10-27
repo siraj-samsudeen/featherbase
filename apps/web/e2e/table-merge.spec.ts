@@ -10,8 +10,7 @@ import { deleteTableIfExists } from './cleanup'
 // FOLD to the same thing pair themselves; the rest is the user's to say, and
 // the screen exists so they can.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const SRC = 'Merge Source Zones'

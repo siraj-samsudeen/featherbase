@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
-import { connectionLabel, useConnections, type Connection, type Filter } from '../lib/connections'
+import { connectionLabel, useConnections, type Connection } from '../lib/connections'
 import { usePeek } from './Peek'
 import { useQuery } from '@tanstack/react-query'
 import { cardClasses, pillClasses } from './ui'
@@ -11,7 +11,7 @@ import { fmtCount } from '../lib/inr'
 
 // Relational navigation (#100, patterns 1 + 2):
 //
-// ConnectionsPanel — Frappe's "Connections" dashboard section, derived
+// ConnectionsPanel — the form's "Connections" section, derived
 // entirely from metadata (every Reference column pointing at this table),
 // with live permission-scoped counts. Click → the target's filtered list;
 // ◎ → peek without leaving; + → a new row pre-filled with this reference.
@@ -228,4 +228,3 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
   )
 }
 
-export type { Filter }

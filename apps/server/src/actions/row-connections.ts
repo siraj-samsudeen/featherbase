@@ -21,7 +21,7 @@ import { registerCollectionAction, registerRowAction } from '../actions'
 // Tables the caller cannot read are omitted entirely — same posture as the
 // sidebar, presentation scoping backed by real read checks on navigation.
 
-export interface Connection {
+interface Connection {
   table: string
   column: string
   via: string | null

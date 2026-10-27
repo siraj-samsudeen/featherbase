@@ -27,13 +27,13 @@ import { readVariable } from './env'
 // but that a human-chosen word cannot reach it.
 export const PREVIEW_KEY_MIN_LENGTH = 32
 
-export interface PreviewLogin {
+interface PreviewLogin {
   key: string
   user: string
 }
 
 // Reasons a configured preview is refused, so boot can say which one.
-export type PreviewRefusal =
+type PreviewRefusal =
   | 'incomplete'
   | 'key-too-short'
   | 'administrator'

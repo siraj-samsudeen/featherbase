@@ -167,3 +167,33 @@ describe('controllers: registry edges', () => {
     expect(seen).toEqual(['v'])
   })
 })
+
+describe('A refused check saves nothing', () => {
+  test('an automation refusing after the row was written still leaves nothing saved, nested rows included', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Hook Late Line', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    await admin.post('/api/table_def', {
+      name: 'Hook Late Refusal',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: 'Hook Late Line' },
+      ],
+    })
+    registerController({
+      table: 'Hook Late Refusal',
+      hooks: {
+        after_save: ({ row }) => {
+          if (row.title === 'refuse late') throw new AppError('ValidationError', 'refused after writing', { title: 'no' })
+        },
+      },
+    })
+    try {
+      await expect(
+        admin.post('/api/save_row', { table: 'Hook Late Refusal', row: { title: 'refuse late', lines: [{ item: 'a' }] } }),
+      ).rejects.toMatchObject({ status: 417 })
+      expect(await sql`select 1 from featherbase.hook_late_refusal`).toHaveLength(0)
+      expect(await sql`select 1 from featherbase.hook_late_line`).toHaveLength(0)
+    } finally {
+      clearControllers('Hook Late Refusal')
+    }
+  })
+})

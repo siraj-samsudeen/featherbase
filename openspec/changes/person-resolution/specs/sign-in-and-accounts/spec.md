@@ -77,7 +77,8 @@ disabled, all their sessions end and every other way in refuses them.
 - **WHEN** someone with one employment who has left signs in with their
   still-working HR system password, and later tries their Featherbase
   password
-- **THEN** both are refused, and the account is disabled with its history kept
+- **THEN** they are told the account is no longer active, both are refused,
+  and the account is disabled with its history kept
 
 #### Scenario: An agency record ends after the person joined the company
 
@@ -106,13 +107,15 @@ A deployment MAY switch on test mode for sign-in through a connected service,
 only through its server environment and only with an exact switch value, and
 only on a development, test or staging server — staging being a hosted trial
 instance that is a production server in every other respect: any other server
-refuses to start with it set. While it is on, the service SHALL NOT be asked: a tester signs in as a
-person by typing the employee code on that person's record, in any mix of
-capitals, with no password. The code must belong to exactly one person, and
-that person must have a live, unended link to the service; who may sign in is
-otherwise unchanged — one enabled account, and not the Administrator or a
-System Manager. The sign-in page SHALL say that test mode is on and ask for an
-employee code.
+refuses to start with it set. While it is on, the service SHALL NOT be asked:
+a tester signs in as a person by typing the employee code on that person's
+record, in any mix of capitals, with any password or none. The code must
+belong to exactly one person, and that person must have a live, unended link
+to the service; who may sign in is otherwise unchanged — one enabled account,
+and not the Administrator or a System Manager. The sign-in page SHALL look
+exactly as it does without test mode and SHALL NOT say that test mode is on,
+so the shortcut is known only to those who need it. A typed password SHALL
+NOT be logged.
 
 Because the service is not asked, it cannot report that someone has left.
 While test mode is on, a person who has left is refused only when their
@@ -123,7 +126,7 @@ on where real users sign in.
 #### Scenario: Open the report as a Team Leader during a trial
 
 - **WHEN** test mode is on and the tester types a Team Leader's employee code
-  with no password
+  with any password
 - **THEN** they are signed in as that Team Leader and the service is not
   contacted
 
@@ -133,6 +136,11 @@ on where real users sign in.
   disabled account, to a System Manager, or to a person whose link to the
   service has ended
 - **THEN** sign-in is refused exactly as it would be with the service asked
+
+#### Scenario: The service login name is not the test-mode ID
+
+- **WHEN** test mode is on and the tester types the person's login name at the service
+- **THEN** sign-in is refused; test mode looks people up by employee code only
 
 #### Scenario: A code on two records
 
@@ -158,8 +166,8 @@ on where real users sign in.
 - **THEN** the service is asked and a password is required, as without test
   mode
 
-#### Scenario: The page says so
+#### Scenario: The page does not advertise it
 
 - **WHEN** test mode is on and a service is connected
-- **THEN** the sign-in form shows a test-mode notice, asks for an employee
-  code, and has no password field
+- **THEN** the sign-in form shows the ordinary labels, hint and password
+  field, and no test-mode notice

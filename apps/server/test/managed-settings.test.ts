@@ -217,3 +217,63 @@ describe('the apply and the break-glass CLI still change a locked field (D5)', (
     expect((await getDoc('System Settings', 'System Settings', 'Administrator')).app_name).toBe('Locked Name')
   })
 })
+
+describe('how a locked value is compared (D5)', () => {
+  const save = (admin: Parameters<typeof patchDoc>[0], row: Record<string, unknown>) =>
+    admin.post('/api/save_row', { table: 'System Settings', row })
+
+  test('a locked number is the same value however it is typed, and a different number is a change', async ({ admin }) => {
+    await apply({ settings: { 'System Settings': { session_hours: 24, currency_precision: 2 } } })
+    await save(admin, { session_hours: '24', currency_precision: 2.0 })
+    await expectApiError(save(admin, { session_hours: 25 }), LOCKED)
+    const [row] = await sql`select value from single_value where table_name = 'System Settings' and field = 'session_hours'`
+    expect(Number(row.value)).toBe(24)
+  })
+
+  test('a locked JSON setting kept as text compares by content, not by spacing or key order; text that is not JSON is a change', async ({ admin }) => {
+    await apply({ settings: { 'System Settings': { people_review: { b: 2, a: 1 } } } })
+    await save(admin, { people_review: '{ "a": 1,   "b": 2 }' })
+    await expectApiError(save(admin, { people_review: '{"a":1,"b":3}' }), LOCKED)
+    await expectApiError(save(admin, { people_review: 'not json at all' }), LOCKED)
+  })
+
+  test('a locked setting that is a reference holds its row: renaming the row it names is refused', async () => {
+    await sql`insert into column_def ${sql({ parent: 'System Settings', position: 997, column_name: 'default_identifier_test', label: null,
+      column_type: 'Reference', reference_table: 'Identifier System', reqd: false, unique: false, default_value: null, read_only: false, hidden: false, in_list_view: false, tier: 'basic' })}`
+    const { invalidateMeta } = await import('../src/meta')
+    invalidateMeta('System Settings')
+    try {
+      await apply({ settings: { 'System Settings': { default_identifier_test: 'phone' } } })
+      await expect(renameDoc('Identifier System', 'phone', 'phone_renamed', 'Administrator')).rejects.toMatchObject({ type: 'PermissionError' })
+      // A row the setting does not name can still be renamed.
+      await renameDoc('Identifier System', 'email', 'email_renamed', 'Administrator')
+    } finally {
+      await sql`delete from column_def where parent = 'System Settings' and column_name = 'default_identifier_test'`
+      invalidateMeta('System Settings')
+    }
+  })
+})
+
+describe('a workflow step cannot rewrite a locked field', () => {
+  test('applying a workflow action whose state field the file sets is refused, and nothing changes', async ({ admin }) => {
+    await apply({ settings: { 'Scheduled Job': [{ row_id: 'disable_leavers', enabled: false }] } })
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Locked Switch Flow',
+        ref_table: 'Scheduled Job',
+        is_active: true,
+        state_field: 'enabled',
+        states: [{ state: 'false', target_status: 'draft' }, { state: 'true', target_status: 'draft' }],
+        transitions: [{ state: 'false', action: 'Switch on', next_state: 'true', allowed: 'System Manager' }],
+      },
+    })
+    const { applyWorkflowAction } = await import('../src/workflow')
+    await expect(applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch on', 'Administrator')).rejects.toMatchObject({
+      type: 'PermissionError',
+      message: expect.stringContaining(INSTANCE_SETTINGS_FILE),
+    })
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    expect(job.enabled).toBe(false)
+  })
+})

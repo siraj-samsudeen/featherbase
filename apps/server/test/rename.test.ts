@@ -93,3 +93,53 @@ describe('DOC-012: rename document + cascade Link references', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 })
+
+describe('Rename a row and every link follows', () => {
+  test("the row keeps its own values and nested rows under the new id", async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/table/' + encodeURIComponent(CUST), { row_id: 'Acme', city: 'NYC' })
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-9', customer: 'Acme', lines: [{ supplier: 'Acme' }, { supplier: 'Acme' }] },
+    })
+    await admin.post(`/api/table/${encodeURIComponent(ORDER)}/ORD-9:rename`, { new_name: 'ORD-10' })
+    const order = await admin.get<{ customer: string; lines: unknown[] }>(
+      `/api/table/${encodeURIComponent(ORDER)}/ORD-10`,
+    )
+    expect(order.customer).toBe('Acme')
+    expect(order.lines).toHaveLength(2)
+    await expect(admin.get(`/api/table/${encodeURIComponent(ORDER)}/ORD-9`)).rejects.toMatchObject({ status: 404 })
+  })
+
+  // SPEC: See a row's whole history in order (comments-and-history) — suspected
+  // defect, see report. Comments, change history, attachments and shares name
+  // their row by id in plain text, and the rename cascade only follows link
+  // columns, so a renamed row loses its own timeline.
+  test.fails("a renamed row's comments and change history come with it", async ({ admin }) => {
+    await setup(admin)
+    const created = await admin.post<{ updated_at: string }>('/api/table/' + encodeURIComponent(CUST), {
+      row_id: 'Acme',
+      city: 'NYC',
+    })
+    await admin.post('/api/save_row', {
+      table: CUST,
+      row: { row_id: 'Acme', updated_at: created.updated_at, city: 'Boston' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: CUST, ref_name: 'Acme', content: 'called them today' },
+    })
+    const before = await admin.get<{ comments: unknown[]; versions: unknown[] }>(
+      `/api/activity/${encodeURIComponent(CUST)}/Acme`,
+    )
+    expect(before.comments).toHaveLength(1)
+    expect(before.versions).toHaveLength(1)
+
+    await admin.post(`/api/table/${encodeURIComponent(CUST)}/Acme:rename`, { new_name: 'Acme Corp' })
+    const after = await admin.get<{ comments: unknown[]; versions: unknown[] }>(
+      `/api/activity/${encodeURIComponent(CUST)}/${encodeURIComponent('Acme Corp')}`,
+    )
+    expect(after.comments).toHaveLength(1)
+    expect(after.versions).toHaveLength(1)
+  })
+})

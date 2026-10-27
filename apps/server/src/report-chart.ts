@@ -6,7 +6,7 @@ import { runReportRows } from './auto-email-report'
 // RPT-006: derive a { label, value }[] chart series from a saved report's rows,
 // and pin such a chart onto a Dashboard so it renders alongside its cards.
 
-export interface ReportChartSpec {
+interface ReportChartSpec {
   report: string
   label_field?: string
   value_field?: string

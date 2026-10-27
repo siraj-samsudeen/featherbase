@@ -3,7 +3,8 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { deliverAutoEmailReport, runDueAutoEmailReports, toCsv } from '../src/auto-email-report'
-import { drainJobs } from '../src/jobs'
+import { drainJobs, enqueue } from '../src/jobs'
+import { expectApiError } from './fixtures'
 
 // EML-007: a saved Report scheduled as an Auto Email Report is delivered to its
 // recipients with the report attached. The scheduler pass respects the cadence.
@@ -91,7 +92,7 @@ describe('EML-007: Auto Email Report', () => {
     admin,
   }) => {
     await setup(admin)
-    const out = await deliverAutoEmailReport(AER)
+    const out = await admin.post<{ recipients: number; rows: number }>('/api/run_auto_email_report', { row_id: AER })
     expect(out.recipients).toBe(1)
     expect(out.rows).toBe(2)
 
@@ -137,5 +138,66 @@ describe('EML-007: Auto Email Report', () => {
     await sql`update auto_email_report set last_sent = now() - interval '2 days' where row_id = ${AER}`
     const later = await runDueAutoEmailReports(new Date())
     expect(later).toContain(AER)
+  })
+
+  test('only a System Manager may run a report now, and the schedule must be named', async ({ admin, createUser }) => {
+    await setup(admin)
+    await expectApiError(admin.post('/api/run_auto_email_report', {}), {
+      status: 417, type: 'ValidationError', message: expect.stringContaining('Expected { row_id }'),
+    })
+    const clerk = await createUser({ email: 'aer-clerk@x.com', roles: [] })
+    await expectApiError(clerk.post('/api/run_auto_email_report', { row_id: AER }), { status: 403 })
+    expect(await sql`select 1 from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`).toHaveLength(0)
+  })
+
+  test('the auto_email_reports job delivers every report that is due', async ({ admin }) => {
+    await setup(admin)
+    await enqueue('auto_email_reports', {})
+    await drainDueJobs()
+    const queued = await sql`select recipient from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    expect(queued.map((q) => q.recipient)).toEqual([RECIP])
+    const [row] = await sql`select last_sent from auto_email_report where row_id = ${AER}`
+    expect(row.last_sent).not.toBeNull()
+  })
+
+  test('a weekly report is not sent again until a week has passed', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set frequency = 'Weekly' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).toContain(AER) // never sent: due now
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER) // just sent
+    await sql`update auto_email_report set last_sent = now() - interval '3 days' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER)
+    await sql`update auto_email_report set last_sent = now() - interval '8 days' where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).toContain(AER)
+  })
+
+  test('each recipient gets their own email, however the list is separated', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set recipients = ${'a@x.com, b@x.com;c@x.com d@x.com'} where row_id = ${AER}`
+    const out = await deliverAutoEmailReport(AER)
+    expect(out.recipients).toBe(4)
+    const queued = await sql`select recipient from email_queue where ref_table = 'Report' and reference_name = ${REPORT} order by recipient`
+    expect(queued.map((q) => q.recipient)).toEqual(['a@x.com', 'b@x.com', 'c@x.com', 'd@x.com'])
+  })
+
+  test('a disabled schedule is never sent, and one with no recipients is refused', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set enabled = false where row_id = ${AER}`
+    expect(await runDueAutoEmailReports(new Date())).not.toContain(AER)
+    await expect(deliverAutoEmailReport(AER)).rejects.toMatchObject({ type: 'ValidationError' })
+    await sql`update auto_email_report set enabled = true, recipients = '' where row_id = ${AER}`
+    await expect(deliverAutoEmailReport(AER)).rejects.toMatchObject({ type: 'ValidationError' })
+    const queued = await sql`select 1 from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    expect(queued).toHaveLength(0)
+  })
+
+  test('the attachment can be a web page table instead of a CSV file', async ({ admin }) => {
+    await setup(admin)
+    await sql`update auto_email_report set file_format = 'HTML' where row_id = ${AER}`
+    await deliverAutoEmailReport(AER)
+    const [q] = await sql`select attachments from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+    const files = (q.attachments as { files?: { filename: string; content_b64: string }[] }).files ?? []
+    expect(files[0].filename).toBe(`${REPORT}.html`)
+    expect(Buffer.from(files[0].content_b64, 'base64').toString('utf8')).toContain('<td>Washer</td>')
   })
 })

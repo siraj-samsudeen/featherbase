@@ -9,7 +9,6 @@ import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
 import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, registerJob, syncScheduledJobs, type Cadence, type JobHandler } from './jobs'
-import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
   registerController,
   unregisterController,
@@ -116,22 +115,17 @@ export interface AppManifest {
   fixtures?: AppFixture[]
   // Lifecycle hooks keyed by target Table then event. The target need not be
   // owned by this app — that is the whole point of doc_events (PLAT-002). The
-  // "*" key hooks EVERY Table (Frappe's doc_events["*"]).
+  // "*" key hooks EVERY Table.
   doc_events?: Record<string, Partial<Record<HookEvent, Hook>>>
-  // Recurring jobs this app schedules (Frappe's scheduler_events). Wired as
+  // Recurring jobs this app schedules. Wired as
   // job handlers + a Scheduled Job row while the app is installed.
   scheduler_events?: SchedulerEvent[]
-  // Replacements for whitelisted RPC methods (Frappe's
-  // override_whitelisted_methods). The original is restored on uninstall.
-  override_whitelisted_methods?: Record<string, ServerMethod>
 }
 
 // Registry of apps KNOWN to this process (installed or not).
 const available = new Map<string, AppManifest>()
 // Controllers currently wired for each installed app, for clean removal.
 const wired = new Map<string, TableController[]>()
-// Method overrides per app, with the previous definition for restore.
-const overridden = new Map<string, { path: string; prev: MethodDef | undefined }[]>()
 
 export function registerApp(manifest: AppManifest): void {
   available.set(manifest.name, manifest)
@@ -189,24 +183,12 @@ function wireHooks(manifest: AppManifest): void {
   // scheduler_events: register the handlers; the recurring enqueue itself is
   // ensured separately (install + boot) so a dead row gets re-seeded.
   for (const ev of manifest.scheduler_events ?? []) registerJob(ev.method, ev.handler)
-
-  // override_whitelisted_methods: swap handlers in, keeping the previous
-  // definition (and its guest setting) for restore on uninstall.
-  const swaps: { path: string; prev: MethodDef | undefined }[] = []
-  for (const [path, fn] of Object.entries(manifest.override_whitelisted_methods ?? {})) {
-    const prev = swapMethod(path, { fn, allowGuest: false, effect: 'write' })
-    if (prev) swapMethod(path, { fn, allowGuest: prev.allowGuest, effect: prev.effect })
-    swaps.push({ path, prev })
-  }
-  overridden.set(manifest.name, swaps)
 }
 
 function unwireHooks(name: string): void {
   activeApps.delete(name)
   for (const controller of wired.get(name) ?? []) unregisterController(controller)
   wired.delete(name)
-  for (const { path, prev } of overridden.get(name) ?? []) swapMethod(path, prev)
-  overridden.delete(name)
 }
 
 // Called under the exclusive lifecycle lock after the schema commit.
@@ -555,7 +537,7 @@ export async function installApp(name: string): Promise<InstallResult> {
 
 // PLAT-005 (#55): install an app from a JSON manifest with no code in this
 // process. Only data can survive JSON — Tables, roles, permissions.
-const CODE_ONLY_KEYS = ['doc_events', 'scheduler_events', 'override_whitelisted_methods'] as const
+const CODE_ONLY_KEYS = ['doc_events', 'scheduler_events'] as const
 
 const appPermissionSchema = z
   .object({

@@ -62,3 +62,19 @@ describe('SET-003: permission manager endpoints', () => {
     expect(post.status).toBe(403)
   })
 })
+
+describe("Set a table's grants in one place", () => {
+  test("a grant set by a System Manager applies to the role's holders on their very next request", async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    const holder = await createUser({ roles: [ROLE] })
+    const list = `/api/table/${encodeURIComponent(DT)}`
+    expect((await holder.fetch(list)).status).toBe(403)
+    await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: true })
+    expect((await holder.fetch(list)).status).toBe(200)
+    await admin.post(`/api/permissions/${encodeURIComponent(DT)}`, { role: ROLE, can_read: false })
+    expect((await holder.fetch(list)).status).toBe(403)
+  })
+})

@@ -347,6 +347,16 @@ describe('#465: a manifest cannot carry instance settings', () => {
     expect(await sql`select field, value from single_value where table_name = 'System Settings' order by field`).toEqual(settingsBefore)
   })
 
+  test('a fixture on a Table that does not exist fails the install at that fixture, and nothing is installed', async () => {
+    const { installAppFromManifest } = await import('../src/apps')
+    await expect(installAppFromManifest({
+      name: 'missing_fixture_table_app',
+      tables: [{ name: 'Missing Fixture Item', module: 'Test', columns: [{ column_name: 'title', column_type: 'Data' }] }],
+      fixtures: [{ table: 'No Such Fixture Table', rows: [{ title: 'orphan' }] }],
+    })).rejects.toMatchObject({ type: 'NotFoundError', message: expect.stringContaining('No Such Fixture Table') })
+    expect(await isInstalled('missing_fixture_table_app')).toBe(false)
+  })
+
   test('a code app\'s own Settings Table is refused too', async () => {
     registerApp({
       name: 'own-settings-app',

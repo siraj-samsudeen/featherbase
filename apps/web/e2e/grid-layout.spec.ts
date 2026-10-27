@@ -31,7 +31,6 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The child grid's rows/cells are testid- and data-childfield-addressed, not
 // labelled controls, so the round trip stays inside named steps;
 // `session.visit`/`assertHas` carry navigation and the plain checks around it.

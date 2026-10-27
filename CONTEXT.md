@@ -6,8 +6,7 @@ generated from that one definition.
 
 This file is the **ubiquitous language** — the words this project uses, and the
 words it has deliberately retired. It is a glossary and nothing else: no file
-paths, no implementation notes. For "where does this live in the code", see
-[docs/GLOSSARY.md](docs/GLOSSARY.md); for decisions, see [docs/adr/](docs/adr/).
+paths, no implementation notes. For decisions, see [docs/adr/](docs/adr/).
 
 Featherbase began as a faithful replication of
 [Frappe Framework](https://frappe.io/framework) and has since diverged on

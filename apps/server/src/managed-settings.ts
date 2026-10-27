@@ -27,7 +27,7 @@ export interface ManagedValue extends ManagedPath {
   value: unknown
 }
 
-export interface LastApply {
+interface LastApply {
   applied_at: Date
   applied_by: string
   environment: string | null
@@ -39,10 +39,6 @@ export interface LastApply {
 }
 
 const LOCKABLE: ReadonlySet<string> = new Set(INSTANCE_SETTINGS_TABLES)
-
-export function isLockableTable(table: string): boolean {
-  return LOCKABLE.has(table)
-}
 
 /** The last successful apply, or null before the first one. */
 let storeExists = false

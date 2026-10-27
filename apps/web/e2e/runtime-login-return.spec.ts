@@ -27,7 +27,6 @@ test.afterAll(async ({ request }) => {
   if (!deleted.ok()) throw new Error(`delete selected task: ${deleted.status()} ${await deleted.text()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The login form is label-friendly, so sign-in becomes DSL verbs; the exact
 // URL round-trip (query + hash fragment) is a `toHaveURL` regex that
 // `assertPath`/`refutePath` — exact-match only — cannot express, so it stays

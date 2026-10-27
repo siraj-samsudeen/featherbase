@@ -27,7 +27,7 @@ function storedName(filename: string): string {
   return `${randomBytes(8).toString('hex')}_${safe || 'file'}`
 }
 
-export interface StoredFile {
+interface StoredFile {
   file_url: string
   stored_name: string
 }

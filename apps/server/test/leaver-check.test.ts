@@ -314,3 +314,39 @@ describe('the check on a live instance', () => {
     expect((await runLeaverCheck({ today: TODAY })).plan).toBeNull()
   })
 })
+
+describe('the leaver plan as printed for logs', () => {
+  const leaver = (person: string, basis: 'exit date' | 'inactive' | 'not on payroll') => ({ person, full_name: person, reason: 'x', basis })
+  const plan = {
+    today: '2026-10-24',
+    latest_feed_day: '2026-10-23',
+    linked: 40,
+    limit: 8,
+    refused: null,
+    to_disable: [leaver('a', 'exit date'), leaver('b', 'exit date'), leaver('c', 'inactive')],
+    privileged_leavers: [leaver('boss', 'exit date')],
+    not_found: ['p1', 'p2'],
+    recent_joiners: ['p3'],
+  }
+
+  test('a plan is summarised by counts and basis, with no names', async () => {
+    const { formatLeaverPlan } = await import('../src/leaver-check')
+    expect(formatLeaverPlan(plan).split('\n')).toEqual([
+      'leaver check: today 24-Oct-2026; latest StyleHR day 23-Oct-2026',
+      'leaver check: 40 linked people; limit 8',
+      'leaver check: would disable 3 (exit date 2, inactive 1)',
+      'leaver check: System Managers who have left, not disabled: 1',
+      'leaver check: no StyleHR record found: 2; recent joiners not yet on payroll: 1',
+    ])
+  })
+
+  test('after a run it reports who was disabled, a refusal replaces the count, and no identifier system says so', async () => {
+    const { formatLeaverPlan } = await import('../src/leaver-check')
+    expect(formatLeaverPlan(plan, { applied: [leaver('a', 'exit date')] })).toContain('leaver check: disabled 1 (exit date 1)')
+    expect(formatLeaverPlan(plan, { applied: [] })).toContain('leaver check: disabled 0 (none)')
+    const refused = formatLeaverPlan({ ...plan, latest_feed_day: null, refused: 'the feed is stale' })
+    expect(refused).toContain('latest StyleHR day none')
+    expect(refused).toContain('leaver check: REFUSED — the feed is stale')
+    expect(formatLeaverPlan(null)).toBe('leaver check: this instance has no StyleHR identifier system; nothing to check')
+  })
+})

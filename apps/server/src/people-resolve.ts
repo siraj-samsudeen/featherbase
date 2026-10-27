@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { sql, withTransaction } from './db'
 import { writeThroughIdentity } from './person-identifiers'
 
-export interface ResolveRow {
+interface ResolveRow {
   employee_code: string
   assigner: string
   stylehr_record_id: string
@@ -33,13 +33,13 @@ export function parseResolveFile(text: string): ResolveRow[] {
   })
 }
 
-export interface ResolvedEntry {
+interface ResolvedEntry {
   person: string
   full_name: string | null
   detail: string
 }
 
-export interface ResolveReport {
+interface ResolveReport {
   live: number
   resolved: ResolvedEntry[]
   alreadyResolved: number

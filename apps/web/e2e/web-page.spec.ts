@@ -21,8 +21,7 @@ test.beforeAll(async ({ request }) => {
   if (res.status() !== 201) throw new Error(`create web page: ${res.status()} ${await res.text()}`)
 })
 
-// WEB-001, migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). `context.clearCookies()` is a raw
+// WEB-001. `context.clearCookies()` is a raw
 // Playwright fixture the DSL has no verb for, so it opens a named step; the
 // rendered content is plain text the DSL's own assertText/assertPath reach.
 test('WEB-001: a published Web Page renders publicly without a session', async ({ session, context }) => {

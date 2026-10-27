@@ -1,6 +1,5 @@
 import { anonymousTest as test, expect } from './fixtures'
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // `./init.sh` runs this file's `playwright test e2e/smoke.spec.ts` directly
 // (apps/web/package.json's `smoke` script) against whatever stack it just
 // booted, non-isolated — see the note atop apps/web/playwright.config.ts.

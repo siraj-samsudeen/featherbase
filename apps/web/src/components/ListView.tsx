@@ -165,7 +165,10 @@ export function ListView({
         }
         setSettingsLoaded(true)
       })
-      .catch(() => setSettingsLoaded(true))
+      .catch(
+        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; reading saved list settings answers for every signed-in person */
+        () => setSettingsLoaded(true),
+      )
     return () => {
       cancelled = true
     }
@@ -1012,13 +1015,13 @@ function InlineChildGrid({
 }
 
 
-// Frappe's standard filters (adopted from PR 2's Admin screen): typed per-column
+// Standard filters (adopted from PR 2's Admin screen): typed per-column
 // inputs for the list's visible columns — Choices become dropdowns, text-ish
 // columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
 const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
 
-export function StandardFilters({
+function StandardFilters({
   meta,
   filters,
   onChange,

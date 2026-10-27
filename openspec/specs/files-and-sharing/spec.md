@@ -19,6 +19,40 @@ not only from the row it was attached from.
   opening the row a photo was attached to
 - **THEN** the photo is there, with the row it belongs to
 
+### Requirement: Removing a file removes its content
+
+Removing an uploaded file SHALL also remove what was stored, so nothing is
+left behind and its link stops working.
+
+#### Scenario: A removed file's link stops working
+
+- **WHEN** the user removes one of two files attached to a row
+- **THEN** that file's link no longer opens
+- **AND** the other file still opens
+
+### Requirement: Attach only to what you can read
+
+A file SHALL only be attached to a row, or to a table, that the uploader can
+read, and a refused upload stores nothing.
+
+#### Scenario: Attaching to a row the user can't see
+
+- **WHEN** a user with no access to a row tries to upload a file attached to it
+- **THEN** the upload is refused and no file is stored
+
+### Requirement: Pictures get a small preview
+
+An uploaded picture SHALL come with a small preview that lists and attachment
+panels show instead of loading the full-size original. Other kinds of file
+get none.
+
+#### Scenario: A picture and a document
+
+- **WHEN** the user uploads a wide photo and a text document
+- **THEN** the photo has a small preview no larger than a thumbnail, with its
+  proportions kept
+- **AND** the document has no preview
+
 ### Requirement: A file is public or private
 
 Uploading a file SHALL let it be marked private. A public file opens for
@@ -35,6 +69,28 @@ whatever it's attached to before it opens.
 
 - **WHEN** anyone follows a public file's link
 - **THEN** it opens without needing to sign in
+
+### Requirement: An uploaded file never runs as part of Featherbase
+
+A file SHALL open in place only when it is a kind the browser shows without
+running anything, such as a picture, a PDF or plain text. Any other file, a
+web page or a drawing that can carry script among them, SHALL download
+instead.
+
+#### Scenario: An uploaded web page
+
+- **WHEN** someone uploads a web page and another user opens its link
+- **THEN** the file downloads; nothing in it runs inside Featherbase
+
+#### Scenario: A file whose declared kind hides a web page
+
+- **WHEN** a file's declared kind lists plain text followed by a web page, at upload or edited later
+- **THEN** the browser is told only the first, plain kind, so the file never opens as a page
+
+#### Scenario: A picture still shows
+
+- **WHEN** a user opens an uploaded photo or PDF
+- **THEN** it shows in the browser as before
 
 ### Requirement: A private file opens through a short-lived link
 

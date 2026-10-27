@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import fc from 'fast-check'
 import { inferColumnType, sanitizeColumnName, sanitizeHeaders } from 'shared'
 
-// Property tests for IMP-R1 (column naming) and IMP-R2 (type inference) —
-// docs/design/requirements-framework.md, Part I §3: example tables are for
-// agreement, properties are for coverage. Every assertion here states the
+// Property tests for IMP-R1 (column naming) and IMP-R2 (type inference)
+// (openspec/specs/spreadsheet-import): example tables are for agreement,
+// properties are for coverage. Every assertion here states the
 // SPEC. Where today's code violates it, the test is `it.fails` with the
 // issue pinned: the suite stays green, and FIXING the bug makes the pin
 // fail on purpose — flip it to a plain `it` in the same change.

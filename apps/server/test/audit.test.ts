@@ -41,18 +41,24 @@ describe('PLAT-007: audit logs', () => {
     expect(new Date(row.created_at as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })
 
-  test('records an export via /api/access_log (read permission required)', async ({ admin }) => {
+  test('records an export via /api/access_log (read permission required)', async ({ admin, api }) => {
     await setup(admin)
-    const res = await admin.fetch('/api/access_log', {
+    const login = await api.fetch('/api/login', {
       method: 'POST',
+      body: JSON.stringify({ usr: USER, pwd: 'auditpw12345' }),
+    })
+    const token = ((await login.json()) as { token: string }).token
+    const res = await api.fetch('/api/access_log', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ table: 'Person', method: 'csv' }),
     })
     expect(res.status).toBe(200)
-    const [row] = await sql`
-      select operation, ref_table, method from access_log
-      where operation = 'export' and ref_table = 'Person' order by created_at desc limit 1`
-    expect(row.operation).toBe('export')
-    expect(row.method).toBe('csv')
+    // A System Manager sees afterwards who exported people, and in which format.
+    const seen = await admin.get<{ data: { user: string; operation: string; ref_table: string; method: string }[] }>(
+      `/api/table/${encodeURIComponent('Access Log')}?fields=${encodeURIComponent(JSON.stringify(['user', 'operation', 'ref_table', 'method']))}`,
+    )
+    expect(seen.data).toContainEqual(expect.objectContaining({ user: ID, operation: 'export', ref_table: 'Person', method: 'csv' }))
   })
 
   test('rejects logging an export of a Table the caller cannot read', async ({ admin, api }) => {
@@ -92,5 +98,14 @@ describe('PLAT-007: audit logs', () => {
     expect(a.created_by).toBe(ID)
     expect(b.created_by).toBe(ID)
     expect(b.reference_name).toBe(ID)
+  })
+
+  test('a required access record is refused while the access log is missing, even with a same-named table in another schema (#520)', async () => {
+    await sql.unsafe('alter table featherbase.access_log rename to access_log_hidden')
+    await sql.unsafe('create table public.access_log (row_id text)')
+    await expect(logAccess('Administrator', 'audit_probe', { required: true })).rejects.toThrow('Required access audit is unavailable')
+    // A record that is not required is skipped, and nothing lands in the stray table.
+    await logAccess('Administrator', 'audit_probe')
+    expect(await sql.unsafe('select count(*)::int as n from public.access_log')).toEqual([{ n: 0 }])
   })
 })

@@ -27,8 +27,7 @@ async function cleanup(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => cleanup(request))
 test.afterEach(async ({ request }) => cleanup(request))
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// every check here is an attribute/response-status assertion the DSL has no
+// Every check here is an attribute/response-status assertion the DSL has no
 // verb for (href value, absence of a query param, a raw navigation's HTTP
 // status), so the whole flow stays in one named step; session.visit carries
 // the one plain navigation.

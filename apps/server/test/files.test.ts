@@ -87,6 +87,89 @@ describe('FILE-001: file upload + storage', () => {
     }
   })
 
+  test('an uploaded web page or SVG downloads instead of opening as part of the app', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const [name, body, type] of [
+        ['page.html', '<script>alert(1)</script>', 'text/html'],
+        ['logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', 'image/svg+xml'],
+      ] as const) {
+        const doc = (await (await upload(admin, name, body, type)).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.status).toBe(200)
+        expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
+  // #561: an <img> will not draw an SVG served as octet-stream, so an SVG keeps its own type —
+  // and still downloads when opened directly, so its script never runs as a page of the app.
+  test('an SVG is served as an image a form can show, and still never opens as a page', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const declared of ['image/svg+xml', 'IMAGE/SVG+XML; charset=utf-8']) {
+        const doc = (await (
+          await upload(admin, 'logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', declared)
+        ).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.status).toBe(200)
+        expect(res.headers.get('content-type')).toBe('image/svg+xml')
+        expect(res.headers.get('content-disposition')).toMatch(/^attachment;/)
+        expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
+  test('a type list that ends in HTML is served as one plain type, whether uploaded or edited onto the File row', async ({
+    admin,
+    api,
+  }) => {
+    const uploaded: string[] = []
+    try {
+      for (const type of ['text/plain,text/html', 'text/plain;charset=utf-8, text/html']) {
+        const doc = (await (await upload(admin, 'page.txt', '<script>alert(1)</script>', type)).json()) as Record<
+          string,
+          unknown
+        >
+        uploaded.push(doc.file_url as string)
+        expect(doc.mime_type).toBe('text/plain')
+        // The stored type is an editable field, so serving must not trust it either:
+        // the header carries one type the server built, never the stored list.
+        for (const [stored, header, disposition] of [
+          ['text/plain,text/html', 'text/plain', /^inline;/],
+          ['application/x-anything,text/html', 'application/octet-stream', /^attachment;/],
+        ] as const) {
+          await sql`update file set mime_type = ${stored} where row_id = ${doc.row_id as string}`
+          const res = await api.fetch(doc.file_url as string)
+          expect(res.headers.get('content-type')).toBe(header)
+          expect(res.headers.get('content-disposition')).toMatch(disposition)
+        }
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
+  test('a picture, a PDF and plain text still open in place', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const [name, type] of [['a.png', 'image/png'], ['a.pdf', 'application/pdf'], ['a.txt', 'text/plain']] as const) {
+        const doc = (await (await upload(admin, name, 'x', type)).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.headers.get('content-disposition')).toMatch(/^inline;/)
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
   test('rejects uploads without a session', async ({ api }) => {
     const form = new FormData()
     form.append('file', new File(['x'], 'x.txt', { type: 'text/plain' }))
@@ -126,6 +209,13 @@ describe('FILE-001: file upload + storage', () => {
   test('unregistered storage paths 404 even if a file existed on disk', async ({ api }) => {
     const res = await api.fetch('/files/0000000000000000_ghost.txt')
     expect(res.status).toBe(404)
+  })
+
+  test('a registered file whose stored object has gone missing is simply not found', async ({ admin, api }) => {
+    const res = await upload(admin, 'vanish.txt', 'soon gone', 'text/plain')
+    const doc = (await res.json()) as Record<string, unknown>
+    await deleteStored(doc.file_url as string)
+    expect((await api.fetch(doc.file_url as string)).status).toBe(404)
   })
 
   test('records ref_table/ref_name when attaching to a document', async ({ admin }) => {
@@ -183,6 +273,33 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
         `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )
       expect(after.data.map((f) => f.file_name)).toEqual(['att-b.txt'])
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+})
+
+describe('Find and manage a file on its own', () => {
+  test('the list of uploaded files shows each file with the row it is attached to', async ({ admin }) => {
+    const uploaded: string[] = []
+    try {
+      const doc = (await (
+        await upload(admin, 'photo.txt', 'pixels', 'text/plain', { ref_table: 'Person', ref_name: 'Guest' })
+      ).json()) as Record<string, unknown>
+      uploaded.push(doc.file_url as string)
+      const fields = encodeURIComponent(JSON.stringify(['row_id', 'file_name', 'ref_table', 'ref_name']))
+      const listed = await admin.get<{ data: Record<string, unknown>[] }>(`/api/table/File?fields=${fields}&limit_page_length=100`)
+      expect(listed.data).toContainEqual({
+        row_id: doc.row_id,
+        file_name: 'photo.txt',
+        ref_table: 'Person',
+        ref_name: 'Guest',
+      })
+      // And it can be opened and removed from there, without going through the row.
+      const opened = await admin.get<Record<string, unknown>>(`/api/table/File/${doc.row_id}`)
+      expect(opened.file_name).toBe('photo.txt')
+      await admin.delete(`/api/table/File/${doc.row_id}`)
+      expect((await admin.fetch(`/api/table/File/${doc.row_id}`)).status).toBe(404)
     } finally {
       await cleanupDisk(uploaded)
     }

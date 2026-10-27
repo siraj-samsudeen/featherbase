@@ -51,8 +51,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// group-by/column-picker are testid-addressed selects/checkboxes with no
+// Group-by/column-picker are testid-addressed selects/checkboxes with no
 // accessible label distinct enough for the DSL, and the checks are group
 // counts/sums against `[data-group=...]`, so the whole walk stays in one
 // named step; session.visit carries the plain navigation.

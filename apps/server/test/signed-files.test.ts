@@ -113,3 +113,37 @@ describe('FILE-003: private files via signed URLs', () => {
     }
   })
 })
+
+describe('A private file opens through a short-lived link', () => {
+  test('a link already handed out keeps working after the share that allowed it is removed', async ({
+    admin,
+    createUser,
+    api,
+  }) => {
+    // A reader with NO role grant, only a share on the one row.
+    const { docName, outsider, fileUrl } = await setup(admin, createUser)
+    try {
+      const share = await admin.post<{ row_id: string }>('/api/save_row', {
+        table: 'Share',
+        row: { share_table: DT, share_name: docName, person: outsider.user, read: true },
+      })
+      const { signed_url } = await outsider.get<{ signed_url: string }>(
+        `/api/signed_url?file_url=${encodeURIComponent(fileUrl)}`,
+      )
+      expect((await api.fetch(signed_url)).status).toBe(200)
+
+      await admin.delete(`/api/table/Share/${share.row_id}`)
+
+      // The link in hand still works until it expires…
+      const served = await api.fetch(signed_url)
+      expect(served.status).toBe(200)
+      expect(await served.text()).toBe('classified')
+      // …but access is checked afresh for any new link.
+      await expect(
+        outsider.get(`/api/signed_url?file_url=${encodeURIComponent(fileUrl)}`),
+      ).rejects.toMatchObject({ status: 403 })
+    } finally {
+      await deleteStored(fileUrl).catch(() => {})
+    }
+  })
+})

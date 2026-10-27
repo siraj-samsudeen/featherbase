@@ -133,7 +133,7 @@ export const VARIABLES = [
   { name: 'DELEGATED_LOGIN_TEST_MODE', secret: false, required: 'forbidden-in-production',
     active: (v) => v.trim() === TEST_MODE_PHRASE,
     purpose: '`trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored',
-    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "The person release").` },
+    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "Environments and the database stamp").` },
   { name: 'ALLOW_MOCK_OAUTH', secret: false, required: 'forbidden-in-production',
     active: (v) => v === '1', allowedIn: DEV_ENVIRONMENTS,
     docsRequired: '**never outside development and test**',
@@ -166,7 +166,7 @@ export type VariableName = (typeof VARIABLES)[number]['name']
 
 const BY_NAME = new Map<string, Variable>(VARIABLES.map((v) => [v.name, v]))
 
-export function variableEntry(name: VariableName): Variable {
+function variableEntry(name: VariableName): Variable {
   return BY_NAME.get(name)!
 }
 
@@ -187,8 +187,7 @@ export function overrideVariable(name: VariableName, value: string | undefined):
   else overrides.set(name, value)
 }
 
-/** Run `fn` with a variable set in this process, then restore it. For the
- *  CLI's own rehearsals (people-plan's test-mode sign-in check). */
+/** Run `fn` with a variable set in this process, then restore it. */
 export async function withVariable<T>(name: VariableName, value: string, fn: () => Promise<T>): Promise<T> {
   const previous = process.env[name]
   process.env[name] = value
@@ -238,7 +237,7 @@ export function environmentDeclared(env: Record<string, string | undefined> = pr
 
 // ---------------------------------------------------------------- checks
 
-export interface VariableReport {
+interface VariableReport {
   /** A switch on that this environment must never have. Each one stops a
    *  release and a server start. */
   forbidden: string[]
@@ -325,10 +324,8 @@ export function assertVariables(opts: CheckVariablesOptions): string[] {
 // loaded once at import — KEY=VALUE lines only, never overriding variables
 // already set by the shell. Values stay in process.env; nothing is persisted
 // or logged.
-function loadDotEnv() {
+export function loadDotEnv(file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env')) {
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url))
-    const file = path.resolve(here, '../.env')
     if (!existsSync(file)) return
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line)

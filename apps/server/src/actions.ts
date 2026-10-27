@@ -1,6 +1,6 @@
 import type { SessionUser } from './auth'
 
-// API surface design (#61): one registry, one dispatcher, four cases.
+// API surface design (#61): one registry, one dispatcher, three cases.
 //
 //   Generated         GET/POST /api/table/:table, GET/PATCH/DELETE
 //                     /api/table/:table/:name, plus :count/:meta/:actions —
@@ -11,8 +11,6 @@ import type { SessionUser } from './auth'
 //   Collection action registerCollectionAction() — scoped to a Table as a
 //                     whole (not a specific row), reached at
 //                     /api/table/:table:action.
-//   Method            methods.ts's existing whitelist() — not addressed by
-//                     any Table at all, reached at /api/method/:path.
 //
 // Every case shares the same rule: the HTTP verb is derived from a declared
 // `effect: 'read' | 'write'`, never chosen ad hoc by the handler (#62).
@@ -21,22 +19,22 @@ import type { SessionUser } from './auth'
 // genuinely ambiguous with a row literally named ".../submit"; the colon is
 // the disambiguator, not a style preference.
 
-export type ActionEffect = 'read' | 'write'
+type ActionEffect = 'read' | 'write'
 
-export interface RowActionContext {
+interface RowActionContext {
   table: string
   name: string
   args: Record<string, unknown>
   user: SessionUser
 }
 
-export interface CollectionActionContext {
+interface CollectionActionContext {
   table: string
   args: Record<string, unknown>
   user: SessionUser
 }
 
-export interface ActionDef<Ctx> {
+interface ActionDef<Ctx> {
   effect: ActionEffect
   handler: (ctx: Ctx) => unknown | Promise<unknown>
   // Surfaced by the discovery endpoint (GET /api/table/:table:actions) so a

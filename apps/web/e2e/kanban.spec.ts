@@ -3,8 +3,7 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 const DT = 'Kb DT'
 
 // UI-020: drag a card to another column; the underlying field value changes
-// in the DB. Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md): drag mechanics and DB verification
+// in the DB. Drag mechanics and DB verification
 // aren't expressible by DSL verbs, so they stay in named steps.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {

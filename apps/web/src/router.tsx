@@ -48,7 +48,6 @@ import { ColumnEditor } from './pages/ColumnEditor'
 import { TableMerge } from './pages/TableMerge'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
-import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
@@ -590,17 +589,6 @@ const allTablesRoute = createRoute({
   component: AllTablesPage,
 })
 
-// PROTOTYPE — throwaway route for the connect-a-data-source UX exploration.
-// Three variants via ?variant=A|B|C, table picker via ?step=tables.
-const prototypeConnectSourceRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'prototype/connect-source',
-  validateSearch: (search: Record<string, unknown>) => ({
-    step: searchString(search.step),
-  }),
-  component: PrototypeConnectSourcePage,
-})
-
 // EDS-2: the Data Source browser — introspect and reflect external tables
 // (static segment, before $table).
 const sourceBrowserRoute = createRoute({
@@ -790,5 +778,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, setupRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, setupRoute, tableRoute, docRoute]),
 ])

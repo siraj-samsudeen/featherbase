@@ -1,14 +1,15 @@
 // person-identities (#275): a User is a person; email is optional contact
 // data; Google is recognised by its permanent account ID, never by email;
 // sessions remember how they were opened.
-import { describe, expect } from 'vitest'
+import { afterEach, describe, expect } from 'vitest'
 import type { TestClient } from 'feather-testing-postgres'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
 import { issueSession } from '../src/auth'
 import { configureGoogle, inviteGoogleRaw, linkDelegated, configureDelegated } from './identity-fixtures'
 import { googleSignIn, redeemSession } from './google-mock'
+import { _setDelegatedFetch } from '../src/delegated-login'
 
 const enc = encodeURIComponent
 
@@ -179,5 +180,101 @@ describe('password sign-in', () => {
       expect((await api.fetch('/api/reset_password_request', { method: 'POST', body: JSON.stringify({ usr }) })).status).toBe(200)
     const after = await sql`select count(*)::int as n from password_reset`
     expect(after[0].n).toBe(before[0].n)
+  })
+})
+
+// The HR system answers yes to every check in these tests; it is never contacted for real.
+const hrSaysYes = () => _setDelegatedFetch((async () => Response.json({ token: 'opaque' })) as typeof fetch)
+const hrSignIn = (api: TestClient, usr: string) =>
+  api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr, pwd: 'Hr-Password-1', method: 'stylehr' }) })
+
+describe('One person, several ways to sign in', () => {
+  afterEach(() => _setDelegatedFetch(null))
+
+  test('a Team Leader linked to Google and to the HR system opens the same account both ways', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    await configureDelegated()
+    hrSaysYes()
+    const monday = await redeemSession(api, await googleSignIn(api, 'tl.both@gmail.com', { subject: 'g-both' }))
+    const person = monday.user.row_id
+    await linkDelegated(person, 'tl_both_hr')
+    const tuesday = await hrSignIn(api, 'tl_both_hr')
+    expect(tuesday.status).toBe(200)
+    expect(((await tuesday.json()) as { user: { row_id: string } }).user.row_id).toBe(person)
+    // One account: the two links hang off the same person, nothing was copied.
+    const links = await sql`select method from sign_in_identity where person_id = ${person} and ended_at is null order by method`
+    expect(links.map((l) => l.method)).toEqual(['google', 'stylehr'])
+    expect((await sql`select count(*)::int as n from person where row_id = ${person}`)[0].n).toBe(1)
+  })
+})
+
+describe('Email is optional: store staff without email', () => {
+  afterEach(() => _setDelegatedFetch(null))
+
+  test('a staff member saved with no email signs in with their HR system ID', async ({ api }) => {
+    await configureDelegated()
+    hrSaysYes()
+    const staff = await makePerson({ full_name: 'Store Staff' })
+    expect((await sql`select email from person where row_id = ${staff}`)[0].email).toBeNull()
+    await linkDelegated(staff, 'staff_no_mail')
+    const res = await hrSignIn(api, 'staff_no_mail')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { user: { row_id: string; email: string | null } }
+    expect(body.user).toMatchObject({ row_id: staff, email: null })
+  })
+})
+
+describe("An account's permanent reference is never an address or a code", () => {
+  test('a person created by a Google sign-in keeps the same reference when their Google address changes', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const first = await redeemSession(api, await googleSignIn(api, 'asha.old@gmail.com', { subject: 'g-asha' }))
+    const person = first.user.row_id
+    // Featherbase assigns the reference: neither the address nor its local part.
+    expect(person).toMatch(/^psn_/)
+    expect(person.toLowerCase()).not.toContain('asha')
+    const again = await redeemSession(api, await googleSignIn(api, 'asha.new@gmail.com', { subject: 'g-asha' }))
+    expect(again.user.row_id).toBe(person)
+    // The Google sign-in now records the new address; the reference is untouched.
+    const [link] = await sql`select person_id, email from sign_in_identity where method = 'google' and subject = 'g-asha' and ended_at is null`
+    expect(link).toMatchObject({ person_id: person, email: 'asha.new@gmail.com' })
+    expect((await sql`select count(*)::int as n from person where row_id = ${person}`)[0].n).toBe(1)
+    // Their contact address follows the new Google address.
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('asha.new@gmail.com')
+  })
+
+  test('a contact address set by hand stays put when the Google address changes', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const first = await redeemSession(api, await googleSignIn(api, 'ravi.old@gmail.com', { subject: 'g-ravi' }))
+    const person = first.user.row_id
+    const [row] = await sql`select updated_at from person where row_id = ${person}`
+    await patchDoc(admin, `/api/table/Person/${person}`, { updated_at: row.updated_at, email: 'ravi@store.example' })
+    await redeemSession(api, await googleSignIn(api, 'ravi.new@gmail.com', { subject: 'g-ravi' }))
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('ravi@store.example')
+  })
+
+  test('a new Google address another person already uses does not move onto this person', async ({ api }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const first = await redeemSession(api, await googleSignIn(api, 'mina.old@gmail.com', { subject: 'g-mina' }))
+    const person = first.user.row_id
+    await makePerson({ email: 'taken@gmail.com' })
+    await redeemSession(api, await googleSignIn(api, 'taken@gmail.com', { subject: 'g-mina' }))
+    expect((await sql`select email from person where row_id = ${person}`)[0].email).toBe('mina.old@gmail.com')
+  })
+})
+
+describe('only a person has sign-in methods', () => {
+  test('inviting a service account to sign in with Google says to issue an access token; an unknown id is not found', async () => {
+    const { inviteGoogle } = await import('../src/identities')
+    const { createServiceAccount } = await import('../src/service-accounts')
+    const bot = await createServiceAccount('invite-probe-bot', [], 'Administrator')
+    await expect(inviteGoogle(bot.row_id, 'bot@example.com', 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: 'Service accounts have no sign-in methods — issue an access token instead',
+    })
+    await expect(inviteGoogle('psn_nobody', 'nobody@example.com', 'Administrator')).rejects.toMatchObject({
+      type: 'NotFoundError',
+      message: 'Person psn_nobody not found',
+    })
+    expect(await sql`select 1 from sign_in_identity where person_id in (${bot.row_id}, 'psn_nobody')`).toHaveLength(0)
   })
 })

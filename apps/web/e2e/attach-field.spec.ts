@@ -3,8 +3,7 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 const DT = 'UI Attach DT'
 
 // UI-023: Attach and Attach Image fields — upload, preview, clearing.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// file inputs, attribute reads (`src`, natural size) and localStorage-token
+// File inputs, attribute reads (`src`, natural size) and localStorage-token
 // verification aren't expressible by DSL verbs, so the whole round trip stays
 // in named steps.
 
