@@ -133,6 +133,10 @@ describe('PLAT-001: app install/uninstall', () => {
       expect(dt).toBeDefined()
       expect(await isInstalled(APP1)).toBe(true)
 
+      // A ledger row stored as a JSON string is read the same way.
+      await sql`update installed_app set tables = to_jsonb(tables::text) where name = ${APP1}`
+      await expect(admin.delete(`/api/table_def/${encodeURIComponent(APP1_DT)}`)).rejects.toMatchObject({ status: 417 })
+
       await uninstallApp(APP1)
       expect((await installApp(APP1)).tables).toEqual([APP1_DT])
     } finally {

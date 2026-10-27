@@ -5,6 +5,7 @@ import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
+import { asNameList } from './installed-app-ledger'
 import { COLUMN_NAME_RE, quoteIdent } from './sql-identifier'
 import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation, resolvedRelation, tableName } from './platform-schema'
 
@@ -600,10 +601,10 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   // #122: an installed app owns its tables as a set — the registry records
   // them, and uninstalling removes them and the record together. Deleting
   // one alone would leave the app recorded as installed without it.
-  const [owner] = await sql<{ name: string }[]>`
-    select name from installed_app
-    where jsonb_typeof(tables) = 'array' and tables @> ${sql.json([meta.name])}
-    order by name limit 1`
+  // The ledger is read as uninstall reads it, so a row stored as a JSON
+  // string counts too.
+  const owner = (await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`)
+    .find((app) => asNameList(app.tables).includes(meta.name))
   if (owner)
     throw new AppError(
       'ValidationError',
