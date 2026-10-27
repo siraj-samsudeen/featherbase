@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
-import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
+import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { expectApiError, tableRef } from './fixtures'
 
@@ -173,6 +173,39 @@ describe("the scope provider's read context", () => {
     const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
     expect(response.status).toBe(403)
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
+  // Codex round 1: the provider reads as itself, so a consumer's client, which
+  // names only its own app's version, still gets a scope from an upgraded
+  // provider (one with a migration ledger).
+  test('reads as the provider app, not with the consuming request\'s app versions', async ({ admin, createUser }) => {
+    const upgraded = await mkdtemp(resolve('test/.upgraded-provider-'))
+    try {
+      await cp(provider, upgraded, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(upgraded, 'featherbase.json'), 'utf8'))
+      await writeFile(resolve(upgraded, 'featherbase.json'), JSON.stringify({ ...manifest,
+        migrations: [{ id: 'code_only', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }] }))
+      await writeFile(resolve(upgraded, 'package.json'), JSON.stringify({ name: 'featherbase-place-roster', version: '1.1.0', type: 'module' }))
+      expect(await discoverPackages([consumer, upgraded])).toEqual([])
+      await admin.post('/api/install_app', { name: 'scopeproof' })
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      expect((await sql`select jsonb_array_length(migration_ledger) as n from installed_app where name = 'placeroster'`)[0].n).toBe(1)
+      const user = await createUser({ email: 'upgraded@example.test', roles: ['Scope Reader'] })
+      const seeded = await admin.fetch('/api/save_row', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'placeroster@1.1.0' },
+        body: JSON.stringify({ table: 'placeroster.position', row: { row_id: 'up-1', person: user.user, place: 'North / Kids', store: 'N1', section: 'kids' } }) })
+      expect(seeded.status).toBe(201)
+      // The consumer's client names only its own app's version.
+      const answer = await user.post<{ result: { places: { label: string }[] } }>(read + 'places', { payload: {} })
+      expect(answer.result.places.map(place => place.label)).toEqual(['North / Kids'])
+    } finally { await rm(upgraded, { recursive: true, force: true }) }
+  })
+
+  test('an in-process read, which names no app versions, resolves the scope too', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser)
+    await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+    const answer = await runPackageRead('scopeproof', 'places', { payload: {} }, user.user!) as { result: { places: { label: string }[] } }
+    expect(answer.result.places.map(place => place.label)).toEqual(['North / Kids'])
   })
 
   test('passes confirmation statuses through to the handler', async ({ admin, createUser }) => {

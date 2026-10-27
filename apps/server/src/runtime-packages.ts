@@ -284,7 +284,7 @@ export function discoverPackages(paths: string[]) {
           runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
         artifacts.set(key, { name: manifest.name, title: manifest.title,
           entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-          scopeProvider: provider ? { app: manifest.name, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
+          scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
           // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
           actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations) } : undefined,
           reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations) } : undefined })

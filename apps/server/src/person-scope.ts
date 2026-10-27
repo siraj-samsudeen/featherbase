@@ -4,10 +4,13 @@ import { sql } from './db'
 import { getMeta } from './meta'
 import { getDoc } from './document'
 import { getList } from './query'
+import { withAppIdentity } from './app-lifecycle'
 
 /** The instance's one scope-providing app, bound by runtime-packages. */
 export interface ScopeProviderBinding {
   app: string
+  /** The provider app's installed version, verified against its artifact. */
+  version: string
   tables: readonly string[]
   provide: AppScopeProvider
 }
@@ -26,8 +29,8 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
   const [person] = await sql`select row_id, email from person where row_id = ${user}`
   let answer: unknown
   try {
-    answer = await withScopeReads(binding, async documents =>
-      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null }), documents })))
+    answer = await withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, async documents =>
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null }), documents }))))
   } catch { throw new NoPersonScope('provider') }
   const parsed = personScopeSchema.safeParse(answer)
   if (!parsed.success) throw new NoPersonScope('provider')
