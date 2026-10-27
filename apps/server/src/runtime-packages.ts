@@ -7,7 +7,7 @@ import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeAp
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
-import { activeApps, appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
+import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -602,12 +602,6 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
     }
   }
   return lines
-}
-
-/** #671: is an app of this name installed, enabled and serving its own
- *  pages. Read from what this process has loaded, so it asks no database. */
-export function servesApp(name: string): boolean {
-  return activeApps.has(name) && Boolean(packages.get(name)?.clientRoot)
 }
 
 /** A discovered app package's title, for an address that opens it (#488). */

@@ -194,6 +194,17 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
   await waitFor(async () => expect(await barName()).toHaveAttribute('href', '/feather_dash/'))
 })
 
+// Codex round 1 on #672: the link follows the installation, not whether the
+// app can be opened right now; a disabled app's root says it is unavailable.
+test("on an app's address whose installed app is disabled, the bar's name still leads to the app's root", async ({ admin }) => {
+  await installDashApp(admin)
+  await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
+  onAddressThatOpens('feather_dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await settledName('Dash stand-in')
+  expect(await barName()).toHaveAttribute('href', '/feather_dash/')
+})
+
 test("on an app's address whose app is not installed, the bar's name leads to the interim page", async ({ admin }) => {
   onAddressThatOpens('feather_dash')
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)

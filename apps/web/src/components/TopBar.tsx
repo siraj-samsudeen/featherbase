@@ -93,7 +93,7 @@ function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = []):
 
 /** Where the bar's name leads. An app installed under an interim name
  *  replaces its interim page (#671): the interim root stands in only while
- *  the person has no such app to open. */
+ *  no app of that name is installed. */
 function homeHref(context: string, installed: boolean): string {
   if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
   if (installed) return appHref(context)
@@ -132,9 +132,10 @@ export function TopBar({
   const whoami = useWhoAmI().data
   const caps = whoami?.capabilities
   const apps = whoami?.apps
-  // An app's own page is an installed app's (#650); elsewhere, an installed
-  // app the person can open (#671).
-  const installed = Boolean(app) || Boolean(apps?.some((entry) => entry.name === context))
+  // An app's own page is an installed app's (#650). Elsewhere the link follows
+  // the installation, as the server's address routing does (#671): a disabled
+  // app's root says it is unavailable, never the interim page.
+  const installed = Boolean(app) || Boolean(context && whoami?.installed_apps?.includes(context))
   const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the

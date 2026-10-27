@@ -23,6 +23,8 @@ export interface OpenableApp {
 interface WhoAmI {
   capabilities: Capabilities
   apps: OpenableApp[]
+  /** #671: every installed app's name, open or not (disabled, pending). */
+  installed_apps: string[]
   name: string
   email: string | null
   full_name: string | null

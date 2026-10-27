@@ -364,6 +364,20 @@ export async function isInstalled(name: string): Promise<boolean> {
   return Boolean(row)
 }
 
+/** #671: whether an app of this name is installed, from the database record
+ *  every process shares — enabled or not, pending activation or not, loaded
+ *  by this process or not. One primary-key lookup, uncached, so it is never
+ *  stale. Serving it is a separate question (activeApps). */
+export async function isAppInstalled(name: string): Promise<boolean> {
+  const [row] = await sql`select 1 from installed_app where name = ${name}`
+  return Boolean(row)
+}
+
+/** The names of every installed app, by the same record. */
+export async function installedAppNames(): Promise<string[]> {
+  return (await sql`select name from installed_app order by name`).map((row) => String(row.name))
+}
+
 export async function listInstalledApps() {
   const rows = await sql`select * from installed_app order by installed_at asc`
   return rows.map((r) => ({
