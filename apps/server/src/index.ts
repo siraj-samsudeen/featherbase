@@ -2255,8 +2255,10 @@ serveWebDist(app, webDist)
 export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
-  const { settingsRequirements } = await import('./release-preflight')
+  const { assertInstalledAppsShipped, settingsRequirements } = await import('./release-preflight')
   for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
+  // #642 (E7): never serve without an installed, enabled app's exact version.
+  await assertInstalledAppsShipped()
   const { server, listening } = await new Promise<{ server: ReturnType<typeof serve>; listening: number }>((resolve) => {
     const server = serve({ fetch: app.fetch, port }, (info) => {
       console.log(`server listening on :${info.port}`)

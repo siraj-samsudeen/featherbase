@@ -218,6 +218,107 @@ export async function artifactIdentity(directory: string) {
   return { name: manifest.name, version: pkg.version, root }
 }
 
+// One app directory, validated and loaded: its manifest, fingerprint and
+// server module. Registers nothing.
+async function loadArtifact(directory: string): Promise<RuntimePackage> {
+  const { root, pkg, manifest } = await readArtifact(directory)
+  if (!SUPPORTED_PLATFORM_VERSIONS.includes(manifest.platformVersion))
+    throw new Error(`App ${manifest.name} was built for platform version ${manifest.platformVersion}; this Featherbase supports ${SUPPORTED_PLATFORM_VERSIONS.join(', ')}`)
+  if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
+    throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
+  validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
+  const digest = await artifactDigest(root)
+  validateRoleDefaults(manifest.roleDefaults, manifest.roles)
+  const names = new Set(manifest.tables.map((t) => t.name))
+  if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
+    throw new Error('Duplicate Tables or unknown entryTable')
+  for (const table of manifest.tables) {
+    if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
+      throw new Error('Package Tables require qualified ownership, label and local storage')
+  }
+  let clientRoot: string | undefined
+  if (manifest.client) {
+    clientRoot = await contained(root, manifest.client)
+    if (!(await stat(clientRoot)).isDirectory()) throw new Error('Client root is not a directory')
+    await contained(clientRoot, 'index.html')
+  }
+  const doc_events: AppManifest['doc_events'] = {}
+  let handlers = new Map<string, RuntimeActionHandler>()
+  let readHandlers = new Map<string, RuntimeReadHandler>()
+  let resolvers = new Map<string, AppScopeResolver>()
+  let authorizers = new Map<string, AppProductAuthorizer>()
+  let providers = new Map<string, AppScopeProvider>()
+  const provider = manifest.scopeProvider
+  if (provider) {
+    if (!manifest.server) throw new Error('A scope provider requires a server module')
+    // An owned Table the provider reads must carry the mark; another
+    // Table's mark is checked on every read.
+    for (const table of provider.tables) {
+      const owned = manifest.tables.find(t => t.name === table)
+      if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
+      if (owned?.columns.some(column => column.column_type === 'Sub-table')) throw new Error('A scope provider cannot read Tables with Sub-tables')
+    }
+  }
+  const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}
+  const readOperations = manifest.reads?.operations ?? {}
+  const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
+  for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
+  for (const declaration of [manifest.actions, manifest.reads]) {
+    if (!declaration) continue
+    if (!manifest.server) throw new Error('Declared operations require a server module')
+    for (const table of declaration.tables) {
+      if (!names.has(table) && (!manifest.permissions.some(permission => permission.table === table) || table.includes('.')))
+        throw new Error('Shared action Tables require declared permissions; other apps are not allowed')
+    }
+  }
+  if (manifest.server) {
+    const modulePath = await contained(root, manifest.server)
+    if (!/\.(mjs|js)$/.test(modulePath)) throw new Error('Server module must be compiled JavaScript')
+    const module = await import(/* @vite-ignore */ `${pathToFileURL(modulePath).href}?artifact=${digest}`)
+    if (module.platformVersion !== manifest.platformVersion)
+      throw new Error(`App ${manifest.name}'s server module was built for platform version ${String(module.platformVersion)}, but its manifest says ${manifest.platformVersion}`)
+    handlers = namedFunctions(module.actions, manifest.actions?.version === 1 ? manifest.actions.names : Object.keys(actionOperations))
+    readHandlers = namedFunctions(module.reads, Object.keys(readOperations))
+    resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
+    authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
+    providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
+    for (const [table, validator] of Object.entries(module.validators ?? {})) {
+      if (!names.has(table) || typeof validator !== 'function')
+        throw new Error('Validators must target owned Tables')
+      doc_events[table] = { before_validate: (ctx) => (validator as Validator)({
+        row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
+        reject(message, fields) { throw new AppError('ValidationError', message, fields) },
+      }) }
+    }
+  }
+  const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
+    [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,
+      authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined,
+      ...(declaration.policy.kind === 'person_scope' ? { scopeProvider: findScopeProvider } : {}) }]))
+  const setup = () => loadAppSetup(manifest.name, manifest)
+  const app: AppManifest = { name: manifest.name, tables: manifest.tables,
+    roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
+    runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
+    runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
+  return { name: manifest.name, title: manifest.title,
+    entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
+    scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
+    // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
+    actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
+    reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined }
+}
+
+/** #642 (E7): the installed rows (`name`, `package_version`,
+ *  `artifact_digest`, `manifest`) whose exact version and fingerprint no app on
+ *  `paths` ships. Loads the apps as boot would, registering nothing. */
+export async function unshippedApps<Row extends Record<string, unknown>>(installed: Row[], paths: string[]): Promise<Row[]> {
+  const shipped: RuntimePackage[] = []
+  for (const directory of paths) {
+    try { shipped.push(await loadArtifact(directory)) } catch { /* boot would reject it too: it ships nothing */ }
+  }
+  return installed.filter(row => !shipped.some(pkg => pkg.name === row.name && matchesInstalled(pkg, row)))
+}
+
 // Boot discovery indexes versions without upgrading an installed application.
 // Importing any server module grants full Node privileges, deliberately.
 export function discoverPackages(paths: string[]) {
@@ -230,100 +331,17 @@ export function discoverPackages(paths: string[]) {
     const duplicates = new Set<string>()
     for (const directory of paths) {
       try {
-        const { root, pkg, manifest } = await readArtifact(directory)
-        if (!SUPPORTED_PLATFORM_VERSIONS.includes(manifest.platformVersion))
-          throw new Error(`App ${manifest.name} was built for platform version ${manifest.platformVersion}; this Featherbase supports ${SUPPORTED_PLATFORM_VERSIONS.join(', ')}`)
-        if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
-          throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
-        validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
-        const digest = await artifactDigest(root)
-        const key = `${manifest.name}@${pkg.version}`
+        const pkg = await loadArtifact(directory)
+        const key = `${pkg.name}@${pkg.version}`
         if (duplicates.has(key)) refuse('Duplicate different artifacts for one package version')
         const duplicate = artifacts.get(key)
         if (duplicate) {
-          if (duplicate.digest === digest) continue
+          if (duplicate.digest === pkg.digest) continue
           artifacts.delete(key)
           duplicates.add(key)
           refuse('Duplicate different artifacts for one package version')
         }
-        validateRoleDefaults(manifest.roleDefaults, manifest.roles)
-        const names = new Set(manifest.tables.map((t) => t.name))
-        if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
-          throw new Error('Duplicate Tables or unknown entryTable')
-        for (const table of manifest.tables) {
-          if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
-            throw new Error('Package Tables require qualified ownership, label and local storage')
-        }
-        let clientRoot: string | undefined
-        if (manifest.client) {
-          clientRoot = await contained(root, manifest.client)
-          if (!(await stat(clientRoot)).isDirectory()) throw new Error('Client root is not a directory')
-          await contained(clientRoot, 'index.html')
-        }
-        const doc_events: AppManifest['doc_events'] = {}
-        let handlers = new Map<string, RuntimeActionHandler>()
-        let readHandlers = new Map<string, RuntimeReadHandler>()
-        let resolvers = new Map<string, AppScopeResolver>()
-        let authorizers = new Map<string, AppProductAuthorizer>()
-        let providers = new Map<string, AppScopeProvider>()
-        const provider = manifest.scopeProvider
-        if (provider) {
-          if (!manifest.server) throw new Error('A scope provider requires a server module')
-          // An owned Table the provider reads must carry the mark; another
-          // Table's mark is checked on every read.
-          for (const table of provider.tables) {
-            const owned = manifest.tables.find(t => t.name === table)
-            if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
-            if (owned?.columns.some(column => column.column_type === 'Sub-table')) throw new Error('A scope provider cannot read Tables with Sub-tables')
-          }
-        }
-        const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}
-        const readOperations = manifest.reads?.operations ?? {}
-        const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
-        for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
-        for (const declaration of [manifest.actions, manifest.reads]) {
-          if (!declaration) continue
-          if (!manifest.server) throw new Error('Declared operations require a server module')
-          for (const table of declaration.tables) {
-            if (!names.has(table) && (!manifest.permissions.some(permission => permission.table === table) || table.includes('.')))
-              throw new Error('Shared action Tables require declared permissions; other apps are not allowed')
-          }
-        }
-        if (manifest.server) {
-          const modulePath = await contained(root, manifest.server)
-          if (!/\.(mjs|js)$/.test(modulePath)) throw new Error('Server module must be compiled JavaScript')
-          const module = await import(/* @vite-ignore */ `${pathToFileURL(modulePath).href}?artifact=${digest}`)
-          if (module.platformVersion !== manifest.platformVersion)
-            throw new Error(`App ${manifest.name}'s server module was built for platform version ${String(module.platformVersion)}, but its manifest says ${manifest.platformVersion}`)
-          handlers = namedFunctions(module.actions, manifest.actions?.version === 1 ? manifest.actions.names : Object.keys(actionOperations))
-          readHandlers = namedFunctions(module.reads, Object.keys(readOperations))
-          resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
-          authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
-          providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
-          for (const [table, validator] of Object.entries(module.validators ?? {})) {
-            if (!names.has(table) || typeof validator !== 'function')
-              throw new Error('Validators must target owned Tables')
-            doc_events[table] = { before_validate: (ctx) => (validator as Validator)({
-              row: ctx.row, old: ctx.old, user: ctx.user, isNew: ctx.isNew,
-              reject(message, fields) { throw new AppError('ValidationError', message, fields) },
-            }) }
-          }
-        }
-        const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
-          [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,
-            authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined,
-            ...(declaration.policy.kind === 'person_scope' ? { scopeProvider: findScopeProvider } : {}) }]))
-        const setup = () => loadAppSetup(manifest.name, manifest)
-        const app: AppManifest = { name: manifest.name, tables: manifest.tables,
-          roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
-          runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
-          runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
-        artifacts.set(key, { name: manifest.name, title: manifest.title,
-          entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-          scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
-          // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
-          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
-          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined })
+        artifacts.set(key, pkg)
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))

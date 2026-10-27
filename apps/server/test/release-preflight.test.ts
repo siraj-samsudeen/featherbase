@@ -17,6 +17,8 @@ import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
 import { withNamedVariable } from '../src/env'
 import { createTable } from '../src/table-engine'
+import { artifactDigest } from '../src/runtime-packages'
+import { realpath } from 'node:fs/promises'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -200,6 +202,40 @@ describe('release preflight: app role bindings', () => {
   test.for(['All', 'Guest'])('a binding to %s refuses the release', async (role) => {
     await sql`insert into app_role_binding (row_id, app, app_role, bound_role) values ('b-1', 'someapp', 'Some Reader', ${role})`
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(`An app role binding gives someapp's role Some Reader to ${role}`)
+  })
+})
+
+// #642 (E7): a release that lacks the exact version of an installed, enabled
+// app refuses, so a deploy never silently takes the app away.
+describe('release preflight: installed apps ship in the release', () => {
+  const OTHER = resolve(dirname(fileURLToPath(import.meta.url)), '../../../runtime-apps/other')
+  const install = (version: string, digest: string, enabled = true) =>
+    sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('other', ${sql.json({ name: 'other' })}, ${enabled}, true, ${version}, ${digest})`
+
+  test('an enabled app whose installed version is not shipped refuses, naming the app and version', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await install('0.0.1', 'a-fingerprint-this-release-lacks')
+    await expect(preflightRelease({ environment: 'test' })).rejects
+      .toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it. Ship other 0.0.1 in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.')
+  })
+
+  test('an enabled app whose exact version and fingerprint are shipped passes, naming it', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER]))
+    await install('0.0.1', await artifactDigest(await realpath(OTHER)))
+    expect(await preflightRelease({ environment: 'test' })).toContain('every installed, enabled app ships in this release: other 0.0.1')
+  })
+
+  test('the same version with other files refuses', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER]))
+    await install('0.0.1', 'the-fingerprint-of-different-files')
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+  })
+
+  test('a disabled app that is not shipped does not block the release', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await install('0.0.1', 'a-fingerprint-this-release-lacks', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('no installed, enabled app to find in this release')
   })
 })
 
@@ -441,6 +477,46 @@ it('a legacy everyone-reads-User grant in public refuses BEFORE migrating', asyn
     expect(failed).toBe(true)
     expect(output).toMatch(/Permission legacy-grant grants role "All" on "User" \(read\)/)
     expect(output).not.toMatch(/applied 0001/)
+  } finally {
+    await db.end()
+  }
+}, 90_000)
+
+// #642 (E7): the refusal comes before the first migration, so the database the
+// running release serves is left exactly as it was.
+it('a release that does not ship an installed, enabled app refuses BEFORE migrating', async () => {
+  const name = `featherbase_preflight_${randomUUID().replaceAll('-', '')}`
+  await admin.unsafe(`create database "${name}"`)
+  created.push(name)
+  const url = new URL(config.databaseUrl)
+  url.pathname = `/${name}`
+  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+  try {
+    await db.unsafe(`create schema featherbase;
+      create table featherbase.internal_metadata (key text primary key, value text not null, updated_at timestamptz not null default now());
+      insert into featherbase.internal_metadata (key, value) values ('environment', 'test');
+      create table featherbase.installed_app (name text primary key, manifest jsonb, enabled boolean not null default true,
+        runtime_package boolean not null default false, package_version text, artifact_digest text);
+      insert into featherbase.installed_app (name, manifest, runtime_package, package_version, artifact_digest)
+        values ('acme_board', '{"name": "acme_board"}', true, '1.2.0', 'fingerprint-of-1.2.0')`)
+    const before = await db`select * from featherbase.installed_app`
+    let output = ''
+    let failed = false
+    try {
+      execFileSync(process.execPath, [tsx, 'src/release.ts'], {
+        cwd: server, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '', FEATHERBASE_APP_PATHS: '[]' },
+      })
+    } catch (error) {
+      failed = true
+      const e = error as { stdout?: string; stderr?: string }
+      output = `${e.stdout ?? ''}${e.stderr ?? ''}`
+    }
+    expect(failed).toBe(true)
+    expect(output).toMatch(/release failed — aborting: App acme_board version 1\.2\.0 is installed and enabled, but this release does not ship it/)
+    const [ledger] = await db`select to_regclass('featherbase.migration') as m, to_regclass('public.migration') as p`
+    expect(ledger).toEqual({ m: null, p: null })
+    expect(await db`select * from featherbase.installed_app`).toEqual(before)
   } finally {
     await db.end()
   }

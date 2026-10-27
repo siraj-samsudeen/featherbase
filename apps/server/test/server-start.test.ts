@@ -39,6 +39,21 @@ describe('booting the server', () => {
   })
 })
 
+// #642 (E7): the boot-check repeats the release's refusal, so a server whose
+// image lacks an installed, enabled app never starts serving without it.
+describe('booting without an installed app', () => {
+  test('the server refuses to start, naming the app and version', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    try {
+      await expect(startServer(0)).rejects.toThrow('App acme_board version 1.2.0 is installed and enabled, but this release does not ship it.')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+})
+
 describe('serving the built web app', () => {
   function builtApp() {
     const dir = mkdtempSync(join(tmpdir(), 'fb-web-dist-'))

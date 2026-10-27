@@ -15,6 +15,7 @@ import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 import { appSetupState } from './app-settings'
+import { unshippedApps } from './runtime-packages'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -90,6 +91,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
   passed.push(await assertOneScopeProvider())
+  passed.push(await assertInstalledAppsShipped())
   passed.push(await assertNoOpenAppRoleBinding())
   passed.push(...(await appsSetUp()))
   passed.push(await noticeRecipients())
@@ -196,6 +198,25 @@ async function assertOneScopeProvider(): Promise<string> {
   if (providers.length > 1)
     throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
   return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
+}
+
+/** 5b. #642 (E7): an installed, enabled app whose exact version and
+ *  fingerprint this release does not ship refuses the release (and the
+ *  server's start), so the running release keeps serving it. A disabled app serves nobody and never blocks. A
+ *  row with no recorded version is mid-recovery, which no image can serve. */
+export async function assertInstalledAppsShipped(): Promise<string> {
+  const apps = await locate('installed_app')
+  if (!apps || !['enabled', 'runtime_package', 'package_version', 'artifact_digest'].every((c) => apps.columns.has(c)))
+    return 'shipped app check skipped (no app versions recorded yet)'
+  const installed = await sql`select name, package_version, artifact_digest, manifest from ${sql(apps.relation)}
+    where runtime_package and enabled and package_version is not null order by name`
+  const missing = await unshippedApps(installed, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  if (missing.length)
+    throw new Error(missing.map(({ name, package_version: version }) =>
+      `App ${String(name)} version ${String(version)} is installed and enabled, but this release does not ship it. Ship ${String(name)} ${String(version)} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
+  return installed.length
+    ? `every installed, enabled app ships in this release: ${installed.map((r) => `${String(r.name)} ${String(r.package_version)}`).join(', ')}`
+    : 'no installed, enabled app to find in this release'
 }
 
 /** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that
