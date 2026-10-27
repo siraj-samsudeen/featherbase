@@ -8,4 +8,4 @@
 
 ## 2. Close out
 
-- [ ] 2.1 Verify the change against the code and tests, then archive it.
+- [x] 2.1 Verify the change against the code and tests, then archive it.
