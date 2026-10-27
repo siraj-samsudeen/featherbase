@@ -145,7 +145,10 @@ describe('signing in, a person who cannot use Admin lands in an app they can ope
   test('a reader of several apps lands on the first by title', async ({ admin, createUser }) => {
     // Installed in the other order, so the catalog's own order would pick Other tasks.
     await install(admin, 'other', 'barproof')
-    const reader = await createUser({ email: 'two.apps.landing@example.com', roles: ['Bar Reader'] })
+    // Other tasks is open to everyone (All); a role of their own opens it to them too.
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Other Reader' } })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'other.task', role: 'Other Reader', can_read: true } })
+    const reader = await createUser({ email: 'two.apps.landing@example.com', roles: ['Bar Reader', 'Other Reader'] })
     expect(await landingOf(reader.user, 'localhost')).toEqual({ landing: '/barproof/' })
   })
 
@@ -170,6 +173,30 @@ describe('signing in, a person who cannot use Admin lands in an app they can ope
     await install(admin, 'barproof')
     const nobody = await createUser({ email: 'opens.nothing@example.com' })
     expect(await landingOf(nobody.user, 'localhost')).toEqual({})
+  })
+
+  // CI e2e at 2b1335cc: an app open to everyone (All) is no one's in
+  // particular, so it never claims a new person who has no role of use.
+  test('a person with no role of their own is left to the no-access page, though an app is open to everyone', async ({ admin, createUser }) => {
+    await install(admin, 'other')
+    const newcomer = await createUser({ email: 'newcomer.all.app@example.com' })
+    expect(await landingOf(newcomer.user, 'localhost')).toEqual({})
+  })
+
+  test('a reader whose own role opens an app lands on it, past an app open to everyone', async ({ admin, createUser }) => {
+    await install(admin, 'other', 'barproof')
+    const reader = await createUser({ email: 'own.role.past.all@example.com', roles: ['Bar Reader'] })
+    expect(await landingOf(reader.user, 'localhost')).toEqual({ landing: '/barproof/' })
+  })
+
+  test("the address's own app still opens to everyone it is open to", async ({ admin, createUser }) => {
+    await install(admin, 'other')
+    config.instanceAddresses = parseInstanceAddresses(
+      JSON.stringify([{ address: 'https://other.example.com', opens: 'other', emails: true }, { address: ADMIN_AT, opens: 'admin' }]),
+      'test',
+    )
+    const newcomer = await createUser({ email: 'newcomer.on.app.address@example.com' })
+    expect(await landingOf(newcomer.user, 'other.example.com')).toEqual({ landing: '/other/' })
   })
 })
 

@@ -17,7 +17,7 @@ import { config } from './config'
 import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from './instance-addresses'
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
-import { appCatalog } from './runtime-packages'
+import { appCatalog, appEntryTable } from './runtime-packages'
 import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 
@@ -88,10 +88,15 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isInstalled('feather_dash')) }
 
   // #659: no Admin and no address handed them on, but an app they can open
-  // is served right here (the Admin address serves every app's root, as an
-  // unlisted host does): its root, the first by title when they have several.
-  // Chosen from the catalog, so the platform names no app (ADR 0011).
-  const [first] = (await appCatalog(person)).sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
+  // through a role of their own is served right here (the Admin address
+  // serves every app's root, as an unlisted host does): its root, the first by
+  // title when they have several. An app open to everyone (All) is no one's in
+  // particular, so it never claims a person with no role of use. Chosen from
+  // the catalog, so the platform names no app (ADR 0011).
+  const { readableByOwnRole } = await tableAccessFor(person, await getRoles(person))
+  const [first] = (await appCatalog(person))
+    .filter((entry) => readableByOwnRole.includes(appEntryTable(entry.name) ?? ''))
+    .sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
   return first ? { landing: appRoot(first.name, true) } : {}
 }
 

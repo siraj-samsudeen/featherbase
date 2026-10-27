@@ -615,6 +615,11 @@ export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
 }
 
+/** The Table that opens an app (its catalog gate), for a loaded package. */
+export function appEntryTable(name: string): string | undefined {
+  return packages.get(name)?.entryTable
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
