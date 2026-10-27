@@ -498,6 +498,8 @@ describe('a dataset declaration', () => {
     ['guard allows a drop above 100%', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 150 }] }, /max_drop_pct value must be a percentage from 0 to 100/],
     ['guard asks for fewer than no rows', { guard: [{ kind: 'min_rows', value: -1 }] }, /min_rows value must be a whole number of rows, 0 or more/],
     ['guard names an unknown kind', { guard: [{ kind: 'max_rows', value: 10 }] }, /guard kind must be one of min_rows, not_all_zero, max_drop_pct/],
+    ['guard counts rows of a column', { guard: [{ kind: 'min_rows', column: 'units', value: 1 }] }, /min_rows guard counts rows, so it names no column/],
+    ['guard gives a value to a check that takes none', { guard: [{ kind: 'not_all_zero', column: 'units', value: 1 }] }, /not_all_zero guard takes no value/],
     ['guard checks a drop without naming a column', { guard: [{ kind: 'max_drop_pct', value: 50 }] }, /max_drop_pct guard needs a column/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
