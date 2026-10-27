@@ -308,3 +308,31 @@ describe('A read-only source', () => {
     })
   })
 })
+
+// #390: a date and time reads on the viewer's clock in a list cell, and never breaks at its hyphens.
+test('a date-and-time cell reads the viewer\'s day and time on one line', async ({ admin }) => {
+  const before = process.env.TZ
+  process.env.TZ = 'Asia/Kolkata'
+  try {
+    await admin.post('/api/table_def', {
+      name: 'Lv Moments',
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+        { column_name: 'opened_at', column_type: 'Datetime', label: 'Opened at', in_list_view: true },
+        { column_name: 'opened_on', column_type: 'Date', label: 'Opened on', in_list_view: true },
+      ],
+    })
+    await admin.post('/api/save_row', {
+      table: 'Lv Moments',
+      row: { title: 'early', opened_at: '2024-10-20T20:30:00Z', opened_on: '2024-10-21' },
+    })
+    await openList(admin, 'Lv Moments')
+    await waitFor(() => expect(cellTexts('opened_at')).toEqual(['21-Oct-2024 02:00']))
+    expect(cellTexts('opened_on')).toEqual(['21-Oct-2024'])
+    for (const col of ['opened_at', 'opened_on'])
+      expect(rowsEl().querySelector(`[data-testid="cell-${col}"]`)).toHaveClass('whitespace-nowrap')
+    expect(rowsEl().querySelector('[data-testid="cell-title"]')).not.toHaveClass('whitespace-nowrap')
+  } finally {
+    process.env.TZ = before
+  }
+})

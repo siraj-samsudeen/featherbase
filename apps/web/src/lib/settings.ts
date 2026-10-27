@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { DISPLAY_DEFAULTS } from 'shared'
 import { api } from './api'
-import { fmtCurrency, fmtDate, fmtNumber } from './inr'
+import { fmtCurrency, fmtDate, fmtDateTime, fmtNumber } from './inr'
 
 // SET-004: global display settings drive how Date and Currency/Float values
 // render across every list and form. Fetched once and cached; the Admin reads
@@ -28,14 +28,22 @@ export function useSettings() {
   return q.data ?? DEFAULT_SETTINGS
 }
 
-// Reformat an ISO date (YYYY-MM-DD or a full ISO timestamp) for display as
-// DD-Mon-YYYY. Reads the leading date parts directly, so the rendered day
-// never drifts across timezones. `fmt` is the System Settings value; there
+// Reformat an ISO date (YYYY-MM-DD, or a Date column's UTC-midnight timestamp)
+// for display as DD-Mon-YYYY. Reads the leading date parts directly, so the
+// rendered day never drifts across timezones. `fmt` is the System Settings value; there
 // is one display form today.
 export function formatDate(value: unknown, _fmt: string): string {
   if (value == null || value === '') return ''
   const m = String(value).match(/^(\d{4}-\d{2}-\d{2})/)
   return m ? fmtDate(m[1]) : String(value)
+}
+
+// A Datetime is an instant: read it on the viewer's own clock, with its time,
+// so an IST 02:00 is not shown as the previous UTC day (#390).
+export function formatDateTime(value: unknown): string {
+  if (value == null || value === '') return ''
+  const d = value instanceof Date ? value : new Date(String(value))
+  return Number.isNaN(d.getTime()) ? String(value) : fmtDateTime(d)
 }
 
 export function formatNumber(value: unknown, precision: number): string {
@@ -58,8 +66,9 @@ export function formatValue(columnType: string, value: unknown, s: Settings): st
   if (value == null || value === '') return ''
   switch (columnType) {
     case 'Date':
-    case 'Datetime':
       return formatDate(value, s.date_format)
+    case 'Datetime':
+      return formatDateTime(value)
     case 'Currency':
       return formatCurrency(value, s)
     case 'Float':

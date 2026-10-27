@@ -32,6 +32,8 @@ function isPrincipalTable(table: string | null | undefined): boolean {
   return table === 'Person' || table === 'Service Account'
 }
 
+const DATE_TYPES = new Set(['Date', 'Datetime'])
+
 function cell(value: unknown, columnType: string, settings: Settings): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? '✓' : '✗'
@@ -878,7 +880,11 @@ function ListRow({
                 <PrincipalName id={String(row[col.column_name])} />
               </span>
             ) : (
-              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
+              <span
+                // A date never breaks at its hyphens in a narrow cell.
+                className={`text-ink ${DATE_TYPES.has(col.column_type) ? 'whitespace-nowrap' : ''}`}
+                data-testid={`cell-${col.column_name}`}
+              >
                 {cell(row[col.column_name], col.column_type, settings)}
               </span>
             )}
