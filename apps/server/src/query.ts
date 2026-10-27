@@ -474,6 +474,75 @@ async function aggregateDocsImpl(
   return { count: row.count as number, sum: row.sum as string }
 }
 
+// #330: a summary view's totals — the count and the chosen sums overall and
+// per value of one column, over EVERY matching row (same permission scope and
+// filters as the list), so a report never adds up only the page it fetched.
+// Groups come in the order the list sorts that column (empty last). Sums are
+// strings for the same precision reason as aggregateDocs.
+export interface Summary {
+  count: number
+  sums: Record<string, string>
+  groups: { value: string | null; count: number; sums: Record<string, string> }[]
+}
+export function summarizeDocs(...args: Parameters<typeof summarizeDocsImpl>) {
+  return appOperation(() => summarizeDocsImpl(...args))
+}
+async function summarizeDocsImpl(
+  table: string,
+  filters: Filter[] = [],
+  groupBy: string | undefined,
+  sumFields: string[] = [],
+  user = 'Administrator',
+): Promise<Summary> {
+  // Bound Tables: counts push down to the driver; sums are not implemented
+  // on the source path yet, as for :aggregate.
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) {
+    if (sumFields.length)
+      throw new AppError(
+        'ValidationError',
+        `${table} is bound to data source ${boundMeta.data_source} — :summary sums are not supported on bound Tables yet`,
+      )
+    const count = await boundCountDocs(boundMeta, filters, user)
+    // The driver orders by count and names an empty value ''; a summary lists
+    // groups in the column's order, empty last, like every other Table.
+    const groups = groupBy
+      ? (await boundGroupCount(boundMeta, groupBy, filters, user))
+          .map((g) => ({ value: g.label === '' ? null : g.label, count: g.value, sums: {} }))
+          .sort((a, b) => (a.value === null ? 1 : b.value === null ? -1 : a.value < b.value ? -1 : a.value > b.value ? 1 : 0))
+      : []
+    return { count, sums: {}, groups }
+  }
+  const { meta, cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
+  for (const f of sumFields) {
+    assertColumn(cols, f, 'sum')
+    const col = meta.columns.find((c) => c.column_name === f)
+    if (!col || !SUMMABLE_TYPES.has(col.column_type))
+      throw new AppError('ValidationError', `sum must name an Int, Float, or Currency column`, {
+        sum: `${f} is not a summable column`,
+      })
+  }
+  if (groupBy) assertColumn(cols, groupBy, 'group_by')
+  const sumSelect = sumFields.reduce(
+    (acc, f, i) => sql`${acc}, coalesce(sum(${sql(phys(f))}), 0)::text as ${sql(`s${i}`)}`,
+    sql``,
+  )
+  const sumsOf = (row: Record<string, unknown>) =>
+    Object.fromEntries(sumFields.map((f, i) => [f, row[`s${i}`] as string]))
+  const [total] = await sql`
+    select count(*)::int as count ${sumSelect} from ${sql(tbl)} where ${where}`
+  const groups = groupBy
+    ? (
+        await sql`
+          select ${sql(phys(groupBy))}::text as value, count(*)::int as count ${sumSelect}
+          from ${sql(tbl)} where ${where}
+          group by ${sql(phys(groupBy))}
+          order by ${sql(phys(groupBy))} asc`
+      ).map((r) => ({ value: (r.value as string | null) ?? null, count: r.count as number, sums: sumsOf(r) }))
+    : []
+  return { count: total.count as number, sums: sumsOf(total), groups }
+}
+
 export function getList(...args: Parameters<typeof getListImpl>) {
   return appOperation(() => getListImpl(...args))
 }
@@ -510,7 +579,7 @@ async function getListImpl(table: string, args: ListArgs = {}, user = 'Administr
   const rows = await sql`
     select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}, ${sql(meta.row_key)} asc
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`
