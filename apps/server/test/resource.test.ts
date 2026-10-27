@@ -55,13 +55,17 @@ describe('API-001/API-002: generic REST resource', () => {
     expect(list.total).toBe(3)
     expect(list.data.map((r) => r.title)).toEqual(['x3', 'x2'])
 
-    // DELETE
-    const del = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, {
+    // DELETE: a row with history can't be deleted (#321, owner decision
+    // 27-Oct-2026), so the edited row stays and an unedited one goes.
+    const doomed = await admin.post<{ row_id: string }>(`/api/table/${encodeURIComponent(DT)}`, { title: 'proj-c' })
+    const refused = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, { method: 'DELETE' })
+    expect(refused.status).toBe(417)
+    const del = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doomed.row_id}`, {
       method: 'DELETE',
     })
     expect(del.status).toBe(200)
     expect(
-      (await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)).status,
+      (await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${doomed.row_id}`)).status,
     ).toBe(404)
   })
 

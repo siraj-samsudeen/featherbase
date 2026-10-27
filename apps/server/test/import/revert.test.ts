@@ -4,6 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { planRevert } from '../../src/actions/collection-import-revert'
 import { sql } from '../../src/db'
 import { invalidateMeta } from '../../src/meta'
+import { tableRelation } from '../../src/table-engine'
 import { expectApiError } from '../fixtures'
 
 // Spec 0005 (import revert) — the contract, rule, and invariant layers.
@@ -210,10 +211,9 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     await setup(admin)
     const runId = await seedAndRun(admin)
     const { Alpha } = await rowsByZone(admin)
-    await admin.fetch(
-      `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Alpha.row_id))}`,
-      { method: 'DELETE' },
-    )
+    // The import's update gave Alpha history, so deleting it is refused
+    // (#321); remove it underneath to reach the revert's own defence.
+    await sql`delete from ${sql(await tableRelation(DT))} where row_id = ${String(Alpha.row_id)}`
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.restored).toBe(0)
     expect(res.deleted).toBe(1) // Charlie still goes
