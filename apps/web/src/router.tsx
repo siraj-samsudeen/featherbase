@@ -17,6 +17,7 @@ import { ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
 import { ApiError, getToken, landingPath, loginHref } from './lib/api'
+import { loadedElsewhere } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -149,6 +150,8 @@ const salesTargetRoute = createRoute({
   path: '/featherbase/sales-target',
   beforeLoad: ({ location }) => {
     if (!getToken()) throw redirect({ href: loginHref(location.href) })
+    // #642 (E4): only this page's own document may frame MotherDuck.
+    if (loadedElsewhere(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
   },
   component: SalesTargetPage,
 })

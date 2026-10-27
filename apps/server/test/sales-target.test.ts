@@ -368,8 +368,10 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     }
   })
 
-  test('frame policy: MotherDuck embed origin allowed in frame-src; the other security headers stay', async ({ api }) => {
-    const res = await api.fetch('/api/ping')
+  // #642 (E4): the instance-wide embed origin is gone. Until the report moves
+  // into its app (B9), its own page keeps the MotherDuck embed origin.
+  test('frame policy: the report page allows the MotherDuck embed origin; the other security headers stay', async ({ api }) => {
+    const res = await api.fetch('/featherbase/sales-target')
     expect(res.headers.get('content-security-policy')).toBe("frame-src 'self' https://embed-motherduck.com")
     expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')

@@ -76,7 +76,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, INTERIM_APPS, adminPathTitle, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -104,7 +104,9 @@ await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
 
-type Env = { Variables: { user: SessionUser } }
+// frameOrigins (#642, E4): the outside sites this response's page may frame,
+// set by the handler that serves an app's own page.
+type Env = { Variables: { user: SessionUser; frameOrigins?: readonly string[] } }
 
 export const app = new Hono<Env>()
 
@@ -118,10 +120,20 @@ app.notFound((c) =>
 // API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
-// #3755: the personalised sales-target report embeds MotherDuck's sandbox
-// origin in an iframe, so frames from that origin are allowed; everything
-// else secureHeaders() sets stays as it was.
-app.use('*', secureHeaders({ contentSecurityPolicy: { frameSrc: ["'self'", EMBED_ORIGIN] } }))
+// #642 (E4): the frame policy is decided per response. A page frames its own
+// origin, plus the outside sites the app whose page it is declared; there is
+// no instance-wide outside origin.
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))
+})
+app.use('*', secureHeaders())
+// #3755: until the report moves into its app (B9), its page frames
+// MotherDuck's embed sandbox: that page alone, not the instance.
+app.use(INTERIM_APPS.feather_dash.root, async (c, next) => {
+  c.set('frameOrigins', [EMBED_ORIGIN])
+  await next()
+})
 app.use(
   '/api/*',
   cors({
@@ -817,7 +829,8 @@ app.get('*', async (c, next) => {
         404,
       )
     }
-    const { file, bytes, catalog, clientEntry } = resource
+    const { file, bytes, catalog, clientEntry, frameOrigins } = resource
+    if (path.extname(file) === '.html') c.set('frameOrigins', frameOrigins)
     const types: Record<string, string> = {
       '.html': 'text/html',
       '.js': 'text/javascript',

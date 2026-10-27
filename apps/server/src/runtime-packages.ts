@@ -34,6 +34,20 @@ type Validator = (context: PackageHookContext) => void | Promise<void>
 // month. These are the versions this Featherbase runs apps on.
 export const SUPPORTED_PLATFORM_VERSIONS: readonly string[] = ['2026-10']
 
+// #642 (E4): an outside site the app frames, written as its exact origin:
+// https, no wildcard, no path. The URL parser's own origin must read back the
+// same text, which refuses a path, a trailing slash, credentials and a
+// default port written out.
+const frameOrigin = z.string().refine((value) => {
+  if (value.includes('*')) return false
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.origin === value
+  } catch {
+    return false
+  }
+}, 'frameOrigins must be absolute https origins, like https://embed.example.com, with no wildcard or path')
+
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
   platformVersion: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'platformVersion must be a month, like 2026-10'),
@@ -65,6 +79,8 @@ const manifestSchema = z.object({
   roleDefaults: roleDefaultsDeclaration.optional(),
   // #625 (E3): the cached datasets the app reads, built by the platform.
   datasets: datasetsDeclaration.optional(),
+  // #642 (E4): the outside sites the app's own pages may frame.
+  frameOrigins: z.array(frameOrigin).optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -468,7 +484,7 @@ export async function appAsset(name: string, asset: string, user: string, client
     }
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
     const clientEntry = file === await contained(pkg.clientRoot!, 'index.html')
-    return { file, bytes: await readFile(file), catalog, clientEntry }
+    return { file, bytes: await readFile(file), catalog, clientEntry, frameOrigins: pkg.manifest.frameOrigins ?? [] }
   } catch {
     throw new AppError('NotFoundError', 'App asset not found')
   }
