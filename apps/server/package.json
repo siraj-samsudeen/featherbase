@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "release": "tsx src/release.ts",
+    "pre-deploy": "tsx src/pre-deploy.ts",
     "migrate": "tsx src/migrate.ts",
     "patches": "tsx src/run-patches.ts",
     "cli": "tsx src/cli.ts",
@@ -23,7 +24,6 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "e2e:reset": "tsx scripts/reset-e2e-db.ts",
     "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx src/run-patches.ts && tsx watch src/index.ts",
-    "seed:preview": "tsx scripts/seed-preview.ts",
     "seed:sales-target": "tsx scripts/seed-sales-target.ts"
   },
   "dependencies": {

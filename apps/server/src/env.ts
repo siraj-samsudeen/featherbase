@@ -145,6 +145,8 @@ export const VARIABLES = [
   { name: 'PREVIEW_LOGIN_USER', secret: false, required: 'forbidden-in-production',
     purpose: 'preview deployments: the account the link signs in as (never Administrator)',
     fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as staging.` },
+  { name: 'PREVIEW_USER_NAME', secret: false, required: 'optional',
+    purpose: 'preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`)' },
   // ---- Break-glass and tooling
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
