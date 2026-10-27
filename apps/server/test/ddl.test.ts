@@ -150,3 +150,31 @@ describe('META-003: Table save generates its physical table', () => {
     expect(row).toBeUndefined()
   })
 })
+
+ test('#511 refuses a missing link target on create and update without changing the definition', async ({ admin }) => {
+  const missing = { column_name: 'customer', column_type: 'Reference', reference_table: 'Ddl Missing Customer' }
+  const created = await admin.fetch('/api/table_def', { method: 'POST', body: JSON.stringify({ name: 'Ddl Missing Link', columns: [missing] }) })
+  expect(created.status).toBe(417)
+  expect((await created.json()).error.fields.customer).toContain('Ddl Missing Customer')
+  await expect(admin.get('/api/table/Ddl%20Missing%20Link:meta')).rejects.toMatchObject({ status: 404 })
+  await admin.post('/api/table_def', { name: 'Ddl Existing Link', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const before = await admin.get('/api/table/Ddl%20Existing%20Link:meta')
+  const updated = await admin.fetch('/api/table_def/Ddl%20Existing%20Link', { method: 'PUT', body: JSON.stringify({ columns: [{ column_name: 'title', column_type: 'Data' }, missing] }) })
+  expect(updated.status).toBe(417)
+  expect((await updated.json()).error.fields.customer).toContain('Ddl Missing Customer')
+  expect(await admin.get('/api/table/Ddl%20Existing%20Link:meta')).toEqual(before)
+})
+
+test('#511 accepts self-links and existing link targets', async ({ admin }) => {
+  const name = 'Ddl Category'
+  const columns = [
+    { column_name: 'title', column_type: 'Data' },
+    { column_name: 'parent_category', column_type: 'Reference', reference_table: name },
+    { column_name: 'reviewer', column_type: 'Reference', reference_table: 'Person' },
+  ]
+  await admin.post('/api/table_def', { name, columns })
+  await admin.put('/api/table_def/Ddl%20Category', { columns })
+  const parent = await admin.post<{ row_id: string }>('/api/save_row', { table: name, row: { title: 'Top' } })
+  const child = await admin.post<{ parent_category: string }>('/api/save_row', { table: name, row: { title: 'Child', parent_category: parent.row_id, reviewer: 'Administrator' } })
+  expect(child.parent_category).toBe(parent.row_id)
+})
