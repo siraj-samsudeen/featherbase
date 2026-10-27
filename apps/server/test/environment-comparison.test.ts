@@ -49,7 +49,7 @@ async function environment(vars: Record<string, string>, key = KEY): Promise<Var
 const APPLIED: VariableReport['settings'] = { applied: true, environment: null, revision: 'a'.repeat(40), matches_file: true }
 
 async function unapplied(vars: Record<string, string>, key = KEY): Promise<VariableReport> {
-  const base = { FEATHERBASE_ENV: 'production', DATABASE_URL: '', JWT_SECRET: '', FILE_URL_SECRET: '', GOOGLE_CLIENT_SECRET: '', SMTP_HOST: '', INSTANCE_ADDRESSES: '' }
+  const base = { FEATHERBASE_ENV: 'production', CHROMIUM_PATH: '', DATABASE_URL: '', JWT_SECRET: '', FILE_URL_SECRET: '', GOOGLE_CLIENT_SECRET: '', SMTP_HOST: '', INSTANCE_ADDRESSES: '' }
   for (const [k, v] of Object.entries({ ...base, ...vars })) vi.stubEnv(k, v)
   try {
     return await variableReport(key)
