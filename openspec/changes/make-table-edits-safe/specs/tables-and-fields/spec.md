@@ -8,8 +8,8 @@ brings those values back. Values are deleted only when the builder
 explicitly asks for that.
 
 A column SHALL come out only when the change names it for removal. A change
-that simply leaves a column out is refused, naming the column and how many
-rows hold a value in it, and nothing is changed.
+that simply leaves a column out is refused, naming the column and saying how
+many rows hold a value in it, and nothing is changed.
 
 #### Scenario: Put a column back
 
@@ -68,9 +68,10 @@ column and the repeated value, and the table is left as it was.
 
 ### Requirement: A link column points at a table that exists
 
-A link column SHALL name a table that exists, or the table it belongs to.
-A definition naming a missing table is refused, naming that table, so no
-table is left unable to take a value in that column.
+A link column SHALL name a table that exists, the table it belongs to, or
+another table the same app installs with it. A definition naming a missing
+table is refused, naming that table, so no table is left unable to take a
+value in that column.
 
 #### Scenario: Link to a table that isn't there
 

@@ -179,6 +179,14 @@ describe('Removing a column is asked for, never inferred (#251)', () => {
     expect((await unknown.json()).error.fields.nope).toMatch(/not a column/)
   })
 
+  test('Amended From cannot be removed while the Table stays submittable, and says why', async ({ admin }) => {
+    await setup(admin)
+    expect((await put(admin, { columns: baseColumns, is_submittable: true })).status).toBe(200)
+    const res = await put(admin, { columns: baseColumns, remove_columns: ['amended_from'] })
+    expect(res.status).toBe(417)
+    expect((await res.json()).error.fields.amended_from).toMatch(/turn is_submittable off/)
+  })
+
   test('leaving out is_submittable keeps a submittable Table\'s Amended From column', async ({ admin }) => {
     await setup(admin)
     expect((await put(admin, { columns: baseColumns, is_submittable: true })).status).toBe(200)

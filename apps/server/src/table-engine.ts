@@ -354,7 +354,9 @@ export async function updateTable(
   }
   // An update that leaves is_submittable out keeps the stored value (below),
   // so it keeps that value's Amended From column too.
-  if ((def.is_submittable ?? existing.is_submittable) && !def.columns.some((f) => f.column_name === 'amended_from'))
+  const keptAmendedFrom = Boolean(def.is_submittable ?? existing.is_submittable) &&
+    !def.columns.some((f) => f.column_name === 'amended_from')
+  if (keptAmendedFrom)
     def.columns.push({
       column_name: 'amended_from',
       label: 'Amended From',
@@ -392,6 +394,8 @@ export async function updateTable(
   const removing = new Set(opts.remove_columns ?? [])
   for (const column_name of removing) {
     if (!before.has(column_name)) errors[column_name] = 'not a column of this Table'
+    else if (column_name === 'amended_from' && keptAmendedFrom)
+      errors[column_name] = 'kept while the Table is submittable; turn is_submittable off to remove it'
     else if (after.has(column_name)) errors[column_name] = 'still in the definition; leave it out to remove it'
   }
   for (const [column_name, old] of before) {
