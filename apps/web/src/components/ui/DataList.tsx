@@ -93,7 +93,8 @@ export function DataList<Row>({
           >
             {/* Wraps, so a status too wide to sit beside the title moves under it. */}
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              <div className="min-w-0 font-semibold text-ink">
+              {/* With no status beside it, the title takes the whole row. */}
+              <div className={cx('min-w-0 font-semibold text-ink', !statuses.length && 'flex-1')}>
                 {titles.map((c) => (
                   <div key={c.key} className="wrap-anywhere">
                     {c.cell(row)}
