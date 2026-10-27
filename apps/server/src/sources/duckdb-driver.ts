@@ -1,5 +1,6 @@
 import { AppError } from '../errors'
 import { datasetQueryText } from './dataset-query'
+import { datasetSourceReadOnly } from './read-only'
 import { readNamedVariable } from '../env'
 import type {
   Binding,
@@ -49,16 +50,25 @@ function requireUrl(cfg: SourceConfig): string {
   return value
 }
 
-async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
+// #625: an app's dataset query gets its own instance, opened read-only. A
+// local file is opened with DuckDB's READ_ONLY access mode, which refuses any
+// write, nextval included. MotherDuck (`md:`) cannot be opened that way; its
+// read-only guarantee is the read-scaling token the source is configured
+// with, which app datasets require the source to declare (`read_only`).
+const DATASET_INSTANCE = '\u0000dataset'
+const isMotherDuck = (url: string) => url.startsWith('md:')
+
+async function instanceFor(cfg: SourceConfig, readOnly = false): Promise<InstanceEntry> {
   const url = requireUrl(cfg)
-  const cached = await instances.get(cfg.name)?.catch(() => null)
+  const key = readOnly ? cfg.name + DATASET_INSTANCE : cfg.name
+  const cached = await instances.get(key)?.catch(() => null)
   if (cached && cached.url === url) return cached
   const entry = (async () => {
     const { DuckDBInstance } = await loadDuckdb()
-    const instance = await DuckDBInstance.create(url)
+    const instance = await DuckDBInstance.create(url, readOnly && !isMotherDuck(url) ? { access_mode: 'READ_ONLY' } : undefined)
     return { instance, url }
   })()
-  instances.set(cfg.name, entry)
+  instances.set(key, entry)
   return entry
 }
 
@@ -74,9 +84,9 @@ function wrapError(cfg: SourceConfig, err: unknown): never {
 
 // JSON-safe rows: getRowObjectsJson() renders BIGINT/DECIMAL as strings and
 // DATE/TIMESTAMP as ISO-ish strings — exactly what the read-only Admin needs.
-async function run(cfg: SourceConfig, text: string, params: unknown[]): Promise<SourceRow[]> {
+async function run(cfg: SourceConfig, text: string, params: unknown[], readOnly = false): Promise<SourceRow[]> {
   try {
-    const { instance } = await instanceFor(cfg)
+    const { instance } = await instanceFor(cfg, readOnly)
     const conn = await instance.connect()
     try {
       const reader = await conn.runAndReadAll(text, params as never[])
@@ -168,9 +178,12 @@ export const duckdbDriver: SourceDriver = {
 
   // #625: an app's dataset query (MotherDuck in production). Wrapped as a
   // sub-query, so only a query that reads can run.
-  async query(cfg, query, where) {
-    const { text, values } = datasetQueryText(query, where, { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)` })
-    return run(cfg, text, values)
+  async query(cfg, query, columns, where) {
+    if (!datasetSourceReadOnly(cfg))
+      throw new AppError('PermissionError', `Data source ${cfg.name} is MotherDuck without a read-scaling token, so it cannot run an app's dataset query`)
+    const { text, values } = datasetQueryText(query, columns, where,
+      { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)`, asDay: (column) => `cast(cast(${column} as date) as varchar)` })
+    return run(cfg, text, values, true)
   },
 
   async test(cfg) {
@@ -278,9 +291,11 @@ export const duckdbDriver: SourceDriver = {
   remove: READ_ONLY,
 
   dispose(sourceName) {
-    const entry = instances.get(sourceName)
-    instances.delete(sourceName)
-    void entry?.then((e) => e.instance.closeSync()).catch(() => {})
+    for (const key of [sourceName, sourceName + DATASET_INSTANCE]) {
+      const entry = instances.get(key)
+      instances.delete(key)
+      void entry?.then((e) => e.instance.closeSync()).catch(() => {})
+    }
   },
 }
 

@@ -11,6 +11,7 @@ import { sql } from './db'
 import { readNamedVariable } from './env'
 import { AppError } from './errors'
 import { platformRelation } from './platform-schema'
+import { datasetSourceReadOnly } from './sources/read-only'
 
 const settingName = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const distinct = (values: string[]) => new Set(values).size === values.length
@@ -85,13 +86,16 @@ export async function appSetupState(where: { installed?: string; settings?: stri
       : new Set<string>()
     // #625 (E3): a dataset names a Data Source the instance must declare.
     const wanted = [...new Set((declared.datasets ?? []).map(d => d.source))]
-    const declaredSources = sources && wanted.length
-      ? new Set((await sql`select row_id from ${sql(sources)} where row_id in ${sql(wanted)}`).map(r => String(r.row_id)))
-      : new Set<string>()
+    // Read as JSON: before migration 0136 a source has no read_scaling_token.
+    const found = sources && wanted.length
+      ? new Map((await sql`select row_id, to_jsonb(d) as source from ${sql(sources)} d where row_id in ${sql(wanted)}`)
+        .map(r => [String(r.row_id), r.source as { engine: string; url_env: string | null; read_scaling_token?: boolean }]))
+      : new Map<string, { engine: string; url_env: string | null; read_scaling_token?: boolean }>()
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
       ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
-      ...wanted.filter(name => !declaredSources.has(name)).map(name => `data source ${name}`),
+      ...wanted.map(name => found.has(name) ? (datasetSourceReadOnly(found.get(name)!) ? null : `read-only data source ${name}`) : `data source ${name}`)
+        .filter((gap): gap is string => gap !== null),
     ]
     gaps.push({ app, title: declared.title ?? app, missing })
   }

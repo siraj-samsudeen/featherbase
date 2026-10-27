@@ -12,6 +12,7 @@ import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from '
 import { AppError } from './errors'
 import { logAccess } from './audit'
 import { getDriver, getSource } from './sources/registry'
+import { datasetSourceReadOnly } from './sources/read-only'
 import type { DatasetCondition, DatasetWhere } from './sources/types'
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -52,8 +53,16 @@ export type DatasetDeclaration = z.infer<typeof datasetSchema>
 export type DatasetValue = string | number | boolean | null
 export type DatasetRow = Record<string, DatasetValue>
 
-function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: unknown, column: string): DatasetValue {
+function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: unknown, column: string, exact: boolean): DatasetValue {
   if (value === null || value === undefined) return null
+  // An integer key or scope-mapped column decides whose row it is, so it keeps
+  // its exact digits, as text: a JavaScript number rounds ids above 2^53 into
+  // each other. Any other integer must be one a number holds exactly.
+  if (type === 'integer' && exact) {
+    if (typeof value === 'number' ? Number.isSafeInteger(value) : typeof value === 'string' && /^-?\d+$/.test(value)) return BigInt(value as number | string).toString()
+    if (typeof value === 'bigint') return value.toString()
+    throw new Error(`column ${column} holds a value that is not integer`)
+  }
   switch (type) {
     case 'text': return String(value)
     case 'boolean':
@@ -67,7 +76,7 @@ function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: 
     }
     default: {
       const number = typeof value === 'number' ? value : Number(String(value))
-      if (Number.isFinite(number) && (type !== 'integer' || Number.isInteger(number))) return number
+      if (Number.isFinite(number) && (type !== 'integer' || Number.isSafeInteger(number))) return number
     }
   }
   throw new Error(`column ${column} holds a value that is not ${type}`)
@@ -80,11 +89,12 @@ function shapeValue(type: DatasetDeclaration['columns'][number]['type'], value: 
  * declared order, each held to its declared type.
  */
 export function shapeRows(dataset: DatasetDeclaration, raw: Record<string, unknown>[]): DatasetRow[] {
+  const exact = new Set([...dataset.keys, ...Object.values(dataset.filters)])
   return raw.map((source) => {
     const row: DatasetRow = {}
     for (const { name, type } of dataset.columns) {
       if (!(name in source)) throw new Error(`Dataset ${dataset.name}'s query did not return column ${name}`)
-      row[name] = shapeValue(type, source[name], name)
+      row[name] = shapeValue(type, source[name], name, exact.has(name))
     }
     return row
   })
@@ -95,7 +105,7 @@ async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   const source = await getSource(dataset.source)
   const driver = getDriver(source)
   if (!driver.query) throw new Error(`Data source ${dataset.source} (${source.engine}) cannot run a dataset query`)
-  return driver.query(source, dataset.query, where)
+  return driver.query(source, dataset.query, dataset.columns, where)
 }
 
 /** The registry name of an app's dataset: `<app>.<dataset>`. */
@@ -230,7 +240,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
     const dataset = declarations.find((d) => d.name === name)
     if (!dataset) throw new AppError('ValidationError', `The app has not declared the dataset ${String(name)}`)
     const source = await getSource(dataset.source).catch(() => null)
-    if (!source || !getDriver(source).query) {
+    if (!source || !getDriver(source).query || !datasetSourceReadOnly(source)) {
       console.warn(`[apps] ${app} is not set up yet; its dataset ${dataset.name} needs the data source ${dataset.source}`)
       throw new AppError('NotSetUpError', `${title} is not set up yet. An administrator needs to finish setting it up.`)
     }

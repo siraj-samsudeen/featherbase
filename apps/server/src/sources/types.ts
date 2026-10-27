@@ -32,6 +32,9 @@ export interface SourceConfig {
   statement_timeout_ms: number
   // Newline-separated "schema.table" entries; null = everything allowed.
   allowlist: string[] | null
+  // #625: the administrator says the token is a MotherDuck read-scaling
+  // (read-only) token, so an app's dataset query may run on it.
+  read_scaling_token?: boolean
 }
 
 // EDS-6: the shape of a write the data source refused for a constraint
@@ -123,6 +126,11 @@ export interface DatasetCondition {
   column: string // a declared column, validated against the declaration
   values: string[]
 }
+/** A declared dataset column: its name and type (`date` is cast to a day). */
+export interface DatasetColumn {
+  name: string
+  type: string
+}
 export interface DatasetWhere {
   any: DatasetCondition[][]
   all: DatasetCondition[]
@@ -161,5 +169,5 @@ export interface SourceDriver {
   // #625: run an app's declared dataset query, read-only, limited to `where`
   // (the whole result when omitted: a snapshot build). Engines without it
   // cannot back a dataset.
-  query?(source: SourceConfig, text: string, where?: DatasetWhere): Promise<SourceRow[]>
+  query?(source: SourceConfig, text: string, columns: readonly DatasetColumn[], where?: DatasetWhere): Promise<SourceRow[]>
 }

@@ -62,6 +62,10 @@ beforeAll(async () => {
   await warehouse.unsafe('create schema b4_dataset')
   await warehouse.unsafe(`create table b4_dataset.sales (plant_code text, section_code text, business_day date,
     amount numeric(12,2), units integer, note text)`)
+  // Adjacent ids above 2^53 (where a JavaScript number cannot tell them
+  // apart), booked at times of day that a date column holds as days.
+  await warehouse.unsafe(`create table b4_dataset.accounts (account_id bigint, booked_at timestamp, amount numeric(12,2));
+    insert into b4_dataset.accounts values (9007199254740992, '2026-10-01 12:00:00', 1.00), (9007199254740993, '2026-10-02 23:30:00', 2.00)`)
 })
 beforeEach(() => fillWarehouse())
 afterAll(async () => {
@@ -198,6 +202,21 @@ describe('a cached dataset read', () => {
     expect(state?.missing).toEqual(['data source datasetproof-missing'])
   })
 
+  // A MotherDuck connection cannot be opened read-only; only a read-scaling
+  // token keeps it so, and the platform cannot see which token it holds. The
+  // address below is never dialled: the refusal comes first.
+  test('a MotherDuck source not marked as holding a read-scaling token cannot back a dataset', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser, { source: false })
+    await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'duckdb', url_env: 'B4_MOTHERDUCK_URL', access: 'read_only' })
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withNamedVariable('B4_MOTHERDUCK_URL', 'md:never_dialled', async () => {
+      await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+      expect((await appSetupState()).find(({ app }) => app === 'datasetproof')?.missing)
+        .toEqual(['read-only data source datasetproof-warehouse', 'data source datasetproof-missing'])
+    })
+  })
+
   test('a dataset whose data source the instance does not have answers "not set up yet"', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
@@ -227,6 +246,38 @@ describe('a live dataset read', () => {
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     app.hooks.run = (context: Context) => context.datasets.live('sales')
     await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 417, message: expect.stringMatching(/declare the read outbound/) })
+  })
+})
+
+describe('exact keys and days', () => {
+  const ACCOUNTS = { '9007199254740992': { account_id: '9007199254740992', booked_at: '2026-10-01', amount: 1 },
+    '9007199254740993': { account_id: '9007199254740993', booked_at: '2026-10-02', amount: 2 } }
+
+  // A key or mapped integer column keeps its exact digits, so two ids that a
+  // JavaScript number would round together never cross into each other's scope.
+  test.for(Object.keys(ACCOUNTS))('a reader of account %s sees only that account, cached and live', async (id, { admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    const roster = await fixtureModule('placeroster', provider)
+    roster.faults.result = [{ label: 'One account', filters: { account: [id] } }]
+    await buildSnapshot('datasetproof.accounts')
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('accounts'), live: await context.datasets.live('accounts') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    delete roster.faults.result
+    const only = [ACCOUNTS[id as keyof typeof ACCOUNTS]]
+    expect({ cached: result.cached.rows, live: result.live.rows }).toEqual({ cached: only, live: only })
+  })
+
+  test('a date key fed by a time of day gives the same rows cached and live', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    const roster = await fixtureModule('placeroster', provider)
+    roster.faults.result = [{ label: 'Both accounts', filters: { account: Object.keys(ACCOUNTS) } }]
+    await buildSnapshot('datasetproof.accounts')
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('accounts', { booked_at: '2026-10-01' }),
+      live: await context.datasets.live('accounts', { booked_at: '2026-10-01' }) })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    delete roster.faults.result
+    const only = [ACCOUNTS['9007199254740992']]
+    expect({ cached: result.cached.rows, live: result.live.rows }).toEqual({ cached: only, live: only })
   })
 })
 

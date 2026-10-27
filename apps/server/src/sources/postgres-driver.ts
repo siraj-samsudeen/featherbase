@@ -161,8 +161,9 @@ export const postgresDriver: SourceDriver = {
 
   // #625: an app's dataset query, in a read-only transaction, so the source
   // is used read-only whatever its access mode and whatever the query says.
-  async query(cfg, query, where) {
-    const { text, values } = datasetQueryText(query, where, { placeholder: (n) => `$${n}`, asText: (column) => `${column}::text` })
+  async query(cfg, query, columns, where) {
+    const { text, values } = datasetQueryText(query, columns, where,
+      { placeholder: (n) => `$${n}`, asText: (column) => `${column}::text`, asDay: (column) => `(${column})::date::text` })
     try {
       const client = pool(cfg)
       await vet(cfg, client)

@@ -32,6 +32,18 @@
       "filters": { "store": "plant_code", "section": "section_code" }
     },
     {
+      "name": "accounts",
+      "source": "datasetproof-warehouse",
+      "query": "select account_id, booked_at, amount from b4_dataset.accounts",
+      "columns": [
+        { "name": "account_id", "type": "integer" },
+        { "name": "booked_at", "type": "date" },
+        { "name": "amount", "type": "money" }
+      ],
+      "keys": ["account_id", "booked_at"],
+      "filters": { "account": "account_id" }
+    },
+    {
       "name": "unplugged",
       "source": "datasetproof-missing",
       "query": "select plant_code from b4_dataset.sales",
