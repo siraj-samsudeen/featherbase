@@ -189,6 +189,14 @@ describe('release preflight: app settings and secrets', () => {
     expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
   })
 
+  // #660: a scope provider's declared identifier system the instance lacks.
+  test('an enabled scope provider declaring an identifier system the instance lacks warns, naming it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-missing-code'] } })}, true, true)`
+    expect(await preflightRelease({ environment: 'test' }))
+      .toContain('WARNING: app setupprovider is not set up yet: missing identifier system setup-missing-code. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
   test('a disabled app is not checked', async () => {
     await install(false)
     expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))

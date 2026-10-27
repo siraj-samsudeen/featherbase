@@ -13,6 +13,7 @@ import { availableRuntimeVersions, discoverPackages, runPackageRead } from '../s
 import { sql } from '../src/db'
 import { expectApiError, tableRef } from './fixtures'
 import { newIdentifierId } from '../src/person-identifiers'
+import { runHealthChecks } from '../src/instance-health'
 
 const consumer = resolve('../..', 'runtime-apps/scope-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -327,6 +328,15 @@ describe("the person's identifiers a provider receives", () => {
       await expectApiError(user.post(read + 'places', { payload: {} }), { status: 409, type: 'NotSetUpError',
         message: expect.stringContaining('Place roster proof is not set up yet. An administrator needs to finish setting it up.') })
       expect([roster.calls.provider, app.calls.handler]).toEqual([0, 0])
+    })
+  })
+
+  test('Instance health names a declared identifier system the instance does not have', async ({ admin, createUser }) => {
+    await declaring(['roster-code', 'payroll-code'], async providerAt => {
+      await system(admin, 'payroll-code')
+      await setup(admin, createUser, { providerAt })
+      const check = (await runHealthChecks()).find(({ key }) => key === 'app-setup:placeroster')
+      expect(check).toMatchObject({ ok: false, message: 'Place roster proof answers "not set up yet": missing identifier system roster-code.' })
     })
   })
 })
