@@ -1,6 +1,7 @@
 import { sql } from '../src/db'
 
-/** The address each of a person's sign-ins recorded, oldest first (#396). */
+/** The address each of a person's sign-ins recorded (#396), in no set
+ *  order: two sign-ins can share a millisecond. */
 export async function signInAddresses(person: string): Promise<(string | null)[]> {
   const rows = await sql`select ip_address from activity_log where "user" = ${person} and operation = 'login' order by created_at, row_id`
   return rows.map((r) => (r.ip_address as string | null) ?? null)

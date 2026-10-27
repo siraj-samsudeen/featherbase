@@ -44,7 +44,11 @@ describe('#396: the address recorded for a password sign-in', () => {
   test('with CLIENT_ADDRESS_HEADER, the single address the edge put in that header', async ({ admin }) => {
     vi.stubEnv('CLIENT_ADDRESS_HEADER', 'X-Real-IP')
     const id = await person(admin, 'edge.header@example.com')
-    expect((await login('edge.header@example.com', { 'x-real-ip': ' 198.51.100.40 ', 'x-forwarded-for': '203.0.113.9' })).status).toBe(200)
+    const res = await login('edge.header@example.com', { 'x-real-ip': ' 198.51.100.40 ', 'x-forwarded-for': '203.0.113.9' })
+    expect(res.status).toBe(200)
+    // The address is for the Activity Log only, never carried in the token.
+    const { token } = (await res.json()) as { token: string }
+    expect(Buffer.from(token.split('.')[1], 'base64url').toString()).not.toContain('198.51.100.40')
     // IPv4-mapped IPv6 is the same client, written one way.
     expect((await login('edge.header@example.com', { 'x-real-ip': '::ffff:198.51.100.41' })).status).toBe(200)
     expect((await signInAddresses(id)).sort()).toEqual(['198.51.100.40', '198.51.100.41'])

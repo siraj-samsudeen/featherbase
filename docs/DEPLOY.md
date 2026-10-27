@@ -85,7 +85,7 @@ variable.
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
 | `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
-| `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (on Railway, `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
+| `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
 | `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
@@ -425,11 +425,13 @@ share one public IP.
 
 The same address is recorded on each sign-in's Activity Log entry. An edge
 with no fixed addresses to list, such as Railway's, can instead name one header
-it overwrites with the client's address in `CLIENT_ADDRESS_HEADER` (on Railway,
-`X-Forwarded-For`). The server believes that header only when it holds exactly
-one address. A list, a malformed value or a missing header falls back to the
-socket peer. Set it only when the edge replaces the caller's copy rather than
-appending to it, and check that on each instance after setting it:
+it overwrites with the client's address in `CLIENT_ADDRESS_HEADER` (Railway's
+edge sets `X-Real-IP` and `X-Forwarded-For`). The server believes that header
+only when it holds exactly one address. A list, a malformed value or a missing
+header falls back to the socket peer. Set it only when the edge replaces the
+caller's copy rather than appending to it, and only when every route to the
+server passes through that edge (a sibling service on a private network could
+otherwise name any address). Check it on each instance after setting it:
 
 ```bash
 curl -s -X POST https://<instance address>/api/login \
@@ -437,9 +439,11 @@ curl -s -X POST https://<instance address>/api/login \
   -d '{"usr":"<your username>","pwd":"<your password>"}' > /dev/null
 ```
 
-Then open the Activity Log. The new sign-in must show your own public address,
-not `203.0.113.9`. If it shows the forged one, the edge passes the caller's
-header through: unset the variable.
+Send it again with `X-Real-IP: 203.0.113.9` too. Then open the Activity Log.
+Each new sign-in must show your own public address. Anything else is a failed
+check: the forged `203.0.113.9` means the edge passes the caller's header
+through, and an internal address means the header held a list. Try the other
+header, or unset the variable.
 
 ## Instance settings
 

@@ -715,7 +715,7 @@ describe('#396: the sign-in records the client address', () => {
     provider(() => Response.json({ token: 'opaque' }))
     const res = await api.fetch('/api/login/delegated', { method: 'POST', headers: FROM_CLIENT, body: JSON.stringify({ usr: 'tl_address', pwd: PASSWORD, method: 'stylehr' }) })
     expect(res.status).toBe(200)
-    // The fixture's own sign-in comes first; this one is the latest.
-    expect((await signInAddresses(tl.user!)).at(-1)).toBe(CLIENT)
+    // The fixture signed in once already, with no address.
+    expect((await signInAddresses(tl.user!)).sort()).toEqual([CLIENT, null])
   })
 })

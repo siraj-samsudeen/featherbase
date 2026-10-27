@@ -229,6 +229,6 @@ describe('#396: the sign-in records the client address', () => {
     })
     expect(res.status).toBe(200)
     // The first sign-in (no header, no socket in the test client) has none.
-    expect(await signInAddresses(both.id)).toEqual([null, '198.51.100.8'])
+    expect((await signInAddresses(both.id)).sort()).toEqual(['198.51.100.8', null])
   })
 })
