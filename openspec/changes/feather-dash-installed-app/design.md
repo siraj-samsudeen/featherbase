@@ -197,7 +197,10 @@ that fills it).
   decision 27-Oct-2026, provisional, for review 28-Oct). It gets nothing else about
   the person, and `identifiers` is empty when it names none. A named system the
   instance does not have, or has turned off (owner decision 27-Oct-2026,
-  provisional: a turned-off system passes no values and counts as missing), answers
+  provisional: a turned-off system passes no values and counts as missing), or has
+  made Secret (Codex round 1 on #661: a system made Secret after values were
+  recorded still holds them in plain, so a Secret system's values and hints never
+  reach an app, whatever is stored), answers
   "not set up yet" before the provider runs, so no one gets a scope; the release
   check and Instance health name it with the app's other missing setup.
   It reads as the platform, so a manager needs no read grant on the roster,

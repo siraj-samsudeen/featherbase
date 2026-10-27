@@ -222,8 +222,9 @@ only the records it declared, and only records marked as deciding scope. It MAY 
 declare the kinds of identifier it needs, such as employee codes. It SHALL then be
 given the person's identifiers of those kinds that are valid today, read afresh each
 time, and nothing else about the person. If the instance does not have a kind it
-declared, or has turned that kind off, the app SHALL answer that it is not set up
-yet, and no one SHALL get a scope from it.
+declared, has turned that kind off, or keeps that kind secret, the app SHALL answer
+that it is not set up yet, and no one SHALL get a scope from it. A secret kind's
+values SHALL never be given to an app.
 
 #### Scenario: A report app relies on a roster app
 
@@ -257,6 +258,15 @@ yet, and no one SHALL get a scope from it.
 - **THEN** the report tells its readers it is not set up yet, and no codes of that
   kind are given to the roster app
 - **AND** once the admin turns it back on, the roster app is given the codes again
+
+#### Scenario: A kind of identifier made secret after values were recorded
+
+- **WHEN** an admin makes secret a kind of identifier a roster app declared, after
+  people's values were recorded in it
+- **THEN** the report tells its readers it is not set up yet
+- **AND** the roster app is never given any of those values
+- **AND** the instance's health page and the release log say the kind is secret and
+  cannot be given to an app
 
 ### Requirement: Only one app provides people's scope
 
