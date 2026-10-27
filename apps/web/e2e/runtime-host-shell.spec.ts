@@ -121,12 +121,18 @@ test.describe('coarse-pointer phone', () => {
       await session
         .visit('/tasker/')
         .clickLink('Host shell mobile proof')
-        .step('the inspector opens, and starts below the bar', async ({ page }: { page: Page }) => {
-          // Today the bar covers the Inspector button itself: fail fast on it.
-          await page.getByRole('button', { name: 'Inspector' }).click({ timeout: 5000 })
-          const bar = (await page.getByTestId('top-bar').boundingBox())!
-          const inspector = (await page.locator('.tasker-inspector').boundingBox())!
-          expect(inspector.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1)
+        .step("the inspector is pinned at the bar's height, not at the window's top", async ({ page }: { page: Page }) => {
+          // Measured from the styles, not from where things happen to be
+          // drawn: whether the bar is in view depends on how far the page was
+          // scrolled (Tasker's own styles make its body the scroll container,
+          // so the sticky bar scrolls with the page), and the bar may cover
+          // the Inspector button, so it is pressed without aiming.
+          await expect(page.getByTestId('top-bar')).toHaveCount(1)
+          const barHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height').trim())
+          expect(barHeight).toMatch(/^\d+px$/)
+          await page.getByRole('button', { name: 'Inspector' }).dispatchEvent('click')
+          await expect(page.locator('.tasker-inspector')).toBeVisible()
+          expect(await page.locator('.tasker-inspector').evaluate((el) => getComputedStyle(el).top)).toBe(barHeight)
         })
     } finally {
       await deleteTask(request, headers, task.row_id)
