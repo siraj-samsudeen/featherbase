@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
 import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
-import { applyMigrationFile, pendingMigrations } from './migrate'
+import { applyBatch, ensureLedger, planMigrations } from './migrate'
 import { invalidateMeta } from './meta'
 
 /** Where the rehearsal's report goes: the terminal, or a test's buffer. */
@@ -21,16 +21,16 @@ type RehearsalOutput = (line: string) => void
 
 const ROLLBACK = new Error('migrate:rehearse rollback')
 
-/** Apply one file, with what its up() logs sent to `out`. */
-async function applyReporting(file: string, out: RehearsalOutput) {
+/** Apply one batch the way the migrator does, with what its up() logs sent
+ *  to `out`. A savepoint of its own, as the migrator gives it a transaction. */
+async function applyReporting(batch: string[], legacy: boolean, out: RehearsalOutput) {
   const log = console.log
   console.log = (...args: unknown[]) => out(format(...args))
   try {
-    await sql.begin(() => applyMigrationFile(file))
+    await withTransaction(() => applyBatch(batch, legacy, (file) => out(`applied ${file}`)))
   } finally {
     console.log = log
   }
-  out(`applied ${file}`)
 }
 
 /** The rehearsal: one transaction, always rolled back. Every query in it,
@@ -38,12 +38,14 @@ async function applyReporting(file: string, out: RehearsalOutput) {
  *  scopes the platform's `sql` to it). */
 export async function rehearse(out: RehearsalOutput = console.log): Promise<void> {
   await assertDatabaseEnvironment()
-  const pending = await pendingMigrations()
+  const { legacy, batches } = await planMigrations()
+  const pending = batches.flat()
   out(`migrate:rehearse — in a rolled-back transaction; pending: ${pending.length ? pending.join(', ') : 'none'}`)
   try {
     await withTransaction(async () => {
       try {
-        for (const file of pending) await applyReporting(file, out)
+        await ensureLedger(legacy)
+        for (const batch of batches) await applyReporting(batch, legacy, out)
       } finally {
         invalidateMeta()
       }

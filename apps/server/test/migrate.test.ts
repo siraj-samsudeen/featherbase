@@ -5,46 +5,14 @@
 // `src/db` is first loaded, so each of those cases loads a fresh copy of the
 // module graph pointed at its own disposable database, then drops it. The
 // rest run on the shared test database inside a rolled-back sandbox.
-import { randomUUID } from 'node:crypto'
-import postgres from 'postgres'
-import { afterAll, describe, expect, it, vi } from 'vitest'
-import { config } from '../src/config'
+import { afterAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
 import { test } from './pg-test'
+import { dropScratchDatabases, scratchDatabase } from './scratch-database'
 
-const admin = postgres(config.databaseUrl, { max: 1, onnotice: () => {} })
-const created: string[] = []
-afterAll(async () => {
-  for (const name of created) await admin.unsafe(`drop database if exists "${name}" with (force)`)
-  await admin.end()
-}, 60_000)
-
-/** A disposable database, a connection to it for the test's own checks, and
- *  the migrate module loaded against it. */
-async function scratchDatabase(setup = '') {
-  const name = `featherbase_migrate_${randomUUID().replaceAll('-', '')}`
-  await admin.unsafe(`create database "${name}"`)
-  created.push(name)
-  const url = new URL(config.databaseUrl)
-  url.pathname = `/${name}`
-  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
-  if (setup) await db.unsafe(setup)
-  vi.resetModules()
-  vi.stubEnv('DATABASE_URL', url.toString())
-  const migrate = await import('../src/migrate')
-  const { sql: appSql } = await import('../src/db')
-  vi.unstubAllEnvs()
-  return {
-    db,
-    migrate,
-    async close() {
-      await appSql.end({ timeout: 5 })
-      await db.end({ timeout: 5 })
-    },
-  }
-}
+afterAll(dropScratchDatabases, 60_000)
 
 /** Every migration file name, from the shared (fully migrated) test database. */
 async function allMigrations(): Promise<string[]> {

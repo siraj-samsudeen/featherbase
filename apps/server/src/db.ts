@@ -30,7 +30,16 @@ const transactions = new AsyncLocalStorage<Sql>()
 // An app install composes normal metadata and document operations atomically.
 // Nested begin calls remain savepoints; never swap the process-wide delegate.
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
-  return sql.begin((tx) => transactions.run(tx as unknown as Sql, fn)) as Promise<T>
+  const current = transactions.getStore() ?? delegate
+  const run = (tx: TxSql) => transactions.run(tx as unknown as Sql, fn)
+  return (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>
+}
+
+/** The current transaction (or the pool outside one) WITHOUT platform-name
+ *  qualification: for SQL that must resolve its names by `search_path`, such
+ *  as the migrations written before the platform schema existed (0088–0093). */
+export function _getUnqualifiedSql(): Sql {
+  return transactions.getStore() ?? delegate
 }
 
 export function _setSqlDelegate(tx: TxSql | null) {

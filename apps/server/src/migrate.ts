@@ -5,7 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
-import { _getRootSql, sql, withTransaction } from './db'
+import { _getUnqualifiedSql, sql, withTransaction } from './db'
 import { processIO, type CommandIO } from './command-io'
 import { invalidateMeta } from './meta'
 import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
@@ -29,15 +29,22 @@ function migrationFiles(): string[] {
  * `migrate status` exiting non-zero.
  */
 export async function pendingMigrations(): Promise<string[]> {
+  const { applied } = await readLedger()
+  return migrationFiles().filter((f) => !applied.has(f))
+}
+
+/** Where this database records its migrations, and what it has recorded. The
+ *  ledger is `public.migration` on a legacy database (before 0094 moved the
+ *  platform into its own schema), `featherbase.migration` after. */
+async function readLedger(): Promise<{ legacy: boolean; applied: Set<string> }> {
   const [present] = await sql`
     select to_regclass('public.migration') as legacy,
       to_regclass('featherbase.migration') as current`
   if (present?.legacy && present?.current)
     throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
   const relation = present?.current ? 'featherbase.migration' : present?.legacy ? 'public.migration' : null
-  if (!relation) return migrationFiles()
-  const applied = new Set((await sql.unsafe(`select name from ${relation}`)).map((r) => r.name as string))
-  return migrationFiles().filter((f) => !applied.has(f))
+  const applied = new Set(relation ? (await sql.unsafe(`select name from ${relation}`)).map((r) => r.name as string) : [])
+  return { legacy: Boolean(present?.legacy), applied }
 }
 
 // migrations/ is numbered by hand — nothing stops two files from claiming the
@@ -147,26 +154,10 @@ export async function applyMigrationFile(file: string): Promise<void> {
   invalidateMeta()
 }
 
-// Runs pending migrations. Does NOT close the DB connection — the caller owns
-// its lifecycle (the CLI keeps it open for the rest of the command).
-export async function runMigrations() {
-  // Before writing anything: is this database ours to migrate? An unstamped
-  // (brand-new) database passes and is claimed below; one belonging to
-  // another environment stops the run here, before any DDL.
-  await assertDatabaseEnvironment()
-  const root = _getRootSql()
-  const [state] = await root`
-    select to_regclass('public.migration') as legacy,
-      to_regclass('featherbase.migration') as current`
-  if (state?.legacy && state?.current)
-    throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
-  const legacy = Boolean(state?.legacy)
-  const ledger = legacy ? 'public.migration' : 'featherbase.migration'
-  const applied = new Set(
-    state?.legacy || state?.current
-      ? (await root.unsafe(`select name from ${ledger}`)).map((r) => r.name as string)
-      : [],
-  )
+/** What a release would apply here, checked before anything changes: the
+ *  pending files in batches, and whether the ledger is still the legacy one. */
+export async function planMigrations(): Promise<{ legacy: boolean; batches: string[][] }> {
+  const { legacy, applied } = await readLedger()
   const files = migrationFiles()
   assertUniqueMigrationNumbers(files)
   // Earlier TS migrations invoke today's qualified engine, not the historical
@@ -177,29 +168,53 @@ export async function runMigrations() {
       `Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n${missing.join('\n')}`,
     )
   }
-  await root.unsafe('create schema if not exists featherbase')
-  if (!legacy) await root.unsafe(`create table if not exists featherbase.migration (
+  return { legacy, batches: migrationBatches(files.filter((f) => !applied.has(f))) }
+}
+
+/** The platform schema, and on a database that is not legacy its ledger. */
+export async function ensureLedger(legacy: boolean): Promise<void> {
+  await sql.unsafe('create schema if not exists featherbase')
+  if (!legacy) await sql.unsafe(`create table if not exists featherbase.migration (
     name text primary key,
     applied_at timestamptz not null default now()
   )`)
-  for (const batch of migrationBatches(files.filter((f) => !applied.has(f)))) {
-    const [file] = batch
-    // 0088–0093 require public storage; 0094 needs their columns and prototype
-    // conversion before it can move that storage. Never rewrite shipped SQL.
-    if (legacy && file < '0094_featherbase_schema.sql') {
-      await root.begin(async (tx) => {
-        await tx.unsafe('set local search_path = public, pg_temp')
-        await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
-        await tx`insert into public.migration (name) values (${file})`
-      })
-    } else
-      await withTransaction(async () => {
-        for (const member of batch) {
-          await applyMigrationFile(member)
-          // Each member validates against the metadata the previous one left.
-          invalidateMeta()
-        }
-      })
+}
+
+/** Apply one batch from `planMigrations` and record it, inside the caller's
+ *  transaction: the migrator's per-batch one, or the rolled-back rehearsal of
+ *  `cli migrate:rehearse`, so both apply a file the same way. `applied` hears
+ *  of each member as it is recorded. */
+export async function applyBatch(batch: string[], legacy: boolean, applied: (file: string) => void = () => {}): Promise<void> {
+  const [file] = batch
+  // 0088–0093 require public storage; 0094 needs their columns and prototype
+  // conversion before it can move that storage. Never rewrite shipped SQL.
+  if (legacy && file < '0094_featherbase_schema.sql') {
+    const tx = _getUnqualifiedSql()
+    await tx.unsafe('set local search_path = public, pg_temp')
+    await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
+    await tx`insert into public.migration (name) values (${file})`
+    applied(file)
+    return
+  }
+  for (const member of batch) {
+    await applyMigrationFile(member)
+    // Each member validates against the metadata the previous one left.
+    invalidateMeta()
+    applied(member)
+  }
+}
+
+// Runs pending migrations. Does NOT close the DB connection — the caller owns
+// its lifecycle (the CLI keeps it open for the rest of the command).
+export async function runMigrations() {
+  // Before writing anything: is this database ours to migrate? An unstamped
+  // (brand-new) database passes and is claimed below; one belonging to
+  // another environment stops the run here, before any DDL.
+  await assertDatabaseEnvironment()
+  const { legacy, batches } = await planMigrations()
+  await ensureLedger(legacy)
+  for (const batch of batches) {
+    await withTransaction(() => applyBatch(batch, legacy))
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A
@@ -211,7 +226,7 @@ export async function runMigrations() {
   // Claim (or re-affirm) the database for this environment. Re-stamping every
   // run keeps databases created before 0081 correct too.
   await stampEnvironment()
-  console.log(`migrations up to date (${files.length} total)`)
+  console.log(`migrations up to date (${migrationFiles().length} total)`)
 }
 
 /** `tsx src/migrate.ts`: resolves to the process's exit code. The caller owns

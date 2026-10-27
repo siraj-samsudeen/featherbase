@@ -2,10 +2,13 @@
 // always rolled back, with what each reported. The rehearsal is driven
 // in-process here; the CLI only spawns it so --database-url can point
 // DATABASE_URL elsewhere first (cli.test.ts).
-import { describe, expect } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { parseRehearseOptions, rehearse } from '../src/migrate-rehearse'
+import { dropScratchDatabases, scratchDatabase } from './scratch-database'
+
+afterAll(dropScratchDatabases, 60_000)
 
 async function run(): Promise<string> {
   const lines: string[] = []
@@ -57,4 +60,46 @@ describe('migrate:rehearse', () => {
     expect(console.log).toBe(log)
     expect(await ledger()).toEqual(before)
   })
+})
+
+// #557: a restored snapshot can predate 0094, with its ledger in `public`.
+// The rehearsal applies its pending files the way the migrator would, so a
+// pre-0094 file runs against public storage, not the platform schema.
+describe('migrate:rehearse on a database of its own', () => {
+  async function rehearseOn(scratch: Awaited<ReturnType<typeof scratchDatabase>>): Promise<string> {
+    const lines: string[] = []
+    await scratch.rehearsal.rehearse((line) => lines.push(line))
+    return lines.join('\n')
+  }
+
+  it('a legacy database with its ledger in public rehearses a pre-0094 file, and keeps nothing', async () => {
+    const all = (await sql`select name from migration order by name`).map((r) => String(r.name))
+    const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
+      create table public.installed_app (name text primary key)`)
+    try {
+      await scratch.db`insert into public.migration ${scratch.db(all.filter((f) => f !== '0089_app_enablement.sql').map((name) => ({ name })))}`
+      const out = await rehearseOn(scratch)
+      expect(out).toBe([
+        'migrate:rehearse — in a rolled-back transaction; pending: 0089_app_enablement.sql',
+        'applied 0089_app_enablement.sql',
+        'migrate:rehearse — rolled back; nothing was changed',
+      ].join('\n'))
+      expect(await scratch.db`select 1 from public.migration where name = '0089_app_enablement.sql'`).toHaveLength(0)
+      expect((await scratch.db`select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'installed_app'`).map((r) => r.column_name)).toEqual(['name'])
+      expect(await scratch.db`select to_regnamespace('featherbase') as s`).toEqual([{ s: null }])
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+  it('a legacy database that has not reached 0087 is refused, as the migrator refuses it', async () => {
+    const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
+      insert into public.migration (name) values ('0001_init.sql')`)
+    try {
+      await expect(rehearseOn(scratch)).rejects.toThrow('Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n0002_')
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
 })
