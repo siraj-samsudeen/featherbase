@@ -381,7 +381,9 @@ describe('an outbound read', () => {
     await setup(admin, createUser)
     const ran = await servingIdentity('datasetproof')
     await sql`update installed_app set artifact_digest = 'another-artifact' where name = 'datasetproof'`
-    await expect(assertStillServing('datasetproof', ran)).rejects.toMatchObject({ type: 'ConflictError' })
+    let written = false
+    await expect(assertStillServing('datasetproof', ran, async () => { written = true })).rejects.toMatchObject({ type: 'ConflictError' })
+    expect(written).toBe(false)
   })
 
   test('recordView writes one Access Log row for the viewing person, saying what was served', async ({ admin, createUser }) => {

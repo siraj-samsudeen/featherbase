@@ -75,7 +75,7 @@ export async function servingIdentity(app: string): Promise<string> {
  *  Checked under the shared lifecycle lock, before anything it produced is
  *  answered; `then` (its view records) runs under that same lock, only when
  *  the check passes, so nothing is written for an app changed meanwhile. */
-export function assertStillServing(app: string, identity: string, then: () => Promise<void> = async () => {}): Promise<void> {
+export function assertStillServing(app: string, identity: string, then: () => Promise<void>): Promise<void> {
   return appOperation(async () => {
     const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
     if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
