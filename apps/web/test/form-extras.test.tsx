@@ -130,6 +130,33 @@ test('a client script runs on load against the loaded row, keeping its values', 
   expect(field('store')).toHaveValue('store-1')
 })
 
+// #538: on-load runs once per row opened — the refetch after the user's own
+// save must not run it again and mark the just-saved form "Not saved".
+test('a client script runs on load once: after saving, the form stays saved', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', {
+    table: 'Client Script',
+    row: {
+      row_id: 'fx-onload-once',
+      ref_table: 'Fx Visit',
+      enabled: true,
+      script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('qty', Number(frm.doc.qty || 0) + 1) } })`,
+    },
+  })
+  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('qty')).toHaveValue(1), { timeout: 3000 })
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved')
+
+  fireEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Saved'))
+  await new Promise((r) => setTimeout(r, 300))
+  expect(screen.getByTestId('form-status')).toHaveTextContent('Saved')
+  expect(field('qty')).toHaveValue(1)
+  expect(Number((await stored(admin)).qty)).toBe(1)
+})
+
 test('a client script that fails while running says so, can be dismissed, and the form still saves', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)

@@ -93,7 +93,10 @@ export function FormView({
   const clientScripts = useClientScripts(table)
   const valuesRef = useRef<Row>({})
   valuesRef.current = values
-  const onloadFired = useRef(false)
+  // The row onload last ran for: once per row opened, so the refetch after a
+  // save (or a refresh) doesn't run it again and re-dirty the form (#538).
+  const onloadFiredFor = useRef<string | null>(null)
+  const rowKey = `${table}/${name}`
 
   // RT-002: another session saving this document shows a refresh banner.
   // The user's own save is suppressed via a short window (their save
@@ -117,7 +120,6 @@ export function FormView({
     valuesRef.current = initial
     setValues(initial)
     setErrors({})
-    onloadFired.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
 
@@ -129,10 +131,10 @@ export function FormView({
   }, [clientScripts.errors])
   const rowLoaded = isNew || doc.data !== undefined
   useEffect(() => {
-    if (onloadFired.current || !rowLoaded) return
+    if (onloadFiredFor.current === rowKey || !rowLoaded) return
     const onload = clientScripts.handlers.onload
     if (!onload) return
-    onloadFired.current = true
+    onloadFiredFor.current = rowKey
     try {
       onload({
         doc: valuesRef.current,
@@ -143,7 +145,7 @@ export function FormView({
       setScriptError(`Client script error (onload): ${err instanceof Error ? err.message : String(err)}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientScripts.handlers, values, rowLoaded])
+  }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
   if (meta.isLoading || (!isNew && doc.isLoading))
     return <p className="text-sm text-ink-subtle">Loading…</p>

@@ -339,3 +339,22 @@ test('A new row on a Table that names its own rows asks for no name', async ({ a
   await waitFor(() => expect(field('title')).toBeInTheDocument())
   expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
 })
+
+test('A typed-in name is asked for on the new-row form: spaces around the typed name are dropped', async ({ admin }) => {
+  await seedPromptNamed(admin)
+  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  fireEvent.change(await screen.findByRole('textbox', { name: /Row ID/ }), { target: { value: '  shelf-b2 ' } })
+  screen.getByTestId('form-save').click()
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('shelf-b2'))
+  expect((await admin.get<{ row_id: string }>(`/api/table/${enc('Core Shelf')}/shelf-b2`)).row_id).toBe('shelf-b2')
+})
+
+test('An existing row of a Table whose rows are named by their creator opens with no name field', async ({ admin }) => {
+  await seedPromptNamed(admin)
+  await admin.post('/api/save_row', { table: 'Core Shelf', row: { row_id: 'shelf-c3', aisle: 'C' } })
+  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/shelf-c3`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('aisle')).toHaveValue('C'))
+  expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
+})
