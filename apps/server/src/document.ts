@@ -892,7 +892,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Admin shows that state).
+// Without one, updates are last-write-wins; the Admin row form says so (#328).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
