@@ -75,18 +75,22 @@ for (const scheme of ['light', 'dark'] as const) {
   test.describe(`at 1280px, ${scheme}`, () => {
     test.use({ viewport: { width: 1280, height: 800 }, colorScheme: scheme })
 
-    test("the app's page carries the shared bar: the app's name, its picker, Open Admin, the theme and the Account menu", async ({ session, page, request }) => {
+    test("the app's page carries the shared bar: the app's name, its picker, the theme and the Account menu", async ({ session, page, request }) => {
       await onAppPage(page, await reader(request, `Bar Page ${scheme}`))
-      await session.step('left to right: name, picker, then Open Admin, theme, Account', async () => {
+      await session.step('left to right: name, picker, then theme, Account', async () => {
         await expect(page.getByTestId('top-bar-name')).toHaveText('Bar proof')
         const order = [
           (await box(page, 'top-bar-name')).x,
           (await picker(page).boundingBox())!.x,
-          (await box(page, 'open-admin')).x,
           (await box(page, 'theme-toggle')).x,
           (await box(page, 'session-user')).x,
         ]
         expect(order).toEqual([...order].sort((a, b) => a - b))
+      })
+      // #659 (owner decision, 28-Oct-2026): a Bar Reader reads only the app's
+      // own Tables, which do not open the Admin, so the bar offers none.
+      await session.step('no Open Admin for a person who only reads the app', async () => {
+        await expect(bar(page).getByTestId('open-admin')).toHaveCount(0)
       })
       await session.step('no app switcher, and nothing left of the old header', async () => {
         await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
@@ -180,13 +184,14 @@ for (const scheme of ['light', 'dark'] as const) {
       await onAppPage(page, await reader(request, `Bar Phone ${scheme}`))
       await page.goto(`${PAGE}?store=S101`)
       await expect(picker(page)).toHaveText('Riverside and Station Square Junction')
-      await session.step('the label is hidden, the value is cut to fit, the theme and Open Admin move into the menu', async () => {
+      await session.step('the label is hidden, the value is cut to fit, the theme moves into the menu', async () => {
         expect(await page.getByTestId('top-bar').getByText('Store', { exact: true }).evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(1)
         expect((await picker(page).boundingBox())!.width).toBeLessThanOrEqual(180)
         await expect(bar(page).getByTestId('theme-toggle')).toHaveCount(0)
         await page.getByTestId('session-user').click()
         await expect(page.getByTestId('account-menu').getByTestId('theme-toggle')).toBeVisible()
-        await expect(page.getByTestId('account-menu').getByTestId('open-admin')).toBeVisible()
+        // #659: no Open Admin in the menu either, for a person who only reads the app.
+        await expect(page.getByTestId('account-menu').getByTestId('open-admin')).toHaveCount(0)
         if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-375-menu-${scheme}.png` })
         await page.keyboard.press('Escape')
       })
