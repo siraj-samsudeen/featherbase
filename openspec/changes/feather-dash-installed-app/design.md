@@ -202,7 +202,11 @@ that fills it).
   recorded still holds them in plain, so a Secret system's values and hints never
   reach an app, whatever is stored), answers
   "not set up yet" before the provider runs, so no one gets a scope; the release
-  check and Instance health name it with the app's other missing setup.
+  check and Instance health name it with the app's other missing setup. The
+  declared systems are locked (FOR SHARE) in the request's transaction before they
+  are checked and until the provider has answered (Codex round 2 on #661), so an
+  admin turning one off or making it Secret waits for requests in flight, and the
+  next request sees the change.
   It reads as the platform, so a manager needs no read grant on the roster,
   and under the provider app's own installed version, whatever the consuming
   request named. Exactly one enabled app may provide the scope on an instance: a
