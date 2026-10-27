@@ -13,7 +13,6 @@ import { createHash, createHmac } from 'node:crypto'
 import { z } from 'zod'
 import { AppError } from './errors'
 import { currentEnvironment, DEV_ENVIRONMENTS, isSet, readNamedVariable, readVariable, VARIABLES, type Variable, type VariableName } from './env'
-import { lastApply } from './managed-settings'
 
 /** Long enough that nobody without the run's key can guess it. */
 export const MIN_KEY_LENGTH = 32
@@ -111,10 +110,9 @@ export async function variableReport(key: unknown): Promise<VariableReport> {
 }
 
 async function settingsState(): Promise<VariableReport['settings']> {
-  const apply = await lastApply()
+  const { settingsAgainstFile } = await import('./instance-settings')
+  const { apply, drift } = await settingsAgainstFile()
   if (!apply) return { applied: false, environment: null, revision: null, matches_file: null }
-  const { settingsDrift } = await import('./instance-settings')
-  const drift = await settingsDrift()
   return { applied: true, environment: apply.environment, revision: apply.revision, matches_file: drift === null ? null : drift.length === 0 }
 }
 

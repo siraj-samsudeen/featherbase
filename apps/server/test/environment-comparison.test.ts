@@ -11,7 +11,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
+import postgres from 'postgres'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { issueAccessToken } from '../src/auth'
 import { createServiceAccount } from '../src/service-accounts'
 import { applyInstanceSettings } from '../src/instance-settings'
@@ -129,6 +131,38 @@ describe('the variable report', () => {
     expect((await variableReport(KEY)).settings).toEqual({ applied: true, environment: null, revision: 'b'.repeat(40), matches_file: true })
     await sql`update single_value set value = 'Changed by hand' where table_name = 'System Settings' and field = 'app_name'`
     expect((await variableReport(KEY)).settings.matches_file).toBe(false)
+  })
+
+  test('reads the applied revision and the drift under one lock, so an apply landing between them is not mixed in', async () => {
+    // Another session, as an apply does: take the lock, record a new apply,
+    // and commit only after the report has started.
+    const other = postgres(config.databaseUrl, { max: 1, onnotice: () => {} })
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    let locked!: () => void
+    const lockTaken = new Promise<void>((r) => (locked = r))
+    const apply = other.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtext('featherbase.instance_settings_lock'))`
+      await tx`insert into featherbase.instance_settings_apply (applied_by, environment, revision, managed_paths, managed_values)
+        values ('Administrator', 'prod', ${'d'.repeat(40)}, '[]', '[]')`
+      locked()
+      await held
+    })
+    try {
+      await lockTaken
+      let settled = false
+      const report = variableReport(KEY).then((r) => ((settled = true), r))
+      await new Promise((r) => setTimeout(r, 300))
+      expect(settled).toBe(false)
+      release()
+      await apply
+      expect((await report).settings).toEqual({ applied: true, environment: 'prod', revision: 'd'.repeat(40), matches_file: true })
+    } finally {
+      release()
+      await apply.catch(() => {})
+      await other`delete from featherbase.instance_settings_apply where revision = ${'d'.repeat(40)}`
+      await other.end()
+    }
   })
 
   test('refuses a key too short to keep fingerprints from being guessed', async () => {

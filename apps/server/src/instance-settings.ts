@@ -490,17 +490,22 @@ interface SettingDrift {
  *  or when nothing differs; null when that apply kept no values (an apply
  *  recorded before 0123), so nothing can be compared. */
 export async function settingsDrift(): Promise<SettingDrift[] | null> {
-  // The baseline and the values it is compared with are read under the
-  // managed-settings lock, so an apply committing between the two reads can
-  // never look like drift (Codex review).
+  return (await settingsAgainstFile()).drift
+}
+
+/** The last apply and the drift from it, read together under the
+ *  managed-settings lock, so an apply committing between the reads can
+ *  neither look like drift (Codex review) nor pair one apply's revision with
+ *  drift measured against the next (#640 review). */
+export async function settingsAgainstFile(): Promise<{ apply: Awaited<ReturnType<typeof lastApply>>; drift: SettingDrift[] | null }> {
   return withTransaction(async () => {
     await holdManagedSet(sql, null)
-    return driftNow()
+    const apply = await lastApply()
+    return { apply, drift: await driftFrom(apply) }
   })
 }
 
-async function driftNow(): Promise<SettingDrift[] | null> {
-  const apply = await lastApply()
+async function driftFrom(apply: Awaited<ReturnType<typeof lastApply>>): Promise<SettingDrift[] | null> {
   if (!apply) return []
   if (apply.managed_values === null) return null
   const drift: SettingDrift[] = []
