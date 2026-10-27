@@ -12,6 +12,7 @@ const VIEWER_ROLE = 'Sales Target Viewer'
 const PASSWORD = 'unavailable-pw-500'
 const SHOTS = process.env.SALES_TARGET_500_SHOTS
 const PLAIN = "The report couldn't load right now. Try again in a few minutes."
+const PLAIN_NUMBERS = "The numbers couldn't load right now. Try again in a few minutes."
 const SERVER_WORDING = 'embed API answered HTTP 500: Internal server error'
 
 // The page's identity call reads this Table; a fresh e2e database has it only once the sales-target
@@ -129,6 +130,63 @@ for (const width of [1280, 375]) {
       await expect(card).toHaveCount(0)
       expect(await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(true)
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/unavailable-${width}-light-4-report.png`, fullPage: true })
+    })
+  })
+
+  // The cached numbers' own failure: the same plain words, and one press of either card's Try again
+  // retries both reads, with both buttons busy until both have answered.
+  test(`at ${width}px the cached numbers' failure is plain too, and one Try again serves both cards`, async ({ session, page, request }) => {
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 800 })
+    await page.emulateMedia({ colorScheme: 'light' })
+    const embed = await scriptEmbedSession(page)
+    const reads: Route[] = []
+    await page.route('**/api/sales_target/report**', (route) => {
+      reads.push(route)
+    })
+    const numbers = page.getByTestId('snapshot-error')
+    const report = page.getByTestId('embed-state')
+
+    await session.step('a viewer opens the report; the cached read and the live report both fail', async () => {
+      const email = await viewer(request)
+      await page.goto('/login')
+      await page.fill('input[name=email]', email)
+      await page.fill('input[name=password]', PASSWORD)
+      await page.click('button[type=submit]')
+      await expect(page).toHaveURL(/\/sales-target$/, { timeout: 15_000 })
+      await expect.poll(() => reads.length).toBe(1)
+      await expect.poll(() => embed.calls.length).toBe(1)
+      await reads[0].fulfill({ status: 500, json: { error: { type: 'InternalError', message: 'Internal server error' } } })
+      await embed.fail(embed.calls[0])
+    })
+
+    await session.step('the numbers card says one plain sentence, with no status or server wording', async () => {
+      await expect(numbers).toContainText('Numbers unavailable')
+      await expect(numbers).toContainText(PLAIN_NUMBERS)
+      await expect(report).toContainText(PLAIN)
+      await expect(page.locator('body')).not.toContainText('HTTP')
+      await expect(page.locator('body')).not.toContainText('Internal server error')
+      expect(await noSidewaysScroll(page)).toBe(true)
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/numbers-unavailable-${width}-light-1-card.png`, fullPage: true })
+    })
+
+    await session.step('one press retries both reads, and both cards show they are working', async () => {
+      await numbers.getByRole('button', { name: 'Try again' }).click()
+      await expect.poll(() => reads.length).toBe(2)
+      await expect.poll(() => embed.calls.length).toBe(2)
+      await expect(numbers.getByRole('button', { name: 'Try again' })).toHaveAttribute('aria-busy', 'true')
+      await expect(report.getByRole('button', { name: 'Try again' })).toHaveAttribute('aria-busy', 'true')
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/numbers-unavailable-${width}-light-2-retrying.png`, fullPage: true })
+    })
+
+    await session.step('when both answer, both cards are gone', async () => {
+      await embed.succeed(embed.calls[1])
+      // The live report answered first: the numbers card is still waiting, so it stays busy.
+      await expect(numbers.getByRole('button', { name: 'Try again', includeHidden: true })).toHaveAttribute('aria-busy', 'true')
+      await reads[1].continue()
+      await expect(page.getByTestId('report-frame')).toBeVisible()
+      await expect(numbers).toHaveCount(0)
+      await expect(report).toHaveCount(0)
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/numbers-unavailable-${width}-light-3-recovered.png`, fullPage: true })
     })
   })
 }
