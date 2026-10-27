@@ -143,6 +143,27 @@ describe('on an address that opens an app', () => {
       expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
   })
 
+  // #501: the password-reset page was already served on every address.
+  test('the password-reset page is served', async ({ api }) => {
+    expect((await get(api, `${DASH}/featherbase/reset-password?key=k`)).status).not.toBe(302)
+  })
+
+  // #501 item 4: a public web form link opens on an app's address too.
+  test('a public web form is served', async ({ api }) => {
+    for (const path of ['/featherbase/form/Feedback', '/featherbase/form/Feedback/new?x=1'])
+      expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
+  })
+
+  test('the Portal redirects to the app root', async ({ api }) => {
+    for (const path of ['/featherbase/portal', '/featherbase/portal/Person'])
+      expect([path, (await get(api, `${DASH}${path}`)).headers.get('location')]).toEqual([path, ROOT])
+  })
+
+  test('a path that only starts like the form pages redirects to the app root', async ({ api }) => {
+    for (const path of ['/featherbase/formx', '/featherbase/forms/Feedback', '/featherbase/form-builder'])
+      expect([path, (await get(api, `${DASH}${path}`)).headers.get('location')]).toEqual([path, ROOT])
+  })
+
   test('the API and the privacy notice are served', async ({ api }) => {
     expect((await api.fetch(`${DASH}/api/ping`)).status).toBe(200)
     expect((await get(api, `${DASH}/privacy`)).status).not.toBe(302)

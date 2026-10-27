@@ -95,3 +95,29 @@ test('signing out on one address ends only that address’s session', async ({ s
     await expect(page.locator('input[name=password]')).toHaveCount(0)
   })
 })
+
+// #501 item 4: a public web form link opens on the app's address too, signed
+// out — never sent to the report and from there to sign-in.
+test("a public web form link opens on the app's address, signed out", async ({ session, page, request }) => {
+  const headers = await adminAuth(request)
+  const table = 'Address Form 501'
+  const made = await request.post('/api/table_def', {
+    headers,
+    data: { name: table, columns: [{ column_name: 'note', label: 'Note', column_type: 'Data', reqd: true }] },
+  })
+  if (![201, 409].includes(made.status())) throw new Error(`table: ${made.status()}`)
+  await request.delete('/api/table/Web%20Form/address-form-501', { headers })
+  const form = await request.post('/api/save_row', {
+    headers,
+    data: { table: 'Web Form', row: { row_id: 'address-form-501', title: 'Address Form', route: 'address-form-501', ref_table: table, web_fields: ['note'], published: true } },
+  })
+  if (form.status() !== 201) throw new Error(`web form: ${form.status()} ${await form.text()}`)
+  await session.step('open the form link on the app address', async () => {
+    await page.goto(`${DASH}/featherbase/form/address-form-501`)
+  })
+  await session.step('the form is shown there, with no sign-in', async () => {
+    await expect(page.getByTestId('web-form-title')).toHaveText('Address Form')
+    await expect(page).toHaveURL(`${DASH}/featherbase/form/address-form-501`)
+    await expect(page.locator('input[name=password]')).toHaveCount(0)
+  })
+})

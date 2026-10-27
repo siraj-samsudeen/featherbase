@@ -97,7 +97,7 @@ test('a report the server could not build says the numbers are unavailable', asy
   vi.spyOn(console, 'error').mockImplementation(() => {})
   _setSourceReader(async () => { throw new Error('warehouse down') })
   await open(api)
-  expect(await screen.findByTestId('snapshot-error', {}, { timeout: 8000 })).toHaveTextContent(/^Numbers unavailable \(HTTP 5\d\d\)\. This is not a sales figure\.$/)
+  expect(await screen.findByTestId('snapshot-error', {}, { timeout: 8000 })).toHaveTextContent("Numbers unavailableThe numbers couldn't load right now. Try again in a few minutes.Try again")
 })
 
 test('a session that ended while the page opened sends the person to sign in', async ({ admin, api, db }) => {

@@ -5,7 +5,7 @@ import { api, getSessionUser, listResource } from './api'
 // cached. Used to gate role-only UI like the SET-003 permission manager.
 // #410: what the shell may draw, computed by the server from current roles and
 // grants. Display only — the server still refuses what the person cannot do.
-interface Capabilities {
+export interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
   report: boolean // the Sales Target report
   table_access: boolean // holds any Table grant of their own, or a shared row

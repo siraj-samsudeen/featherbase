@@ -19,10 +19,28 @@ afterEach(() => {
 
 const pathOf = (r: { router: unknown }) => (r.router as { state: { location: { pathname: string } } }).state.location.pathname
 
-test('Open Admin on an app page opens the Admin', async ({ admin }) => {
-  const r = await renderApp('/featherbase/sales-target', admin)
+// #501: Open Admin is offered only on an app's address, and pressing it hands the
+// session over to the Admin's own address.
+test("Open Admin on an app's address hands the person over to the Admin's address", async ({ admin }) => {
+  config.instanceAddresses = parseInstanceAddresses(
+    JSON.stringify([
+      { address: 'http://localhost', opens: 'feather_dash', emails: true },
+      { address: 'http://elsewhere.example.test', opens: 'admin' },
+    ]),
+    'test',
+  )
+  const real = globalThis.fetch
+  const answers: Array<{ handoff?: string }> = []
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const res = await real(input, init)
+    if (String(input).includes('/api/open_admin')) answers.push(await res.clone().json())
+    return res
+  })
+  vi.spyOn(console, 'error').mockImplementation(() => {}) // jsdom cannot follow a cross-address navigation
+  await renderApp('/featherbase/sales-target', admin)
   await userEvent.click(await within(await screen.findByTestId('top-bar')).findByTestId('open-admin', {}, { timeout: 8000 }))
-  await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin'))
+  await waitFor(() => expect(answers).toHaveLength(1))
+  expect(answers[0].handoff).toMatch(/^http:\/\/elsewhere\.example\.test\//)
 })
 
 test('Open Admin refused because the grant went meanwhile stays on the page, ready to try again', async ({ admin, createUser }) => {

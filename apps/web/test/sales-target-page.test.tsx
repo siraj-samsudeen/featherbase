@@ -3,7 +3,7 @@
 // there, the cached table is the report and stays open. Server in-process; MotherDuck stubbed.
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { Sql } from 'postgres'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { _setEmbedFetch, seedSalesTarget } from 'server/src/sales-target'
 import { _setSourceReader } from 'server/src/datasets/sales-target-mtd'
@@ -527,7 +527,7 @@ test('a reader with nothing assigned is told no subcategories are assigned to th
   expect(screen.queryByTestId('snapshot-row')).not.toBeInTheDocument()
 })
 
-test('a live report service that cannot be reached is called unavailable, and not a sales figure', async ({ admin, api }) => {
+test('a live report service that cannot be reached is called unavailable, in the same plain sentence', async ({ admin, api }) => {
   _setEmbedFetch(async () => { throw new Error('connection refused') })
   await viewer(admin)
   const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
@@ -536,6 +536,199 @@ test('a live report service that cannot be reached is called unavailable, and no
   const card = await screen.findByTestId('embed-state')
   await waitFor(() => expect(card).toHaveAttribute('data-state', 'error'))
   expect(card).toHaveTextContent('Report unavailable')
-  expect(card).toHaveTextContent('This is not a sales figure.')
+  expect(card).toHaveTextContent(PLAIN_UNAVAILABLE)
   expect(card).not.toHaveTextContent('page-test-token') // the credential never reaches the browser
+})
+
+// #500: when the live report cannot be opened, store managers read one plain sentence and can try
+// again; the server's own words (status, upstream message) stay in the server log.
+const PLAIN_UNAVAILABLE = "The report couldn't load right now. Try again in a few minutes."
+const failingUpstream = () => Response.json({ message: 'upstream detail xyz', code: 'INTERNAL' }, { status: 500 })
+
+type Fetcher = Parameters<typeof viewer>[0]
+async function openAsViewer(admin: Fetcher, api: Fetcher) {
+  await viewer(admin)
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+}
+async function unavailableCard() {
+  const card = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(card).toHaveAttribute('data-state', 'error'))
+  return card
+}
+
+test('a report that cannot be opened says so in one plain sentence, without the server wording', async ({ admin, api }) => {
+  _setEmbedFetch(async () => failingUpstream())
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  expect(card).toHaveTextContent('Report unavailable')
+  expect(card).toHaveTextContent(PLAIN_UNAVAILABLE)
+  expect(card).not.toHaveTextContent(/HTTP|500|upstream|session|embed|sales figure/i)
+})
+
+test('Try again opens the report once the live report answers', async ({ admin, api }) => {
+  let answers = 0
+  _setEmbedFetch(async () => (++answers === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  expect(screen.queryByTestId('embed-state')).not.toBeInTheDocument()
+})
+
+test('a Try again that fails again shows the same card, ready to press again', async ({ admin, api }) => {
+  let answers = 0
+  _setEmbedFetch(async () => (++answers, failingUpstream()))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(answers).toBe(2))
+  const again = await unavailableCard()
+  await waitFor(() => expect(within(again).getByRole('button', { name: 'Try again' })).toBeEnabled())
+  expect(again).toHaveTextContent(`Report unavailable${PLAIN_UNAVAILABLE}Try again`)
+})
+
+test('while Try again runs, the button shows it is working and a second press asks nothing more', async ({ admin, api }) => {
+  let answers = 0
+  let release: (r: Response) => void = () => {}
+  _setEmbedFetch(async () =>
+    ++answers === 1 ? failingUpstream() : new Promise<Response>((resolve) => (release = resolve)),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  const button = within(card).getByRole('button', { name: 'Try again' })
+  await userEvent.click(button)
+  await waitFor(() => expect(answers).toBe(2))
+  // Always let the held answer go: a request left open would hold the sandbox's connection.
+  try {
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-busy', 'true')
+    await userEvent.click(button)
+    expect(answers).toBe(2)
+  } finally {
+    release(Response.json({ session: 'stub-session' }))
+  }
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+})
+
+test('Try again after the identity call failed asks again and opens the report', async ({ admin, api }) => {
+  const real = globalThis.fetch
+  let refusals = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes('/api/sales_target/me') && refusals++ === 0)
+      return Response.json({ error: { type: 'ServerError', message: 'internal detail' } }, { status: 500 })
+    return real(input, init)
+  })
+  await openAsViewer(admin, api)
+  const card = await unavailableCard()
+  expect(card).not.toHaveTextContent('internal detail')
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+})
+
+// #500, the cached table's own failure: the same plain words, and a Try again that shares one retry
+// with the live report's card — it re-reads only what failed, and settles once all of it answered.
+const PLAIN_NUMBERS = "The numbers couldn't load right now. Try again in a few minutes."
+const failingSource = async (): Promise<never> => {
+  throw new Error('source read failed: connection reset')
+}
+/** Counts the page's own calls to one sales-target route. */
+function countCalls(route: string) {
+  const real = globalThis.fetch
+  const counter = { n: 0 }
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    if (String(input).includes(route)) counter.n++
+    return real(input, init)
+  })
+  return counter
+}
+async function numbersUnavailableCard() {
+  return screen.findByTestId('snapshot-error')
+}
+
+test('cached numbers that cannot be read say so in one plain sentence, without the server wording', async ({ admin, api }) => {
+  delete process.env.DIVE_ID // no live report: the cached table is the report and stays open
+  _setSourceReader(failingSource)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const card = await numbersUnavailableCard()
+  expect(card).toHaveTextContent(`Numbers unavailable${PLAIN_NUMBERS}Try again`)
+  expect(card).not.toHaveTextContent(/HTTP|500|source|connection|sales figure/i)
+})
+
+// #503 verifier: with the live report on the page, a failed cache read must not hide its card in the fold.
+test('with the live report open, the cached numbers card is shown without expanding anything', async ({ admin, api }) => {
+  _setSourceReader(failingSource)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  const card = await numbersUnavailableCard()
+  expect(card).toBeVisible()
+})
+
+test('Try again on the cached numbers reads them again without reopening the live report', async ({ admin, api }) => {
+  delete process.env.DIVE_ID
+  let reads = 0
+  _setSourceReader(async () => (++reads === 1 ? failingSource() : []))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const embedCalls = countCalls('/api/sales_target/embed_session')
+  await openAsViewer(admin, api)
+  const card = await numbersUnavailableCard()
+  await waitFor(() => expect(screen.getByTestId('embed-state')).toHaveAttribute('data-state', 'not-configured'))
+  await userEvent.click(within(card).getByRole('button', { name: 'Try again' }))
+  await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+  expect(embedCalls.n).toBe(1)
+})
+
+test('with both cards failing, one press retries both and both show they are working', async ({ admin, api }) => {
+  let reads = 0
+  let embeds = 0
+  // Held until released; a release before the read starts sticks, so no request is left open.
+  let released = false
+  let wake: () => void = () => {}
+  const releaseRead = () => {
+    released = true
+    wake()
+  }
+  _setSourceReader(async () => {
+    if (++reads === 1) return failingSource()
+    if (!released) await new Promise<void>((resolve) => (wake = resolve))
+    return []
+  })
+  _setEmbedFetch(async () => (++embeds === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  const numbers = await numbersUnavailableCard()
+  const report = await unavailableCard()
+  await userEvent.click(within(report).getByRole('button', { name: 'Try again' }))
+  try {
+    // The live report answered; the numbers are still being read, so neither card's button is free yet.
+    await waitFor(() => expect(embeds).toBe(2))
+    await waitFor(() => expect(reads).toBe(2))
+    expect(within(numbers).getByRole('button', { name: 'Try again' })).toHaveAttribute('aria-busy', 'true')
+  } finally {
+    releaseRead()
+  }
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByTestId('snapshot-report')).toHaveAttribute('data-state', 'ready'))
+})
+
+test('a retry where only the live report recovers leaves the numbers card ready to press again', async ({ admin, api }) => {
+  let embeds = 0
+  _setSourceReader(failingSource)
+  _setEmbedFetch(async () => (++embeds === 1 ? failingUpstream() : Response.json({ session: 'stub-session' })))
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  await openAsViewer(admin, api)
+  await numbersUnavailableCard()
+  await userEvent.click(within(await unavailableCard()).getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByTestId('report-frame')).toBeInTheDocument()
+  // The live report is on the page, so the cache folds away — its card is still there, and free.
+  const again = await numbersUnavailableCard()
+  await waitFor(() => expect(within(again).getByRole('button', { name: 'Try again', hidden: true })).toBeEnabled())
+  expect(again).toHaveTextContent(PLAIN_NUMBERS)
 })

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Notice, Select, cardClasses } from '../components/ui'
+import { Button, Notice, Select, cardClasses } from '../components/ui'
 import { ApiError, api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { TopBar } from '../components/TopBar'
 import { ThemeChoiceProvider } from '../lib/theme-choice'
@@ -69,7 +69,8 @@ type Embed =
   | { kind: 'no-assignment' }
   | { kind: 'not-configured' }
   | { kind: 'no-access' }
-  | { kind: 'error'; message: string }
+  // #500: no message — the reader is told in plain words; the detail is in the server log.
+  | { kind: 'error' }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
 // snapshot instead of MotherDuck. It lands in milliseconds, so it paints while
@@ -112,7 +113,8 @@ type Pre =
   | { kind: 'loading' }
   | { kind: 'ready'; report: Report; ms: number }
   | { kind: 'no-assignment' }
-  | { kind: 'error'; message: string }
+  // #500: no message, as for the live report's card; a server-side failure is in the server log.
+  | { kind: 'error' }
 
 // ISO date -> DD-Mon-YYYY (identity chrome only; the report's own dates are the Dive's).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -179,6 +181,27 @@ function SalesTargetReport() {
   const [pre, setPre] = useState<Pre>({ kind: 'loading' })
   const [showNoTargetNoSale, setShowNoTargetNoSale] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  // #500: one retry, shared by every failing card (the live report's and the cached numbers'). A
+  // press re-runs only what failed — the identity call, the cached read, the live report, or both
+  // reads — without a page reload, so a working live report is never reopened to fix the cache.
+  // While it runs every failing card stays up with a busy Try again, so nothing can be pressed
+  // twice; it settles once each read it re-ran has answered, success or failure, so no card is
+  // left stuck. `embedAt`/`preAt` are the states at the press: a new state object is an answer.
+  interface Retry { embed: boolean; pre: boolean; embedAt: Embed; preAt: Pre }
+  const [identityAttempt, setIdentityAttempt] = useState(0)
+  const [openingAttempt, setOpeningAttempt] = useState(0)
+  const [retrying, setRetrying] = useState<Retry | null>(null)
+  const retryingRef = useRef<Retry | null>(null)
+  retryingRef.current = retrying
+  // Which reads the next opening re-runs; read once by that opening, so a later one (a store
+  // fallback) is a full opening again.
+  const retryPartsRef = useRef<{ embed: boolean; pre: boolean } | null>(null)
+  useEffect(() => {
+    const r = retrying
+    if (!r) return
+    const answered = (!r.embed || embed !== r.embedAt) && (!r.pre || pre !== r.preAt)
+    if (answered || embed.kind === 'no-access') setRetrying(null)
+  }, [embed, pre, retrying])
 
   const [store, setStore] = useState<string | null>(null)
   // Said once when a store the reader had open is no longer theirs and the report fell back (#409).
@@ -201,11 +224,11 @@ function SalesTargetReport() {
         if (!current()) return
         // 403 = the viewer role is not theirs (or was taken away): say so as a sentence, not as the API's words (#404).
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        else setEmbed({ kind: 'error' })
       }
     })()
     return () => controller.abort()
-  }, [user?.row_id])
+  }, [user?.row_id, identityAttempt])
 
   // One opening per store: the cached table and a fresh embed session, for the store on show.
   useEffect(() => {
@@ -214,8 +237,12 @@ function SalesTargetReport() {
     const controller = new AbortController()
     abortRef.current = controller
     const current = () => seq === openingSeq && !controller.signal.aborted
-    setPre({ kind: 'loading' })
-    setEmbed({ kind: 'loading' })
+    const parts = retryPartsRef.current
+    retryPartsRef.current = null
+    if (!parts) {
+      setPre({ kind: 'loading' })
+      setEmbed({ kind: 'loading' })
+    }
     // Named only when there is a choice to make; the server re-checks it against the reader's own stores.
     const query = store && me.stores.length > 1 ? `?store=${encodeURIComponent(store)}` : ''
     // A 403 means the role was taken away OR the store named is no longer theirs. Ask /me which:
@@ -236,18 +263,18 @@ function SalesTargetReport() {
           setMe(fresh)
           return
         }
-        setEmbed({ kind: 'error', message: 'HTTP 403' })
+        setEmbed({ kind: 'error' })
       } catch (err) {
         if (!current()) return
         if (err instanceof ApiError && err.status === 403) setEmbed({ kind: 'no-access' })
-        else setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        else setEmbed({ kind: 'error' })
       }
     }
     ;(async () => {
       try {
         // Deliberately NOT awaited before the embed call: the snapshot read is
         // the fast path and must not queue behind a session mint.
-        void (async () => {
+        if (!parts || parts.pre) void (async () => {
           const t0 = performance.now()
           try {
             const res = await fetch(`/api/sales_target/report${query}`, {
@@ -263,13 +290,17 @@ function SalesTargetReport() {
             if (res.status === 403) void onForbidden() // never a red "Numbers unavailable"
             else if (body.no_assignment) setPre({ kind: 'no-assignment' })
             else if (res.ok) setPre({ kind: 'ready', report: body, ms })
-            else setPre({ kind: 'error', message: `HTTP ${res.status}` })
-          } catch (err) {
+            else setPre({ kind: 'error' })
+          } catch {
+            // A client-side fetch failure: nothing reached the server, so nothing is logged.
             if (!current()) return
             /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
-            setPre({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+            setPre({ kind: 'error' })
           }
         })()
+
+        // A retry of the cached numbers alone leaves a working live report where it is.
+        if (parts && !parts.embed) return
 
         const res = await fetch(`/api/sales_target/embed_session${query}`, {
           method: 'POST',
@@ -283,7 +314,6 @@ function SalesTargetReport() {
           session?: string
           no_assignment?: boolean
           not_configured?: boolean
-          error?: { message?: string; upstream_status?: number }
         }
         if (!current()) return
         if (res.status === 401) {
@@ -297,15 +327,28 @@ function SalesTargetReport() {
         else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
           setEmbed({ kind: 'frame', src: `${me.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
-        else setEmbed({ kind: 'error', message: body.error?.message ?? `HTTP ${res.status}` })
+        else setEmbed({ kind: 'error' })
       } catch (err) {
         if (!current()) return
         /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
-        setEmbed({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+        setEmbed({ kind: 'error' })
       }
     })()
     return () => controller.abort()
-  }, [me, store])
+  }, [me, store, openingAttempt])
+
+  function tryAgain() {
+    if (retryingRef.current) return
+    // No identity yet: the identity call is what failed, and only the live report's card shows.
+    const parts = me ? { embed: embed.kind === 'error', pre: pre.kind === 'error' } : { embed: true, pre: false }
+    const r = { ...parts, embedAt: embed, preAt: pre }
+    retryingRef.current = r
+    setRetrying(r)
+    if (me) {
+      retryPartsRef.current = parts
+      setOpeningAttempt((n) => n + 1)
+    } else setIdentityAttempt((n) => n + 1)
+  }
 
   function switchStore(next: string) {
     rememberStore(user?.row_id, next)
@@ -401,10 +444,11 @@ function SalesTargetReport() {
           table folds away behind a line that says how old it is. The cache is refreshed a few
           times a day while the warehouse loads sales intraday, so shown side by side the two
           disagreed under the same "data as of" date (02-Oct-2026). Open by default whenever the
-          live report is not there — not configured, failed, or still opening. */}
+          live report is not there — not configured, failed, or still opening — and whenever the
+          cached read itself failed, so its card and Try again are not folded out of sight (#503). */}
       {/* Without an identity nothing was read for anyone: no cached table to wait for. */}
       {me && embed.kind !== 'no-access' && (
-      <QuickTable collapsed={embed.kind === 'frame'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
+      <QuickTable collapsed={embed.kind === 'frame' && pre.kind !== 'error'} refreshedAt={pre.kind === 'ready' ? pre.report.generated_at : null}>
       <section className={cardClasses('mb-3 overflow-x-auto p-0')} data-testid="snapshot-report" data-state={pre.kind}>
         {pre.kind === 'loading' && (
           <p className="p-4 text-sm text-ink-muted">Reading your numbers…</p>
@@ -415,9 +459,13 @@ function SalesTargetReport() {
           </p>
         )}
         {pre.kind === 'error' && (
-          <p className="p-4 text-sm text-negative" data-testid="snapshot-error">
-            Numbers unavailable ({pre.message}). This is not a sales figure.
-          </p>
+          <div className="p-4 text-sm" data-testid="snapshot-error">
+            <p className="font-medium text-negative">Numbers unavailable</p>
+            <p className="mt-1 text-ink-muted">The numbers couldn't load right now. Try again in a few minutes.</p>
+            <Button variant="secondary" className="mt-3" loading={retrying !== null} onClick={tryAgain}>
+              Try again
+            </Button>
+          </div>
         )}
         {pre.kind === 'ready' && (
           <>
@@ -583,9 +631,10 @@ function SalesTargetReport() {
             {embed.kind === 'error' && (
               <>
                 <p className="font-medium text-negative">Report unavailable</p>
-                <p className="mt-1 text-ink-muted">
-                  The report session could not be created ({embed.message}). This is not a sales figure.
-                </p>
+                <p className="mt-1 text-ink-muted">The report couldn't load right now. Try again in a few minutes.</p>
+                <Button variant="secondary" className="mt-3" loading={retrying !== null} onClick={tryAgain}>
+                  Try again
+                </Button>
               </>
             )}
           </div>

@@ -119,7 +119,8 @@ export function PersonIdentifiers({ person, replacedBy }: { person: string; repl
             {rows.map((i) => (
               <li key={i.id} className="flex items-start justify-between gap-2" data-testid={`identifier-${i.id}`}>
                 <span className="min-w-0">
-                  <span className={i.current ? 'font-medium' : 'text-ink-muted line-through'}>{i.value}</span>
+                  {/* A long address breaks anywhere rather than run under End at phone width (#502). */}
+                  <span className={i.current ? 'font-medium wrap-anywhere' : 'text-ink-muted line-through wrap-anywhere'}>{i.value}</span>
                   {i.assigner && <span className="text-sm text-ink-muted"> · {i.assigner}</span>}
                   <span className="block text-sm text-ink-muted">
                     {period(i)} · {sourceLabel(i.source)}

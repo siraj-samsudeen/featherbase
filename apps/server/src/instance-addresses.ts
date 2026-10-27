@@ -155,12 +155,15 @@ export function appRoot(app: string): string {
 }
 
 // The Featherbase pages an app's address still serves: signing in, resetting a
-// password, the OAuth hand-back, the person's own account pages (#489), and
-// the runtime shell's assets.
+// password, the OAuth hand-back, the person's own account pages (#489), the
+// public web forms (#501: a form link is shared with anyone, whatever address
+// it was copied from), and the runtime shell's assets. The Portal, for
+// signed-in web-form users, is an Admin-address page and is not here.
 const SERVED_EVERYWHERE = [
   '/featherbase/login',
   '/featherbase/reset-password',
   '/featherbase/oauth-callback',
+  '/featherbase/form',
   ACCOUNT_ROOT,
   '/featherbase/runtime-shell.css',
   '/featherbase/runtime-shell.js',

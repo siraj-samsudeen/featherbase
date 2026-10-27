@@ -312,6 +312,31 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(text).not.toContain('session')
   })
 
+  // #500: the page now says only "The report couldn't load right now"; the detail lives here.
+  test('a failed embed session is logged at error level with the call, its status, its message and the person, never the token', async ({ admin, api }) => {
+    await seed(admin)
+    stubUpstream({ status: 500, body: { message: 'Internal server error', code: 'INTERNAL' } })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
+      expect(res.status).toBe(502)
+      const lines = error.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes('sales_target_embed_session_failed'))
+      expect(lines).toHaveLength(1)
+      expect(JSON.parse(lines[0])).toEqual({
+        event: 'sales_target_embed_session_failed',
+        person: await idOf('test_employee_1'),
+        call: 'POST /v1/dives/:dive/embed-session',
+        status: 500,
+        message: 'embed API answered HTTP 500: Internal server error',
+      })
+      expect(lines[0]).not.toContain(SENTINEL_TOKEN)
+      expect(lines[0]).not.toContain(PASSWORDS.test_employee_1)
+    } finally {
+      error.mockRestore()
+    }
+  })
+
   test('the token appears in no response the browser can receive', async ({ admin, api }) => {
     await seed(admin)
     stubUpstream()
@@ -358,6 +383,54 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
       // Nor the snapshot registry — that is a System Manager's view.
       expect((await api.fetch('/api/table/Dataset%20Snapshot', { headers: r.headers })).status).toBe(403)
     } finally {
+      _setSourceReader(null)
+    }
+  })
+
+  // #500: the page now says only "The numbers couldn't load right now"; the detail lives here.
+  test('a report read that fails on the server is logged at error level with the call, its status, its message and the person, never the token', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    _setSourceReader(async () => {
+      throw new Error('source read failed: connection reset')
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(res.status).toBe(500)
+      const lines = error.mock.calls.map((c) => c.map(String).join(' ')).filter((l) => l.includes('sales_target_report_failed'))
+      expect(lines).toHaveLength(1)
+      expect(JSON.parse(lines[0])).toEqual({
+        event: 'sales_target_report_failed',
+        person: await idOf('test_employee_1'),
+        call: 'GET /api/sales_target/report',
+        status: 500,
+        message: 'source read failed: connection reset',
+      })
+      expect(lines[0]).not.toContain(SENTINEL_TOKEN)
+      expect(lines[0]).not.toContain(PASSWORDS.test_employee_1)
+    } finally {
+      error.mockRestore()
+      _setSourceReader(null)
+    }
+  })
+
+  // #503 verifier check 7: the route's line carries the context, so the generic handler stays quiet.
+  test('a report read that fails on the server writes exactly one error log line', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader } = await import('../src/datasets/sales-target-mtd')
+    _setSourceReader(async () => {
+      throw new Error('source read failed: connection reset')
+    })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(res.status).toBe(500)
+      expect(error).toHaveBeenCalledTimes(1)
+    } finally {
+      error.mockRestore()
       _setSourceReader(null)
     }
   })
