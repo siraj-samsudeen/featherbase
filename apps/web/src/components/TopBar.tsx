@@ -95,6 +95,7 @@ function homeHref(context: string): string {
 }
 
 export function TopBar({
+  app,
   home,
   forPerson,
   left,
@@ -102,6 +103,10 @@ export function TopBar({
   beforeRight,
   below,
 }: {
+  /** #650: the bar over an installed app's own page (the bar bundle): the app
+   *  the page belongs to, on whatever address it is opened. The app's page
+   *  keeps its own document title. */
+  app?: { name: string; title: string }
   /** The page's own side when the host is unlisted: `admin` (default) or an app. */
   home?: string
   /** On the Admin side, name the bar for where the person belongs (#501). */
@@ -115,14 +120,17 @@ export function TopBar({
   /** A second row under the bar's own (the Admin command bar on a phone). */
   below?: ReactNode
 }) {
-  const { context, brand } = useBarContext(home)
+  const address = useBarContext(app ? app.name : home)
+  const { brand } = address
+  const context = app ? app.name : address.context
   const caps = useWhoAmI().data?.capabilities
-  const name = !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
+  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
   // account page's own (item 3). The Portal and the no-access page on the
-  // Admin side keep the tab they were opened with.
-  const titlesTab = context !== ADMIN || home === ADMIN || forPerson
+  // Admin side keep the tab they were opened with, and an app's own page
+  // keeps the title its document gives it (#650).
+  const titlesTab = !app && (context !== ADMIN || home === ADMIN || forPerson)
   useEffect(() => {
     if (name && titlesTab) document.title = name
   }, [name, titlesTab])
@@ -130,28 +138,33 @@ export function TopBar({
   const canUseAdmin = Boolean(caps && (caps.manage || caps.table_access))
   // #501 item 2: only on an app's address. The Admin address, and a host the
   // list does not name (which holds the Admin), are where Admin already is.
+  // An app's own page is never in the Admin, on any address (#650).
   const onAppAddress = Boolean(brand?.opens && brand.opens !== ADMIN)
-  const offerAdmin = onAppAddress && canUseAdmin
+  const offerAdmin = (onAppAddress || Boolean(app)) && canUseAdmin
+  // The app whose declared controls the bar draws (#642): the page's own app,
+  // else the app this address opens.
+  const controlsOf = app?.name ?? (onAppAddress ? brand?.opens : undefined)
 
   return (
     <>
       <PreviewBanner />
       <header
-        // On an app's address the bar frames the phone list of a declared control.
-        className={`${onAppAddress ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
+        // Where the bar draws an app's controls (on the app's address, or over
+        // the app's own page) it frames the phone list of a declared control.
+        className={`${controlsOf ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
         data-testid="top-bar"
       >
         {/* The name's block lines up with the Admin sidebar and, on a phone,
-            fills the row. An app's address has no sidebar, so there it keeps
+            fills the row. An app's address or page has no sidebar, so there it keeps
             to the name's width and the declared controls follow it, with the
             free space after them (#642). */}
         <div
-          className={`flex min-w-0 items-center gap-1 md:px-3 ${onAppAddress ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
+          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
           {left ?? (context && name && <BarName context={context} name={name} />)}
         </div>
-        {onAppAddress && caps && brand?.opens && <BarControls app={brand.opens} />}
+        {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
@@ -329,7 +342,9 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   useEffect(() => {
     if (!open) return
     function onDown(e: MouseEvent) {
-      if (wrapper.current && !wrapper.current.contains(e.target as Node)) setOpen(false)
+      // The event's path, not its target: over an app's page the bar is in a
+      // shadow root, where a document listener sees only the host (#650).
+      if (wrapper.current && !e.composedPath().includes(wrapper.current)) setOpen(false)
     }
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return

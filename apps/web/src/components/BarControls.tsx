@@ -2,6 +2,7 @@ import { useId, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { api } from '../lib/api'
+import { announceBarChange, useBarAddress } from '../lib/bar-address'
 import { cx } from './ui'
 import { Check, ChevronDown } from './ui/icons'
 
@@ -49,11 +50,17 @@ export function BarControls({ app }: { app: string }) {
 function useAddressValue(key: string): [string | null, (value: string) => void] {
   const router = useRouter()
   const location = useRouterState({ select: (state) => state.location })
-  const value = new URLSearchParams(location.searchStr).get(key)
+  // #650: on an app's own page the document's address, not the bar's router.
+  const page = useBarAddress()
+  const value = new URLSearchParams(page ? page.search : location.searchStr).get(key)
   function set(next: string) {
-    const params = new URLSearchParams(location.searchStr)
-    params.set(key, next)
-    router.history.push(`${location.pathname}?${params.toString()}${location.hash ? `#${location.hash}` : ''}`)
+    if (page) page.set(key, next)
+    else {
+      const params = new URLSearchParams(location.searchStr)
+      params.set(key, next)
+      router.history.push(`${location.pathname}?${params.toString()}${location.hash ? `#${location.hash}` : ''}`)
+    }
+    announceBarChange(key, next)
   }
   return [value, set]
 }
