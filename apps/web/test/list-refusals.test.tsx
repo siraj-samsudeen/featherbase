@@ -30,7 +30,7 @@ async function open(admin: Admin, table: string, filters?: unknown) {
   return screen.findByTestId('list-rows')
 }
 
-test('a bulk delete that meets a row the server will not delete stops and says why', async ({ admin }) => {
+test('a bulk delete that meets a row the server will not delete deletes nothing and says why (#332)', async ({ admin }) => {
   await seed(admin, 'Lrf Bulk', true)
   const rows = await open(admin, 'Lrf Bulk')
   await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
@@ -38,8 +38,12 @@ test('a bulk delete that meets a row the server will not delete stops and says w
   // Submitted meanwhile: a submitted row cannot be deleted.
   await admin.post(`/api/table/${enc('Lrf Bulk')}/r2:submit`)
   fireEvent.click(await screen.findByTestId('bulk-delete'))
-  expect(await screen.findByTestId('bulk-error')).toHaveTextContent('Lrf Bulk r2 is submitted and cannot be deleted (cancel it first)')
+  expect(await screen.findByTestId('bulk-error')).toHaveTextContent(
+    'No rows were deleted. r2: Lrf Bulk r2 is submitted and cannot be deleted (cancel it first)',
+  )
   expect(((await admin.get(`/api/table/${enc('Lrf Bulk')}/r2`)) as { status: string }).status).toBe('submitted')
+  // All-or-nothing: the rows before and after the refused one are still there.
+  expect(((await admin.get(`/api/table/${enc('Lrf Bulk')}`)) as { data: unknown[] }).data).toHaveLength(3)
 })
 
 test('the Delete Table dialog closes on a click outside it and on Escape, deleting nothing', async ({ admin }) => {

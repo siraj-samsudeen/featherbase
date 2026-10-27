@@ -49,6 +49,13 @@ const NO_VALUE = /\b(none|not set)\b/
 const INDICATOR_PALETTE = [1, 2, 3, 4, 5].map((n) => `var(--color-series-${n})`)
 
 /** The pager's "1–20 of 1,23,456", counts Indian-grouped. */
+/** A row a bulk change on a connected Table could not change (#332). */
+interface BulkFailure {
+  row_id: string
+  message: string
+  fields?: Record<string, string>
+}
+
 export function pageRange(start: number, pageSize: number, total: number): string {
   return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
 }
@@ -255,8 +262,8 @@ export function ListView({
     })
   }
 
-  // UI-012: bulk actions over the selected rows. Each row goes through the
-  // normal row lifecycle (delete_doc / save_row) — no side-channel.
+  // UI-012: bulk actions over the selected rows. The server puts each row
+  // through the normal row lifecycle (save / delete) — no side-channel.
   const editableColumns = (meta.data?.columns ?? []).filter(
     (f) =>
       !NO_COLUMN_TYPES.has(f.column_type) &&
@@ -280,29 +287,29 @@ export function ListView({
     setBulkError(null)
   }
 
+  // #332: one request for the whole selection. On a platform Table it is
+  // all-or-nothing, so a refusal means no row changed. A connected Table's
+  // rows are tried one by one; the ones that failed stay selected, named
+  // with their reasons.
+  function reportPartial(verb: string, done: number, failed: BulkFailure[]) {
+    if (!failed.length) return refresh()
+    setSelected(new Set(failed.map((f) => f.row_id)))
+    setBulkError(
+      `${fmtCount(done)} of ${fmtCount(done + failed.length)} ${verb}. ` +
+        failed.map((f) => `${f.row_id}: ${f.message}`).join('; '),
+    )
+    return queryClient.invalidateQueries({ queryKey: ['list', table] })
+  }
+
   async function bulkDelete() {
     setBulkBusy(true)
     setBulkError(null)
-    // Source-bound rows carry a revision (mapped modified column / file
-    // mtime); echo it so a row that changed since it was listed conflicts
-    // instead of deleting whatever now sits at that position (csv rows are
-    // positional).
-    const bound = Boolean(meta.data?.data_source && meta.data?.external_modified)
     try {
-      for (const name of selected) {
-        let query = ''
-        if (bound) {
-          const doc = await api.get<Record<string, unknown>>(
-            `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
-          )
-          if (doc.updated_at != null)
-            query = `?updated_at=${encodeURIComponent(String(doc.updated_at))}`
-        }
-        await api.delete(
-          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}${query}`,
-        )
-      }
-      await refresh()
+      const result = await api.post<{ deleted: number; failed?: BulkFailure[] }>(
+        `/api/table/${encodeURIComponent(table)}:bulk-delete`,
+        { rows: [...selected] },
+      )
+      await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
     } finally {
@@ -322,16 +329,11 @@ export function ListView({
           ? null
           : bulkValue
     try {
-      for (const name of selected) {
-        const doc = await api.get<Record<string, unknown>>(
-          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
-        )
-        await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
-          [bulkField]: value,
-          updated_at: doc.updated_at,
-        })
-      }
-      await refresh()
+      const result = await api.post<{ changed: number; failed?: BulkFailure[] }>(
+        `/api/table/${encodeURIComponent(table)}:bulk-edit`,
+        { rows: [...selected], values: { [bulkField]: value } },
+      )
+      await reportPartial('changed', result.changed, result.failed ?? [])
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk edit failed')
     } finally {
