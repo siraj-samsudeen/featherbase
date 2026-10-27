@@ -44,7 +44,7 @@ async function problemsOf(promise: Promise<unknown>): Promise<AppError> {
 }
 
 describe('the managed scope (D2)', () => {
-  test('is declared by the framework: System Settings fields, sign-in method rows, a scheduled job\'s enabled switch', async () => {
+  test('is declared by the framework: System Settings fields, sign-in method rows, a scheduled job\'s enabled switch, an app setting\'s value', async () => {
     const scope = await managedScope()
     expect(scope.map((s) => [s.table, s.shape, s.fields])).toEqual([
       ['System Settings', 'settings', [
@@ -56,6 +56,7 @@ describe('the managed scope (D2)', () => {
         'service_url', 'settings', 'identifier_system',
       ]],
       ['Scheduled Job', 'rows', ['enabled']],
+      ['App Setting', 'rows', ['value']],
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
@@ -162,7 +163,7 @@ describe('apply (D4)', () => {
       'System Settings.date_format': expect.stringContaining('not-a-format'),
       'Scheduled Job.no_such_job': 'Scheduled Job has no row no_such_job',
       'Scheduled Job.check_sla.cadence': 'Scheduled Job.cadence is not managed by the settings file (it manages: enabled)',
-      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job)',
+      Person: 'Person is not managed by the settings file (it manages: System Settings, Sign In Method, Scheduled Job, App Setting)',
     })
     expect(await snapshot()).toEqual(before)
   })

@@ -72,6 +72,9 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
+  // #620: an app's settings (configuration, never a person) and which roles carry its roles.
+  app_role_binding: { app: code, app_role: code, bound_role: code },
+  app_setting: { app: code, setting: code, value: text },
   assignment_rule: { ref_table: code, description: text, assign_condition: text, assign_to_field: code, last_user: id },
   assignment_rule_user: { user: id },
   auto_email_report: { '*': code },

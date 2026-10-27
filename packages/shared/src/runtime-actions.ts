@@ -14,6 +14,11 @@ export interface RuntimeActionContext {
   readonly user: string
   readonly payload: unknown
   readonly authorization: AppAuthorizationContext
+  /** #620: the app's declared settings that hold a value on this instance. */
+  readonly settings: Readonly<Record<string, string>>
+  /** #620: the app's declared secrets (deployment variables) that are set.
+   *  Never return, log or store one. */
+  readonly secrets: Readonly<Record<string, string>>
   reject(message: string, fields?: Record<string, string>): never
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>

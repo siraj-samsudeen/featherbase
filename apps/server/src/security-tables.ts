@@ -25,6 +25,9 @@ export const SECURITY_TABLES: ReadonlySet<string> = new Set([
   'Sign In Method',
   'Identifier System',
   'Installed App',
+  // #620: an app's settings and which roles carry its roles.
+  'App Setting',
+  'App Role Binding',
   'Sales Target Assignment',
   'Employee Section Map',
   'Section Ownership',
