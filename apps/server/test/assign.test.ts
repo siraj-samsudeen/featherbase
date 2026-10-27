@@ -230,6 +230,16 @@ describe('Assign a row to someone', () => {
     expect(res.status).toBe(404)
   })
 
+  test('an assignee that is not text is refused as invalid, not a server error', async ({ admin }) => {
+    const doc = await world(admin)
+    const res = await admin.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 42 }),
+    })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ValidationError')
+  })
+
   test('an email address that belongs to no one is refused as not found', async ({ admin }) => {
     const doc = await world(admin)
     const res = await admin.fetch('/api/assign', {

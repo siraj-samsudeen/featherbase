@@ -1868,7 +1868,7 @@ app.post('/api/assign', async (c) => {
     assign_to?: string
     description?: string
   }
-  if (!table || !name || !assign_to)
+  if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
