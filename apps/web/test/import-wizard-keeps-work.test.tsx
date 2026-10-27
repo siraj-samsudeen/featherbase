@@ -85,7 +85,7 @@ test('a different file dropped onto saved work is held back and asked about (#32
   expect(within(warning).getByRole('status')).toBeInTheDocument()
   expect(warning).toHaveTextContent("other.xlsx isn't the file your saved work is for.")
   expect(warning).toHaveTextContent(
-    "Your work on two.xlsx (2 Tables planned, 1 already imported) is still saved. Its sheets, headings or row counts don't match it.",
+    "Your work on two.xlsx (2 Tables planned, 1 already imported) is still saved. This file's sheets, headings or row counts don't match it.",
   )
   expect(warning.parentElement).toHaveAttribute('aria-live', 'polite')
   expect(screen.getByTestId('iw-resume')).toHaveTextContent('Your work on two.xlsx is saved.')
@@ -102,6 +102,7 @@ test('a different file dropped onto saved work is held back and asked about (#32
   expect(await screen.findByTestId('iw-mismatch', {}, { timeout: 8000 })).toHaveTextContent(
     "This copy of two.xlsx isn't the one your saved work is for.",
   )
+  expect(screen.getByTestId('iw-mismatch-replace')).toHaveTextContent('Import this copy instead')
   await user.click(screen.getByTestId('iw-mismatch-keep'))
 
   // Dropping the right file while the warning is up resumes as before.
@@ -132,6 +133,7 @@ test('choosing to import the different file discards the saved work and opens it
   const warning = await screen.findByTestId('iw-mismatch', {}, { timeout: 8000 })
   // Nothing landed, so nothing is said about it.
   expect(warning).toHaveTextContent('Your work on two.xlsx (2 Tables planned) is still saved.')
+  expect(screen.getByTestId('iw-mismatch-replace')).toHaveTextContent('Import other.xlsx instead')
   await user.click(screen.getByTestId('iw-mismatch-replace'))
 
   expect(screen.queryByTestId('iw-mismatch')).not.toBeInTheDocument()

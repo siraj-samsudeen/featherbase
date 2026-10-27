@@ -1628,7 +1628,7 @@ export function ImportWizard() {
                 planned
                 {needsFile.plans.some((p) => p.result) &&
                   `, ${needsFile.plans.filter((p) => p.result).length} already imported`}
-                ) is still saved. Its sheets, headings or row counts don't match it.
+                ) is still saved. This file's sheets, headings or row counts don't match it.
                 <span className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1640,7 +1640,9 @@ export function ImportWizard() {
                       void loadFile(file, null)
                     }}
                   >
-                    Import {mismatch.name} instead
+                    {mismatch.name === needsFile.fileName
+                      ? 'Import this copy instead'
+                      : `Import ${mismatch.name} instead`}
                   </button>
                   <button
                     type="button"
