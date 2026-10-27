@@ -634,6 +634,22 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
       status: 417,
     })
   })
+
+  // #330: the summary view's totals take the same path — counts per group at the source, sums refused.
+  test(':summary counts bound rows overall and per group, and rejects sums', async ({ admin }) => {
+    await bindAccount(admin)
+    const enc = encodeURIComponent(BOUND)
+    const summary = (await admin.get(`/api/table/${enc}:summary?group_by=label`)) as {
+      count: number
+      groups: { value: string | null; count: number }[]
+    }
+    expect(summary.count).toBe(2)
+    expect(summary.groups.map((g) => g.count)).toEqual([1, 1])
+    expect((await admin.get(`/api/table/${enc}:summary`)) as { groups: unknown[] }).toMatchObject({ count: 2, groups: [] })
+    await expect(
+      admin.get(`/api/table/${enc}:summary?sums=${encodeURIComponent(JSON.stringify(['label']))}`),
+    ).rejects.toMatchObject({ status: 417 })
+  })
 })
 
 describe('a bound Table keeps its binding', () => {
