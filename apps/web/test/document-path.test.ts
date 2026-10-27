@@ -21,6 +21,15 @@ describe('crossesFramePolicy', () => {
     expect(crossesFramePolicy(REPORT, loadedAt(`${REPORT}?store=12`))).toBe(false)
   })
 
+  // Codex round 2 on #643: the router shows the report with a trailing slash too.
+  test('entering the report written with a trailing slash crosses', () => {
+    expect(crossesFramePolicy(`${REPORT}/`, loadedAt('/featherbase/login'))).toBe(true)
+  })
+
+  test('the report with and without a trailing slash is one page', () => {
+    expect(crossesFramePolicy(REPORT, loadedAt(`${REPORT}/`))).toBe(false)
+  })
+
   test('moving between two ordinary pages does not', () => {
     expect(crossesFramePolicy('/featherbase/admin', loadedAt('/featherbase/login'))).toBe(false)
   })

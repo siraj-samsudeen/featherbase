@@ -184,6 +184,27 @@ test('the same reader refreshes the report, and opens it from a pasted link', as
   await shoot(pasted, '2b-pasted-link')
 })
 
+// Codex round 2 on #643: the web app shows the report with a trailing slash too.
+test('a pasted link to the report with a trailing slash frames it, with one load', async ({ page }) => {
+  await recordViolations(page)
+  await noCachedRead(page)
+  await signIn(page, REPORT_ONLY)
+  await page.waitForURL(`**${REPORT}`)
+  await expectFramedReport(page)
+
+  const pasted = await page.context().newPage()
+  await recordViolations(pasted)
+  await noCachedRead(pasted)
+  const seen = watch(pasted)
+  await pasted.goto(`${REPORT}/`)
+  await expectFramedReport(pasted)
+  await pasted.waitForTimeout(1000)
+  expect(seen.documents.map((d) => d.path)).toEqual([`${REPORT}/`])
+  expect(await seen.policyOf(`${REPORT}/`)).toBe(`frame-src 'self' ${STUB_ORIGIN}`)
+  expect([...seen.violations, ...(await pageViolations(pasted))]).toEqual([])
+  await shoot(pasted, '2c-pasted-link-trailing-slash')
+})
+
 test('leaving the report for Sign-in methods drops the embed origin: a new document, whose policy would block it', async ({ page }) => {
   await recordViolations(page)
   await noCachedRead(page)

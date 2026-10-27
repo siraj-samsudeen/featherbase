@@ -76,7 +76,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, INTERIM_APPS, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -129,9 +129,10 @@ app.use('*', async (c, next) => {
 })
 app.use('*', secureHeaders())
 // #3755: until the report moves into its app (B9), its page frames
-// MotherDuck's embed sandbox: that page alone, not the instance.
-app.use(INTERIM_APPS.feather_dash.root, async (c, next) => {
-  c.set('frameOrigins', [EMBED_ORIGIN])
+// MotherDuck's embed sandbox: that page alone, not the instance, with or
+// without a trailing slash (Codex round 2 on #643).
+app.use('*', async (c, next) => {
+  if (ownFramePolicyPage(c.req.path)) c.set('frameOrigins', [EMBED_ORIGIN])
   await next()
 })
 app.use(

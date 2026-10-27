@@ -376,6 +376,12 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
   })
+
+  // Codex round 2 on #643: the web app shows the report with a trailing slash too.
+  test('frame policy: the report page with a trailing slash allows the MotherDuck embed origin too', async ({ api }) => {
+    const res = await api.fetch('/featherbase/sales-target/')
+    expect(res.headers.get('content-security-policy')).toBe("frame-src 'self' https://embed-motherduck.com")
+  })
 })
 
 describe('#3755 sales-target host: report opens are Access Log rows', () => {
