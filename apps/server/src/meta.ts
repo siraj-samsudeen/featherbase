@@ -1,4 +1,4 @@
-import { sql } from './db'
+import { sql, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
@@ -147,6 +147,13 @@ let backlinksCache: Map<string, Backlink[]> | null = null
 let generation = 0
 
 export function invalidateMeta(name?: string) {
+  clearMeta(name)
+  // #448: and again once the change commits, so nothing read in between —
+  // the old definition, from another connection — outlives it.
+  whenTransactionEnds(() => clearMeta(name))
+}
+
+function clearMeta(name?: string) {
   generation++
   if (name) cache.delete(name)
   else cache.clear()
