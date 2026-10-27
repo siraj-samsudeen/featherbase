@@ -118,4 +118,22 @@ describe('conditional workflow transitions', () => {
     })
     expect((await getDoc(DT, 'big')).workflow_state).toBe('Draft')
   })
+
+  // #516: one broken condition hides only its own action; the row's other
+  // actions still load.
+  test('an action whose condition cannot be evaluated is hidden, and the others still show', async ({ admin }) => {
+    await setup(admin)
+    await seedDocs(admin)
+    const current = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+    const transitions = (current.transitions as Record<string, unknown>[]).map((t) =>
+      t.action === 'Approve' ? { ...t, condition: 'doc.no_such_field.deeper > 1' } : t,
+    )
+    await admin.post('/api/save_row', { table: 'Workflow', row: { ...current, transitions } })
+
+    const res = await admin.get<{ state: string; actions: { action: string }[] }>(
+      `/api/workflow/${encodeURIComponent(DT)}/small`,
+    )
+    expect(res.state).toBe('Draft')
+    expect(res.actions.map((a) => a.action)).toEqual(['Auto Approve'])
+  })
 })
