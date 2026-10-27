@@ -227,6 +227,10 @@ export async function reflectTables(
   )
 
   const result: ReflectResult = { created: [], skipped: [] }
+  // Every requested table is resolved, and the allow-list checked for each,
+  // before any is created: one refused table refuses the whole request
+  // instead of leaving the earlier ones connected (#518).
+  const resolved: { tableName: string; t: IntrospectedTable }[] = []
   for (const tableName of opts.tables) {
     let t = byQualified.get(tableName)
     if (!t) {
@@ -244,6 +248,10 @@ export async function reflectTables(
       result.skipped.push({ table: tableName, reason: 'Not found on the source' })
       continue
     }
+    assertAllowed(cfg, t.schema, t.table)
+    resolved.push({ tableName, t })
+  }
+  for (const { tableName, t } of resolved) {
     const candidate = await candidateFor(cfg, t, opts.prefix, reflected)
     if (!candidate.bindable) {
       result.skipped.push({ table: tableName, reason: candidate.reason! })
@@ -256,7 +264,6 @@ export async function reflectTables(
       })
       continue
     }
-    assertAllowed(cfg, t.schema, t.table)
     try {
       const created = await buildBoundTable(cfg, t, candidate, opts)
       result.created.push({ table: tableName, name: created })

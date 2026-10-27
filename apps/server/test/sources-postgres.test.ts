@@ -731,4 +731,15 @@ describe('Connect a data source: limiting which tables can be connected', () => 
       }),
     ).rejects.toMatchObject({ status: 403 })
   })
+
+  test('asking for several tables when a later one is not allowed connects none of them', async ({ admin }) => {
+    await makeSource(admin, { table_allowlist: 'ext_fixture.tenant\next_fixture.vehicle' })
+    const refused = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['tenant', 'vehicle', 'business'] }),
+    })
+    expect(refused.status).toBe(403)
+    expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('ext_fixture.business')
+    expect(await sql`select name from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
+  })
 })
