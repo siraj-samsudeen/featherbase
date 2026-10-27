@@ -56,8 +56,10 @@ export type JobHandler = (
 ) => unknown | Promise<unknown>
 
 /** Thrown by a handler whose job cannot succeed by running again: the job
- *  is failed at once, with this message, and keeps its other attempts for a
- *  person's retry (#334: a refused email). */
+ *  is failed at once, with this message, without spending its other
+ *  attempts; a person can still retry it (#334: a refused email). Like
+ *  running out of attempts, it ends a recurrence that has no Scheduled Job
+ *  row. */
 export class FinalJobFailure extends Error {}
 
 const registry = new Map<string, JobHandler>()
