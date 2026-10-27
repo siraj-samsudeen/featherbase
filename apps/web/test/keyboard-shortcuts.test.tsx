@@ -88,7 +88,7 @@ test('Keyboard shortcuts: Ctrl+B on a page that is not a Table leaves the page a
 
 test('Keyboard shortcuts: Ctrl+B on the Jobs page leaves the page as it is', async ({ admin }) => {
   const app = await renderApp('/featherbase/admin/jobs', admin)
-  await screen.findByRole('heading', { name: /jobs/i }, { timeout: 8000 })
+  await screen.findByRole('heading', { name: 'Jobs', level: 1 }, { timeout: 8000 })
   press({ key: 'b', ctrlKey: true })
   await new Promise((r) => setTimeout(r, 500))
   expect(here(app)).toBe('/featherbase/admin/jobs')
