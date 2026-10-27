@@ -51,3 +51,16 @@ export async function rowForCaller(table: string, row: RowValues, user: string):
   const shared = row.row_id != null && (await isSharedWith(user, table, String(row.row_id), 'read'))
   return restrictRow(await getMeta(table), row, shared ? FULL_READER : await readerFor(user, table, 'read'))
 }
+
+// #342: Comment and Version rows are about one row each (ref_table,
+// ref_name), so they are read through that row's access, not the grant on
+// their own Table alone.
+export const ROW_ATTACHED_TABLES = new Set(['Comment', 'Version'])
+
+// #342: a Version's diff can carry any column of its row, so a reader whose
+// tiers stop short of a column the Table restricts reads its history only
+// through the row's activity, which filters each change.
+export async function seesEveryColumn(user: string, meta: TableMeta): Promise<boolean> {
+  if (!meta.columns.some((f) => f.tier === 'restricted')) return true
+  return (await permittedTiers(user, meta.name, 'read')).has('restricted')
+}

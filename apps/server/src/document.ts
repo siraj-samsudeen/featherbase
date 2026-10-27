@@ -17,7 +17,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workfl
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, readerFor, restrictRow, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -345,6 +345,28 @@ async function assertParentReadable(row: RowValues, user: string) {
   await assertPermission(user, parentType, 'read')
   await assertDocPermission(user, parentType, 'read', String(parent.created_by))
   await assertUserPermissions(user, parentMeta, parent as RowValues)
+}
+
+// #342: a comment or an edit opens only for someone who may open its row;
+// an edit also needs every column of that row, unless the row is shared with
+// them (a share shows every column). The row's activity is the way in for
+// everyone else. Privileged callers pass, as everywhere.
+async function assertAttachedRowReadable(table: string, row: RowValues, user: string) {
+  if (await isPrivileged(user)) return
+  const refTable = row.ref_table ? String(row.ref_table) : ''
+  const refName = row.ref_name ? String(row.ref_name) : ''
+  if (!refTable || !refName) return
+  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refMeta = await getMeta(refTable).catch(() => null)
+  if (!refMeta) throw refused()
+  try {
+    await getDoc(refTable, refName, user)
+  } catch (err) {
+    if (err instanceof AppError) throw refused()
+    throw err
+  }
+  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+    throw refused()
 }
 
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
@@ -1591,6 +1613,7 @@ async function getDocImpl(
     await assertDocPermission(user, table, 'read', String(row.created_by))
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers, on the row
   // and on its sub-table rows alike (#341).
