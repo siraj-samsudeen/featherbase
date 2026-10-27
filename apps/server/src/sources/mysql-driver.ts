@@ -171,7 +171,6 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
 //   1406 / 1264 / 1366 / 1292 / 1265: too long / out of range / incorrect or
 //                                 truncated value ... for column 'level'
 const NOT_NULL = new Set([1048, 1364])
-const FOREIGN_KEY = new Set([1451, 1452])
 const BAD_VALUE = new Set([1264, 1366, 1292, 1265])
 
 function refusal(e: { errno?: number; message?: string }): SourceRefusal | null {
@@ -189,13 +188,20 @@ function refusal(e: { errno?: number; message?: string }): SourceRefusal | null 
   }
   if (NOT_NULL.has(errno))
     return shaped(REFUSAL_CODE.notNull, column(quoted(/^(?:Column|Field) '([^']+)'/)))
-  if (FOREIGN_KEY.has(errno)) {
+  if (errno === 1452) {
     const constraint = quoted(/CONSTRAINT `([^`]+)`/)
     return shaped(REFUSAL_CODE.foreignKey, {
       ...column(quoted(/FOREIGN KEY \(`([^`]+)`\)/)),
       ...(constraint ? { constraint_name: constraint } : {}),
     })
   }
+  // 1451: this row is the one pointed at. The column the message names is
+  // the OTHER table's, so none is passed on; the detail says which way round
+  // it is, in Postgres's words ("... is still referenced from table ...").
+  if (errno === 1451)
+    return shaped(REFUSAL_CODE.foreignKey, {
+      detail: 'Key is still referenced from another table.',
+    })
   if (errno === 3819) {
     const constraint = quoted(/constraint '([^']+)'/i)
     return shaped(REFUSAL_CODE.check, constraint ? { constraint_name: constraint } : {})
@@ -258,6 +264,7 @@ async function exec(
 // `work`, such as a new row that can't be found again) rolls the write back.
 async function inTransaction<T>(cfg: SourceConfig, work: (conn: Querier) => Promise<T>): Promise<T> {
   let conn: Awaited<ReturnType<Pool['getConnection']>>
+  let result: T
   try {
     conn = await pool(cfg).getConnection()
   } catch (err) {
@@ -266,23 +273,33 @@ async function inTransaction<T>(cfg: SourceConfig, work: (conn: Querier) => Prom
   try {
     await conn.beginTransaction().catch((err) => wrapError(cfg, err))
     // `work` runs its statements through run/exec, which shape their own errors.
-    const result = await work(conn)
+    result = await work(conn)
     await conn.commit().catch((err) => wrapError(cfg, err))
-    return result
   } catch (err) {
-    await conn.rollback().catch(() => {})
+    // A connection that can't roll back may still hold the transaction and
+    // its locks: close it rather than hand it to the next caller.
+    await conn.rollback().then(() => conn.release(), () => conn.destroy())
     throw err
-  } finally {
-    conn.release()
   }
+  conn.release()
+  return result
+}
+
+// The row whose key, as text, is exactly `pk`. `key = ?` lets MySQL find it
+// through the primary key's index, so a write's transaction locks that row
+// and no other; the text comparison then refuses near misses MySQL's own
+// conversion would accept ('1abc' = 1). Two placeholders, both the pk.
+function pkMatch(bind: Binding): string {
+  const key = quoteIdent(bind.pk)
+  return `${key} = ? and cast(${key} as char) = ?`
 }
 
 function selectByPk(bind: Binding): string {
-  return `select * from ${relation(bind)} where cast(${quoteIdent(bind.pk)} as char) = ? limit 1`
+  return `select * from ${relation(bind)} where ${pkMatch(bind)} limit 1`
 }
 
 async function readRow(bind: Binding, pk: string, on: Querier): Promise<SourceRow | null> {
-  const rows = await run(bind.source, selectByPk(bind), [pk], on)
+  const rows = await run(bind.source, selectByPk(bind), [pk, pk], on)
   return rows[0] ?? null
 }
 
@@ -294,6 +311,16 @@ async function readRow(bind: Binding, pk: string, on: Querier): Promise<SourceRo
 function modifiedMatch(bind: Binding): string {
   const ms = (expr: string) => `left(date_format(${expr}, '%Y-%m-%d %H:%i:%s.%f'), 23)`
   return `${ms(quoteIdent(bind.modified!))} = ${ms('?')}`
+}
+
+async function keyIsAutoIncrement(bind: Binding): Promise<boolean> {
+  const rows = await run(
+    bind.source,
+    `select extra as extra from information_schema.columns
+     where table_schema = coalesce(?, database()) and table_name = ? and column_name = ?`,
+    [bind.schema ?? null, bind.table, bind.pk],
+  )
+  return String(rows[0]?.extra ?? '').toLowerCase().includes('auto_increment')
 }
 
 export const mysqlDriver: SourceDriver = {
@@ -436,6 +463,14 @@ export const mysqlDriver: SourceDriver = {
     // No RETURNING in MySQL — insert, then read the row back through the pk
     // (LAST_INSERT_ID() for auto_increment keys, the given value otherwise).
     // A row that can't be read back is rolled back rather than left behind.
+    // Without a given key, only an auto_increment KEY can be read back: the
+    // insert id may belong to another auto_increment column. Refuse before
+    // writing, so nothing is left behind even on a table with no transactions.
+    if (pkValue == null && !(await keyIsAutoIncrement(bind)))
+      throw new AppError(
+        'DataSourceError',
+        `Data source ${bind.source.name}: a new row in ${bind.table} needs its key given, or Featherbase cannot address it — the primary key has no auto_increment`,
+      )
     return inTransaction(bind.source, async (conn) => {
       const result = await exec(
         bind.source,
@@ -449,7 +484,7 @@ export const mysqlDriver: SourceDriver = {
       if (key == null)
         throw new AppError(
           'DataSourceError',
-          `Data source ${bind.source.name}: inserted a row into ${bind.table} but cannot address it — the primary key has no auto_increment and no value was given`,
+          `Data source ${bind.source.name}: inserted a row into ${bind.table} but cannot address it — the database gave it no number`,
         )
       const row = await readRow(bind, String(key), conn)
       if (!row)
@@ -470,8 +505,8 @@ export const mysqlDriver: SourceDriver = {
     // same-second saves still conflict.
     if (bind.modified) sets.push(`${quoteIdent(bind.modified)} = now(3)`)
     if (!sets.length) return (await this.getDoc(bind, pk)) ?? 'missing'
-    let where = `cast(${quoteIdent(bind.pk)} as char) = ?`
-    params.push(pk)
+    let where = pkMatch(bind)
+    params.push(pk, pk)
     if (bind.modified && expectModified != null) {
       where += ` and ${modifiedMatch(bind)}`
       params.push(new Date(expectModified))
@@ -484,14 +519,21 @@ export const mysqlDriver: SourceDriver = {
         conn,
       )
       const row = await readRow(bind, pk, conn)
-      if (result.affectedRows > 0) return row ?? 'missing'
-      return row ? 'conflict' : 'missing'
+      if (result.affectedRows === 0) return row ? 'conflict' : 'missing'
+      // Something at the source (a trigger) moved the key: undo the write
+      // rather than report a saved row as missing.
+      if (!row)
+        throw new AppError(
+          'DataSourceError',
+          `Data source ${bind.source.name}: updated row ${pk} not found on re-read`,
+        )
+      return row
     })
   },
 
   async remove(bind, pk, expectModified) {
-    const params: unknown[] = [pk]
-    let where = `cast(${quoteIdent(bind.pk)} as char) = ?`
+    const params: unknown[] = [pk, pk]
+    let where = pkMatch(bind)
     if (bind.modified && expectModified != null) {
       where += ` and ${modifiedMatch(bind)}`
       params.push(new Date(expectModified))

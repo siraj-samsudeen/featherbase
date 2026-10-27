@@ -6,7 +6,7 @@ On a table connected to a MySQL database, a save could hand back another program
 
 ## What Changes
 
-- A save on a connected table hands back the row exactly as that save left it. A new row that can't be found again after it is written is refused, and nothing is left behind at the data source.
+- A save on a connected table hands back the row exactly as that save left it. A new row without an id is refused before anything is written when the data source numbers rows in a way Featherbase can't read back.
 - The check for "changed since you loaded it" compares whole thousandths of a second, the same way for every kind of database, so a change a fraction of a millisecond away is no longer missed.
 - When a data source refuses a save, the user gets a plain message on the field it concerns where it can tell which one. The data source's own text goes only to the server log.
 

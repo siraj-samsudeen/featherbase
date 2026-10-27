@@ -134,6 +134,14 @@ beforeAll(async () => {
   await cli.query(`
     create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
     for each row set new.code = concat('x-', new.code)`)
+  // The insert id belongs to `seq`, not to the key: a new row without a
+  // key must not be read back through it.
+  await cli.query(`
+    create table ext_mysql.sequenced (
+      code varchar(40) primary key default (uuid()),
+      seq int auto_increment unique,
+      note varchar(20)
+    )`)
   // #154: every way the database refuses a write for a constraint. Its
   // `status` column is renamed on reflection (status is a Featherbase field),
   // so a refusal must be translated from the source column to the field.
@@ -758,6 +766,48 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     }
   })
 
+  test('a new row is never read back through an auto-numbered column that is not its key', async () => {
+    await cli.query(`insert into ext_mysql.sequenced (code, seq, note) values ('101', 100, 'someone else')`)
+    try {
+      await expect(mysqlDriver.insert(bindFor('sequenced', 'code'), { note: 'mine' }, null)).rejects.toMatchObject({
+        type: 'DataSourceError',
+        message: expect.stringContaining('cannot address it'),
+      })
+      const [rows] = await cli.query(`select note from ext_mysql.sequenced`)
+      expect((rows as { note: string }[]).map((r) => r.note)).toEqual(['someone else'])
+    } finally {
+      await cli.query(`delete from ext_mysql.sequenced`)
+    }
+  })
+
+  test('saving one row leaves other rows free for other writers', async () => {
+    const bind = bindFor('plain', 'id')
+    const [a] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('mine', 1), ('theirs', 1)`)
+    const mine = (a as { insertId: number }).insertId
+    try {
+      // While the save holds its own row, another writer edits a DIFFERENT
+      // row, giving up after a second if the save has locked that one too.
+      const saved = await withWriterAfter(
+        /^update /,
+        `set session innodb_lock_wait_timeout = 1;
+         update ext_mysql.plain set qty = 2 where id = ${mine + 1}`,
+        () => mysqlDriver.update(bind, String(mine), { note: 'mine, saved' }, null),
+        // Longer than the other writer's lock wait, so a lock on its row shows.
+        1500,
+      )
+      expect(saved).toMatchObject({ note: 'mine, saved' })
+      const [theirs] = await cli.query(`select qty from ext_mysql.plain where id = ?`, [mine + 1])
+      expect((theirs as { qty: number }[])[0].qty).toBe(2)
+    } finally {
+      await cli.query(`set session innodb_lock_wait_timeout = 50`)
+      await cli.query(`delete from ext_mysql.plain where id in (?, ?)`, [mine, mine + 1])
+    }
+  })
+
+  test('a key that only looks like a number finds no row', async () => {
+    expect(await mysqlDriver.getDoc(bindFor('plain', 'id'), '1abc')).toBeNull()
+  })
+
   test('an insert with an explicit key reads that row back', async () => {
     try {
       const row = await mysqlDriver.insert(bindFor('nokey', 'code'), { label: 'given' }, 'K1')
@@ -786,7 +836,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
   // re-reads its row outside the statement's transaction then sees the other
   // writer's change; one that holds its row until it has read it back makes
   // the other writer wait instead.
-  async function withWriterAfter<T>(after: RegExp, concurrent: string, work: () => Promise<T>) {
+  async function withWriterAfter<T>(after: RegExp, concurrent: string, work: () => Promise<T>, patience = 300) {
     let other: Promise<unknown> | null = null
     const spies = [PromisePool.prototype, PromiseConnection.prototype].map((proto) => {
       const original = proto.query
@@ -794,7 +844,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
         const result = await original.apply(this, args)
         if (this !== cli && !other && after.test(String(args[0]))) {
           other = cli.query(concurrent)
-          await Promise.race([other, new Promise((r) => setTimeout(r, 300))])
+          await Promise.race([other.catch(() => {}), new Promise((r) => setTimeout(r, patience))])
         }
         return result
       } as never)
@@ -1004,6 +1054,24 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
     expect(res.message).toMatch(/still point/)
     const [rows] = await cli.query(`select 1 from ext_mysql.vehicle where id = 1`)
     expect(rows as unknown[]).toHaveLength(1)
+  })
+
+  test('changing the key of a row other rows still point at is refused in plain words', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'vehicle')
+    const err = await mysqlDriver.update(bindFor('vehicle', 'id'), '1', { id: 77 }, null).catch((e) => e)
+    expect(err).toMatchObject({ code: '23503', detail: expect.stringContaining('still referenced') })
+    const { explainRefusal } = await import('../src/sources/dispatch')
+    const { getMeta } = await import('../src/meta')
+    const meta = await getMeta(name)
+    let thrown: unknown
+    try {
+      explainRefusal(meta, bindFor('vehicle', 'id'), err)
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toMatchObject({ type: 'ValidationError', message: expect.stringMatching(/still point/) })
+    expect((thrown as { fields?: unknown }).fields).toBeUndefined()
   })
 
   test('each refusal arrives from the driver in the shared shape', async () => {
