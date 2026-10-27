@@ -356,9 +356,15 @@ export async function updateTable(
           `select count(*)::int as n from ${relation} where ${quoteIdent(column_name)} is not null`,
         )) as unknown as { n: number }[])
       : [{ n: 0 }]
+    // #250: drop-one/add-one of the same type reads like a rename, but it is
+    // ambiguous, so it is never inferred — the refusal names the way to say it.
+    const renamedTo = def.columns
+      .filter((f) => !before.has(f.column_name) && f.column_type === old.column_type)
+      .map((f) => f.column_name)
     errors[column_name] =
       `left out of the definition${n ? ` while ${n} ${n === 1 ? 'row holds' : 'rows hold'} a value in it` : ''}; ` +
-      'name it in remove_columns to remove it'
+      'name it in remove_columns to remove it' +
+      (renamedTo.length ? `, or use rename_column to rename it to ${renamedTo.join(' or ')}` : '')
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Columns left out must be removed by name', errors)

@@ -1495,7 +1495,7 @@ app.delete('/api/table_def/:name', async (c) => {
 
 // #209 (issue #197): rename a column in place, keeping its data. PUT
 // /api/table_def/:name matches columns BY NAME, so a changed name there reads
-// as delete-plus-add and silently orphans the rows — hence its own route.
+// as delete-plus-add, which it refuses (#250) — hence this route.
 app.post('/api/table_def/:name/rename_column', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as { from?: unknown; to?: unknown }
