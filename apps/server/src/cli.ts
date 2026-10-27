@@ -39,6 +39,13 @@
 //                                     print this environment's managed settings in the file's shape
 //                                     (never a secret); --dir writes instance-settings.json and
 //                                     privacy-notice.md there instead
+//   cli settings:variables --stdin  print this environment's variable report (#465 D10) for the key read
+//                                     from stdin: which declared variables are set, and a keyed
+//                                     fingerprint of each secret with a cross-environment rule; no value
+//   cli settings:compare <label>=<report.json> <label>=<report.json> [...]
+//                                     put environments' variable reports (one key, one run) side by
+//                                     side; exits 1 while a rule is broken or a required variable is
+//                                     set on some environments only
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -413,6 +420,30 @@ async function cmdSettingsExport(io: CommandIO, flags: Record<string, string | s
   io.out(`settings:export: wrote ${path.join(flags.dir, 'instance-settings.json')}`)
 }
 
+async function cmdSettingsVariables(io: CommandIO, positional: string[], flags: Record<string, string | string[] | boolean>) {
+  if (flags.stdin !== true || positional.length) throw new Error('usage: cli settings:variables --stdin   (the key on stdin, e.g. `openssl rand -hex 32`)')
+  const { variableReport } = await import('./environment-comparison')
+  io.out(JSON.stringify(await variableReport((await io.readStdin()).trim()), null, 2))
+}
+
+async function cmdSettingsCompare(io: CommandIO, positional: string[]): Promise<number> {
+  const pairs = positional.map((p) => /^([^=]+)=(.+)$/.exec(p))
+  if (pairs.length < 2 || pairs.some((m) => !m)) throw new Error('usage: cli settings:compare <label>=<report.json> <label>=<report.json> [...]')
+  const { readFile } = await import('node:fs/promises')
+  const { compareEnvironments, formatComparison } = await import('./environment-comparison')
+  const environments = []
+  for (const [, label, file] of pairs as RegExpExecArray[]) {
+    try {
+      environments.push({ label, report: JSON.parse(await readFile(file, 'utf8')) })
+    } catch (err) {
+      throw new Error(`cannot read ${file} as a variable report: ${(err as Error).message}`)
+    }
+  }
+  const comparison = compareEnvironments(environments)
+  io.out(formatComparison(comparison))
+  return comparison.problems ? 1 : 0
+}
+
 async function cmdConsole(io: CommandIO) {
   const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
@@ -550,6 +581,11 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
     case 'settings:apply':
       await cmdSettingsApply(io, flags)
       break
+    case 'settings:variables':
+      await cmdSettingsVariables(io, positional, flags)
+      break
+    case 'settings:compare':
+      return cmdSettingsCompare(io, positional)
     case 'settings:export':
       await cmdSettingsExport(io, flags)
       break
@@ -584,7 +620,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

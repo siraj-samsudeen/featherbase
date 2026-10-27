@@ -102,3 +102,15 @@ the rule says. No secret's value SHALL be shown or kept.
 - **WHEN** dev and prod use the same session-signing secret
 - **THEN** the comparison reports that this secret must differ between
   environments and does not, without showing the secret
+
+#### Scenario: A web address set on prod but not on dev
+
+- **WHEN** prod has its web address set and dev does not
+- **THEN** the comparison reports a problem: set on prod only
+
+#### Scenario: Dev applied from an older settings file
+
+- **WHEN** dev's settings were last applied from an older version of the file
+  than prod's
+- **THEN** the comparison reports that the two were applied from different
+  versions
