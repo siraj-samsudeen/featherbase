@@ -46,9 +46,11 @@ function valuesOf(args: Record<string, unknown>): Record<string, unknown> {
   return values as Record<string, unknown>
 }
 
-// The row's current stamp, read through the caller's own permissions. Echoing
-// it makes the write a plain single-row save; on a connected Table it also
-// makes a row that moved under us conflict instead of being overwritten.
+// The row's current stamp, read through the caller's own permissions (so a
+// bulk change, like the list it starts from, needs read access). Every
+// update must echo one, and a connected Table's delete too; echoing what we
+// just read makes each write a plain single-row save. On a connected Table a
+// row that moves between the read and the write still conflicts.
 async function stampOf(table: string, name: string, user: SessionUser): Promise<unknown> {
   return (await getDoc(table, name, user.row_id)).updated_at
 }
@@ -81,8 +83,15 @@ async function runBulk(
         done++
         publishDocEvent(table, name, verb === 'deleted' ? 'deleted' : 'updated')
       } catch (err) {
-        if (!(err instanceof AppError)) throw err
-        failed.push({ row_id: name, message: err.message, ...(err.fields ? { fields: err.fields } : {}) })
+        // Earlier rows are already changed in the source, so even an
+        // unexpected failure (a dropped connection) is reported per row
+        // rather than ending the request with nothing said about them.
+        if (err instanceof AppError)
+          failed.push({ row_id: name, message: err.message, ...(err.fields ? { fields: err.fields } : {}) })
+        else {
+          console.error(`Bulk ${verb} on ${table} failed for ${name}`, err)
+          failed.push({ row_id: name, message: 'This row could not be reached in its source' })
+        }
       }
     }
     return { done, failed }

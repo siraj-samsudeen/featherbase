@@ -72,10 +72,13 @@ describe('bulk edit', () => {
     await seed(admin)
     await expectApiError(edit(admin, [], { stage: 'Closed' }), { status: 417 })
     await expectApiError(edit(admin, ['r1'], {}), { status: 417 })
-    await expectApiError(
-      admin.post(`/api/table/${enc(T)}:bulk-edit`, { rows: ['r1'], values: { stage: 'Closed', row_id: 'r9' } }),
-      { status: 417 },
-    )
+    for (const key of ['row_id', 'updated_at'])
+      await expectApiError(edit(admin, ['r1'], { stage: 'Closed', [key]: 'x' }), { status: 417 })
+  })
+
+  test('a row named twice is changed once', async ({ admin }) => {
+    await seed(admin)
+    expect(await edit(admin, ['r1', 'r1'], { stage: 'Closed' })).toEqual({ changed: 1 })
   })
 })
 
@@ -146,6 +149,15 @@ describe('on a connected Table', () => {
     const result = await admin.post(`/api/table/${enc(BOUND)}:bulk-delete`, { rows: ['1', '9', '3'] })
     expect(result).toMatchObject({ deleted: 2, failed: [{ row_id: '9', message: expect.stringContaining('not found') }] })
     expect(await cli`select id from bulk_fixture.shelf order by id`).toEqual([{ id: 2 }])
+  })
+
+  test('a bulk edit changes the rows it can, and names the one it could not', async ({ admin }) => {
+    await bind(admin)
+    expect(await admin.post(`/api/table/${enc(BOUND)}:bulk-edit`, { rows: ['1', '9'], values: { label: 'Z' } }))
+      .toMatchObject({ changed: 1, failed: [{ row_id: '9', message: expect.stringContaining('not found') }] })
+    expect(await cli`select label from bulk_fixture.shelf order by id`).toEqual([
+      { label: 'Z' }, { label: 'A2' }, { label: 'A3' },
+    ])
   })
 
   test('a bulk edit changes the rows in the source', async ({ admin }) => {
