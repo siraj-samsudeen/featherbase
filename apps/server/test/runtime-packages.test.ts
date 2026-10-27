@@ -546,3 +546,63 @@ describe('An app owns its own screen', () => {
     }
   })
 })
+
+// #380 task 4.4: an app declares the tabs its staff move between on a phone,
+// with the declaration's own version, and the catalog hands them to the
+// shared top bar as links under the app's own root.
+describe('An app declares its phone tabs', () => {
+  async function otherWith(fields: Record<string, unknown>) {
+    const directory = await mkdtemp(resolve('test/.app-tabs-'))
+    await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+    const file = resolve(directory, 'featherbase.json')
+    await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')), ...fields }))
+    return directory
+  }
+  const TABS = { version: 1, items: [
+    { label: 'Today', icon: 'home', path: '' },
+    { label: 'Targets', icon: 'target', path: 'targets' },
+    { label: 'Checks', icon: 'checklist', path: 'checks/open' },
+  ] }
+
+  test('the catalog carries the declared tabs as links under the app, in order', async ({ admin }) => {
+    const directory = await otherWith({ tabs: TABS })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/', tabs: [
+        { label: 'Today', icon: 'home', href: '/other/' },
+        { label: 'Targets', icon: 'target', href: '/other/targets' },
+        { label: 'Checks', icon: 'checklist', href: '/other/checks/open' },
+      ] }])
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('an app that declares no tabs gets none', async ({ admin }) => {
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'other' })
+    expect(await admin.get('/api/app_catalog')).toEqual([{ name: 'other', title: 'Other tasks', href: '/other/' }])
+  })
+
+  test('a tab list the bar cannot draw safely is refused when the app is found', async () => {
+    const item = (over: Record<string, unknown>) => ({ label: 'Tab', icon: 'list', path: 'tab', ...over })
+    const refused: [string, unknown][] = [
+      ['one tab', { version: 1, items: [item({})] }],
+      ['six tabs', { version: 1, items: ['a', 'b', 'c', 'd', 'e', 'f'].map((path) => item({ path })) }],
+      ['an unknown version', { ...TABS, version: 2 }],
+      ['no version', { items: TABS.items }],
+      ['an icon outside the set', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', icon: 'skull' })] }],
+      ['an empty label', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: ' ' })] }],
+      ['a label too long for the bar', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: 'Thirteen char' })] }],
+      ['two tabs opening one path', { version: 1, items: [item({}), item({ label: 'Again' })] }],
+      ['an extra field', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', badge: 3 })] }],
+      ...['/admin', '../admin', 'a/../../admin', 'https://elsewhere.example', '//elsewhere.example', 'a?b', 'a#b', 'A', 'a//b', 'a/'].map(
+        (path): [string, unknown] => [`the path ${path}`, { version: 1, items: [item({ path: 'ok' }), item({ path })] }]),
+    ]
+    for (const [what, tabs] of refused) {
+      const directory = await otherWith({ tabs })
+      try {
+        expect(await discoverPackages([directory]), what).toEqual([expect.objectContaining({ error: expect.stringContaining('"tabs"') })])
+      } finally { await rm(directory, { recursive: true, force: true }) }
+    }
+  })
+})

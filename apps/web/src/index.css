@@ -97,6 +97,14 @@
   }
 }
 
+/* #380 4.4: while a phone tab bar is drawn (TabBar, fixed to the bottom), the
+   page keeps room for it, so it never covers the last row. */
+@media (width < 40rem) {
+  body:has([data-tab-bar]) {
+    padding-bottom: calc(var(--spacing-touch) + 2px + env(safe-area-inset-bottom));
+  }
+}
+
 /* Dark mode: the same roles, re-valued, on screen only, so a page printed in
    dark mode comes out as dark ink on white paper. */
 @media screen {

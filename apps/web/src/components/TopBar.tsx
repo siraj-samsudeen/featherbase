@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabIcon, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
 import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
@@ -9,8 +9,8 @@ import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
 import { Logo } from './Logo'
-import { buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
-import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
+import { TabBar, buttonClasses, cardClasses, iconButtonClasses, labelClasses, useMediaQuery } from './ui'
+import { CalendarDays, ChartColumn, House, Inbox, List, ListChecks, Monitor, Moon, Sun, Target, UserRound, type LucideIcon } from './ui/icons'
 
 // #489 (design D3, "One top bar on every address"): one bar, drawn by the
 // platform, on every address and every shell — the Admin screens, an app's
@@ -25,6 +25,10 @@ import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
 //
 // #501: a page is named for where the person belongs, and the bar never
 // offers to go where the person already is.
+//
+//   bottom  on a phone, on an app's pages, the tabs the app declares (#380
+//           task 4.4), drawn as the Shop Floor TabBar. An app that declares
+//           none gets none; the Admin screens have their own menu.
 //
 // The address picks the contents (/api/brand `opens`). A host the list does
 // not name (development, test) holds everything, so there the page says
@@ -93,6 +97,32 @@ function homeHref(context: string): string {
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
+const TAB_ICON: Record<AppTabIcon, LucideIcon> = {
+  home: House, report: ChartColumn, target: Target, list: List,
+  checklist: ListChecks, calendar: CalendarDays, inbox: Inbox, person: UserRound,
+}
+
+/** The tabs the app behind this bar declares: an interim app's from shared,
+ *  an installed app's from the catalog (only apps the person can open). */
+function useAppTabs(context: string | undefined, enabled: boolean): AppTabLink[] {
+  const interim = context ? INTERIM_APPS[context] : undefined
+  const catalog = useQuery({
+    queryKey: ['app-catalog'],
+    queryFn: () => api.get<{ name: string; title: string; href: string; tabs?: AppTabLink[] }[]>('/api/app_catalog'),
+    enabled: enabled && Boolean(context && context !== ADMIN && !interim),
+  })
+  if (!context || context === ADMIN) return []
+  if (interim) return appTabLinks(interim.root, interim.tabs ?? [])
+  return catalog.data?.find((app) => app.name === context)?.tabs ?? []
+}
+
+/** The open tab: the one whose address the page is at or under, the longest
+ *  such when one tab's address holds another's (the app's root holds all). */
+function currentTab(tabs: AppTabLink[], pathname: string): string | undefined {
+  const under = (href: string) => pathname === href || pathname.startsWith(href.endsWith('/') ? href : `${href}/`)
+  return tabs.filter((tab) => under(tab.href)).sort((a, b) => b.href.length - a.href.length)[0]?.href
+}
+
 export function TopBar({
   home,
   forPerson,
@@ -131,6 +161,9 @@ export function TopBar({
   // list does not name (which holds the Admin), are where Admin already is.
   const onAppAddress = Boolean(brand?.opens && brand.opens !== ADMIN)
   const offerAdmin = onAppAddress && canUseAdmin
+  const tabs = useAppTabs(context, isPhone && Boolean(caps))
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const open = currentTab(tabs, pathname)
 
   return (
     <>
@@ -155,6 +188,12 @@ export function TopBar({
         </div>
       </header>
       {below}
+      {isPhone && caps && name && tabs.length > 0 && (
+        <TabBar
+          label={name}
+          tabs={tabs.map((tab) => ({ label: tab.label, icon: TAB_ICON[tab.icon], href: tab.href, current: tab.href === open }))}
+        />
+      )}
     </>
   )
 }

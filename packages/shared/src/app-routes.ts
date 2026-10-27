@@ -18,8 +18,27 @@ export const FEATHERBASE_ADMIN_DESTINATION = {
 // Interim until the app exists (design D8): Feather Dash is today's sales
 // target report, a Featherbase page rather than an installed app. The server
 // routes and names its address from this; the shared top bar names the page.
-export const INTERIM_APPS: Record<string, { root: string; title: string }> = {
+export const INTERIM_APPS: Record<string, { root: string; title: string; tabs?: readonly AppTab[] }> = {
   feather_dash: { root: '/featherbase/sales-target', title: 'Feather Dash' },
+}
+
+// #380 task 4.4: an app may declare the tabs its staff move between on a
+// phone. The shared top bar draws them as a tab bar on a phone on that app's
+// pages; an app that declares none gets none. An installed app declares them
+// in its manifest (`tabs`, its own extension-point version); an interim app
+// declares them above. The icons are a fixed set, named, so an app never
+// ships its own artwork into the bar.
+export const APP_TAB_ICONS = ['home', 'report', 'target', 'list', 'checklist', 'calendar', 'inbox', 'person'] as const
+export type AppTabIcon = (typeof APP_TAB_ICONS)[number]
+/** One tab as an app declares it: `path` is under the app's own root, '' for the root itself. */
+export interface AppTab { label: string; icon: AppTabIcon; path: string }
+/** One tab as the bar draws it. */
+export interface AppTabLink { label: string; icon: AppTabIcon; href: string }
+/** A tab's path: lower-case segments under the app's root, never a way out of it. */
+export const APP_TAB_PATH = /^(?:[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*)?$/
+export const APP_TAB_LABEL_MAX = 12
+export function appTabLinks(root: string, tabs: readonly AppTab[]): AppTabLink[] {
+  return tabs.map(({ label, icon, path }) => ({ label, icon, href: path ? `${root.replace(/\/$/, '')}/${path}` : root }))
 }
 
 // #489: the person's own account pages live outside the Admin screens, so

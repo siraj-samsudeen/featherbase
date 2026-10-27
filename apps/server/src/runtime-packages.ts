@@ -8,7 +8,7 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -30,6 +30,19 @@ type Validator = (context: PackageHookContext) => void | Promise<void>
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
 // month. These are the versions this Featherbase runs apps on.
 export const SUPPORTED_PLATFORM_VERSIONS: readonly string[] = ['2026-10']
+
+// #380 task 4.4: the tabs an app's staff move between on a phone, drawn by
+// the shared top bar. An extension point with its own version, so the bar can
+// change shape without moving the whole manifest.
+const tabsDeclaration = z.object({
+  version: z.literal(1),
+  items: z.array(z.object({
+    label: z.string().trim().min(1).max(APP_TAB_LABEL_MAX),
+    icon: z.enum(APP_TAB_ICONS),
+    path: z.string().regex(APP_TAB_PATH, 'a tab path is lower-case segments under the app, like "targets" or "" for its root'),
+  }).strict()).min(2).max(5)
+    .refine(items => new Set(items.map(item => item.path)).size === items.length, 'each tab opens a path of its own'),
+}).strict()
 
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
@@ -54,6 +67,7 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  tabs: tabsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -432,7 +446,10 @@ export async function appCatalog(user: string) {
   for (const item of installed) {
     const pkg = packages.get(item.name)
     if (item.active && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
-      result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
+      result.push({
+        name: pkg.name, title: pkg.title, href: appHref(pkg.name),
+        ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
+      })
   }
   return result
 }
