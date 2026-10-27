@@ -50,8 +50,11 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
 async function assertIdentifierSystems(binding: ScopeProviderBinding) {
   if (!binding.identifiers.length) return
   // Owner decision 27-Oct-2026 (provisional): a turned-off system passes no
-  // values; it is treated exactly as a missing one.
-  const on = new Set((await sql`select row_id from identifier_system where row_id in ${sql(binding.identifiers)} and enabled`).map(row => String(row.row_id)))
+  // values; it is treated exactly as a missing one. Codex round 1: so is a
+  // Secret system, whose rows may still hold a plain value recorded before
+  // it was made Secret; no value or hint of one ever reaches an app.
+  const on = new Set((await sql`select row_id from identifier_system
+    where row_id in ${sql(binding.identifiers)} and enabled and sensitivity <> 'Secret'`).map(row => String(row.row_id)))
   const missing = binding.identifiers.filter(system => !on.has(system))
   if (!missing.length) return
   console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}, present and turned on`)
@@ -66,8 +69,11 @@ async function assertIdentifierSystems(binding: ScopeProviderBinding) {
 async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
   const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
   if (systems.length) {
-    for (const row of await sql`select system, value from person_identifier
-      where person_id = ${user} and system in ${sql(systems)} and valid @> (now() at time zone 'Asia/Kolkata')::date and value is not null order by system, value`)
+    // The system's state is checked again here, in the same read, so a
+    // system turned off or made Secret since the check passes nothing.
+    for (const row of await sql`select i.system, i.value from person_identifier i
+      join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
+      where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
       values[String(row.system)].push(String(row.value))
   }
   return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))

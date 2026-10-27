@@ -204,6 +204,13 @@ describe('release preflight: app settings and secrets', () => {
     expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain('missing identifier system setup-off-code is turned off.')
   })
 
+  test('an enabled scope provider declaring a Secret identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, sensitivity, match) values ('setup-secret-code', 'Setup secret code', 'national-id', 'Secret', 'Off')`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-secret-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain("missing identifier system setup-secret-code is secret and can't be given to an app.")
+  })
+
   test('a disabled app is not checked', async () => {
     await install(false)
     expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))

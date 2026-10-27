@@ -97,17 +97,19 @@ export async function appSetupState(where: { installed?: string; settings?: stri
       : new Map<string, { engine: string; url_env: string | null; read_scaling_token?: boolean }>()
     // #660: a scope provider names the identifier systems it reads.
     const systems = declared.scopeProvider?.identifiers ?? []
-    // A turned-off system is not set up either (owner decision 27-Oct-2026, provisional).
+    // A turned-off system is not set up either (owner decision 27-Oct-2026,
+    // provisional), nor is a Secret one, which is never given to an app.
     const foundSystems = identifierSystems && systems.length
-      ? new Map((await sql`select row_id, enabled from ${sql(identifierSystems)} where row_id in ${sql(systems)}`).map(r => [String(r.row_id), r.enabled === true]))
-      : new Map<string, boolean>()
+      ? new Map((await sql`select row_id, enabled, sensitivity from ${sql(identifierSystems)} where row_id in ${sql(systems)}`)
+        .map(r => [String(r.row_id), r.sensitivity === 'Secret' ? 'is secret and can\'t be given to an app' : r.enabled === true ? null : 'is turned off']))
+      : new Map<string, string | null>()
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
       ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
       ...wanted.map(name => found.has(name) ? (datasetSourceReadOnly(found.get(name)!) ? null : `read-only data source ${name}`) : `data source ${name}`)
         .filter((gap): gap is string => gap !== null),
-      ...systems.filter(system => foundSystems.get(system) !== true)
-        .map(system => foundSystems.has(system) ? `identifier system ${system} is turned off` : `identifier system ${system}`),
+      ...systems.filter(system => foundSystems.get(system) !== null)
+        .map(system => foundSystems.has(system) ? `identifier system ${system} ${foundSystems.get(system)}` : `identifier system ${system}`),
     ]
     gaps.push({ app, title: declared.title ?? app, missing })
   }

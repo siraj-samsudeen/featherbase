@@ -392,6 +392,31 @@ describe("the person's identifiers a provider receives", () => {
     })
   })
 
+  // Codex round 1: a system made Secret after values were recorded keeps
+  // them in plain; a provider is never handed one.
+  test('a declared system changed to Secret after values were recorded answers "not set up yet", and its values are never passed', async ({ admin, createUser }) => {
+    await declaring(['national-number'], async providerAt => {
+      await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'national-number', label: 'National number', kind: 'national-id' } })
+      const { user, roster, app } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'national-number', 'NAT-4417')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      const [{ updated_at }] = await sql`select updated_at from identifier_system where row_id = 'national-number'`
+      await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'national-number', sensitivity: 'Secret', match: 'Off', updated_at } })
+      await expectApiError(user.post(read + 'places', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+      expect([roster.calls.provider, app.calls.handler, roster.calls.person]).toEqual([0, 0, undefined])
+    })
+  })
+
+  test('Instance health names a declared identifier system that is Secret', async ({ admin, createUser }) => {
+    await declaring(['secret-code'], async providerAt => {
+      await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'secret-code', label: 'Secret code', kind: 'national-id', sensitivity: 'Secret', match: 'Off' } })
+      await setup(admin, createUser, { providerAt })
+      const check = (await runHealthChecks()).find(({ key }) => key === 'app-setup:placeroster')
+      expect(check).toMatchObject({ ok: false,
+        message: 'Place roster proof answers "not set up yet": missing identifier system secret-code is secret and can\'t be given to an app.' })
+    })
+  })
+
   test('Instance health names a declared identifier system the instance does not have', async ({ admin, createUser }) => {
     await declaring(['roster-code', 'payroll-code'], async providerAt => {
       await system(admin, 'payroll-code')
