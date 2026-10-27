@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { readStored } from '../src/storage'
+import { grantRole } from './fixtures'
 
 const CUSTOMER = 'Del Customer'
 const INVOICE = 'Del Invoice'
@@ -157,6 +158,8 @@ describe('Deleting a row leaves nothing pointing at it', () => {
     form.append('ref_name', 'Acme')
     const uploaded = await (await admin.fetch('/api/upload_file', { method: 'POST', body: form })).json() as { file_url: string }
     await giveActivity(CUSTOMER, 'Acme')
+    await sql`insert into access_log (row_id, ref_table, reference_name) values ('del-access', ${CUSTOMER}, 'Acme')`
+    await sql`insert into email_queue (row_id, ref_table, reference_name) values ('del-email', ${CUSTOMER}, 'Acme')`
     // The same id under another Table is someone else's activity.
     await giveActivity(INVOICE, 'Acme')
     const kinds = ['comment', 'data scope', 'file', 'notification', 'share', 'tag', 'todo', 'version', 'workflow step']
@@ -164,8 +167,13 @@ describe('Deleting a row leaves nothing pointing at it', () => {
 
     await admin.delete(docPath(CUSTOMER, 'Acme'))
 
-    expect(await activity(CUSTOMER, 'Acme')).toEqual([])
+    // Only the data scope stays: dropping it would widen what its person sees.
+    expect((await activity(CUSTOMER, 'Acme')).map((r) => r.kind)).toEqual(['data scope'])
     await expect(readStored(uploaded.file_url)).rejects.toThrow()
+    // Logs of what happened keep the id they recorded.
+    expect(await sql`select row_id from access_log where row_id = 'del-access'
+      union all select row_id from email_queue where row_id = 'del-email' order by 1`)
+      .toEqual([{ row_id: 'del-access' }, { row_id: 'del-email' }])
     // A new row given the same id starts clean.
     await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id: 'Acme' } })
     expect(await admin.get<{ comments: unknown[]; versions: unknown[] }>(`/api/activity/${encodeURIComponent(CUSTOMER)}/Acme`))
@@ -180,5 +188,30 @@ describe('Deleting a row leaves nothing pointing at it', () => {
     await giveActivity(CUSTOMER, 'Acme')
     await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 417 })
     expect(await activity(CUSTOMER, 'Acme')).toHaveLength(7)
+  })
+
+  test('a nested row\'s attachments go with its parent', async ({ admin }) => {
+    await setup(admin)
+    const inv = await admin.post<{ row_id: string; lines: { row_id: string }[] }>('/api/save_row', {
+      table: INVOICE, row: { lines: [{ supplier: 'Globex' }] },
+    })
+    const line = inv.lines[0].row_id
+    await sql`insert into file (row_id, ref_table, ref_name, file_name) values ('del-line-file', ${ROW}, ${line}, 'line.txt')`
+    await admin.delete(docPath(INVOICE, inv.row_id))
+    expect(await sql`select row_id from file where row_id = 'del-line-file'`).toEqual([])
+  })
+
+  // A data scope narrows its person to the rows it names; deleting the named
+  // row must not lift the narrowing.
+  test('deleting the one row a person is scoped to does not open the others to them', async ({ admin, createUser }) => {
+    await setup(admin)
+    await grantRole(admin, { role: 'Del Scoped', table: CUSTOMER, can_read: true, can_delete: true })
+    const sam = await createUser({ roles: ['Del Scoped'] })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: sam.user, allow_table: CUSTOMER, for_value: 'Acme' } })
+    const visible = async () => (await sam.get<{ data: { row_id: string }[] }>(
+      `/api/table/${encodeURIComponent(CUSTOMER)}?fields=${encodeURIComponent('["row_id"]')}`)).data.map((r) => r.row_id)
+    expect(await visible()).toEqual(['Acme'])
+    await sam.delete(docPath(CUSTOMER, 'Acme'))
+    expect(await visible()).toEqual([])
   })
 })

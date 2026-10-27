@@ -43,8 +43,10 @@ export async function repointRowActivity(tx: typeof sql, table: string, oldId: s
 }
 
 // Logs of what happened (who opened the row, which emails went out) keep the
-// id they recorded; everything else that names a row goes with it (#321).
-const KEPT_AFTER_DELETE = new Set<string>(['access_log', 'email_queue'])
+// id they recorded. A data scope stays too: it narrows its person to the rows
+// it names, so dropping it would widen what they see, while a scope naming a
+// missing row narrows to nothing. Everything else goes with the row (#321).
+const KEPT_AFTER_DELETE = new Set<string>(['access_log', 'email_queue', 'data_scope'])
 
 /** Remove every platform record naming `table` row `rowId`, inside the
  *  deleting transaction. Returns the stored files the removed attachments

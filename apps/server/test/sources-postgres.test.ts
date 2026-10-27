@@ -327,6 +327,22 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     expect(rows).toHaveLength(0)
   })
 
+  // SPEC: Deleting a row takes its activity with it (row-deletion), #321. A
+  // connected row's comments and shares live here, not on the source; a share
+  // left behind would open a later source row that reuses the key.
+  test('delete takes the connected row\'s comments and shares with it', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const made = (await admin.post('/api/table/Ext%20Tenant', { slug: 'doomed-shared' })) as { row_id: string; updated_at: string }
+    const id = String(made.row_id)
+    await sql`insert into featherbase.comment (row_id, ref_table, ref_name, content) values ('ext-c', 'Ext Tenant', ${id}, 'note')`
+    await sql`insert into featherbase.share (row_id, share_table, share_name, person, read) values ('ext-s', 'Ext Tenant', ${id}, 'Administrator', true)`
+    const loaded = (await admin.get(`/api/table/Ext%20Tenant/${id}`)) as Record<string, unknown>
+    await admin.fetch(`/api/table/Ext%20Tenant/${id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`, { method: 'DELETE' })
+    expect(await sql`select row_id from featherbase.comment where row_id = 'ext-c'
+      union all select row_id from featherbase.share where row_id = 'ext-s'`).toEqual([])
+  })
+
   test('rename is rejected — the pk belongs to the source', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)

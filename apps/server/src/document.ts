@@ -1325,26 +1325,22 @@ async function deleteDocImpl(
     }
     await runHooks('on_trash', ctx)
 
-    // Remove this row's own child rows, then the row.
+    // Remove this row's own child rows, then the row, and (#321) everything
+    // that names any of them by id, so nothing points at a missing row and
+    // no share wakes up for a later row given the same id.
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
-      await tx`
+      const children = await tx`
         delete from ${tx(await tableRelation(f.row_table!))}
-        where parent = ${name} and parenttype = ${table}`
+        where parent = ${name} and parenttype = ${table}
+        returning ${tx(physicalRowKey(f.row_table!))} as id`
+      for (const child of children)
+        storedFiles.push(...await removeRowActivity(stx, f.row_table!, String(child.id)))
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
-    // #321: and everything that names the row by id, so nothing points at a
-    // missing row and no share wakes up for a later row given the same id.
-    storedFiles = await removeRowActivity(stx, table, name)
+    storedFiles.push(...await removeRowActivity(stx, table, name))
   }))
-  // Stored files go only once the delete is visible (inside an app action,
-  // once the action commits), and only those no other attachment still uses.
-  if (storedFiles.length) await afterDocumentCommit(async () => {
-    for (const fileUrl of storedFiles) {
-      const [inUse] = await sql`select 1 from file where file_url = ${fileUrl} limit 1`
-      if (!inUse) await deleteStored(fileUrl)
-    }
-  })
+  await unlinkUnusedFiles(storedFiles)
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
@@ -1355,6 +1351,17 @@ async function deleteDocImpl(
     isNew: false,
     tx: sql,
   }))
+}
+
+// Stored files go only once the delete is visible (inside an app action,
+// once the action commits), and only those no other attachment still uses.
+async function unlinkUnusedFiles(fileUrls: string[]): Promise<void> {
+  if (fileUrls.length) await afterDocumentCommit(async () => {
+    for (const fileUrl of fileUrls) {
+      const [inUse] = await sql`select 1 from file where file_url = ${fileUrl} limit 1`
+      if (!inUse) await deleteStored(fileUrl)
+    }
+  })
 }
 
 // EDS-6: delete a bound row on the source. The link-integrity check runs
@@ -1417,6 +1424,9 @@ async function deleteBoundDoc(
       'ConflictError',
       `${meta.name} ${name} has been modified after you loaded it`,
     )
+  // #321: the row is gone on the source; its activity lives here and goes too.
+  // The source has no shared transaction, so this follows the removal.
+  await unlinkUnusedFiles(await sql.begin((tx) => removeRowActivity(tx as unknown as typeof sql, meta.name, name)))
 }
 
 // DOC-012: rename a row's primary key and update every Reference that
