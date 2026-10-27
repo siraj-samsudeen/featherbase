@@ -140,11 +140,16 @@ export async function verifySelectedRuntimePackage(name: string) {
   const pkg = await verifyArtifact(packages.get(name))
   const [row] = await sql`select * from installed_app where name = ${name}`
   if (row && !matchesInstalled(pkg, row)) refuse('Restore the exact installed artifact before enabling')
-  if (pkg.scopeProvider) {
-    const others = await sql`select name from installed_app where name <> ${name} and enabled and manifest ? 'scopeProvider' order by name`
-    if (others.length) throw new AppError('ConflictError',
-      `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
-  }
+  await assertOnlyScopeProvider(pkg)
+}
+
+// #559: exactly one enabled app provides people's scope. Checked when an app
+// that provides it is installed, enabled, upgraded or activated.
+async function assertOnlyScopeProvider(pkg: RuntimePackage) {
+  if (!pkg.scopeProvider) return
+  const others = await sql`select name from installed_app where name <> ${pkg.name} and enabled and manifest ? 'scopeProvider' order by name`
+  if (others.length) throw new AppError('ConflictError',
+    `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
 }
 
 // #559: the instance's one scope provider: the enabled, active app whose
@@ -370,6 +375,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
     }
     const prepared = await upgradePlan(name, version)
     if (prepared.plan.planId !== planId) throw new AppError('ConflictError', 'Upgrade plan is stale; preview and review again')
+    if (prepared.row.enabled) await assertOnlyScopeProvider(prepared.target)
     try {
       await withTransaction(async () => {
         await applyAdditions(prepared.pending, name)
@@ -407,6 +413,7 @@ export function activateAppUpgrade(name: string, version: string) {
     if (!row || row.package_version !== version) refuse('Activate requires the committed package version')
     const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
     if (!matchesInstalled(target, row)) refuse('Restore the exact committed artifact before activation')
+    if (row.enabled) await assertOnlyScopeProvider(target)
     selectPackage(target)
     await sql`update installed_app set activation_pending = false where name = ${name}`
     await loadInstalledApps()

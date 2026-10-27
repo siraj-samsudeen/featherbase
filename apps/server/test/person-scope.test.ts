@@ -250,6 +250,55 @@ describe('one scope provider per instance', () => {
     })
   })
 
+  // Codex round 1: an upgrade may not make a second app provide the scope.
+  async function rosterVersions(fn: (v1: string, v11: string, other: string) => Promise<void>) {
+    const v1 = await mkdtemp(resolve('test/.roster-v1-'))
+    const v11 = await mkdtemp(resolve('test/.roster-v11-'))
+    try {
+      for (const directory of [v1, v11]) await cp(provider, directory, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(provider, 'featherbase.json'), 'utf8'))
+      const { scopeProvider: _declared, ...withoutProvider } = manifest
+      await writeFile(resolve(v1, 'featherbase.json'), JSON.stringify(withoutProvider))
+      await writeFile(resolve(v1, 'server.mjs'), (await readFile(resolve(provider, 'server.mjs'), 'utf8')).replace('export const scopeProviders =', 'const unused ='))
+      await writeFile(resolve(v11, 'featherbase.json'), JSON.stringify({ ...manifest,
+        migrations: [{ id: 'provides_scope', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }] }))
+      await writeFile(resolve(v11, 'package.json'), JSON.stringify({ name: 'featherbase-place-roster', version: '1.1.0', type: 'module' }))
+      await withSecondProvider(other => fn(v1, v11, other))
+    } finally {
+      for (const directory of [v1, v11]) await rm(directory, { recursive: true, force: true })
+    }
+  }
+  async function upgradeToProvider(admin: TestClient) {
+    const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'placeroster', version: '1.1.0' })
+    return admin.post('/api/upgrade_app', { name: 'placeroster', version: '1.1.0', planId: plan.planId })
+  }
+
+  test('an upgrade that starts providing the scope while another app provides it is refused, and changes nothing', async ({ admin }) => {
+    await rosterVersions(async (v1, v11, other) => {
+      expect(await discoverPackages([v1, other])).toEqual([])
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      await admin.post('/api/install_app', { name: 'otherroster' })
+      expect(await discoverPackages([v1, v11, other])).toEqual([])
+      await expectApiError(upgradeToProvider(admin), { status: 409, message: expect.stringContaining('otherroster already does') })
+      expect((await sql`select package_version from installed_app where name = 'placeroster'`)[0].package_version).toBe('1.0.0')
+    })
+  })
+
+  test('activating an upgrade that starts providing the scope while another app provides it is refused', async ({ admin }) => {
+    await rosterVersions(async (v1, v11, other) => {
+      expect(await discoverPackages([v1, other])).toEqual([])
+      await admin.post('/api/install_app', { name: 'placeroster' })
+      await admin.post('/api/install_app', { name: 'otherroster' })
+      await admin.post('/api/set_app_enabled', { name: 'otherroster', enabled: false })
+      expect(await discoverPackages([v1, v11, other])).toEqual([])
+      await upgradeToProvider(admin)
+      await sql`update installed_app set enabled = true where name = 'otherroster'`
+      await expectApiError(admin.post('/api/activate_app_upgrade', { name: 'placeroster', version: '1.1.0' }),
+        { status: 409, message: expect.stringContaining('otherroster already does') })
+      expect((await sql`select activation_pending from installed_app where name = 'placeroster'`)[0].activation_pending).toBe(true)
+    })
+  })
+
   test('an instance that somehow has two enabled providers gives no one a scope', async ({ admin, createUser }) => {
     const { user, app } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
