@@ -9,4 +9,4 @@
 
 ## 2. Verify
 
-- [ ] 2.1 Independent verifier: the four fixes at 1280px and 375px, light and dark.
+- [x] 2.1 Independent verifier: the four fixes at 1280px and 375px, light and dark.
