@@ -35,11 +35,15 @@ export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   return (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>
 }
 
-/** The current transaction (or the pool outside one) WITHOUT platform-name
+/** The current transaction WITHOUT platform-name
  *  qualification: for SQL that must resolve its names by `search_path`, such
  *  as the migrations written before the platform schema existed (0088–0093). */
 export function _getUnqualifiedSql(): Sql {
-  return transactions.getStore() ?? delegate
+  const tx = transactions.getStore()
+  // Outside a transaction a `set local search_path` would not reach the next
+  // statement, which the pool may run on another connection.
+  if (!tx) throw new Error('_getUnqualifiedSql needs a transaction (withTransaction)')
+  return tx
 }
 
 export function _setSqlDelegate(tx: TxSql | null) {

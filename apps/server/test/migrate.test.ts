@@ -7,7 +7,7 @@
 // rest run on the shared test database inside a rolled-back sandbox.
 import { readdirSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
-import { sql } from '../src/db'
+import { _getUnqualifiedSql, sql, withTransaction } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
 import { test } from './pg-test'
@@ -147,5 +147,14 @@ describe('migrate: one file', () => {
     expect(await pendingMigrations()).toEqual(['0123_instance_health.sql'])
     await sql.begin(() => applyMigrationFile('0123_instance_health.sql'))
     expect(await pendingMigrations()).toEqual([])
+  })
+
+  test('the unqualified client the legacy files run on exists only inside a transaction', async () => {
+    expect(() => _getUnqualifiedSql()).toThrow('_getUnqualifiedSql needs a transaction (withTransaction)')
+    // Unqualified: `migration` resolves by search_path, not to featherbase.migration.
+    await expect(withTransaction(async () => {
+      await _getUnqualifiedSql().unsafe('set local search_path = pg_catalog')
+      await _getUnqualifiedSql().unsafe('select 1 from migration')
+    })).rejects.toThrow('relation "migration" does not exist')
   })
 })

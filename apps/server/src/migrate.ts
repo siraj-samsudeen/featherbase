@@ -193,6 +193,7 @@ export async function applyBatch(batch: string[], legacy: boolean, applied: (fil
     await tx.unsafe('set local search_path = public, pg_temp')
     await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
     await tx`insert into public.migration (name) values (${file})`
+    invalidateMeta()
     applied(file)
     return
   }

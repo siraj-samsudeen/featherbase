@@ -46,7 +46,9 @@ export function renameScriptApi(source: string): { source: string; bare: boolean
     if (token.type !== tokTypes.name || source.slice(token.start, token.end) !== 'frappe') return
     if (before === tokTypes.dot || before === tokTypes.questionDot) return
     if (after !== tokTypes.dot && after !== tokTypes.questionDot) {
-      bare = true
+      // An object key (`{ frappe: 1 }`) names nothing; anything else might.
+      const key = (before === tokTypes.braceL || before === tokTypes.comma) && after === tokTypes.colon
+      if (!key) bare = true
       return
     }
     out += source.slice(at, token.start) + 'featherbase'

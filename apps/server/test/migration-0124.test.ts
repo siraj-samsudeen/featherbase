@@ -160,5 +160,6 @@ describe('0124: the rename itself', () => {
     expect(renameScriptApi('return 1')).toEqual({ source: 'return 1', bare: false })
     expect(renameScriptApi('await x; return frappe.y')).toEqual({ source: 'await x; return featherbase.y', bare: false })
     expect(renameScriptApi('var f = frappe; o.frappe = 1')).toEqual({ source: 'var f = frappe; o.frappe = 1', bare: true })
+    expect(renameScriptApi('var o = { a: 1, frappe: 2 }; o.frappe = frappe.x')).toEqual({ source: 'var o = { a: 1, frappe: 2 }; o.frappe = featherbase.x', bare: false })
   })
 })
