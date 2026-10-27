@@ -9,7 +9,9 @@ import { createContext, useContext, useEffect, useState } from 'react'
 //     const { key, value } = event.detail   // e.g. { key: 'store', value: 'S103' }
 //   })
 //
-// On load, an app reads the same value from `location.search`. The event is
+// On load, an app reads the same value from `location.search`; a page opened
+// with no valid choice gets the first option written in place (no Back step),
+// announced once. The event is
 // fired after the address has changed, on `window`, once per choice; moving
 // through history (the back button) fires the browser's own `popstate` only.
 
@@ -31,7 +33,8 @@ export function announceBarChange(key: string, value: string) {
  *  history instead, so it never drives the app's navigation. */
 export interface BarAddress {
   search: string
-  set: (key: string, value: string) => void
+  /** A new history entry, or with `replace` the current one rewritten. */
+  set: (key: string, value: string, opts?: { replace?: boolean }) => void
 }
 
 export const BarAddressContext = createContext<BarAddress | null>(null)
@@ -49,10 +52,13 @@ export function useDocumentAddress(): BarAddress {
     window.addEventListener('popstate', follow)
     return () => window.removeEventListener('popstate', follow)
   }, [])
-  function set(key: string, value: string) {
+  function set(key: string, value: string, { replace = false } = {}) {
     const url = new URL(window.location.href)
     url.searchParams.set(key, value)
-    window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    const href = `${url.pathname}${url.search}${url.hash}`
+    // In place, the entry keeps the app's own history state.
+    if (replace) window.history.replaceState(window.history.state, '', href)
+    else window.history.pushState(null, '', href)
     setSearch(url.search)
   }
   return { search, set }

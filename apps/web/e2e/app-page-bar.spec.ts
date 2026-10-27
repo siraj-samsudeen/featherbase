@@ -96,7 +96,7 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.getByTestId('session-user').click()
         await expect(page.getByTestId('account-sign-in-methods')).toBeVisible()
         await expect(page.getByTestId('logout')).toBeVisible()
-        if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-bar-1280-menu-${scheme}.png` })
+        if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-1280-menu-${scheme}.png` })
         await page.keyboard.press('Escape')
       })
       await session.step('it looks the same as the bar on the account page', async () => {
@@ -109,7 +109,7 @@ for (const scheme of ['light', 'dark'] as const) {
 
     test("the app's content sits below the bar, full width, and the bar stays at the top as the page scrolls", async ({ session, page, request }) => {
       await onAppPage(page, await reader(request, `Bar Layout ${scheme}`))
-      if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-bar-1280-${scheme}.png` })
+      if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-1280-${scheme}.png` })
       await session.step('the app starts below the bar and spans the window', async () => {
         const top = await box(page, 'top-bar')
         const content = (await page.locator('#bar-proof-page').boundingBox())!
@@ -187,12 +187,12 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.getByTestId('session-user').click()
         await expect(page.getByTestId('account-menu').getByTestId('theme-toggle')).toBeVisible()
         await expect(page.getByTestId('account-menu').getByTestId('open-admin')).toBeVisible()
-        if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-bar-375-menu-${scheme}.png` })
+        if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-375-menu-${scheme}.png` })
         await page.keyboard.press('Escape')
       })
       await session.step('nothing scrolls sideways, closed or open', async () => {
         expect(await noSidewaysScroll(page)).toBe(true)
-        if (SHOTS) await page.screenshot({ path: `${SHOTS}/app-bar-375-${scheme}.png` })
+        if (SHOTS && scheme === 'light') await page.screenshot({ path: `${SHOTS}/app-bar-375-${scheme}.png` })
         await picker(page).click()
         await expect(page.getByRole('listbox', { name: 'Store' })).toBeVisible()
         expect(await noSidewaysScroll(page)).toBe(true)
@@ -207,6 +207,31 @@ for (const scheme of ['light', 'dark'] as const) {
         await page.goto(ACCOUNT)
         await expect(page.getByTestId('account-layout')).toBeVisible()
         expect(await barLook(page)).toEqual(here)
+      })
+    })
+  })
+}
+
+// Owner decision, 27-Oct-2026: a page opened with no choice, or a choice that is
+// not the reader's, gets the first store written into its address in place.
+for (const [what, query] of [['no store', ''], ['a store that is not theirs', '?store=S999']]) {
+  test.describe(`opened with ${what}`, () => {
+    test.use({ viewport: { width: 1280, height: 800 } })
+
+    test('the first store is written into the address in place, and Back goes to the page before', async ({ session, page, request }) => {
+      await onAppPage(page, await reader(request, `Bar Fill ${query ? 'Unknown' : 'None'}`))
+      await page.goto(ACCOUNT)
+      await expect(page.getByTestId('account-layout')).toBeVisible()
+      await session.step('the app page gets ?store=S102, and the app hears S102', async () => {
+        await page.goto(`${PAGE}${query}`)
+        await expect(page).toHaveURL(`${PAGE}?store=S102`)
+        await expect(page.locator('#store-from-event')).toHaveText('S102')
+        await expect(picker(page)).toHaveText('Hill Road')
+      })
+      await session.step('Back returns to the account page, not to the page without a choice', async () => {
+        await page.goBack()
+        await expect(page).toHaveURL(new RegExp(`^${ACCOUNT}`))
+        await expect(page.getByTestId('account-layout')).toBeVisible()
       })
     })
   })

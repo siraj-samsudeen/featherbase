@@ -89,7 +89,7 @@ test(`choosing an option tells the app through the ${BAR_CHANGE_EVENT} event`, a
   const listen = (event: Event) => heard.push((event as CustomEvent).detail)
   window.addEventListener(BAR_CHANGE_EVENT, listen)
   try {
-    const bar = openAppPage(await readerOf(admin, createUser))
+    const bar = openAppPage(await readerOf(admin, createUser), '/barproof/?store=S102')
     await userEvent.click(await bar.findByRole('combobox', { name: 'Store' }))
     await userEvent.click(await bar.findByRole('option', { name: 'Riverside' }))
     await waitFor(() => expect(heard).toEqual([{ key: 'store', value: 'S101' }]))
@@ -166,4 +166,45 @@ test("the bar's height is published to the app as --featherbase-bar-height", asy
     globalThis.ResizeObserver = Real
     document.documentElement.style.removeProperty('--featherbase-bar-height')
   }
+})
+
+// Owner decision, 27-Oct-2026 (#650): a page that loads with no choice, or a
+// choice that is not one of the reader's options, gets the first option
+// written into its address in place: no new history step, no reload, and the
+// app is told once.
+for (const [what, path] of [['no store', '/barproof/report?tab=2'], ['a store that is not theirs', '/barproof/report?tab=2&store=S999']]) {
+  test(`with ${what} in the address, the bar writes the first store in place`, async ({ admin, createUser }) => {
+    const reader = await readerOf(admin, createUser)
+    const steps = window.history.length
+    const bar = openAppPage(reader, path)
+    await waitFor(() => expect(`${window.location.pathname}${window.location.search}`).toBe('/barproof/report?tab=2&store=S102'))
+    expect([window.history.length, (await bar.findByRole('combobox', { name: 'Store' })).textContent]).toEqual([steps, 'Hill Road'])
+  })
+
+  test(`with ${what} in the address, the app is told the first store once`, async ({ admin, createUser }) => {
+    const reader = await readerOf(admin, createUser)
+    const heard: unknown[] = []
+    const listen = (event: Event) => heard.push((event as CustomEvent).detail)
+    window.addEventListener(BAR_CHANGE_EVENT, listen)
+    try {
+      openAppPage(reader, path)
+      await waitFor(() => expect(window.location.search).toContain('store=S102'))
+      await settle()
+      expect(heard).toEqual([{ key: 'store', value: 'S102' }])
+    } finally {
+      window.removeEventListener(BAR_CHANGE_EVENT, listen)
+    }
+  })
+}
+
+test('with exactly one store, the bar writes that store into the address', async ({ admin, createUser }) => {
+  openAppPage(await readerOf(admin, createUser, [['Riverside', 'S101']]))
+  await waitFor(() => expect(window.location.search).toBe('?store=S101'))
+})
+
+test('with no stores, the bar writes nothing into the address', async ({ admin, createUser }) => {
+  const bar = openAppPage(await readerOf(admin, createUser, []), '/barproof/?tab=2')
+  await bar.findByTestId('session-user')
+  await settle()
+  expect(window.location.search).toBe('?tab=2')
 })

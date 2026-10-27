@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { api } from '../lib/api'
@@ -46,23 +46,27 @@ export function BarControls({ app }: { app: string }) {
 }
 
 /** The value a key holds in the address, read and written through the
- *  router, so a choice is a history entry and never a full reload. */
-function useAddressValue(key: string): [string | null, (value: string) => void] {
+ *  router, so a choice is a history entry and never a full reload. `fill`
+ *  writes a value in place of the current entry instead: no Back step. Both
+ *  announce the value to the page. */
+function useAddressValue(key: string): [string | null, (value: string) => void, (value: string) => void] {
   const router = useRouter()
   const location = useRouterState({ select: (state) => state.location })
   // #650: on an app's own page the document's address, not the bar's router.
   const page = useBarAddress()
   const value = new URLSearchParams(page ? page.search : location.searchStr).get(key)
-  function set(next: string) {
-    if (page) page.set(key, next)
+  function write(next: string, replace: boolean) {
+    if (page) page.set(key, next, { replace })
     else {
       const params = new URLSearchParams(location.searchStr)
       params.set(key, next)
-      router.history.push(`${location.pathname}?${params.toString()}${location.hash ? `#${location.hash}` : ''}`)
+      const href = `${location.pathname}?${params.toString()}${location.hash ? `#${location.hash}` : ''}`
+      if (replace) router.history.replace(href)
+      else router.history.push(href)
     }
     announceBarChange(key, next)
   }
-  return [value, set]
+  return [value, (next) => write(next, false), (next) => write(next, true)]
 }
 
 const LABEL = 'text-sm text-ink-muted max-sm:sr-only'
@@ -71,7 +75,18 @@ function BarPicker({ control }: { control: BarControl }) {
   const { options } = control
   const labelId = useId()
   const listId = useId()
-  const [value, setValue] = useAddressValue(control.sets)
+  const [value, setValue, fillValue] = useAddressValue(control.sets)
+  const chosen = options.some((option) => option.value === value)
+  // Owner decision (27-Oct-2026, #650): with no choice in the address, or one
+  // that is not among the reader's options, the first option is written in
+  // place, so the app and a shared link always see an explicit choice. Once
+  // per wrong value: a strict-mode second run must not announce it twice.
+  const filledFor = useRef<string | null | undefined>(undefined)
+  useEffect(() => {
+    if (chosen || filledFor.current === value) return
+    filledFor.current = value
+    fillValue(options[0].value)
+  })
   const currentIndex = Math.max(0, options.findIndex((option) => option.value === value))
   const current = options[currentIndex]
   const [open, setOpen] = useState(false)

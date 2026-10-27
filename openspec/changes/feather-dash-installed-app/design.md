@@ -366,9 +366,12 @@ reads it. An app never runs its own code in the bar (ADR 0011).
   list is the read's options in order (the current one ticked and bold). One
   option shows as plain text; none hides the control. The choice is written to
   the address through the router (`?<sets>=<value>`, a history entry, no
-  reload); with no valid choice in the address the picker shows the first
-  option and leaves the address alone (an open question for the owner on
-  #642: the app then sees no choice). On a phone the label is visually hidden
+  reload). With no choice in the address, or one that is not among the reader's
+  options, the picker writes the first option into the address in place
+  (`history.replaceState`: no Back step, no reload) and announces it once, so
+  the app and a shared link always see an explicit choice; with one option it
+  writes that one, with none it writes nothing (owner decision 27-Oct-2026,
+  #650). On a phone the label is visually hidden
   but stays the accessible name, and the value is cut with an ellipsis.
 - **As built, the bar over the app's own pages (#650).** The bar is drawn over
   the app's own pages too (D3, "As built"), so the picker sits above the app's
@@ -379,8 +382,9 @@ reads it. An app never runs its own code in the bar (ADR 0011).
   - for each later choice, from one browser event on `window`,
     **`featherbase:bar-change`**, whose `detail` is `{ key, value }`, both text
     (for example `{ key: "store", value: "S103" }`). It fires once per choice,
-    after the address has changed. Moving through history fires the browser's
-    own `popstate` only.
+    after the address has changed, and once for the first option the bar
+    writes in on load. Moving through history fires the browser's own
+    `popstate` only.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
