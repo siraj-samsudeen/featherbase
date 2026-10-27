@@ -7,7 +7,7 @@ import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { assertNotSystemWritten } from './system-written'
 import { assertNotAccessTarget, assertSecurityWriter } from './security-tables'
-import { assertFieldNotManaged } from './managed-settings'
+import { assertFieldNotManaged, holdManagedSet } from './managed-settings'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -211,8 +211,6 @@ export async function applyWorkflowAction(
   // #437: also checked when the Workflow is saved; a row saved before that
   // rule existed must not act either.
   assertNotAccessTarget(table, field, 'A workflow')
-  // #465 D5: nor may it rewrite a field the instance settings file sets.
-  await assertFieldNotManaged(table, name, field, user)
   await ensureStateField(table, sql, field)
 
   const row = await getDoc(table, name, user)
@@ -243,23 +241,31 @@ export async function applyWorkflowAction(
 
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
-  await sql`
-    update ${sql(await tableRelation(table))}
-    set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
-    where ${sql(physicalRowKey(table))} = ${name}`
+  const relation = await tableRelation(table)
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    // #465 D5: nor may it rewrite a field the instance settings file sets,
+    // judged under the settings lock held to commit (#493).
+    await holdManagedSet(stx, table)
+    await assertFieldNotManaged(stx, table, name, field, user)
+    await stx`
+      update ${stx(relation)}
+      set ${stx(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      where ${stx(physicalRowKey(table))} = ${name}`
 
-  await sql`
-    insert into workflow_action ${sql({
-      row_id: randomBytes(5).toString('hex'),
-      created_by: user,
-      updated_by: user,
-      ref_table: table,
-      ref_name: name,
-      action,
-      from_state: from,
-      to_state: transition.next_state,
-      actor: user,
-    })}`
+    await stx`
+      insert into workflow_action ${stx({
+        row_id: randomBytes(5).toString('hex'),
+        created_by: user,
+        updated_by: user,
+        ref_table: table,
+        ref_name: name,
+        action,
+        from_state: from,
+        to_state: transition.next_state,
+        actor: user,
+      })}`
+  })
 
   // WF-004: entering a state that still has outgoing transitions means the
   // row is now pending someone's action. Email every user who could take

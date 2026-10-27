@@ -2,12 +2,14 @@
 // successful apply set are locked. Every save path refuses to change them,
 // except the apply itself (`instance-settings`) and the break-glass CLI
 // (`cli`). Nothing is locked before the first apply.
+import postgres from 'postgres'
 import { describe, expect } from 'vitest'
 import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, MANAGED_FIELD_HINT } from 'shared'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { applyInstanceSettings, managedScope } from '../src/instance-settings'
-import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf } from '../src/managed-settings'
+import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf, recordApply } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
 import { deleteDoc, getDoc, renameDoc, saveDoc } from '../src/document'
 import { expectApiError, patchDoc } from './fixtures'
@@ -275,5 +277,93 @@ describe('a workflow step cannot rewrite a locked field', () => {
     })
     const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
     expect(job.enabled).toBe(false)
+  })
+})
+
+// #493: a writer outside the save path checks the locked set and writes in
+// one transaction holding the settings lock, so an apply can't publish a new
+// locked set between its check and its write. Proven from another
+// connection: an apply takes the lock, the write starts and must wait, the
+// apply locks the very field the write targets and commits; the write must
+// then see the new locked set. That connection commits outside the sandbox,
+// so the apply record it replaces is put back afterwards.
+const SETTINGS_LOCK = 'featherbase.instance_settings_lock'
+
+async function applyLandsMidWrite<T>(write: () => Promise<T>, locks: { table: string; row_id: string; field: string }): Promise<PromiseSettledResult<T>> {
+  const apply = postgres(config.databaseUrl, { max: 1, prepare: false, connection: { search_path: 'featherbase' } })
+  let pending!: Promise<T>
+  let previous: Record<string, unknown>[] = []
+  try {
+    await apply.begin(async (tx) => {
+      const db = tx as unknown as typeof sql
+      await db`select pg_advisory_xact_lock(hashtext(${SETTINGS_LOCK}))`
+      pending = write()
+      pending.catch(() => {})
+      await expect.poll(async () => (await db`
+        select count(*)::int as n from pg_locks
+        where locktype = 'advisory' and mode = 'ShareLock' and not granted
+          and database = (select oid from pg_database where datname = current_database())
+          and objsubid = 1 and objid::bigint = (hashtext(${SETTINGS_LOCK})::bigint & 4294967295)`)[0].n, { timeout: 3000 }).toBe(1)
+      previous = [...(await db`select * from instance_settings_apply`)]
+      await recordApply(db, {
+        applied_by: 'Administrator', environment: null, revision: null, run: null,
+        managed_paths: [locks], managed_values: null,
+      })
+    })
+    return (await Promise.allSettled([pending]))[0]
+  } finally {
+    await apply.begin(async (tx) => {
+      await tx`delete from instance_settings_apply`
+      // jsonb columns arrive decoded; send them back as JSON, not arrays.
+      const json = (v: unknown) => (v === null ? null : tx.json(v as Parameters<typeof tx.json>[0]))
+      for (const row of previous) {
+        const restored = { ...row, managed_paths: json(row.managed_paths), managed_values: json(row.managed_values) }
+        await tx`insert into instance_settings_apply ${tx(restored as unknown as Record<string, never>)}`
+      }
+    })
+    await apply.end()
+  }
+}
+
+describe('direct writes judge the locked set an apply in progress publishes (#493)', () => {
+  test('a workflow action waits for the apply, then is refused on the field it locked', async ({ admin }) => {
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Lock Wait Flow',
+        ref_table: 'Scheduled Job',
+        is_active: true,
+        state_field: 'enabled',
+        states: [{ state: 'true', target_status: 'draft' }, { state: 'false', target_status: 'draft' }],
+        transitions: [{ state: 'true', action: 'Switch off', next_state: 'false', allowed: 'System Manager' }],
+      },
+    })
+    await sql`update scheduled_job set enabled = true where row_id = 'disable_leavers'`
+    const { applyWorkflowAction } = await import('../src/workflow')
+    const outcome = await applyLandsMidWrite(
+      () => applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch off', 'Administrator'),
+      { table: 'Scheduled Job', row_id: 'disable_leavers', field: 'enabled' },
+    )
+    expect(outcome).toMatchObject({ status: 'rejected', reason: { type: 'PermissionError', message: expect.stringContaining(INSTANCE_SETTINGS_FILE) } })
+    const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
+    expect(job.enabled).toBe(true)
+  })
+
+  test("an assignment rule's stamp waits for the apply, then leaves the field it locked alone", async () => {
+    await saveDoc('Assignment Rule', {
+      row_id: 'Lock Wait Rule',
+      ref_table: 'Scheduled Job',
+      assign_to_field: 'description',
+      users: [{ user: 'Administrator' }],
+    })
+    const [before] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+    const { evaluateAssignmentRules } = await import('../src/assignment-rules')
+    const outcome = await applyLandsMidWrite(
+      () => evaluateAssignmentRules('Scheduled Job', { row_id: 'disable_leavers' }),
+      { table: 'Scheduled Job', row_id: 'disable_leavers', field: 'description' },
+    )
+    expect(outcome.status).toBe('fulfilled')
+    const [job] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+    expect(job.description).toBe(before.description)
   })
 })
