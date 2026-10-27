@@ -253,7 +253,8 @@ async function validateLinks(
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select data_source from table_def where name = ${target}`
+    // select *: early migrations save rows before table_def has data_source.
+    const [targetMeta] = await tx`select * from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
       continue
