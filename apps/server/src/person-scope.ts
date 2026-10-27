@@ -78,15 +78,15 @@ async function assertIdentifierSystems(binding: ScopeProviderBinding) {
 // valid today (owner decision 27-Oct-2026, provisional): started on or before
 // today and not yet ended, so a value with a future start is not passed.
 // Today is India's day, as the leaver check and the access alerts count it.
-async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
-  const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
+async function currentIdentifiers(user: string, systems: readonly string[]): Promise<AppScopeProviderContext['person']['identifiers']> {
+  const values: Record<string, { value: string; shared: boolean }[]> = Object.fromEntries(systems.map(system => [system, []]))
   if (systems.length) {
     // The system's state is checked again here, in the same read, so a
     // system turned off or made Secret since the check passes nothing.
     for (const row of await sql`select i.system, i.value from person_identifier i
       join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
       where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
-      values[String(row.system)].push(String(row.value))
+      values[String(row.system)].push(Object.freeze({ value: String(row.value), shared: false }))
   }
   return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))
 }

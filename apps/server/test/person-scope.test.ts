@@ -250,6 +250,8 @@ describe("the person's identifiers a provider receives", () => {
       valid, verified: true, one_holder: false, one_per_person: false,
       source: 'test', recorded_by: 'test' } as unknown as Record<string, never>)}`
   }
+  // #662: each value says whether another person holds it today too.
+  const unshared = (...values: string[]) => values.map(value => ({ value, shared: false }))
   // Today in India, the day the platform counts, and a day either side.
   const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(Date.now() + offset * 86_400_000))
@@ -264,7 +266,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(other.user!, 'roster-code', 'R-9')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1', 'R-2'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1', 'R-2') })
     })
   })
 
@@ -276,16 +278,16 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'roster-code', 'R-NEW')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-NEW'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-NEW') })
     })
   })
 
   // Owner decision 27-Oct-2026 (provisional): current means valid today.
   test.for([
     ['a value that starts tomorrow is not passed', { from: day(1) }, []],
-    ['a value that started today is passed', { from: day(0) }, ['R-1']],
+    ['a value that started today is passed', { from: day(0) }, unshared('R-1')],
     ['a value that ends today is not passed', { to: day(0) }, []],
-    ['a value that ends tomorrow is passed', { to: day(1) }, ['R-1']],
+    ['a value that ends tomorrow is passed', { to: day(1) }, unshared('R-1')],
   ] as const)('%s', async ([, validity, expected], { admin, createUser }) => {
     await declaring(['roster-code'], async providerAt => {
       await system(admin, 'roster-code')
@@ -306,7 +308,7 @@ describe("the person's identifiers a provider receives", () => {
       await identifier(user.user!, 'payroll-code', 'P-1')
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1') })
     })
   })
 
@@ -378,7 +380,7 @@ describe("the person's identifiers a provider receives", () => {
       await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 409 })
       await sql`update identifier_system set enabled = true where row_id = 'roster-code'`
       await user.post(read + 'places', { payload: {} })
-      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': unshared('R-1') })
     })
   })
 
