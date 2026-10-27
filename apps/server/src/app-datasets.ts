@@ -200,7 +200,9 @@ const registered = new Map<string, string[]>()
  * Register the selected version of `app`'s datasets on the snapshot engine
  * (dataset-snapshot.ts), replacing whatever that app registered before. The
  * declaration is part of each snapshot's identity, so a changed query or
- * column never serves rows cut to the old one.
+ * column never serves rows cut to the old one. Its guard is not (#669): a
+ * guard decides which refresh may replace the copy, not what the copy holds,
+ * so an upgrade that adds or tunes one keeps the copy and checks against it.
  */
 export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] = []): void {
   for (const key of registered.get(app) ?? []) unregisterDataset(key)
@@ -208,7 +210,7 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
   for (const dataset of datasets) {
     registerDataset<DatasetRow>({
       name: datasetKey(app, dataset.name),
-      version: createHash('sha256').update(JSON.stringify(dataset)).digest('hex').slice(0, 16),
+      version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
       async fetch() {
         return { rows: shapeRows(dataset, await runQuery(dataset)), sourceAsOf: null }
       },

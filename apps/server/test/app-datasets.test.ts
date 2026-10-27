@@ -145,9 +145,27 @@ async function setupGuarded(admin: TestClient, guard: DatasetGuard[]) {
   await admin.post('/api/install_app', { name: 'datasetproof' })
   invalidateSources()
   await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'postgres', url_env: SOURCE_ENV, access: 'read_only' })
+  return copy
 }
 /** SALES with `units` set per row, in order. */
 const withUnits = (...units: (number | null)[]) => SALES.map((r, i) => [...r.slice(0, 4), units[i], r[5]])
+
+/** Upgrade the installed datasetproof to 1.1.0, whose sales dataset is the
+ *  installed one with `change` applied. */
+async function upgradeSales(admin: TestClient, installed: string, change: Record<string, unknown>) {
+  const upgraded = await mkdtemp(resolve('test/.dataset-proof-'))
+  guardedCopies.push(upgraded)
+  await cp(installed, upgraded, { recursive: true })
+  const manifest = JSON.parse(await readFile(resolve(upgraded, 'featherbase.json'), 'utf8'))
+  manifest.datasets[0] = { ...manifest.datasets[0], ...change }
+  manifest.migrations = [{ id: 'sales_guard', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }]
+  await writeFile(resolve(upgraded, 'featherbase.json'), JSON.stringify(manifest))
+  await writeFile(resolve(upgraded, 'package.json'), JSON.stringify({ name: 'featherbase-dataset-proof', version: '1.1.0', type: 'module' }))
+  expect(await discoverPackages([installed, upgraded, provider])).toEqual([])
+  const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'datasetproof', version: '1.1.0' })
+  await admin.post('/api/upgrade_app', { name: 'datasetproof', version: '1.1.0', planId: plan.planId })
+  await admin.post('/api/activate_app_upgrade', { name: 'datasetproof', version: '1.1.0' })
+}
 
 describe('the guard on an app dataset', () => {
   const dropGuard: DatasetGuard[] = [{ kind: 'max_drop_pct', column: 'units', value: 50 }]
@@ -188,6 +206,36 @@ describe('the guard on an app dataset', () => {
     const [run] = await sql`select outcome, error from job_execution where method = 'refresh_datasets'`
     expect(run.outcome).toBe('error')
     expect(run.error).toContain('datasetproof.sales: refused — sales: units values dropped 75% (4 → 1), limit 50%')
+  })
+
+  // A guard decides which refresh may replace the copy, not what the copy
+  // holds: an upgrade that adds or tunes one keeps the copy it guards.
+  test('an upgrade that adds one keeps the last good copy, and guards it', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const good = await buildSnapshot('datasetproof.sales')
+    await upgradeSales(admin, fixture, { guard: dropGuard })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+    await fillWarehouse(withUnits(3, 0, 0, null))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  test('an upgrade that tunes one compares against the same copy', async ({ admin }) => {
+    const installed = await setupGuarded(admin, dropGuard)
+    const good = await buildSnapshot('datasetproof.sales')
+    await upgradeSales(admin, installed, { guard: [{ kind: 'max_drop_pct', column: 'units', value: 30 }] })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+    // 50% passes the old limit and fails the new one.
+    await fillWarehouse(withUnits(3, 0, 5, null))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: units values dropped 50% (4 → 2), limit 30%' })
+  })
+
+  test('an upgrade that changes the query still retires the copy', async ({ admin }) => {
+    const installed = await setupGuarded(admin, dropGuard)
+    await buildSnapshot('datasetproof.sales')
+    await upgradeSales(admin, installed, { query: 'select plant_code, section_code, business_day, amount, units, note from b4_dataset.sales where units > 0' })
+    expect(await activeSnapshot('datasetproof.sales')).toBeNull()
   })
 
   // Without a guard only an empty refresh is refused, as before #669.
