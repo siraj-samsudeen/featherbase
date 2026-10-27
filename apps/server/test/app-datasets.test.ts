@@ -19,7 +19,7 @@ import { test as pgTest } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
-import { activeSnapshot, buildSnapshot, pendingMisses } from '../src/dataset-snapshot'
+import { activeSnapshot, buildSnapshot, pendingMisses, recordMiss } from '../src/dataset-snapshot'
 import { expectApiError } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
@@ -505,5 +505,41 @@ describe('the refresh job', () => {
     await sql`update background_job set run_at = now() where method = 'refresh_datasets' and job_status = 'queued'`
     await drainJobs()
     expect(await activeSnapshot('datasetproof.sales')).toMatchObject({ row_count: 4 })
+  })
+
+  test('a disabled app\'s datasets are not refreshed, and their asks are closed', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await recordMiss('datasetproof.sales')
+    await admin.post('/api/set_app_enabled', { name: 'datasetproof', enabled: false })
+    expect(await datasetsDue()).not.toContain('datasetproof.sales')
+    expect(await pendingMisses()).not.toContain('datasetproof.sales')
+  })
+
+  // An upgrade that drops a dataset leaves the ask a reader made for it; the
+  // refresh must not keep failing on a dataset nothing declares any more.
+  test('after an upgrade drops a dataset a reader asked for, a refresh succeeds without trying it', async ({ admin, createUser }) => {
+    await loadJobs()
+    await setup(admin, createUser)
+    const upgraded = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, upgraded, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(upgraded, 'featherbase.json'), 'utf8'))
+      await writeFile(resolve(upgraded, 'featherbase.json'), JSON.stringify({ ...manifest,
+        datasets: manifest.datasets.filter((d: { name: string }) => d.name !== 'accounts'),
+        migrations: [{ id: 'drop_accounts', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }] }))
+      await writeFile(resolve(upgraded, 'package.json'), JSON.stringify({ name: 'featherbase-dataset-proof', version: '1.1.0', type: 'module' }))
+      await recordMiss('datasetproof.accounts')
+      expect(await discoverPackages([fixture, upgraded, provider])).toEqual([])
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'datasetproof', version: '1.1.0' })
+      await admin.post('/api/upgrade_app', { name: 'datasetproof', version: '1.1.0', planId: plan.planId })
+      await admin.post('/api/activate_app_upgrade', { name: 'datasetproof', version: '1.1.0' })
+      expect(await datasetsDue()).not.toContain('datasetproof.accounts')
+      await sql`update background_job set run_at = now() where method = 'refresh_datasets' and job_status = 'queued'`
+      await drainJobs()
+      const runs = await sql`select outcome from job_execution where method = 'refresh_datasets'`
+      expect(runs.map(r => r.outcome)).toEqual(['success'])
+    } finally {
+      await rm(upgraded, { recursive: true, force: true })
+    }
   })
 })

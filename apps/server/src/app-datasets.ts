@@ -145,6 +145,15 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
   }
 }
 
+/** #625: is `dataset` refreshable now? An app's dataset is only while its
+ *  app is enabled and not mid-upgrade; any other dataset always is. */
+export async function appDatasetServing(dataset: string): Promise<boolean> {
+  const app = [...registered].find(([, keys]) => keys.includes(dataset))?.[0]
+  if (!app) return true
+  const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
+  return !!installed?.enabled && !installed.activation_pending
+}
+
 /** Forget every app's datasets (discovery starts again from nothing). */
 export function forgetAppDatasets(): void {
   for (const app of [...registered.keys()]) registerAppDatasets(app)

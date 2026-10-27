@@ -144,6 +144,11 @@ export async function recordMiss(dataset: string): Promise<void> {
   if (!dueNow) await enqueue('refresh_datasets')
 }
 
+/** #625: close a dataset's outstanding asks (it is retired, or its app is off). */
+export async function forgetMisses(dataset: string): Promise<void> {
+  await sql`delete from dataset_miss where dataset = ${dataset}`
+}
+
 export async function pendingMisses(): Promise<string[]> {
   const rows = await sql`select dataset from dataset_miss order by first_seen`
   return rows.map((r) => String(r.dataset))
