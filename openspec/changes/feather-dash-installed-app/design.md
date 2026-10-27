@@ -463,12 +463,31 @@ builds a **client image on top of the platform's image**: it starts from a pinne
 platform image, adds the built app (every version installed on any instance, the
 predecessor pattern), and sets `FEATHERBASE_APP_PATHS`. E7 turns a missing version
 into a refused release. This repository's build never takes a private input.
-*Open detail, awaiting the owner:* how the platform image is published. Proposed: a
-GitHub Action here publishes a public image tagged by commit, and the client's
-small Dockerfile starts `FROM` that tag. Bumping the tag by pull request would
-replace today's manual commit pin on prod. Railway already builds this repository
+**Publishing the platform image** (owner decision 27-Oct-2026, #587). A GitHub
+Action here publishes the server image to the GitHub Container Registry, tagged by
+commit SHA, once that commit's tests have passed. The client's repository has a
+small Dockerfile: `FROM` that tag, copy the built app, set `FEATHERBASE_APP_PATHS`.
+Moving an instance to a newer platform is a pull request that bumps the tag, which
+replaces today's manual commit pin on prod. Railway already builds this repository
 from `apps/server/Dockerfile`; its own builders build one repository and cannot
-combine two. **Nothing from a client's repository enters this one**: #310's
+combine two.
+
+*Considered: Featherbase as an npm package.* The client's repository would depend
+on it and build its own server, with Railpack or its own Dockerfile, the pattern
+the client's dbt runner uses. The image won, for three reasons:
+
+- **Clients run the exact artifact that was tested.** A package rebuilt in each
+  client's pipeline is a new, untested build.
+- **The platform owns the operating system, Node and certificate layers**, as well
+  as the Chromium that printing needs. With a package, every client would choose
+  and patch them.
+- **Featherbase is the host program, and apps are its plug-ins.** It is not a
+  library a client calls.
+
+The app contract (the manifest, `platformVersion`, `FEATHERBASE_APP_PATHS`) is the
+same either way, so a package can be added later without changing any app.
+
+**Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
 code, must be dropped from that PR.
 
@@ -653,4 +672,6 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
     shape and enforces `person_scope`; the client's roster derivation lives in the
     client app and never moves into the platform.
 17. **A client app reaches the server in a client image** built on the platform's
-    image (Q2 = (a)). How the platform image is published is still open (D7).
+    image (Q2 = (a)). The platform image is published to the GitHub Container
+    Registry, tagged by commit; an npm package was considered and not chosen (D7,
+    #587).
