@@ -29,6 +29,18 @@ export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
   return clientVersion.run(identities, fn)
 }
 
+/** #559: platform-internal work done on an app's behalf (its scope provider)
+ *  runs as that app's verified installed version, whatever the request named
+ *  for it. The request's identities for every other app are kept. */
+export function withAppIdentity<T>(app: string, version: string, fn: () => Promise<T>) {
+  const supplied = clientVersion.getStore()
+  // A trusted in-process call has no HTTP identities to correct.
+  if (supplied === undefined) return fn()
+  const identities = new Map(supplied)
+  identities.set(app, `${app}@${version}`)
+  return clientVersion.run(identities, fn)
+}
+
 // Identity discovery grants no data access. Never infer a request's version here.
 export async function activeRuntimeVersions(): Promise<string[]> {
   const rows = await sql`select name, package_version from installed_app

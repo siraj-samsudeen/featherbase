@@ -19,7 +19,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
+import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -238,7 +238,8 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
 }
 
 // META-008: every Reference value must point at an existing row of the
-// target Table. Runs inside the save transaction alongside validation.
+// target Table. Local targets are checked inside the save transaction;
+// source-bound targets are asked of their source.
 async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
@@ -252,9 +253,19 @@ async function validateLinks(
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
+    // select *: early migrations save rows before table_def has data_source.
+    const [targetMeta] = await tx`select * from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+      continue
+    }
+    // A source-bound target has no local table: ask its source (EDS-5). Like
+    // the native lookup, this checks existence only, not the caller's access.
+    // It runs outside the save transaction, so it is best-effort: the source
+    // can drop the row before this save commits.
+    if (targetMeta.data_source) {
+      if (!(await boundFetchDoc(await getMeta(target), String(value))))
+        errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
     const [row] = await tx`
@@ -406,7 +417,7 @@ async function assertAccessColumnsUnchanged(
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
-    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (!(await isSecurityTable(input.childTable))) continue
     if (existing === null) {
       if (input.rows.length) changed.push(input.columnName)
       continue
@@ -881,7 +892,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Admin shows that state).
+// Without one, updates are last-write-wins; the Admin row form says so (#328).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
@@ -1246,6 +1257,20 @@ async function amendDocImpl(
   return saveDoc(table, values, user)
 }
 
+// #559: deleting or renaming a row removes or re-points its child rows
+// directly, outside saveChildren. A Sub-table marked decides_scope guards
+// those rows as a save would. (A named security child such as a Person's
+// roles goes with its parent, under the parent's own delete rule.)
+async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: string, user: string): Promise<void> {
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !(await getMeta(f.row_table!)).decides_scope) continue
+    const [held] = await tx`
+      select 1 from ${tx(await tableRelation(f.row_table!))}
+      where parent = ${name} and parenttype = ${meta.name} limit 1`
+    if (held) await assertSecurityWriter(f.row_table!, user)
+  }
+}
+
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
@@ -1324,6 +1349,7 @@ async function deleteDocImpl(
     await runHooks('on_trash', ctx)
 
     // Remove this row's own child rows, then the row.
+    await assertChildRowsWritable(stx, meta, name, user)
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       await tx`
@@ -1456,6 +1482,7 @@ async function renameDocImpl(
     await assertRowNotManaged(stx, meta, target, user)
     await assertNoManagedReference(stx, table, oldName, user)
 
+    await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 

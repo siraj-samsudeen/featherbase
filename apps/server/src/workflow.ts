@@ -198,7 +198,7 @@ export async function applyWorkflowAction(
   const field = stateField(wf)
   // #437: also checked when the Workflow is saved; a row saved before that
   // rule existed must not act either.
-  assertNotAccessTarget(table, field, 'A workflow')
+  await assertNotAccessTarget(table, field, 'A workflow')
   // #465 D5: nor may it rewrite a field the instance settings file sets.
   await assertFieldNotManaged(table, name, field, user)
   await ensureStateField(table, sql, field)
