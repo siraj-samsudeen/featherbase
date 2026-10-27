@@ -31,3 +31,14 @@ that was refused and why, not only that the values were invalid.
 
 - **WHEN** the user selects rows and clears a field every row must have
 - **THEN** the user is told that field is required, and no row changes
+
+### Requirement: Deleting many rows asks first
+
+Before deleting several selected rows, the list SHALL ask the user to
+confirm, naming how many rows will be deleted. Backing out deletes nothing.
+
+#### Scenario: The user backs out
+
+- **WHEN** the user selects three rows, chooses to delete them and then
+  cancels
+- **THEN** all three rows stay and are still selected

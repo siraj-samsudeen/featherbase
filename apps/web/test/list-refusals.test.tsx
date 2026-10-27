@@ -38,6 +38,7 @@ test('a bulk delete that meets a row the server will not delete deletes nothing 
   // Submitted meanwhile: a submitted row cannot be deleted.
   await admin.post(`/api/table/${enc('Lrf Bulk')}/r2:submit`)
   fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
   expect(await screen.findByTestId('bulk-error')).toHaveTextContent(
     'No rows were deleted. r2: Lrf Bulk r2 is submitted and cannot be deleted (cancel it first)',
   )

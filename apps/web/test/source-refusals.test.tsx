@@ -54,6 +54,7 @@ test('bulk-deleting rows of a connected Table removes them from the source', asy
   fireEvent.click(checks[0])
   fireEvent.click(checks[1])
   fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(1))
   const left = await cli`select id from web_srf.shelf order by id`
   expect(left).toHaveLength(1)
@@ -78,6 +79,7 @@ test('a bulk delete on a connected Table tries every row and keeps the failed on
   // Gone from the source meanwhile: that row alone fails.
   await cli.unsafe('delete from web_srf.shelf where id = 2')
   fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
   expect(await screen.findByTestId('bulk-error')).toHaveTextContent('2 of 3 deleted. 2: Srf Partial 2 not found')
   expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
   expect(await cli`select id from web_srf.shelf`).toHaveLength(0)

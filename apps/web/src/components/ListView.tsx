@@ -113,6 +113,8 @@ export function ListView({
   const [bulkValue, setBulkValue] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  // #327: bulk delete asks first, like deleting one row or the whole Table.
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
@@ -321,6 +323,7 @@ export function ListView({
       setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
     } finally {
       setBulkBusy(false)
+      setConfirmingBulkDelete(false)
     }
   }
 
@@ -604,6 +607,51 @@ export function ListView({
           </div>
         </div>
       )}
+      {/* #327: the same confirmation as Delete Table and a form's Delete —
+          labelled, Escape-dismissable, Cancel first — naming how many rows
+          go. Whatever the server answers shows in the bulk bar afterwards. */}
+      {confirmingBulkDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+          onClick={() => !bulkBusy && setConfirmingBulkDelete(false)}
+          onKeyDown={(e) => e.key === 'Escape' && !bulkBusy && setConfirmingBulkDelete(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-delete-title"
+            className={cardClasses('w-full max-w-md p-4')}
+            data-testid="bulk-delete-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="bulk-delete-title" className="mb-2 text-base font-semibold text-ink">
+              Delete {fmtCount(selected.size)} row{selected.size === 1 ? '' : 's'}?
+            </h2>
+            <p className="mb-3 text-sm text-ink-muted">
+              The selected rows will be permanently deleted. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                autoFocus
+                onClick={() => setConfirmingBulkDelete(false)}
+                disabled={bulkBusy}
+                className={buttonClasses()}
+                data-testid="bulk-delete-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkBusy}
+                className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
+                data-testid="bulk-delete-confirm"
+              >
+                {bulkBusy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
       {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
@@ -621,7 +669,7 @@ export function ListView({
             {fmtCount(selected.size)} selected
           </span>
           <button
-            onClick={bulkDelete}
+            onClick={() => setConfirmingBulkDelete(true)}
             disabled={bulkBusy}
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-delete"
