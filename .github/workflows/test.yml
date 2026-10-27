@@ -499,6 +499,13 @@ jobs:
       - name: Run e2e suite
         run: pnpm --filter web e2e --trace retain-on-failure
 
+      # #642: frame policies are response headers, which only the API server
+      # serving the BUILT web app sets (the stack above serves pages from the
+      # Vite dev server). playwright.served.config.ts builds the app and owns
+      # its own database, port and local embed stand-in.
+      - name: Run served e2e (frame policy on real response headers)
+        run: pnpm --filter web e2e:served --trace retain-on-failure
+
       # No server-log step: Playwright pipes the API server's stdout/stderr
       # into its own output (webServer stdout: 'pipe'), so a boot failure is
       # already in the log above. The old step tailed /tmp files that this job
