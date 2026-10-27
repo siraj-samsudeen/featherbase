@@ -12,7 +12,7 @@
 //   - **Relabel** a column. The display name only; the data never moves.
 //   - **Rename** a column's machine name. Its own server operation, because
 //     PUT /api/table_def matches columns BY name — a changed name there reads
-//     as delete-plus-add and orphans the rows.
+//     as delete-plus-add, which the server refuses (#250).
 //
 // Type changes and deletions are not offered. The server refuses a type
 // change outright, and dropping a column is destructive in a way that

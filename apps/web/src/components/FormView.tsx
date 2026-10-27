@@ -311,7 +311,7 @@ export function FormView({
         : await api.post<Row>('/api/save_row', { table, row: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.

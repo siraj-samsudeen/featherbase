@@ -74,8 +74,7 @@ describe('summary totals over every matching row', () => {
     const res = await admin.get<Summary>(summaryPath({ sums: JSON.stringify(['qty']) }))
     expect(res.count).toBe(501)
     expect(Number(res.sums.qty)).toBe(1002)
-    // 501 saves through the API: about 4s locally, over the 5s default on CI with coverage.
-  }, 30_000)
+  }, 30_000) // 501 saves, one HTTP call each: about 5 s on CI, over the 5 s default
 
   test('a Currency sum keeps every stored decimal', async ({ admin }) => {
     await setup(admin)

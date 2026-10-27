@@ -5,6 +5,7 @@ export {
   ArrowDown,
   ArrowUp,
   Bell,
+  Check,
   CalendarClock,
   CalendarDays,
   ChartColumn,

@@ -27,6 +27,10 @@ export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JS
 # and create the role/database, branching by platform at that point.
 export DATABASE_URL="${DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:5432/featherbase}"
 
+# A personal ~/.psqlrc can print text ("Border style is 2") that the
+# `psql -tAc` checks below would read as an answer: ignore it.
+export PSQLRC=/dev/null
+
 if ! command -v psql >/dev/null; then
   echo "--> psql not found; skipping database bootstrap (migrate will report if"
   echo "    DATABASE_URL is unreachable)"
