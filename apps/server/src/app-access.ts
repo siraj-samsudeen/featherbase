@@ -10,6 +10,7 @@ import { AppError } from './errors'
 import { logAccess } from './audit'
 import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
 import { personScopeSchema } from 'shared'
+import { IDENTIFIER_SYSTEM_KEY } from './identifiers'
 
 const name = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const text = z.string().min(1).refine(s => s.trim().length > 0)
@@ -38,8 +39,10 @@ const operationSchema = z.union([
   z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound }).strict(),
 ])
 /** #559: the manifest's `scopeProvider`: the server module's export under
- *  `scopeProviders`, and the Tables it reads. */
-export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).min(1).refine(distinct) }).strict()
+ *  `scopeProviders`, and the Tables it reads. #660: and the identifier
+ *  systems, by key, whose current values it gets for the person. */
+export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).min(1).refine(distinct),
+  identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional() }).strict()
 export const readDeclaration = z.object({ version: z.literal(1), tables: z.array(text).refine(distinct),
   operations: z.record(name, operationSchema).refine(o => Object.keys(o).length > 0),
 }).strict()
@@ -177,8 +180,11 @@ const replaySchema = z.object({ version: z.literal(1), policy: z.enum(['table', 
 // request's `scope` names. Anything outside refuses the whole request.
 async function callerPlaces(request: AccessRequest, contribution: DeclaredAppOperation, payload: unknown) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) refuseAppAccess()
-  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) =>
-    refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider'))
+  // #660: "not set up yet" is answered as such; anything else refuses.
+  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) => {
+    if (error instanceof AppError && error.type === 'NotSetUpError') throw error
+    return refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider')
+  })
   const places = narrowPersonScope(scope, (payload as Record<string, unknown>).scope)
   if (!places) refuseAppAccess()
   return freezeJson(JSON.parse(canonicalJson(places)) as typeof places)

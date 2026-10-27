@@ -218,7 +218,13 @@ serving.
 
 An app SHALL be able to declare that it works out which places each person is
 responsible for, so other apps on the instance can rely on that answer. It SHALL read
-only the records it declared, and only records marked as deciding scope.
+only the records it declared, and only records marked as deciding scope. It MAY also
+declare the kinds of identifier it needs, such as employee codes. It SHALL then be
+given the person's identifiers of those kinds that are valid today, read afresh each
+time, and nothing else about the person. If the instance does not have a kind it
+declared, has turned that kind off, or keeps that kind secret, the app SHALL answer
+that it is not set up yet, and no one SHALL get a scope from it. A secret kind's
+values SHALL never be given to an app.
 
 #### Scenario: A report app relies on a roster app
 
@@ -231,6 +237,36 @@ only the records it declared, and only records marked as deciding scope.
 - **WHEN** an app that provides people's scope tries to read records it did not
   declare, or records not marked as deciding scope
 - **THEN** no one gets a scope from it, and requests are refused
+
+#### Scenario: A roster app finds a manager's rows by employee code
+
+- **WHEN** a roster app that declared employee codes works out a manager's scope
+- **THEN** it is given the employee codes the manager holds today
+- **AND** it is not given a code the manager no longer holds, a code that starts
+  later, or any other kind of identifier
+
+#### Scenario: An instance without the kind of identifier a roster app needs
+
+- **WHEN** a roster app declares employee codes on an instance that does not record
+  them
+- **THEN** the report tells its readers it is not set up yet
+- **AND** the instance's health page and the release log name the missing kind
+
+#### Scenario: A kind of identifier turned off on the instance
+
+- **WHEN** an admin turns off the kind of identifier a roster app declared
+- **THEN** the report tells its readers it is not set up yet, and no codes of that
+  kind are given to the roster app
+- **AND** once the admin turns it back on, the roster app is given the codes again
+
+#### Scenario: A kind of identifier made secret after values were recorded
+
+- **WHEN** an admin makes secret a kind of identifier a roster app declared, after
+  people's values were recorded in it
+- **THEN** the report tells its readers it is not set up yet
+- **AND** the roster app is never given any of those values
+- **AND** the instance's health page and the release log say the kind is secret and
+  cannot be given to an app
 
 ### Requirement: Only one app provides people's scope
 

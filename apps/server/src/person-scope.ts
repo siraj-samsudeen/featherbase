@@ -1,17 +1,22 @@
 import { z } from 'zod'
 import { personScopeSchema, type AppScopeProvider, type AppScopeProviderContext, type PersonScope, type ScopePlace } from 'shared'
-import { sql } from './db'
+import { inAppTransaction, sql, withTransaction } from './db'
 import { getMeta } from './meta'
 import { getDoc } from './document'
 import { getList } from './query'
 import { withAppIdentity } from './app-lifecycle'
+import { AppError } from './errors'
 
 /** The instance's one scope-providing app, bound by runtime-packages. */
 export interface ScopeProviderBinding {
   app: string
+  /** The provider app's title, for its "not set up yet" answer. */
+  title: string
   /** The provider app's installed version, verified against its artifact. */
   version: string
   tables: readonly string[]
+  /** #660: the identifier systems whose current values the provider gets. */
+  identifiers: readonly string[]
   provide: AppScopeProvider
 }
 
@@ -23,19 +28,67 @@ export class NoPersonScope extends Error {
 /** Ask the provider for `user`'s places and hold the answer to the scope
  *  shape. No provider, a provider that throws or reads outside what it
  *  declared, an invalid shape and an empty scope all throw NoPersonScope:
- *  an empty scope is never read as everything, for an administrator too. */
+ *  an empty scope is never read as everything, for an administrator too.
+ *  #660: a declared identifier system the instance lacks answers "not set
+ *  up yet" before the provider runs, so no one gets a scope either.
+ *
+ *  Codex round 2 on #661: the declared systems' rows are locked FOR SHARE
+ *  before they are checked, and the lock lasts until the transaction ends,
+ *  after the provider has answered. An admin turning a system off or making
+ *  it Secret waits until then, and the next request sees the change. A
+ *  request already runs in a transaction (withAppAuthorization), so the lock
+ *  is taken in it; called outside one, this opens its own. The rows are taken
+ *  in key order, after whatever the request already holds: the app lifecycle
+ *  lock (on its own connection) and any idempotency lock. Saving an
+ *  Identifier System takes neither, so the wait cannot turn into a cycle. */
 export async function resolvePersonScope(user: string, binding: ScopeProviderBinding | undefined): Promise<PersonScope> {
   if (!binding) throw new NoPersonScope('configuration')
+  if (!inAppTransaction()) return withTransaction(() => resolvePersonScope(user, binding))
+  await assertIdentifierSystems(binding)
   const [person] = await sql`select row_id, email from person where row_id = ${user}`
   let answer: unknown
   try {
+    const identifiers = await currentIdentifiers(user, binding.identifiers)
     answer = await withAppIdentity(binding.app, binding.version, () => withScopeReads(binding, async documents =>
-      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null }), documents }))))
+      binding.provide(Object.freeze({ person: Object.freeze({ id: user, email: (person?.email as string | null) ?? null, identifiers }), documents }))))
   } catch { throw new NoPersonScope('provider') }
   const parsed = personScopeSchema.safeParse(answer)
   if (!parsed.success) throw new NoPersonScope('provider')
   if (!parsed.data.length) throw new NoPersonScope('scope')
   return parsed.data
+}
+
+async function assertIdentifierSystems(binding: ScopeProviderBinding) {
+  if (!binding.identifiers.length) return
+  // Owner decision 27-Oct-2026 (provisional): a turned-off system passes no
+  // values; it is treated exactly as a missing one. Codex round 1: so is a
+  // Secret system, whose rows may still hold a plain value recorded before
+  // it was made Secret; no value or hint of one ever reaches an app.
+  const locked = await sql`select row_id, enabled, sensitivity from identifier_system
+    where row_id in ${sql(binding.identifiers)} order by row_id for share`
+  const on = new Set(locked.filter(row => row.enabled === true && row.sensitivity !== 'Secret').map(row => String(row.row_id)))
+  const missing = binding.identifiers.filter(system => !on.has(system))
+  if (!missing.length) return
+  console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}, present and turned on`)
+  throw new AppError('NotSetUpError', `${binding.title} is not set up yet. An administrator needs to finish setting it up.`)
+}
+
+// #660: the person's current values in each system the provider declared,
+// read fresh with the scope, and nothing from any other system. Current means
+// valid today (owner decision 27-Oct-2026, provisional): started on or before
+// today and not yet ended, so a value with a future start is not passed.
+// Today is India's day, as the leaver check and the access alerts count it.
+async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
+  const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
+  if (systems.length) {
+    // The system's state is checked again here, in the same read, so a
+    // system turned off or made Secret since the check passes nothing.
+    for (const row of await sql`select i.system, i.value from person_identifier i
+      join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
+      where i.person_id = ${user} and i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null order by i.system, i.value`)
+      values[String(row.system)].push(String(row.value))
+  }
+  return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))
 }
 
 // The provider reads as the platform, not as the person (a manager needs no

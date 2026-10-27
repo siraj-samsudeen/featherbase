@@ -187,7 +187,27 @@ that fills it).
   exports the function under `scopeProviders`. The function gets the person and a
   read context limited to the Tables it declared, each of which must be marked as
   deciding scope and hold no Sub-tables (a row read would hand over undeclared child
-  rows). It reads as the platform, so a manager needs no read grant on the roster,
+  rows). It may also name identifier systems, `"identifiers": ["<system>", ...]`
+  (#660; for example the employee-code system, so a roster derivation can find a
+  person's rows by code). The person it gets then carries `identifiers`: for each
+  named system, and only those, the person's current values, read fresh on every
+  resolution and frozen with the rest. *Current* means valid today: started on or
+  before today, with no end or an end after today, where today is India's day (as
+  the leaver check counts it), so a value with a future start is not passed (owner
+  decision 27-Oct-2026, provisional, for review 28-Oct). It gets nothing else about
+  the person, and `identifiers` is empty when it names none. A named system the
+  instance does not have, or has turned off (owner decision 27-Oct-2026,
+  provisional: a turned-off system passes no values and counts as missing), or has
+  made Secret (Codex round 1 on #661: a system made Secret after values were
+  recorded still holds them in plain, so a Secret system's values and hints never
+  reach an app, whatever is stored), answers
+  "not set up yet" before the provider runs, so no one gets a scope; the release
+  check and Instance health name it with the app's other missing setup. The
+  declared systems are locked (FOR SHARE) in the request's transaction before they
+  are checked and until the provider has answered (Codex round 2 on #661), so an
+  admin turning one off or making it Secret waits for requests in flight, and the
+  next request sees the change.
+  It reads as the platform, so a manager needs no read grant on the roster,
   and under the provider app's own installed version, whatever the consuming
   request named. Exactly one enabled app may provide the scope on an instance: a
   second is refused at install, enable, upgrade and activation, the release
