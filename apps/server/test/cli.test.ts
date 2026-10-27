@@ -644,9 +644,11 @@ describe('the command line, command by command', () => {
     expect(out).toMatch(/^person-identities/)
   })
 
-  test('migrate:rehearse runs in its own process: a bad argument, the database here, and a database that is not there', async () => {
+  test('migrate:rehearse runs in its own process: a bad argument, the database here (live, so only with --allow-live), and a database that is not there', async () => {
     expect((await failure(['migrate:rehearse', '--bogus']))?.stderr).toBe('error: migrate:rehearse: unknown argument --bogus\n')
-    expect((await runMain(main, ['migrate:rehearse'])).code).toBe(0)
+    // This suite's own sessions are connected, so the database here looks live.
+    expect((await runMain(main, ['migrate:rehearse'])).code).toBe(1)
+    expect((await runMain(main, ['migrate:rehearse', '--allow-live'])).code).toBe(0)
     const missing = new URL(String(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:5432/featherbase_test'))
     missing.pathname = '/featherbase_no_such_database_cli'
     expect((await runMain(main, ['migrate:rehearse', '--database-url', missing.toString()])).code).toBe(1)

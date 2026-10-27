@@ -1,9 +1,11 @@
 // PLAT-004: developer CLI over the row API. One process = one command.
 //   cli migrate                       run pending migrations
-//   cli migrate:rehearse [--database-url <dsn>]
+//   cli migrate:rehearse [--database-url <dsn>] [--allow-live]
 //                                     run every pending migration in ONE transaction that is always
 //                                     rolled back, printing what each reported; --database-url
-//                                     rehearses against another database (a restored snapshot)
+//                                     rehearses against another database (a restored snapshot).
+//                                     Refuses a database other sessions are connected to (it looks
+//                                     live) unless --allow-live
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
@@ -176,12 +178,12 @@ async function cmdSetPassword(io: CommandIO, argv: string[]) {
  *  DATABASE_URL at another database before any connection exists. */
 async function cmdMigrateRehearse(argv: string[]): Promise<number> {
   const { parseRehearseOptions } = await import('./migrate-rehearse')
-  const { databaseUrl } = parseRehearseOptions(argv)
+  const { databaseUrl, allowLive } = parseRehearseOptions(argv)
   const { spawnSync } = await import('node:child_process')
   const script = fileURLToPath(new URL('./migrate-rehearse.ts', import.meta.url))
   const { childEnvironment } = await import('./env')
   const env = childEnvironment(databaseUrl ? { DATABASE_URL: databaseUrl } : {})
-  const result = spawnSync(process.execPath, ['--import', 'tsx', script], { stdio: 'inherit', env })
+  const result = spawnSync(process.execPath, ['--import', 'tsx', script, ...(allowLive ? ['--allow-live'] : [])], { stdio: 'inherit', env })
   return result.status ?? 1
 }
 

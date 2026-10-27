@@ -7,6 +7,6 @@
 
 ## 2. The rehearsal cannot hold up a live instance (#558)
 
-- [ ] 2.1 Refuse a database other sessions are connected to, unless `--allow-live` is passed.
-- [ ] 2.2 A 2-second lock timeout and a 5-minute statement timeout inside the rehearsal.
-- [ ] 2.3 Tests for the refusal, the override and the lock timeout.
+- [x] 2.1 Refuse a database other sessions are connected to, unless `--allow-live` is passed.
+- [x] 2.2 A 2-second lock timeout and a 5-minute statement timeout inside the rehearsal.
+- [x] 2.3 Tests for the refusal, the override and the lock timeout.

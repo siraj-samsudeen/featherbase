@@ -34,6 +34,7 @@ export async function scratchDatabase(setup = '') {
   const { sql: appSql } = await import('../src/db')
   vi.unstubAllEnvs()
   return {
+    url: url.toString(),
     db,
     migrate,
     rehearsal,

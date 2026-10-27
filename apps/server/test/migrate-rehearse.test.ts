@@ -2,6 +2,7 @@
 // always rolled back, with what each reported. The rehearsal is driven
 // in-process here; the CLI only spawns it so --database-url can point
 // DATABASE_URL elsewhere first (cli.test.ts).
+import postgres from 'postgres'
 import { afterAll, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -10,9 +11,11 @@ import { dropScratchDatabases, scratchDatabase } from './scratch-database'
 
 afterAll(dropScratchDatabases, 60_000)
 
+// The shared test database always has other sessions (this suite's own), so
+// these rehearse it as a live database, on purpose.
 async function run(): Promise<string> {
   const lines: string[] = []
-  await rehearse((line) => lines.push(line))
+  await rehearse((line) => lines.push(line), { allowLive: true })
   return lines.join('\n')
 }
 
@@ -20,8 +23,12 @@ const ledger = async () => (await sql`select name from featherbase.migration ord
 
 describe('migrate:rehearse options', () => {
   test('reads --database-url <dsn>; without it the rehearsal is against this database', () => {
-    expect(parseRehearseOptions(['--database-url', 'postgres://x/y'])).toEqual({ databaseUrl: 'postgres://x/y' })
-    expect(parseRehearseOptions([])).toEqual({ databaseUrl: null })
+    expect(parseRehearseOptions(['--database-url', 'postgres://x/y'])).toEqual({ databaseUrl: 'postgres://x/y', allowLive: false })
+    expect(parseRehearseOptions([])).toEqual({ databaseUrl: null, allowLive: false })
+  })
+
+  test('--allow-live lets the rehearsal run on a database others are connected to', () => {
+    expect(parseRehearseOptions(['--allow-live', '--database-url', 'postgres://x/y'])).toEqual({ databaseUrl: 'postgres://x/y', allowLive: true })
   })
 
   test('refuses an unknown argument and --database-url with no address', () => {
@@ -66,9 +73,9 @@ describe('migrate:rehearse', () => {
 // The rehearsal applies its pending files the way the migrator would, so a
 // pre-0094 file runs against public storage, not the platform schema.
 describe('migrate:rehearse on a database of its own', () => {
-  async function rehearseOn(scratch: Awaited<ReturnType<typeof scratchDatabase>>): Promise<string> {
+  async function rehearseOn(scratch: Awaited<ReturnType<typeof scratchDatabase>>, allowLive = true): Promise<string> {
     const lines: string[] = []
-    await scratch.rehearsal.rehearse((line) => lines.push(line))
+    await scratch.rehearsal.rehearse((line) => lines.push(line), { allowLive })
     return lines.join('\n')
   }
 
@@ -98,6 +105,61 @@ describe('migrate:rehearse on a database of its own', () => {
       insert into public.migration (name) values ('0001_init.sql')`)
     try {
       await expect(rehearseOn(scratch)).rejects.toThrow('Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n0002_')
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+  // #558: a restored copy has no other sessions; a live instance always has
+  // its server's. The rehearsal holds each change's locks until it ends, so
+  // pointed at a live database it would block the instance's users.
+  const LEGACY_0089 = `create table public.migration (name text primary key, applied_at timestamptz not null default now());
+    create table public.installed_app (name text primary key)`
+  async function legacyCopy() {
+    const all = (await sql`select name from migration order by name`).map((r) => String(r.name))
+    const scratch = await scratchDatabase(LEGACY_0089)
+    await scratch.db`insert into public.migration ${scratch.db(all.filter((f) => f !== '0089_app_enablement.sql').map((name) => ({ name })))}`
+    return scratch
+  }
+
+  it('a database another session is connected to is refused before anything runs, unless --allow-live', async () => {
+    const scratch = await legacyCopy()
+    try {
+      await expect(rehearseOn(scratch, false)).rejects.toThrow(
+        /^Refusing to rehearse: 1 other session is connected to this database, so it looks like a live instance, not a restored copy\./,
+      )
+      await expect(rehearseOn(scratch, false)).rejects.toThrow('pass --allow-live if you truly mean it')
+      expect(await rehearseOn(scratch, true)).toContain('applied 0089_app_enablement.sql')
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
+
+  it('a copy nobody else is connected to rehearses without --allow-live', async () => {
+    const scratch = await legacyCopy()
+    await scratch.db.end()
+    const check = postgres(scratch.url, { max: 1, onnotice: () => {} })
+    try {
+      // The check connection opens only after the rehearsal, so it is alone.
+      expect(await rehearseOn(scratch, false)).toContain('applied 0089_app_enablement.sql')
+      expect(await check`select 1 from public.migration where name = '0089_app_enablement.sql'`).toHaveLength(0)
+    } finally {
+      await check.end({ timeout: 5 })
+      await scratch.close()
+    }
+  }, 60_000)
+
+  it('a change that has to wait for a lock fails within seconds instead of queueing', async () => {
+    const scratch = await legacyCopy()
+    try {
+      await scratch.db.begin(async (tx) => {
+        await tx`lock table public.installed_app in access share mode`
+        const started = Date.now()
+        await expect(rehearseOn(scratch)).rejects.toThrow('canceling statement due to lock timeout')
+        expect(Date.now() - started).toBeLessThan(10_000)
+      })
+      expect((await scratch.db`select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = 'installed_app'`).map((r) => r.column_name)).toEqual(['name'])
     } finally {
       await scratch.close()
     }

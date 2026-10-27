@@ -229,7 +229,12 @@ variables:**
    preflight lines.
 4. Run every pending migration in one rolled-back transaction:
    `pnpm --filter server cli migrate:rehearse` (or add `--database-url <dsn>`
-   to point it at the copy without exporting `DATABASE_URL`)
+   to point it at the copy without exporting `DATABASE_URL`). It refuses a
+   database other sessions are connected to, because that looks like the live
+   instance, not the copy: the rehearsal holds each migration's locks until it
+   ends. Stop anything else connected to the copy, or pass `--allow-live` if
+   you truly mean it. A migration that waits more than 2 seconds for a lock
+   fails the rehearsal instead of queueing.
 5. `pnpm --filter server release` on the copy, then check the data the
    migration rewrites.
 
