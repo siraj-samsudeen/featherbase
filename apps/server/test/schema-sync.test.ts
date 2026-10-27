@@ -85,6 +85,7 @@ describe('META-004: schema sync', () => {
     const res = await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
+        remove_columns: ['points'],
         columns: [
           { column_name: 'title', column_type: 'Data', label: 'Headline', reqd: true },
           { column_name: 'severity', column_type: 'Choice', choices: 'Low\nHigh' },
@@ -108,6 +109,7 @@ describe('META-004: schema sync', () => {
       method: 'PUT',
       body: JSON.stringify({
         drop_columns: true,
+        remove_columns: ['points', 'severity'],
         columns: [{ column_name: 'title', column_type: 'Data', label: 'Headline', reqd: true }],
       }),
     })
@@ -128,7 +130,7 @@ describe('META-004: schema sync', () => {
 describe('Removing a column keeps its values', () => {
   test('a column taken out and later put back brings its old values with it', async ({ admin }) => {
     await setup(admin)
-    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: [baseColumns[0]] })
+    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: [baseColumns[0]], remove_columns: ['points'] })
     const hidden = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title']))}`,
     )
@@ -138,6 +140,51 @@ describe('Removing a column keeps its values', () => {
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title', 'points']))}&order_by=title%20asc`,
     )
     expect(back.data.map((r) => [r.title, Number(r.points)])).toEqual([['a', 1], ['b', 1]])
+  })
+})
+
+describe('Removing a column is asked for, never inferred (#251)', () => {
+  const put = (admin: TestClient, body: Record<string, unknown>) =>
+    admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, { method: 'PUT', body: JSON.stringify(body) })
+
+  test('a definition that leaves out a column is refused, naming it and the rows that hold values', async ({ admin }) => {
+    await setup(admin)
+    const before = await admin.get(`/api/table/${encodeURIComponent(DT)}:meta`)
+    const res = await put(admin, { columns: [baseColumns[0]] })
+    expect(res.status).toBe(417)
+    const body = await res.json()
+    expect(body.error.fields.points).toMatch(/2 rows/)
+    expect(body.error.fields.points).toMatch(/remove_columns/)
+    // Nothing moved: the definition and the values are as they were.
+    expect(await admin.get(`/api/table/${encodeURIComponent(DT)}:meta`)).toEqual(before)
+    const rows = await sql.unsafe(`select points from featherbase.${TABLE} order by title`)
+    expect(rows.map((r) => Number(r.points))).toEqual([1, 1])
+  })
+
+  test('a column named in remove_columns is taken out and its values kept', async ({ admin }) => {
+    await setup(admin)
+    expect((await put(admin, { columns: [baseColumns[0]], remove_columns: ['points'] })).status).toBe(200)
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(meta.columns.map((f) => f.column_name)).toEqual(['title'])
+    expect(await columns()).toContain('points')
+  })
+
+  test('remove_columns may name only a column the Table has and the definition leaves out', async ({ admin }) => {
+    await setup(admin)
+    const kept = await put(admin, { columns: baseColumns, remove_columns: ['points'] })
+    expect(kept.status).toBe(417)
+    expect((await kept.json()).error.fields.points).toMatch(/still in the definition/)
+    const unknown = await put(admin, { columns: baseColumns, remove_columns: ['nope'] })
+    expect(unknown.status).toBe(417)
+    expect((await unknown.json()).error.fields.nope).toMatch(/not a column/)
+  })
+
+  test('leaving out is_submittable keeps a submittable Table\'s Amended From column', async ({ admin }) => {
+    await setup(admin)
+    expect((await put(admin, { columns: baseColumns, is_submittable: true })).status).toBe(200)
+    expect((await put(admin, { columns: baseColumns })).status).toBe(200)
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    expect(meta.columns.map((f) => f.column_name)).toContain('amended_from')
   })
 })
 

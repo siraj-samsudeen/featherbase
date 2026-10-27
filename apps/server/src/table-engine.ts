@@ -273,10 +273,15 @@ async function applyRls(
 // create columns; property edits update column_def rows; removals delete the
 // column_def row but KEEP the physical column (data is never dropped without
 // the explicit drop_columns flag). Column-type changes are rejected.
+//
+// #251: a removal is never inferred from a column simply being absent — a
+// partial payload would otherwise erase every column it left out. Each one
+// must be named in remove_columns; an unnamed omission refuses the whole
+// write, naming the column and how many rows hold a value in it.
 export async function updateTable(
   name: string,
   input: unknown,
-  opts: { drop_columns?: boolean } = {},
+  opts: { drop_columns?: boolean; remove_columns?: string[] } = {},
 ): Promise<TableMeta> {
   if (input && typeof input === 'object' && 'name' in input && input.name !== name)
     throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
@@ -305,7 +310,9 @@ export async function updateTable(
   } else if (def.data_source) {
     throw new AppError('ValidationError', 'An existing Table cannot be bound to a data source')
   }
-  if (def.is_submittable && !def.columns.some((f) => f.column_name === 'amended_from'))
+  // An update that leaves is_submittable out keeps the stored value (below),
+  // so it keeps that value's Amended From column too.
+  if ((def.is_submittable ?? existing.is_submittable) && !def.columns.some((f) => f.column_name === 'amended_from'))
     def.columns.push({
       column_name: 'amended_from',
       label: 'Amended From',
@@ -335,6 +342,26 @@ export async function updateTable(
   const isBound = Boolean(existing.data_source)
   const table = tableName(name)
   const relation = quoteRelation(await tableRelation(name))
+
+  const removing = new Set(opts.remove_columns ?? [])
+  for (const column_name of removing) {
+    if (!before.has(column_name)) errors[column_name] = 'not a column of this Table'
+    else if (after.has(column_name)) errors[column_name] = 'still in the definition; leave it out to remove it'
+  }
+  for (const [column_name, old] of before) {
+    if (after.has(column_name) || removing.has(column_name)) continue
+    const stored = pgType(old.column_type) && existing.kind !== 'settings' && !isBound
+    const [{ n }] = stored
+      ? ((await sql.unsafe(
+          `select count(*)::int as n from ${relation} where ${quoteIdent(column_name)} is not null`,
+        )) as unknown as { n: number }[])
+      : [{ n: 0 }]
+    errors[column_name] =
+      `left out of the definition${n ? ` while ${n} ${n === 1 ? 'row holds' : 'rows hold'} a value in it` : ''}; ` +
+      'name it in remove_columns to remove it'
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', 'Columns left out must be removed by name', errors)
   await sql.begin(async (tx) => {
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
