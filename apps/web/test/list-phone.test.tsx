@@ -165,4 +165,20 @@ test('On a phone a card titled by a person shows their name, linking to the row'
   const link = await within(cards()[0]).findByRole('link', { name: 'Meena Raman' })
   expect(link).toHaveAttribute('href', expect.stringMatching(/^\/featherbase\/admin\/Lp%20Owned\/.+/))
   expect(within(cards()[0]).queryByText('psn_lpcardownerlpcardown')).toBeNull()
+  // The card's checkbox is named by the person too, never the opaque id.
+  expect(await within(cards()[0]).findByRole('checkbox', { name: 'Select Meena Raman' })).toBeInTheDocument()
+})
+
+test('In the wide table a row titled by a person is selected by their name', async ({ admin }) => {
+  window.matchMedia = real
+  await sql`insert into person ${sql({ row_id: 'psn_lpwideownerlpwideown', created_by: 'Administrator', updated_by: 'Administrator', email: 'lp-wide@example.com', full_name: 'Meena Raman', enabled: true })}`
+  await admin.post('/api/table_def', {
+    name: 'Lp Owned Wide',
+    title_column: 'owner',
+    columns: [{ column_name: 'owner', column_type: 'Reference', label: 'Owner', reference_table: 'Person', in_list_view: true }],
+  })
+  await admin.post('/api/save_row', { table: 'Lp Owned Wide', row: { owner: 'psn_lpwideownerlpwideown' } })
+  await openList(admin, 'Lp Owned Wide')
+  expect(await screen.findByRole('checkbox', { name: 'Select Meena Raman' })).toBeInTheDocument()
+  expect(screen.queryByRole('checkbox', { name: /psn_/ })).toBeNull()
 })

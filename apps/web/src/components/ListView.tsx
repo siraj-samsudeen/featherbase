@@ -11,7 +11,7 @@ import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
-import { PrincipalName } from '../lib/people'
+import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
 import { ArrowDown, ArrowUp } from './ui/icons'
 import { fmtCount } from '../lib/inr'
@@ -966,6 +966,8 @@ function ListRow({
   expanded: boolean
   onToggleExpand: () => void
 }) {
+  // A title that is a person's id reads as their name.
+  const shownTitle = usePrincipalLabels([title])
   return (
     <>
       <tr className="border-b border-border last:border-0 hover:bg-subtle">
@@ -989,7 +991,7 @@ function ListRow({
             <label className="cursor-pointer">
               <input
                 type="checkbox"
-                aria-label={`Select ${title}`}
+                aria-label={`Select ${shownTitle(title)}`}
                 data-testid="row-check"
                 checked={selected}
                 onChange={onToggleSelect}
@@ -1131,8 +1133,11 @@ function PhoneList({
     cell: (row) => <ListCell row={row} col={col} table={table} settings={settings} first={col === titleCol} quiet={col.column_name === 'row_id' && col !== titleCol} />,
   }))
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(key(r)))
-  const titleText = (row: Record<string, unknown>) =>
+  const titleValue = (row: Record<string, unknown>) =>
     titleCol ? cell(row[titleCol.column_name], titleCol.column_type, settings) : key(row)
+  // A title that is a person's id reads as their name, as the card's link does.
+  const shownTitle = usePrincipalLabels(rows.map(titleValue))
+  const titleText = (row: Record<string, unknown>) => shownTitle(titleValue(row))
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
