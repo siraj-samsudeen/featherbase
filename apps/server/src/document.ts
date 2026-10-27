@@ -6,7 +6,7 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { retainedDocumentCounts } from './document-activity'
+import { repointRowActivity, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -1408,7 +1408,8 @@ async function deleteBoundDoc(
 
 // DOC-012: rename a row's primary key and update every Reference that
 // pointed at the old name — across all Tables and child tables — in one
-// transaction. The row keeps all its other data and children.
+// transaction. The row keeps all its other data and children, and its
+// comments, history, attachments and shares (#509).
 export function renameDoc(...args: Parameters<typeof renameDocImpl>) {
   return appOperation(() => renameDocImpl(...args))
 }
@@ -1480,6 +1481,9 @@ async function renameDocImpl(
         update ${tx(await tableRelation(parentTable))} set ${tx(col)} = ${target}
         where ${tx(col)} = ${oldName}`
     }
+
+    // #509: and every record that names the row by id in plain text.
+    await repointRowActivity(stx, table, oldName, target)
   })
   return getDoc(table, target, user)
 }

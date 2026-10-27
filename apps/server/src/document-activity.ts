@@ -3,6 +3,43 @@ import { getDoc } from './document'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
 import { AppError } from './errors'
+import { PLATFORM_SCHEMA } from './platform-schema'
+
+// Platform records that name one row by its id in plain text, beside a column
+// naming its Table: its timeline, attachments, shares, assignments, tags,
+// notifications, emails, access entries and row-level data scopes. No
+// foreign key ties them to the row, so renaming carries them along here.
+// test/document-activity.test.ts holds this list equal to the person
+// registry's conditional ids, so a new such column cannot be missed.
+export const ROW_ID_HOLDERS = [
+  { relation: 'access_log', tableColumn: 'ref_table', nameColumn: 'reference_name' },
+  { relation: 'comment', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'data_scope', tableColumn: 'allow_table', nameColumn: 'for_value' },
+  { relation: 'email_queue', tableColumn: 'ref_table', nameColumn: 'reference_name' },
+  { relation: 'file', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'notification_log', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'share', tableColumn: 'share_table', nameColumn: 'share_name' },
+  { relation: 'tag_link', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'todo', tableColumn: 'ref_table', nameColumn: 'reference_name' },
+  { relation: 'version', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+  { relation: 'workflow_action', tableColumn: 'ref_table', nameColumn: 'ref_name' },
+] as const
+
+/** Repoint every platform record naming `table` row `oldId` to `newId`.
+ *  The caller holds the renamed row's lock inside its transaction. */
+export async function repointRowActivity(tx: typeof sql, table: string, oldId: string, newId: string) {
+  // A tag the target id already carries (left by an earlier row of that id)
+  // would collide on tag_link's key; the row keeps one copy of it.
+  await tx`
+    delete from ${tx(`${PLATFORM_SCHEMA}.tag_link`)} old
+    where old.ref_table = ${table} and old.ref_name = ${oldId}
+      and exists (select 1 from ${tx(`${PLATFORM_SCHEMA}.tag_link`)} t
+                  where t.ref_table = ${table} and t.ref_name = ${newId} and t.tag = old.tag)`
+  for (const { relation, tableColumn, nameColumn } of ROW_ID_HOLDERS)
+    await tx`
+      update ${tx(`${PLATFORM_SCHEMA}.${relation}`)} set ${tx(nameColumn)} = ${newId}
+      where ${tx(tableColumn)} = ${table} and ${tx(nameColumn)} = ${oldId}`
+}
 
 // Internal callers must authorize and lock the source row first. Counts may
 // include hidden activity, but never expose its values or another row's ID.
