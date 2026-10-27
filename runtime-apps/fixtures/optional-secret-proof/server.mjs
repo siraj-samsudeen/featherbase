@@ -33,8 +33,38 @@ export const reads = {
     return { embed: typeof context.secrets.OPTPROOF_EMBED_KEY }
   },
 }
+// Codex round 2 on #670: what a handler returns or throws is app code too.
+// `via` picks the value carried: the required token, or the caption setting
+// (which a test fills with an optional secret this action does not need).
+const carried = (context) => context.payload.via === 'token' ? context.secrets.OPTPROOF_TOKEN : context.settings.caption
 export const actions = {
   note: secretNames,
   echo_caption: caption,
+  // A result whose getter refuses with the value when it is serialized.
+  getter_rejects(context) {
+    calls.handler++
+    return { get value() { context.reject(`bad ${carried(context)}`) } }
+  },
+  // A result whose getter logs the value when it is serialized.
+  getter_logs(context) {
+    calls.handler++
+    return { get value() { console.log('value is', carried(context)); return 'ok' } }
+  },
+  // An error whose own getter logs the value when it is inspected.
+  error_getter_logs(context) {
+    calls.handler++
+    throw Object.defineProperty(new Error('upstream refused'), 'detail',
+      { enumerable: true, get() { console.log('detail is', carried(context)); return 'x' } })
+  },
+  // A refusal whose message reads harmless while the guard checks it (its
+  // stack, then itself), then carries the value when it is answered.
+  message_flips(context) {
+    calls.handler++
+    let reads = 0
+    try { context.reject('upstream refused') } catch (error) {
+      Object.defineProperty(error, 'message', { get: () => reads++ >= 2 ? `bad ${carried(context)}` : 'upstream refused' })
+      throw error
+    }
+  },
   embed_note: secretNames,
 }

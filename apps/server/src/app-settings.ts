@@ -295,7 +295,32 @@ export async function withSecretsKept<T>(kept: KeptSecrets, run: () => Promise<T
   try {
     return await runningSecrets.run(values, run)
   } catch (error) {
-    if (!holdsSecret(values, error)) throw error
-    throw error instanceof AppError ? new AppError(error.type, WITHHELD_MESSAGE) : new Error(WITHHELD_MESSAGE)
+    // Codex round 2 on #670: an error is the app's code too. Its getters run
+    // whenever it is read, so it is read once, here, with console output
+    // still redacted, and only that fresh copy leaves: nothing the app made
+    // is read again once its secrets are no longer kept in.
+    const copy = runningSecrets.run(values, () => detachError(error))
+    if (!holdsSecret(values, copy)) throw copy
+    throw copy instanceof AppError ? new AppError(copy.type, WITHHELD_MESSAGE) : new Error(WITHHELD_MESSAGE)
+  }
+}
+
+/** A fresh error holding only what the platform reads from `error`, each
+ *  part read once. A primitive is passed on as it is (it runs no code). */
+function detachError(error: unknown): unknown {
+  if (typeof error !== 'object' || error === null) return error
+  try {
+    const message = String((error as { message?: unknown }).message ?? '')
+    if (error instanceof AppError) {
+      const fields = error.fields === undefined ? undefined : JSON.parse(JSON.stringify(error.fields)) as Record<string, string>
+      return new AppError(error.type, message, fields)
+    }
+    const copy = error instanceof SyntaxError ? new SyntaxError(message) : new Error(message)
+    copy.stack = String((error as { stack?: unknown }).stack ?? '')
+    const code = (error as { code?: unknown }).code
+    if (typeof code === 'string') Object.assign(copy, { code })
+    return copy
+  } catch {
+    return new Error(WITHHELD_MESSAGE)
   }
 }

@@ -156,11 +156,12 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
       }
       const { settings, secrets, kept } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       const context = callerDocuments(app, contribution.tables, user)
-      const result = await withSecretsKept(kept, async () => {
-        try { return await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject })) }
+      // Serialized inside the guard (Codex round 2 on #670): a getter on the
+      // result is the app's code running, and may log or throw a secret.
+      const json = await withSecretsKept(kept, async () => {
+        try { return canonicalJson(await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
         finally { await context.close() }
       })
-      const json = canonicalJson(result)
       assertNoSecret(kept, JSON.parse(json))
       await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result, "authorization")
         values (${user}, ${app}, ${name}, ${idempotencyKey}, ${canonicalJson(normalized)}, ${sql.json(JSON.parse(json))}, ${sql.json(JSON.parse(JSON.stringify(metadata)))})`

@@ -201,6 +201,60 @@ describe('an optional secret withheld from an operation but set', () => {
   })
 })
 
+// Codex round 2 on #670: what an action returns or throws is the app's code
+// running too (a getter runs when the result is serialized, an error's
+// properties when it is inspected or answered), so it stays inside the guard.
+// Before this, it held for neither kind of secret.
+describe('an action result or error that runs app code after the handler returns', () => {
+  let logged: string[] = []
+  beforeEach(() => {
+    logged = []
+    for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const)
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(arg => arg instanceof Error ? `${arg.message}\n${arg.stack}` : typeof arg === 'string' ? arg : inspect(arg)).join(' '))
+      })
+  })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  const CARRIED = [
+    ['a withheld optional secret', 'caption', EMBED_KEY],
+    ['a required secret', 'token', TOKEN],
+  ] as const
+
+  /** Run action `name` carrying `via`, with the caption setting holding the embed key. */
+  async function act(admin: TestClient, createUser: CreateUserFn, name: string, via: string) {
+    const { reader } = await installed(admin, createUser)
+    await sql`insert into app_setting (row_id, app, setting, value) values ('optproof.caption', 'optproof', 'caption', ${`caption-${EMBED_KEY}`})`
+    const response = await withSecrets(TOKEN, EMBED_KEY, () => reader.fetch(ACTION + name, { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: `${name}-${via}`, payload: { via } }) }))
+    const stored = JSON.stringify(await sql`select result from runtime_action_result where app = 'optproof'`)
+    return { status: response.status, body: await response.text(), stored }
+  }
+
+  test.for(CARRIED)('a result getter that refuses with %s reaches neither the response nor the stored result', async ([, via, value], { admin, createUser }) => {
+    const { body, stored } = await act(admin, createUser, 'getter_rejects', via)
+    expect(body).not.toContain(value)
+    expect(stored).not.toContain(value)
+  })
+
+  test.for(CARRIED)('a result getter that logs %s is redacted', async ([, via, value], { admin, createUser }) => {
+    await act(admin, createUser, 'getter_logs', via)
+    expect(logged.join('\n')).toContain('value is ')
+    expect(logged.join('\n')).toContain('[secret withheld]')
+    expect(logged.join('\n')).not.toContain(value)
+  })
+
+  test.for(CARRIED)('an error getter that logs %s is redacted', async ([, via, value], { admin, createUser }) => {
+    await act(admin, createUser, 'error_getter_logs', via)
+    expect(logged.join('\n')).not.toContain(value)
+  })
+
+  test.for(CARRIED)('a refusal whose message turns to %s on a later read is answered without it', async ([, via, value], { admin, createUser }) => {
+    const { body } = await act(admin, createUser, 'message_flips', via)
+    expect(body).not.toContain(value)
+  })
+})
+
 describe('with every secret set', () => {
   test('a read that needs the optional secret gets it', async ({ admin, createUser }) => {
     const { reader } = await installed(admin, createUser)

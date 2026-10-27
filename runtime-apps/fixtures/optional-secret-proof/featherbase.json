@@ -36,6 +36,10 @@
     "operations": {
       "note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "echo_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "getter_rejects": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "getter_logs": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "error_getter_logs": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "message_flips": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "embed_note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "needs": ["OPTPROOF_EMBED_KEY"] }
     }
   }
