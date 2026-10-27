@@ -860,6 +860,13 @@ The banner cannot be dismissed; it goes once the cause is fixed.
 | Scheduled job: `<method>` | error | an enabled job's last run failed, or it has not run for twice its cadence |
 | Administrator default password | error | outside development and test, the Administrator still has the default password |
 
+**First-run setup.** While no System Manager has an email address, the
+built-in Administrator is asked, as they sign in, who looks after the instance
+(`/featherbase/admin/setup`). Each person named becomes a System Manager and is
+invited through the Google invitation flow; while email is not configured
+(the sink), each invitation is shown to copy instead. "Not now" goes straight
+to the Admin, and the banner keeps showing the problem.
+
 The same checks are printed by the release step (`health: passing …` /
 `health: FAILING …`; a failing check never stops a release), and the
 `check_instance_health` scheduled job runs them every 15 minutes, so the

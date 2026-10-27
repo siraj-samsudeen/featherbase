@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
-import { useIsPreview, useWhoAmI } from '../lib/session'
+import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
@@ -17,10 +17,14 @@ import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
 // pages, the Portal, the no-access page and the account pages.
 //
 //   left    the Featherbase mark and the name: "Featherbase Admin" on the
-//           Admin address, the app's title on an app's address
+//           Admin address, the app's title on an app's address. The browser
+//           tab carries the same name.
 //   middle  the Admin menus, on the Admin screens only (passed in)
-//   right   "Open Admin" (app addresses, people who can use Admin), the theme
-//           toggle, the Account menu
+//   right   "Open Admin" (app addresses only, people who can use Admin), the
+//           theme toggle, the Account menu
+//
+// #501: a page is named for where the person belongs, and the bar never
+// offers to go where the person already is.
 //
 // The address picks the contents (/api/brand `opens`). A host the list does
 // not name (development, test) holds everything, so there the page says
@@ -30,6 +34,8 @@ import { Monitor, Moon, Sun, type LucideIcon } from './ui/icons'
 export const PHONE_QUERY = '(max-width: 639.98px)'
 
 export const ADMIN_NAME = FEATHERBASE_ADMIN_DESTINATION.label
+/** The platform's own name, for a page of someone who can open nothing. */
+const PLATFORM_NAME = 'Featherbase'
 const ADMIN = 'admin'
 
 interface Brand {
@@ -70,6 +76,18 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
+/** #501 item 3: on the Admin side, a page of the person's own (the account
+ *  page) is named for where they belong — the Admin if they can use it, else
+ *  the app they can open, else the platform. Undefined until whoami answers. */
+function personalName(caps: Capabilities | undefined): string | undefined {
+  if (!caps) return undefined
+  if (caps.manage || caps.table_access) return ADMIN_NAME
+  // An installed app is opened through a Table grant, which already lets the
+  // person use Admin; the one app reached without one is Feather Dash.
+  if (caps.report) return INTERIM_APPS.feather_dash.title
+  return PLATFORM_NAME
+}
+
 function homeHref(context: string): string {
   if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
   return INTERIM_APPS[context]?.root ?? appHref(context)
@@ -77,6 +95,7 @@ function homeHref(context: string): string {
 
 export function TopBar({
   home,
+  forPerson,
   left,
   children,
   beforeRight,
@@ -84,6 +103,8 @@ export function TopBar({
 }: {
   /** The page's own side when the host is unlisted: `admin` (default) or an app. */
   home?: string
+  /** On the Admin side, name the bar for where the person belongs (#501). */
+  forPerson?: boolean
   /** Replaces the name (the Admin screens draw their app switcher there). */
   left?: ReactNode
   /** The Admin menus, between the name and the right side. */
@@ -94,16 +115,22 @@ export function TopBar({
   below?: ReactNode
 }) {
   const { context, brand } = useBarContext(home)
-  const name = context ? nameOf(context, brand) : undefined
-  // An app's page, or any page on an app's address, carries the app's name in
-  // the browser tab too. The Admin screens title themselves (AdminShell).
-  useEffect(() => {
-    if (context && context !== ADMIN && name) document.title = name
-  }, [context, name])
   const caps = useWhoAmI().data?.capabilities
+  const name = !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
+  // The browser tab carries the bar's name: an app's on its pages and
+  // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
+  // account page's own (item 3). The Portal and the no-access page on the
+  // Admin side keep the tab they were opened with.
+  const titlesTab = context !== ADMIN || home === ADMIN || forPerson
+  useEffect(() => {
+    if (name && titlesTab) document.title = name
+  }, [name, titlesTab])
   const isPhone = useMediaQuery(PHONE_QUERY)
   const canUseAdmin = Boolean(caps && (caps.manage || caps.table_access))
-  const offerAdmin = Boolean(context && context !== ADMIN && canUseAdmin)
+  // #501 item 2: only on an app's address. The Admin address, and a host the
+  // list does not name (which holds the Admin), are where Admin already is.
+  const onAppAddress = Boolean(brand?.opens && brand.opens !== ADMIN)
+  const offerAdmin = onAppAddress && canUseAdmin
 
   return (
     <>
@@ -113,7 +140,7 @@ export function TopBar({
         data-testid="top-bar"
       >
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:w-60 md:shrink-0 md:px-3" data-testid="top-bar-left">
-          {left ?? (context && <BarName context={context} name={name ?? ''} />)}
+          {left ?? (context && name && <BarName context={context} name={name} />)}
         </div>
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
