@@ -188,6 +188,66 @@ on one origin**, with `/ws` and the file routes alongside; `WEB_ORIGINS` is
 then irrelevant. The server-owned prefixes (`/api`, `/files`,
 `/private/files`, `/web`, `/ws`) never fall through to `index.html`.
 
+### Building a client image
+
+A client app lives in the client's own repository (ADR 0013), so it reaches the
+server in a **client image built on the platform image**. This repository
+publishes that platform image to the GitHub Container Registry as a public
+package (made public by hand once; see below):
+
+- `ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>`: one tag per
+  commit on `main`, published only after that commit's `test` workflow passed
+  (`.github/workflows/publish-image.yml`). Pin this one.
+- `ghcr.io/siraj-samsudeen/featherbase-server:main`: follows `main`. It is
+  moved to a commit's image only while that commit is still main's tip, so it
+  never goes back to an older commit, but it can lag a merge or two behind. It
+  moves, so never deploy from it.
+
+**Once, after the first publish:** GHCR creates a new package as private. A
+person must make it public, because neither the workflow nor its
+`GITHUB_TOKEN` can change a package's visibility. On the package page, open
+Package settings → Change visibility → Public. Then check that a pull works
+without credentials:
+
+```sh
+docker logout ghcr.io
+docker pull ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+```
+
+Until then, a client build fails at its `FROM` line with an authentication
+error (`unauthorized` or `denied`) from `ghcr.io`, even though the tag exists.
+
+It is the Dockerfile's `platform` target: the server, the built SPA and the
+start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its
+`dev.featherbase.platform-versions` label lists the platform versions it runs
+apps on (`SUPPORTED_PLATFORM_VERSIONS`); an app's `platformVersion` must be one
+of them. It is built for `linux/amd64`.
+
+The client's repository holds a small Dockerfile. A made-up example, for an app
+called `acme_board` built into `build/acme_board/<version>/`:
+
+```dockerfile
+FROM ghcr.io/siraj-samsudeen/featherbase-server:0123456789abcdef0123456789abcdef01234567
+
+# Every version installed on any instance, each in its own directory, so an
+# instance on the older one finds its exact artifact and can upgrade.
+COPY build/acme_board/1.0.0 /app/client-apps/acme_board-1.0.0
+COPY build/acme_board/1.1.0 /app/client-apps/acme_board-1.1.0
+ENV FEATHERBASE_APP_PATHS='["/app/client-apps/acme_board-1.0.0","/app/client-apps/acme_board-1.1.0"]'
+```
+
+Each directory holds the app's `package.json`, `featherbase.json` and the
+built files its manifest names. The start command, `NODE_ENV` and port come
+from the platform image; the release step and `cli boot-check` run in the
+client image exactly as described above.
+
+**Moving an instance to a newer platform.** Bump the SHA in the `FROM` line in
+a pull request on the client's repository, and let its host rebuild on merge.
+The pull request is the record of which platform each instance runs. Before
+bumping, check that the new image's `dev.featherbase.platform-versions` label
+still lists the app's `platformVersion`
+(`docker inspect --format '{{ index .Config.Labels "dev.featherbase.platform-versions" }}' <image>`).
+
 ### Railway
 
 `railway.json` at the repo root encodes this shape: Dockerfile build, a

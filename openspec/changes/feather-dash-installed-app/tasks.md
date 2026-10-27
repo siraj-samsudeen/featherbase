@@ -35,11 +35,12 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [x] 2.8 E9 `apiVersion` → `platformVersion` (dated by month) across the manifest schema, Tasker and fixtures.
 - [ ] 2.9 D4 app-role bindings (`App Role Binding`, a security Table, Admin-editable; manifest suggestions written once; role checks honour bindings); stand-in binding `Sales Target Viewer → Feather Dash Reader`.
 - [ ] 2.10 B6′, in the client's repository (ADR 0013): Feather Dash 1.0.0 as a client app, with today's query and roster derivation moved out of this repository, the scope provider, the role suggestions and stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there. The app's spec moves there with it. The app: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; a client image built on the platform image, with `FEATHERBASE_APP_PATHS`.
-- [ ] 2.11 Publish the platform image for client images to build on: a GitHub Action publishes the server image to the GitHub Container Registry, tagged by commit SHA, after that commit's tests pass; `docs/DEPLOY.md` shows a client Dockerfile (D7, #587).
+- [ ] 2.11 Publish the platform image for client images to build on: a GitHub Action publishes the server image to the GitHub Container Registry, tagged by commit SHA, after that commit's tests pass; `docs/DEPLOY.md` shows a client Dockerfile (D7, #587). Ticked once the first run on `main` has published.
 - [ ] 2.12 Parity check on a restored dev snapshot: for every person with a scope, the app's answers equal the platform endpoints' (scope, rows, totals, embed scope state).
 - [ ] 2.13 Install on dev, switch the dev address to the app; then prod with approval. Done in the go-live cut-over (5.1), together with stage D, not on its own.
 - [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
 - [ ] 2.15 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
+- [ ] 2.16 Local development of a client app: run a client app with hot reload against a featherbase checkout or version, without Docker images (D7); the mechanism is decided and built with B6′.
 
 ## 3. Stage C — roster redesign (after #449 and #392)
 
