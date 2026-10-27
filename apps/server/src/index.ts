@@ -148,8 +148,10 @@ app.get('/api/ping', async (c) => {
 })
 
 // SET-004: the instance's display name, public so the login page (pre-auth)
-// can brand itself. app_name only — everything else in System Settings
-// stays behind the session like /api/settings.
+// can brand itself. app_name and the logo only — everything else in System
+// Settings stays behind the session like /api/settings.
+const PUBLIC_FILE = /^\/files\/[^/\\?#]+$/
+
 app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
   // person-identities: the login page renders the enabled sign-in methods.
@@ -168,6 +170,9 @@ app.get('/api/brand', async (c) => {
   const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
+    // #380: named only when it is a public file this instance serves; a
+    // private file, or any other address, would not load before sign-in.
+    logo: s.logo && PUBLIC_FILE.test(s.logo) ? s.logo : null,
     // #489: what this address opens — `admin`, an app's name, or null for a
     // host the list does not name — so the shared top bar can name itself.
     opens: opened ?? null,

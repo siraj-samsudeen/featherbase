@@ -59,6 +59,8 @@ describe('the managed scope (D2)', () => {
     ])
     // The privacy notice may be kept in its own file next to the settings file.
     expect(scope[0].fileFields).toContain('privacy_notice')
+    // The logo is an uploaded file in this instance's own storage (#380), which no file can carry.
+    expect(scope[0].fields).not.toContain('logo')
   })
 
   test('never includes a secret: no Password field, whatever a later migration adds', async () => {

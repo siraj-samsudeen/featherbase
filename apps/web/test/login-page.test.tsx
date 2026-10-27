@@ -265,3 +265,31 @@ describe('the "We couldn\'t sign you in" panel (#474)', () => {
     expect(screen.queryByTestId('sign-in-refused-panel')).not.toBeInTheDocument()
   })
 })
+
+// #380 4.2: the instance's own logo, set in System Settings, leads the page.
+describe('the instance logo', () => {
+  test('a logo set in System Settings shows above the instance name, in place of the Featherbase mark', async () => {
+    const { sql } = await import('server/src/db')
+    await sql`insert into file ${sql({ row_id: 'logo-test', file_name: 'store.png', file_url: '/files/abc_store.png', mime_type: 'image/png', is_private: false })}`
+    await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'logo', value: '/files/abc_store.png' })}
+      on conflict (table_name, field) do update set value = excluded.value`
+    await sql`insert into single_value ${sql({ table_name: 'System Settings', field: 'app_name', value: 'Corner Store' })}
+      on conflict (table_name, field) do update set value = excluded.value`
+    await renderApp('/featherbase/login', anonymous)
+    const logo = await screen.findByTestId('login-logo')
+    expect(logo.tagName).toBe('IMG')
+    expect(logo).toHaveAttribute('src', '/files/abc_store.png')
+    // The name beside it already says whose it is.
+    expect(logo).toHaveAttribute('alt', '')
+    const name = screen.getByRole('heading', { level: 1, name: 'Corner Store' })
+    expect(logo.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByTestId('login-mark')).not.toBeInTheDocument()
+  })
+
+  test('without a logo the page shows the Featherbase mark', async () => {
+    await renderApp('/featherbase/login', anonymous)
+    await waitFor(() => expect(document.title).not.toBe(''))
+    expect(await screen.findByTestId('login-mark')).toBeInTheDocument()
+    expect(screen.queryByTestId('login-logo')).not.toBeInTheDocument()
+  })
+})
