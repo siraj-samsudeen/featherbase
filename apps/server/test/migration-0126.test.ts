@@ -1,5 +1,6 @@
-// Migration 0126 (#446): a row's history, comments and shares are found by
-// the row's Table and id through an index, not by scanning the whole store.
+// Migration 0126 (#446): a row's history, comments, shares, assignments,
+// notifications and workflow steps are found by the row's Table and id
+// through an index, not by scanning the whole store.
 import { readFileSync } from 'node:fs'
 import { expect } from 'vitest'
 import { test } from './pg-test'
@@ -10,6 +11,9 @@ const INDEXES = [
   ['version', 'version_ref_idx', 'ref_table, ref_name'],
   ['comment', 'comment_ref_idx', 'ref_table, ref_name'],
   ['share', 'share_ref_idx', 'share_table, share_name'],
+  ['todo', 'todo_ref_idx', 'ref_table, reference_name'],
+  ['notification_log', 'notification_log_ref_idx', 'ref_table, ref_name'],
+  ['workflow_action', 'workflow_action_ref_idx', 'ref_table, ref_name'],
 ] as const
 
 async function plan(query: string): Promise<string> {
