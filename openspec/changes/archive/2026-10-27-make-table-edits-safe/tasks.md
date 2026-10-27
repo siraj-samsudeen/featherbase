@@ -6,4 +6,4 @@
 - [x] 1.2 A rename typed as remove-plus-add is refused and the pin flipped (#250).
 - [x] 1.3 Unique over repeated values is refused naming the value; the pin flipped (#510).
 - [x] 1.4 A link column to a missing table is refused (#511).
-- [ ] 1.5 Verify against code and tests, then archive.
+- [x] 1.5 Verify against code and tests, then archive.
