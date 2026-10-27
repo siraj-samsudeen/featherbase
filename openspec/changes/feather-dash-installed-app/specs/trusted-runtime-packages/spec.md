@@ -38,6 +38,12 @@ for that.
   in an export
 - **THEN** it is not there to find
 
+#### Scenario: Two neighbouring account numbers
+
+- **WHEN** two readers each cover one of two very long account numbers that differ
+  only in the last digit
+- **THEN** each sees only their own account, cached and live
+
 #### Scenario: A place the report cannot split by
 
 - **WHEN** a person's place is a floor, and the report has no floor column
@@ -199,7 +205,14 @@ for it.
 #### Scenario: The warehouse is slow
 
 - **WHEN** a reader opens live figures and the warehouse takes half a minute to answer
-- **THEN** other people saving records meanwhile are not kept waiting by that read
+- **THEN** other people saving records meanwhile, and an administrator turning an
+  app off, are not kept waiting by that read
+
+#### Scenario: An app turned off while it waits
+
+- **WHEN** an administrator turns an app off while one of its reads waits on the
+  warehouse
+- **THEN** that read's answer is refused, and no view of it is recorded
 
 ### Requirement: Every view of a report is recorded
 

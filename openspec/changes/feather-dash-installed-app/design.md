@@ -253,9 +253,24 @@ that fills it).
   `<app>.<name>`, with the declaration's hash as its definition version, so a
   changed query never serves old rows. Rows are stored, shaped, in the raw
   `app_dataset_row` relation; an empty candidate is refused like any failed build.
-  The query reaches its source wrapped as a sub-query with the reader's limits
-  added as bound values, in a read-only transaction on Postgres; Postgres and
-  DuckDB/MotherDuck sources can run it.
+  The query reaches its source wrapped twice: projected to its declared columns,
+  a `date` column cast to a day in the source (so a time of day lands on the same
+  day cached and live), then limited to the reader's rows as bound values.
+- **Exact keys (Codex round 1).** An integer key or scope-mapped column keeps its
+  exact digits, answered as text in both the cached and the live read, so ids
+  above 2^53 never round into each other's scope. Any other integer must be one a
+  JavaScript number holds exactly, or the build or read fails loudly.
+- **Read-only sources (Codex round 1).** Postgres runs the query in a `read only`
+  transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode for app
+  datasets (its own instance; the Admin browser's is unchanged). A MotherDuck
+  connection cannot be opened read-only: its guarantee is a read-scaling token
+  (MotherDuck: such a token "grants permission for read operations" while
+  "restricting write and administrative operations"), which the platform cannot
+  detect. So the Data Source gets a "Read-scaling token" checkbox (migration
+  0136); until an administrator ticks it, a MotherDuck source cannot back an app
+  dataset: reads answer "not set up yet" and the setup checks name a
+  `read-only data source`. Other engines cannot run a dataset query. Today's Sales
+  Target reader is untouched.
 - **The scope through the mapping.** Each of the reader's places is one group of
   conditions; a place adds rows only when the dataset maps every filter it names
   (an unmapped filter would widen it), and no place means no row. `active` answers
@@ -277,7 +292,12 @@ authorization decided and frozen inside the platform transaction; its handler ru
 - **As built (#625).** The places, payload, settings and secrets are decided and
   frozen inside the authorization transaction, which then commits; the handler
   runs after it on the pool, holding no transaction (`inAppTransaction()` is false
-  in it). Document reads would lock rows, so in an outbound handler they fail
+  in it) and no lifecycle lock: an app read takes the lifecycle lock itself, only
+  while it authorizes (the request middleware no longer wraps `/api/app_reads/*`),
+  so stalled outbound handlers cannot exhaust the lifecycle pool or hold off an
+  install, upgrade or enable (Codex round 1). The serving app version is frozen
+  with the authorization; the handler's view record and its answer are accepted
+  only if the app is still enabled and serving that version. Document reads would lock rows, so in an outbound handler they fail
   loudly; `context.datasets.live` is allowed only there. Actions cannot be
   outbound.
 - `context.recordView({ dataset })` writes one `view_report` Access Log row for
