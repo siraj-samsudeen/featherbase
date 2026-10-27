@@ -145,14 +145,17 @@ function emailedLinkOrigin(
   return requestOrigin ?? DEV_WEB_ORIGIN
 }
 
-/** The title of an app that is not yet a package (design D8, shared INTERIM_APPS). */
-export function interimAppTitle(app: string): string | undefined {
-  return INTERIM_APPS[app]?.title
+/** The page standing in for an app that is not yet installed (design D8,
+ *  shared INTERIM_APPS): none once an app of that name is installed (#671).
+ *  `installed` comes from the caller, since nothing here may touch the
+ *  database or the loaded apps. */
+export function interimApp(app: string, installed: boolean): { root: string; title: string } | undefined {
+  return installed ? undefined : INTERIM_APPS[app]
 }
 
 /** Where an app's address keeps people: the app's own root. */
-export function appRoot(app: string): string {
-  return INTERIM_APPS[app]?.root ?? appHref(app)
+export function appRoot(app: string, installed: boolean): string {
+  return interimApp(app, installed)?.root ?? appHref(app)
 }
 
 // The Featherbase pages an app's address still serves: signing in, resetting a
@@ -176,9 +179,10 @@ const under = (path: string, root: string) => {
 const appRootPattern = new RegExp(APP_ROOT_PATTERN)
 
 /** On an address that opens an app, where a GET of `path` is sent instead,
- *  or null when it is served as it is. */
-export function addressRedirect(entry: InstanceAddress, path: string): string | null {
-  const root = appRoot(entry.opens)
+ *  or null when it is served as it is. `installed`: whether the app it opens
+ *  is installed. */
+export function addressRedirect(entry: InstanceAddress, path: string, installed: boolean): string | null {
+  const root = appRoot(entry.opens, installed)
   if (path === '/') return root
   if (under(path, root) || SERVED_EVERYWHERE.some((page) => under(path, page))) return null
   if (under(path, '/featherbase') || appRootPattern.test(path)) return root

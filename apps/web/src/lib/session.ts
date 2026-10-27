@@ -14,8 +14,17 @@ export interface Capabilities {
   creatable: string[] // Tables the person can add rows to
 }
 
+/** An installed app the person can open (#671). */
+export interface OpenableApp {
+  name: string
+  title: string
+}
+
 interface WhoAmI {
   capabilities: Capabilities
+  apps: OpenableApp[]
+  /** #671: every installed app's name, open or not (disabled, pending). */
+  installed_apps: string[]
   name: string
   email: string | null
   full_name: string | null
