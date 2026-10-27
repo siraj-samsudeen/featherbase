@@ -6,7 +6,7 @@ The existing explicit rename operation preserves values. Definition replacement 
 
 - Keep validation in the platform Table engine and exercise the public HTTP seam.
 - Check repeated values inside the schema transaction, holding a table lock before checking and changing the unique constraint so concurrent inserts cannot bypass validation.
-- Validate Reference targets in the shared definition validator used by create and update. Self references are valid. Fresh migrations and app installs are verified through the same validator.
+- Validate Reference targets in the shared definition validator used by create and update. Self references are valid. Fresh migrations are verified through the same validator. App installs pass their declared Table names so mutually linked definitions retain their existing declaration-order independence; arbitrary missing targets are still refused.
 - No inference of a rename from a drop/add diff without an owner ruling.
 
 ## Risks

@@ -467,7 +467,10 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
         'ValidationError',
         `App table declares system: true — the system flag belongs to the migration chain, app tables are user-space`,
       )
-    const meta = await createTable(def, manifest.name)
+    // Tables in this install may link to each other in either declaration order.
+    const meta = await createTable(def, manifest.name, (manifest.tables ?? []).flatMap((table) =>
+      table && typeof table === 'object' && 'name' in table && typeof table.name === 'string' ? [table.name] : [],
+    ))
     created.push(meta.name)
     // A runtime application with its own client owns normal navigation. Apps
     // without one retain the generated Table home page as their usable UI.

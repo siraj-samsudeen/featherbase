@@ -172,7 +172,7 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
   return undefined
 }
 
-async function validateDef(def: TableDef) {
+async function validateDef(def: TableDef, declaredTables: readonly string[] = []) {
   const errs: Record<string, string> = {}
   // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
   // Tables — no sub_tables, no settings, no submit lifecycle (the source has
@@ -202,7 +202,7 @@ async function validateDef(def: TableDef) {
   if (Object.keys(errs).length)
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   for (const column of def.columns) {
-    if (column.column_type !== 'Reference' || column.reference_table === def.name) continue
+    if (column.column_type !== 'Reference' || column.reference_table === def.name || declaredTables.includes(column.reference_table!)) continue
     const [target] = await sql`select 1 from table_def where name = ${column.reference_table!}`
     if (!target) errs[column.column_name] = `Link target ${column.reference_table} does not exist`
   }
@@ -442,7 +442,7 @@ export async function updateTable(
   return getMeta(name)
 }
 
-export async function createTable(input: unknown, ownerApp?: string): Promise<TableMeta> {
+export async function createTable(input: unknown, ownerApp?: string, declaredTables: readonly string[] = []): Promise<TableMeta> {
   const parsed = tableDefSchema.safeParse(input)
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -464,7 +464,7 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       reference_table: def.name,
       hidden: true,
     })
-  await validateDef(def)
+  await validateDef(def, declaredTables)
   if (def.id_pattern)
     validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
 
