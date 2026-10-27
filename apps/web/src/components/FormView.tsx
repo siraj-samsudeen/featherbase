@@ -27,6 +27,29 @@ import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } f
 
 type Row = Record<string, unknown>
 
+// #545: a JSON column's box holds text while the person types. On save, text
+// typed into it becomes the value it describes; text that isn't JSON is
+// refused at the field. A value the person didn't touch goes back as stored.
+function parseTypedJson(columns: ColumnDef[], values: Row, baseline: Row): { values: Row; errors: Record<string, string> } {
+  const out: Row = { ...values }
+  const errors: Record<string, string> = {}
+  for (const f of columns) {
+    if (f.column_type !== 'JSON') continue
+    const typed = values[f.column_name]
+    if (typeof typed !== 'string' || typed === baseline[f.column_name]) continue
+    if (!typed.trim()) {
+      out[f.column_name] = null
+      continue
+    }
+    try {
+      out[f.column_name] = JSON.parse(typed)
+    } catch {
+      errors[f.column_name] = 'must be valid JSON'
+    }
+  }
+  return { values: out, errors }
+}
+
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
 // `prefill` (#100) seeds a NEW row's initial values — how "+ New Attendance"
@@ -260,9 +283,10 @@ export function FormView({
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
     const schema = tableSchemaToZod(m.columns)
-    const result = schema.safeParse(valuesRef.current)
-    if (!result.success) {
-      setErrors(zodFieldErrors(result.error))
+    const json = parseTypedJson(m.columns, valuesRef.current, baseline)
+    const result = schema.safeParse(json.values)
+    if (!result.success || Object.keys(json.errors).length) {
+      setErrors({ ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors })
       setBanner('Please fix the highlighted fields')
       return
     }
@@ -270,7 +294,7 @@ export function FormView({
     setBanner(null)
     setErrors({})
     try {
-      const payload: Row = { ...valuesRef.current }
+      const payload: Row = { ...json.values }
       if (!isNew) {
         payload.row_id = name
         payload.updated_at = baseline.updated_at
