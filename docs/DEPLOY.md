@@ -457,6 +457,57 @@ Manager with an email address; recommended variables set; settings file
 applied; settings match the file; each enabled scheduled job ran recently;
 Administrator not on the default password.
 
+### Comparing environments
+
+Dev and prod drift silently: a variable set on one and not the other, a
+secret shared where it must differ, or a settings file applied to one
+environment only. The instance repository's workflow compares them on each
+run. It picks a fresh key, asks every environment for its variable report
+with that key, and puts the reports side by side:
+
+```bash
+KEY=$(openssl rand -hex 32)   # new every run; never stored
+for env in dev prod; do        # each with its own System Manager service-account token
+  curl --fail-with-body "https://<$env host>/api/instance-settings/variables" \
+    -H "Authorization: Bearer <$env token>" -H 'Content-Type: application/json' \
+    --data "{\"key\":\"$KEY\"}" > "$env.json"
+done
+pnpm --filter server cli settings:compare dev=dev.json prod=prod.json
+```
+
+A report says, for every declared variable, whether it is set, and for the
+secrets with a cross-environment rule (the "must differ" `DATABASE_URL`,
+`JWT_SECRET` and `FILE_URL_SECRET`; the "must match" `GOOGLE_CLIENT_SECRET`)
+a 16-digit HMAC-SHA256 of the value under that run's key. It also names the
+settings-file revision last applied and whether the settings still match it.
+No value leaves the server, and a new key each run means fingerprints cannot
+be collected or tested against guesses. From a shell on the server (for
+example over `railway ssh`), `printf %s "$KEY" | pnpm --filter server cli
+settings:variables --stdin` prints the same report.
+
+The comparison prints one line per variable that any environment sets, then
+the settings file:
+
+```text
+Variable                 dev           prod          Result
+DATABASE_URL             set           set           ok
+INSTANCE_ADDRESSES       unset         set           PROBLEM: set on prod only
+JWT_SECRET               set           set           PROBLEM: the same on dev and prod; it must differ between environments
+GOOGLE_CLIENT_SECRET     set           set           ok
+SMTP_HOST                unset         set           note: set on prod only
+Settings file revision   4f0c2a91b7de  4f0c2a91b7de  ok
+Settings match the file  yes           no            PROBLEM: changed outside the file on prod
+3 problems, 1 note.
+```
+
+It exits 1 while there is a problem: a rule broken, a required or
+recommended variable set on some environments only, an environment never
+applied or applied from another revision, or settings changed outside the
+file. A note (an optional variable set on one side only, such as real email
+on prod) is for reading, not failing. Reports made with different keys are
+refused. Values that should differ, such as each environment's own web
+addresses, are compared by presence only.
+
 ## Sign-in methods and linked identities
 
 The ways in are rows of the system Table **Sign In Method** (Admin → Sign In

@@ -5,9 +5,10 @@
 // cross-environment rule, and where its settings stand against the file. The
 // comparison puts two or more reports side by side and names every broken
 // rule. No value is ever returned or kept.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -279,5 +280,35 @@ describe('on the command line', () => {
     const unreadable = await runMain(main, ['settings:compare', `dev=${dev}`, `prod=${join(dir, 'missing.json')}`])
     expect(unreadable.code).toBe(1)
     expect(unreadable.stderr).toContain('cannot read')
+  })
+})
+
+describe('docs/DEPLOY.md', () => {
+  // The sample in "Comparing environments" is what the formatter prints for
+  // these two reports, so the doc cannot drift from the command.
+  test('shows the table the comparison prints', () => {
+    const v = (name: string, set: boolean, extra: Partial<VariableReport['variables'][number]> = {}) =>
+      ({ name, secret: false, presence: 'optional' as const, set, ...extra })
+    const settings = { applied: true, environment: 'dev', revision: '4f0c2a91b7de0000', matches_file: true }
+    const report = (variables: VariableReport['variables'], s: VariableReport['settings']): VariableReport =>
+      ({ environment: 'production', key_id: 'abcd1234', variables, settings: s })
+    const dev = report([
+      v('DATABASE_URL', true, { rule: 'must-differ', fingerprint: '1', presence: 'required' }),
+      v('INSTANCE_ADDRESSES', false, { presence: 'required' }),
+      v('JWT_SECRET', true, { rule: 'must-differ', fingerprint: 'j', presence: 'required' }),
+      v('GOOGLE_CLIENT_SECRET', true, { rule: 'must-match', fingerprint: 'g' }),
+      v('SMTP_HOST', false),
+    ], settings)
+    const prod = report([
+      v('DATABASE_URL', true, { rule: 'must-differ', fingerprint: '2', presence: 'required' }),
+      v('INSTANCE_ADDRESSES', true, { presence: 'required' }),
+      v('JWT_SECRET', true, { rule: 'must-differ', fingerprint: 'j', presence: 'required' }),
+      v('GOOGLE_CLIENT_SECRET', true, { rule: 'must-match', fingerprint: 'g' }),
+      v('SMTP_HOST', true),
+    ], { ...settings, environment: 'prod', matches_file: false })
+    const doc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../docs/DEPLOY.md'), 'utf8')
+    const section = doc.slice(doc.indexOf('### Comparing environments'))
+    const sample = /```text\n([\s\S]*?)\n```/.exec(section)?.[1]
+    expect(sample).toBe(formatComparison(compareEnvironments([{ label: 'dev', report: dev }, { label: 'prod', report: prod }])))
   })
 })

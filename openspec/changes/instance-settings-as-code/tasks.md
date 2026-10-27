@@ -39,7 +39,7 @@
 ## 7. Environment comparison
 
 - [x] 7.1 Add the variable report with per-call keyed fingerprints for rule-bearing secrets. Verify: test that two calls with different keys give different fingerprints for the same value, and the response contains no value.
-- [ ] 7.2 Document the comparison in DEPLOY.md, with the side-by-side table the instance workflow prints.
+- [x] 7.2 Document the comparison in DEPLOY.md, with the side-by-side table the instance workflow prints.
 
 ## 8. Integration
 
