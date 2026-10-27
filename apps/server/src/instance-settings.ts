@@ -561,8 +561,9 @@ function secretIn(value: unknown, appSecrets: readonly { name: string; value: st
     if (secret && secret.length >= 6 && text.includes(secret)) return `holds the value of ${v.name}`
   }
   // #620: the secrets installed apps declare are deployment variables too.
+  // An app named each one as a secret, so even a short value is withheld.
   for (const { name, value: secret } of appSecrets)
-    if (secret.length >= 6 && text.includes(secret)) return `holds the value of ${name}`
+    if (text.includes(secret)) return `holds the value of ${name}`
   if (URL_CREDENTIALS.test(text)) return 'a web address with credentials in it'
   if (SECRET_ASSIGNMENT.test(text)) return 'names a secret with its value (a password=, token= or key= setting)'
   if (AUTH_VALUE.test(text)) return 'holds an authorization value'

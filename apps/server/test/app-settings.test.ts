@@ -265,6 +265,14 @@ describe('the settings file sets app settings', () => {
     expect(exported.withheld).toEqual(['App Setting.setupproof.report_id.value: holds the value of SETUPPROOF_TOKEN'])
   })
 
+  test('an export withholds a setting that holds a short secret value', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await setting(admin, 'report_id', 'id-k9z')
+    const exported = await withNamedVariable('SETUPPROOF_TOKEN', 'k9z', () => exportInstanceSettings())
+    expect(exported.file.settings['App Setting']).toEqual([{ row_id: 'setupproof.report_id' }])
+    expect(exported.withheld).toEqual(['App Setting.setupproof.report_id.value: holds the value of SETUPPROOF_TOKEN'])
+  })
+
   test('once the file sets a setting, Admin cannot change it', async ({ admin, createUser }) => {
     await setup(admin, createUser)
     await applyInstanceSettings(file('R-9'), { by: 'Administrator' })
