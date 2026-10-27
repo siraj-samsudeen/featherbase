@@ -271,3 +271,71 @@ test('Read-only and hidden fields: a read-only field cannot be edited, and a hid
   expect(field('title')).toBeEnabled()
   expect(document.querySelector('[data-field=secret]')).toBeNull()
 })
+
+// #324: a Table whose rows are named by whoever creates them (id pattern
+// 'prompt') — the new-row form must ask for that name and send it.
+async function seedPromptNamed(admin: Admin) {
+  await admin.post('/api/table_def', {
+    name: 'Core Shelf', id_pattern: 'prompt',
+    columns: [{ column_name: 'aisle', column_type: 'Data', label: 'Aisle' }],
+  })
+}
+
+test('A typed-in name is asked for on the new-row form: typing it and saving creates the row under that name', async ({ admin }) => {
+  await seedPromptNamed(admin)
+  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  const rowId = await screen.findByRole('textbox', { name: /Row ID/ })
+  expect(rowId).toHaveAttribute('aria-required', 'true')
+
+  fireEvent.change(rowId, { target: { value: 'shelf-a1' } })
+  fireEvent.change(field('aisle'), { target: { value: 'A' } })
+  screen.getByTestId('form-save').click()
+
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('shelf-a1'))
+  const saved = await admin.get<{ row_id: string; aisle: string }>(`/api/table/${enc('Core Shelf')}/shelf-a1`)
+  expect(saved.aisle).toBe('A')
+  // Once the row exists its name changes through Rename, not this field.
+  await waitFor(() => expect(field('aisle')).toHaveValue('A'))
+  expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
+})
+
+test('A typed-in name is asked for on the new-row form: leaving it blank calls out the name and saves nothing', async ({ admin }) => {
+  await seedPromptNamed(admin)
+  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('aisle')).toBeInTheDocument())
+
+  fireEvent.change(field('aisle'), { target: { value: 'B' } })
+  screen.getByTestId('form-save').click()
+
+  expect(await screen.findByTestId('error-row_id')).toHaveTextContent('Row ID is required')
+  expect(field('aisle')).toHaveValue('B')
+  const list = await admin.get<{ total: number }>(`/api/table/${enc('Core Shelf')}`)
+  expect(list.total).toBe(0)
+})
+
+test('A typed-in name is asked for on the new-row form: a name already in use is refused and the existing row is untouched', async ({ admin }) => {
+  await seedPromptNamed(admin)
+  await admin.post('/api/save_row', { table: 'Core Shelf', row: { row_id: 'shelf-a1', aisle: 'A' } })
+  await renderApp(`/featherbase/admin/${enc('Core Shelf')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  const rowId = await screen.findByRole('textbox', { name: /Row ID/ })
+
+  fireEvent.change(rowId, { target: { value: 'shelf-a1' } })
+  fireEvent.change(field('aisle'), { target: { value: 'Z' } })
+  screen.getByTestId('form-save').click()
+
+  await screen.findByTestId('form-banner')
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('New')
+  const existing = await admin.get<{ aisle: string }>(`/api/table/${enc('Core Shelf')}/shelf-a1`)
+  expect(existing.aisle).toBe('A')
+})
+
+test('A new row on a Table that names its own rows asks for no name', async ({ admin }) => {
+  await seedNote(admin)
+  await renderApp(`/featherbase/admin/${enc('Core Note')}/new`, admin)
+  await screen.findByTestId('form-view', {}, { timeout: 8000 })
+  await waitFor(() => expect(field('title')).toBeInTheDocument())
+  expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull()
+})

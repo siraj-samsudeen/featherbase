@@ -195,6 +195,9 @@ export function FormView({
   // opens for reading, with no Save, Delete or Rename, for everyone.
   const rowsReadOnly = isRowsReadOnly(m)
   const boundSource = m.data_source ?? null
+  // #324: rows named by whoever creates them ('prompt') need that name typed
+  // in on the new-row form; every other naming rule assigns the ID itself.
+  const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -267,8 +270,11 @@ export function FormView({
     // zod schema the server uses — invalid forms never reach the network.
     const schema = tableSchemaToZod(m.columns)
     const result = schema.safeParse(valuesRef.current)
-    if (!result.success) {
-      setErrors(zodFieldErrors(result.error))
+    const fieldErrors = result.success ? {} : zodFieldErrors(result.error)
+    if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
+      fieldErrors[ROW_ID_FIELD.column_name] = 'Row ID is required'
+    if (Object.keys(fieldErrors).length) {
+      setErrors(fieldErrors)
       setBanner('Please fix the highlighted fields')
       return
     }
@@ -280,6 +286,8 @@ export function FormView({
       if (!isNew) {
         payload.row_id = name
         payload.updated_at = baseline.updated_at
+      } else if (asksRowId) {
+        payload.row_id = String(payload.row_id).trim()
       } else {
         delete payload.row_id
       }
@@ -316,6 +324,7 @@ export function FormView({
     if (f.column_type === 'Section Break') sections.push([])
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
+  if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -635,6 +644,17 @@ export function FormView({
     </div>
   )
 }
+
+// #324: the Row ID input a new row gets when its creator names it. Not one of
+// the Table's own columns — the ID is a standard column — so it is described
+// here, as a required text field.
+const ROW_ID_FIELD = {
+  column_name: 'row_id',
+  label: 'Row ID',
+  column_type: 'Data',
+  reqd: true,
+  description: 'Rows in this table take the ID you type here. It must not already be in use.',
+} as ColumnDef
 
 function FieldControl({
   field,
