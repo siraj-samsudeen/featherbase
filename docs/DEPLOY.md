@@ -220,6 +220,17 @@ docker pull ghcr.io/siraj-samsudeen/featherbase-server:<sha>
 
 Until then, a client build fails at its `FROM` line with an authentication
 error (`unauthorized` or `denied`) from `ghcr.io`, even though the tag exists.
+(Done for this package on 27-Oct-2026.)
+
+**The image is built for `linux/amd64` only**, the platform Railway runs. On an
+Apple-silicon Mac, a plain `docker pull` answers "no matching manifest for
+linux/arm64"; pull and run with `--platform linux/amd64` (Docker emulates it,
+more slowly), and build a client image the same way:
+
+```sh
+docker pull --platform linux/amd64 ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+docker build --platform linux/amd64 -t my-client-image .
+```
 
 It is the Dockerfile's `platform` target: the server, the built SPA and the
 start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its
