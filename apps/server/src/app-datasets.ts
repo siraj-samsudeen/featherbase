@@ -7,9 +7,11 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { sql } from './db'
-import { registerDataset, unregisterDataset } from './dataset-snapshot'
+import type { PersonScope } from 'shared'
+import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
+import { AppError } from './errors'
 import { getDriver, getSource } from './sources/registry'
-import type { DatasetWhere } from './sources/types'
+import type { DatasetCondition, DatasetWhere } from './sources/types'
 
 const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const distinct = (values: string[]) => new Set(values).size === values.length
@@ -137,4 +139,96 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
 export function forgetAppDatasets(): void {
   for (const app of [...registered.keys()]) registerAppDatasets(app)
   registered.clear()
+}
+
+/** What a dataset read answers, cached and live alike. */
+export interface DatasetAnswer {
+  dataset: string
+  served: 'cached' | 'live'
+  /** When the snapshot was activated, or when the live rows were fetched. */
+  at: string
+  rows: DatasetRow[]
+}
+
+/**
+ * The rows a read may see: the reader's places through the declared
+ * mapping, and the read's own filters on declared keys. A place is one
+ * group; it contributes rows only when the dataset maps every filter the
+ * place names, since a filter the dataset cannot apply would widen the
+ * place. No place, no group, no row: the scope fails closed.
+ */
+export function datasetWhere(dataset: DatasetDeclaration, places: PersonScope | undefined, filters: unknown): DatasetWhere {
+  if (filters !== undefined && (!filters || typeof filters !== 'object' || Array.isArray(filters)))
+    throw new AppError('ValidationError', 'Dataset filters must be an object of key values')
+  const all = Object.entries((filters ?? {}) as Record<string, unknown>).map(([key, value]) => {
+    if (!dataset.keys.includes(key)) throw new AppError('ValidationError', `Dataset ${dataset.name} cannot be filtered on ${key}`)
+    const list = Array.isArray(value) ? value : [value]
+    if (!list.length || list.some((item) => typeof item !== 'string' && typeof item !== 'number'))
+      throw new AppError('ValidationError', `Dataset filter ${key} must be a value or a list of values`)
+    return { column: key, values: list.map(String) }
+  })
+  const any = (places ?? []).flatMap((place) => {
+    const named = Object.entries(place.filters)
+    if (named.some(([name]) => !Object.hasOwn(dataset.filters, name))) return []
+    return [named.map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
+  })
+  return { any, all }
+}
+
+// The same where, over the snapshot's stored rows.
+function storedRowsWhere(where: DatasetWhere) {
+  const condition = (c: DatasetCondition) => (c.values.length ? sql`(row->>${c.column}) in ${sql(c.values)}` : sql`false`)
+  const group = (conditions: DatasetCondition[]) => conditions.reduce((clause, c) => sql`${clause} and ${condition(c)}`, sql`true`)
+  const any = where.any.length ? where.any.map((g) => sql`(${group(g)})`).reduce((clause, g) => sql`${clause} or ${g}`) : sql`false`
+  return sql`(${any}) and (${group(where.all)})`
+}
+
+// One order for both answers: by each declared column in turn.
+function ordered(dataset: DatasetDeclaration, rows: DatasetRow[]): DatasetRow[] {
+  const compare = (a: DatasetValue, b: DatasetValue) => {
+    if (a === b) return 0
+    if (a === null) return -1
+    if (b === null) return 1
+    if (typeof a === 'number' && typeof b === 'number') return a - b
+    return String(a) < String(b) ? -1 : 1
+  }
+  return rows.sort((a, b) => {
+    for (const { name } of dataset.columns) {
+      const order = compare(a[name], b[name])
+      if (order) return order
+    }
+    return 0
+  })
+}
+
+/**
+ * `context.datasets` for one read: the app's own datasets only, read through
+ * the reader's frozen places. No SQL crosses from the app: it names a
+ * dataset and filter values, and the query is the declared one.
+ */
+export function appDatasets(app: string, title: string, declarations: readonly DatasetDeclaration[], places: PersonScope | undefined) {
+  async function declared(name: string): Promise<DatasetDeclaration> {
+    const dataset = declarations.find((d) => d.name === name)
+    if (!dataset) throw new AppError('ValidationError', `The app has not declared the dataset ${String(name)}`)
+    const source = await getSource(dataset.source).catch(() => null)
+    if (!source || !getDriver(source).query) {
+      console.warn(`[apps] ${app} is not set up yet; its dataset ${dataset.name} needs the data source ${dataset.source}`)
+      throw new AppError('NotSetUpError', `${title} is not set up yet. An administrator needs to finish setting it up.`)
+    }
+    return dataset
+  }
+  return Object.freeze({
+    async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
+      const dataset = await declared(name)
+      const where = datasetWhere(dataset, places, filters)
+      const snapshot = await activeSnapshot(datasetKey(app, name))
+      if (!snapshot) {
+        await recordMiss(datasetKey(app, name))
+        return null
+      }
+      const stored = await sql`select row from app_dataset_row where snapshot_id = ${snapshot.row_id} and ${storedRowsWhere(where)}`
+      return { dataset: name, served: 'cached', at: new Date(snapshot.activated_at!).toISOString(),
+        rows: ordered(dataset, stored.map((r) => r.row as DatasetRow)) }
+    },
+  })
 }

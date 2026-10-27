@@ -10,6 +10,7 @@ import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup } from './app-settings'
+import { appDatasets, type DatasetDeclaration } from './app-datasets'
 
 const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] } }
 
@@ -20,6 +21,8 @@ export interface DeclaredOperations<H = RuntimeActionHandler> {
   operations: Map<string, DeclaredAppOperation>
   /** #620: the app's declared settings and secrets, read fresh per request. */
   setup?: () => Promise<AppSetup>
+  /** #625: the app's declared cached datasets. */
+  datasets?: readonly DatasetDeclaration[]
 }
 
 const requestSchema = z.object({
@@ -179,12 +182,13 @@ export function executeRuntimeRead(app: string, name: string, input: unknown, us
       contribution: contribution.operations.get(name),
     }, async (authorization, payload) => {
       if (discovery) return { storeCodes: authorization.storeCodes }
-      const { settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      const { title, settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
       const context = callerDocuments(app, contribution.tables, user)
       const { get, list, activity } = context.documents
+      const datasets = appDatasets(app, title, contribution.datasets ?? [], authorization.places)
       const json = await withSecretsKept(secrets, async () => {
         try {
-          return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents: Object.freeze({ get, list, activity }) })))
+          return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents: Object.freeze({ get, list, activity }), datasets })))
         } finally { await context.close() }
       })
       assertNoSecret(secrets, JSON.parse(json))

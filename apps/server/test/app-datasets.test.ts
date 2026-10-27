@@ -19,7 +19,9 @@ import { test as pgTest } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { invalidateSources } from '../src/sources/registry'
-import { activeSnapshot, buildSnapshot } from '../src/dataset-snapshot'
+import { activeSnapshot, buildSnapshot, pendingMisses } from '../src/dataset-snapshot'
+import { expectApiError } from './fixtures'
+import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
@@ -105,6 +107,80 @@ describe('the snapshot of an app dataset', () => {
     await fillWarehouse([])
     expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'refused' })
     expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+})
+
+async function position(admin: TestClient, person: string, place: string, store: string, section: string) {
+  await admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: `${person}-${place}-${section}`, person, place, store, section } })
+}
+
+type Context = RuntimeReadContext
+
+const row = (plant_code: string, section_code: string, business_day: string, amount: number, units: number, note: string) =>
+  ({ plant_code, section_code, business_day, amount, units, note })
+
+describe('a cached dataset read', () => {
+  test('returns only the rows the caller\'s places cover', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const answer = await reader.post<{ result: { served: string; rows: unknown[] } }>(read + 'inside', { payload: {} })
+    expect(answer.result).toMatchObject({ dataset: 'sales', served: 'cached', rows: [
+      row('N1', 'kids', '2026-10-01', 100.5, 3, 'north kids'),
+      row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids'),
+    ] })
+  })
+
+  test('a place naming a filter the dataset does not map contributes no rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    const roster = await fixtureModule('placeroster', provider)
+    roster.faults.result = [{ label: 'North floor 1', filters: { store: ['N1'], floor: ['1'] } }, { label: 'South', filters: { store: ['S1'] } }]
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'inside', { payload: {} })
+    delete roster.faults.result
+    expect(answer.result.rows).toEqual([row('S1', 'kids', '2026-10-01', 40, 2, 'south kids')])
+  })
+
+  test('a filter on a declared key narrows the rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales', { business_day: ['2026-10-02'] })
+    const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'inside', { payload: {} })
+    expect(answer.result.rows).toEqual([row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids')])
+  })
+
+  test('a filter on a column that is not a declared key is refused', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales', { note: 'north kids' })
+    await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 417, message: expect.stringMatching(/cannot be filtered on note/) })
+  })
+
+  test('a read whose policy carries no places gets no rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const answer = await reader.post<{ result: { rows: unknown[] } }>(read + 'unscoped', { payload: {} })
+    expect(answer.result.rows).toEqual([])
+  })
+
+  test('before the dataset has built, answers nothing and records the ask', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    expect(await reader.post(read + 'inside', { payload: {} })).toEqual({ result: null })
+    expect(await pendingMisses()).toContain('datasetproof.sales')
+  })
+
+  test('a dataset whose data source the instance does not have answers "not set up yet"', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.active('unplugged')
+    await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 409, type: 'NotSetUpError' })
   })
 })
 
