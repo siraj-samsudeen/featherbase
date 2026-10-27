@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FEATHERBASE_ADMIN_DESTINATION, adminPageNeedsManage } from 'shared'
+import { FEATHERBASE_ADMIN_DESTINATION, JOBS_PATH, adminPageNeedsManage } from 'shared'
 import { api, getSessionUser } from '../lib/api'
 import {
   actionForLocation,
@@ -34,7 +34,7 @@ import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
 import { useSetupOffer } from './FirstRunSetup'
 import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, useMediaQuery } from '../components/ui'
-import { Bell, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
+import { Bell, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -749,7 +749,12 @@ function AdminShell() {
             heading="This instance"
             icon={ListChecks}
             testid="sidebar-group-instance"
-            items={canManage ? [{ to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' }] : []}
+            items={canManage
+              ? [
+                  { to: JOBS_PATH, label: 'Jobs', icon: CalendarClock, testid: 'jobs-link' },
+                  { to: INSTANCE_HEALTH_PATH, label: 'Instance health', icon: ListChecks, testid: 'instance-health-link' },
+                ]
+              : []}
           />
         </aside>
 
