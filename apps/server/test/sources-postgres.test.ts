@@ -742,4 +742,17 @@ describe('Connect a data source: limiting which tables can be connected', () => 
     expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('ext_fixture.business')
     expect(await sql`select name from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
   })
+
+  test('skipped tables come back in the order they were asked for', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const res = await admin.post<{ skipped: { table: string; reason: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['tenant', 'nope'] },
+    )
+    expect(res.skipped.map((s) => [s.table, s.reason])).toEqual([
+      ['tenant', 'Already reflected as Ext Tenant'],
+      ['nope', 'Not found on the source'],
+    ])
+  })
 })

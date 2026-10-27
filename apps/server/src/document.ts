@@ -238,7 +238,8 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
 }
 
 // META-008: every Reference value must point at an existing row of the
-// target Table. Runs inside the save transaction alongside validation.
+// target Table. Local targets are checked inside the save transaction;
+// source-bound targets are asked of their source.
 async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
