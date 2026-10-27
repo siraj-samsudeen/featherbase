@@ -615,12 +615,19 @@ export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
 }
 
+/** The Table that opens an app (its catalog gate), for a loaded package. */
+export function appEntryTable(name: string): string | undefined {
+  return packages.get(name)?.entryTable
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
   for (const item of installed) {
     const pkg = packages.get(item.name)
-    if (item.active && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
+    // Its installation declares pages of its own (#659's classification), and
+    // this process holds them to serve.
+    if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
       result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
   }
   return result
