@@ -22,8 +22,8 @@ async function importedShelf(admin: Admin) {
 
 test('the revert preview can be cancelled; a row another Table points at is not taken back, with the reason', async ({ admin }) => {
   const user = userEvent.setup()
-  await admin.post('/api/table_def', { name: 'Iwv Bin', columns: [{ column_name: 'shelf', column_type: 'Reference', reference_table: 'Iwv Shelf' }] })
   const history = await importedShelf(admin)
+  await admin.post('/api/table_def', { name: 'Iwv Bin', columns: [{ column_name: 'shelf', column_type: 'Reference', reference_table: 'Iwv Shelf' }] })
   await admin.post('/api/save_row', { table: 'Iwv Bin', row: { shelf: 'shelf-9' } })
 
   await user.click(history.getByTestId('iw-revert-open-h0'))
