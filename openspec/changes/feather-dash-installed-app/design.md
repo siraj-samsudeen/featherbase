@@ -474,6 +474,26 @@ prod after approval.
 
 ### D8. Migration: four stages
 
+**Go-live order (owner decision 27-Oct-2026).** Section editing is part of go-live:
+at go-live, store managers can request corrections to wrong subcategory → section
+mappings, and a steward who is not a System Manager applies them. So stages B, the
+first part of C, and D reach managers **together, in one cut-over**. No 1.0.0 goes
+to the trial first. The order of work:
+
+1. B1–B5: the platform extensions (E9, E1, E2 with D4, E3 with E5, E4 with E7 and E8).
+   E1's scope shape already carries each section's mapping status (task 4.1).
+2. The #462 design with the owner, in parallel with B1–B5.
+3. #246 items 1–2 on the section and mapping Tables, after B2: explicit scope
+   columns and `scope_required`, so no scope rows means no rows.
+4. Stage C1: #449's section and mapping Tables, and the scope provider reading them
+   (needs the owner's go on #449's design). Only these Tables keep a human edit
+   across the next roster import.
+5. The #462 build: the steward role, limited to its stores through #246.
+6. B6 and B7: Feather Dash and the client's instance setup.
+7. Stage D: section editing.
+8. One cut-over: the parity check, install on dev, switch the dev address; then prod
+   with the owner's approval. Then the stage B clean-up.
+
 **Stage A: addresses and the shared bar, around today's page.** Platform only.
 
 - *Build:*
@@ -501,7 +521,8 @@ prod after approval.
 - *Check on dev:* install beside the platform page. On a restored dev snapshot, for
   every person with a scope today, the app's `me` and `report` answers must equal the
   platform endpoints' (same scope, rows and totals), and the embed's scope state must
-  be identical. Then the address switches to the app.
+  be identical. The address switches to the app in the go-live cut-over, together
+  with stage D.
 - *Promote:* the same steps on prod after the owner's approval.
 - *Clean up:* a platform release deletes the core page and route,
   `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, the old
@@ -513,6 +534,9 @@ prod after approval.
 
 **Stage C: adopt the roster redesign** (needs #449 and #392).
 
+C1 (the section and mapping Tables, and the provider reading them) is on the go-live
+path. C2 (bindings moving to the manager jobs) may follow go-live.
+
 - The scope provider reads `position`, `section`, `section_subcategory`, wherever
   #449 places them. #449's per-person parity check, on the scope shape, is the gate.
 - Job roles are granted from current `position` rows. The binding setting moves from
@@ -520,10 +544,11 @@ prod after approval.
   `Sales Target Assignment` are removed.
 - Feather Dash does not change, which proves the E1 boundary.
 
-**Stage D: section editing** (needs #462, and C).
+**Stage D: section editing** (needs #246 items 1–2, #462, and C1). Part of go-live.
 
-- Feather Dash 1.1.0, a code-only upgrade: my-sections page, the request and decide
-  actions, and the reviewer page. The Table and grants were declared in 1.0.0.
+- Feather Dash 1.1.0: my-sections page, the request and decide actions, and the
+  reviewer page. The Table and grants were declared in 1.0.0. Since 1.0.0 never
+  reaches managers alone, both versions go out in the go-live cut-over.
 - The Section Reviewer role is bound to #462's delegated role.
 - *Rollback:* do not activate; dev proves it before prod is upgraded.
 
@@ -559,7 +584,8 @@ prod after approval.
 
 ## Migration Plan
 
-See D8. The order is A → B → C → D. Dev first at each stage. Prod gets each stage
+See D8. Stage A is done. B, C1 and D reach managers together in one go-live
+cut-over (owner decision 27-Oct-2026); C2 may follow. Dev first. Prod gets each stage
 only after the owner's approval, rehearsed on a restored prod snapshot with prod's
 real environment variables, as `docs/DEPLOY.md` requires.
 
@@ -588,3 +614,14 @@ Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
    when to see live numbers.
 10. **Platform version**, dated by month, replaces `apiVersion`.
 11. **No sandbox now**, with ADR 0011's three guardrails.
+
+Owner decisions, 27-Oct-2026 (relayed through the rollout session):
+
+12. **Section editing is part of go-live.** Store managers request corrections to
+    wrong subcategory → section mappings; a central steward, not a System Manager,
+    applies them (D5 unchanged). #462 designs the steward role.
+13. **One cut-over.** Feather Dash and section editing reach managers together; no
+    1.0.0 to the trial first.
+14. **Order:** B1–B5; the #462 design in parallel; #246 items 1–2 after B2; C1
+    (#449's section and mapping Tables, with the provider swap); the #462 build;
+    B6/B7; D; the cut-over (D8).
