@@ -11,7 +11,7 @@ import { describe, expect } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
-import { expectApiError } from './fixtures'
+import { expectApiError, tableRef } from './fixtures'
 
 const consumer = resolve('../..', 'runtime-apps/scope-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -161,6 +161,20 @@ describe("the scope provider's read context", () => {
     expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
   })
 
+  // Codex round 1: a row read loads its Sub-table rows, which would hand the
+  // provider an undeclared, unmarked child Table. Such a Table is refused.
+  test('refuses a marked Table with a Sub-table, so its child rows never reach the provider', async ({ admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Roster Extra Line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    await admin.post('/api/table_def', { name: 'Roster Extra', decides_scope: true, columns: [
+      { column_name: 'note', column_type: 'Data' }, { column_name: 'lines', column_type: 'Sub-table', row_table: 'Roster Extra Line' }] })
+    const parent = await admin.post<{ row_id: string }>(tableRef('Roster Extra').url, { note: 'x', lines: [{ code: 'hidden-child' }] })
+    roster.faults.getInstance = parent.row_id
+    const response = await user.fetch(read + 'places', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) })
+    expect(response.status).toBe(403)
+    expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
+  })
+
   test('passes confirmation statuses through to the handler', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser)
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids', { assumed: true })
@@ -229,6 +243,10 @@ describe('declaring a scope provider', () => {
     ['over an owned Table that is not marked as deciding scope', (m: Record<string, any>, s: string) =>
       [{ ...m, tables: m.tables.map((t: Record<string, unknown>) => ({ ...t, decides_scope: false })) }, s],
       'A scope provider reads only Tables marked decides_scope'],
+    ['over an owned Table with a Sub-table', (m: Record<string, any>, s: string) => [{ ...m, tables: [
+      ...m.tables.map((t: Record<string, any>) => ({ ...t, columns: [...t.columns, { column_name: 'lines', column_type: 'Sub-table', row_table: 'placeroster.line' }] })),
+      { name: 'placeroster.line', label: 'line', kind: 'sub_table', columns: [{ column_name: 'code', column_type: 'Data' }] }] }, s],
+      'A scope provider cannot read Tables with Sub-tables'],
   ] as const)('an app declaring a provider %s is not loaded', async ([, change, error]) => {
     const copy = await variant(change as never)
     try {

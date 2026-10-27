@@ -49,6 +49,9 @@ async function withScopeReads<T>(binding: ScopeProviderBinding, fn: (documents: 
       if (!binding.tables.includes(table)) throw new Error('Scope provider read an undeclared Table')
       const meta = await getMeta(table)
       if (!meta.decides_scope || meta.system || meta.data_source || meta.kind !== 'table') throw new Error('Scope provider read a Table not marked as deciding scope')
+      // A row read loads its Sub-table rows, from a Table never declared or
+      // marked; refused, as action documents refuse them.
+      if (meta.columns.some((column) => column.column_type === 'Sub-table')) throw new Error('Scope provider read a Table with Sub-tables')
       return JSON.parse(JSON.stringify(await work())) as R
     })()
     pending = run

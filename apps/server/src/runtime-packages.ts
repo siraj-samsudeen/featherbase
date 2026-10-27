@@ -239,6 +239,7 @@ export function discoverPackages(paths: string[]) {
           for (const table of provider.tables) {
             const owned = manifest.tables.find(t => t.name === table)
             if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
+            if (owned?.columns.some(column => column.column_type === 'Sub-table')) throw new Error('A scope provider cannot read Tables with Sub-tables')
           }
         }
         const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}

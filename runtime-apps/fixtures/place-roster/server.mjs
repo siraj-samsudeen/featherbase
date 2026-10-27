@@ -12,6 +12,11 @@ export const scopeProviders = {
     if (faults.readInstance) await documents.list('Roster Extra')
     if (faults.readUndeclared) await documents.list('scopeproof.object')
     if (faults.parallel) await Promise.all([documents.list('placeroster.position'), documents.list('placeroster.position')])
+    if (faults.getInstance) {
+      // Echoes any child rows the read handed over.
+      const row = await documents.get('Roster Extra', faults.getInstance)
+      return [{ label: 'Extra', filters: { line: (row.lines ?? []).map(line => line.code) } }]
+    }
     if (faults.getRow) {
       const row = await documents.get('placeroster.position', faults.getRow)
       return [{ label: row.place, filters: { store: [row.store] } }]
