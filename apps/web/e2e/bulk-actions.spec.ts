@@ -2,7 +2,7 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 
 const DT = 'Bulk DT'
 
-// UI-012: select rows, bulk edit a field, bulk delete.
+// UI-012: select rows, bulk edit a field, bulk delete (confirmed first, #327).
 // Checkboxes and bulk controls are testid-addressed with no accessible label
 // distinct from their siblings, so the whole flow stays in named steps;
 // assertHas covers the plain count check around it.
@@ -70,6 +70,8 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ sessio
     await page.getByTestId('select-all').check()
     await expect(page.getByTestId('bulk-count')).toContainText('5 selected')
     await page.getByTestId('bulk-delete').click()
+    await expect(page.getByRole('dialog', { name: 'Delete 5 rows?' })).toBeVisible()
+    await page.getByTestId('bulk-delete-confirm').click()
     await expect(page.getByTestId('list-total')).toContainText('0 total')
     const token = await page.evaluate(() => localStorage.getItem('fc_token'))
     const after = (await (

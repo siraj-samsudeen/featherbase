@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { rowDisplayTitle } from 'shared'
@@ -14,6 +14,7 @@ import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
 import { Notice, buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
+import { failureMessage } from '../lib/import-run'
 
 export type Filter = [string, string, unknown]
 
@@ -50,6 +51,13 @@ const NO_VALUE = /\b(none|not set)\b/
 const INDICATOR_PALETTE = [1, 2, 3, 4, 5].map((n) => `var(--color-series-${n})`)
 
 /** The pager's "1–20 of 1,23,456", counts Indian-grouped. */
+/** A row a bulk change on a connected Table could not change (#332). */
+interface BulkFailure {
+  row_id: string
+  message: string
+  fields?: Record<string, string>
+}
+
 export function pageRange(start: number, pageSize: number, total: number): string {
   return `${fmtCount(total === 0 ? 0 : start + 1)}–${fmtCount(Math.min(start + pageSize, total))} of ${fmtCount(total)}`
 }
@@ -107,6 +115,22 @@ export function ListView({
   const [bulkValue, setBulkValue] = useState('')
   const [bulkBusy, setBulkBusy] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
+  // #327: bulk delete asks first, like deleting one row or the whole Table.
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false)
+  const bulkDeleteButton = useRef<HTMLButtonElement>(null)
+  // Escape closes it wherever focus has wandered, and focus goes back to the
+  // Delete that opened it.
+  useEffect(() => {
+    if (!confirmingBulkDelete || bulkBusy) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setConfirmingBulkDelete(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmingBulkDelete, bulkBusy])
+  useEffect(() => {
+    if (!confirmingBulkDelete) return
+    const opener = bulkDeleteButton.current
+    return () => opener?.focus()
+  }, [confirmingBulkDelete])
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
@@ -263,8 +287,8 @@ export function ListView({
     })
   }
 
-  // UI-012: bulk actions over the selected rows. Each row goes through the
-  // normal row lifecycle (delete_doc / save_row) — no side-channel.
+  // UI-012: bulk actions over the selected rows. The server puts each row
+  // through the normal row lifecycle (save / delete) — no side-channel.
   const editableColumns = (meta.data?.columns ?? []).filter(
     (f) =>
       !NO_COLUMN_TYPES.has(f.column_type) &&
@@ -288,33 +312,40 @@ export function ListView({
     setBulkError(null)
   }
 
+  // #332: one request for the whole selection. On a platform Table it is
+  // all-or-nothing, so a refusal means no row changed. A connected Table's
+  // rows are tried one by one; the ones that failed stay selected, named
+  // with their reasons.
+  function reportPartial(verb: string, done: number, failed: BulkFailure[]) {
+    if (!failed.length) return refresh()
+    setSelected(new Set(failed.map((f) => f.row_id)))
+    setBulkError(
+      `${fmtCount(done)} of ${fmtCount(done + failed.length)} ${verb}. ` +
+        failed.map((f) => `${f.row_id}: ${refusal(f)}`).join('; '),
+    )
+    return queryClient.invalidateQueries({ queryKey: ['list', table] })
+  }
+
+  // #540: a refusal names each refused field by its label, and why.
+  function refusal(err: { message: string; fields?: Record<string, string> }): string {
+    const labels = new Map((meta.data?.columns ?? []).map((f) => [f.column_name, f.label ?? f.column_name]))
+    return failureMessage(err, (column) => labels.get(column) ?? column)
+  }
+
   async function bulkDelete() {
     setBulkBusy(true)
     setBulkError(null)
-    // Source-bound rows carry a revision (mapped modified column / file
-    // mtime); echo it so a row that changed since it was listed conflicts
-    // instead of deleting whatever now sits at that position (csv rows are
-    // positional).
-    const bound = Boolean(meta.data?.data_source && meta.data?.external_modified)
     try {
-      for (const name of selected) {
-        let query = ''
-        if (bound) {
-          const doc = await api.get<Record<string, unknown>>(
-            `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
-          )
-          if (doc.updated_at != null)
-            query = `?updated_at=${encodeURIComponent(String(doc.updated_at))}`
-        }
-        await api.delete(
-          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}${query}`,
-        )
-      }
-      await refresh()
+      const result = await api.post<{ deleted: number; failed?: BulkFailure[] }>(
+        `/api/table/${encodeURIComponent(table)}:bulk-delete`,
+        { rows: [...selected] },
+      )
+      await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
-      setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
+      setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
     } finally {
       setBulkBusy(false)
+      setConfirmingBulkDelete(false)
     }
   }
 
@@ -330,18 +361,13 @@ export function ListView({
           ? null
           : bulkValue
     try {
-      for (const name of selected) {
-        const doc = await api.get<Record<string, unknown>>(
-          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
-        )
-        await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
-          [bulkField]: value,
-          updated_at: doc.updated_at,
-        })
-      }
-      await refresh()
+      const result = await api.post<{ changed: number; failed?: BulkFailure[] }>(
+        `/api/table/${encodeURIComponent(table)}:bulk-edit`,
+        { rows: [...selected], values: { [bulkField]: value } },
+      )
+      await reportPartial('changed', result.changed, result.failed ?? [])
     } catch (err) {
-      setBulkError(err instanceof ApiError ? err.message : 'Bulk edit failed')
+      setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk edit failed')
     } finally {
       setBulkBusy(false)
     }
@@ -614,6 +640,50 @@ export function ListView({
           </div>
         </div>
       )}
+      {/* #327: the same confirmation as Delete Table and a form's Delete —
+          labelled, Escape-dismissable, Cancel first — naming how many rows
+          go. Whatever the server answers shows in the bulk bar afterwards. */}
+      {confirmingBulkDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+          onClick={() => !bulkBusy && setConfirmingBulkDelete(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-delete-title"
+            className={cardClasses('w-full max-w-md p-4')}
+            data-testid="bulk-delete-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="bulk-delete-title" className="mb-2 text-base font-semibold text-ink">
+              Delete {fmtCount(selected.size)} row{selected.size === 1 ? '' : 's'}?
+            </h2>
+            <p className="mb-3 text-sm text-ink-muted">
+              The selected rows will be permanently deleted. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                autoFocus
+                onClick={() => setConfirmingBulkDelete(false)}
+                disabled={bulkBusy}
+                className={buttonClasses()}
+                data-testid="bulk-delete-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={bulkDelete}
+                disabled={bulkBusy}
+                className={buttonClasses({ variant: 'danger', className: 'disabled:opacity-40' })}
+                data-testid="bulk-delete-confirm"
+              >
+                {bulkBusy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
       {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
@@ -631,14 +701,15 @@ export function ListView({
             {fmtCount(selected.size)} selected
           </span>
           <button
-            onClick={bulkDelete}
+            ref={bulkDeleteButton}
+            onClick={() => setConfirmingBulkDelete(true)}
             disabled={bulkBusy}
             className={buttonClasses({ variant: 'danger' })}
             data-testid="bulk-delete"
           >
             Delete
           </button>
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
