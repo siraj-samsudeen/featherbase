@@ -170,6 +170,9 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
 //   3819 ER_CHECK_CONSTRAINT_VIOLATED: Check constraint 'gauge_level_range' is violated.
 //   1406 / 1264 / 1366 / 1292 / 1265: too long / out of range / incorrect or
 //                                 truncated value ... for column 'level'
+// (1292 is also strict mode's answer to a malformed id in a WHERE clause;
+// the save path looks the row up first, which only warns, so it never gets
+// that far.)
 const NOT_NULL = new Set([1048, 1364])
 const BAD_VALUE = new Set([1264, 1366, 1292, 1265])
 
@@ -195,13 +198,15 @@ function refusal(e: { errno?: number; message?: string }): SourceRefusal | null 
       ...(constraint ? { constraint_name: constraint } : {}),
     })
   }
-  // 1451: this row is the one pointed at. The column the message names is
-  // the OTHER table's, so none is passed on; the detail says which way round
-  // it is, in Postgres's words ("... is still referenced from table ...").
-  if (errno === 1451)
+  // 1451: this row is the one pointed at. Its own column is the one after
+  // REFERENCES; the detail says which way round it is, in Postgres's words.
+  if (errno === 1451) {
+    const referenced = quoted(/REFERENCES `[^`]+` \(`([^`]+)`\)/)
     return shaped(REFUSAL_CODE.foreignKey, {
-      detail: 'Key is still referenced from another table.',
+      ...column(referenced),
+      detail: `Key (${referenced ?? '?'}) is still referenced from another table.`,
     })
+  }
   if (errno === 3819) {
     const constraint = quoted(/constraint '([^']+)'/i)
     return shaped(REFUSAL_CODE.check, constraint ? { constraint_name: constraint } : {})
@@ -247,9 +252,14 @@ async function exec(
   text: string,
   values: unknown[],
   on: Querier,
+  // update/delete by key: an id the key can't hold matches no row.
+  matchesKey = false,
 ): Promise<{ affectedRows: number; insertId: number }> {
   try {
-    const [result] = await on.query(text, values)
+    const statement = () => on.query(text, values)
+    const [result] = matchesKey
+      ? await byKey(statement, [{ affectedRows: 0, insertId: 0 }] as never)
+      : await statement()
     return result as { affectedRows: number; insertId: number }
   } catch (err) {
     wrapError(cfg, err)
@@ -257,6 +267,9 @@ async function exec(
 }
 
 // #155: MySQL has no RETURNING, so a write is a statement plus a re-read.
+// These guarantees hold for tables that support transactions (InnoDB, the
+// default); a MyISAM table has neither row locks nor rollback (#566 lists
+// the follow-up).
 // Both run on one pooled connection in one transaction: the statement's row
 // lock holds until the re-read, so the row handed back is the one this save
 // wrote — never another writer's change landing in between, and never
@@ -298,9 +311,27 @@ function selectByPk(bind: Binding): string {
   return `select * from ${relation(bind)} where ${pkMatch(bind)} limit 1`
 }
 
+// ER_CANT_AGGREGATE_2COLLATIONS: the id holds a character the key's
+// character set can't (an emoji against a latin1 key), so `key = ?` can't
+// even be compared. Such an id names no row.
+const KEY_CANNOT_HOLD = 1267
+
+async function byKey<T>(statement: () => Promise<T>, noRow: T): Promise<T> {
+  try {
+    return await statement()
+  } catch (err) {
+    if ((err as { errno?: number })?.errno === KEY_CANNOT_HOLD) return noRow
+    throw err
+  }
+}
+
 async function readRow(bind: Binding, pk: string, on: Querier): Promise<SourceRow | null> {
-  const rows = await run(bind.source, selectByPk(bind), [pk, pk], on)
-  return rows[0] ?? null
+  try {
+    const [rows] = await byKey(() => on.query(selectByPk(bind), [pk, pk]), [[]] as never)
+    return (rows as SourceRow[])[0] ?? null
+  } catch (err) {
+    wrapError(bind.source, err)
+  }
 }
 
 // The client echoes updated_at as millisecond ISO; DATETIME columns store
@@ -517,6 +548,7 @@ export const mysqlDriver: SourceDriver = {
         `update ${relation(bind)} set ${sets.join(', ')} where ${where}`,
         params,
         conn,
+        true,
       )
       const row = await readRow(bind, pk, conn)
       if (result.affectedRows === 0) return row ? 'conflict' : 'missing'
@@ -539,7 +571,7 @@ export const mysqlDriver: SourceDriver = {
       params.push(new Date(expectModified))
     }
     return inTransaction(bind.source, async (conn) => {
-      const result = await exec(bind.source, `delete from ${relation(bind)} where ${where}`, params, conn)
+      const result = await exec(bind.source, `delete from ${relation(bind)} where ${where}`, params, conn, true)
       if (result.affectedRows > 0) return
       return (await readRow(bind, pk, conn)) ? 'conflict' : 'missing'
     })

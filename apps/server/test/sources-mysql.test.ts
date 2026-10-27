@@ -134,6 +134,26 @@ beforeAll(async () => {
   await cli.query(`
     create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
     for each row set new.code = concat('x-', new.code)`)
+  // An older schema: a key in a character set that can't hold every id.
+  await cli.query(`
+    create table ext_mysql.legacy (
+      code varchar(10) character set latin1 primary key,
+      v int
+    )`)
+  // Other rows point at a badge through its code, not its id.
+  await cli.query(`
+    create table ext_mysql.badge (
+      id int auto_increment primary key,
+      code varchar(20) not null unique
+    )`)
+  await cli.query(`
+    create table ext_mysql.badge_holder (
+      id int auto_increment primary key,
+      badge_code varchar(20),
+      foreign key (badge_code) references badge(code)
+    )`)
+  await cli.query(`insert into ext_mysql.badge (code) values ('B1')`)
+  await cli.query(`insert into ext_mysql.badge_holder (badge_code) values ('B1')`)
   // The insert id belongs to `seq`, not to the key: a new row without a
   // key must not be read back through it.
   await cli.query(`
@@ -808,6 +828,13 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     expect(await mysqlDriver.getDoc(bindFor('plain', 'id'), '1abc')).toBeNull()
   })
 
+  test('a key the table could never hold finds no row', async () => {
+    const legacy = bindFor('legacy', 'code')
+    expect(await mysqlDriver.getDoc(legacy, '😀')).toBeNull()
+    expect(await mysqlDriver.update(legacy, '😀', { v: 1 }, null)).toBe('missing')
+    expect(await mysqlDriver.remove(legacy, '😀', null)).toBe('missing')
+  })
+
   test('an insert with an explicit key reads that row back', async () => {
     try {
       const row = await mysqlDriver.insert(bindFor('nokey', 'code'), { label: 'given' }, 'K1')
@@ -1072,6 +1099,24 @@ describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
     }
     expect(thrown).toMatchObject({ type: 'ValidationError', message: expect.stringMatching(/still point/) })
     expect((thrown as { fields?: unknown }).fields).toBeUndefined()
+  })
+
+  test('changing a value other rows point at is refused on that field', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'badge')
+    const bind = { ...bindFor('badge', 'id'), columns: [{ column_name: 'code', source_column: 'code', column_type: 'Data' }] }
+    const [rows] = await cli.query(`select id from ext_mysql.badge where code = 'B1'`)
+    const err = await mysqlDriver.update(bind, String((rows as { id: number }[])[0].id), { code: 'B2' }, null).catch((e) => e)
+    expect(err).toMatchObject({ code: '23503', column_name: 'code' })
+    const { explainRefusal } = await import('../src/sources/dispatch')
+    const { getMeta } = await import('../src/meta')
+    let thrown: unknown
+    try {
+      explainRefusal(await getMeta(name), bind, err)
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toMatchObject({ type: 'ValidationError', fields: { code: expect.stringMatching(/still point/) } })
   })
 
   test('each refusal arrives from the driver in the shared shape', async () => {

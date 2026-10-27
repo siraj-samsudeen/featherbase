@@ -152,7 +152,7 @@ export function explainRefusal(
   const field = (sourceColumn: string) => bind.columns.find((c) => c.source_column === sourceColumn)?.column_name
   const label = (name: string) => meta.columns.find((c) => c.column_name === name)?.label || name
   // Postgres names a foreign key's column only in its detail line.
-  const sourceColumn = e.column_name ?? /^Key \(([^),]+)\)=.* is not present/.exec(e.detail ?? '')?.[1]
+  const sourceColumn = e.column_name ?? /^Key \(([^),]+)\)/.exec(e.detail ?? '')?.[1]
   const named = sourceColumn ? field(sourceColumn) : undefined
   const refuse = (message: string, fields?: Record<string, string>) => {
     throw new AppError('ValidationError', message, fields)
@@ -175,9 +175,15 @@ export function explainRefusal(
     case REFUSAL_CODE.foreignKey:
       if (deleting != null)
         return refuse(`Cannot delete ${meta.name} ${deleting}: other rows at the data source still point at it`)
-      // This row is the one pointed at (its key was changed), not a link of its own.
-      if (/is still referenced/.test(e.detail ?? ''))
-        return refuse(`Other rows at the data source still point at this ${meta.name} row, so its id cannot change`)
+      // This row is the one pointed at (a value others link to was changed),
+      // not a link of its own.
+      if (/is still referenced/.test(e.detail ?? '')) {
+        const pointedAt = named ? label(named) : 'value'
+        return refuse(
+          `Other rows at the data source still point at this row's ${pointedAt}, so it cannot change`,
+          named ? { [named]: 'Other rows at the data source still point at this value' } : undefined,
+        )
+      }
       if (named) return refuse(`Invalid links for ${meta.name}`, { [named]: 'No such row at the data source' })
       return refuse(`${meta.name} links to a row the data source does not have`)
     case REFUSAL_CODE.check:
