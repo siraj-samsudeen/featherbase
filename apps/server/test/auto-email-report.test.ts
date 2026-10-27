@@ -2,9 +2,10 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { tableRelation } from '../src/table-engine'
 import { deliverAutoEmailReport, runDueAutoEmailReports, toCsv } from '../src/auto-email-report'
 import { drainJobs, enqueue } from '../src/jobs'
-import { expectApiError } from './fixtures'
+import { expectApiError, grantRole } from './fixtures'
 
 // EML-007: a saved Report scheduled as an Auto Email Report is delivered to its
 // recipients with the report attached. The scheduler pass respects the cadence.
@@ -200,4 +201,70 @@ describe('EML-007: Auto Email Report', () => {
     expect(files[0].filename).toBe(`${REPORT}.html`)
     expect(Buffer.from(files[0].content_b64, 'base64').toString('utf8')).toContain('<td>Washer</td>')
   })
+})
+
+// #338: a scheduled send runs with the access of the person who set it up,
+// never as Administrator, and stops once that person is disabled.
+describe('A scheduled report is sent with its setter\'s access', () => {
+  async function setterWorld(admin: TestClient, createUser: (o?: { email?: string; roles?: string[] }) => Promise<TestClient>) {
+    await setup(admin)
+    await grantRole(admin, { role: 'Aer Setter', table: DT, can_read: true, can_create: true, can_write: true, own_rows_only: true })
+    await grantRole(admin, { role: 'Aer Setter', table: ['Report', 'Auto Email Report'], can_read: true, can_create: true, can_write: true })
+    const setter = await createUser({ email: 'aer-setter@x.com', roles: ['Aer Setter'] })
+    await setter.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'aer-mine', title: 'Mine only', qty: 1 })
+    await setter.post('/api/save_row', {
+      table: 'Auto Email Report',
+      row: { row_id: 'Aer Setter Schedule', report: REPORT, recipients: 'aer-team@x.com', file_format: 'CSV', frequency: 'Daily', enabled: true },
+    })
+    await sql`update auto_email_report set enabled = false where row_id = ${AER}`
+    return setter
+  }
+  const sentCsv = async () => {
+    const rows = await sql`select attachments from email_queue where recipient = 'aer-team@x.com'`
+    return rows.map((q) => Buffer.from((q.attachments as { files: { content_b64: string }[] }).files[0].content_b64, 'base64').toString('utf8'))
+  }
+
+  test('the scheduled send holds only the rows the setter can see', async ({ admin, createUser }) => {
+    await setterWorld(admin, createUser)
+    expect(await runDueAutoEmailReports(new Date())).toEqual(['Aer Setter Schedule'])
+    const [csv] = await sentCsv()
+    expect(csv).toContain('Mine only')
+    expect(csv).not.toContain('Washer')
+  })
+
+  test('a disabled setter\'s schedule sends nothing, and the other schedules still go', async ({ admin, createUser }) => {
+    const setter = await setterWorld(admin, createUser)
+    await sql`update auto_email_report set enabled = true where row_id = ${AER}`
+    await sql`update person set enabled = false where row_id = ${setter.user}`
+    expect(await runDueAutoEmailReports(new Date())).toEqual([AER])
+    expect(await sentCsv()).toEqual([])
+    const [row] = await sql`select last_sent from auto_email_report where row_id = 'Aer Setter Schedule'`
+    expect(row.last_sent).toBeNull()
+  })
+})
+
+test('a schedule whose setter can no longer read the report is skipped, and the others still go', async ({ admin, createUser }) => {
+  await setup(admin)
+  await grantRole(admin, { role: 'Aer Lapsed', table: ['Report', 'Auto Email Report'], can_read: true, can_create: true, can_write: true })
+  const setter = await createUser({ email: 'aer-lapsed@x.com', roles: ['Aer Lapsed'] })
+  await setter.post('/api/save_row', {
+    table: 'Auto Email Report',
+    row: { row_id: 'Aer Lapsed Schedule', report: REPORT, recipients: 'aer-lapsed-team@x.com', frequency: 'Daily', enabled: true },
+  })
+  // The setter has no read on the report's Table at all.
+  expect(await runDueAutoEmailReports(new Date())).toEqual([AER])
+  expect(await sql`select 1 from email_queue where recipient = 'aer-lapsed-team@x.com'`).toHaveLength(0)
+})
+
+// #338: the attachment carries every row of the report, not the first 500.
+test('a report longer than one page is sent whole', async ({ admin }) => {
+  await setup(admin)
+  await sql`insert into ${sql(await tableRelation(DT))} (row_id, title, qty, created_by, updated_by)
+    select 'bulk-' || n, 'Bulk ' || n, n, 'Administrator', 'Administrator' from generate_series(1, 600) n`
+  const out = await deliverAutoEmailReport(AER)
+  expect(out.rows).toBe(602)
+  const [q] = await sql`select body, attachments from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+  expect(String(q.body)).toContain('(602 rows)')
+  const csv = Buffer.from((q.attachments as { files: { content_b64: string }[] }).files[0].content_b64, 'base64').toString('utf8')
+  expect(csv.split('\n')).toHaveLength(603)
 })

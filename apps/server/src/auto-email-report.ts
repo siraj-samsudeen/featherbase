@@ -22,13 +22,21 @@ export async function runReportRows(reportName: string, user: string): Promise<R
   const refTable = String(report.ref_table ?? '')
   if (!refTable) throw new AppError('ValidationError', `${reportName} has no ref_table`)
   const columns = [...new Set([ROW_KEY, ...(cfg.columns ?? [])])]
-  const { data } = await getList(
-    refTable,
-    { fields: columns, filters: cfg.filters ?? [], limit_page_length: 500 },
-    user,
-  )
-  return { columns, rows: data as Record<string, unknown>[] }
+  // #338: every row, page by page — the attachment is the whole report.
+  const rows: Record<string, unknown>[] = []
+  for (;;) {
+    const { data } = await getList(
+      refTable,
+      { fields: columns, filters: cfg.filters ?? [], order_by: `${ROW_KEY} asc`, limit_start: rows.length, limit_page_length: PAGE },
+      user,
+    )
+    rows.push(...(data as Record<string, unknown>[]))
+    if (data.length < PAGE) break
+  }
+  return { columns, rows }
 }
+
+const PAGE = 500
 
 // RFC-4180-ish CSV: quote fields containing comma/quote/newline, double inner
 // quotes. Nullish → empty; booleans → Yes/No to match the print/report views.
@@ -114,16 +122,34 @@ const CADENCE_MS: Record<string, number> = {
 // has elapsed since its last send (or that has never been sent). Returns the
 // list of report-config names delivered. Called by the daily scheduled job and
 // exposed for a manual "run now" trigger.
+// #338: each report runs with the access of the person who set it up, so its
+// recipients never get rows or columns that person couldn't see. A setter who
+// has since been disabled sends nothing.
 export async function runDueAutoEmailReports(now = new Date()): Promise<string[]> {
-  const rows = await sql<{ row_id: string; frequency: string; last_sent: Date | null }[]>`
-    select row_id, frequency, last_sent from auto_email_report where enabled = true`
+  const rows = await sql<{ row_id: string; frequency: string; last_sent: Date | null; created_by: string; setter_enabled: boolean | null }[]>`
+    select r.row_id, r.frequency, r.last_sent, r.created_by,
+      coalesce(p.enabled, s.enabled) as setter_enabled
+    from auto_email_report r
+    left join person p on p.row_id = r.created_by
+    left join service_account s on s.row_id = r.created_by
+    where r.enabled = true
+    order by r.row_id`
   const delivered: string[] = []
   for (const r of rows) {
     const gap = CADENCE_MS[r.frequency] ?? CADENCE_MS.Daily
     const due = !r.last_sent || now.getTime() - new Date(r.last_sent).getTime() >= gap
     if (!due) continue
-    await deliverAutoEmailReport(r.row_id as string)
-    delivered.push(r.row_id as string)
+    if (!r.setter_enabled) {
+      console.warn(`[auto-email-report] ${r.row_id} not sent: the person who set it up is disabled or gone`)
+      continue
+    }
+    // One schedule its setter can no longer run never holds up the others.
+    try {
+      await deliverAutoEmailReport(r.row_id, r.created_by)
+      delivered.push(r.row_id)
+    } catch (err) {
+      console.warn(`[auto-email-report] ${r.row_id} not sent: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
   return delivered
 }
