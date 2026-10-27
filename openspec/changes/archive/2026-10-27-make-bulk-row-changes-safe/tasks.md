@@ -14,4 +14,4 @@
 
 - [x] 3.1 Write the numbered UI checklist on the issue; web tests first: the dialog names the row count, Cancel is focused, and Cancel, Escape or a click outside deletes nothing.
 - [x] 3.2 The bulk bar's Delete opens a confirmation dialog matching Delete Table's; the existing bulk-delete tests and e2e confirm first.
-- [ ] 3.3 An independent verifier checks the UI checklist at 1280px and 375px in light and dark, and a separate reviewer checks the server change; differences are fixed.
+- [x] 3.3 An independent verifier checks the UI checklist at 1280px and 375px in light and dark, and a separate reviewer checks the server change; differences are fixed.
