@@ -122,6 +122,12 @@ SHALL allow that site on that app's pages and nowhere else.
 - **THEN** the embedded report shows inside that app
 - **AND** the same site cannot be embedded on any other Featherbase page
 
+#### Scenario: A loosely written outside site is refused
+
+- **WHEN** an app declares an outside site as any site under a domain, or names a
+  page rather than the site itself
+- **THEN** the app is not loaded, and the refusal says how to write the site
+
 ### Requirement: An app can add a control to the top bar by declaring it
 
 An app SHALL be able to add a control, such as a picker, to the shared top bar by
@@ -133,6 +139,12 @@ only choices the reader is allowed.
 - **WHEN** a manager responsible for two stores opens an app that declared a store
   picker
 - **THEN** the top bar offers exactly their two stores
+
+#### Scenario: No picker for someone with nothing to choose
+
+- **WHEN** a person responsible for no store opens an app that declared a store
+  picker
+- **THEN** the top bar shows no store picker
 
 ### Requirement: An app states the platform version it was built for
 
@@ -165,6 +177,12 @@ serving.
   enabled
 - **THEN** the release refuses to start
 - **AND** people keep using the app on the release already running
+
+#### Scenario: A switched-off app does not hold up a release
+
+- **WHEN** a release is deployed without the version of an app that is installed but
+  switched off
+- **THEN** the release goes ahead
 
 ### Requirement: An app can provide people's scope
 

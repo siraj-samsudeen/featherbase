@@ -569,6 +569,18 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
     expect(out).not.toContain('not-the-live-password-467')
   })
 
+  // #642 (E7): the server's start refuses without an installed, enabled app's
+  // exact version, so the rehearsal does too.
+  test('an installed, enabled app this image does not ship fails, naming the app and version', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    const f = await failure(['boot-check'])
+    expect(f?.stderr).toMatch(/App acme_board version 1\.2\.0 is installed and enabled, but this release does not ship it/)
+    expect(`${f?.stdout}`).not.toMatch(/the server will start/)
+  })
+
   test('a production configuration with a forbidden switch on fails and names the switch', async () => {
     vi.stubEnv('FEATHERBASE_ENV', 'production')
     vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
