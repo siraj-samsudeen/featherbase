@@ -180,8 +180,11 @@ const replaySchema = z.object({ version: z.literal(1), policy: z.enum(['table', 
 // request's `scope` names. Anything outside refuses the whole request.
 async function callerPlaces(request: AccessRequest, contribution: DeclaredAppOperation, payload: unknown) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) refuseAppAccess()
-  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) =>
-    refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider'))
+  // #660: "not set up yet" is answered as such; anything else refuses.
+  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) => {
+    if (error instanceof AppError && error.type === 'NotSetUpError') throw error
+    return refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider')
+  })
   const places = narrowPersonScope(scope, (payload as Record<string, unknown>).scope)
   if (!places) refuseAppAccess()
   return freezeJson(JSON.parse(canonicalJson(places)) as typeof places)

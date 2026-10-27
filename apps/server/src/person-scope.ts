@@ -5,10 +5,13 @@ import { getMeta } from './meta'
 import { getDoc } from './document'
 import { getList } from './query'
 import { withAppIdentity } from './app-lifecycle'
+import { AppError } from './errors'
 
 /** The instance's one scope-providing app, bound by runtime-packages. */
 export interface ScopeProviderBinding {
   app: string
+  /** The provider app's title, for its "not set up yet" answer. */
+  title: string
   /** The provider app's installed version, verified against its artifact. */
   version: string
   tables: readonly string[]
@@ -25,9 +28,12 @@ export class NoPersonScope extends Error {
 /** Ask the provider for `user`'s places and hold the answer to the scope
  *  shape. No provider, a provider that throws or reads outside what it
  *  declared, an invalid shape and an empty scope all throw NoPersonScope:
- *  an empty scope is never read as everything, for an administrator too. */
+ *  an empty scope is never read as everything, for an administrator too.
+ *  #660: a declared identifier system the instance lacks answers "not set
+ *  up yet" before the provider runs, so no one gets a scope either. */
 export async function resolvePersonScope(user: string, binding: ScopeProviderBinding | undefined): Promise<PersonScope> {
   if (!binding) throw new NoPersonScope('configuration')
+  await assertIdentifierSystems(binding)
   const [person] = await sql`select row_id, email from person where row_id = ${user}`
   let answer: unknown
   try {
@@ -39,6 +45,15 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
   if (!parsed.success) throw new NoPersonScope('provider')
   if (!parsed.data.length) throw new NoPersonScope('scope')
   return parsed.data
+}
+
+async function assertIdentifierSystems(binding: ScopeProviderBinding) {
+  if (!binding.identifiers.length) return
+  const found = new Set((await sql`select row_id from identifier_system where row_id in ${sql(binding.identifiers)}`).map(row => String(row.row_id)))
+  const missing = binding.identifiers.filter(system => !found.has(system))
+  if (!missing.length) return
+  console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}`)
+  throw new AppError('NotSetUpError', `${binding.title} is not set up yet. An administrator needs to finish setting it up.`)
 }
 
 // #660: the person's current values in each system the provider declared,

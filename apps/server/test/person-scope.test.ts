@@ -319,6 +319,16 @@ describe("the person's identifiers a provider receives", () => {
       expect(await refusals(user)).toEqual(['scopeproof.places:provider'])
     })
   })
+
+  test('a declared system the instance does not have answers "not set up yet", and no one gets a scope', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      const { user, roster, app } = await setup(admin, createUser, { providerAt })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await expectApiError(user.post(read + 'places', { payload: {} }), { status: 409, type: 'NotSetUpError',
+        message: expect.stringContaining('Place roster proof is not set up yet. An administrator needs to finish setting it up.') })
+      expect([roster.calls.provider, app.calls.handler]).toEqual([0, 0])
+    })
+  })
 })
 
 // A second provider: the place-roster fixture under another app name.
