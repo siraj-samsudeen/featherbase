@@ -274,19 +274,20 @@ matched. A correction to a fact SHALL be an edit to the row, not an override tab
 
 ### Requirement: Each store maintains its own org chart through maker-and-checker
 
-For tables that belong to one store (the layout tables, `job_assignment`, `section_alias`
-and `floor_alias`), the store's Store Manager SHALL be the authority. The Store Manager
-MAY delegate making changes to a Department Manager or Team Leader of that store, and
-SHALL approve the changes others make. The Store Manager's own changes SHALL go to a
-second approver. A Store Manager's change to their own store's job assignments SHALL
-always need a second approver, so that nobody grants themselves coverage. Nobody SHALL
-approve their own change. `job_alias` and Cluster Manager job assignments SHALL be
-changed only centrally, by an Org Chart Admin or a System Manager. The routes SHALL be
-approval rules (#627), not code.
+Within one store, the Store Manager SHALL be final. This covers the store's tables: the
+layout tables, `job_assignment`, `section_alias` and `floor_alias`.
+- The Store Manager's own changes to them SHALL apply at once, with no approval step, and
+  SHALL be logged with who changed what and when.
+- The Store Manager MAY delegate making changes to a Department Manager or Team Leader of
+  that store. A delegate's change SHALL wait for that store's Store Manager to approve it.
+  Nobody SHALL approve their own change.
 
-*(Pending the business owner: whether a Store Manager's placement change is approved by
-the Category Head, by the Cluster Manager, or by parallel store-side and category-side
-approvals.)*
+Anything outside a single store SHALL be approved by a central authority (an Org Chart
+Admin or a System Manager). This covers `job_alias`, Cluster Manager job assignments and
+any change that spans stores.
+
+The routes SHALL be approval rules (#627), not code. A rule's outcome is either "apply
+and log" or "route to an approver".
 
 #### Scenario: A delegated Team Leader's change waits
 
@@ -294,10 +295,12 @@ approvals.)*
   "Festive Hall" from 15-Aug
 - **THEN** the placement is unchanged until the Store Manager approves it
 
-#### Scenario: A Store Manager cannot grant themselves coverage
+#### Scenario: A Store Manager's own change applies at once and is logged
 
-- **WHEN** LKS's Store Manager adds a job assignment for themselves at LKS
-- **THEN** it waits for a second approver, and the Store Manager is not offered Approve
+- **WHEN** LKS's Store Manager moves "Women Scarf" to "Festive Hall" from 15-Aug, or
+  records a Team Leader handover at LKS
+- **THEN** the change applies at once, with no approval step
+- **AND** the history shows the Store Manager as its author, with the time
 
 #### Scenario: A store cannot redefine a job
 

@@ -151,12 +151,23 @@ only where a Team Leader or Staff member holds a section.
   through the next import.
 
 ### D9. Who may write
-- **Store tables:** the Store Manager, or their delegate, makes changes. The Store Manager
-  approves others' changes. The Store Manager's own changes go to a second approver,
-  always for job assignments. Nobody approves their own change.
-- **Central tables:** `job_alias` and Cluster Manager rows. An Org Chart Admin and
-  System Managers keep them, because a designation must mean the same thing in every
-  store.
+- **Within one store, the Store Manager is final** (instance owner, after meeting the
+  business owner, 27-Oct-2026).
+  - The Store Manager's own changes apply at once and are logged.
+  - A Department Manager or Team Leader they delegate to makes changes that the Store
+    Manager approves.
+  - Nobody approves their own change.
+- **Outside a single store, a central authority approves.** This covers `job_alias`,
+  Cluster Manager rows and anything that spans stores, and the authority is an Org Chart
+  Admin or a System Manager. A designation must mean the same thing in every store.
+- *Withdrawn (27-Oct-2026):*
+  - the Store Manager's own changes going to the Category Head, or to parallel store and
+    category approvals;
+  - a second approver for a Store Manager's changes to their own store's job assignments.
+
+  The edit history (#441) is the control: it is system-written, so every change is
+  attributable.
+- So #627's rules need two outcomes: "apply and log" and "route to an approver".
 - These are approval rules under #627. The tables decide scope, so they are marked
   `decides_scope` and locked to System Managers by #437. Letting a scoped Store Manager
   write them at all is #462. This design depends on #462 but does not decide its
@@ -167,7 +178,7 @@ only where a Team Leader or Staff member holds a section.
 ### D10. Clean first, inside Featherbase
 1. A one-time script in the client's repository builds clean rows. It reads the store HR
    team's corrected files first, the HR system only for gaps, and the existing store
-   workbook for the one store that has one. Missing values stay missing.
+   workbook for the one store that has one. The latest emailed, cleaned section data is the primary source for sections. It is loaded as it is: the script fixes no data-quality issue, it only lists them. Missing values stay missing.
 2. The rows load marked "not live yet" per store. Reports keep reading the old sheets for
    that store.
 3. Each store's conflict and needs-matching lists are its cleaning to-do list. Stores fix
@@ -215,8 +226,7 @@ back to the old sheets, which stay read-only until every store is live.
    or split.
 3. Seasonal redeployment: who moves, who decides, how long, and whose target they work
    against.
-4. Who approves a Store Manager's placement change: the Category Head, the Cluster
-   Manager, or parallel store-side and category-side approvals.
+4. *(Settled 27-Oct-2026: within a store the Store Manager is final; see D9.)*
 5. If Team Leaders carry targets or incentives, how is a two-Team-Leader section's sales
    and target split between them: both get the whole section, split equally, or split by
    the staff who report to each?

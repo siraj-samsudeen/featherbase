@@ -84,4 +84,5 @@ through their own changes.
   - extra jobs for cashiers and assistant titles;
   - how Floor Managers map to floors;
   - the details of seasonal redeployment;
-  - who approves placement.
+  - how a two-Team-Leader section's sales and target are split, if Team Leaders carry
+    targets.
