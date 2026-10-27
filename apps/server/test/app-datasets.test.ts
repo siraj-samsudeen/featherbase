@@ -24,9 +24,9 @@ import { expectApiError } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
-import { drainJobs, loadJobs } from '../src/jobs'
+import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { shapeRows, type DatasetDeclaration } from '../src/app-datasets'
+import { guardRefusal, shapeRows, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
 
@@ -128,6 +128,74 @@ describe('the snapshot of an app dataset', () => {
     const exported = await admin.fetch('/api/instance-settings/export')
     expect(exported.status).toBe(200)
     expect(await exported.text()).not.toContain('north kids')
+  })
+})
+
+// #669: the fixture with a guard on its sales dataset, discovered from a copy.
+const guardedCopies: string[] = []
+afterAll(() => Promise.all(guardedCopies.map(copy => rm(copy, { recursive: true, force: true }))))
+async function setupGuarded(admin: TestClient, guard: DatasetGuard[]) {
+  const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+  guardedCopies.push(copy)
+  await cp(fixture, copy, { recursive: true })
+  const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+  manifest.datasets[0].guard = guard
+  await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+  expect(await discoverPackages([copy, provider])).toEqual([])
+  await admin.post('/api/install_app', { name: 'datasetproof' })
+  invalidateSources()
+  await admin.post('/api/table/Data%20Source', { row_id: 'datasetproof-warehouse', engine: 'postgres', url_env: SOURCE_ENV, access: 'read_only' })
+}
+/** SALES with `units` set per row, in order. */
+const withUnits = (...units: (number | null)[]) => SALES.map((r, i) => [...r.slice(0, 4), units[i], r[5]])
+
+describe('the guard on an app dataset', () => {
+  const dropGuard: DatasetGuard[] = [{ kind: 'max_drop_pct', column: 'units', value: 50 }]
+
+  test('a refresh that fails it keeps the last good copy active', async ({ admin }) => {
+    await setupGuarded(admin, dropGuard)
+    const good = await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withUnits(3, 0, 0, null))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: units values dropped 75% (4 → 1), limit 50%' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(good.snapshotId)
+  })
+
+  test('a refresh that passes it activates', async ({ admin }) => {
+    await setupGuarded(admin, dropGuard)
+    await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withUnits(3, 0, 5, null))
+    const next = await buildSnapshot('datasetproof.sales')
+    expect(next).toMatchObject({ status: 'activated' })
+    expect((await activeSnapshot('datasetproof.sales'))?.row_id).toBe(next.snapshotId)
+  })
+
+  test('counts empty and zero values alike as missing', async ({ admin }) => {
+    await setupGuarded(admin, [{ kind: 'not_all_zero', column: 'units' }])
+    await fillWarehouse(withUnits(0, null, 0, null))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({
+      status: 'refused', reason: 'sales: every units value is empty or zero (4 rows)' })
+  })
+
+  test('a refusal is a failed refresh run that names the guard and its numbers', async ({ admin }) => {
+    await loadJobs()
+    await setupGuarded(admin, dropGuard)
+    await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withUnits(3, 0, 0, null))
+    await enqueue('refresh_datasets')
+    await sql`update background_job set run_at = now() where method = 'refresh_datasets' and job_status = 'queued'`
+    await drainJobs()
+    const [run] = await sql`select outcome, error from job_execution where method = 'refresh_datasets'`
+    expect(run.outcome).toBe('error')
+    expect(run.error).toContain('datasetproof.sales: refused — sales: units values dropped 75% (4 → 1), limit 50%')
+  })
+
+  // Without a guard only an empty refresh is refused, as before #669.
+  test('a dataset without one activates a refresh that drops most of its values', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    await fillWarehouse(withUnits(3, 0, 0, null))
+    expect(await buildSnapshot('datasetproof.sales')).toMatchObject({ status: 'activated' })
   })
 })
 
@@ -406,10 +474,31 @@ describe('a dataset declaration', () => {
     expect(await discoverPackages([fixture, provider])).toEqual([])
   })
 
+  test('with a guard of every kind is accepted at discovery', async () => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      manifest.datasets[0].guard = [
+        { kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'amount' }, { kind: 'max_drop_pct', column: 'units', value: 50 }]
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      expect(await discoverPackages([copy])).toEqual([])
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+
   test.for([
     ['key is not one of its columns', { keys: ['plant_code', 'region'] }, /key region is not one of its columns/],
     ['scope filter maps to a money column', { filters: { store: 'amount' } }, /scope filter amount must be text, integer or date/],
     ['query holds a second statement', { query: 'select 1; drop table b4_dataset.sales' }, /one statement/],
+    // #669: a guard is declarative, so the manifest is the only place it can be wrong.
+    ['guard checks a column it does not declare', { guard: [{ kind: 'not_all_zero', column: 'target' }] }, /sales's guard column target is not one of its columns/],
+    ['guard checks a text column', { guard: [{ kind: 'max_drop_pct', column: 'note', value: 50 }] }, /sales's guard column note must be integer, number or money/],
+    ['guard allows a drop above 100%', { guard: [{ kind: 'max_drop_pct', column: 'amount', value: 150 }] }, /max_drop_pct value must be a percentage from 0 to 100/],
+    ['guard asks for fewer than no rows', { guard: [{ kind: 'min_rows', value: -1 }] }, /min_rows value must be a whole number of rows, 0 or more/],
+    ['guard names an unknown kind', { guard: [{ kind: 'max_rows', value: 10 }] }, /guard kind must be one of min_rows, not_all_zero, max_drop_pct/],
+    ['guard checks a drop without naming a column', { guard: [{ kind: 'max_drop_pct', value: 50 }] }, /max_drop_pct guard needs a column/],
   ] as const)('refuses an app whose dataset %s', async ([, change, message]) => {
     const copy = await mkdtemp(resolve('test/.dataset-proof-'))
     try {
@@ -469,6 +558,39 @@ describe('the shaping function', () => {
     ['a query that did not return the column', { name: 'units', type: 'integer' }, {}, /did not return column units/],
   ] as const)('refuses %s', ([, column, raw, message]) => {
     expect(() => shapeRows(dataset([column]), [raw])).toThrow(message)
+  })
+})
+
+// #669: what each guard kind says of a candidate's counts, against the
+// active snapshot's. Counts are of rows, and of values in a column that are
+// neither empty nor zero.
+describe('a dataset guard', () => {
+  const counts = (rows: number, target: number) => ({ rows, nonZero: { target } })
+  const check = (guard: DatasetGuard, candidate: ReturnType<typeof counts>, previous: ReturnType<typeof counts> | null = null) =>
+    guardRefusal('sales', [guard], candidate, previous)
+
+  test.for([
+    ['min_rows refuses fewer rows than it asks for', { kind: 'min_rows', value: 5 }, counts(4, 4), null, 'sales: 4 rows, at least 5 required'],
+    ['min_rows passes the rows it asks for', { kind: 'min_rows', value: 5 }, counts(5, 5), null, null],
+    ['not_all_zero refuses a column holding only empty or zero values', { kind: 'not_all_zero', column: 'target' }, counts(3, 0), null,
+      'sales: every target value is empty or zero (3 rows)'],
+    ['not_all_zero refuses a candidate with no rows', { kind: 'not_all_zero', column: 'target' }, counts(0, 0), null,
+      'sales: every target value is empty or zero (0 rows)'],
+    ['not_all_zero passes one value that is neither', { kind: 'not_all_zero', column: 'target' }, counts(3, 1), null, null],
+    ['max_drop_pct passes a drop of exactly its limit', { kind: 'max_drop_pct', column: 'target', value: 50 }, counts(10, 600), counts(10, 1200), null],
+    ['max_drop_pct refuses a drop just over its limit', { kind: 'max_drop_pct', column: 'target', value: 50 }, counts(10, 599), counts(10, 1200),
+      'sales: target values dropped 50.1% (1,200 → 599), limit 50%'],
+    ['max_drop_pct names a large drop in whole numbers', { kind: 'max_drop_pct', column: 'target', value: 50 }, counts(10, 336), counts(10, 1200),
+      'sales: target values dropped 72% (1,200 → 336), limit 50%'],
+    ['max_drop_pct passes a first refresh, with no active snapshot', { kind: 'max_drop_pct', column: 'target', value: 50 }, counts(10, 1), null, null],
+    ['max_drop_pct passes a rise', { kind: 'max_drop_pct', column: 'target', value: 0 }, counts(10, 9), counts(10, 8), null],
+  ] as const)('%s', ([, guard, candidate, previous, refusal]) => {
+    expect(check(guard as DatasetGuard, candidate, previous)).toBe(refusal)
+  })
+
+  test('the first guard that fails is the one named', () => {
+    expect(guardRefusal('sales', [{ kind: 'min_rows', value: 1 }, { kind: 'not_all_zero', column: 'target' }], counts(2, 0), null))
+      .toBe('sales: every target value is empty or zero (2 rows)')
   })
 })
 
