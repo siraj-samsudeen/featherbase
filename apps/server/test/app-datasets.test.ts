@@ -24,6 +24,9 @@ import { expectApiError } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
+import { drainJobs, loadJobs } from '../src/jobs'
+import { datasetsDue } from '../src/jobs/refresh-datasets'
+import { shapeRows, type DatasetDeclaration } from '../src/app-datasets'
 import { inAppTransaction, sql } from '../src/db'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
@@ -281,5 +284,83 @@ describe('a dataset declaration', () => {
     } finally {
       await rm(copy, { recursive: true, force: true })
     }
+  })
+})
+
+describe('an outbound declaration', () => {
+  // An action writes inside its transaction; only a read may run after it.
+  test('is refused on an action', async () => {
+    const copy = await mkdtemp(resolve('test/.dataset-proof-'))
+    try {
+      await cp(fixture, copy, { recursive: true })
+      const manifest = JSON.parse(await readFile(resolve(copy, 'featherbase.json'), 'utf8'))
+      manifest.actions = { version: 2, tables: ['datasetproof.note'], operations: { inside: manifest.reads.operations.outside } }
+      await writeFile(resolve(copy, 'featherbase.json'), JSON.stringify(manifest))
+      const failures = await discoverPackages([copy])
+      expect(failures).toHaveLength(1)
+      expect(failures[0].error).toMatch(/actions/)
+    } finally {
+      await rm(copy, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('the shaping function', () => {
+  const dataset = (columns: DatasetDeclaration['columns']): DatasetDeclaration =>
+    ({ name: 'probe', source: 's', query: 'select 1', columns, keys: [], filters: { store: columns[0].name } })
+
+  test('holds each value to its declared type', () => {
+    const shaped = shapeRows(dataset([
+      { name: 'flag', type: 'boolean' }, { name: 'said', type: 'boolean' }, { name: 'ratio', type: 'number' },
+      { name: 'day', type: 'date' }, { name: 'gap', type: 'text' },
+    ]), [{ flag: true, said: 'false', ratio: '0.25', day: new Date('2026-10-05T00:00:00Z'), gap: null }])
+    expect(shaped).toEqual([{ flag: true, said: false, ratio: 0.25, day: '2026-10-05', gap: null }])
+  })
+
+  test.for([
+    ['an integer column holding a fraction', { name: 'units', type: 'integer' }, { units: '1.5' }, /units holds a value that is not integer/],
+    ['a boolean column holding text', { name: 'flag', type: 'boolean' }, { flag: 'yes' }, /flag holds a value that is not boolean/],
+    ['a date column holding text', { name: 'day', type: 'date' }, { day: 'soon' }, /day holds a value that is not date/],
+    ['a query that did not return the column', { name: 'units', type: 'integer' }, {}, /did not return column units/],
+  ] as const)('refuses %s', ([, column, raw, message]) => {
+    expect(() => shapeRows(dataset([column]), [raw])).toThrow(message)
+  })
+})
+
+describe('what a read may ask of a dataset', () => {
+  test.for([
+    ['a dataset the app has not declared', (c: Context) => c.datasets.active('elsewhere'), /has not declared the dataset elsewhere/],
+    ['filters that are not an object', (c: Context) => c.datasets.active('sales', ['N1'] as never), /filters must be an object/],
+    ['an empty list of filter values', (c: Context) => c.datasets.active('sales', { plant_code: [] }), /must be a value or a list of values/],
+    ['a view of a dataset the app has not declared', (c: Context) => c.recordView({ dataset: 'elsewhere' }), /recordView takes \{ dataset \}/],
+  ] as const)('refuses %s', async ([, ask, message], { admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = ask
+    await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 417, message: expect.stringMatching(message) })
+  })
+
+  test('a view recorded without a dataset names the read', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = async (context: Context) => { await context.recordView(); return null }
+    await reader.post(read + 'inside', { payload: {} })
+    const rows = await sql`select ref_table, method from access_log where "user" = ${reader.user} and operation = 'view_report'`
+    expect(rows.map(r => ({ ...r }))).toEqual([{ ref_table: 'datasetproof.inside', method: null }])
+  })
+})
+
+describe('the refresh job', () => {
+  test('builds an app dataset a reader asked for before it had built', async ({ admin, createUser }) => {
+    await loadJobs()
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await reader.post(read + 'inside', { payload: {} })
+    expect(await datasetsDue()).toContain('datasetproof.sales')
+    // The sandbox's now() is the test's start; the queued job's run_at is the clock's.
+    await sql`update background_job set run_at = now() where method = 'refresh_datasets' and job_status = 'queued'`
+    await drainJobs()
+    expect(await activeSnapshot('datasetproof.sales')).toMatchObject({ row_count: 4 })
   })
 })
