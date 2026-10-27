@@ -200,9 +200,36 @@ test.describe('at 375px', () => {
       expect(await noSidewaysScroll(page)).toBe(true)
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/picker-375-closed-light.png` })
       await picker(page).click()
-      await expect(page.getByRole('listbox', { name: 'Store' })).toBeVisible()
+      const list = page.getByRole('listbox', { name: 'Store' })
+      await expect(list).toBeVisible()
       expect(await noSidewaysScroll(page)).toBe(true)
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/picker-375-open-light.png` })
+      const box = (await list.boundingBox())!
+      expect([box.x >= 0, box.x + box.width <= 375]).toEqual([true, true])
+    })
+  })
+
+  // Verifier, round 1 on #649: on a phone the control follows the name, and the
+  // free space comes after it, as in the approved mockup.
+  test("the picker follows the app's name, with the free space after it", async ({ session, page, request }) => {
+    await onAppAddress(page, await reader(request, 'Picker Phone Near', STORES))
+    await session.step('the picker starts within 32px of the end of the name', async () => {
+      expect(await gapAfterName(page, picker(page))).toBeLessThanOrEqual(32)
+    })
+  })
+
+  test("one store, shown as plain text, follows the app's name", async ({ session, page, request }) => {
+    await onAppAddress(page, await reader(request, 'Picker Phone One', [['Hill Road', 'S102']]))
+    await session.step('the store starts within 32px of the end of the name', async () => {
+      expect(await gapAfterName(page, page.getByTestId('top-bar').getByText('Hill Road'))).toBeLessThanOrEqual(32)
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/picker-375-one-light.png` })
     })
   })
 })
+
+/** From the right edge of the app's name to the left edge of `control`. */
+async function gapAfterName(page: Page, control: ReturnType<Page['getByText']>) {
+  await expect(control).toBeVisible()
+  const name = (await page.getByTestId('top-bar-name').boundingBox())!
+  return (await control.boundingBox())!.x - (name.x + name.width)
+}

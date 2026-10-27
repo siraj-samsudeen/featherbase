@@ -137,13 +137,16 @@ export function TopBar({
     <>
       <PreviewBanner />
       <header
-        className="flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0"
+        // On an app's address the bar frames the phone list of a declared control.
+        className={`${onAppAddress ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
         data-testid="top-bar"
       >
-        {/* The name's block lines up with the Admin sidebar; an app's address
-            has none, so there the declared controls follow the name (#642). */}
+        {/* The name's block lines up with the Admin sidebar and, on a phone,
+            fills the row. An app's address has no sidebar, so there it keeps
+            to the name's width and the declared controls follow it, with the
+            free space after them (#642). */}
         <div
-          className={`flex min-w-0 flex-1 items-center gap-1 sm:flex-none md:px-3 ${onAppAddress ? 'md:shrink-0' : 'md:w-60 md:shrink-0'}`}
+          className={`flex min-w-0 items-center gap-1 md:px-3 ${onAppAddress ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
           {left ?? (context && name && <BarName context={context} name={name} />)}

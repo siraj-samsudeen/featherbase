@@ -36,7 +36,7 @@ export function BarControls({ app }: { app: string }) {
   const controls = (bar.data?.controls ?? []).filter((control) => control.options.length > 0)
   if (controls.length === 0) return null
   return (
-    <div className="flex min-w-0 shrink items-center gap-2" data-testid="bar-controls">
+    <div className="flex min-w-0 shrink items-center gap-2 max-sm:pl-1" data-testid="bar-controls">
       {controls.map((control) => (
         <BarPicker key={control.sets} control={control} />
       ))}
@@ -124,7 +124,7 @@ function BarPicker({ control }: { control: BarControl }) {
   }
 
   return (
-    <div className="relative flex min-w-0 items-center gap-2" data-testid={`bar-control-${control.sets}`}>
+    <div className="flex min-w-0 items-center gap-2 sm:relative" data-testid={`bar-control-${control.sets}`}>
       <span id={labelId} className={LABEL}>
         {control.picker}
       </span>
@@ -156,7 +156,9 @@ function BarPicker({ control }: { control: BarControl }) {
         hidden={!open}
         // A press on an option must not take focus from the picker first.
         onMouseDown={(event) => event.preventDefault()}
-        className="absolute left-0 top-full z-30 mt-1 min-w-60 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-card border border-border bg-surface p-1 shadow-lg max-sm:left-auto max-sm:right-0"
+        // On a phone the list spans the bar (the header is its frame), so a long
+        // option is never cut at either edge of the screen.
+        className="absolute top-full z-30 mt-1 overflow-y-auto rounded-card border border-border bg-surface p-1 shadow-lg max-sm:inset-x-2 sm:left-0 sm:min-w-60 sm:max-w-[calc(100vw-2rem)]"
         data-testid={`bar-options-${control.sets}`}
       >
         {options.map((option, index) => (
