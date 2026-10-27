@@ -136,7 +136,6 @@ export function getAvailableApps(): string[] {
   return [...available.keys()]
 }
 
-
 // A fixture row's identity in the install ledger: enough to delete exactly
 // that row on uninstall, nothing more.
 interface FixtureRef {

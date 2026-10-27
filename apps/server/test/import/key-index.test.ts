@@ -6,8 +6,9 @@ import { sql } from '../../src/db'
 import { KEY_PADDING } from '../../src/actions/collection-import'
 import { applyMigrationFile } from '../../src/migrate'
 
-// #145 (ruled 2026-08-11): the match key gets an expression index on
-// (key::text) — the exact cast resolveRows compares with — the first time
+// #145 (ruled 2026-08-11): the match key gets an expression index on the
+// key's trimmed text (#517) — the exact expression resolveRows compares
+// with — the first time
 // a REAL keyed run uses it. Rehearsals create nothing: IMP-I3's "writes
 // nothing" covers the catalog too.
 
