@@ -37,24 +37,31 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 2.10 `runtime-apps/feather-dash` 1.0.0: manifest with every Table and grant stage D needs; client with page parity; reads `me`, `report`, `embed_session`; the `cached` key in `initial_state` (Month to date only, 56 KB all-or-nothing budget); the generic quick view when the Dive cannot load; Dockerfile and `FEATHERBASE_APP_PATHS`.
 - [ ] 2.11 In the client's repository: the report definition (today's query moved out of this repository), the Dive settings, the stand-in binding, and the Dive's lines for `cached` and the live-ready notice. Check real row counts against the 56 KB budget there, not here.
 - [ ] 2.12 Parity check on a restored dev snapshot: for every person with a scope, the app's answers equal the platform endpoints' (scope, rows, totals, embed scope state).
-- [ ] 2.13 Install on dev, switch the dev address to the app, run the trial; then prod with approval.
+- [ ] 2.13 Install on dev, switch the dev address to the app; then prod with approval. Done in the go-live cut-over (5.1), together with stage D, not on its own.
 - [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
 - [ ] 2.15 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
 
 ## 3. Stage C — roster redesign (after #449 and #392)
 
+3.1 is stage C1, on the go-live path. 3.2 and 3.3 are C2 and may follow go-live.
+
 - [ ] 3.1 The scope provider reads the #449 tables wherever #449 places them; #449's per-person parity check on the scope shape is the gate.
 - [ ] 3.2 Bindings move to the manager jobs; delete `Sales Target Viewer` and its binding.
 - [ ] 3.3 Confirm Feather Dash needed no change.
 
-## 4. Stage D — section editing (Feather Dash 1.1.0, after #462 and stage C)
+## 4. Stage D — section editing (Feather Dash 1.1.0, part of go-live; after #246 items 1–2, #462 and C1)
 
-- [ ] 4.1 Scope entries carry section and mapping confirmation status.
+- [ ] 4.0 #246 items 1–2 for the section and mapping Tables: explicit scope columns and `scope_required` (no scope rows means no rows), with an empty-scope test. Built after B2.
+- [ ] 4.1 Scope entries carry section and mapping confirmation status. Built in B2 (2.1), so D needs no shape change.
 - [ ] 4.2 Action `request_section_change` (scope-checked, either side of a move) and withdraw; my-sections page.
 - [ ] 4.3 Action `decide_section_change` applying through the normal save path as the reviewer; reviewer page; the Section Reviewer role bound to #462's role.
 - [ ] 4.4 Tests: Team Leader refused outside their section; a reviewer without #462's role cannot apply; a System Manager is not the reviewer by default; applied edit survives a re-import.
-- [ ] 4.5 Upgrade dev, then prod with approval.
+- [ ] 4.5 Upgrade dev, then prod with approval, in the go-live cut-over (5.1).
 
-## 5. Close-out
+## 5. Go-live cut-over (owner decision 27-Oct-2026)
 
-- [ ] 5.1 Sync the deltas into the main specs and archive the change.
+- [ ] 5.1 One cut-over for B, C1 and D: the parity check (2.12), install 1.0.0 and upgrade to 1.1.0 on dev, switch the dev address; then prod with the owner's approval. Then the clean-up release (2.14).
+
+## 6. Close-out
+
+- [ ] 6.1 Sync the deltas into the main specs and archive the change.
