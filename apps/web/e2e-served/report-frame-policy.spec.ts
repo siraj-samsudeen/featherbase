@@ -72,6 +72,19 @@ test.beforeAll(async ({ request }, info) => {
     } } })).ok()).toBe(true)
 })
 
+// E2E_CPU_THROTTLE=<rate> slows every page's CPU (Chromium's own throttling),
+// to rehearse a slow CI runner: the full loads must still be waited for.
+const throttle = Number(process.env.E2E_CPU_THROTTLE ?? 0)
+test.beforeEach(({ context }) => {
+  if (throttle > 1)
+    context.on('page', async (page) => {
+      await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle })
+    })
+})
+test.beforeEach(async ({ page, context }) => {
+  if (throttle > 1) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle })
+})
+
 test.afterAll(async () => {
   await stub?.close()
   if (seedDir) rmSync(seedDir, { recursive: true, force: true })
@@ -131,6 +144,34 @@ async function signIn(page: Page, usr: string, base = '') {
   await page.click('button[type=submit]')
 }
 
+/** Run `trigger`, then wait until the main frame has a NEW document at `path`
+ *  and that document has loaded. A crossing into or out of the report is a full
+ *  load that replaces the document after the URL has already changed, so
+ *  waiting on the URL alone races it (seen on CI). Armed before the trigger;
+ *  the `load` counted is one that follows that document's response. */
+async function crossingTo(page: Page, path: string, trigger: () => Promise<unknown>) {
+  let responded = false
+  let loaded = false
+  const onResponse = (response: Response) => {
+    if (response.request().isNavigationRequest() && response.frame() === page.mainFrame() && new URL(response.url()).pathname === path) responded = true
+  }
+  const onLoad = () => {
+    if (responded) loaded = true
+  }
+  page.on('response', onResponse)
+  page.on('load', onLoad)
+  try {
+    // The page may be replaced while the trigger itself is still running.
+    await trigger().catch((error: Error) => {
+      if (!/Execution context was destroyed|navigation/i.test(error.message)) throw error
+    })
+    await expect.poll(() => loaded, { timeout: 15_000 }).toBe(true)
+  } finally {
+    page.off('response', onResponse)
+    page.off('load', onLoad)
+  }
+}
+
 /** The report's frame is on the page and its embed actually loaded inside it. */
 async function expectFramedReport(page: Page) {
   await expect(page.getByTestId('report-frame')).toBeVisible()
@@ -141,8 +182,7 @@ test('a report-only reader signs in and lands on the report, in its own document
   await recordViolations(page)
   await noCachedRead(page)
   const seen = watch(page)
-  await signIn(page, REPORT_ONLY)
-  await page.waitForURL(`**${REPORT}`)
+  await crossingTo(page, REPORT, () => signIn(page, REPORT_ONLY))
   await expectFramedReport(page)
   expect(await documentPath(page)).toBe(REPORT)
   expect(await seen.policyOf(REPORT)).toBe(`frame-src 'self' ${STUB_ORIGIN}`)
@@ -159,8 +199,7 @@ test('a report-only reader signs in and lands on the report, in its own document
 test('the same reader refreshes the report, and opens it from a pasted link', async ({ page, context }) => {
   await recordViolations(page)
   await noCachedRead(page)
-  await signIn(page, REPORT_ONLY)
-  await page.waitForURL(`**${REPORT}`)
+  await crossingTo(page, REPORT, () => signIn(page, REPORT_ONLY))
   await expectFramedReport(page)
 
   const seen = watch(page)
@@ -188,8 +227,7 @@ test('the same reader refreshes the report, and opens it from a pasted link', as
 test('a pasted link to the report with a trailing slash frames it, with one load', async ({ page }) => {
   await recordViolations(page)
   await noCachedRead(page)
-  await signIn(page, REPORT_ONLY)
-  await page.waitForURL(`**${REPORT}`)
+  await crossingTo(page, REPORT, () => signIn(page, REPORT_ONLY))
   await expectFramedReport(page)
 
   const pasted = await page.context().newPage()
@@ -208,15 +246,13 @@ test('a pasted link to the report with a trailing slash frames it, with one load
 test('leaving the report for Sign-in methods drops the embed origin: a new document, whose policy would block it', async ({ page }) => {
   await recordViolations(page)
   await noCachedRead(page)
-  await signIn(page, REPORT_ONLY)
-  await page.waitForURL(`**${REPORT}`)
+  await crossingTo(page, REPORT, () => signIn(page, REPORT_ONLY))
   await expectFramedReport(page)
 
   const seen = watch(page)
   await page.getByTestId('session-user').click()
-  await page.getByTestId('account-sign-in-methods').click()
-  await page.waitForURL('**/featherbase/account/sign-in-methods')
-  await expect.poll(() => seen.loaded('/featherbase/account/sign-in-methods')).toBe(1)
+  await crossingTo(page, '/featherbase/account/sign-in-methods', () => page.getByTestId('account-sign-in-methods').click())
+  expect(seen.loaded('/featherbase/account/sign-in-methods')).toBe(1)
   expect(await documentPath(page)).toBe('/featherbase/account/sign-in-methods')
   expect(await seen.policyOf('/featherbase/account/sign-in-methods')).toBe("frame-src 'self'")
   // Still signed in, with the shared top bar, after the full load.
@@ -251,17 +287,15 @@ test('a System Manager moves Admin → report → Admin: the frame is allowed on
   expect(await seen.policyOf('/featherbase/login')).toBe("frame-src 'self'")
   await shoot(page, '3a-manager-admin')
 
-  await navigateInApp(page, REPORT)
-  await page.waitForURL(`**${REPORT}`)
-  await expect.poll(() => seen.loaded(REPORT)).toBe(1)
+  await crossingTo(page, REPORT, () => navigateInApp(page, REPORT))
+  expect(seen.loaded(REPORT)).toBe(1)
   await expectFramedReport(page)
   expect(await documentPath(page)).toBe(REPORT)
   expect(await seen.policyOf(REPORT)).toBe(`frame-src 'self' ${STUB_ORIGIN}`)
   await shoot(page, '3b-manager-report')
 
-  await navigateInApp(page, '/featherbase/admin')
-  await page.waitForURL('**/featherbase/admin**')
-  await expect.poll(() => seen.loaded('/featherbase/admin')).toBe(1)
+  await crossingTo(page, '/featherbase/admin', () => navigateInApp(page, '/featherbase/admin'))
+  expect(seen.loaded('/featherbase/admin')).toBe(1)
   expect(await documentPath(page)).toBe('/featherbase/admin')
   expect(await seen.policyOf('/featherbase/admin')).toBe("frame-src 'self'")
   await page.waitForTimeout(1000)
@@ -275,8 +309,8 @@ test('on the address that opens Feather Dash, the report allows its frame too', 
   await recordViolations(page)
   await noCachedRead(page)
   const seen = watch(page)
-  await signIn(page, REPORT_ONLY, dash)
-  await page.waitForURL(`${dash}${REPORT}`)
+  await crossingTo(page, REPORT, () => signIn(page, REPORT_ONLY, dash))
+  expect(page.url()).toBe(`${dash}${REPORT}`)
   await expectFramedReport(page)
   expect(await documentPath(page)).toBe(REPORT)
   expect(await seen.policyOf(REPORT)).toBe(`frame-src 'self' ${STUB_ORIGIN}`)
