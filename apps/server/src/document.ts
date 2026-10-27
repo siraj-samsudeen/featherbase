@@ -252,9 +252,16 @@ async function validateLinks(
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
+    const [targetMeta] = await tx`select data_source from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+      continue
+    }
+    // A source-bound target has no local table: ask its source (EDS-5). Like
+    // the native lookup, this checks existence only, not the caller's access.
+    if (targetMeta.data_source) {
+      if (!(await boundFetchDoc(await getMeta(target), String(value))))
+        errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
     const [row] = await tx`

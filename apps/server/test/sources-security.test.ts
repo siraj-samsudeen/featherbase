@@ -685,11 +685,20 @@ describe('a bound Table keeps its binding', () => {
   // checks such references) — suspected defect: saving a local row that refers to a
   // bound row fails with a 500, because the link check reads a local table the bound
   // Table does not have ("relation featherbase.sec_account does not exist").
-  test.fails('a local row can refer to a bound row', async ({ admin }) => {
+  test('a local row can refer to a bound row', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
     const saved = await admin.post<{ account: string }>('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } })
     expect(saved.account).toBe('ACC-A')
+  })
+
+  test('a local row that refers to a missing bound row gets a validation error, not a 500', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await expectApiError(
+      admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-NOPE' } }),
+      { status: 417, type: 'ValidationError', fields: { account: `${BOUND} ACC-NOPE does not exist` } },
+    )
   })
 
   test('a bound row shared with someone can be read by them without any grant on the Table', async ({ admin, createUser }) => {
