@@ -213,6 +213,20 @@ export function readNamedVariable(name: string): string | undefined {
   return process.env[name]
 }
 
+/** Run `fn` with a named variable (not in the registry, such as an app's
+ *  declared secret) set, or unset, in this process, then restore it. */
+export async function withNamedVariable<T>(name: string, value: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env[name]
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env[name]
+    else process.env[name] = previous
+  }
+}
+
 /** The environment a child process inherits, with `extra` on top. */
 export function childEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return { ...process.env, ...extra }

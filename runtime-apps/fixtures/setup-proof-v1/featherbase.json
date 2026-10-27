@@ -1,0 +1,45 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "setupproof",
+  "title": "Setup proof",
+  "entryTable": "setupproof.note",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "setupproof.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Setup Reader"],
+  "permissions": [{ "table": "setupproof.note", "role": "Setup Reader", "can_read": true }],
+  "roleDefaults": { "Setup Reader": ["Setup Staff", "Setup Absent"] },
+  "settings": [
+    { "name": "report_id", "required": true },
+    { "name": "theme", "required": false }
+  ],
+  "secrets": ["SETUPPROOF_TOKEN"],
+  "reads": {
+    "version": 1,
+    "tables": ["setupproof.note"],
+    "operations": {
+      "config": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "echo_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "fail_with_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "reject_with_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "places": {
+        "policy": { "kind": "person_scope", "readRoles": ["Setup Reader"], "actionRoles": [] },
+        "authorization": { "kind": "generic" }
+      }
+    }
+  },
+  "actions": {
+    "version": 2,
+    "tables": ["setupproof.note"],
+    "operations": {
+      "record": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+    }
+  }
+}
