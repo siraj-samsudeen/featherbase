@@ -6,7 +6,8 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { repointRowActivity, retainedDocumentCounts } from './document-activity'
+import { removeRowActivity, repointRowActivity, retainedDocumentCounts } from './document-activity'
+import { deleteStored } from './storage'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -1262,6 +1263,7 @@ async function deleteDocImpl(
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
+  let storedFiles: string[] = []
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdManagedSet(stx, meta.name)
@@ -1331,7 +1333,18 @@ async function deleteDocImpl(
         where parent = ${name} and parenttype = ${table}`
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
+    // #321: and everything that names the row by id, so nothing points at a
+    // missing row and no share wakes up for a later row given the same id.
+    storedFiles = await removeRowActivity(stx, table, name)
   }))
+  // Stored files go only once the delete is visible (inside an app action,
+  // once the action commits), and only those no other attachment still uses.
+  if (storedFiles.length) await afterDocumentCommit(async () => {
+    for (const fileUrl of storedFiles) {
+      const [inUse] = await sql`select 1 from file where file_url = ${fileUrl} limit 1`
+      if (!inUse) await deleteStored(fileUrl)
+    }
+  })
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.

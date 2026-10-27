@@ -5,7 +5,7 @@
 
 ## 2. Delete leaves nothing pointing at the row (#321)
 
-- [ ] 2.1 Failing test for a plain row with comments, history, attachments and shares; fix per the owner's answer on #566.
+- [x] 2.1 Failing test for a plain row with comments, history, attachments, shares, tags, assignments, notifications, workflow steps and data scopes; remove them in the delete transaction and unlink the stored files after commit (recommended option on #566).
 
 ## 3. History index (#446)
 

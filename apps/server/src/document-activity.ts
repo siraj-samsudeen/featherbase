@@ -8,7 +8,8 @@ import { PLATFORM_SCHEMA } from './platform-schema'
 // Platform records that name one row by its id in plain text, beside a column
 // naming its Table: its timeline, attachments, shares, assignments, tags,
 // notifications, emails, access entries and row-level data scopes. No
-// foreign key ties them to the row, so renaming carries them along here.
+// foreign key ties them to the row, so renaming carries them along and
+// deleting removes them here.
 // test/document-activity.test.ts holds this list equal to the person
 // registry's conditional ids, so a new such column cannot be missed.
 export const ROW_ID_HOLDERS = [
@@ -39,6 +40,26 @@ export async function repointRowActivity(tx: typeof sql, table: string, oldId: s
     await tx`
       update ${tx(`${PLATFORM_SCHEMA}.${relation}`)} set ${tx(nameColumn)} = ${newId}
       where ${tx(tableColumn)} = ${table} and ${tx(nameColumn)} = ${oldId}`
+}
+
+// Logs of what happened (who opened the row, which emails went out) keep the
+// id they recorded; everything else that names a row goes with it (#321).
+const KEPT_AFTER_DELETE = new Set<string>(['access_log', 'email_queue'])
+
+/** Remove every platform record naming `table` row `rowId`, inside the
+ *  deleting transaction. Returns the stored files the removed attachments
+ *  pointed at, for the caller to unlink once the delete has committed. */
+export async function removeRowActivity(tx: typeof sql, table: string, rowId: string): Promise<string[]> {
+  const files = await tx`
+    delete from ${tx(`${PLATFORM_SCHEMA}.file`)} where ref_table = ${table} and ref_name = ${rowId}
+    returning file_url`
+  for (const { relation, tableColumn, nameColumn } of ROW_ID_HOLDERS) {
+    if (relation === 'file' || KEPT_AFTER_DELETE.has(relation)) continue
+    await tx`
+      delete from ${tx(`${PLATFORM_SCHEMA}.${relation}`)}
+      where ${tx(tableColumn)} = ${table} and ${tx(nameColumn)} = ${rowId}`
+  }
+  return files.map((f) => String(f.file_url ?? '')).filter(Boolean)
 }
 
 // Internal callers must authorize and lock the source row first. Counts may
