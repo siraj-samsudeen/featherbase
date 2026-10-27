@@ -328,7 +328,7 @@ jobs:
       # The design-system ratchet (test/design-guards.test.ts) compares the
       # pending pins with origin/main's; without this ref it silently skips.
       - name: Fetch main for the design-system ratchet
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --no-tags --depth=1 origin +main:refs/remotes/origin/main
 
       - uses: pnpm/action-setup@v4
 
