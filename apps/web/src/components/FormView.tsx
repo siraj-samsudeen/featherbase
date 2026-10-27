@@ -111,19 +111,25 @@ export function FormView({
   useEffect(() => {
     // Prefilled values on a new row count as edits (the form starts dirty,
     // so a pure-prefill save is possible), not as the saved baseline.
-    setValues(isNew && prefill ? { ...prefill } : baseline)
+    // valuesRef moves with it, so an onload firing in this same effect flush
+    // starts from the loaded row, not the empty pre-load one (#538).
+    const initial = isNew && prefill ? { ...prefill } : baseline
+    valuesRef.current = initial
+    setValues(initial)
     setErrors({})
     onloadFired.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
 
-  // CUST-003: surface client-script compile errors; fire onload once the form
-  // and its scripts are ready.
+  // CUST-003: surface client-script compile errors; fire onload once the form,
+  // its scripts and (for an existing row) the row itself are ready — a
+  // set_value against the empty pre-load doc would blank the row (#538).
   useEffect(() => {
     if (clientScripts.errors.length) setScriptError(`Client script error: ${clientScripts.errors[0]}`)
   }, [clientScripts.errors])
+  const rowLoaded = isNew || doc.data !== undefined
   useEffect(() => {
-    if (onloadFired.current) return
+    if (onloadFired.current || !rowLoaded) return
     const onload = clientScripts.handlers.onload
     if (!onload) return
     onloadFired.current = true
@@ -137,7 +143,7 @@ export function FormView({
       setScriptError(`Client script error (onload): ${err instanceof Error ? err.message : String(err)}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientScripts.handlers, values])
+  }, [clientScripts.handlers, values, rowLoaded])
 
   if (meta.isLoading || (!isNew && doc.isLoading))
     return <p className="text-sm text-ink-subtle">Loading…</p>

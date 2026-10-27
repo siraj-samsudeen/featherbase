@@ -1,9 +1,8 @@
 // The FormView paths the merged web coverage report (ADR 0012) showed no test
 // taking: editing a yes/no, a date and a date-time and reordering sub-table
 // rows; jumping to a linked row; renaming a row (and a rename the server
-// refuses); client scripts that fail on load or while running (and one
-// pinned defect in onload); and
-// backing out of the delete confirmation three ways. Each asserts the stored
+// refuses); client scripts that run on load, or fail on load or while
+// running; and backing out of the delete confirmation three ways. Each asserts the stored
 // row, or the page the user is left on.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -111,10 +110,10 @@ test('renaming a row moves the links to it; a name already taken is refused and 
 })
 
 // SPEC (CUST-003): an onload handler sees the loaded row and its changes add to
-// it. Suspected defect, see report: onload fires before the row has loaded
-// (frm.doc is {}), and its set_value then replaces the loaded values — the
-// form opens with every other field blank and "Not saved".
-test.fails('a client script runs on load against the loaded row, keeping its values', async ({ admin }) => {
+// it (#538: it used to fire against the empty pre-load doc, and its set_value
+// then replaced the loaded values, opening the form with every other field
+// blank).
+test('a client script runs on load against the loaded row, keeping its values', async ({ admin }) => {
   await seed(admin)
   await admin.post('/api/save_row', {
     table: 'Client Script',
