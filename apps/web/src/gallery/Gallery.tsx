@@ -137,7 +137,7 @@ export function Gallery() {
         <Section title="Notices">
           <Notice>Forgot your password? Reset it in StyleHR, or ask your Store Manager.</Notice>
           <Notice tone="caution">Test mode: StyleHR is not asked. Enter an employee code to open that person's view.</Notice>
-          <Notice tone="negative">The report session could not be created. This is not a sales figure.</Notice>
+          <Notice tone="negative">The report couldn't load right now. Try again in a few minutes.</Notice>
           <Notice tone="positive">Your password has been updated.</Notice>
         </Section>
 
