@@ -240,8 +240,17 @@ describe('the comparison', () => {
     const at = (settings: Partial<VariableReport['settings']>): VariableReport => ({ ...dev, settings: { ...APPLIED, ...settings } })
     const one = compareEnvironments([{ label: 'dev', report: at({ environment: 'dev' }) }, { label: 'prod', report: at({ environment: 'dev' }) }])
     expect(one.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({
-      verdict: 'problem', reason: 'dev and prod were both applied with the dev section', values: { dev: 'aaaaaaaaaaaa (dev)', prod: 'aaaaaaaaaaaa (dev)' },
+      verdict: 'problem', reason: 'prod was applied with the dev section', values: { dev: 'aaaaaaaaaaaa (dev)', prod: 'aaaaaaaaaaaa (dev)' },
     })
+    const twice = compareEnvironments([{ label: 'trial', report: at({ environment: 'dev' }) }, { label: 'live', report: at({ environment: 'dev' }) }])
+    expect(twice.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({ verdict: 'problem', reason: 'trial and live were both applied with the dev section' })
+    const swapped = compareEnvironments([{ label: 'dev', report: at({ environment: 'prod' }) }, { label: 'prod', report: at({ environment: 'dev' }) }])
+    expect(swapped.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({
+      verdict: 'problem', reason: 'dev was applied with the prod section; prod was applied with the dev section',
+    })
+    // Labels that are not section names are not judged against them.
+    const own = compareEnvironments([{ label: 'trial', report: at({ environment: 'dev' }) }, { label: 'live', report: at({ environment: 'prod' }) }])
+    expect(own.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({ verdict: 'ok' })
     const none = compareEnvironments([{ label: 'dev', report: at({ revision: null }) }, { label: 'prod', report: at({ revision: null }) }])
     expect(none.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({
       verdict: 'note', reason: 'no revision recorded on dev and prod, so the files cannot be told apart', values: { dev: 'no revision', prod: 'no revision' },

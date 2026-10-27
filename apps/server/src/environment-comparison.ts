@@ -193,8 +193,17 @@ function compareSettings(reports: VariableReport[], labels: string[]): Compariso
       if (section) bySection.set(section, [...(bySection.get(section) ?? []), l])
     })
     const shared = [...bySection.entries()].filter(([, group]) => group.length > 1)
+    // Labels are the caller's names, so a section is judged against a label
+    // only when the two vocabularies meet: dev applied with the prod section.
+    const sections = new Set(bySection.keys())
+    const crossed = labels.filter((l, i) => {
+      const section = reports[i].settings.environment
+      return section && section !== l && (sections.has(l) || labels.includes(section))
+    })
     const unrevised = labels.filter((_, i) => !reports[i].settings.revision)
-    if (shared.length)
+    if (crossed.length)
+      Object.assign(revisions, { verdict: 'problem', reason: crossed.map((l) => `${l} was applied with the ${reports[labels.indexOf(l)].settings.environment} section`).join('; ') })
+    else if (shared.length)
       Object.assign(revisions, { verdict: 'problem', reason: shared.map(([section, group]) => `${and(group)} were both applied with the ${section} section`).join('; ') })
     else if (unrevised.length)
       Object.assign(revisions, { verdict: 'note', reason: `no revision recorded on ${and(unrevised)}, so the files cannot be told apart` })
