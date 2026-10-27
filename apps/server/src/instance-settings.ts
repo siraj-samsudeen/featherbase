@@ -15,6 +15,7 @@ import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
 import { INSTANCE_SETTINGS_ACTOR, holdManagedSet, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
 import { config } from './config'
+import { declaredAppSecrets } from './app-settings'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
 /** Who an apply's saves are recorded as (D4). */
@@ -32,6 +33,10 @@ const SCOPE = [
   { table: 'Sign In Method', shape: 'rows', fields: 'all', createRows: true },
   // A scheduled job is code; the file only switches it on or off.
   { table: 'Scheduled Job', shape: 'rows', fields: ['enabled'], createRows: false },
+  // #620 (E2): an installed app's declared settings, one row per
+  // `<app>.<setting>`. The App Setting controller refuses a setting the app
+  // does not declare. An app's secrets are deployment variables, never rows.
+  { table: 'App Setting', shape: 'rows', fields: ['value'], createRows: true },
 ] as const
 
 /** Column types that hold no value, or a secret: never in scope. */
@@ -548,13 +553,17 @@ function secretKeysIn(v: unknown, at = ''): string[] {
 
 /** Why a value must not leave the server, or null. The scope holds no secret
  *  field (D4), so this is the second guard: a secret pasted into a setting. */
-function secretIn(value: unknown): string | null {
+function secretIn(value: unknown, appSecrets: readonly { name: string; value: string }[] = []): string | null {
   const text = typeof value === 'string' ? value : JSON.stringify(value)
   for (const v of VARIABLES as readonly Variable[]) {
     if (!v.secret) continue
     const secret = readVariable(v.name as VariableName)?.trim()
     if (secret && secret.length >= 6 && text.includes(secret)) return `holds the value of ${v.name}`
   }
+  // #620: the secrets installed apps declare are deployment variables too.
+  // An app named each one as a secret, so even a short value is withheld.
+  for (const { name, value: secret } of appSecrets)
+    if (text.includes(secret)) return `holds the value of ${name}`
   if (URL_CREDENTIALS.test(text)) return 'a web address with credentials in it'
   if (SECRET_ASSIGNMENT.test(text)) return 'names a secret with its value (a password=, token= or key= setting)'
   if (AUTH_VALUE.test(text)) return 'holds an authorization value'
@@ -577,13 +586,14 @@ function secretIn(value: unknown): string | null {
 export async function exportInstanceSettings(): Promise<ExportResult> {
   const settings: Block = {}
   const withheld: string[] = []
+  const appSecrets = await declaredAppSecrets()
   for (const entry of await managedScope()) {
     const meta = await getMeta(entry.table)
     const keep = (where: string, values: Record<string, unknown>) => {
       const out: Record<string, unknown> = {}
       for (const [field, value] of Object.entries(values)) {
         if (value === null || value === undefined) continue
-        const why = secretIn(value)
+        const why = secretIn(value, appSecrets)
         if (why) withheld.push(`${where}.${field}: ${why}`)
         else out[field] = value
       }

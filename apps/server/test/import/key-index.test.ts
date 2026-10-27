@@ -1,10 +1,14 @@
 import { describe, expect } from 'vitest'
+import { createHash } from 'node:crypto'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
+import { KEY_PADDING } from '../../src/actions/collection-import'
+import { applyMigrationFile } from '../../src/migrate'
 
-// #145 (ruled 2026-08-11): the match key gets an expression index on
-// (key::text) — the exact cast resolveRows compares with — the first time
+// #145 (ruled 2026-08-11): the match key gets an expression index on the
+// key's trimmed text (#517) — the exact expression resolveRows compares
+// with — the first time
 // a REAL keyed run uses it. Rehearsals create nothing: IMP-I3's "writes
 // nothing" covers the catalog too.
 
@@ -46,11 +50,43 @@ describe('#145: index-on-demand on the match key', () => {
     await admin.post(PATH, { key_column: 'zone', rows: [{ zone: 'Alpha', pop: 2 }] })
     const defs = await keyIndexes()
     expect(defs).toHaveLength(1)
-    expect(defs[0]).toContain('::text') // the cast resolveRows compares with
+    expect(defs[0]).toContain('btrim') // the trimmed text resolveRows compares with (#517)
+    expect(defs[0]).toContain('::text')
 
     // Second run: IF NOT EXISTS + the process cache — no error, still one.
     await admin.post(PATH, { key_column: 'zone', rows: [{ zone: 'Alpha', pop: 3 }] })
     expect(await keyIndexes()).toHaveLength(1)
+  })
+
+  test('migration 0130 drops a key index built on the untrimmed cast, and the next keyed run builds the trimmed one', async ({ admin }) => {
+    const MIGRATION = '0130_import_key_index_trimmed.sql'
+    // The pop key: an earlier test already ensured zone's index in this
+    // process, and the process cache would skip it.
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ zone: 'Alpha', pop: 1 }] })
+    const name = `featherbase.index_demand_target_pop_${createHash('sha256').update(`${DT}:pop`).digest('hex').slice(0, 8)}_ukidx`
+    await sql.unsafe(`create index "${name}" on featherbase.index_demand_target (((pop)::text))`)
+    await sql`delete from migration where name = ${MIGRATION}`
+    await sql.begin(() => applyMigrationFile(MIGRATION))
+    expect(await keyIndexes()).toEqual([])
+
+    await admin.post(PATH, { key_column: 'pop', rows: [{ pop: 1, zone: 'Beta' }] })
+    const defs = await keyIndexes()
+    expect(defs).toHaveLength(1)
+    expect(defs[0]).toContain('btrim')
+
+    // Applying it again keeps the trimmed index.
+    await sql`delete from migration where name = ${MIGRATION}`
+    await sql.begin(() => applyMigrationFile(MIGRATION))
+    expect(await keyIndexes()).toHaveLength(1)
+
+    // The query resolveRows runs is served by it.
+    await sql`set local enable_seqscan = off`
+    const plan = await sql.unsafe(
+      `explain select row_id from featherbase.index_demand_target where btrim((pop)::text, '${KEY_PADDING}') = any($1)`,
+      [['1']],
+    )
+    expect(plan.map((r) => String(r['QUERY PLAN'])).join('\n')).toContain('_ukidx')
   })
 
   test('a Row ID key needs no index — the primary key serves it', async ({ admin }) => {
@@ -61,5 +97,18 @@ describe('#145: index-on-demand on the match key', () => {
     expect(res.inserted).toBe(1)
     await admin.post(PATH, { key_column: 'row_id', rows: [{ row_id: 'IDX-CUSTOM', pop: 2 }] })
     expect(await keyIndexes()).toEqual([])
+  })
+})
+
+describe('#517: the stored key is trimmed of exactly what the file key is', () => {
+  test('KEY_PADDING is the whitespace JavaScript’s trim() removes, character for character', () => {
+    const trimmed: string[] = []
+    for (let c = 0; c <= 0xffff; c++) if (String.fromCharCode(c).trim() === '') trimmed.push(String.fromCharCode(c))
+    expect([...KEY_PADDING].sort()).toEqual(trimmed.sort())
+  })
+
+  test('Postgres trims every one of them from a stored key', async () => {
+    const [{ k }] = await sql.unsafe(`select btrim($1::text, '${KEY_PADDING}') as k`, [`${KEY_PADDING}A1${KEY_PADDING}`])
+    expect(k).toBe('A1')
   })
 })

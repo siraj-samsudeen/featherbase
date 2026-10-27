@@ -497,7 +497,7 @@ describe('#401: cli settings:set', () => {
   it('refuses a Table the settings file does not manage, and a row Table without --row', async () => {
     const outside = await failure(['settings:set', 'full_name', '--stdin', '--table', 'Person', '--row', 'x'], 'x')
     expect(outside?.status).toBe(1)
-    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method or Scheduled Job, not Person')
+    expect(outside?.stderr).toContain('settings:set writes System Settings, Sign In Method, Scheduled Job or App Setting, not Person')
     const noRow = await failure(['settings:set', 'label', '--stdin', '--table', 'Sign In Method'], 'x')
     expect(noRow?.status).toBe(1)
     expect(noRow?.stderr).toContain('Sign In Method has rows: name one with --row')
@@ -518,7 +518,7 @@ describe('#465: cli settings:export and settings:apply', () => {
     const out = await cli(['settings:export', '--dir', dir])
     expect(out).toContain('instance-settings.json')
     const file = JSON.parse(readFileSync(join(dir, 'instance-settings.json'), 'utf8'))
-    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job'])
+    expect(Object.keys(file.settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
     const applied = await cli(['settings:apply', '--file', join(dir, 'instance-settings.json'), '--revision', 'cli-test'])
     expect(applied).toContain('settings:apply: nothing changed')
   }, 60_000)
@@ -567,6 +567,18 @@ describe('Running an Instance: rehearse an environment\'s start-up checks', () =
     expect(out).toMatch(/boot-check: release preflight — WARNING: ADMIN_PASSWORD is set but is not the Administrator's live password/)
     expect(out).toMatch(/the server will start/)
     expect(out).not.toContain('not-the-live-password-467')
+  })
+
+  // #642 (E7): the server's start refuses without an installed, enabled app's
+  // exact version, so the rehearsal does too.
+  test('an installed, enabled app this image does not ship fails, naming the app and version', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('acme_board', ${sql.json({ name: 'acme_board' })}, true, true, '1.2.0', 'fingerprint-of-1.2.0')`
+    const f = await failure(['boot-check'])
+    expect(f?.stderr).toMatch(/App acme_board version 1\.2\.0 is installed and enabled, but this release does not ship it/)
+    expect(`${f?.stdout}`).not.toMatch(/the server will start/)
   })
 
   test('a production configuration with a forbidden switch on fails and names the switch', async () => {
@@ -761,7 +773,7 @@ describe('the command line, command by command', () => {
     await sql`update sign_in_method set service_url = 'https://bot:hunter2@hr.example.com/login' where row_id = 'google'`
     const r = await runMain(main, ['settings:export'])
     expect(r.code).toBe(0)
-    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job'])
+    expect(Object.keys(JSON.parse(r.stdout).settings)).toEqual(['System Settings', 'Sign In Method', 'Scheduled Job', 'App Setting'])
     expect(r.stderr).toBe('settings:export: left out Sign In Method.google.service_url: a web address with credentials in it\n')
     await sql`insert into single_value (table_name, field, value) values ('System Settings', 'privacy_notice', '# Notice\n')
       on conflict (table_name, field) do update set value = excluded.value`

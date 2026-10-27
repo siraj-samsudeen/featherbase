@@ -22,6 +22,18 @@ export const INTERIM_APPS: Record<string, { root: string; title: string }> = {
   feather_dash: { root: '/featherbase/sales-target', title: 'Feather Dash' },
 }
 
+// #642 (E4): the pages served with a frame policy of their own (the Sales
+// Target report frames MotherDuck, until B9). The server sets the policy and
+// the web app enters and leaves these pages by a full load; both match a path
+// here, with or without one trailing slash, as the web router does.
+const OWN_FRAME_POLICY_PAGES: readonly string[] = [INTERIM_APPS.feather_dash.root]
+
+/** The page with its own frame policy that `path` shows, or null. */
+export function ownFramePolicyPage(path: string): string | null {
+  const bare = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
+  return OWN_FRAME_POLICY_PAGES.includes(bare) ? bare : null
+}
+
 // #489: the person's own account pages live outside the Admin screens, so
 // every address serves them (an app's address keeps people out of Admin).
 export const ACCOUNT_ROOT = '/featherbase/account'

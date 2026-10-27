@@ -157,7 +157,7 @@ export const VARIABLES = [
   // ---- Sales target (Feather Dash)
   { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored' },
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
-  { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin; overridable only for a local stub' },
+  { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
   { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
   { name: 'DIVE_VERSION', secret: false, required: 'optional', purpose: 'the sales-target Dive version' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
@@ -214,6 +214,20 @@ export function isSet(name: VariableName): boolean {
  *  release-preflight.ts). */
 export function readNamedVariable(name: string): string | undefined {
   return process.env[name]
+}
+
+/** Run `fn` with a named variable (not in the registry, such as an app's
+ *  declared secret) set, or unset, in this process, then restore it. */
+export async function withNamedVariable<T>(name: string, value: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env[name]
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env[name]
+    else process.env[name] = previous
+  }
 }
 
 /** The environment a child process inherits, with `extra` on top. */

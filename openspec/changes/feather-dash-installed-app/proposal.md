@@ -84,7 +84,7 @@ it. Feather Dash is the first app designed against it.
   built on the platform's image. This repository publishes that platform image.
 - **Deployment:** `INSTANCE_ADDRESSES` replaces `SITE_URL`, with one Google redirect
   per address. The Dive settings move from the environment into app settings, set by
-  the client's instance install. `docs/DEPLOY.md` is corrected: prod deploys from
+  the instance's settings file. `docs/DEPLOY.md` is corrected: prod deploys from
   `main`.
 - **Client repository:** gains the Feather Dash app (with today's query and roster
   derivation), its client image, the Dive's few lines for cached rows, and the job

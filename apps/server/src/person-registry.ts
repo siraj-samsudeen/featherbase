@@ -72,6 +72,9 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   access_log: { user: id, operation: code, ref_table: code, reference_name: on('ref_table'), method: code, scope: code },
   access_token: { id: code, label: text, token_hash: code, person: id, service_account: id },
   activity_log: { user: id, operation: text, full_name: text, ip_address: code, sign_in_method: code },
+  // #620: an app's settings (configuration, never a person) and which roles carry its roles.
+  app_role_binding: { app: code, app_role: code, bound_role: code },
+  app_setting: { app: code, setting: code, value: text },
   assignment_rule: { ref_table: code, description: text, assign_condition: text, assign_to_field: code, last_user: id },
   assignment_rule_user: { user: id },
   auto_email_report: { '*': code },
@@ -83,6 +86,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   dashboard: { label: text, config: text },
   data_scope: { person: id, service_account: id, allow_table: code, for_value: on('allow_table') },
   data_source: { '*': code, last_error: text },
+  // #625: an app dataset's rows: warehouse figures, no person in them.
+  app_dataset_row: { '*': code },
   dataset_miss: { '*': code },
   dataset_snapshot: { dataset: code, state: code, definition_version: code, triggered_by: id, error: text },
   email_account: { '*': code },

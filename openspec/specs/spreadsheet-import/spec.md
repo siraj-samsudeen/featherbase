@@ -143,6 +143,12 @@ blank clears the matched row's existing value there or leaves it as is.
 - **THEN** those rows are counted separately and skipped
 - **AND** the counts still add up to the file's total rows
 
+#### Scenario: Spaces around a stored value don't stop a match
+
+- **WHEN** a row already in the table holds "A1 " with a trailing space, and
+  a file matched on that column carries "A1"
+- **THEN** the re-import updates that row instead of adding a second one
+
 ### Requirement: An unclear match is refused, never guessed
 
 When a file row's match value appears on more than one file row, or matches
