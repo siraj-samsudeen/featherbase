@@ -144,9 +144,10 @@ flowchart TB
 | Which address opens what | **Instance** (`INSTANCE_ADDRESSES`) | Configuration |
 | The scope shape, its provider, the snapshot engine, sign-in, addresses, the top bar, the Access Log | **Platform** | Shared by every app |
 
-Per-instance settings still travel through the existing instance install route
-(the client's `manifest.json`, installed with a service-account token). The app's
-code reaches the server in a client image built on the platform's image (D7).
+Per-instance settings travel through the instance's settings file
+(`instance-settings.json`, applied with a service-account token; revised by #620:
+#491 took instance settings out of manifests). The app's code reaches the server in
+a client image built on the platform's image (D7).
 
 ### D2. Platform extensions
 
@@ -211,12 +212,22 @@ that fills it).
 
 - Manifest: `"settings": [{ "name": "dive_id", "required": true }, …]` and
   `"secrets": ["MOTHERDUCK_TOKEN"]`.
-- Values live in a platform `App Setting` Table, keyed by app and name. It is a
-  security Table. The instance sets them through its manifest install. Secrets
-  stay environment variables and are never stored, logged or returned.
+- Values live in a platform `App Setting` Table, keyed by app and name (row
+  `<app>.<setting>`). It is a security Table. Settings hold only what differs
+  per instance (ADR 0013). The instance sets them through its **instance
+  settings file** (`instance-settings-as-code`; #491 removed instance settings
+  from manifests), with its apply, dry run and export: `App Setting` is in the
+  file's managed scope (the `value` field), and a setting the file sets is
+  read-only in Admin (#494). A setting the app does not declare is refused at
+  save, and a stored value for one never reaches the app. Secrets stay
+  deployment variables and are never stored, logged or returned (#620).
 - Handlers receive `context.settings` and `context.secrets`, holding only what was
-  declared. A missing required value gives the app's own "not set up yet" answer.
-  The release check warns when an installed, enabled app lacks a required secret.
+  declared and set. A missing required value gives a "not set up yet" answer
+  (`NotSetUpError`, 409) before the handler runs, so the app's client can show
+  it and nothing crashes. An answer or error that holds one of the app's secrets
+  is withheld or replaced before it is answered, stored or logged.
+- The release check warns when an installed, enabled app lacks a required
+  setting or secret (names only), and Instance health shows the same per app.
 - Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
   experiment's password seeding.
 
@@ -361,12 +372,22 @@ feature (follow-up).
   roles to app roles** (owner decision 26-Oct-2026). It is a security Table, `App
   Role Binding`, written by a System Manager only. The release check refuses a
   binding to `All` or `Guest`.
-- **Seeded from the app's suggestions.** `"roleDefaults"` in the manifest is written
-  as binding rows at install, once. An upgrade never re-imposes it, so widening the
-  audience is an instance decision, not an app release. The planner's "never widen a
-  grant" rule still holds, because a binding is not an app grant.
+- **Seeded from the app's suggestions.** `"roleDefaults"` in the manifest
+  (`{ "<app role>": ["<instance role>", …] }`) is written as binding rows at
+  install, once; a suggested role the instance does not have is skipped and the
+  Activity Log says so. An upgrade never re-imposes it, so widening the audience
+  is an instance decision, not an app release. The planner's "never widen a
+  grant" rule still holds, because a binding is not an app grant. A suggestion
+  for a role the app does not declare, or through `All` or `Guest`, stops the
+  app from loading.
 - **The role check** treats a person as holding an app role if they hold it directly
-  or hold any role bound to it, checked fresh on every request.
+  or hold any role bound to it, checked fresh on every request. It is one level
+  deep, only for an enabled app and a role that app declares, and never a
+  platform role (System Manager, Administrator), so it applies to the `table`,
+  `stores` and `person_scope` policies and to the app's grants alike (#620).
+- **Bindings are not in the instance settings file.** They are people-and-access
+  decisions an admin makes in Admin, which the settings file deliberately leaves
+  out (instance-settings-as-code D2).
 - **Rows come from scope, never from roles.** A Team Leader and a Store Manager hold
   the same Reader role and see different rows.
 - **A stand-in until the roster lands.** Before stage C, no jobs exist, so the

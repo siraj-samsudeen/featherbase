@@ -14,6 +14,7 @@ import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
+import { appSetupState } from './app-settings'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -89,6 +90,8 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
   passed.push(await assertOneScopeProvider())
+  passed.push(await assertNoOpenAppRoleBinding())
+  passed.push(...(await appsSetUp()))
   passed.push(await noticeRecipients())
   passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
@@ -193,6 +196,32 @@ async function assertOneScopeProvider(): Promise<string> {
   if (providers.length > 1)
     throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
   return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
+}
+
+/** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that
+ *  lacks a required setting or one of its secrets answers "not set up yet"
+ *  until it gets them. Names only: no value is ever printed. */
+async function appsSetUp(): Promise<string[]> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return ['app setup check skipped (no installed apps yet)']
+  const settings = await locate('app_setting')
+  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null }))
+    .filter(({ missing }) => missing.length)
+    .map(({ app, missing }) => `WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`)
+  return warnings.length ? warnings : ['every enabled app has its required settings and secrets']
+}
+
+/** 5d. #620 (D4): All is every signed-in person and Guest is anyone, so an
+ *  app role bound to either is open to everyone. The App Role Binding save
+ *  refuses it; this catches a row that got there any other way. */
+async function assertNoOpenAppRoleBinding(): Promise<string> {
+  const bindings = await locate('app_role_binding')
+  if (!bindings) return 'app role binding check skipped (no bindings yet)'
+  const open = await sql`select app, app_role, bound_role from ${sql(bindings.relation)}
+    where bound_role in ('All', 'Guest') order by app, app_role, bound_role`
+  if (open.length)
+    throw new Error(open.map((r) => `An app role binding gives ${String(r.app)}'s role ${String(r.app_role)} to ${String(r.bound_role)}, which opens it to everyone. Delete the binding in Admin before releasing.`).join('\n'))
+  return 'no app role is bound to All or Guest'
 }
 
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start

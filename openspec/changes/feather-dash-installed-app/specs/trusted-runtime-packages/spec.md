@@ -37,6 +37,45 @@ written to any log.
 - **THEN** the app tells its readers it is not set up yet, instead of reporting an
   outage
 
+#### Scenario: An admin sees what an app still needs
+
+- **WHEN** an installed app still lacks a secret it requires
+- **THEN** the instance's health page and the release log name the app and the
+  missing secret, without showing any value
+
+### Requirement: An app gets only the settings it declared
+
+An app SHALL receive only the settings and secrets it declared. A value kept for
+anything else SHALL never reach it.
+
+#### Scenario: A leftover value stays out of the app
+
+- **WHEN** an instance still holds a value for a setting the app no longer declares
+- **THEN** the app does not receive it, and an admin cannot add one for it
+
+### Requirement: An instance sets an app's settings in its settings file
+
+An instance SHALL set each app's settings in its own settings file, the same way as
+its other settings: previewed before applying, kept in the file's history, and
+read-only in Admin once the file sets them.
+
+#### Scenario: Pointing dev at a different report
+
+- **WHEN** the dev section of the instance's settings file names a different report
+  for an app, and the owner applies the file to dev
+- **THEN** the app on dev reads that report, and prod keeps its own
+
+### Requirement: An app's secret never leaves the server
+
+Featherbase SHALL never pass an app's secret on: not in an answer, an error, a log
+line, the Access Log, or a settings export, even when the app's own code tries to.
+
+#### Scenario: An app tries to answer with its secret
+
+- **WHEN** an app's answer, or an error it raises, contains its secret
+- **THEN** the reader gets a message that the answer was withheld, and the secret
+  appears in no log
+
 ### Requirement: Content from outside sites only where the app declared it
 
 An app MAY show content from an outside site only if it declared that site. Featherbase

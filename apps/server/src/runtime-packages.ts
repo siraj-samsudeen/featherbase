@@ -12,6 +12,8 @@ import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolv
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
+import { loadAppSetup, secretsDeclaration, settingsDeclaration } from './app-settings'
+import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -54,6 +56,12 @@ const manifestSchema = z.object({
   reads: readDeclaration.optional(),
   // #559: this app provides people's scope for the instance (one app at most).
   scopeProvider: scopeProviderDeclaration.optional(),
+  // #620 (E2): what the app reads per instance, and the deployment variables
+  // it reads. D4: which of the instance's roles should carry each app role,
+  // written as App Role Binding rows once, at install.
+  settings: settingsDeclaration.optional(),
+  secrets: secretsDeclaration.optional(),
+  roleDefaults: roleDefaultsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -217,6 +225,7 @@ export function discoverPackages(paths: string[]) {
           duplicates.add(key)
           refuse('Duplicate different artifacts for one package version')
         }
+        validateRoleDefaults(manifest.roleDefaults, manifest.roles)
         const names = new Set(manifest.tables.map((t) => t.name))
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
           throw new Error('Duplicate Tables or unknown entryTable')
@@ -283,6 +292,7 @@ export function discoverPackages(paths: string[]) {
           [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,
             authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined,
             ...(declaration.policy.kind === 'person_scope' ? { scopeProvider: findScopeProvider } : {}) }]))
+        const setup = () => loadAppSetup(manifest.name, manifest)
         const app: AppManifest = { name: manifest.name, tables: manifest.tables,
           roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
           runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
@@ -291,8 +301,8 @@ export function discoverPackages(paths: string[]) {
           entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
           scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
           // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
-          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations) } : undefined,
-          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations) } : undefined })
+          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
+          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup } : undefined })
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))
