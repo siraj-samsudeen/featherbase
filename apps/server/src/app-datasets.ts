@@ -24,6 +24,71 @@ export const DATASET_COLUMN_TYPES = ['text', 'integer', 'number', 'money', 'date
  *  text form is the same in the source and in the snapshot qualify. */
 const FILTERABLE: readonly string[] = ['text', 'integer', 'date']
 
+/** #669: the completeness checks a dataset may declare. Each is checked on a
+ *  refresh's candidate before it can replace the active snapshot. */
+export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct'] as const
+/** A guarded column holds figures, so "zero" and "a drop" mean something. */
+const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
+
+const guardSchema = z.object({
+  kind: z.enum(DATASET_GUARD_KINDS, { errorMap: () => ({ message: `A dataset guard kind must be one of ${DATASET_GUARD_KINDS.join(', ')}` }) }),
+  column: identifier.optional(),
+  value: z.number().optional(),
+}).strict().superRefine((guard, context) => {
+  const issue = (message: string) => context.addIssue({ code: 'custom', message })
+  if (guard.kind === 'min_rows') {
+    if (guard.column !== undefined) issue('A min_rows guard counts rows, so it names no column')
+    if (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0)
+      issue('A min_rows value must be a whole number of rows, 0 or more')
+    return
+  }
+  if (guard.column === undefined) issue(`A ${guard.kind} guard needs a column`)
+  if (guard.kind === 'not_all_zero' && guard.value !== undefined) issue('A not_all_zero guard takes no value')
+  // Whole percentages, so the limit is checked in integers, exactly.
+  if (guard.kind === 'max_drop_pct' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
+    issue('A max_drop_pct value must be a whole percentage from 0 to 100')
+})
+
+export type DatasetGuard = z.infer<typeof guardSchema>
+
+/** What a guard reads of a snapshot: its rows, and per guarded column how
+ *  many of its values are neither empty nor zero. */
+export interface GuardCounts {
+  rows: number
+  nonZero: Record<string, number>
+}
+
+const whole = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
+const percent = (value: number) => `${Math.round(value * 10) / 10}%`
+
+/**
+ * #669: the first of `guards` that the candidate fails, said in words that
+ * name the dataset, the guard and the numbers; null when every guard passes.
+ * A drop is measured against the active snapshot, so a first refresh, with
+ * none to compare, cannot fail one.
+ */
+export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], candidate: GuardCounts, previous: GuardCounts | null): string | null {
+  for (const guard of guards) {
+    if (guard.kind === 'min_rows') {
+      if (candidate.rows < guard.value!) return `${dataset}: ${whole.format(candidate.rows)} rows, at least ${whole.format(guard.value!)} required`
+      continue
+    }
+    const column = guard.column!
+    const now = candidate.nonZero[column]
+    if (guard.kind === 'not_all_zero') {
+      if (now === 0) return `${dataset}: every ${column} value is empty or zero (${whole.format(candidate.rows)} rows)`
+      continue
+    }
+    const before = previous?.nonZero[column]
+    if (!before) continue
+    // Decided in integers: a computed percentage is not exact (100 → 93 is
+    // 7.000000000000001%), and a drop of exactly the limit must pass.
+    if (now * 100 < before * (100 - guard.value!))
+      return `${dataset}: ${column} values dropped ${percent(((before - now) / before) * 100)} (${whole.format(before)} → ${whole.format(now)}), limit ${percent(guard.value!)}`
+  }
+  return null
+}
+
 const datasetSchema = z.object({
   name: identifier,
   source: z.string().min(1).max(140),
@@ -34,8 +99,15 @@ const datasetSchema = z.object({
     .refine(columns => distinct(columns.map(column => column.name)), 'Dataset column names must be distinct'),
   keys: z.array(identifier).refine(distinct, 'Dataset keys must be distinct'),
   filters: z.record(identifier, identifier).refine(filters => Object.keys(filters).length > 0, 'A dataset maps at least one scope filter'),
+  guard: z.array(guardSchema).optional(),
 }).strict().superRefine((dataset, context) => {
   const types = new Map(dataset.columns.map(column => [column.name, column.type]))
+  for (const { column } of dataset.guard ?? []) {
+    if (column === undefined) continue
+    if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} is not one of its columns` })
+    else if (!GUARDABLE.includes(types.get(column)!))
+      context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} must be integer, number or money` })
+  }
   for (const [what, column] of [...dataset.keys.map(key => ['key', key]), ...Object.values(dataset.filters).map(c => ['scope filter', c])]) {
     if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s ${what} ${column} is not one of its columns` })
     else if (!FILTERABLE.includes(types.get(column)!))
@@ -107,6 +179,17 @@ async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   return driver.query(source, dataset.query, dataset.columns, where)
 }
 
+/** A stored snapshot's counts for its guards, in one pass over its rows. */
+async function guardCounts(snapshotId: string, guards: readonly DatasetGuard[]): Promise<GuardCounts> {
+  const columns = [...new Set(guards.flatMap((guard) => (guard.column ? [guard.column] : [])))]
+  const nonZero = columns.map((column, i) =>
+    sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}`)
+  const [counted] = await sql`
+    select count(*) as rows ${nonZero.length ? nonZero.reduce((all, one) => sql`${all} ${one}`) : sql``}
+    from app_dataset_row where snapshot_id = ${snapshotId}`
+  return { rows: Number(counted.rows), nonZero: Object.fromEntries(columns.map((column, i) => [column, Number(counted[`c${i}`])])) }
+}
+
 /** The registry name of an app's dataset: `<app>.<dataset>`. */
 export const datasetKey = (app: string, name: string) => `${app}.${name}`
 
@@ -117,7 +200,9 @@ const registered = new Map<string, string[]>()
  * Register the selected version of `app`'s datasets on the snapshot engine
  * (dataset-snapshot.ts), replacing whatever that app registered before. The
  * declaration is part of each snapshot's identity, so a changed query or
- * column never serves rows cut to the old one.
+ * column never serves rows cut to the old one. Its guard is not (#669): a
+ * guard decides which refresh may replace the copy, not what the copy holds,
+ * so an upgrade that adds or tunes one keeps the copy and checks against it.
  */
 export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] = []): void {
   for (const key of registered.get(app) ?? []) unregisterDataset(key)
@@ -125,7 +210,7 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
   for (const dataset of datasets) {
     registerDataset<DatasetRow>({
       name: datasetKey(app, dataset.name),
-      version: createHash('sha256').update(JSON.stringify(dataset)).digest('hex').slice(0, 16),
+      version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
       async fetch() {
         return { rows: shapeRows(dataset, await runQuery(dataset)), sourceAsOf: null }
       },
@@ -139,8 +224,15 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
         return Number(size.bytes)
       },
       // An empty candidate is how a silent upstream failure looks; the last
-      // good copy keeps serving instead.
-      validate: (rowCount) => (rowCount === 0 ? 'candidate is empty: the query returned no rows' : null),
+      // good copy keeps serving instead. #669: so does one that fails a guard
+      // the app declared, counted the same way in the candidate and the
+      // active snapshot, from their stored rows.
+      async validate(rowCount, previous, snapshotId) {
+        if (rowCount === 0) return 'candidate is empty: the query returned no rows'
+        if (!dataset.guard?.length) return null
+        return guardRefusal(dataset.name, dataset.guard, await guardCounts(snapshotId, dataset.guard),
+          previous ? await guardCounts(previous.row_id, dataset.guard) : null)
+      },
     })
   }
 }

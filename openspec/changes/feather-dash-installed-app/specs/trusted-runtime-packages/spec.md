@@ -60,6 +60,28 @@ replace the last good copy, and an admin SHALL be able to see why it was refused
 - **THEN** readers keep getting the last good copy
 - **AND** an admin can see that the refresh was refused, and why
 
+### Requirement: An app can say what a complete refresh looks like
+
+An app SHALL be able to declare checks a refresh of its report data must pass before it
+replaces the last good copy: at least so many rows, a figure that is not empty or zero
+everywhere, or a figure that has not fallen by more than a stated share since the last
+good copy. A refresh that fails one SHALL be refused, and the refusal SHALL name the
+check and the numbers. Featherbase SHALL refuse to install an app whose checks name a
+figure the report does not have.
+
+#### Scenario: Targets half missing after an upstream rebuild
+
+- **WHEN** a report says its targets may not fall by more than half, and a refresh
+  comes back with targets for 336 rows where the last good copy had 1,200
+- **THEN** readers keep getting the last good copy
+- **AND** an admin sees that the refresh was refused because targets dropped 72%,
+  against a limit of 50%
+
+#### Scenario: The first refresh has nothing to fall from
+
+- **WHEN** a report with that check is refreshed for the first time
+- **THEN** the refresh is kept, since there is no earlier copy to compare it with
+
 ### Requirement: An app says what settings and secrets it needs
 
 An app SHALL declare the settings, secrets and data sources it needs. An admin SHALL be
