@@ -340,6 +340,24 @@ export async function updateTable(
   const table = tableName(name)
   const relation = quoteRelation(await tableRelation(name))
   await sql.begin(async (tx) => {
+    // The same lock the schema change needs also prevents a concurrent insert
+    // from introducing a duplicate between this check and the constraint.
+    const becomingUnique = def.columns.filter((f) =>
+      f.unique && before.has(f.column_name) && !before.get(f.column_name)!.unique && pgType(f.column_type),
+    )
+    if (becomingUnique.length && existing.kind !== 'settings' && !isBound) {
+      await tx.unsafe(`lock table ${relation} in access exclusive mode`)
+      for (const f of becomingUnique) {
+        const column = quoteIdent(f.column_name)
+        const [duplicate] = await tx.unsafe(
+          `select ${column} as value from ${relation} where ${column} is not null group by ${column} having count(*) > 1 limit 1`,
+        )
+        if (duplicate) {
+          const message = `${f.label ?? f.column_name} repeats the value ${JSON.stringify(duplicate.value)}; remove duplicates before making it unique`
+          throw new AppError('ValidationError', message, { [f.column_name]: message })
+        }
+      }
+    }
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
       is_submittable: def.is_submittable ?? existing.is_submittable,

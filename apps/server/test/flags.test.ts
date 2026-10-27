@@ -79,10 +79,7 @@ describe('META-010: field flags', () => {
 })
 
 describe('A column can be marked unique', () => {
-  // SPEC: A column can be marked unique — suspected defect, see report.
-  // Turning unique on for a column whose rows already repeat a value fails
-  // with a bare internal error instead of a refusal naming the column.
-  test.fails('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
+  test('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++)
       await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
@@ -91,6 +88,22 @@ describe('A column can be marked unique', () => {
       body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
     })
     expect(res.status).toBe(417)
-    expect((await res.json()).error.fields.code).toBeTruthy()
+    expect((await res.json()).error.fields.code).toContain('A')
+    const meta = await admin.get<{ columns: { column_name: string; unique: boolean }[] }>('/api/table/Flag%20Late%20Unique:meta')
+    expect(meta.columns.find((column) => column.column_name === 'code')?.unique).toBe(false)
+    // Refusal leaves the prior non-unique rule in effect.
+    await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
   })
 })
+
+ test('a column with distinct values and empty rows can become unique', async ({ admin }) => {
+    const name = 'Flag Distinct Values'
+    await admin.post('/api/table_def', { name, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (const code of ['A', 'B', null, null])
+      await admin.post('/api/save_row', { table: name, row: { code } })
+    await admin.put(`/api/table_def/${encodeURIComponent(name)}`, {
+      columns: [{ column_name: 'code', column_type: 'Data', unique: true }],
+    })
+    await expect(admin.post('/api/save_row', { table: name, row: { code: 'A' } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/save_row', { table: name, row: { code: 'C' } })
+  })
