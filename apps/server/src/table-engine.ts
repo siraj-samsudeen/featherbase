@@ -497,7 +497,11 @@ export async function updateTable(
       const type = pgType(old.column_type)
       if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
         await tx.unsafe(`alter table ${relation} drop column if exists ${quoteIdent(column_name)}`)
-      // without drop_columns the column (and its data) is retained
+      // without drop_columns the column (and its data) is retained, but not
+      // its unique rule: a hidden constraint would keep refusing saves, and
+      // putting the column back unique re-checks its values (#510).
+      else if (type && existing.kind !== 'settings' && !isBound && old.unique)
+        await tx.unsafe(`alter table ${relation} drop constraint if exists ${quoteIdent(`${table}_${column_name}_uq`)}`)
     }
   })
   invalidateMeta(name)
