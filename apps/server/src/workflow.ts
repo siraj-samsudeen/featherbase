@@ -165,6 +165,9 @@ export function currentState(wf: Workflow, row: Record<string, unknown>): string
 // Administrator / System Manager bypass the ROLE gate, but the CONDITION gate
 // still applies to everyone (a condition is a property of the row, not the
 // user). When `row` is omitted, conditions are not evaluated (role-only view).
+// #516: a condition that can't be evaluated hides only its own action, so one
+// broken condition never blocks the row's other actions; taking that action
+// is still refused by applyWorkflowAction.
 export function availableActions(
   wf: Workflow,
   state: string,
@@ -176,9 +179,18 @@ export function availableActions(
   return wf.transitions.filter((t) => {
     if (t.state !== state) return false
     if (!privileged && !roleSet.has(t.allowed)) return false
-    if (row && !evalCondition(t.condition, row, `${t.state}→${t.action}`)) return false
+    if (row && !conditionHolds(t, row)) return false
     return true
   })
+}
+
+function conditionHolds(t: WorkflowTransition, row: Record<string, unknown>): boolean {
+  try {
+    return evalCondition(t.condition, row, `${t.state}→${t.action}`)
+  } catch (err) {
+    console.warn(`[workflow] hiding "${t.action}": ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
 }
 
 // WF-002/003: apply an action. Enforces the transition exists from the
