@@ -158,6 +158,12 @@ only choices the reader is allowed.
 - **THEN** the address carries the choice without the page reloading, so a refresh
   or a shared link keeps it and the back button returns to the earlier choice
 
+#### Scenario: The app hears of the choice at once
+
+- **WHEN** a reader chooses a store in the top bar above an app's screen
+- **THEN** the app is told the new store straight away, without the page
+  reloading, and shows that store's figures
+
 ### Requirement: An app states the platform version it was built for
 
 Every app SHALL state the platform version it was built for. Featherbase SHALL keep
@@ -255,3 +261,64 @@ cached copy or live figures.
 - **WHEN** a manager says a figure they saw yesterday was wrong
 - **THEN** an administrator can find their view, and the exact cached copy it came
   from
+
+### Requirement: An app owns its screen under the shared top bar
+
+An app that brings its own screen SHALL fully control its address, document,
+inner navigation and styling. Featherbase SHALL serve only that app's declared
+client files, SHALL NOT show one app's screen or its own in place of a missing
+piece, and SHALL preserve an app-owned deep path, query and fragment across
+sign-in and refresh while loading the app's entry document.
+
+Featherbase SHALL show the shared top bar above every app screen: the app's
+name, the controls the app declared for the bar, a way to open the Admin
+screens for people who can use them, the theme and the account menu. The bar
+SHALL NOT offer a list of apps to switch between. Featherbase SHALL draw the
+bar itself, and SHALL keep the bar's look and theme out of the app's screen;
+the app's own content SHALL start below the bar and never be covered by it. An
+app with its own screen SHALL NOT also create a competing generated Home Page;
+its tables remain available to administrators.
+
+#### Scenario: A missing piece stays missing
+
+- **WHEN** something inside Tasker's screen fails to load
+- **THEN** it shows as missing
+- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
+
+#### Scenario: Signing in returns to the app that was opened
+
+- **WHEN** a signed-out person opens a nested Tasker address with query state
+  and a selected task in its fragment
+- **THEN** after signing in and refreshing they remain at that exact address
+  with the selected task open
+
+#### Scenario: Every app opens under the shared top bar
+
+- **WHEN** the user opens an app on a computer or a phone
+- **THEN** the same top bar as on every other page sits above it, named for
+  that app, while the app's own navigation, content and styling show
+  unchanged below it
+
+#### Scenario: The Admin screens are one step away
+
+- **WHEN** the user, who can use the Admin screens, opens them from the bar on
+  an app's screen
+- **THEN** the Admin screens load in place of the app
+
+#### Scenario: An app can be delivered without rebuilding core
+
+- **WHEN** built Tasker is staged after Featherbase core was built
+- **THEN** Tasker opens under the shared top bar without a core rebuild or a
+  Tasker-specific core route
+
+## REMOVED Requirements
+
+### Requirement: An app owns its own screen
+
+**Reason**: Design D3 puts one shared top bar on every page (#650). The host
+shell's own header, its Home icon and its list of apps to switch between are
+gone, so the promises about them no longer hold.
+
+**Migration**: Everything else this requirement promised carries on in "An app
+owns its screen under the shared top bar". People reach the Admin screens from
+the bar, and another app from the Admin screens.

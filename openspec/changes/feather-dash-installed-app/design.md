@@ -369,9 +369,18 @@ reads it. An app never runs its own code in the bar (ADR 0011).
   reload); with no valid choice in the address the picker shows the first
   option and leaves the address alone (an open question for the owner on
   #642: the app then sees no choice). On a phone the label is visually hidden
-  but stays the accessible name, and the value is cut with an ellipsis. On an
-  installed app's address the page that carries the shared bar today is the
-  account page; the app's own pages still carry the runtime shell's header.
+  but stays the accessible name, and the value is cut with an ellipsis.
+- **As built, the bar over the app's own pages (#650).** The bar is drawn over
+  the app's own pages too (D3, "As built"), so the picker sits above the app's
+  content on any address that opens the app's page. There the choice goes into
+  the document's own address (`?<sets>=<value>`, a history entry, no reload), and
+  the app learns of it in two ways, both part of the extension-point catalogue:
+  - on load, from `location.search`;
+  - for each later choice, from one browser event on `window`,
+    **`featherbase:bar-change`**, whose `detail` is `{ key, value }`, both text
+    (for example `{ key: "store", value: "S103" }`). It fires once per choice,
+    after the address has changed. Moving through history fires the browser's
+    own `popstate` only.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
@@ -456,6 +465,37 @@ Portal and the restricted shell.
   - no bell until the app sends notifications.
 - #309 rejected a *package-chosen* presentation mode. Here the *address*, an
   instance setting, picks the contents.
+- **As built, an app's own pages (#650).** The runtime shell's server-drawn
+  header, its app switcher, `runtime-shell.css` and `runtime-shell.js` are
+  removed outright. The shell now adds two things to the app's entry document:
+  a `<featherbase-bar data-app data-title>` host, first in the body, and the
+  platform's bar script, `/featherbase/bar.js`. The app's assets, its frame
+  policy (E4), the client version header and identity are served as before.
+  - **How the bar gets in: the platform's bar bundle, not the app inside the
+    platform's page.** `/featherbase/bar.js` is a second entry of the web app
+    that renders the real `TopBar` into the host's shadow root, so there is one
+    bar implementation and the app keeps owning its document. Rejected: mounting
+    the app's page inside the platform's single-page app, which would take the
+    app's document, address and styling away from it and run its code in the
+    platform's page.
+  - **The bar stays the platform's, and the page stays the app's** (ADR 0011).
+    The bar's styles live in its shadow root and its theme is painted on its own
+    root, never on the app's `<html>`. Its router is private and in memory, so it
+    never reads or rewrites the app's address or history state. Every way out of
+    the bar (Sign-in methods, Log out, Open Admin) loads the platform's page in
+    full. App code must not reach into the bar's host.
+  - The bar is sticky at the top of the window, above the app's content, as
+    the runtime shell's header was. It publishes its height on the app's root as
+    **`--featherbase-bar-height`**, for an app that pins something to the window
+    below the bar. This replaces the shell's `--featherbase-runtime-shell-inset`,
+    with no alias, and joins the extension-point catalogue. Tasker 2.3.0 still
+    reads the retired name, so its phone inspector opens under the bar until a
+    new Tasker version reads the new one; its shipped files are left alone,
+    because an installed app is matched by fingerprint.
+  - On an app's own page the bar names the app on every address, draws the
+    app's declared controls, and offers "Open Admin" to people who can use
+    Admin, since the page is never the Admin. The app's page keeps its own
+    document title.
 - **Branding.** `/api/brand` answers with the opened app's title on an app's
   address. The login page and document title use it.
 

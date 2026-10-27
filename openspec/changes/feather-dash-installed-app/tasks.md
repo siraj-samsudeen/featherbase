@@ -41,6 +41,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
 - [ ] 2.15 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
 - [ ] 2.16 Local development of a client app: run a client app with hot reload against a featherbase checkout or version, without Docker images (D7); the mechanism is decided and built with B6′.
+- [x] 2.17 An installed app's own pages carry the shared top bar (D3, E8): the platform's bar bundle draws it over the app's page; the runtime shell's header, switcher, stylesheet and script are removed; bar choices reach the app through the address and the `featherbase:bar-change` event; the bar's height is published as `--featherbase-bar-height` (#650).
 
 ## 3. Stage C — roster redesign (after #449 and #392)
 
