@@ -296,15 +296,22 @@ async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: Row
   const nameField = meta.name === 'Share' ? 'share_name' : 'ref_name'
   for (const target of [old, row]) {
     const table = target?.[tableField]
-    if (typeof table !== 'string' || !table.includes('.')) continue
+    if (typeof table !== 'string' || !table) continue
     const name = String(target?.[nameField] ?? '')
     // File may attach to a Table rather than one document, or be unattached.
     if (meta.name === 'File' && !name) continue
+    const appTable = table.includes('.')
+    // #321: a plain stored row is locked too, so this write and the row's
+    // deletion serialise: either the delete waits and then sees this activity
+    // and refuses, or this write waits and then finds the row gone. A
+    // connected row lives on its source and a settings table has no rows.
+    const [def] = await tx`select kind, data_source from table_def where name = ${table}`
+    if (!appTable && (!def || def.data_source || def.kind === 'settings')) continue
     const targetMeta = await getMeta(table)
     const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
       where ${tx(targetMeta.row_key)} = ${name} for key share`
     if (!exists) throw new AppError('NotFoundError', `${table} ${name} not found`)
-    await getDoc(table, name, user)
+    if (appTable) await getDoc(table, name, user)
   }
 }
 
