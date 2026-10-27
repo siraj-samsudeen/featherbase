@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { ActionRow, RuntimeActionContext, RuntimeActionHandler, RuntimeReadHandler } from 'shared'
-import { sql } from './db'
+import type { ActionRow, AppAuthorizationContext, RuntimeActionContext, RuntimeActionHandler, RuntimeReadContext, RuntimeReadHandler } from 'shared'
+import { inAppTransaction, sql } from './db'
 import { appOperation, assertAppAvailable } from './app-lifecycle'
 import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
@@ -177,22 +177,45 @@ export function executeRuntimeRead(app: string, name: string, input: unknown, us
     const contribution = declaration()
     const handler = contribution?.handlers.get(name)
     if (!contribution || !handler) return recordAppAccessRefusal(user, app, name, 'configuration')
-    return withAppAuthorization({ app, operation: name, kind: discovery ? 'discovery' : 'read', user,
+    const outbound = !discovery && contribution.operations.get(name)?.declaration.outbound === true
+    const decided = await withAppAuthorization({ app, operation: name, kind: discovery ? 'discovery' : 'read', user,
       payload: parsed.success ? parsed.data.payload : undefined, entryTable: contribution.entryTable,
       contribution: contribution.operations.get(name),
     }, async (authorization, payload) => {
-      if (discovery) return { storeCodes: authorization.storeCodes }
-      const { title, settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      if (discovery) return { answer: { storeCodes: authorization.storeCodes } as unknown }
+      const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      // #625 (E5): an outbound read stops here. Its authorization, payload and
+      // setup are decided and frozen; the handler runs once this transaction
+      // has closed, so no row lock is held while it calls out.
+      if (outbound) return { frozen: { authorization, payload, setup } }
       const context = callerDocuments(app, contribution.tables, user)
       const { get, list, activity } = context.documents
-      const datasets = appDatasets(app, title, contribution.datasets ?? [], authorization.places)
-      const json = await withSecretsKept(secrets, async () => {
-        try {
-          return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents: Object.freeze({ get, list, activity }), datasets })))
-        } finally { await context.close() }
-      })
-      assertNoSecret(secrets, JSON.parse(json))
-      return { result: JSON.parse(json) as unknown }
+      return { answer: await runRead(app, name, user, handler, contribution, { authorization, payload, setup },
+        Object.freeze({ get, list, activity }), () => context.close()) as unknown }
     })
+    if ('answer' in decided) return decided.answer
+    return runRead(app, name, user, handler, contribution, decided.frozen, CLOSED_DOCUMENTS, async () => {})
   })
+}
+
+// An outbound handler runs after its transaction has closed: a document read
+// would take a row lock in a transaction that no longer exists.
+function closedDocuments(): never {
+  throw new AppError('ValidationError', 'This read is outbound and its transaction has closed: read documents in a read that is not outbound')
+}
+const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
+
+async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
+  { authorization, payload, setup }: { authorization: AppAuthorizationContext; payload: unknown; setup: AppSetup },
+  documents: RuntimeReadContext['documents'], close: () => Promise<void>) {
+  const { title, settings, secrets } = setup
+  const { datasets, recordView } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
+    places: authorization.places, outbound: !inAppTransaction() })
+  const json = await withSecretsKept(secrets, async () => {
+    try {
+      return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
+    } finally { await close() }
+  })
+  assertNoSecret(secrets, JSON.parse(json))
+  return { result: JSON.parse(json) as unknown }
 }

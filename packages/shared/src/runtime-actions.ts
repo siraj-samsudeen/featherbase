@@ -51,6 +51,12 @@ export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'document
   readonly datasets: {
     /** The active snapshot's rows, or null when none has built yet (the ask is recorded). */
     active(name: string, filters?: DatasetFilters): Promise<DatasetAnswer | null>
+    /** The same query run on the source now, limited to the same rows and
+     *  shaped the same way. Only in a read declared `outbound` (E5). */
+    live(name: string, filters?: DatasetFilters): Promise<DatasetAnswer>
   }
+  /** #625 (E5): write one Access Log row for the viewing person. The platform
+   *  fills in who, the places, and what this read served for `dataset`. */
+  recordView(details?: { dataset?: string }): Promise<void>
 }
 export type RuntimeReadHandler = (context: RuntimeReadContext) => unknown | Promise<unknown>

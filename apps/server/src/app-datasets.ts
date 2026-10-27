@@ -10,6 +10,7 @@ import { sql } from './db'
 import type { PersonScope } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError } from './errors'
+import { logAccess } from './audit'
 import { getDriver, getSource } from './sources/registry'
 import type { DatasetCondition, DatasetWhere } from './sources/types'
 
@@ -201,12 +202,30 @@ function ordered(dataset: DatasetDeclaration, rows: DatasetRow[]): DatasetRow[] 
   })
 }
 
+export interface DatasetReadRequest {
+  app: string
+  /** The read being answered, named in the Access Log when no dataset is. */
+  operation: string
+  /** The viewing person. */
+  user: string
+  title: string
+  declarations: readonly DatasetDeclaration[]
+  /** The reader's frozen places; none means no rows. */
+  places: PersonScope | undefined
+  /** Only an outbound read, which holds no transaction, may call the source. */
+  outbound: boolean
+}
+
 /**
- * `context.datasets` for one read: the app's own datasets only, read through
- * the reader's frozen places. No SQL crosses from the app: it names a
- * dataset and filter values, and the query is the declared one.
+ * `context.datasets` and `context.recordView` for one read: the app's own
+ * datasets only, read through the reader's frozen places. No SQL crosses
+ * from the app: it names a dataset and filter values, and the query is the
+ * declared one.
  */
-export function appDatasets(app: string, title: string, declarations: readonly DatasetDeclaration[], places: PersonScope | undefined) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound }: DatasetReadRequest) {
+  // What this read served, per dataset, for the Access Log: the platform
+  // says what was served, never the app.
+  const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
   async function declared(name: string): Promise<DatasetDeclaration> {
     const dataset = declarations.find((d) => d.name === name)
     if (!dataset) throw new AppError('ValidationError', `The app has not declared the dataset ${String(name)}`)
@@ -217,7 +236,7 @@ export function appDatasets(app: string, title: string, declarations: readonly D
     }
     return dataset
   }
-  return Object.freeze({
+  const datasets = Object.freeze({
     async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
@@ -227,8 +246,36 @@ export function appDatasets(app: string, title: string, declarations: readonly D
         return null
       }
       const stored = await sql`select row from app_dataset_row where snapshot_id = ${snapshot.row_id} and ${storedRowsWhere(where)}`
+      served.set(name, { served: 'cached', snapshot: snapshot.row_id })
       return { dataset: name, served: 'cached', at: new Date(snapshot.activated_at!).toISOString(),
         rows: ordered(dataset, stored.map((r) => r.row as DatasetRow)) }
     },
+    // The same query, limited to the same rows, shaped by the same function.
+    async live(name: string, filters?: unknown): Promise<DatasetAnswer> {
+      if (!outbound) throw new AppError('ValidationError', 'A live dataset read calls out to its data source: declare the read outbound')
+      const dataset = await declared(name)
+      const where = datasetWhere(dataset, places, filters)
+      const at = new Date().toISOString()
+      const rows = shapeRows(dataset, await runQuery(dataset, where))
+      served.set(name, { served: 'live' })
+      return { dataset: name, served: 'live', at, rows: ordered(dataset, rows) }
+    },
   })
+  /** One Access Log row for the viewing person (#441): who looked at what,
+   *  under which places, served from which snapshot or live. */
+  async function recordView(details: unknown = {}): Promise<void> {
+    const dataset = (details as { dataset?: unknown } | null)?.dataset
+    if (!details || typeof details !== 'object' || Object.keys(details).some((key) => key !== 'dataset') ||
+        (dataset !== undefined && !declarations.some((d) => d.name === dataset)))
+      throw new AppError('ValidationError', "recordView takes { dataset } naming one of the app's datasets")
+    const what = typeof dataset === 'string' ? served.get(dataset) : undefined
+    await logAccess(user, 'view_report', {
+      table: datasetKey(app, typeof dataset === 'string' ? dataset : operation),
+      row_id: what?.snapshot,
+      method: what?.served,
+      scope: places ? places.map((place) => place.label).join('; ').slice(0, 140) : undefined,
+      required: true,
+    })
+  }
+  return { datasets, recordView }
 }

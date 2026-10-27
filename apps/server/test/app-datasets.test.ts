@@ -23,6 +23,7 @@ import { activeSnapshot, buildSnapshot, pendingMisses } from '../src/dataset-sna
 import { expectApiError } from './fixtures'
 import type { RuntimeReadContext } from 'shared'
 import { withNamedVariable } from '../src/env'
+import { inAppTransaction, sql } from '../src/db'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -181,6 +182,62 @@ describe('a cached dataset read', () => {
     await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
     app.hooks.run = (context: Context) => context.datasets.active('unplugged')
     await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+  })
+})
+
+describe('a live dataset read', () => {
+  test('answers the same rows, in the same shape and with the same totals, as the cached read', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North', 'N1', 'kids')
+    await position(admin, reader.user!, 'North', 'N1', 'mens')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('sales'), live: await context.datasets.live('sales') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { served: string; rows: { amount: number }[] }> }>(read + 'outside', { payload: {} })
+    const total = (rows: { amount: number }[]) => rows.reduce((sum, r) => sum + r.amount, 0)
+    expect([result.cached.served, result.live.served]).toEqual(['cached', 'live'])
+    expect(Object.keys(result.live).sort()).toEqual(Object.keys(result.cached).sort())
+    expect(result.live.rows).toEqual(result.cached.rows)
+    expect(result.cached.rows).toHaveLength(3)
+    expect(total(result.live.rows)).toBe(total(result.cached.rows))
+  })
+
+  test('is refused in a read that is not declared outbound', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.live('sales')
+    await expectApiError(reader.post(read + 'inside', { payload: {} }), { status: 417, message: expect.stringMatching(/declare the read outbound/) })
+  })
+})
+
+describe('an outbound read', () => {
+  // The handler's `sql` would use the transaction bound to its async context;
+  // an outbound handler has none, so it holds no transaction and no row lock.
+  test.for([['inside', true], ['outside', false]] as const)('the %s read runs its handler inside a transaction: %s', async ([operation, open], { admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = async () => ({ open: inAppTransaction() })
+    expect(await reader.post(read + operation, { payload: {} })).toEqual({ result: { open } })
+  })
+
+  test('a handler that reads documents after the transaction closed fails loudly', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.documents.list('datasetproof.note')
+    await expectApiError(reader.post(read + 'outside', { payload: {} }), { status: 417, message: expect.stringMatching(/transaction has closed/) })
+  })
+
+  test('recordView writes one Access Log row for the viewing person, saying what was served', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    const built = await buildSnapshot('datasetproof.sales')
+    app.hooks.run = async (context: Context) => {
+      await context.datasets.active('sales')
+      await context.recordView({ dataset: 'sales' })
+      return null
+    }
+    await reader.post(read + 'outside', { payload: {} })
+    const rows = await sql`select ref_table, reference_name, method, scope from access_log where "user" = ${reader.user} and operation = 'view_report'`
+    expect(rows.map(r => ({ ...r }))).toEqual([{ ref_table: 'datasetproof.sales', reference_name: built.snapshotId, method: 'cached', scope: 'North / Kids' }])
   })
 })
 
