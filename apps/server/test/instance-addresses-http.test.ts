@@ -527,3 +527,56 @@ describe('an address that opens an installed app package', () => {
     expect(body.handoff).toBeUndefined()
   })
 })
+
+// #671: INTERIM_APPS stands in for Feather Dash only until an app of that name
+// is installed (design D8, "Interim target"). From then on its address opens
+// the app, names it, and signs its readers in to it.
+describe('an address whose app is installed under the interim name', () => {
+  const APP_ROOT = '/feather_dash/'
+  const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
+
+  /** The stand-in installed as feather_dash: readable by All, so anyone can
+   *  open it and no one gains a Table grant of their own by it. */
+  async function installDashApp(admin: TestClient) {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'feather_dash' })
+  }
+
+  // The installed app stays loaded in this process after its rows roll back.
+  afterEach(async () => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await discoverPackages([])
+  })
+
+  test('/ redirects to the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  test('the interim page redirects to the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  test("the address's brand is the installed app's title", async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in', opens: 'feather_dash' })
+  })
+
+  test('a person who can open the app, without the report role, lands on its root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    const reader = await personWith(admin, 'dash.app.reader', [])
+    const { body } = await signIn(api, DASH, reader.usr)
+    expect(body).toMatchObject({ landing: APP_ROOT })
+  })
+
+  test('with no list, a person who can open the app lands on its root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    config.instanceAddresses = null
+    const reader = await personWith(admin, 'dash.app.unlisted', [])
+    const { body } = await signIn(api, 'http://localhost', reader.usr)
+    expect(body).toMatchObject({ landing: APP_ROOT })
+  })
+})

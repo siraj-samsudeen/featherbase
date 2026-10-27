@@ -17,7 +17,7 @@ import { config } from './config'
 import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from './instance-addresses'
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
-import { appCatalog } from './runtime-packages'
+import { appCatalog, servesApp } from './runtime-packages'
 import { VIEWER_ROLE } from './sales-target'
 
 /** What a sign-in answer carries besides the session: a path on this address
@@ -37,11 +37,12 @@ async function canUseAdmin(person: string): Promise<boolean> {
   return (await tableAccessFor(person, roles)).any
 }
 
-/** Can this person open the app an address opens. Feather Dash's interim
- *  gate is today's report gate (design D8); an installed app is open to
- *  whoever its catalog lists. */
+/** Can this person open the app an address opens. Until an app named
+ *  feather_dash is installed (#671), Feather Dash's interim gate is today's
+ *  report gate (design D8); an installed app is open to whoever its catalog
+ *  lists. */
 async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'feather_dash') return (await getRoles(person)).includes(VIEWER_ROLE)
+  if (app === 'feather_dash' && !servesApp(app)) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -66,9 +67,9 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
-    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens) }
+    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, servesApp(here.opens)) }
     if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
-    return { landing: appRoot(here.opens) }
+    return { landing: appRoot(here.opens, servesApp(here.opens)) }
   }
 
   if (await canUseAdmin(person)) return {}
@@ -81,7 +82,7 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   // No list (development and test), or a host the list does not name: that
   // host is served as one address holding everything, as before #488, so a
   // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash') }
+  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', servesApp('feather_dash')) }
   return {}
 }
 

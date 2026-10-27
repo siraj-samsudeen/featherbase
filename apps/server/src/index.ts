@@ -27,7 +27,7 @@ import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-acces
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
-import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -76,7 +76,7 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, packageTitle, servesApp, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -181,7 +181,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, servesApp(opened))?.title ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #489: what this address opens — `admin`, an app's name, or null for a
@@ -794,7 +794,7 @@ app.get('*', (c, next) => {
 app.get('*', (c, next) => {
   const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
   if (!entry || entry.opens === ADMIN) return next()
-  const target = addressRedirect(entry, c.req.path)
+  const target = addressRedirect(entry, c.req.path, servesApp(entry.opens))
   return target ? c.redirect(target, 302) : next()
 })
 
