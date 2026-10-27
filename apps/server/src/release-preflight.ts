@@ -241,10 +241,15 @@ async function assertAccessConfiguration(environment: string, pending: string[] 
   if (found) {
     const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
+    // #559: a Table marked as deciding scope is a security Table too (0126 on).
+    const definitions = await locate('table_def')
+    const marked = definitions?.columns.has('decides_scope')
+      ? (await sql`select name from ${sql(definitions.relation)} where decides_scope`).map((r) => String(r.name))
+      : []
     const rows = await sql`
       select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
       from ${sql(found.relation)}
-      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES])}
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES, ...marked])}
       order by role, ref_table, row_id`
     for (const r of rows) {
       const granted = flags.filter((a) => r[`can_${a}`] === true)

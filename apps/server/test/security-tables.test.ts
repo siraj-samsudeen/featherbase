@@ -388,3 +388,24 @@ describe('Only a System Manager changes who can do what', () => {
     expect(doc.roles).toEqual([])
   })
 })
+
+// #559: a Table whose rows decide people's scope is marked by its own
+// definition, not by a platform list of names.
+describe('#559: a Table marked as deciding scope', () => {
+  test('refuses a non-manager writer, but reads follow the grant', async ({ admin, createUser }) => {
+    await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
+    const user = await createUserWithRole(admin, createUser, { role: 'Roster Writer 559', table: ['Shift Roster 559'], ...ALL_ACTIONS })
+    await expectApiError(user.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-1' }), { status: 403 })
+    await admin.post(tableRef('Shift Roster 559').url, { place: 'North', person: 'P-2' })
+    const rows = await user.get<{ data: unknown[] }>(tableRef('Shift Roster 559').listUrl({ fields: ['row_id'] }))
+    expect(rows.data).toHaveLength(1)
+  })
+
+  test('an Assignment Rule or a Workflow may not target it', async ({ admin }) => {
+    await makeTable(admin, { name: 'Shift Roster 559', decides_scope: true, columns: ['place', 'person'] })
+    await expectApiError(admin.post('/api/save_row', { table: 'Assignment Rule', row: { row_id: 'Ar 559', ref_table: 'Shift Roster 559', assign_to_field: 'person' } }),
+      { status: 417, message: expect.stringMatching(/decides who can do what/) })
+    await expectApiError(admin.post('/api/save_row', { table: 'Workflow', row: { row_id: 'Wf 559', ref_table: 'Shift Roster 559', is_active: false, ...FLOW } }),
+      { status: 417, message: expect.stringMatching(/decides who can do what/) })
+  })
+})

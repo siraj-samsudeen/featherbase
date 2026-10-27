@@ -14,6 +14,7 @@ import { parseInstanceAddresses } from '../src/instance-addresses'
 import { migrationBatches } from '../src/migrate'
 import { NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { makePerson } from './fixtures'
+import { createTable } from '../src/table-engine'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -179,6 +180,12 @@ describe('release preflight: access configuration', () => {
   test('(a) Guest writing a security Table refuses', async () => {
     await grant('Guest', 'Data Scope', { can_create: true })
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) All writing a Table marked as deciding scope refuses (#559)', async () => {
+    await createTable({ name: 'Shift Roster 559', decides_scope: true, columns: [{ column_name: 'place', column_type: 'Data' }] })
+    await grant('All', 'Shift Roster 559', { can_write: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(write\)/)
   })
 
   test('(a) a grant with every action off, or to another role, passes', async () => {
