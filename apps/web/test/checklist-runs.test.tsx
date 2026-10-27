@@ -6,10 +6,16 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
+import { dayLabel } from '../src/components/ChecklistView'
+import { timelineDayKey } from '../src/lib/inr'
 
 const T = 'Cr Opening'
 const ENC = encodeURIComponent(T)
-const day = (offset: number) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10)
+// The run's day on the reader's own calendar, as the run list reads it (#539).
+const day = (offset: number) => {
+  const now = new Date()
+  return timelineDayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset))
+}
 
 async function seedTables(admin: { post: (p: string, b: unknown) => Promise<unknown> }) {
   await admin.post('/api/table_def', {
@@ -48,10 +54,10 @@ test('runs are grouped by day, newest first, and a card opens its run', async ({
   expect(view).toHaveTextContent('4 runs')
   const cards = within(view).getAllByTestId('checklist-run-card').map((c) => c.textContent)
   expect(cards).toEqual(['Today openingOpen0/2', 'Yesterday opening1/3', 'Old openingDone3/3', 'Undated opening'])
-  // Day headings, in the same order. (How an older day is written is left
-  // unasserted: it shows the raw ISO date, an open question for the owner.)
+  // Day headings, in the same order; an older day reads DD-Mon-YYYY (#539).
   const text = view.textContent ?? ''
-  const order = ['Today', 'Yesterday', 'Old opening', 'Undated'].map((h) => text.indexOf(h))
+  expect(text).not.toContain('2026-01-05')
+  const order = ['Today', 'Yesterday', '05-Jan-2026', 'Old opening', 'Undated'].map((h) => text.indexOf(h))
   expect(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1]))).toBe(true)
   expect(within(view).getByTestId('checklist-new')).toHaveTextContent('+ New')
 
@@ -68,4 +74,21 @@ test('a checklist with no runs yet says so', async ({ admin }) => {
   const view = await screen.findByTestId('checklist-view', {}, { timeout: 10_000 })
   expect(await within(view).findByText('No runs yet.')).toBeInTheDocument()
   expect(view).toHaveTextContent('0 runs')
+})
+
+// #539: Today and Yesterday are the reader's own days, not UTC's: at 02:00 IST the UTC
+// calendar is still on the day before.
+test('day headings follow the reader\'s calendar, and an older day reads DD-Mon-YYYY', () => {
+  const before = process.env.TZ
+  process.env.TZ = 'Asia/Kolkata'
+  try {
+    const now = new Date('2026-10-26T20:30:00Z') // 27-Oct-2026 02:00 IST
+    expect(dayLabel('2026-10-27', now)).toBe('Today')
+    expect(dayLabel('2026-10-26', now)).toBe('Yesterday')
+    expect(dayLabel('2026-10-25', now)).toBe('25-Oct-2026')
+    expect(dayLabel('2026-01-05', now)).toBe('05-Jan-2026')
+    expect(dayLabel('', now)).toBe('Undated')
+  } finally {
+    process.env.TZ = before
+  }
 })
