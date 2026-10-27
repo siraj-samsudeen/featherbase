@@ -299,6 +299,48 @@ describe("the person's identifiers a provider receives", () => {
     })
   })
 
+  // #662: whether a value is shared, and nothing about who shares it.
+  async function sharing(admin: TestClient, createUser: CreateUserFn, fn: (user: TestClient, other: TestClient, seen: () => unknown) => Promise<void>) {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      const other = await createUser({ email: 'other@example.test', roles: ['Scope Reader'] })
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await fn(user, other, () => roster.calls.person.identifiers)
+    })
+  }
+
+  test('a value two people hold today is shared for each of them', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-1')
+      await position(admin, other.user!, 'South / Mens', 'S1', 'mens')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+      await other.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': [{ value: 'R-1', shared: true }] })
+    })
+  })
+
+  test('a value only one person holds is not shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'roster-code', 'R-2')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
+  test('the same text in another system is not shared', async ({ admin, createUser }) => {
+    await sharing(admin, createUser, async (user, other, seen) => {
+      await system(admin, 'payroll-code')
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await identifier(other.user!, 'payroll-code', 'R-1')
+      await user.post(read + 'places', { payload: {} })
+      expect(seen()).toEqual({ 'roster-code': unshared('R-1') })
+    })
+  })
+
   test('a system the provider did not declare is never passed', async ({ admin, createUser }) => {
     await declaring(['roster-code'], async providerAt => {
       await system(admin, 'roster-code')
