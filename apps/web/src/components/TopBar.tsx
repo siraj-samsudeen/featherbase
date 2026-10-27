@@ -91,7 +91,7 @@ const DASH = 'feather_dash'
  *  person can open (Tasker grants All) is no one's in particular. */
 function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
-  if (caps.manage || caps.table_access) return ADMIN_NAME
+  if (caps.admin) return ADMIN_NAME
   // #671: once an app is installed under Feather Dash's name, its readers
   // belong to it; until then, the report role does (design D8).
   if (installed.includes(DASH)) {
@@ -157,7 +157,7 @@ export function TopBar({
     if (name && titlesTab) document.title = name
   }, [name, titlesTab])
   const isPhone = useMediaQuery(PHONE_QUERY)
-  const canUseAdmin = Boolean(caps && (caps.manage || caps.table_access))
+  const canUseAdmin = Boolean(caps && (caps.admin))
   // #501 item 2: only on an app's address. The Admin address, and a host the
   // list does not name (which holds the Admin), are where Admin already is.
   // An app's own page is never in the Admin, on any address (#650).

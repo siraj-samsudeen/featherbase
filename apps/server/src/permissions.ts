@@ -167,7 +167,7 @@ export async function assertPermission(
 export async function tableAccessFor(
   principal: string,
   roles: string[],
-): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
+): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
@@ -190,7 +190,7 @@ export async function tableAccessFor(
     readable: names((r) => r.can_read),
     creatable: names((r) => r.can_create),
     ownGrant,
-    any: ownGrant || Boolean(shared),
+    admin: ownGrant || Boolean(shared),
   }
 }
 

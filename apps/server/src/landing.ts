@@ -35,7 +35,7 @@ interface Landing {
 async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
   if (person === 'Administrator' || roles.includes('System Manager')) return true
-  return (await tableAccessFor(person, roles)).any
+  return (await tableAccessFor(person, roles)).admin
 }
 
 /** Can this person open the app an address opens. Until an app named

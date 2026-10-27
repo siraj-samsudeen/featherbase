@@ -99,7 +99,7 @@ test('a person with neither the viewer role nor a Table grant lands on a plain n
 
 // (1) A failed background refetch must not unmount a shell that already has its answer.
 test('a failed refresh of whoami keeps the shell the person already has', () => {
-  const caps = { manage: false, report: false, table_access: true, own_grant: true, tables: ['Shelf Note'], creatable: [] }
+  const caps = { manage: false, report: false, admin: true, own_grant: true, tables: ['Shelf Note'], creatable: [] }
   expect(shellKindOf({ isError: true, data: { capabilities: caps } })).toBe('admin')
   expect(shellKindOf({ isError: true, data: undefined })).toBe('failed')
   expect(shellKindOf({ isError: false, data: undefined })).toBe('loading')
