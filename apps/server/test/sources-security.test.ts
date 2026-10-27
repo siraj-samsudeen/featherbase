@@ -102,6 +102,9 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
   }) => {
     await bindAccount(admin)
     const user = await userWith(admin, createUser, { can_read: true, own_rows_only: true })
+    // The grant itself saves (#543); only its use is refused.
+    expect(await sql`select own_rows_only from permission where ref_table = ${BOUND} and role = 'Sec Role'`)
+      .toEqual([{ own_rows_only: true }])
     await expect(user.get(`/api/table/${encodeURIComponent(BOUND)}`)).rejects.toMatchObject({
       status: 403,
     })
