@@ -11,6 +11,7 @@ import { _setDelegatedFetch } from '../src/delegated-login'
 import { grantRole } from './fixtures'
 import { VIEWER_ROLE } from '../src/sales-target'
 import { DELEGATED_URL, configureDelegated, linkDelegated, removeDelegated } from './identity-fixtures'
+import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 const URL_ = DELEGATED_URL
 const PASSWORD = 'Sup3r-Secret-Delegated-Pw!'
@@ -702,5 +703,19 @@ describe('the boot announcement and the real provider connection', () => {
     } finally {
       await new Promise((r) => server.close(r))
     }
+  })
+})
+
+describe('#396: the sign-in records the client address', () => {
+  test('a delegated sign-in records the address on its Activity Log entry', async ({ api, createUser }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    await configure()
+    const tl = await createUser({ email: 'tl.address@example.com' })
+    await link(tl.user!, 'tl_address')
+    provider(() => Response.json({ token: 'opaque' }))
+    const res = await api.fetch('/api/login/delegated', { method: 'POST', headers: FROM_CLIENT, body: JSON.stringify({ usr: 'tl_address', pwd: PASSWORD, method: 'stylehr' }) })
+    expect(res.status).toBe(200)
+    // The fixture's own sign-in comes first; this one is the latest.
+    expect((await signInAddresses(tl.user!)).at(-1)).toBe(CLIENT)
   })
 })

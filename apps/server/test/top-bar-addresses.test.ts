@@ -7,6 +7,7 @@ import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
 import { configureGoogle } from './identity-fixtures'
+import { signInAddresses } from './sign-in-address-utils'
 
 // #489 (design D3, "One top bar on every address"): what the shared top bar
 // asks the server. The bar draws its name from the address it is on, and
@@ -207,5 +208,27 @@ describe('the account pages', () => {
   test("are served on an app's address", async ({ api }) => {
     const res = await api.fetch(`${DASH}/featherbase/account/sign-in-methods`, { headers: { accept: 'text/html' } })
     expect(res.status).not.toBe(302)
+  })
+})
+
+describe('#396: the sign-in records the client address', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  test('the session a hand-off opens on the other address records where its redeeming request came from', async ({ api, admin }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    const both = await signedIn(api, admin, 'both.address', ['System Manager', 'Sales Target Viewer'], DASH)
+    const { handoff } = (await (await both.openAdmin(DASH)).json()) as Opened
+    const start = await api.fetch(handoff!)
+    const nonce = cookieOf(start, 'handoff_nonce')
+    const bind = await api.fetch(start.headers.get('location') ?? '', { headers: { cookie: both.sid } })
+    const callback = new URL(bind.headers.get('location')!)
+    const res = await api.fetch(`${callback.origin}/api/oauth/session`, {
+      method: 'POST',
+      headers: { cookie: nonce, 'x-real-ip': '198.51.100.8' },
+      body: JSON.stringify({ code: callback.searchParams.get('code') }),
+    })
+    expect(res.status).toBe(200)
+    // The first sign-in (no header, no socket in the test client) has none.
+    expect(await signInAddresses(both.id)).toEqual([null, '198.51.100.8'])
   })
 })
