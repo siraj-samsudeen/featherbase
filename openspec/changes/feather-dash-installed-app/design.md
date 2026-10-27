@@ -69,18 +69,26 @@ test for any file is whether a second client would have to change it.
 
 ## Goals / Non-Goals
 
+> **Revised 27-Oct-2026 ([ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md)).**
+> Feather Dash is a **client app** for one client, kept in that client's private
+> repository, not a generic app in this one. Its report query, Dive settings, roster
+> derivation and retail terms live in the app. The platform work of stage B (B1–B5)
+> is unchanged in purpose and stays here. Where older text below says "instance
+> setup" for the report query, read "the client app". See the decision log, 15–17.
+
 **Goals:**
 
-- Feather Dash is a **generic app in this repository**, installed and upgraded like
-  Tasker. Nothing in it names a client. Featherbase core holds no report-specific
-  page, route, dataset or role.
-- **A client's report is instance setup**: its query, its Dive and its job bindings
-  live in the client's private configuration repository.
+- Feather Dash is a **client app in the client's private repository**, installed and
+  upgraded like any app. Featherbase core holds no report-specific page, route,
+  dataset or role, and names no client.
+- **Per-instance values stay out of the app's code**: secrets, the Dive used on each
+  instance, and job bindings (ADR 0013).
 - The Feather Dash address opens Feather Dash directly, under its own name. The
   Featherbase address stays the Admin screens. Which address opens what is
   configuration, never code.
-- **Scope is a fixed platform shape** with a swappable provider, so the next app
-  reuses it, and #449 can change the roster without touching any app.
+- **Scope is a fixed platform shape** filled by a provider that an app declares, so
+  the platform never holds a client's roster logic, and #449 can change the roster
+  without touching the platform.
 - One top bar on every address.
 - Every stage is small, reversible until its clean-up step, and keeps the live
   report working.
@@ -96,18 +104,19 @@ test for any file is whether a second client would have to change it.
 
 ```mermaid
 flowchart TB
-  subgraph Instance["Instance setup (client's private repo)"]
-    RD["Report definition<br/>query · columns · keys · cache"]
+  subgraph Instance["Instance (per instance)"]
     DV["Dive ID and version<br/>(the Dive's code)"]
     JB["Jobs → app roles"]
     AD["INSTANCE_ADDRESSES"]
   end
-  subgraph App["Feather Dash app (this repo, generic)"]
+  subgraph App["Feather Dash client app (client's private repo)"]
     FD["Report page · bar store picker<br/>reads: me, report, embed session<br/>my sections · requests · review"]
+    RD["Cached dataset<br/>query · columns · keys"]
+    SP["Scope provider<br/>(the client's roster)"]
   end
   subgraph Platform["Platform"]
     P1["Addresses · sign-in · shared top bar"]
-    P2["Scope: fixed shape<br/>provider: today's nine tables → #449"]
+    P2["Scope: fixed shape, person_scope<br/>filled by the app's provider"]
     P3["Snapshot engine · settings and secrets<br/>app roles · install · release guard"]
   end
   MD[("MotherDuck<br/>embed sessions, Dive, warehouse")]
@@ -126,7 +135,8 @@ flowchart TB
 | Reads `me`, `report`, `embed_session`; the IST month-to-date period; the embed-session call | **App** | Product behaviour |
 | Section-change requests, the my-sections and review pages | **App** | The app's own workflow |
 | The roles the app needs, and their suggested jobs | **App** (declared) | The app says what it needs; the instance decides who |
-| **The report definition**: the query, its columns, keys, which columns are money, the cached dataset and its budget | **Instance setup** | It names one client's warehouse. A second client brings their own |
+| **The cached dataset**: the query, its columns, keys, which columns are money, and its budget | **App** (client app, ADR 0013) | It names one client's warehouse; a second client adapts a copy of the app |
+| **The scope provider**: who covers which stores and sections | **App** (client app, declared, E1) | The client's roster logic; the platform only enforces the shape |
 | Dive ID, Dive version, embed service account | **Instance setup** (app settings) | Configuration, not code |
 | The Dive's own code | **Instance** (written in MotherDuck) | The client's report design. The app never copies its layout |
 | `MOTHERDUCK_TOKEN` | **Instance** (a declared secret, an environment variable) | A secret never goes in a table |
@@ -134,10 +144,9 @@ flowchart TB
 | Which address opens what | **Instance** (`INSTANCE_ADDRESSES`) | Configuration |
 | The scope shape, its provider, the snapshot engine, sign-in, addresses, the top bar, the Access Log | **Platform** | Shared by every app |
 
-The client's report definition and settings travel through the existing instance
-install route: the client's configuration repository already installs its data
-sources, brand and sign-in settings through `manifest.json` with a service-account
-token. **No private build pipeline is needed**, because nothing private is code.
+Per-instance settings still travel through the existing instance install route
+(the client's `manifest.json`, installed with a service-account token). The app's
+code reaches the server in a client image built on the platform's image (D7).
 
 ### D2. Platform extensions
 
@@ -186,13 +195,12 @@ and checked in CI.
 - Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
   experiment's password seeding.
 
-**E3. Report definitions supplied by the instance.**
+**E3. Cached datasets declared by an app** (revised 27-Oct-2026, ADR 0013).
 
-- **An app declares that it accepts a report definition**, and the shape it needs:
-  named columns, keys, and which columns are money.
-- **The instance supplies the definition** through its manifest install: a data
-  source it already declares (read-only), the query, the columns and keys, and the
-  filter mapping (E1). The query is reviewed in the client's repository.
+- **An app declares its cached dataset**: a data source the instance already
+  declares (read-only), the query, named columns, keys, which columns are money,
+  and the filter mapping (E1). For a client app the query lives in the app and is
+  reviewed in the client's repository.
 - The platform builds the cached snapshot from it on the existing engine: build,
   validate, activate atomically, keep the last good copy, record misses, refresh on
   the `refresh_datasets` schedule. The storage is raw, never a Table, never exported,
@@ -411,7 +419,8 @@ configures, and Dives keep changing. So nothing in the app copies a Dive's layou
 
 ### D7. Packaging, versions, install and upgrade
 
-**The app.** `runtime-apps/feather-dash/` in this repository: `package.json`
+**The app.** A client app in the client's private repository (ADR 0013), not in
+this one. Its layout: `package.json`
 (version `1.0.0` at first install), `featherbase.json`, `src/` (client: Vite +
 React; server: `src/server.ts` bundled to `dist/server.mjs`), `dist/client`. The
 client uses the Shop Floor tokens and components, imported at build time from a
@@ -429,7 +438,8 @@ small workspace package extracted from `apps/web`, so the design guards apply to
                { "name": "embed_service_account", "required": false }],
   "secrets": ["MOTHERDUCK_TOKEN"],
   "frameOrigins": ["https://embed-motherduck.com"],
-  "reportDefinition": { "columns": ["…named, typed, money or not…"], "keys": ["store", "item"] },
+  "datasets": [{ "name": "…", "source": "…", "query": "…", "columns": ["…named, typed, money or not…"], "keys": ["store", "item"] }],
+  "scopeProvider": "…",
   "bar": [{ "picker": "Store", "options": "me", "sets": "store" }],
   "reads": { "…": "me, report, embed_session (outbound), my_sections — policy person_scope" },
   "actions": { "…": "request_section_change (person_scope), decide_section_change (table)" },
@@ -448,10 +458,17 @@ A new optional column is an `addColumn` migration. A new Table or a wider grant 
 refused by the upgrade planner, so **1.0.0 already declares the request Table and
 every grant stage D needs**.
 
-**Delivery.** The Dockerfile builds `runtime-apps/feather-dash` as it builds Tasker.
-The image also ships every version installed on any instance (the predecessor
-pattern). `FEATHERBASE_APP_PATHS` lists them, and E7 turns a missing version into a
-refused release. **Nothing from a client's repository enters this one**: #310's
+**Delivery** (owner decision 27-Oct-2026, Q2 = (a)). The client's repository
+builds a **client image on top of the platform's image**: it starts from a pinned
+platform image, adds the built app (every version installed on any instance, the
+predecessor pattern), and sets `FEATHERBASE_APP_PATHS`. E7 turns a missing version
+into a refused release. This repository's build never takes a private input.
+*Open detail, awaiting the owner:* how the platform image is published. Proposed: a
+GitHub Action here publishes a public image tagged by commit, and the client's
+small Dockerfile starts `FROM` that tag. Bumping the tag by pull request would
+replace today's manual commit pin on prod. Railway already builds this repository
+from `apps/server/Dockerfile`; its own builders build one repository and cannot
+combine two. **Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
 code, must be dropped from that PR.
 
@@ -468,8 +485,8 @@ A small CLI wrapper (`cli app:upgrade feather_dash <version>`) prints the plan a
 runs the three calls, so the unavailable window stays short and the steps cannot run
 out of order.
 
-**Install, once per instance.** Install the app, then install the client's instance
-setup (report definition, settings, bindings), then add the address. Dev first;
+**Install, once per instance.** Install the app, then the instance's settings and
+bindings, then add the address. Dev first;
 prod after approval.
 
 ### D8. Migration: four stages
@@ -489,7 +506,8 @@ to the trial first. The order of work:
    (needs the owner's go on #449's design). Only these Tables keep a human edit
    across the next roster import.
 5. The #462 build: the steward role, limited to its stores through #246.
-6. B6 and B7: Feather Dash and the client's instance setup.
+6. B6′: the Feather Dash client app in the client's repository (B6 and B7 merged,
+   ADR 0013).
 7. Stage D: section editing.
 8. One cut-over: the parity check, install on dev, switch the dev address; then prod
    with the owner's approval. Then the stage B clean-up.
@@ -510,14 +528,16 @@ to the trial first. The order of work:
 - *Rollback:* restore the previous address list.
 - *Before prod:* #487 (the client seed pack and runbook leave this repository).
 
-**Stage B: Feather Dash as a generic app.**
+**Stage B: Feather Dash as a client app** (revised 27-Oct-2026, ADR 0013).
 
-- *Build:* E1 (today's derivation moved unchanged into the provider), E2, E3, E4,
-  E5, E7, E8, E9, D4's bindings with the stand-in, and Feather Dash 1.0.0 with
-  page parity plus the cache-in-Dive contract (D6).
-- *In the client's repository:* the report definition (today's query, moved out of
-  this repository), the Dive settings, the binding stand-in, and the Dive's few lines
-  for `cached` and the live-ready notice.
+- *Build here (platform):* E1 (the shape, `person_scope`, the app-declared provider),
+  E2, E3 (app-declared datasets), E4, E5, E7, E8, E9, D4's bindings, and the
+  publishing of the platform image (D7).
+- *Build in the client's repository (B6′):* Feather Dash 1.0.0 with page parity and
+  the cache-in-Dive contract (D6); today's query and roster derivation, moved out of
+  this repository; the scope provider; the role suggestions and the binding
+  stand-in; the Dive's few lines for `cached` and the live-ready notice; the client
+  image.
 - *Check on dev:* install beside the platform page. On a restored dev snapshot, for
   every person with a scope today, the app's `me` and `report` answers must equal the
   platform endpoints' (same scope, rows and totals), and the embed's scope state must
@@ -573,8 +593,8 @@ path. C2 (bindings moving to the manager jobs) may follow go-live.
   that address only; the stage A checklist carries it.
 - **The scope shape is a contract apps rely on.** It is designed once, carries a
   platform version, and joins the catalogue.
-- **Instance-supplied SQL** runs against a read-only source the instance already
-  declares, and is reviewed in the client's repository. It never comes from a user
+- **App-declared SQL** runs against a read-only source the instance already
+  declares, and a client app's query is reviewed in the client's repository. It never comes from a user
   at runtime.
 - **The cache depends on the Dive's cooperation.** It is opt-in; without it, the
   Dive loads as today.
@@ -593,7 +613,7 @@ real environment variables, as `docs/DEPLOY.md` requires.
 
 Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
 
-1. **Code home.** Feather Dash is a generic app in this repository. Each client's
+1. **Code home** (superseded by 15). Feather Dash is a generic app in this repository. Each client's
    report definition, Dive and bindings are private instance setup in the client's
    repository. Nothing from a client's repository enters this one. (Revises the
    first answer, "the app's code in the private repository", once the split removed
@@ -625,3 +645,12 @@ Owner decisions, 27-Oct-2026 (relayed through the rollout session):
 14. **Order:** B1–B5; the #462 design in parallel; #246 items 1–2 after B2; C1
     (#449's section and mapping Tables, with the provider swap); the #462 build;
     B6/B7; D; the cut-over (D8).
+15. **Feather Dash is a client app** for one client, in the client's private
+    repository ([ADR 0013](../../../docs/adr/0013-client-apps-and-product-apps.md)).
+    B6 and B7 merge into B6′ there. Product apps (Feather Tickets, Feather Tasker)
+    stay generic.
+16. **The scope provider is declared by an app** (Q1 = (a)). The platform holds the
+    shape and enforces `person_scope`; the client's roster derivation lives in the
+    client app and never moves into the platform.
+17. **A client app reaches the server in a client image** built on the platform's
+    image (Q2 = (a)). How the platform image is published is still open (D7).
