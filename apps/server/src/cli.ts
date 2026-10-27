@@ -1,5 +1,9 @@
 // PLAT-004: developer CLI over the row API. One process = one command.
 //   cli migrate                       run pending migrations
+//   cli migrate:rehearse [--database-url <dsn>]
+//                                     run every pending migration in ONE transaction that is always
+//                                     rolled back, printing what each reported; --database-url
+//                                     rehearses against another database (a restored snapshot)
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
@@ -15,9 +19,6 @@
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
 //   cli identities:plan               print what migration 0100 (person-identities) will do; read-only
-//   cli people:plan [--map] [--columns] [--check-sign-in <code>] [--rehearse <dsn>]
-//                                     rehearse the person migrations (0100–0102) rolled back; prints the
-//                                     id map, every text column's classification and the scan
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
@@ -171,17 +172,16 @@ async function cmdSetPassword(io: CommandIO, argv: string[]) {
   io.out(`access tokens still work — on a suspected compromise: cli list-tokens ${person}, then cli revoke-token <id>`)
 }
 
-/** Spawn the rehearsal as its own process, so --rehearse can point
+/** Spawn the rehearsal as its own process, so --database-url can point
  *  DATABASE_URL at another database before any connection exists. */
-async function cmdPeoplePlan(argv: string[]): Promise<number> {
-  const { parsePlanOptions } = await import('./people-plan')
-  const opts = parsePlanOptions(argv)
+async function cmdMigrateRehearse(argv: string[]): Promise<number> {
+  const { parseRehearseOptions } = await import('./migrate-rehearse')
+  const { databaseUrl } = parseRehearseOptions(argv)
   const { spawnSync } = await import('node:child_process')
-  const script = fileURLToPath(new URL('./people-plan.ts', import.meta.url))
+  const script = fileURLToPath(new URL('./migrate-rehearse.ts', import.meta.url))
   const { childEnvironment } = await import('./env')
-  const env = childEnvironment(opts.rehearse ? { DATABASE_URL: opts.rehearse } : {})
-  const args = argv.flatMap((a, i, all) => (a === '--rehearse' || all[i - 1] === '--rehearse' ? [] : [a]))
-  const result = spawnSync(process.execPath, ['--import', 'tsx', script, ...args], { stdio: 'inherit', env })
+  const env = childEnvironment(databaseUrl ? { DATABASE_URL: databaseUrl } : {})
+  const result = spawnSync(process.execPath, ['--import', 'tsx', script], { stdio: 'inherit', env })
   return result.status ?? 1
 }
 
@@ -488,8 +488,8 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       // the data as it is, with the parity check, and changes nothing.
       io.out(formatPlan(await planPersonIdentities()))
       break
-    case 'people:plan':
-      return cmdPeoplePlan(rest)
+    case 'migrate:rehearse':
+      return cmdMigrateRehearse(rest)
     case 'people:resolve': {
       // The flag may come before or after the file.
       const file = rest.find((a) => !a.startsWith('--'))
@@ -584,7 +584,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|people:plan|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

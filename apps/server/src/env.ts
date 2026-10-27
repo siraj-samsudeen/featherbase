@@ -133,7 +133,7 @@ export const VARIABLES = [
   { name: 'DELEGATED_LOGIN_TEST_MODE', secret: false, required: 'forbidden-in-production',
     active: (v) => v.trim() === TEST_MODE_PHRASE,
     purpose: '`trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored',
-    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "The person release").` },
+    fix: `Test mode lets anyone sign in as a linked person without a password, so it runs only where FEATHERBASE_ENV (or NODE_ENV) is development, test or staging (a hosted trial instance). Unset it, or set FEATHERBASE_ENV=staging on a trial instance (see docs/DEPLOY.md, "Environments and the database stamp").` },
   { name: 'ALLOW_MOCK_OAUTH', secret: false, required: 'forbidden-in-production',
     active: (v) => v === '1', allowedIn: DEV_ENVIRONMENTS,
     docsRequired: '**never outside development and test**',
@@ -187,8 +187,7 @@ export function overrideVariable(name: VariableName, value: string | undefined):
   else overrides.set(name, value)
 }
 
-/** Run `fn` with a variable set in this process, then restore it. For the
- *  CLI's own rehearsals (people-plan's test-mode sign-in check). */
+/** Run `fn` with a variable set in this process, then restore it. */
 export async function withVariable<T>(name: VariableName, value: string, fn: () => Promise<T>): Promise<T> {
   const previous = process.env[name]
   process.env[name] = value

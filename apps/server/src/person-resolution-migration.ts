@@ -11,7 +11,7 @@
 // (`subject_kind = 'employee-code'`); the move to record numbers is the
 // post-deploy `cli people:resolve <csv>` (people-resolve.ts), not part of the
 // release. Parity is proven through test mode's own resolver. Nothing is
-// merged. `cli people:plan` prints all of it.
+// merged. Its report is what 0102's up() prints.
 import { sql } from './db'
 import { createTable } from './table-engine'
 import { invalidateMeta } from './meta'

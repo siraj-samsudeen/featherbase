@@ -2,9 +2,10 @@ import { anonymousTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // The first-import golden path, written in the feather-testing DSL: each
-// chain segment mirrors a journey step, and step() carries the value assertions the UI cannot yet express through
-// labels (the wizard's inputs are test-id addressed, not label-associated —
-// the same finding that got the login form its htmlFor attributes).
+// chain segment mirrors a journey step, and step() carries the value
+// assertions the UI cannot yet express through labels (the wizard's inputs
+// are test-id addressed, not label-associated — the same finding that got
+// the login form its htmlFor attributes).
 //
 // Hermeticity (adoption item 9, CLOSED by table deletion — spec 0003): the
 // Table is renamed to "Journey Zones" AFTER asserting the "Zones" prefill,

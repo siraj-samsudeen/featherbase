@@ -60,7 +60,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
     const stamped = await storedEnvironment()
     if (stamped !== null && !(TEST_MODE_ENVIRONMENTS as readonly string[]).includes(stamped))
       throw new Error(
-        `DELEGATED_LOGIN_TEST_MODE is set, but this database is labelled "${stamped}". Test mode runs only on a development, test or staging database. Unset it, or re-stamp a trial database as staging first (docs/DEPLOY.md, "The person release").`,
+        `DELEGATED_LOGIN_TEST_MODE is set, but this database is labelled "${stamped}". Test mode runs only on a development, test or staging database. Unset it, or re-stamp a trial database as staging first (docs/DEPLOY.md, "Environments and the database stamp").`,
       )
   }
   passed.push(`test mode ${delegatedTestMode() ? 'on, allowed here' : 'off'}`)

@@ -15,9 +15,9 @@
 //                   subject, a table name, an address) → left alone
 //   free-text       prose and history snapshots → left alone, never scanned
 //
-// A column nobody classified fails the plan: `cli people:plan` lists every
-// column with its class, and test/person-registry.test.ts holds the
-// completeness rule. Matching is always exact-value, never a substring.
+// A column nobody classified stops migration 0101 before the re-id, naming the
+// column, and test/person-registry.test.ts holds the completeness rule.
+// Matching is always exact-value, never a substring.
 import { sql, type Sql, type TxSql } from './db'
 import { PLATFORM_SCHEMA } from './platform-schema'
 
@@ -407,10 +407,7 @@ export async function stageRewriteMap(db: Sql | TxSql, entries: IdMapEntry[]): P
   }
 }
 
-export function formatClassification(c: Classification): string {
-  const lines = c.classified.map(
-    (x) => `  ${x.schema}.${x.relation}.${x.column}: ${x.class}${x.typeColumn ? (x.class === 'json-with-ids' ? ` (filters on the Table in ${x.typeColumn})` : ` (${x.typeColumn} in Person, Service Account)`) : ''}${x.generated ? ' [generated]' : ''} — ${x.rule}`,
-  )
-  const missing = c.unclassified.map((x) => `  ${x.schema}.${x.relation}.${x.column} (${x.data_type}): UNCLASSIFIED`)
-  return [`text columns: ${c.classified.length} classified, ${c.unclassified.length} unclassified`, ...missing, ...lines].join('\n')
+/** The text columns nobody classified, one per line, for 0101's refusal. */
+export function formatUnclassified(columns: Classification['unclassified']): string {
+  return columns.map((x) => `  ${x.schema}.${x.relation}.${x.column} (${x.data_type}): UNCLASSIFIED`).join('\n')
 }

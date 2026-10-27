@@ -17,7 +17,7 @@ import { _setDelegatedFetch } from '../src/delegated-login'
 // 0100 runs before 0101 (person-rename), so the pre-0101 names are put back
 // first (inside the same rolled-back transaction) and 0100 is proven against
 // the shape it actually ran on. The chain 0100 → 0101 on real data is proven
-// by `cli people:plan --rehearse` against a dev snapshot.
+// by `cli migrate:rehearse --database-url` against a dev snapshot.
 async function preUpgradeShape() {
   await pre0101Shape()
   await sql`delete from user_identity`

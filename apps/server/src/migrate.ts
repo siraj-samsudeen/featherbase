@@ -113,7 +113,7 @@ export function migrationBatches(pending: string[]): string[][] {
 
 /** Apply one migration file and record it, inside the caller's transaction
  *  (the migrator's per-file transaction, or the rolled-back rehearsal of
- *  `cli people:plan`). */
+ *  `cli migrate:rehearse`). */
 export async function applyMigrationFile(file: string): Promise<void> {
   await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
   if (file.endsWith('.sql')) {

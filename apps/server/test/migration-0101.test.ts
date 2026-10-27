@@ -5,7 +5,7 @@
 // migrated, so each test first puts back the pre-split shape inside its own
 // rolled-back transaction, then runs the split and the re-id exactly as the
 // migration does. The full chain on real dev data is the rehearsal
-// (`cli people:plan --rehearse`).
+// (`cli migrate:rehearse --database-url <snapshot>`).
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -255,7 +255,7 @@ describe('migration 0101 from the pre-rename database', () => {
     expect(await sql`select 1 from has_role where parenttype = 'User'`).toHaveLength(0)
   })
 
-  test('the report counts what moved and prints the id map and the classification on request', async () => {
+  test('the report counts what moved', async () => {
     await preRenameShape()
     const report = await migratePersonRename()
     const bot = report.serviceAccounts.find((s) => s.old_id === 'svc-bot')!
@@ -270,7 +270,7 @@ describe('migration 0101 from the pre-rename database', () => {
     expect(report.rewritten['featherbase.comment.created_by']).toBe(1)
     expect(report.scan).toEqual([])
 
-    const text = formatPersonRenameReport(report, { map: true, columns: true })
+    const text = formatPersonRenameReport(report)
     expect(text).toContain(`  persons re-keyed: ${report.persons.length} (built-ins kept: Administrator, Guest)`)
     expect(text).toContain(`    svc-bot: svc-bot → ${bot.new_id}`)
     expect(text).toContain('  tokens: 1 person, 1 service account')
@@ -278,14 +278,8 @@ describe('migration 0101 from the pre-rename database', () => {
     expect(text).toContain('    featherbase.comment.created_by: 1')
     expect(text).toContain('  scan: no old id survives in any registered column')
     expect(text).toContain('  assignment-rule conditions naming an old id (rewrite by hand): ar-1: 30654')
-    expect(text).toContain('  id map:')
-    expect(text).toContain(`    RR-0101 → ${report.persons.find((p) => p.old_id === 'RR-0101')!.new_id}`)
-    expect(text).toMatch(/text columns: \d+ classified, 0 unclassified/)
-    expect(text).toContain('  featherbase.data_scope.for_value: conditional-id (allow_table in Person, Service Account) — declared')
-    expect(text).toContain('  featherbase.saved_view.filters: json-with-ids (filters on the Table in ref_table)')
-    expect(text).toContain('  featherbase.has_role.person: id [generated]')
 
-    // Without the options, and with nothing to list, the report says "none".
+    // With nothing to list, the report says "none".
     const bare = formatPersonRenameReport({ ...report, serviceAccounts: [], rewritten: {}, conditionalRewritten: {}, conditionsNamingOldIds: [],
       scan: [{ column: 'featherbase.comment.created_by', rows: 2 }] })
     expect(bare).toContain('  service accounts moved and re-keyed: 0\n')
@@ -293,14 +287,13 @@ describe('migration 0101 from the pre-rename database', () => {
     expect(bare).toContain('  rows rewritten per column: none')
     expect(bare).toContain('  scan: featherbase.comment.created_by 2')
     expect(bare).toContain('(rewrite by hand): none')
-    expect(bare).not.toContain('id map:')
   })
 
   test('an unclassified text column stops the migration before the re-id, naming the column', async () => {
     await preRenameShape()
     await sql`alter table featherbase.access_token add column mystery_principal varchar(140)`
     await expect(sql.begin(() => migratePersonRename())).rejects.toThrow(
-      /unclassified text columns; classify them in src\/person-registry\.ts first:\ntext columns: 0 classified, 1 unclassified\n {2}featherbase\.access_token\.mystery_principal \(character varying\): UNCLASSIFIED/,
+      /unclassified text columns; classify them in src\/person-registry\.ts first:\n {2}featherbase\.access_token\.mystery_principal \(character varying\): UNCLASSIFIED/,
     )
   })
 })
