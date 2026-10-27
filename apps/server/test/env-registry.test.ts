@@ -168,3 +168,48 @@ describe('server start', () => {
     expect(() => assertServerStart('production')).not.toThrow()
   })
 })
+
+describe('the helpers around the process environment', () => {
+  it('withVariable sets a variable for one call, then restores what was there, even when the call throws', async () => {
+    const { withVariable, readVariable } = await import('../src/env')
+    vi.stubEnv('PREVIEW_LOGIN_USER', 'before')
+    await expect(withVariable('PREVIEW_LOGIN_USER', 'during', async () => { throw new Error('boom') })).rejects.toThrow('boom')
+    expect(readVariable('PREVIEW_LOGIN_USER')).toBe('before')
+    expect(await withVariable('PREVIEW_LOGIN_USER', 'during', async () => readVariable('PREVIEW_LOGIN_USER'))).toBe('during')
+    delete process.env.PREVIEW_LOGIN_USER
+    await withVariable('PREVIEW_LOGIN_USER', 'during', async () => undefined)
+    expect(process.env.PREVIEW_LOGIN_USER).toBeUndefined()
+  })
+
+  it('a named variable is read as it is, and a child process environment carries the extras on top', async () => {
+    const { readNamedVariable, childEnvironment, processEnvironment } = await import('../src/env')
+    vi.stubEnv('SOME_SOURCE_URL_ENV', 'postgres://x')
+    expect(readNamedVariable('SOME_SOURCE_URL_ENV')).toBe('postgres://x')
+    expect(readNamedVariable('SURELY_NOT_SET_ANYWHERE')).toBeUndefined()
+    expect(childEnvironment({ DATABASE_URL: 'postgres://rehearsal' })).toMatchObject({ SOME_SOURCE_URL_ENV: 'postgres://x', DATABASE_URL: 'postgres://rehearsal' })
+    expect(childEnvironment().SOME_SOURCE_URL_ENV).toBe('postgres://x')
+    expect(processEnvironment()).toBe(process.env)
+  })
+})
+
+describe('the local .env file', () => {
+  it('fills only variables the shell has not set, understands export, quotes and comments, and ignores a file that is absent or unreadable', async () => {
+    const { loadDotEnv } = await import('../src/env')
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'dotenv-'))
+    const file = join(dir, '.env')
+    writeFileSync(file, ['# comment', 'DOTENV_A=plain', 'export DOTENV_B="quoted value"', "DOTENV_C='single'", 'DOTENV_KEPT=from-file', '  # DOTENV_D=hidden', 'not a pair'].join('\n'))
+    vi.stubEnv('DOTENV_KEPT', 'from-shell')
+    for (const k of ['DOTENV_A', 'DOTENV_B', 'DOTENV_C', 'DOTENV_D']) delete process.env[k]
+    try {
+      loadDotEnv(file)
+      expect([process.env.DOTENV_A, process.env.DOTENV_B, process.env.DOTENV_C, process.env.DOTENV_D, process.env.DOTENV_KEPT]).toEqual(['plain', 'quoted value', 'single', undefined, 'from-shell'])
+      loadDotEnv(join(dir, 'absent'))
+      loadDotEnv(dir) // a directory cannot be read as a file; boot goes on
+    } finally {
+      for (const k of ['DOTENV_A', 'DOTENV_B', 'DOTENV_C']) delete process.env[k]
+    }
+  })
+})

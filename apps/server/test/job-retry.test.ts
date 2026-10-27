@@ -79,4 +79,15 @@ describe('JOB-004: retry failed jobs', () => {
     })
     expect(again.status).toBe(417)
   })
+
+  test('only a System Manager can retry a failed job or start one by hand', async ({ createUser }) => {
+    const name = await failedJob()
+    const outsider = await createUser({ roles: [] })
+    const retry = await outsider.fetch('/api/retry_job', { method: 'POST', body: JSON.stringify({ row_id: name }) })
+    expect(retry.status).toBe(403)
+    const start = await outsider.fetch('/api/enqueue_job', { method: 'POST', body: JSON.stringify({ method: 'ping_job' }) })
+    expect(start.status).toBe(403)
+    const [job] = await sql`select job_status from background_job where row_id = ${name}`
+    expect(job.job_status).toBe('failed')
+  })
 })

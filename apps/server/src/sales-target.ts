@@ -24,7 +24,6 @@ import { EMPLOYEE_CODE_SYSTEM } from './person-identifiers'
 
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
 export const VIEWER_ROLE = 'Sales Target Viewer'
-export const REPORT_PATH = '/featherbase/sales-target'
 
 export interface Period {
   period_start: string
@@ -78,7 +77,7 @@ export function readSharedEnv(path = sharedEnvPath()): Record<string, string> {
   return out
 }
 
-export interface EmbedConfig {
+interface EmbedConfig {
   apiBase: string
   diveId: string
   version: number
@@ -100,12 +99,12 @@ export function embedConfig(): EmbedConfig {
 
 // ---------------------------------------------------------------- accounts
 
-export interface TestAccount {
+interface TestAccount {
   username: string
   display_name: string
 }
 
-export const TEST_ACCOUNTS: TestAccount[] = [1, 2, 3, 4].map((n) => ({
+const TEST_ACCOUNTS: TestAccount[] = [1, 2, 3, 4].map((n) => ({
   username: `test_employee_${n}`,
   display_name: `Employee ${n}`,
 }))
@@ -131,7 +130,7 @@ export function testPasswords(env: Record<string, string>): Record<string, strin
 // ------------------------------------------------------------------ seeding
 
 /** The subset of a client the seed needs: an authenticated fetch. */
-export type SeedFetch = (path: string, init?: RequestInit) => Promise<Response>
+type SeedFetch = (path: string, init?: RequestInit) => Promise<Response>
 
 const ASSIGNMENT_TABLE_DEF = {
   name: ASSIGNMENT_TABLE,
@@ -414,7 +413,7 @@ async function sectionsOf(plant: string, groups: string[]): Promise<Record<strin
  * stores gets one assignment per store, sorted by store code — the report shows one store at a
  * time and never mixes them.
  */
-export async function currentAssignments(user: string, period: Period = currentPeriod()): Promise<Assignment[]> {
+async function currentAssignments(user: string, period: Period = currentPeriod()): Promise<Assignment[]> {
   // D10: a code we cannot attribute to one person blocks the whole reader — no partial scope.
   const { codes, ambiguous } = await currentEmployeeCodes(user)
   if (ambiguous) return []
@@ -454,7 +453,7 @@ export async function currentAssignments(user: string, period: Period = currentP
 }
 
 /** #409: the store a reader opens on — the one with the most Sections; a tie goes to the lowest store code. */
-export function defaultStore(assignments: Assignment[]): Assignment | null {
+function defaultStore(assignments: Assignment[]): Assignment | null {
   // Relies on currentAssignments sorting by store code: keeping the first of equals is the lowest code.
   return assignments.reduce<Assignment | null>((best, a) => (!best || a.sections.length > best.sections.length ? a : best), null)
 }
@@ -464,7 +463,7 @@ export function defaultStore(assignments: Assignment[]): Assignment | null {
  * The store is the browser's choice, so it is never trusted: one that is not among the reader's
  * own stores — someone else's, or no store at all — is refused, never served.
  */
-export async function assignmentFor(
+async function assignmentFor(
   user: string,
   store: string | undefined,
   period: Period = currentPeriod(),
@@ -480,7 +479,7 @@ export async function assignmentFor(
  * The `store` query parameter: absent or empty = no store chosen (the default). A repeated
  * parameter names no one store and is refused like any store that is not the reader's.
  */
-export function requestedStore(values: string[] | undefined): string | undefined {
+function requestedStore(values: string[] | undefined): string | undefined {
   if (values && values.length > 1) throw new AppError('PermissionError', 'That store is not one of yours')
   return values?.[0] || undefined
 }
@@ -503,7 +502,7 @@ export function initialStateFor(a: Assignment, period: Period = currentPeriod())
 
 // ------------------------------------------------------------ embed session
 
-export type EmbedResult =
+type EmbedResult =
   | { ok: true; session: string; status: number }
   // 'not_configured': DIVE_ID/DIVE_VERSION/SERVICE_ACCOUNT or the token are
   // simply absent — a deployment choice, not a failure (#3783/#286).
@@ -514,9 +513,9 @@ export type EmbedResult =
 
 // Injectable for the sandboxed suite (no network); MOTHERDUCK_API_BASE
 // redirects the real fetch for browser-level stub runs.
-let embedFetch: typeof fetch = (...args) => fetch(...args)
+let embedFetch: typeof fetch | null = null
 export function _setEmbedFetch(f: typeof fetch | null) {
-  embedFetch = f ?? ((...args) => fetch(...args))
+  embedFetch = f
 }
 
 export async function createEmbedSession(
@@ -534,7 +533,7 @@ export async function createEmbedSession(
     }
   let res: Response
   try {
-    res = await embedFetch(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
+    res = await (embedFetch ?? fetch)(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ username: cfg.serviceAccount, version: cfg.version, initial_state: initialState }),

@@ -2,7 +2,7 @@
 
 **Status:** accepted · 2026-08-03
 **Context:** the requirements framework (`docs/design/requirements-framework.md`,
-Part I §4) — judgement-shaped rules have no oracle; their thresholds are
+Part I §4 (removed Oct 2026; see git history)) — judgement-shaped rules have no oracle; their thresholds are
 bets, not facts. A bet buried as a literal can be tuned silently and nobody
 learns what the tuning cost. This ADR is the single home for every such
 number in the import feature; **spec, tests, and code reference the names,

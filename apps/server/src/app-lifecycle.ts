@@ -1,14 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import postgres from 'postgres'
 import { config } from './config'
-import { sql } from './db'
+import { ignoreNotice, sql } from './db'
 import { AppError } from './errors'
 
 // A separate pool holds the operation-length lock: document work needs its
 // ordinary pool after COMMIT for assignment rules and after_commit hooks.
 // Taking both connections from one pool can deadlock under saturation.
 const locks = postgres(config.databaseUrl, {
-  max: 10, onnotice: () => {}, prepare: false,
+  max: 10, onnotice: ignoreNotice, prepare: false,
   // CLI migrations also use document operations; released lock connections
   // must not keep those short-lived processes alive after their main pool ends.
   idle_timeout: 1,

@@ -11,7 +11,7 @@
 // (`subject_kind = 'employee-code'`); the move to record numbers is the
 // post-deploy `cli people:resolve <csv>` (people-resolve.ts), not part of the
 // release. Parity is proven through test mode's own resolver. Nothing is
-// merged. `cli people:plan` prints all of it.
+// merged. Its report is what 0102's up() prints.
 import { sql } from './db'
 import { createTable } from './table-engine'
 import { invalidateMeta } from './meta'
@@ -49,7 +49,7 @@ async function addColumnDef(table: string, column: Record<string, unknown>) {
 
 // ------------------------------------------------------------------- DDL
 
-export async function createIdentifierSystemTable() {
+async function createIdentifierSystemTable() {
   const [have] = await sql`select 1 from table_def where name = 'Identifier System'`
   if (!have)
     await createTable({
@@ -244,13 +244,13 @@ async function genericSystems() {
 
 // ------------------------------------------------------------------ data
 
-export interface Listed {
+interface Listed {
   person: string
   full_name: string | null
   detail: string
 }
 
-export interface PersonResolutionPlan {
+interface PersonResolutionPlan {
   seedPackApplied: boolean
   codeRows: number
   emailRows: number

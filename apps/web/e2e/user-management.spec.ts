@@ -51,7 +51,6 @@ test.beforeAll(async ({ request }) => {
 // SET-002: a user resets their password via the emailed link, then logs in
 // with the new password.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The forgot-password/reset-password screens are testid-addressed, so that
 // mechanics stays in named steps; the real login form at the end IS
 // label-friendly, so it becomes DSL verbs (mirrors admin.spec.ts).

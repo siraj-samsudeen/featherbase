@@ -24,7 +24,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 export function JobMonitor() {
   const [busy, setBusy] = useState<string | null>(null)
-  // JOB-005: live progress for a demo long-running job, over realtime.
+  // JOB-005: live progress for a long-running job, over realtime.
   const user = getSessionUser()
   const [progress, setProgress] = useState<{ job: string; percent: number; message: string | null } | null>(null)
   useRealtime(user ? [`user:${user.row_id}`] : [], (e) => {
@@ -33,12 +33,6 @@ export function JobMonitor() {
       setProgress(p)
     }
   })
-
-  async function runDemo() {
-    setProgress({ job: 'pending', percent: 0, message: 'Starting…' })
-    const res = await api.post<{ row_id: string }>('/api/enqueue_job', { method: 'demo_progress' })
-    setProgress({ job: res.row_id, percent: 0, message: 'Queued' })
-  }
 
   const jobs = useQuery({
     queryKey: ['jobs'],
@@ -67,9 +61,6 @@ export function JobMonitor() {
     <div data-testid="job-monitor" className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-ink">Background Jobs</h1>
-        <button className={buttonClasses()} data-testid="run-demo-job" onClick={() => void runDemo()}>
-          Run demo job
-        </button>
       </div>
 
       {progress && (

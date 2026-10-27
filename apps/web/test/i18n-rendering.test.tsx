@@ -48,10 +48,9 @@ async function seed(admin: Admin) {
 /**
  * Mount the new-row form and wait until whoami is in the query cache.
  *
- * That wait is load-bearing, not tidiness. setLanguage merges the new value
- * into the CACHED whoami (`qc.setQueryData`), so a change fired before the
- * first whoami response lands merges into nothing and is silently dropped by
- * the client even though the server accepted it.
+ * That wait is load-bearing, not tidiness. The language is read from the
+ * CACHED whoami, so a change stored before the first whoami response lands
+ * could be overtaken by that first, older answer.
  */
 async function mountForm(admin: Admin) {
   const { queryClient } = await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)

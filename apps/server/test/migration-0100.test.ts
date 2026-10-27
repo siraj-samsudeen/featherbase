@@ -3,44 +3,21 @@
 // user, a real-email user who never used Google, a service account. The test
 // database is already migrated, so each test first puts back the pre-upgrade
 // shape inside its own rolled-back transaction.
-import { describe, expect } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { invalidateMeta } from '../src/meta'
 import { formatPlan, migratePersonIdentities, planPersonIdentities } from '../src/person-identities-migration'
+import { pre0101Shape } from './person-migration-fixtures'
+import { migratePersonRename } from '../src/person-rename-migration'
+import { migratePersonResolution } from '../src/person-resolution-migration'
+import { invalidateMeta } from '../src/meta'
+import { googleSignIn, redeemSession } from './google-mock'
+import { _setDelegatedFetch } from '../src/delegated-login'
 
-// 0101 (person-rename) renamed `user` → `person` and `user_identity` →
-// `sign_in_identity`, moved service accounts out and minted opaque ids. 0100
-// runs before all of that, so the pre-0101 names are put back first (inside
-// the same rolled-back transaction) and 0100 is proven against the shape it
-// actually ran on. The chain 0100 → 0101 on real data is proven by
-// `cli people:plan --rehearse` against a dev snapshot.
-async function pre0101Shape() {
-  await sql.unsafe(`alter table featherbase.person drop constraint if exists person_id_namespace`)
-  await sql.unsafe(`alter table featherbase.person rename to "user"`)
-  // 0101 renamed the 0100 indexes; give them back their 0100 names.
-  await sql.unsafe(`alter index featherbase.person_email_lower_uq rename to user_email_lower_uq`)
-  await sql.unsafe(`alter index featherbase.person_username_lower_uq rename to user_username_lower_uq`)
-  await sql.unsafe(`alter table featherbase."user" add column if not exists user_type varchar(140) not null default 'human'`)
-  await sql.unsafe(`alter table featherbase.sign_in_identity rename to user_identity`)
-  await sql.unsafe(`alter table featherbase.user_identity rename column person_id to user_id`)
-  await sql.unsafe(`
-    create or replace function featherbase.fc_cancel_email_invites() returns trigger
-    language plpgsql set search_path = pg_catalog as $$
-    begin
-      if lower(trim(coalesce(old.email, ''))) is distinct from lower(trim(coalesce(new.email, ''))) then
-        delete from featherbase.user_identity where user_id = new.row_id and subject is null;
-      end if;
-      return new;
-    end $$`)
-  const [person] = await sql`select * from table_def where name = 'Person'`
-  await sql`insert into table_def ${sql({ ...(person as Record<string, unknown>), name: 'User' } as unknown as Record<string, never>)}`
-  await sql`update column_def set parent = 'User' where parent = 'Person'`
-  await sql`update custom_field set dt = 'User' where dt = 'Person'`
-  await sql`delete from table_def where name = 'Person'`
-  invalidateMeta()
-}
-
+// 0100 runs before 0101 (person-rename), so the pre-0101 names are put back
+// first (inside the same rolled-back transaction) and 0100 is proven against
+// the shape it actually ran on. The chain 0100 → 0101 on real data is proven
+// by `cli migrate:rehearse --database-url` against a dev snapshot.
 async function preUpgradeShape() {
   await pre0101Shape()
   await sql`delete from user_identity`
@@ -212,4 +189,139 @@ describe('migration 0100: person + linked identities', () => {
     const again = await migratePersonIdentities()
     expect(again.googleInvites).toHaveLength(0)
   })
+
+  test('a login ID whose account id is not its employee code is listed for relinking', async () => {
+    await preUpgradeShape()
+    await sql`insert into "user" (row_id, email, full_name, enabled, stylehr_username, employee_code, user_type, created_at, updated_at)
+      values ('RR-7000', null, 'Moved Mala', true, 'mala_7', 'RR-7001', 'human', now(), now())`
+    const plan = await planPersonIdentities()
+    expect(plan.idNotEmployeeCode).toEqual([expect.objectContaining({ row_id: 'RR-7000', detail: 'employee code RR-7001' })])
+    expect(formatPlan(plan)).toContain('  account id differs from employee code (relink if wrong):\n    Moved Mala (RR-7000) — employee code RR-7001')
+  })
+
+  test('an old provider address that is not a URL migrates as a switched-off method keyed "delegated"', async () => {
+    await preUpgradeShape()
+    await sql`update single_value set value = 'stylehr login page' where table_name = 'System Settings' and field = 'delegated_login_url'`
+    const plan = await migratePersonIdentities()
+    expect(plan.methods.find((m) => m.kind === 'delegated_password')).toMatchObject({ key: 'delegated', label: 'StyleHR', enabled: false })
+    expect(await sql`select label, enabled, service_url from sign_in_method where row_id = 'delegated'`).toEqual([
+      { label: 'StyleHR', enabled: false, service_url: 'stylehr login page' },
+    ])
+  })
+
+  test('on a database with no sign-in methods or identities it creates both Tables, the rows, and the username and login-audit columns', async () => {
+    await preUpgradeShape()
+    await sql.unsafe(`drop table featherbase.user_identity, featherbase.sign_in_method cascade`)
+    await sql`delete from column_def where parent = 'Sign In Method'`
+    await sql`delete from table_def where name = 'Sign In Method'`
+    await sql`delete from column_def where (parent, column_name) in (('User', 'username'), ('Activity Log', 'sign_in_method'), ('Activity Log', 'test_mode'))`
+    await migratePersonIdentities()
+    expect(await sql`select title_column, system from table_def where name = 'Sign In Method'`).toEqual([{ title_column: 'label', system: true }])
+    expect(await sql`select row_id, kind, enabled from sign_in_method order by row_id`).toEqual([
+      { row_id: 'google', kind: 'google', enabled: true },
+      { row_id: 'password', kind: 'password', enabled: true },
+      { row_id: 'stylehr', kind: 'delegated_password', enabled: true },
+    ])
+    expect(await sql`select parent, column_name, column_type, read_only from column_def
+      where (parent, column_name) in (('User', 'username'), ('Activity Log', 'sign_in_method'), ('Activity Log', 'test_mode'))
+      order by parent, column_name`).toEqual([
+      { parent: 'Activity Log', column_name: 'sign_in_method', column_type: 'Data', read_only: true },
+      { parent: 'Activity Log', column_name: 'test_mode', column_type: 'Check', read_only: true },
+      { parent: 'User', column_name: 'username', column_type: 'Data', read_only: false },
+    ])
+    expect(await sql`select user_id, method, subject, sign_in_name from user_identity where user_id = 'RR-0101'`).toEqual([
+      { user_id: 'RR-0101', method: 'stylehr', subject: 'RR-0101', sign_in_name: 'devi_1000000001' },
+    ])
+  })
+
+  test('with no connected service configured, no delegated method is made and its login IDs link nobody', async () => {
+    await preUpgradeShape()
+    await sql`delete from single_value where table_name = 'System Settings' and field = 'delegated_login_url'`
+    const plan = await migratePersonIdentities()
+    expect(plan.methods.map((m) => m.kind)).not.toContain('delegated_password')
+    expect(await sql`select row_id from sign_in_method where kind = 'delegated_password'`).toEqual([])
+    expect(await sql`select 1 from user_identity where user_id = 'RR-0101'`).toEqual([])
+  })
+
+  test('without the dev mock, Google counts as a way in today only where a Google method already has a client id', async () => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '0')
+    await preUpgradeShape()
+    // No client id anywhere: a store mailbox reachable only by Google by email had no way in.
+    expect((await planPersonIdentities()).parity.exceptions.map((p) => p.row_id)).toEqual([])
+    await sql`insert into sign_in_method (row_id, kind, label, enabled, new_person, client_id)
+      values ('google', 'google', 'Google', true, 'refuse', 'cid.apps.googleusercontent.com')`
+    expect((await planPersonIdentities()).parity.exceptions.map((p) => p.row_id)).toEqual(['SM-cbe'])
+  })
 })
+
+// Existing sign-ins carry over: the upgrade chain this data actually ran —
+// 0100 (linked identities), 0101 (User → Person, opaque ids), 0102 (identifier
+// rows) — then the first sign-ins of the morning after, through the real HTTP
+// routes. Synthetic people on store.example; the pre-upgrade shape is built
+// here rather than reused so nothing in it names a real domain.
+async function morningAfterShape() {
+  await pre0101Shape()
+  await sql`delete from user_identity`
+  await sql`delete from sign_in_method where kind = 'delegated_password' or row_id = 'google'`
+  for (const column of ['stylehr_username', 'social_login', 'employee_code'])
+    await sql.unsafe(`alter table featherbase."user" add column if not exists ${column} varchar(140)`)
+  for (const [field, value] of [
+    ['delegated_login_label', 'StyleHR'],
+    ['delegated_login_url', 'https://stylehr.example.test/api/login/'],
+    ['delegated_login_user_column', 'stylehr_username'],
+    ['allowed_login_domains', 'store.example'],
+  ])
+    await sql`insert into single_value (table_name, field, value) values ('System Settings', ${field}, ${value})
+      on conflict (table_name, field) do update set value = excluded.value`
+  await sql`insert into "user" (row_id, email, full_name, enabled, stylehr_username, employee_code, social_login, user_type, created_at, updated_at) values
+    ('RR-0701', 'rr-0701@staff.store.invalid', 'Team Leader 0701', true, 'tl_0701', 'RR-0701', null, 'human', now(), now()),
+    ('lead@store.example', 'Lead@Store.example', 'Store Lead', true, null, null, 'google', 'human', now(), now())`
+}
+
+async function upgrade() {
+  await morningAfterShape()
+  await migratePersonIdentities()
+  const renamed = await migratePersonRename()
+  await migratePersonResolution()
+  invalidateMeta()
+  const idOf = (old: string) => renamed.persons.find((p) => p.old_id === old)!.new_id
+  return { teamLeader: idOf('RR-0701'), lead: idOf('lead@store.example') }
+}
+
+describe('Existing sign-ins carry over, through 0100 → 0101 → 0102', () => {
+  test('store staff the morning after: the HR system ID in any mix of capitals opens the same account', async ({ api }) => {
+    const { teamLeader } = await upgrade()
+    const signIn = async (typed: string) => {
+      const res = await api.fetch('/api/login/delegated', { method: 'POST', body: JSON.stringify({ usr: typed, pwd: 'Hr-Password-1', method: 'stylehr' }) })
+      expect(res.status, typed).toBe(200)
+      return ((await res.json()) as { user: { row_id: string } }).user.row_id
+    }
+    // Their HR login ID, as they typed it before the upgrade; the HR system says yes
+    // (the provider is stubbed, never contacted).
+    _setDelegatedFetch((async () => Response.json({ token: 'opaque' })) as typeof fetch)
+    try {
+      for (const typed of ['tl_0701', 'TL_0701', ' Tl_0701 ']) expect(await signIn(typed), typed).toBe(teamLeader)
+    } finally {
+      _setDelegatedFetch(null)
+    }
+    // The trial's test mode, which skips the provider, resolves their employee code the same way.
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
+    for (const typed of ['rr-0701', 'rR-0701', 'RR-0701']) expect(await signIn(typed), typed).toBe(teamLeader)
+  })
+
+  test('first Google sign-in after the upgrade opens their own account and links the permanent ID', async ({ api }) => {
+    const { lead } = await upgrade()
+    expect(await sql`select subject, pending_email from sign_in_identity where person_id = ${lead} and method = 'google'`)
+      .toEqual([{ subject: null, pending_email: 'lead@store.example' }])
+    const first = await googleSignIn(api, 'LEAD@store.example', { subject: 'g-lead-1', hd: 'store.example' })
+    expect(first.status).toBe(302)
+    expect((await redeemSession(api, first)).user.row_id).toBe(lead)
+    expect(await sql`select subject, pending_email, linked_by from sign_in_identity where person_id = ${lead} and method = 'google'`)
+      .toEqual([{ subject: 'g-lead-1', pending_email: null, linked_by: 'first-sign-in' }])
+    // From then on the permanent ID, not the address, finds them.
+    expect((await googleSignIn(api, 'lead@store.example', { subject: 'g-lead-other', hd: 'store.example' })).status).toBe(401)
+  })
+})
+
+afterEach(() => vi.unstubAllEnvs())
+

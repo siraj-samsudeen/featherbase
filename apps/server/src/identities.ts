@@ -152,7 +152,7 @@ export function domainAllowed(method: SignInMethod, email: string): boolean {
 
 // ------------------------------------------------------------- identities
 
-export interface Identity {
+interface Identity {
   id: string
   person_id: string
   method: string
@@ -238,18 +238,19 @@ async function clash(method: SignInMethod, what: { subject?: string | null; sign
     checks.push(['sign_in_name', sql`select id, person_id from sign_in_identity where method = ${method.key} and lower(sign_in_name) = ${foldName(what.sign_in_name)} and ended_at is null`])
   if (what.pending_email)
     checks.push(['invite', sql`select id, person_id from sign_in_identity where method = ${method.key} and subject is null and pending_email = ${what.pending_email} and ended_at is null`])
+  // The holder may have ended between the violation and this lookup; then
+  // there is no one to name and the answer stays general.
+  let held: { kind: string; hit: Record<string, unknown> } | null = null
   for (const [kind, query] of checks) {
     const [hit] = await query
-    if (hit) {
-      const label = kind === 'subject' ? `This ${method.label || method.key} ID` : kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
-      throw new AppError('ConflictError', `${label} is already linked to ${hit.person_id as string}`, {
-        clash: kind,
-        identity: String(hit.id),
-        person: String(hit.person_id),
-      })
-    }
+    if (hit && !held) held = { kind, hit }
   }
-  throw new AppError('ConflictError', 'This sign-in is already linked to an account')
+  const label = held?.kind === 'subject' ? `This ${method.label || method.key} ID` : held?.kind === 'sign_in_name' ? 'This sign-in name' : 'This invited address'
+  throw new AppError(
+    'ConflictError',
+    held ? `${label} is already linked to ${held.hit.person_id as string}` : 'This sign-in is already linked to an account',
+    held ? { clash: held.kind, identity: String(held.hit.id), person: String(held.hit.person_id) } : undefined,
+  )
 }
 
 /** Run one write in its own savepoint; a unique violation becomes `onClash`. */
@@ -393,7 +394,7 @@ const usableWhere = (mock: boolean) =>
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
-export async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
   const mock = mockOAuthEnabled()
   const [row] = await db`
     with p as (
@@ -411,7 +412,7 @@ export async function waysIn(user: string, db: Sql | TxSql, excluding?: string):
 }
 
 /** An administrator who can sign in now must still be able to afterwards. */
-export async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
+async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
   const c = await candidate(user, db)
   if (!c?.privileged || !c.enabled) return
   if ((await waysIn(user, db)) > 0 && (await waysIn(user, db, excluding)) === 0)
@@ -464,13 +465,34 @@ export async function touchIdentity(id: string, attrs: { email?: string | null; 
       display_name = coalesce(${attrs.display_name ?? null}, display_name)
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
-  if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase())
+  if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {
     await reconcileIdentityEmail(id, (before.email as string | null) ?? null)
+    await followGoogleAddress(id, (before.email as string | null) ?? null, attrs.email)
+  }
+}
+
+/** A person whose contact address was their Google address keeps it in step
+ *  when Google reports a new verified one. An address someone set by hand, or
+ *  one another person already uses, is left alone. A normal row save, so the
+ *  change is versioned. */
+async function followGoogleAddress(id: string, oldEmail: string | null, newEmail: string) {
+  if (!oldEmail) return
+  const [i] = await sql`
+    select i.person_id, m.kind, p.email, p.updated_at
+    from sign_in_identity i
+    join sign_in_method m on m.row_id = i.method
+    join person p on p.row_id = i.person_id
+    where i.id = ${id} and i.ended_at is null`
+  if (!i || i.kind !== 'google') return
+  if (String(i.email ?? '').toLowerCase() !== oldEmail.toLowerCase()) return
+  const [taken] = await sql`select 1 from person where lower(email) = lower(${newEmail}) and row_id <> ${i.person_id}`
+  if (taken) return
+  await saveDoc('Person', { row_id: i.person_id, updated_at: i.updated_at, email: newEmail }, 'Administrator')
 }
 
 // ------------------------------------------------------------ eligibility
 
-export interface Candidate {
+interface Candidate {
   row_id: string
   enabled: boolean
   privileged: boolean

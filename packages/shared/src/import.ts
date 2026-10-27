@@ -91,15 +91,15 @@ export function prettifyLabel(header: string): string {
 // ADR 0008: every inference threshold is a named, exported bet. Spec, ADR,
 // and tests reference these names, never the literals. Changing one means
 // re-scoring the judgement rules it feeds (see the ADR).
-export const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
-export const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
-export const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing
-export const CHOICE_MIN_OPTIONS = 2
-export const CHOICE_MAX_OPTIONS = 8 // beyond this a fixed list stops helping
-export const CHOICE_MIN_DENSITY = 3 // each option seen ~3x on average
-export const CHOICE_MAX_OPTION_CHARS = 60 // longer values are content
-export const AUTO_MATCH_MIN_SCORE = 0.6 // share of sheet headers that map
-export const AUTO_MATCH_MIN_COVERAGE = 0.8 // share of Table columns covered
+const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
+const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
+const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing
+const CHOICE_MIN_OPTIONS = 2
+const CHOICE_MAX_OPTIONS = 8 // beyond this a fixed list stops helping
+const CHOICE_MIN_DENSITY = 3 // each option seen ~3x on average
+const CHOICE_MAX_OPTION_CHARS = 60 // longer values are content
+const AUTO_MATCH_MIN_SCORE = 0.6 // share of sheet headers that map
+const AUTO_MATCH_MIN_COVERAGE = 0.8 // share of Table columns covered
 
 const INT_RE = /^-?\d+$/
 const FLOAT_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
@@ -220,7 +220,7 @@ export function autoMapColumns(
 // wizard says where the data goes instead.
 const RETIRED_COLUMNS: Record<string, Record<string, string>> = {
   Person: {
-    employee_code: 'employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve',
+    employee_code: 'employee_code is no longer a Person field — add codes on the Identifiers panel of the Person form',
     stylehr_username: 'stylehr_username is no longer a Person field — link StyleHR under the person’s Sign-in methods',
   },
 }

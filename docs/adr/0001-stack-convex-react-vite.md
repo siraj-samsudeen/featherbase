@@ -4,7 +4,7 @@
 
 ## Context
 
-Featherbase needs a backend for a metadata-driven platform with four hard requirements, in priority order: (1) runtime user-defined schema, (2) Glide-style reactive computed data, (3) durable workflow execution (retries, waits, human-in-the-loop), (4) deterministic automated testing. Candidates: Convex, InstantDB, Supabase. Full analysis: [research/stack-comparison.md](../research/stack-comparison.md).
+Featherbase needs a backend for a metadata-driven platform with four hard requirements, in priority order: (1) runtime user-defined schema, (2) Glide-style reactive computed data, (3) durable workflow execution (retries, waits, human-in-the-loop), (4) deterministic automated testing. Candidates: Convex, InstantDB, Supabase. Full analysis: `docs/research/stack-comparison.md` (removed Oct 2026; see git history).
 
 An existing asset weighs on the decision: [feather-testing-convex](https://github.com/siraj-samsudeen/feather-testing-convex) + a proven testing philosophy built around `convex-test`'s in-memory backend and fake-timer control.
 

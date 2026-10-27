@@ -35,15 +35,18 @@ export default defineConfig({
     // Vite entry point — it mounts the router into a real DOM document and is
     // exercised by the browser, never by jsdom — so it is out of scope here.
     //
-    // The e2e suite is excluded by design: Playwright drives a live stack in a
-    // separate browser process, so the screens it covers cannot be credited
-    // here. That is why this number is the lowest of the three packages — much
-    // of `pages/` is currently only reached through e2e.
+    // Istanbul, not v8 (ADR 0012): the Playwright run is Istanbul-instrumented
+    // through vite-plugin-istanbul, and the two runs merge into one report only
+    // if both speak the same format. The `json` reporter drops this run's map
+    // into `.nyc_output/jsdom.json`, beside the e2e fixtures' output, where
+    // `pnpm coverage:merged` picks both up. The thresholds below gate THIS run
+    // alone — the jsdom floor CI enforces; the merged report is the number
+    // component tests are targeted from.
     coverage: {
-      provider: 'v8',
+      provider: 'istanbul',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/main.tsx'],
-      reporter: ['text', 'json-summary'],
+      reporter: ['text', 'json-summary', ['json', { file: '../.nyc_output/jsdom.json' }]],
       // Without this a single failing test suppresses the report entirely
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
@@ -63,10 +66,18 @@ export default defineConfig({
       // lines/statements 34.25%, functions 50.61%. The same asymmetry
       // applies — lines to the whole percent below, functions a further
       // point below that.
+      //
+      // Re-measured 2026-10-26 on the switch to Istanbul (ADR 0012), whose
+      // counting differs from v8's: lines 73.62%, statements 72.08%,
+      // functions 66.48% — the suite had long outgrown the old 34/34/49 floor.
+      // Then again after the component tests the merged report called for:
+      // lines 81.97%, statements 80.1%, functions 78.15%. Same rounding as above.
+      // Re-measured 2026-10-26 once the merged report reached 100% of lines
+      // and functions: lines 94.24%, statements 92.48%, functions 92.79%.
       thresholds: {
-        lines: 34,
-        statements: 34,
-        functions: 49,
+        lines: 94,
+        statements: 92,
+        functions: 91,
       },
     },
   },

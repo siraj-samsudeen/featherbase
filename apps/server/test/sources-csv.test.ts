@@ -6,8 +6,12 @@ import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync,
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test, patchDoc } from './pg-test'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 import { parseCsv, serializeCsv } from '../src/sources/csv'
+import { csvFolderDriver } from '../src/sources/csv-driver'
 import { invalidateSources } from '../src/sources/registry'
+import type { Binding } from '../src/sources/types'
 
 let dir: string
 
@@ -237,7 +241,9 @@ describe('M1: csv-folder source', () => {
     expect(text).toBe('id,note\n1,"multi\nline note"\n2,plain\n3,appended')
   })
 
-  test('a failed write never poisons the parse cache (round 3)', async ({ admin }) => {
+  // chmod does not stop root from writing, so this variant can only fail as a
+  // non-root user (CI). The next test fails the same write as root too.
+  test.skipIf(process.getuid?.() === 0)('a failed write never poisons the parse cache (round 3)', async ({ admin }) => {
     const [stores] = await makeCsvSource(admin)
     const enc = encodeURIComponent(stores)
     // Prime the cache.
@@ -263,6 +269,59 @@ describe('M1: csv-folder source', () => {
     await expect(admin.get(`/api/table/${enc}/4`)).rejects.toMatchObject({ status: 404 })
   })
 
+  test('a write the filesystem refuses leaves the file and the served rows unchanged', async ({ admin }) => {
+    // A 240-character file name fits the filesystem's 255-byte limit, but the
+    // hidden temp file beside it (".<name>.fb-tmp-…") does not, so the atomic
+    // write fails for any user, root included.
+    const longName = `${'s'.repeat(240)}.csv`
+    writeFileSync(path.join(dir, longName), 'k,v\n1,one\n')
+    try {
+      invalidateSources()
+      await admin.post('/api/table/Data%20Source', {
+        row_id: 'seed-fixture',
+        engine: 'csv-folder',
+        root_path: dir,
+        access: 'read_write',
+      })
+      const reflected = await admin.post<{ created: { name: string }[] }>(
+        '/api/table/Data%20Source/seed-fixture:reflect',
+        { tables: [longName] },
+      )
+      const enc = encodeURIComponent(reflected.created[0].name)
+      const res = await admin.fetch(`/api/table/${enc}`, {
+        method: 'POST',
+        body: JSON.stringify({ k: '2', v: 'two' }),
+      })
+      expect(res.status).toBeGreaterThanOrEqual(500)
+      expect(readFileSync(path.join(dir, longName), 'utf8')).toBe('k,v\n1,one\n')
+      const after = (await admin.get(`/api/table/${enc}`)) as { total: number }
+      expect(after.total).toBe(1)
+    } finally {
+      rmSync(path.join(dir, longName), { force: true })
+    }
+  })
+
+  test('an append to a header-only file without a newline starts the next line properly', async ({ admin }) => {
+    writeFileSync(path.join(dir, 'headonly.csv'), 'a,b')
+    try {
+      invalidateSources()
+      await admin.post('/api/table/Data%20Source', {
+        row_id: 'seed-fixture',
+        engine: 'csv-folder',
+        root_path: dir,
+        access: 'read_write',
+      })
+      const reflected = await admin.post<{ created: { name: string }[] }>(
+        '/api/table/Data%20Source/seed-fixture:reflect',
+        { tables: ['headonly.csv'] },
+      )
+      await admin.post(`/api/table/${encodeURIComponent(reflected.created[0].name)}`, { a: '1', b: '2' })
+      expect(readFileSync(path.join(dir, 'headonly.csv'), 'utf8')).toBe('a,b\n1,2')
+    } finally {
+      rmSync(path.join(dir, 'headonly.csv'), { force: true })
+    }
+  })
+
   test('path traversal in external_table is rejected', async ({ admin }) => {
     await makeCsvSource(admin)
     const res = await admin.fetch('/api/table/Data%20Source/seed-fixture:reflect', {
@@ -272,5 +331,191 @@ describe('M1: csv-folder source', () => {
     const body = (await res.json()) as { created: unknown[]; skipped: { reason: string }[] }
     expect(body.created).toEqual([])
     expect(body.skipped).toHaveLength(1)
+  })
+})
+
+describe('Read and write through a connected table: a folder of CSV files', () => {
+  const chart = (admin: { post: <T = Record<string, unknown>>(p: string, b?: unknown) => Promise<T> }, table: string, group_by: string, filters: unknown[] = []) =>
+    admin.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', { table, group_by, filters })
+
+  test('pattern, list and exclusion filters work on the file\'s rows', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const enc = encodeURIComponent(stores)
+    const codes = async (filters: unknown[]) => {
+      const res = (await admin.get(
+        `/api/table/${enc}?fields=${encodeURIComponent('["store_code"]')}&order_by=store_code asc&filters=${encodeURIComponent(JSON.stringify(filters))}`,
+      )) as { data: { store_code: string }[]; total: number }
+      return res.data.map((r) => r.store_code)
+    }
+    expect(await codes([['city', 'like', 'ka%']])).toEqual(['KKL'])
+    expect(await codes([['city', 'not like', 'ka%']])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', 'in', ['TVM', 'CHN']]])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', 'not in', ['TVM', 'CHN']]])).toEqual(['KKL'])
+    expect(await codes([['store_code', '!=', 'KKL']])).toEqual(['CHN', 'TVM'])
+    expect(await codes([['store_code', '>=', 'KKL']])).toEqual(['KKL', 'TVM'])
+    const count = (await admin.get(`/api/table/${enc}:count?filters=${encodeURIComponent('[["city","like","%a%"]]')}`)) as { count: number }
+    expect(count.count).toBe(2)
+  })
+
+  test('rows can be counted by a column, read straight from the file', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const res = await chart(admin, stores, 'city')
+    expect(res.data).toEqual([
+      { label: 'Chennai', value: 1 },
+      { label: 'Karaikal', value: 1 },
+      { label: 'TVM', value: 1 },
+    ])
+    const narrowed = await chart(admin, stores, 'city', [['store_code', '!=', 'KKL']])
+    expect(narrowed.data.map((d) => d.label).sort()).toEqual(['Chennai', 'TVM'])
+  })
+})
+
+describe('Connect a data source: a folder of CSV files', () => {
+  test('testing the connection succeeds for a readable folder and fails, naming the problem, for a missing one', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', { row_id: 'seed-ok', engine: 'csv-folder', root_path: dir, access: 'read_only' })
+    const ok = await admin.post<{ ok: boolean }>('/api/table/Data%20Source/seed-ok:test_connection', {})
+    expect(ok.ok).toBe(true)
+
+    await admin.post('/api/table/Data%20Source', { row_id: 'seed-gone', engine: 'csv-folder', root_path: path.join(dir, 'no-such-folder'), access: 'read_only' })
+    const bad = await admin.post<{ ok: boolean; error?: string }>('/api/table/Data%20Source/seed-gone:test_connection', {})
+    expect(bad.ok).toBe(false)
+    expect(bad.error).toMatch(/not a readable directory|not readable/)
+    const [row] = await admin.get<{ data: { conn_status: string }[] }>(`/api/table/Data%20Source?filters=${encodeURIComponent('[["row_id","=","seed-gone"]]')}&fields=${encodeURIComponent('["conn_status"]')}`).then((r) => r.data)
+    expect(row.conn_status).toBe('error')
+  })
+})
+
+describe('A connected CSV table whose file or folder has gone', () => {
+  const rebind = async (table: string, externalTable: string) => {
+    await sql`update table_def set external_table = ${externalTable} where name = ${table}`
+    invalidateMeta()
+    invalidateSources()
+  }
+
+  test('a file removed from the folder is reported by name', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    await rebind(stores, 'removed.csv')
+    await expect(admin.get(`/api/table/${encodeURIComponent(stores)}`)).rejects.toMatchObject({
+      message: expect.stringContaining('removed.csv does not exist'),
+    })
+  })
+
+  test('a file in a subfolder that no longer exists is an invalid path', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    await rebind(stores, 'gone-folder/x.csv')
+    await expect(admin.get(`/api/table/${encodeURIComponent(stores)}`)).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringContaining('Invalid csv path x.csv'),
+    })
+  })
+
+  test('a source folder that was deleted is reported as not readable', async ({ admin }) => {
+    const gone = mkdtempSync(path.join(tmpdir(), 'fb-seeds-gone-'))
+    writeFileSync(path.join(gone, 'a.csv'), 'k\n1\n')
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', {
+      row_id: 'seed-gone-root',
+      engine: 'csv-folder',
+      root_path: gone,
+      access: 'read_only',
+    })
+    const reflected = await admin.post<{ created: { name: string }[] }>(
+      '/api/table/Data%20Source/seed-gone-root:reflect',
+      { tables: ['a.csv'] },
+    )
+    rmSync(gone, { recursive: true, force: true })
+    await expect(
+      admin.get(`/api/table/${encodeURIComponent(reflected.created[0].name)}`),
+    ).rejects.toMatchObject({ message: expect.stringContaining('root_path is not readable') })
+    // Browsing the same missing folder lists nothing rather than failing.
+    const introspected = (await admin.get('/api/table/Data%20Source/seed-gone-root:introspect')) as {
+      tables: unknown[]
+    }
+    expect(introspected.tables).toEqual([])
+  })
+})
+
+describe('Filtering and ordering rows read from a CSV file', () => {
+  const bindStores = (): Binding => ({
+    source: {
+      name: 'seed-direct',
+      engine: 'csv-folder',
+      url_env: null,
+      root_path: dir,
+      default_schema: null,
+      access: 'read_only',
+      pool_max: 5,
+      statement_timeout_ms: 10000,
+      allowlist: null,
+    },
+    schema: '',
+    table: 'store_master.csv',
+    pk: '_row',
+    modified: '_mtime',
+    columns: [
+      { column_name: 'store_code', source_column: 'store_code', column_type: 'Data' },
+      { column_name: 'city', source_column: 'city', column_type: 'Data' },
+    ],
+  })
+  const codes = async (filters: { column: string; op: string; value: unknown }[], dir: 'asc' | 'desc' = 'asc') => {
+    const { rows } = await csvFolderDriver.getList(bindStores(), {
+      filters: filters as never,
+      columns: ['store_code'],
+      order: { column: 'store_code', dir },
+      limit: 50,
+      offset: 0,
+    })
+    return rows.map((r) => r.store_code)
+  }
+
+  test('comparison operators compare cell text', async () => {
+    expect(await codes([{ column: 'store_code', op: '=', value: 'TVM' }])).toEqual(['TVM'])
+    expect(await codes([{ column: 'store_code', op: '>', value: 'KKL' }])).toEqual(['TVM'])
+    expect(await codes([{ column: 'store_code', op: '<', value: 'KKL' }])).toEqual(['CHN'])
+    expect(await codes([{ column: 'store_code', op: '<=', value: 'KKL' }])).toEqual(['CHN', 'KKL'])
+  })
+
+  test('a Data Scope filter lets blank cells through as well as the allowed values', async () => {
+    writeFileSync(path.join(dir, 'store_master.csv'), 'store_code,store_name,city\nA,One,x\nB,Two,\nC,Three,y\n')
+    const count = (value: unknown[]) =>
+      csvFolderDriver.count(bindStores(), [{ column: 'city', op: 'in_or_null', value }])
+    expect(await count(['x'])).toBe(2) // x, plus the blank city
+    expect(await count([])).toBe(1) // only the blank city
+  })
+
+  test('rows can be listed in file order or last-row-first by row number', async () => {
+    const byRow = async (dir: 'asc' | 'desc') =>
+      (
+        await csvFolderDriver.getList(bindStores(), {
+          filters: [],
+          columns: ['store_code'],
+          order: { column: '_row', dir },
+          limit: 50,
+          offset: 0,
+        })
+      ).rows.map((r) => r.store_code)
+    expect(await byRow('asc')).toEqual(['KKL', 'TVM', 'CHN'])
+    expect(await byRow('desc')).toEqual(['CHN', 'TVM', 'KKL'])
+  })
+
+  test('a file with no header row is left out of the browsable tables', async ({ admin }) => {
+    writeFileSync(path.join(dir, 'blank.csv'), '')
+    try {
+      invalidateSources()
+      await admin.post('/api/table/Data%20Source', {
+        row_id: 'seed-fixture',
+        engine: 'csv-folder',
+        root_path: dir,
+        access: 'read_only',
+      })
+      const res = (await admin.get('/api/table/Data%20Source/seed-fixture:introspect')) as {
+        tables: { table: string }[]
+      }
+      expect(res.tables.map((t) => t.table)).not.toContain('blank.csv')
+      expect(res.tables.map((t) => t.table)).toContain('store_master.csv')
+    } finally {
+      rmSync(path.join(dir, 'blank.csv'), { force: true })
+    }
   })
 })

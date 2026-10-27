@@ -7,7 +7,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
 }
 
-export interface RenderedPage {
+interface RenderedPage {
   found: boolean
   html: string
 }

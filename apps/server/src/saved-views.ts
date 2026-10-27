@@ -16,7 +16,7 @@ const createSchema = z.object({
   shared: z.boolean().optional(),
 })
 
-export interface SavedView {
+interface SavedView {
   row_id: string
   table: string
   label: string

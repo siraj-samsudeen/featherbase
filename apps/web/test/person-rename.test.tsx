@@ -86,8 +86,10 @@ test('the Person list shows each person’s name in its first column', async ({ 
 })
 
 test('a name the viewer may not read is "Unnamed person", never a stuck "…" or the id', async ({ admin, createUser }) => {
-  const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author' })
   await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Hidden Row Reader' } })
+  // The author may open the row (commenting needs that, #507); the reader may
+  // open it too, but may not read the author's Person row.
+  const author = await createUser({ email: 'hidden.author@example.com', fullName: 'Hidden Author', roles: ['Hidden Row Reader'] })
   const reader = await createUser({ email: 'no.person.read@example.com', roles: ['Hidden Row Reader'] })
   await admin.post('/api/table_def', { name: 'Hidden Row', columns: [{ column_name: 'title', column_type: 'Data' }] })
   // A grant of their own earns the Admin (#410); grants to the implicit All role alone do not.

@@ -5,7 +5,8 @@
 // Reference columns (person / service_account, exactly one set), and every
 // person and service account is re-keyed to an opaque id through the handler
 // registry, followed by an exact-match scan that aborts on any surviving old
-// id. `cli people:plan` runs the same code in a rolled-back transaction.
+// id. `cli migrate:rehearse` runs it, with every other pending migration, in
+// a rolled-back transaction.
 import { sql } from './db'
 import { createTable } from './table-engine'
 import { invalidateMeta } from './meta'
@@ -13,17 +14,16 @@ import { PLATFORM_SCHEMA } from './platform-schema'
 import { BUILT_IN_PERSONS, PERSON_ID_PREFIX, SERVICE_ACCOUNT_ID_PREFIX, newPersonId, newServiceAccountId } from './opaque-id'
 import {
   classifyColumns,
-  formatClassification,
+  formatUnclassified,
   rewriteThroughRegistry,
   scanForOldIds,
   stageRewriteMap,
   type ClassifiedColumn,
-  type Classification,
   type IdMapEntry,
   type ScanHit,
 } from './person-registry'
 
-export interface PersonRenameReport {
+interface PersonRenameReport {
   alreadyApplied: boolean
   persons: IdMapEntry[]
   builtIns: string[]
@@ -35,7 +35,6 @@ export interface PersonRenameReport {
   /** Rows rewritten per registered column (incl. conditional-id ones). */
   rewritten: Record<string, number>
   conditionalRewritten: Record<string, number>
-  classification: Classification
   scan: ScanHit[]
   /** Assignment-rule conditions (JavaScript expressions, free text) that
    *  mention an old id: listed for a person to rewrite, never edited. */
@@ -265,11 +264,9 @@ interface Moved {
  *  lost; a scope or share row naming no principal aborts (never fail-open). */
 export async function splitPrincipals(): Promise<Moved> {
   await createServiceAccountTable()
-  const hasType = await columnExists('person', 'user_type')
-  const services = hasType
-    ? await sql`select row_id, full_name, enabled, api_rate_limit, created_at, created_by, updated_at, updated_by
-        from person where user_type = 'service' order by row_id`
-    : []
+  // 0069 gave every account a user_type; 0101 runs only where it is still there.
+  const services = await sql`select row_id, full_name, enabled, api_rate_limit, created_at, created_by, updated_at, updated_by
+    from person where user_type = 'service' order by row_id`
   const serviceIds = services.map((s) => String(s.row_id))
   const serviceLabels = new Map(services.map((s) => [String(s.row_id), String(s.row_id)]))
   for (const s of services)
@@ -338,7 +335,7 @@ export async function splitPrincipals(): Promise<Moved> {
     await sql`delete from password_reset where "user" in ${sql(serviceIds)}`
     await sql`delete from person where row_id in ${sql(serviceIds)}`
   }
-  if (hasType) await sql.unsafe(`alter table ${Q('person')} drop column user_type`)
+  await sql.unsafe(`alter table ${Q('person')} drop column user_type`)
   invalidateMeta()
   return { serviceIds, serviceLabels }
 }
@@ -370,7 +367,7 @@ async function counts() {
   }
 }
 
-export interface ReidResult {
+interface ReidResult {
   personMap: IdMapEntry[]
   serviceMap: (IdMapEntry & { label: string })[]
   touched: Map<string, number>
@@ -438,7 +435,7 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
     return {
       alreadyApplied: true, persons: [], builtIns: [...BUILT_IN_PERSONS], serviceAccounts: [],
       tokens: empty, scopeRows: empty, shareRows: empty, roleRows: empty, rewritten: {}, conditionalRewritten: {},
-      classification: await classifyColumns(), scan: [], conditionsNamingOldIds: [],
+      scan: [], conditionsNamingOldIds: [],
     }
   }
   await renameUserToPerson()
@@ -446,7 +443,7 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
 
   const classification = await classifyColumns()
   if (classification.unclassified.length)
-    throw new Error(`person-rename: unclassified text columns; classify them in src/person-registry.ts first:\n${formatClassification({ classified: [], unclassified: classification.unclassified })}`)
+    throw new Error(`person-rename: unclassified text columns; classify them in src/person-registry.ts first:\n${formatUnclassified(classification.unclassified)}`)
   const reid = await reidPrincipals(classification.classified, { serviceLabels: moved.serviceLabels })
   const { personMap, serviceMap, touched, scan, conditionsNamingOldIds } = reid
 
@@ -466,13 +463,12 @@ export async function migratePersonRename(): Promise<PersonRenameReport> {
     ...(await counts()),
     rewritten,
     conditionalRewritten: Object.fromEntries(Object.entries(rewritten).filter(([k]) => conditional.includes(k))),
-    classification,
     scan,
     conditionsNamingOldIds,
   }
 }
 
-export function formatPersonRenameReport(r: PersonRenameReport, opts: { columns?: boolean; map?: boolean } = {}): string {
+export function formatPersonRenameReport(r: PersonRenameReport): string {
   if (r.alreadyApplied) return 'person-rename: already applied'
   const lines = [
     'person-rename report',
@@ -487,7 +483,5 @@ export function formatPersonRenameReport(r: PersonRenameReport, opts: { columns?
     `  scan: ${r.scan.length ? r.scan.map((h) => `${h.column} ${h.rows}`).join('; ') : 'no old id survives in any registered column'}`,
     `  assignment-rule conditions naming an old id (rewrite by hand): ${r.conditionsNamingOldIds.length ? r.conditionsNamingOldIds.map((c) => `${c.rule}: ${c.ids.join(', ')}`).join('; ') : 'none'}`,
   ]
-  if (opts.map) lines.push('  id map:', ...[...r.persons, ...r.serviceAccounts].map((m) => `    ${m.old_id} → ${m.new_id}`))
-  if (opts.columns) lines.push(formatClassification(r.classification))
   return lines.join('\n')
 }

@@ -1,6 +1,6 @@
 import { ADMIN_NAMED_PAGE_KINDS, ADMIN_STATIC_PAGES, ADMIN_UNRECORDED_ROOTS } from 'shared'
 import { routeTree } from '../src/router'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   actionForLocation,
   ago,
@@ -119,9 +119,9 @@ describe('actionForLocation', () => {
     expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
     expect(actionForLocation('/featherbase/admin/Customer/new', {})).toBeNull()
-    // #440: browsers and prototypes are not Tables named "source" / "prototype".
+    // #440: the browser and the jobs monitor are not Tables named "source" / "jobs".
     expect(actionForLocation('/featherbase/admin/source/Warehouse', {})).toBeNull()
-    expect(actionForLocation('/featherbase/admin/prototype/connect-source', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/jobs', {})).toBeNull()
   })
 
   it('#440: a static admin page is remembered as a page under its title', () => {
@@ -198,6 +198,25 @@ describe('server event queue attribution', () => {
     recordAction('user-b', row('CUST-4'), NOW)
     flushPendingEvents()
     expect(posted.map((p) => p.key)).toEqual(['row:Customer/CUST-3'])
+  })
+})
+
+// More than one batch's worth (50) goes out in batches, the rest after the
+// usual pause (merged web coverage, ADR 0012).
+describe('a long queue', () => {
+  it('ships fifty now and the rest after the pause', async () => {
+    vi.useFakeTimers()
+    try {
+      const posted: Array<Record<string, unknown>> = []
+      connectEventSink({ currentUser: () => 'user-a', post: (events) => posted.push(...events), beacon: () => {} })
+      for (let i = 0; i < 51; i++) recordAction('user-a', row(`LONG-${i}`), NOW + i)
+      flushPendingEvents()
+      expect(posted).toHaveLength(50)
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(posted).toHaveLength(51)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

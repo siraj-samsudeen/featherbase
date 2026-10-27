@@ -420,3 +420,45 @@ describe('#3783: Google sign-in lands a report viewer on their report', () => {
     expect(p.landing).toBeUndefined()
   })
 })
+
+describe('exchanging a code with Google itself', () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+  // Answers the token endpoint and the userinfo endpoint in turn; Google is never contacted.
+  async function exchangeWith(token: Response, userinfo?: Response) {
+    const { _setGoogleFetch, exchangeCode } = await import('../src/oauth')
+    const calls: { url: string; body: string; authorization: string | null }[] = []
+    _setGoogleFetch(async (input, init) => {
+      const url = String(input)
+      calls.push({ url, body: String(init?.body ?? ''), authorization: new Headers(init?.headers).get('authorization') })
+      return url.includes('oauth2.googleapis.com') ? token : (userinfo as Response)
+    })
+    try {
+      return { calls, result: await exchangeCode('the-code', '/api/oauth/google/callback', 'client-1', 'the-verifier').then((v) => v, (e: Error) => e) }
+    } finally {
+      _setGoogleFetch(null)
+    }
+  }
+
+  test('a verified account is returned by its permanent ID, with the PKCE verifier sent to Google', async () => {
+    const { calls, result } = await exchangeWith(
+      json({ access_token: 'at-1' }),
+      json({ sub: ' 1234 ', email: 'Jo@Example.COM', email_verified: true, name: 'Jo', hd: 'Example.com' }),
+    )
+    expect(result).toEqual({ status: 'verified', subject: '1234', email: 'jo@example.com', email_verified: true, display_name: 'Jo', hosted_domain: 'example.com' })
+    expect(new URLSearchParams(calls[0].body).get('code_verifier')).toBe('the-verifier')
+    expect(calls[1].authorization).toBe('Bearer at-1')
+  })
+
+  test('an unverified address is dropped and a missing name and domain stay empty', async () => {
+    const { result } = await exchangeWith(json({ access_token: 'at' }), json({ sub: '9', email: 'a@b.com', email_verified: false }))
+    expect(result).toEqual({ status: 'verified', subject: '9', email: null, email_verified: false, display_name: null, hosted_domain: null })
+  })
+
+  test('a refused token exchange, a reply with no access token, a refused userinfo and an account with no ID each fail as a Google error', async () => {
+    const message = async (token: Response, userinfo?: Response) => ((await exchangeWith(token, userinfo)).result as Error).message
+    expect(await message(json({}, 400))).toBe('Google token exchange failed')
+    expect(await message(json({ error: 'x' }))).toBe('Google token exchange failed')
+    expect(await message(json({ access_token: 'at' }, 200), json({}, 500))).toBe('Google userinfo fetch failed')
+    expect(await message(json({ access_token: 'at' }), json({ email: 'a@b.com' }))).toBe('Google did not return an account ID')
+  })
+})

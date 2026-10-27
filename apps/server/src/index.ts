@@ -35,7 +35,6 @@ import { landingAfterSignIn, openAdminFor } from './landing'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
-import { callMethod, loadMethods, methodAllowsGuest, methodEffect } from './methods'
 import {
   getCollectionAction,
   getRowAction,
@@ -53,7 +52,7 @@ import './actions/collection-aggregate'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
-import { enqueue, loadJobs, retryJob, startWorker, syncScheduledJobs } from './jobs'
+import { enqueue, loadJobs, retryJob, startWorker, stopWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, closeSessionSockets, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
@@ -80,24 +79,19 @@ import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTE
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
-import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import { assertServerStart, readVariable } from './env'
-import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
-import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 await loadControllers()
-await loadMethods()
 await loadJobs()
 await loadScriptReports()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their Tables persist in the DB).
-registerApp(helloCrm)
 // Registered, NOT installed: a fresh deployment has zero helpdesk tables
 // until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
 registerApp(helpdesk)
@@ -184,10 +178,10 @@ app.get('/api/brand', async (c) => {
   })
 })
 
-// Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
-// Frappe) in addition to the Bearer token the SPA stores. Either credential
-// authenticates a request; the cookie lets Frappe-style clients work
-// unchanged and keeps the token out of reach of page scripts.
+// Sessions ride an HttpOnly `sid` cookie in addition to the Bearer token the
+// SPA stores. Either credential authenticates a request; the cookie keeps the
+// token out of reach of page scripts and lets plain browser requests (file
+// links, the print page) carry the session.
 function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
@@ -366,10 +360,35 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   }
 
   const content = await readStored(fileUrl)
+  // #506: the type is whatever the uploader declared, and the file is served
+  // from this app's own address. Only types a browser shows without running
+  // script open in place; anything else (HTML, SVG, scripts) downloads, so an
+  // uploaded page can never run as the app. An <img> ignores the download
+  // header, so an SVG still shows where a form embeds it.
+  // The stored type is an editable field, so it is reduced again here and the
+  // header is built from that, never sent as stored: a browser reads
+  // `text/plain,text/html` as its LAST type and would run it as a page.
+  // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
+  // still an attachment, so opened directly it downloads and its script never runs.
+  const type = mimeEssence(row.mime_type as string)
+  const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
+  const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
-    'content-type': (row.mime_type as string) || 'application/octet-stream',
-    'content-disposition': `inline; filename="${(row.file_name as string).replace(/"/g, '')}"`,
+    'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
+    'content-disposition': `${disposition}; filename="${(row.file_name as string).replace(/"/g, '')}"`,
   })
+}
+
+const SHOWN_IN_PLACE = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
+])
+
+// A declared type reduced to its bare `type/subtype`, lowercased, with nothing
+// after the first `;` or `,`. Anything that isn't a well-formed type becomes
+// application/octet-stream.
+function mimeEssence(declared: string | null | undefined): string {
+  const essence = (declared ?? '').split(/[;,]/)[0].trim().toLowerCase()
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(essence) ? essence : 'application/octet-stream'
 }
 
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
@@ -401,40 +420,6 @@ app.get('/web/:route{.+}', async (c) => {
   const page = await renderWebPage(c.req.param('route'))
   return c.html(page.html, page.found ? 200 : 404)
 })
-
-// API-003: RPC for whitelisted server methods. Registered before the global
-// auth middleware so guest-allowed methods work without a session — but that
-// means it must resolve auth AND apply rate limiting itself (#62 bug 1: this
-// route used to return before ever reaching the global `rateLimit` use()
-// registered below, so API-007 was silently unenforced on the whole RPC
-// surface). Each registered method declares effect: 'read' | 'write'
-// (methods.ts); the dispatcher requires POST for 'write' instead of accepting
-// either verb (#62 bug 2: GET on frappe.client.delete/insert/set_value used to
-// execute the mutation straight from the query string — a live CSRF vector
-// given the sid cookie is sameSite: 'Lax'). Path may contain slashes.
-app.on(
-  ['GET', 'POST'],
-  '/api/method/:path{.+}',
-  async (c, next) => {
-    const path = c.req.param('path') as string
-    const user = methodAllowsGuest(path)
-      ? { row_id: 'Guest', kind: 'person' as const, email: null, full_name: 'Guest' }
-      : await resolveToken(authCredential(c))
-    c.set('user', user)
-    await runInSession('sign_in' in user ? user.sign_in : null, () => next())
-  },
-  rateLimit,
-  async (c) => {
-    const path = c.req.param('path') as string
-    if (methodEffect(path) === 'write' && c.req.method !== 'POST')
-      throw new AppError('MethodNotAllowedError', `Method ${path} mutates and requires POST`)
-    const args =
-      c.req.method === 'POST'
-        ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
-        : c.req.query()
-    return c.json({ message: await callMethod(path, args, c.get('user')) })
-  },
-)
 
 // The origin a browser reaches this instance on. INSTANCE_ADDRESSES is
 // configuration and therefore authoritative (#488): the request's Host only
@@ -1590,7 +1575,7 @@ app.post('/api/upload_file', async (c) => {
   else if (refTable) await assertPermission(who(c), refTable, 'read')
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
-  const mimeType = file.type || 'application/octet-stream'
+  const mimeType = mimeEssence(file.type)
   // FILE-004: for raster images, generate a small inline thumbnail the UI can
   // show without fetching the full-size original. Best-effort — a failure to
   // decode never blocks the upload.
@@ -1720,44 +1705,6 @@ app.post('/api/permissions/:table', async (c) => {
     )
   else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
   return c.json({ ok: true })
-})
-
-// PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
-// endpoints resolve the target site from the request Host header, and every
-// query runs on that site's isolated schema — data never crosses sites.
-app.post('/api/tenancy/sites', async (c) => {
-  await assertSystemManager(who(c))
-  const { site, host } = (await c.req.json().catch(() => ({}))) as { site?: string; host?: string }
-  if (!site) throw new AppError('ValidationError', 'Expected { site }')
-  return c.json(await createSite(site, host), 201)
-})
-app.get('/api/tenancy/sites', async (c) => {
-  await assertSystemManager(who(c))
-  return c.json({ sites: await listSites() })
-})
-app.post('/api/tenancy/table_def', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  const { name, columns } = (await c.req.json().catch(() => ({}))) as { name?: string; columns?: { column_name: string; column_type: string }[] }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await siteCreateTableDef(site, name, columns ?? []), 201)
-})
-app.get('/api/tenancy/table_defs', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  return c.json({ site, table_defs: await siteListTableDefs(site) })
-})
-app.post('/api/tenancy/user', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  const { email, full_name } = (await c.req.json().catch(() => ({}))) as { email?: string; full_name?: string }
-  if (!email) throw new AppError('ValidationError', 'Expected { email }')
-  return c.json(await siteCreateUser(site, email, full_name), 201)
-})
-app.get('/api/tenancy/users', async (c) => {
-  await assertSystemManager(who(c))
-  const site = await resolveSite(c.req.header('host'))
-  return c.json({ site, users: await siteListUsers(site) })
 })
 
 // PLAT-001: app management (System Manager only). Apps are code-defined; these
@@ -2246,32 +2193,44 @@ app.delete('/api/table/:table/:name', async (c) => {
 // carries the file: scheme — the web test environment loads this module with
 // a realm-foreign URL that fileURLToPath rejects as an object, and such
 // environments never serve the SPA anyway.)
-const webDist = import.meta.url.startsWith('file:')
-  ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist')
-  : ''
-if (webDist && existsSync(webDist)) {
+// (The '' arm is the web suite's, which imports this module under jsdom.)
+const webDist = import.meta.url.startsWith('file:') ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist') : ''
+
+/** Serve a built web app from `dir` on `target`, when the directory exists:
+ *  its files as they are, and index.html for any other GET a server-owned
+ *  prefix does not claim. Answers whether it mounted anything. */
+export function serveWebDist(target: Hono<Env>, dir: string): boolean {
+  if (!dir || !existsSync(dir)) return false
   // serveStatic resolves `root` against process.cwd() (apps/server under
   // `pnpm --filter server start`), so the path must be expressed relative
   // to that, not absolute.
-  const webRoot = path.relative(process.cwd(), webDist)
-  app.use('*', serveStatic({ root: webRoot }))
+  const webRoot = path.relative(process.cwd(), dir)
+  target.use('*', serveStatic({ root: webRoot }))
   // SPA fallback: any GET the API and asset handlers didn't claim gets
   // index.html so client-side routes deep-link. Server-owned prefixes pass
   // through and keep their JSON 404 envelope (API-006).
   const serverOwned = /^\/(api|apps|files|private\/files|web|ws)(\/|$)/
-  app.get('*', (c, next) => {
+  target.get('*', (c, next) => {
     if (serverOwned.test(c.req.path)) return next()
     return serveStatic({ root: webRoot, path: 'index.html' })(c, next)
   })
+  return true
 }
+serveWebDist(app, webDist)
 
-if (readVariable('NODE_ENV') !== 'test') {
+/** Boot this process as the server: refuse a bad configuration, listen on
+ *  `port`, attach realtime, run the job worker and sync the recurring jobs.
+ *  Resolves once it listens, with the port and a way to stop it again. */
+export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
   const { settingsRequirements } = await import('./release-preflight')
   for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
-  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    console.log(`server listening on :${info.port}`)
+  const { server, listening } = await new Promise<{ server: ReturnType<typeof serve>; listening: number }>((resolve) => {
+    const server = serve({ fetch: app.fetch, port }, (info) => {
+      console.log(`server listening on :${info.port}`)
+      resolve({ server, listening: info.port })
+    })
   })
   // An auth bypass nobody noticed being enabled is the failure mode worth a
   // log line: say once whether preview sign-in is live, or why it was refused.
@@ -2287,4 +2246,14 @@ if (readVariable('NODE_ENV') !== 'test') {
   // sync makes the queue agree with the rows. Idempotent, so a restart never
   // stacks a duplicate recurrence.
   await syncScheduledJobs()
+  return {
+    port: listening,
+    stop: async () => {
+      stopWorker()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    },
+  }
 }
+
+/* v8 ignore next -- entry-point guard: the process boots unless Vitest imported it; startServer() itself is driven in-process by test/server-start.test.ts */
+if (readVariable('NODE_ENV') !== 'test') await startServer()

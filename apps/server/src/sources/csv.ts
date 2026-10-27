@@ -89,7 +89,7 @@ export function parseCsv(text: string): CsvModel {
 }
 
 // Minimal RFC-4180 quoting for records we author.
-export function serializeField(value: string): string {
+function serializeField(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 

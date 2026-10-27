@@ -11,7 +11,6 @@ test.beforeAll(async ({ request }) => {
   await ensureListTableA(request, await adminAuth(request))
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // The filter builder's controls are testid-addressed selects/inputs, not
 // labelled fields, so every interaction stays inside named steps —
 // `session.visit`/`assertHas` still carry navigation and the plain

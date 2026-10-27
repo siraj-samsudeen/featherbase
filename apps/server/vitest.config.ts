@@ -63,23 +63,27 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
+      // The MySQL driver is exercised only where a MySQL server is reachable
+      // (CI sets MYSQL_TEST_URL; a laptop usually does not). Measuring it
+      // without one would report a permanent gap that says nothing about the
+      // code, so it is counted exactly when its tests can run.
+      exclude: process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts'],
       reporter: ['text', 'json-summary'],
       // Without this a single failing test suppresses the report entirely
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
-      // Ratchet toward 100% (#226 ruling): only raise, never lower.
-      //
-      // Measured 2026-08-28 on a developer checkout: lines/statements 86.64%,
-      // functions 91.18%, then rounded DOWN to the whole percent. That local
-      // run is a FLOOR, not the true figure — `sources-mysql.test.ts` skips
-      // itself without MYSQL_TEST_URL, leaving `src/sources/mysql-driver.ts`
-      // (359 lines) at 6%, and CI does set that variable. Raise these to the
-      // number the first green CI run reports.
+      // ADR 0012 (26-Oct-2026): every line and function a real caller can
+      // reach is tested. Functions are gated at 100. Lines and statements sit
+      // just below it only for release-preflight's PostgreSQL 18 checks, which
+      // run in CI's separate pg18 job rather than in these shards. Branches are
+      // reported, not chased: the floor is the measured figure, rounded down,
+      // and only rises.
       thresholds: {
-        lines: 86,
-        statements: 86,
-        functions: 91,
+        lines: 99.5,
+        statements: 99.5,
+        functions: 100,
+        branches: 90,
       },
     },
   },

@@ -2,9 +2,11 @@
 // name order, recorded in the `migration` table. One-off recorded patches are
 // a separate system (PLAT-003, src/patches.ts).
 import { readdirSync, readFileSync } from 'node:fs'
-import { join, dirname } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join, dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { format } from 'node:util'
 import { _getRootSql, sql, withTransaction } from './db'
+import { processIO, type CommandIO } from './command-io'
 import { invalidateMeta } from './meta'
 import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
 import { bootstrapAdministrator } from './admin-bootstrap'
@@ -81,6 +83,12 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
   return errors
 }
 
+/** The migrator's guard: refuses a listing where two files claim one number. */
+export function assertUniqueMigrationNumbers(files: string[]): void {
+  const errors = findDuplicateMigrationPrefixes(files)
+  if (errors.length > 0) throw new Error(`duplicate migration numbers:\n${errors.join('\n')}`)
+}
+
 /** Migrations that apply as ONE transaction (person-resolution review A-M1):
  *  the person release is all-or-nothing, so a failure in 0102 cannot leave
  *  0100's identities or 0101's re-id committed without it (#399: prod is at
@@ -105,7 +113,7 @@ export function migrationBatches(pending: string[]): string[][] {
 
 /** Apply one migration file and record it, inside the caller's transaction
  *  (the migrator's per-file transaction, or the rolled-back rehearsal of
- *  `cli people:plan`). */
+ *  `cli migrate:rehearse`). */
 export async function applyMigrationFile(file: string): Promise<void> {
   await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
   if (file.endsWith('.sql')) {
@@ -160,10 +168,7 @@ export async function runMigrations() {
       : [],
   )
   const files = migrationFiles()
-  const duplicatePrefixErrors = findDuplicateMigrationPrefixes(files)
-  if (duplicatePrefixErrors.length > 0) {
-    throw new Error(`duplicate migration numbers:\n${duplicatePrefixErrors.join('\n')}`)
-  }
+  assertUniqueMigrationNumbers(files)
   // Earlier TS migrations invoke today's qualified engine, not the historical
   // one. Reject unsupported ledgers before creating any destination storage.
   if (legacy) {
@@ -209,14 +214,24 @@ export async function runMigrations() {
   console.log(`migrations up to date (${files.length} total)`)
 }
 
+/** `tsx src/migrate.ts`: resolves to the process's exit code. The caller owns
+ *  the database connection: the entry point below ends it. */
+export async function main(_argv: string[] = [], io: CommandIO = processIO): Promise<number> {
+  try {
+    await runMigrations()
+    return 0
+  } catch (err) {
+    io.err(format(err))
+    return 1
+  }
+}
+
 // Run standalone (`tsx src/migrate.ts`) — but not when imported (e.g. by the
 // CLI), so importing this module never triggers a migration as a side effect.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  runMigrations()
-    .then(() => sql.end())
-    .catch(async (err) => {
-      console.error(err)
-      await sql.end().catch(() => {})
-      process.exit(1)
-    })
+/* v8 ignore next 6 -- entry-point guard; proven by the subprocess tests in test/admin-bootstrap.test.ts and test/release-preflight.test.ts */
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const code = await main(process.argv.slice(2))
+  await sql.end().catch(() => {})
+  process.exitCode = code
+  if (code !== 0) process.exit(code)
 }

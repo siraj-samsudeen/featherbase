@@ -21,8 +21,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the checks target a bare `<label>` by text rather than a labelled control
+// The checks target a bare `<label>` by text rather than a labelled control
 // (there's nothing to fill/select — the label text itself is the subject),
 // which assertHas/assertText can't address, so each round trip stays a
 // named step; session.visit carries the one plain navigation.

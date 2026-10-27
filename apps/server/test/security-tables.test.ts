@@ -370,3 +370,21 @@ describe('#437: nothing that runs during a save, or on its own, opens access', (
     expect(after.person).toBe(owner.user)
   })
 })
+
+describe('Only a System Manager changes who can do what', () => {
+  test('a delete grant on people removes a person together with their roles', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const target = await makePerson({ full_name: 'Leaving', roles: [{ role: EDITOR }] })
+    expect((await editor.fetch(PERSON.rowUrl(target), { method: 'DELETE' })).status).toBe(200)
+    expect(await sql`select 1 from person where row_id = ${target}`).toHaveLength(0)
+    expect(await sql`select role from has_role where parent = ${target}`).toEqual([])
+  })
+
+  test('a person created by someone allowed to add people starts enabled with no roles', async ({ admin, createUser }) => {
+    const editor = await personEditor(admin, createUser)
+    const created = await editor.post<{ row_id: string }>(PERSON.url, { full_name: 'Fresh Starter' })
+    const doc = await loaded(admin, created.row_id)
+    expect(doc.enabled).toBe(true)
+    expect(doc.roles).toEqual([])
+  })
+})

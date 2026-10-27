@@ -36,7 +36,7 @@ function saveTarget(admin: TestClient, row: Record<string, unknown>) {
 describe('CUST-004: server scripts', () => {
   test('rejects a save conditionally (validate event)', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) frappe.throw("no negatives")', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) featherbase.throw("no negatives")', enabled: true })
     const bad = await saveTarget(admin, { amount: -1 })
     expect(bad.status).toBe(417)
     expect(((await bad.json()) as { error: { message: string } }).error.message).toContain('no negatives')
@@ -68,7 +68,7 @@ describe('CUST-004: server scripts', () => {
 
   test('does not run a disabled script', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'frappe.throw("should not fire")', enabled: false })
+    await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'featherbase.throw("should not fire")', enabled: false })
     const res = await saveTarget(admin, { amount: 1 })
     expect(res.status).toBe(201)
   })
@@ -77,6 +77,22 @@ describe('CUST-004: server scripts', () => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-double', script_type: 'API', api_method: 'srv_double', script: 'result = (args.n || 0) * 2', enabled: true })
     expect(await runApiScript('srv_double', { n: 21 })).toBe(42)
+  })
+
+  test('an API script can be called by name over HTTP', async ({ admin }) => {
+    await setup(admin)
+    await makeScript(admin, { row_id: 'ss-srv-http', script_type: 'API', api_method: 'srv_http', script: 'result = { doubled: (args.n || 0) * 2 }', enabled: true })
+    const res = await admin.post<{ result: { doubled: number } }>('/api/server_script/srv_http', { n: 4 })
+    expect(res.result).toEqual({ doubled: 8 })
+    await expect(admin.post('/api/server_script/no_such_method', {})).rejects.toMatchObject({ status: 404 })
+  })
+
+  test('a row script that runs too long is stopped and the save is refused', async ({ admin }) => {
+    await setup(admin)
+    await makeScript(admin, { row_id: 'ss-srv-rowloop', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'while(true){}', enabled: true })
+    const res = await saveTarget(admin, { amount: 1 })
+    expect(res.status).toBe(417)
+    expect((await sql`select 1 from featherbase.ss_srv_doc`).length).toBe(0)
   })
 
   test('time-boxes a runaway script instead of hanging', async ({ admin }) => {

@@ -23,7 +23,7 @@ export interface DataColumn<Row> {
 }
 
 /** Below this width a list reads as cards (the usable-on-any-device promise). */
-export const NARROW_QUERY = '(width < 40rem)'
+const NARROW_QUERY = '(width < 40rem)'
 
 /**
  * One list, two shapes: a table on a wide screen and a card per row on a

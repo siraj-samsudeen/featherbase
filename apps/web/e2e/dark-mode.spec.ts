@@ -6,8 +6,6 @@ import { test, expect, adminToken } from './fixtures'
 // see is the payoff: jsdom loads no stylesheet and computes no cascade, so
 // only a real browser can say whether marking the root `dark` actually
 // repaints the canvas. That one assertion is what is left here.
-//
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 
 test.beforeEach(async ({ request }) => {
   const token = await adminToken(request)

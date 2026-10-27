@@ -35,8 +35,7 @@ test.beforeAll(async ({ request }) => {
 })
 
 // UI-027: a home page (Workspace) lists its shortcuts; clicking navigates
-// correctly. Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md): title checks are exact `toHaveText`,
+// correctly. Title checks are exact `toHaveText`,
 // which assertHas' substring semantics can't safely stand in for, so the
 // click journey and its exact-text proofs stay in named steps.
 test('UI-027: home page lists shortcuts and they navigate', async ({ session }) => {

@@ -3,9 +3,10 @@ import { listResource } from './api'
 
 // CUST-003: Client Scripts. Enabled scripts for a Table are fetched and
 // evaluated in the browser. Each script registers form-event handlers via a
-// minimal `frappe.ui.form.on(table, handlers)` API — kept Frappe-shaped
-// deliberately, since existing Client Scripts are authored against it. The
-// FormView calls the matching handler on onload / field change / before_save.
+// minimal `featherbase.ui.form.on(table, handlers)` API (its shape, and the
+// `frm` handle's get_value/set_value, were first modelled on Frappe's form
+// scripts). The FormView calls the matching handler on onload / field change /
+// before_save.
 // A script error is caught and reported — it never crashes the Admin.
 
 export interface Frm {
@@ -14,21 +15,21 @@ export interface Frm {
   set_value: (field: string, value: unknown) => void
 }
 
-export type Handler = (frm: Frm) => void
+type Handler = (frm: Frm) => void
 // fieldname → handler, plus the special 'onload' / 'before_save' keys.
-export type HandlerMap = Record<string, Handler>
+type HandlerMap = Record<string, Handler>
 
-export interface CompiledScripts {
+interface CompiledScripts {
   handlers: HandlerMap
   errors: string[]
 }
 
-// Build the `frappe` API a script sees and evaluate every script against it.
-export function compileClientScripts(table: string, scripts: string[]): CompiledScripts {
+// Build the `featherbase` API a script sees and evaluate every script against it.
+function compileClientScripts(table: string, scripts: string[]): CompiledScripts {
   const handlers: HandlerMap = {}
   const errors: string[] = []
 
-  const frappe = {
+  const featherbase = {
     ui: {
       form: {
         on(dt: string, map: HandlerMap) {
@@ -43,10 +44,10 @@ export function compileClientScripts(table: string, scripts: string[]): Compiled
 
   for (const src of scripts) {
     try {
-      // Scripts are trusted author input, run with `frappe` in scope.
+      // Scripts are trusted author input, run with `featherbase` in scope.
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      const fn = new Function('frappe', src)
-      fn(frappe)
+      const fn = new Function('featherbase', src)
+      fn(featherbase)
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err))
     }

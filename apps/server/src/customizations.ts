@@ -7,7 +7,7 @@ import { invalidateMeta } from './meta'
 // Import goes through saveDoc so the Custom Field controller materializes the
 // column, exactly as a manual creation would.
 
-export interface CustomFieldExport {
+interface CustomFieldExport {
   dt: string
   column_name: string
   label: string | null
@@ -18,13 +18,13 @@ export interface CustomFieldExport {
   reqd: boolean
   in_list_view: boolean
 }
-export interface MetadataOverrideExport {
+interface MetadataOverrideExport {
   table_name: string
   column_name: string | null
   property: string
   value: string | null
 }
-export interface CustomizationBundle {
+interface CustomizationBundle {
   table: string
   custom_fields: CustomFieldExport[]
   property_setters: MetadataOverrideExport[]

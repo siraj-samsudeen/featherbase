@@ -12,12 +12,12 @@ export interface HomePageShortcut {
   link_to: string
 }
 
-export interface HomePageCard {
+interface HomePageCard {
   label: string | null
   links: { label: string; link_to: string }[]
 }
 
-export interface HomePage {
+interface HomePage {
   row_id: string
   label: string
   icon: string | null

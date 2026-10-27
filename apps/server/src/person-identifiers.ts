@@ -8,7 +8,6 @@ import { AppError } from './errors'
 import { logActivity } from './audit'
 import { getRoles, hasPermission, isPrivileged, permittedTiers } from './permissions'
 import { opaqueId } from './opaque-id'
-import { PLATFORM_SCHEMA } from './platform-schema'
 import {
   SENSITIVITY,
   assuranceOf,
@@ -33,7 +32,7 @@ export function newIdentifierId(): string {
 
 type Db = Sql | TxSql
 
-export interface IdentifierSystemRow {
+interface IdentifierSystemRow {
   row_id: string
   label: string
   kind: IdentifierKind
@@ -48,13 +47,13 @@ export interface IdentifierSystemRow {
   enabled: boolean
 }
 
-export async function getSystem(key: string, db: Db = sql): Promise<IdentifierSystemRow> {
+async function getSystem(key: string, db: Db = sql): Promise<IdentifierSystemRow> {
   const [row] = await db`select * from identifier_system where row_id = ${key}`
   if (!row) throw new AppError('NotFoundError', `Identifier system ${key} not found`)
   return row as unknown as IdentifierSystemRow
 }
 
-export interface IdentifierRow {
+interface IdentifierRow {
   id: string
   person_id: string
   system: string
@@ -91,7 +90,7 @@ function isoDate(v: unknown, field: string): string | null {
 // ------------------------------------------------------------- who may
 
 /** Can this principal read restricted identifiers (D9)? */
-export async function readsRestricted(viewer: string): Promise<boolean> {
+async function readsRestricted(viewer: string): Promise<boolean> {
   if (await isPrivileged(viewer)) return true
   if ((await getRoles(viewer)).includes('Data Quality Manager')) return true
   return (await permittedTiers(viewer, 'Person', 'read')).has('restricted')
@@ -102,7 +101,7 @@ export async function readsRestricted(viewer: string): Promise<boolean> {
  *  System Manager keeps the joiner and correction procedures going by hand
  *  (review decision B-M6). Derived, so the hand path closes by itself the day
  *  the sync starts writing. */
-export async function sourceFrozen(system: IdentifierSystemRow, db: Db = sql): Promise<boolean> {
+async function sourceFrozen(system: IdentifierSystemRow, db: Db = sql): Promise<boolean> {
   if (!system.source) return false
   const [fed] = await db`select 1 from person_identifier where system = ${system.row_id} and source = ${system.source} limit 1`
   return !fed
@@ -112,7 +111,7 @@ export async function sourceFrozen(system: IdentifierSystemRow, db: Db = sql): P
  *  the write is verified (self ⇒ false) and whether it must carry a note (a
  *  System Manager's hand entry in a source-fed system while its source is
  *  frozen: unverified, with the reason written down). Never echoes a value. */
-export async function assertMayEdit(actor: string, system: IdentifierSystemRow, person: string): Promise<{ verified: boolean; noteRequired?: boolean }> {
+async function assertMayEdit(actor: string, system: IdentifierSystemRow, person: string): Promise<{ verified: boolean; noteRequired?: boolean }> {
   const roles = await getRoles(actor)
   const manager = actor === 'Administrator' || roles.includes('System Manager')
   switch (system.edited_by) {
@@ -157,7 +156,7 @@ async function assertWritablePerson(person: string, db: Db) {
 
 // ------------------------------------------------------------- reads
 
-export interface PanelRow {
+interface PanelRow {
   id: string
   system: string
   system_label: string
@@ -318,7 +317,7 @@ export interface AddInput {
   note?: string | null
 }
 
-export type WriteResult = { result: 'created' | 'updated' | 'unchanged'; identifier: IdentifierRow }
+type WriteResult = { result: 'created' | 'updated' | 'unchanged'; identifier: IdentifierRow }
 
 function mapWriteError(err: unknown): never {
   const e = err as { code?: string; constraint_name?: string }

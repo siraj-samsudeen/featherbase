@@ -7,8 +7,7 @@ test.beforeAll(async ({ request }) => {
   docName = await ensureFormFixtures(request, await adminAuth(request))
 })
 
-// UI-004/UI-005, migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). FormView's fields are addressed by
+// UI-004/UI-005. FormView's fields are addressed by
 // `[data-field=...]`, not a `<label>`, so every control check stays a named
 // step; `session.visit` still carries the navigation and `assertHas` the
 // plain-presence checks the DSL can express.

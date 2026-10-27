@@ -115,6 +115,14 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   expect(await sql`select ref_table from version where row_id = ${version.row_id}`).toEqual([{ ref_table: 'tasker.task' }])
   expect(await sql`select ref_table from file where row_id = ${file.row_id}`).toEqual([{ ref_table: 'tasker.task' }])
   expect(await sql`select share_table from share where row_id = ${share.row_id}`).toEqual([{ share_table: 'tasker.task' }])
+  // Through the API, as an admin sees them: the file is still attached to the
+  // same task, and the task is still shared with the same person.
+  const byTask = (table: string, refCol: string, nameCol: string, fields: string[]) =>
+    admin.get<{ data: Record<string, unknown>[] }>(`/api/table/${table}?filters=${encodeURIComponent(JSON.stringify([[refCol, '=', 'tasker.task'], [nameCol, '=', task.row_id]]))}&fields=${encodeURIComponent(JSON.stringify(fields))}`)
+  expect((await byTask('File', 'ref_table', 'ref_name', ['row_id', 'file_name'])).data)
+    .toEqual([{ row_id: file.row_id, file_name: 'transition-note.txt' }])
+  expect((await byTask('Share', 'share_table', 'share_name', ['row_id', 'person', 'read'])).data)
+    .toEqual([expect.objectContaining({ row_id: share.row_id, person: member.user })])
   const saved = await member.get<Record<string, unknown>>(`/api/table/tasker.task/${task.row_id}`)
   expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...saved, is_done: true } }))
     .toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })

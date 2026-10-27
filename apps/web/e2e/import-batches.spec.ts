@@ -9,8 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // The Import Log always held the facts — a row per part per target. What it
 // could not say is that eleven Tables were ONE thing the user did.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const ONE = 'Batch Sheet One'

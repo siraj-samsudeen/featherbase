@@ -17,7 +17,7 @@ import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
-export interface PackageHookContext {
+interface PackageHookContext {
   row: Record<string, unknown>
   old?: Record<string, unknown>
   user: string

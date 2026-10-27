@@ -24,7 +24,7 @@ export const COLUMN_TYPE_VALUES = [
   'Section Break',
   'Column Break',
 ] as const
-export type ColumnType = (typeof COLUMN_TYPE_VALUES)[number]
+type ColumnType = (typeof COLUMN_TYPE_VALUES)[number]
 
 export interface ColumnDef {
   row_id: string
@@ -156,9 +156,9 @@ export function invalidateMeta(name?: string) {
 
 // A table that points at `target` via a Reference column. When the Reference
 // lives in a sub-table, `table` is the OWNING table (the one with a list to
-// navigate to) and `via` names the sub-table holding the column — Frappe's
-// "internal links" shape (Item is reached from Purchase Order via PO Line).
-export interface Backlink {
+// navigate to) and `via` names the sub-table holding the column (Item is
+// reached from Purchase Order via PO Line).
+interface Backlink {
   table: string
   column: string
   via: string | null

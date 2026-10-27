@@ -97,3 +97,18 @@ describe('#245 public route admission', () => {
     expect((await sql`select count(*)::int as n from featherbase.limited_intake`)[0].n).toBe(1)
   })
 })
+
+describe('Repeated sign-in attempts are slowed', () => {
+  test('five wrong passwords in the window refuse the sixth attempt even with the right password; a success clears the count', async () => {
+    // The shipped defaults: five per name and source in fifteen minutes.
+    const attempt = (pwd: string) => request('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'Administrator', pwd }) }, '192.0.2.77')
+    for (let i = 0; i < 4; i++) expect((await attempt('wrong')).status).toBe(401)
+    // A success before the limit forgives the failures so far.
+    expect((await attempt('admin')).status).toBe(200)
+    for (let i = 0; i < 5; i++) expect((await attempt('wrong')).status).toBe(401)
+    const refused = await attempt('admin')
+    expect(refused.status).toBe(429)
+    expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0)
+    expect(await refused.json()).toMatchObject({ error: { type: 'RateLimitError', message: 'Too many attempts; retry later' } })
+  })
+})

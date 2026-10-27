@@ -15,17 +15,17 @@
 //                   subject, a table name, an address) → left alone
 //   free-text       prose and history snapshots → left alone, never scanned
 //
-// A column nobody classified fails the plan: `cli people:plan` lists every
-// column with its class, and test/person-registry.test.ts holds the
-// completeness rule. Matching is always exact-value, never a substring.
+// A column nobody classified stops migration 0101 before the re-id, naming the
+// column, and test/person-registry.test.ts holds the completeness rule.
+// Matching is always exact-value, never a substring.
 import { sql, type Sql, type TxSql } from './db'
 import { PLATFORM_SCHEMA } from './platform-schema'
 
-export type ColumnClass = 'id' | 'json-with-ids' | 'conditional-id' | 'code' | 'free-text'
+type ColumnClass = 'id' | 'json-with-ids' | 'conditional-id' | 'code' | 'free-text'
 
-export const PRINCIPAL_TABLES = ['Person', 'Service Account'] as const
+const PRINCIPAL_TABLES = ['Person', 'Service Account'] as const
 
-export interface ColumnSpec {
+interface ColumnSpec {
   class: ColumnClass
   /** conditional-id: the sibling column naming the row's Table. */
   typeColumn?: string
@@ -335,6 +335,7 @@ async function loadRewriteMap(db: Sql | TxSql): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [String(r.old_id), String(r.new_id)]))
 }
 
+/** A json-with-ids column is jsonb (saved_view.filters), so its text always parses. */
 async function jsonRows(db: Sql | TxSql, c: ClassifiedColumn) {
   return db.unsafe(
     `select ctid::text as ctid, "${c.column}"::text as v, "${c.typeColumn}" as tbl from ${qualified(c)} where "${c.column}" is not null`,
@@ -347,14 +348,8 @@ async function rewriteJsonColumn(db: Sql | TxSql, c: ClassifiedColumn): Promise<
   const cache = new Map<string, Set<string>>()
   let n = 0
   for (const r of await jsonRows(db, c)) {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(String(r.v))
-    } catch {
-      continue
-    }
     const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
-    const { value, changed } = mapFilterValues(parsed, columns, (v) => map.get(v) ?? null)
+    const { value, changed } = mapFilterValues(JSON.parse(String(r.v)), columns, (v) => map.get(v) ?? null)
     if (!changed) continue
     await db.unsafe(`update ${qualified(c)} set "${c.column}" = $1::text::jsonb where ctid = $2::text::tid`, [JSON.stringify(value), String(r.ctid)])
     n++
@@ -390,12 +385,8 @@ export async function scanForOldIds(db: Sql | TxSql, columns: ClassifiedColumn[]
       const cache = new Map<string, Set<string>>()
       let n = 0
       for (const r of await jsonRows(db, c)) {
-        try {
-          const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
-          if (mapFilterValues(JSON.parse(String(r.v)), columns, (v) => (old.has(v) ? v : null)).changed) n++
-        } catch {
-          /* not JSON: nothing to hold */
-        }
+        const columns = await principalColumnsOf(db, String(r.tbl ?? ''), cache)
+        if (mapFilterValues(JSON.parse(String(r.v)), columns, (v) => (old.has(v) ? v : null)).changed) n++
       }
       if (n) hits.push({ column: key, rows: n })
     }
@@ -416,10 +407,7 @@ export async function stageRewriteMap(db: Sql | TxSql, entries: IdMapEntry[]): P
   }
 }
 
-export function formatClassification(c: Classification): string {
-  const lines = c.classified.map(
-    (x) => `  ${x.schema}.${x.relation}.${x.column}: ${x.class}${x.typeColumn ? (x.class === 'json-with-ids' ? ` (filters on the Table in ${x.typeColumn})` : ` (${x.typeColumn} in Person, Service Account)`) : ''}${x.generated ? ' [generated]' : ''} — ${x.rule}`,
-  )
-  const missing = c.unclassified.map((x) => `  ${x.schema}.${x.relation}.${x.column} (${x.data_type}): UNCLASSIFIED`)
-  return [`text columns: ${c.classified.length} classified, ${c.unclassified.length} unclassified`, ...missing, ...lines].join('\n')
+/** The text columns nobody classified, one per line, for 0101's refusal. */
+export function formatUnclassified(columns: Classification['unclassified']): string {
+  return columns.map((x) => `  ${x.schema}.${x.relation}.${x.column} (${x.data_type}): UNCLASSIFIED`).join('\n')
 }

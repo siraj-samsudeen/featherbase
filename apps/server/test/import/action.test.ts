@@ -136,6 +136,12 @@ describe('IMP-005: bulk import', () => {
     })
     expect(res.inserted).toBe(1)
     expect(res.failed.map((f) => f.index)).toEqual([1, 2, 3])
+    // A dry run reports them the same way.
+    const dry = await admin.post<{ valid: number; failed: { index: number; message: string }[] }>(PATH, {
+      dry_run: true, rows: [{ title: 'ok' }, 'just a string'],
+    })
+    expect(dry.valid).toBe(1)
+    expect(dry.failed).toEqual([{ index: 1, message: 'row must be an object' }])
   })
 
   test('refuses settings and sub_table kinds', async ({ admin }) => {
@@ -274,5 +280,38 @@ describe('IMP-005: bulk import', () => {
     expect(actions.collection).toContainEqual(
       expect.objectContaining({ action: 'import', effect: 'write' }),
     )
+  })
+})
+
+describe('Check for problems before committing', () => {
+  const ROWS = [
+    { title: 'fine', due: '2026-10-23' },
+    { title: 'dated the wrong way', due: '23-10-2026' },
+    { qty: 4 },
+  ]
+
+  test('a problem names the column the user must fix, and why', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.post<{ failed: { index: number; fields?: Record<string, string> }[] }>(PATH, {
+      dry_run: true,
+      rows: ROWS,
+    })
+    const wrongDate = res.failed.find((f) => f.index === 1)!
+    expect(Object.keys(wrongDate.fields ?? {})).toEqual(['due'])
+    expect(wrongDate.fields!.due).toMatch(/\S/)
+    expect(Object.keys(res.failed.find((f) => f.index === 2)!.fields ?? {})).toEqual(['title'])
+  })
+
+  test('the rehearsal reports the same passes and problems as the real run, and writes nothing', async ({ admin }) => {
+    await setup(admin)
+    const rehearsal = await admin.post<{ valid: number; failed: { index: number; fields?: unknown }[] }>(PATH, {
+      dry_run: true,
+      rows: ROWS,
+    })
+    expect(await admin.get<{ count: number }>(`/api/table/${encodeURIComponent(DT)}:count`)).toEqual({ count: 0 })
+
+    const real = await admin.post<{ inserted: number; failed: { index: number; fields?: unknown }[] }>(PATH, { rows: ROWS })
+    expect(real.inserted).toBe(rehearsal.valid)
+    expect(real.failed).toEqual(rehearsal.failed.map((f) => expect.objectContaining({ index: f.index, fields: f.fields })))
   })
 })

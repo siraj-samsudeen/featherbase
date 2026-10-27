@@ -9,8 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // first, the edited row skipped and NAMED, the run's insert deleted, then
 // the "revert these N anyway" escalation as a second explicit act.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). The wizard's inputs and result panels
+// The wizard's inputs and result panels
 // are testid-addressed, not label-associated, so the walk stays inside named
 // steps end to end — `session.visit` still carries navigation and
 // `assertHas`/`assertText` the plain checks the DSL can express directly.

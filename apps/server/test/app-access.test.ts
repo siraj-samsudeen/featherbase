@@ -284,6 +284,25 @@ describe('fresh app roles and store access', () => {
     expect(module.calls.handler).toBe(0)
   })
 
+  test('a restart registers no duplicate handler: one read is one handler call, and reads stop once disabled', async ({ admin, createUser }) => {
+    const { user, module } = await setup(admin, createUser)
+    const readA = () => user.post(read + 'stores', { payload: { storeCodes: ['A'] } })
+    expect(await readA()).toEqual({ result: { stores: ['A'], marker: 37 } })
+    expect(module.calls).toMatchObject({ handler: 1, upstream: 1 })
+    for (let restart = 0; restart < 2; restart++) {
+      expect(await discoverPackages([directory])).toEqual([])
+      await loadInstalledApps()
+    }
+    expect(await readA()).toEqual({ result: { stores: ['A'], marker: 37 } })
+    expect(module.calls).toMatchObject({ handler: 2, upstream: 2 })
+    // Current assignments, not install-time ones: removing A refuses the next read without work.
+    await sql`delete from data_scope where person = ${user.user} and for_value = 'A'`
+    await expect(readA()).rejects.toMatchObject({ status: 403 })
+    await admin.post('/api/set_app_enabled', { name: 'scopeproof', enabled: false })
+    await expect(user.post(read + 'stores', { payload: { storeCodes: ['C'] } })).rejects.toMatchObject({ status: 403 })
+    expect(module.calls).toMatchObject({ handler: 2, upstream: 2 })
+  })
+
   test('persisted A+B cannot be underclaimed as A; exact scope and parent identity precede work', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
     await admin.post('/api/save_row', { table: 'scopeproof.object', row: { row_id: 'draft', stores: ['B', 'A'], secret: 'private' } })
@@ -328,6 +347,24 @@ describe('fresh app roles and store access', () => {
     expect(module.calls.upstream).toBe(1)
     expect(module.calls.resolver).toBe(2)
     expect(module.calls.authorizer).toBe(3)
+  })
+
+  test('permitted exact pairs succeed before and after a package restart; the crossed pair stays refused', async ({ admin, createUser }) => {
+    const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A', 'B'])
+    await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X'], ['B', 'Y']] } })
+    const ask = (store: string, pair: [string, string]) => user.post(read + 'product', { payload: { storeCodes: [store], pairs: [pair] } })
+    const permitted = async () => {
+      expect(await ask('A', ['A', 'X'])).toEqual({ result: { stores: ['A'], marker: 37 } })
+      expect(await ask('B', ['B', 'Y'])).toEqual({ result: { stores: ['B'], marker: 37 } })
+      await expect(ask('A', ['A', 'Y'])).rejects.toMatchObject({ status: 403 })
+      await expect(ask('B', ['B', 'X'])).rejects.toMatchObject({ status: 403 })
+    }
+    await permitted()
+    expect(module.calls.handler).toBe(2)
+    expect(await discoverPackages([directory])).toEqual([])
+    await loadInstalledApps()
+    await permitted()
+    expect(module.calls.handler).toBe(4)
   })
 
   test('revoked original scope and malformed metadata refuse before a SQL result projection can run', async ({ admin, createUser }) => {

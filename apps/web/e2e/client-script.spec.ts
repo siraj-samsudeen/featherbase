@@ -36,15 +36,14 @@ test.beforeAll(async ({ request }) => {
     request,
     'cs-e2e-autofill',
     DT,
-    `frappe.ui.form.on('${DT}', { qty: function(frm){ frm.set_value('total', (frm.get_value('qty') || 0) * 10) } })`,
+    `featherbase.ui.form.on('${DT}', { qty: function(frm){ frm.set_value('total', (frm.get_value('qty') || 0) * 10) } })`,
   )
   // A deliberately broken script (throws at load).
   await makeClientScript(request, 'cs-e2e-broken', DT_BAD, `throw new Error('boom in client script')`)
 })
 
 // CUST-003: a client script auto-fills a field on change.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the field is `[data-field]`-addressed with no label, so it stays in steps.
+// The field is `[data-field]`-addressed with no label, so it stays in steps.
 test('CUST-003: a client script auto-fills a field on change', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}`)
   await session.step('open a new document', async ({ page }) => {

@@ -39,8 +39,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the download events, XLSX/CSV parsing, and every check that follows them
+// The download events, XLSX/CSV parsing, and every check that follows them
 // are outside what any Session verb can express, so the whole comparison
 // stays in one named step; session.visit carries the plain navigation.
 test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', async ({

@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { registryLabel, type SearchHit } from '../src/search'
 import { test } from './pg-test'
+import { sql } from '../src/db'
 import { createUserWithRole, grantRole, makeTable, type TableRef } from './fixtures'
 
 const search = (client: TestClient, query: string) =>
@@ -239,5 +240,39 @@ describe('global search labels (#431)', () => {
     }
     expect(registryLabel('Table')).toBe('Table definition')
     expect(registryLabel('Metadata Override')).toBe('Metadata override')
+  })
+})
+
+describe('a connected table is invisible to search', () => {
+  test('a row of a Table whose data lives in an outside database never matches, though ordinary Tables do', async ({ admin }) => {
+    const plain = await makeTable(admin, { name: 'Gs Plain Customer', id_pattern: 'prompt', columns: ['city'] })
+    const linked = await makeTable(admin, { name: 'Gs Linked Customer', id_pattern: 'prompt', columns: ['city'] })
+    await admin.post(plain.url, { row_id: 'zq-needle-plain', city: 'Chennai' })
+    await admin.post(linked.url, { row_id: 'zq-needle-linked', city: 'Chennai' })
+    await sql`update table_def set data_source = 'outside-db' where name = ${linked.name}`
+    const hits = (await search(admin, 'zq-needle')).results
+    expect(hits.map((h) => h.row_id)).toEqual(['zq-needle-plain'])
+  })
+})
+
+describe('search shows a handful of best matches, not everything', () => {
+  test('at most three rows per Table, and fifteen in all', async ({ admin }) => {
+    const names = ['Gs Cap A', 'Gs Cap B', 'Gs Cap C', 'Gs Cap D', 'Gs Cap E', 'Gs Cap F']
+    for (const name of names) {
+      const t = await makeTable(admin, { name, id_pattern: 'prompt', columns: ['city'] })
+      for (let i = 1; i <= 5; i++) await admin.post(t.url, { row_id: `zq-cap-${name.slice(-1)}-${i}`, city: 'x' })
+    }
+    const hits = (await search(admin, 'zq-cap')).results
+    // Six Tables hold five matches each: three apiece would be eighteen, so the overall cap bites.
+    expect(hits).toHaveLength(15)
+    const perTable = new Map<string, number>()
+    for (const h of hits) perTable.set(h.table, (perTable.get(h.table) ?? 0) + 1)
+    expect(Math.max(...perTable.values())).toBe(3)
+  })
+
+  test('a single Table with many matches shows only its first three', async ({ admin }) => {
+    const t = await makeTable(admin, { name: 'Gs Cap Solo', id_pattern: 'prompt', columns: ['city'] })
+    for (let i = 1; i <= 8; i++) await admin.post(t.url, { row_id: `zq-solo-${i}`, city: 'x' })
+    expect((await search(admin, 'zq-solo')).results).toHaveLength(3)
   })
 })

@@ -180,4 +180,25 @@ describe('PLAT-005: webhooks', () => {
     expect(controlHits.length).toBe(1)
     expect(received.filter((r) => r.path === '/nomatch').length).toBe(0)
   })
+
+  test('a submit webhook sends the submitted row with a signature the receiver can verify', async ({ admin }) => {
+    received.length = 0
+    await admin.post('/api/table_def', {
+      name: 'Webhook Submittable',
+      is_submittable: true,
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    await admin.post('/api/save_row', {
+      table: 'Webhook',
+      row: { webhook_table: 'Webhook Submittable', webhook_event: 'on_submit', request_url: `http://127.0.0.1:${port}/submit`, webhook_secret: SECRET, enabled: true },
+    })
+    const doc = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Webhook Submittable', row: { title: 'final' } })
+    await admin.post(`/api/table/Webhook%20Submittable/${doc.row_id}:submit`)
+
+    const hits = await waitForHits((r) => r.path === '/submit', 1)
+    expect(hits).toHaveLength(1)
+    expect(hits[0].event).toBe('on_submit')
+    expect(JSON.parse(hits[0].body)).toMatchObject({ row_id: doc.row_id, title: 'final', status: 'submitted' })
+    expect(hits[0].signature).toBe(createHmac('sha256', SECRET).update(hits[0].body).digest('hex'))
+  })
 })

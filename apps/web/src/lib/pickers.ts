@@ -4,7 +4,7 @@
 // picker never offers a built-in account (Administrator, Guest); a service
 // account is never offered where a person is chosen, by construction (its
 // own Table).
-export interface PickerSpec {
+interface PickerSpec {
   /** The column typed text is matched against. */
   searchField: string
   /** The column shown for a row; null shows the row id. */

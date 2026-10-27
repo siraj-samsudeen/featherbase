@@ -46,7 +46,7 @@ export function composeRuntimeShell(html: string, currentApp: string, destinatio
 // A nested navigation still serves the app's declared entry document. Root
 // only the document's resource URLs: a <base> would also rewrite package-owned
 // hash and query links away from the current deep location.
-export function rootRuntimeEntryAssets(html: string, app: string): string {
+function rootRuntimeEntryAssets(html: string, app: string): string {
   const root = `https://runtime.invalid/${encodeURIComponent(app)}/`
   const rooted = (value: string) => {
     if (!value || /^(?:[/?#]|[a-z][a-z\d+.-]*:)/i.test(value)) return value

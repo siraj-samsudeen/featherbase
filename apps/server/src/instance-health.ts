@@ -33,7 +33,7 @@ export interface HealthCheck {
   fix: string | null
 }
 
-export interface HealthCheckOptions {
+interface HealthCheckOptions {
   /** The environment to judge against (default: this process's). */
   environment?: string
   /** The time to judge a job's last run against (default: now). */
@@ -284,7 +284,7 @@ export async function recordHealthTransitions(checks: HealthCheck[], at: Date = 
   })
 }
 
-export interface HealthHistoryEntry {
+interface HealthHistoryEntry {
   ok: boolean
   severity: HealthSeverity
   message: string
@@ -294,7 +294,7 @@ export interface HealthHistoryEntry {
   until: string | null
 }
 
-export interface InstanceHealth {
+interface InstanceHealth {
   checks: (HealthCheck & { since: string | null; history: HealthHistoryEntry[] })[]
   /** How many checks are not passing. */
   failing: number

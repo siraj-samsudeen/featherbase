@@ -22,7 +22,7 @@ export interface Step {
   via?: string
 }
 
-export interface StepOption {
+interface StepOption {
   key: string
   label: string
   step: Step

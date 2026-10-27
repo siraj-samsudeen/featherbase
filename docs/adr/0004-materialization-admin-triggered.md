@@ -32,7 +32,7 @@ Later (same mechanics): a scheduled "schema sync" that batches pending materiali
 
 ## Amendment — staged indexes (2026-07-08)
 
-Convex now supports **staged indexes**: `.index("...", [...], { staged: true })` backfills asynchronously **without blocking the deploy**, monitored in the dashboard, and a follow-up deploy removes the flag to enable the index ([docs](https://docs.convex.dev/database/reading-data/indexes/), verified 2026-07-08; [revalidation report](../research/revalidation-2026-07.md)). This refines the mechanism, not the decision:
+Convex now supports **staged indexes**: `.index("...", [...], { staged: true })` backfills asynchronously **without blocking the deploy**, monitored in the dashboard, and a follow-up deploy removes the flag to enable the index ([docs](https://docs.convex.dev/database/reading-data/indexes/), verified 2026-07-08; revalidation report, `docs/research/revalidation-2026-07.md` (removed Oct 2026; see git history)). This refines the mechanism, not the decision:
 
 1. Materialization deploy emits the new index entries **staged** — the deploy returns immediately even on huge tables.
 2. The platform monitors backfill state; when ready, a second generated deploy enables the index.

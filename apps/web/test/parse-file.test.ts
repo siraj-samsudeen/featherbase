@@ -155,3 +155,13 @@ describe('#198: parseWorkbook reports each sheet visibility', () => {
     expect(sheets.map((s) => [s.sheetName, s.visibility])).toEqual([['Real', 'hidden']])
   })
 })
+
+// A workbook whose every sheet is blank has nothing to import, and says so
+// (merged web coverage, ADR 0012).
+describe('a workbook of blank sheets', () => {
+  it('is refused with the reason', async () => {
+    await expect(parseWorkbook(fileFrom([[], [null, '']]))).rejects.toThrow(
+      'The file has no sheet with a header row and data',
+    )
+  })
+})

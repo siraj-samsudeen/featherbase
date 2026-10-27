@@ -21,7 +21,7 @@ export const ENVIRONMENT_KEY = 'environment'
 // reach for, and it must never be set in CI.
 const OVERRIDE = 'DISABLE_DATABASE_ENVIRONMENT_CHECK'
 
-export async function ensureInternalMetadata(): Promise<void> {
+async function ensureInternalMetadata(): Promise<void> {
   await sql`create table if not exists internal_metadata (
     key text primary key,
     value text not null,

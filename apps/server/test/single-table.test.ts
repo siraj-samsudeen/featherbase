@@ -18,6 +18,7 @@ async function setup() {
       { column_name: 'title', column_type: 'Data', default_value: 'Default Title' },
       { column_name: 'count', column_type: 'Int', default_value: '5' },
       { column_name: 'active', column_type: 'Check', default_value: '0' },
+      { column_name: 'rate', column_type: 'Float', default_value: '2.5' },
     ],
   })
 }
@@ -36,15 +37,17 @@ describe('SET-001: settings tables', () => {
     expect(doc.title).toBe('Default Title')
     expect(doc.count).toBe(5)
     expect(doc.active).toBe(false)
+    expect(doc.rate).toBe(2.5)
   })
 
   test('persists saved values (typed round-trip) with exactly one instance', async () => {
     await setup()
-    await saveDoc(DT, { title: 'Configured', count: 42, active: true }, 'Administrator')
+    await saveDoc(DT, { title: 'Configured', count: 42, active: true, rate: 0.75 }, 'Administrator')
     const doc = await getDoc(DT, DT, 'Administrator')
     expect(doc.title).toBe('Configured')
     expect(doc.count).toBe(42)
     expect(doc.active).toBe(true)
+    expect(doc.rate).toBe(0.75)
 
     // Saving again updates in place — no second record.
     await saveDoc(DT, { title: 'Reconfigured' }, 'Administrator')

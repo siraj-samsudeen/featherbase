@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
+import { useRouter, useRouterState } from '@tanstack/react-router'
 import { APP_ROOT_PATTERN } from 'shared'
 import { markSetupOffer } from './FirstRunSetup'
 import { ApiError, api, landingPath, login, loginDelegated, signUp, type BrandSignInMethod, type SessionUser, type SignedIn } from '../lib/api'
@@ -41,7 +41,7 @@ const REFUSALS: Record<string, (p: { appName: string; google: string; service: s
 
 // #474: "Try another Google account" restarts Google sign-in with the account
 // picker forced, so the account just refused is never silently reused.
-export const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
+const GOOGLE_RETRY_HREF = '/api/oauth/google/login?prompt=select_account'
 
 const SIGN_IN_FAILED = 'Sign-in failed. Please try again.'
 // Server messages a person may read as they are: refusals the server already
@@ -51,7 +51,7 @@ const SHOWN_AS_SENT = new Set(['AuthenticationError', 'PermissionError', 'Servic
 /** What the page says about a failed sign-in. A validation message from the
  *  server is a request shape ("Expected { usr, pwd }"), never shown on the
  *  sign-in forms; sign-up's validation messages are worded for people. */
-export function signInErrorText(err: unknown, opts: { blank: string; showValidation?: boolean }): string {
+function signInErrorText(err: unknown, opts: { blank: string; showValidation?: boolean }): string {
   if (!(err instanceof ApiError)) return SIGN_IN_FAILED
   if (err.type === 'ValidationError') return opts.showValidation ? err.message : opts.blank
   return SHOWN_AS_SENT.has(err.type) ? err.message : SIGN_IN_FAILED
@@ -75,7 +75,7 @@ export function rememberLoginNext(next: string | undefined): void {
 
 /** The saved destination, left in place (a refused Google sign-in comes back
  *  to the sign-in page without `next`, and a later sign-in still needs it). */
-export function peekLoginNext(): string | undefined {
+function peekLoginNext(): string | undefined {
   try {
     return safeLoginNext(sessionStorage.getItem(LOGIN_NEXT_KEY) ?? undefined)
   } catch {
@@ -130,7 +130,6 @@ export function LoginPage() {
     url.searchParams.set('next', next)
     window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
   }, [next]) // eslint-disable-line react-hooks/exhaustive-deps
-  const navigate = useNavigate()
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
   const [appName, setAppName] = useState('Featherbase')

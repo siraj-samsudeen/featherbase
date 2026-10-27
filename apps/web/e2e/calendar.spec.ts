@@ -4,8 +4,7 @@ const DT = 'Calendar header responsiveness with a very long Table name'
 
 // UI-021: docs appear on their dates; dragging an event updates the date
 // field. Dates are chosen inside the current month so the calendar's default
-// month shows them. Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md): mouse-drag mechanics and the
+// month shows them. Mouse-drag mechanics and the
 // date-cell/testid checks around them stay in named steps.
 const now = new Date()
 const pad = (n: number) => String(n).padStart(2, '0')

@@ -4,13 +4,6 @@ import type { TestClient } from 'feather-testing-postgres'
 
 // UI-017: document tags add/list/remove, gated by document read permission.
 //
-// KNOWN BUG (discovered during the terminology rename, not fixed here — out
-// of scope for a test-only change): src/index.ts's /api/tags routes still
-// query/insert tag_link by its pre-rename column names (`ref_table`,
-// `owner`), but the physical table was renamed to `ref_table`/`created_by`
-// by migrations/0055_terminology_rename.sql. Every request below will 500
-// until those three routes are updated to the new column names.
-
 const DT = 'Tag Srv DT'
 
 // Each test builds its Table + document inside its own sandbox transaction.
@@ -69,5 +62,34 @@ describe('UI-017: tags', () => {
       body: JSON.stringify({ table: DT, row_id: 't1', tag: '  ' }),
     })
     expect(res.status).toBe(417)
+  })
+})
+
+describe('Tag a row freely', () => {
+  async function world(admin: TestClient) {
+    await setup(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Tag Srv Reader' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'Tag Srv Reader', tier: 'basic', can_read: true },
+    })
+  }
+  const tagPath = `/api/tags/${encodeURIComponent(DT)}/t1`
+
+  test('a tag one reader adds is seen, and can be removed, by another reader', async ({ admin, createUser }) => {
+    await world(admin)
+    const first = await createUser({ roles: ['Tag Srv Reader'] })
+    const second = await createUser({ roles: ['Tag Srv Reader'] })
+    expect((await first.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'urgent' }) })).status).toBe(201)
+    expect((await second.get<{ tags: string[] }>(tagPath)).tags).toEqual(['urgent'])
+    expect((await second.fetch(`${tagPath}/urgent`, { method: 'DELETE' })).status).toBe(200)
+    expect((await first.get<{ tags: string[] }>(tagPath)).tags).toEqual([])
+  })
+
+  test('someone who cannot read the row can neither see nor change its tags', async ({ admin, createUser }) => {
+    await world(admin)
+    const outsider = await createUser({ roles: [] })
+    expect((await outsider.fetch(tagPath)).status).toBe(403)
+    expect((await outsider.fetch('/api/tags', { method: 'POST', body: JSON.stringify({ table: DT, row_id: 't1', tag: 'x' }) })).status).toBe(403)
   })
 })

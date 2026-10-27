@@ -48,8 +48,8 @@ Featherbase is built on **React + Hono + Postgres**, as a pnpm workspace:
 > workspace package.
 
 The Convex implementation is retired. Its history is preserved on the
-`archive/convex-v1` tag, and its capability specs live under
-[docs/archive/convex-capabilities/](../archive/convex-capabilities/).
+`archive/convex-v1` tag, and its capability specs lived under
+`docs/archive/convex-capabilities/` (removed Oct 2026; see git history).
 
 ## Consequences
 
@@ -65,7 +65,7 @@ third requirement — is unsolved on this stack and remains open.
 
 **Retained.** [ADR 0005](0005-naming-featherbase.md) (the name) is unaffected,
 as is the vision in [VISION.md](../VISION.md) and the research in
-[research/](../research/), all of which are stack-independent.
+`docs/research/` (removed Oct 2026; see git history), all of which are stack-independent.
 
 ## Addendum (terminology rename, #59/#61)
 
@@ -78,5 +78,5 @@ own vocabulary (Table/Row/Column, and more), and the API surface is being
 redesigned around a unified action registry rather than Frappe's REST/RPC
 shape. This ADR is left as the historical record of *why React + Hono +
 Postgres was chosen*, which is unaffected by the rename. For the current
-vocabulary, [GLOSSARY.md](../GLOSSARY.md) is the source of truth, not this
-document.
+vocabulary, the glossary is the source of truth, not this document — then
+`docs/GLOSSARY.md`, now [CONTEXT.md](../../CONTEXT.md).

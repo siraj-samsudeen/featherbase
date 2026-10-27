@@ -61,7 +61,7 @@ export function validateOperationFacts(operation: AppOperationDeclaration, table
 class AccessRefusal extends AppError {
   constructor(readonly reason: string) { super('PermissionError', 'Application access refused') }
 }
-export function refuseAppAccess(reason = 'scope'): never { throw new AccessRefusal(reason) }
+function refuseAppAccess(reason = 'scope'): never { throw new AccessRefusal(reason) }
 
 export async function recordAppAccessRefusal(user: string, app: string, operation: string, reason: string): Promise<never> {
   const boundedName = (value: string) => name.safeParse(value).success ? value : 'unknown'

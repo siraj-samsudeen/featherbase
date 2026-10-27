@@ -100,13 +100,12 @@ async function prepareRun(ctx: HookContext): Promise<void> {
     // Items are STRUCTURE, and structure comes from the template — never
     // from the payload. Otherwise a caller could hand itself a checklist of
     // its own devising (or an empty one) and walk straight past the submit
-    // gate. An unknown template leaves the run itemless; `template` is reqd,
-    // so validation refuses it a moment later.
-    const [template] = row.template
-      ? await ctx.tx`
-          select * from ${ctx.tx(platformRelation(tableName('Checklist Template')))}
-          where row_id = ${String(row.template)}`
-      : [undefined]
+    // gate. `template` is reqd, so a new run has always named one by now; an
+    // unknown one leaves the run itemless and the Reference check refuses it
+    // a moment later.
+    const [template] = await ctx.tx`
+      select * from ${ctx.tx(platformRelation(tableName('Checklist Template')))}
+      where row_id = ${String(row.template)}`
     const templateItems = template
       ? await ctx.tx`
           select * from ${ctx.tx(platformRelation(tableName('Checklist Template Item')))}

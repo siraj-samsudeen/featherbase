@@ -15,9 +15,6 @@ decisions live in one root-level ADR set.
   project uses and, under each, the words it has retired (`_Avoid_`). Treat the
   `_Avoid_` lists as binding on prose you write — issue titles, spec text, test
   names, commit messages.
-- **`docs/GLOSSARY.md`** — the same concepts annotated with *where they live in
-  the code*. Read this when you need to find an implementation; read
-  `CONTEXT.md` when you need to choose a word.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
   [ADR 0006](../adr/0006-stack-react-hono-postgres.md) records the current
   stack and supersedes 0001–0004; later ADRs cover topology, record identity,
@@ -37,13 +34,12 @@ them lazily when terms or decisions actually get resolved.
 ├── CLAUDE.md                          ← invariants + session protocol
 ├── CONTEXT.md                         ← ubiquitous language + _Avoid_ lists
 ├── docs/
-│   ├── GLOSSARY.md                    ← same terms, mapped to the code
 │   ├── adr/                           ← all architecture decisions
 │   │   ├── 0006-stack-react-hono-postgres.md
 │   │   ├── 0007-app-and-database-topology.md
 │   │   └── 0009-record-identity-id-and-name.md
-│   ├── specs/                         ← feather-spec requirements
-│   └── design/                        ← execution plan, requirements framework
+│   └── …                              ← TESTING, DEPLOY, PREVIEW, VISION
+├── openspec/specs/                    ← behaviour specs (sole authority)
 ├── apps/{server,web}
 └── packages/shared
 ```
@@ -55,9 +51,8 @@ context-scoped `docs/adr/` directories alongside them.
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor
-proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`,
-and failing that `docs/GLOSSARY.md`. Don't drift to synonyms the glossary
-explicitly avoids — in particular this project uses **Table / Row / Column**,
+proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`.
+Don't drift to synonyms the glossary explicitly avoids — in particular this project uses **Table / Row / Column**,
 not the Frappe vocabulary it started from.
 
 If the concept you need isn't in the glossary yet, that's a signal — either

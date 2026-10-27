@@ -456,3 +456,90 @@ describe('where a missing variable refuses', () => {
     expect(runTsx(['src/cli.ts', 'list-tokens', 'Administrator'], withJwt).ok).toBe(true)
   }, 180_000)
 })
+
+// Running an Instance / Two releases at once do not collide: a release that
+// starts while another holds the release lock waits, applies nothing, and
+// then finds the work done.
+describe('two releases at once', () => {
+  it('a second release waits for the first, then applies nothing', async () => {
+    const { spawn } = await import('node:child_process')
+    const name = `featherbase_lock_${randomUUID().replaceAll('-', '')}`
+    await admin.unsafe(`create database "${name}"`)
+    created.push(name)
+    const url = new URL(config.databaseUrl)
+    url.pathname = `/${name}`
+    const env = {
+      ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test',
+      ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '', ALLOW_MOCK_OAUTH: '',
+    }
+    const holder = postgres(url.toString(), { max: 1, onnotice: () => {} })
+    let output = ''
+    let exited: number | null = null
+    let child: ReturnType<typeof spawn> | undefined
+    try {
+      let release!: () => void
+      const held = new Promise<void>((resolveHeld) => {
+        void holder.begin(async (tx) => {
+          await tx`select pg_advisory_xact_lock(hashtext('featherbase-release'))`
+          resolveHeld()
+          await new Promise<void>((resolveRelease) => (release = resolveRelease))
+        })
+      })
+      await held
+      child = spawn(process.execPath, [tsx, 'src/release.ts'], { cwd: server, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      child.stdout!.on('data', (d) => (output += d))
+      child.stderr!.on('data', (d) => (output += d))
+      child.on('exit', (code) => (exited = code ?? 1))
+      // While the lock is held the release applies nothing and does not finish.
+      await new Promise((resolveWait) => setTimeout(resolveWait, 6_000))
+      expect(exited).toBeNull()
+      expect(output).not.toMatch(/applied /)
+      release()
+      const deadline = Date.now() + 80_000
+      while (exited === null && Date.now() < deadline) await new Promise((resolveWait) => setTimeout(resolveWait, 100))
+      expect(exited, output).toBe(0)
+      expect(output).toMatch(/migrations up to date/)
+    } finally {
+      child?.kill()
+      await holder.end({ timeout: 1 })
+    }
+  }, 120_000)
+})
+
+describe('release preflight: the btree_gist extension 0102 creates', () => {
+  test('a release that has not yet run 0102 checks the extension and says it is available', async () => {
+    await sql`delete from migration where name = '0102_person_resolution.ts'`
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toContain('btree_gist available for 0102')
+    expect(lines.find((l) => l.startsWith('pending migrations:'))).toContain('0102_person_resolution.ts')
+  })
+
+  test('once 0102 has run the check is not repeated', async () => {
+    expect(await preflightRelease({ environment: 'test' })).not.toContain('btree_gist available for 0102')
+  })
+
+  test('a server that does not ship the extension, or a role that may not create it, is refused with the fix', async () => {
+    const { assertBtreeGist } = await import('../src/release-preflight')
+    expect(() => assertBtreeGist({ installed: true, available: false, can_create: false })).not.toThrow()
+    expect(() => assertBtreeGist({ installed: false, available: true, can_create: true })).not.toThrow()
+    expect(() => assertBtreeGist({ installed: false, available: false, can_create: true })).toThrow(/does not ship\. Install the contrib package first/)
+    expect(() => assertBtreeGist({ installed: false, available: true, can_create: false })).toThrow(/may not create extensions.*create extension btree_gist;/)
+  })
+})
+
+describe('the refusal for a publication that would make updates fail', () => {
+  test('each publication is named once with its fix, quoting names that need it', async () => {
+    const { publicationRefusal } = await import('../src/release-preflight')
+    const text = publicationRefusal([
+      { pubname: 'warehouse_cdc', schemaname: 'featherbase', tablename: 'has_role', has_column_list: false },
+      { pubname: 'weird "name"', schemaname: 'featherbase', tablename: 'has_role', has_column_list: true },
+      { pubname: 'warehouse_cdc', schemaname: 'featherbase', tablename: 'person', has_column_list: false },
+    ])
+    expect(text).toContain('publication "warehouse_cdc" covers featherbase.has_role; publication "weird "name"" covers featherbase.has_role with a column list; publication "warehouse_cdc" covers featherbase.person: ')
+    const fixes = text.split('Fix it first:\n')[1].split('\n')
+    expect(fixes).toEqual([
+      '  ALTER PUBLICATION "warehouse_cdc" SET (publish_generated_columns = stored);',
+      '  publication "weird "name"" lists columns for featherbase.has_role: drop the column list (ALTER PUBLICATION "weird ""name""" SET TABLE … without one), or include every stored generated column after 0101;',
+    ])
+  })
+})

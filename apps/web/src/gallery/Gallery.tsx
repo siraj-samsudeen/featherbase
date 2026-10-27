@@ -55,6 +55,9 @@ const LINES: Line[] = [
   { name: 'Men Formal Shirt', target: 1_38_000, sales: 1_42_000 },
 ]
 const pct = (l: Line) => (l.sales / l.target) * 100
+// One key for every example list; the empty one never asks for it.
+const lineKey = (l: Line) => l.name
+
 const LINE_COLUMNS: DataColumn<Line>[] = [
   { key: 'name', header: 'Subcategory', cell: (l) => l.name, phone: 'title' },
   {
@@ -169,7 +172,7 @@ export function Gallery() {
             caption="Where the gap is"
             rows={LINES}
             columns={LINE_COLUMNS}
-            rowKey={(l) => l.name}
+            rowKey={lineKey}
             empty={{ title: 'No targets this month', body: 'Targets appear here once they are set for your Sections.' }}
           />
           <DataList
@@ -181,14 +184,14 @@ export function Gallery() {
               { key: 'meta', header: 'Reference', phone: 'meta', cell: () => 'https://example.invalid/a/very/long/reference/path/without/any/spaces/at/all' },
               { key: 'v', header: 'AVeryLongMetadataDerivedColumnHeaderWithoutSpaces', cell: (l) => fmtINR(l.sales) },
             ]}
-            rowKey={(l) => l.name}
+            rowKey={lineKey}
             empty={{ title: 'Nothing to show', body: 'This example always has one row.' }}
           />
           <DataList
             caption="Checklist runs"
             rows={[] as Line[]}
             columns={LINE_COLUMNS}
-            rowKey={(l) => l.name}
+            rowKey={lineKey}
             empty={{ title: 'No checklists yet', body: 'Runs you start appear here.', action: <Button variant="primary">Start a checklist</Button> }}
           />
         </Section>

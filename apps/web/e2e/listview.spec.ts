@@ -106,7 +106,7 @@ test.beforeAll(async ({ request }) => {
   }))
 })
 
-// UI-002, migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// UI-002:
 // counts, sort clicks and pagination controls are all addressed by
 // data-testid rather than a label or button name, so they stay in named
 // steps — assertHas covers the plain presence/text/count checks the DSL CAN

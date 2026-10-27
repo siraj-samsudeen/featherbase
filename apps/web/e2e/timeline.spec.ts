@@ -28,8 +28,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the field edit is a `[data-field=...]` control with no label, and the
+// The field edit is a `[data-field=...]` control with no label, and the
 // ordering check evaluates DOM attributes directly, so the whole edit +
 // comment round trip stays in one named step; session.visit carries the
 // plain navigation.

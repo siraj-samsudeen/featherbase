@@ -13,7 +13,7 @@ test('#408 a Person file with an employee_code column: the column is refused wit
   Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes })
   fireEvent.change(await screen.findByTestId('iw-file-input'), { target: { files: [file] } })
   const notice = await screen.findByTestId('iw-retired-0-2')
-  expect(notice).toHaveTextContent('employee_code is no longer a Person field — add codes on the Identifiers panel or with people:resolve')
+  expect(notice).toHaveTextContent('employee_code is no longer a Person field — add codes on the Identifiers panel of the Person form')
   const select = screen.getByTestId('iw-map-0-2') as HTMLSelectElement
   expect(select).toBeDisabled()
   expect(select.value).toBe('')

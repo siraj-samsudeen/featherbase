@@ -50,8 +50,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the format picker is a testid-addressed native <select>, and the checks are
+// The format picker is a testid-addressed native <select>, and the checks are
 // attribute assertions / "does NOT contain" checks the DSL's assertHas can't
 // express, so the whole flow stays in named steps; session.visit carries the
 // navigation between print URLs.

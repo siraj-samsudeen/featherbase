@@ -1,4 +1,4 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
+import { test, adminAuth, type APIRequestContext } from './fixtures'
 
 const SUBJECT = 'E2E: helpdesk renders in the generic Admin'
 
@@ -43,8 +43,7 @@ test.afterAll(async ({ request }) => {
   await request.delete(`/api/table/HD%20Ticket/${name}`, { headers: H })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// navigation/presence checks are plain assertText/assertHas; clicking the
+// Navigation/presence checks are plain assertText/assertHas; clicking the
 // row by its plain text (no accessible name distinct from a label) stays a
 // named step.
 test('helpdesk: a ticket renders in the Admin and opens with workflow actions', async ({

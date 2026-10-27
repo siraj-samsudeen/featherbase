@@ -77,7 +77,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
 // land under B when the account changes mid-debounce). Logout flushes A's
 // remainder while A's credentials still exist — see AdminLayout.logout.
 
-export interface ServerEventSink {
+interface ServerEventSink {
   /** The user the transport would authenticate as right now. */
   currentUser: () => string | null
   post: (events: Array<Record<string, unknown>>) => void
@@ -297,7 +297,7 @@ export function actionForLocation(
   return null
 }
 
-export interface EntryDisplay {
+interface EntryDisplay {
   kind: RecentKind
   label: string
   sub?: string

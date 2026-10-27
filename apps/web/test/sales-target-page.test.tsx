@@ -453,6 +453,93 @@ test('the rendered report says subcategory, never material group or a bare group
   wording()
 })
 
+// ---- What the page tells the reader about its own figures ----------------------------------
+async function openWithLiveRows(
+  admin: Parameters<typeof viewer>[0], api: { fetch: (path: string, init?: RequestInit) => Promise<Response> },
+  source: (text: string) => unknown[][],
+) {
+  await viewer(admin)
+  delete process.env.DIVE_ID
+  _setSourceReader(async (text: string) => source(text))
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+}
+
+test('the page says how current the figures are, and that sales are before tax and net of returns', async ({ admin, api }) => {
+  await openWithLiveRows(admin, api, (text) => {
+    if (/with base as/.test(text)) return [['010101001', 'Store A', 'STA', 100, 60, 1, 1]]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts']]
+    return [['2026-09-15', 1]] // the warehouse's sales run through the 15th
+  })
+  const fresh = await screen.findByTestId('snapshot-freshness')
+  expect(fresh).toHaveTextContent('Data as of 15-Sep-2026')
+  expect(fresh).toHaveTextContent('counted through 15-Sep-2026')
+  expect(fresh).not.toHaveTextContent('refreshed') // a live read has nothing to be stale
+  expect(screen.getByTestId('identity-sub')).toHaveTextContent('Sales before tax, net of returns')
+})
+
+test('a subcategory with a target and no sales figure shows a dash, and the Section says how many have none', async ({ admin, api }) => {
+  await openWithLiveRows(admin, api, (text) => {
+    // 010101001 has a target day but no actual on it: its sales are missing, not ₹0.
+    if (/with base as/.test(text)) return [['010101001', 'Store A', 'STA', 100, null, 0, 1]]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts']]
+    return [['2026-09-17', 1]]
+  })
+  const missing = await screen.findByTestId('snapshot-missing')
+  expect(missing).toHaveTextContent('1 subcategory has no actuals in this period and show “—” rather than ₹0.00.')
+  const row = screen.getByTestId('snapshot-row')
+  expect(row).toHaveTextContent('—')
+  expect(row).not.toHaveTextContent('₹0.00')
+})
+
+test('the hours after midnight on the 1st say no sales are recorded yet, never zero', async ({ admin, api }) => {
+  await openWithLiveRows(admin, api, (text) => {
+    if (/with base as/.test(text)) return []
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts']]
+    return [['2026-08-31', 1]] // the warehouse is still on last month
+  })
+  const note = await screen.findByTestId('snapshot-no-data-yet')
+  expect(note).toHaveTextContent('No sales recorded for this month yet')
+  expect(note).toHaveTextContent('This is not a sales figure of zero.')
+})
+
+test('with no targets in the warehouse the page says so and shows no ₹0 target', async ({ admin, api }) => {
+  await openWithLiveRows(admin, api, (text) => {
+    if (/with base as/.test(text)) return [['010101001', 'Store A', 'STA', null, 40, 1, 1]]
+    if (/merchandise_hierarchy/.test(text)) return [['010101001', 'Shirts']]
+    return [['2026-09-17', 0]] // no material-group target rows this month
+  })
+  const note = await screen.findByTestId('snapshot-targets-unavailable')
+  expect(note).toHaveTextContent('Targets are not available right now')
+  expect(note).toHaveTextContent('A blank target is not a target of zero.')
+  expect(screen.getByTestId('snapshot-row')).toHaveTextContent('₹40.00')
+})
+
+test('a reader with nothing assigned is told no subcategories are assigned to them', async ({ admin, createUser }) => {
+  await viewer(admin)
+  const nobody = await createUser({ email: 'unassigned.page@example.com', fullName: 'Unassigned Reader', roles: ['Sales Target Viewer'] })
+  await renderApp('/featherbase/sales-target', nobody)
+  const card = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(card).toHaveAttribute('data-state', 'no-assignment'))
+  expect(card).toHaveTextContent('No subcategories assigned')
+  expect(card).toHaveTextContent('Ask your manager to assign your subcategories.')
+  expect(screen.queryByTestId('snapshot-row')).not.toBeInTheDocument()
+})
+
+test('a live report service that cannot be reached is called unavailable, in the same plain sentence', async ({ admin, api }) => {
+  _setEmbedFetch(async () => { throw new Error('connection refused') })
+  await viewer(admin)
+  const login = await api.fetch('/api/login', { method: 'POST', body: JSON.stringify({ usr: 'test_employee_1', pwd: 'pw-1' }) })
+  const { token } = (await login.json()) as { token: string }
+  await renderApp('/featherbase/sales-target', { token, user: 'test_employee_1' } as never)
+  const card = await screen.findByTestId('embed-state')
+  await waitFor(() => expect(card).toHaveAttribute('data-state', 'error'))
+  expect(card).toHaveTextContent('Report unavailable')
+  expect(card).toHaveTextContent(PLAIN_UNAVAILABLE)
+  expect(card).not.toHaveTextContent('page-test-token') // the credential never reaches the browser
+})
+
 // #500: when the live report cannot be opened, store managers read one plain sentence and can try
 // again; the server's own words (status, upstream message) stay in the server log.
 const PLAIN_UNAVAILABLE = "The report couldn't load right now. Try again in a few minutes."

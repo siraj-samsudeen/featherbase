@@ -12,7 +12,7 @@ interface CardCfg {
   table: string
   filters?: Filter[]
 }
-export interface ChartCfg {
+interface ChartCfg {
   label: string
   // A chart is driven EITHER by a Table + group_by (UI-026) OR by a saved
   // Report (RPT-006). Report-driven charts recompute from live report data.

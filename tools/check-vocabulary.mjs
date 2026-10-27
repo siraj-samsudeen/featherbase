@@ -27,7 +27,7 @@ export const RETIRED_WORDS = [
 ]
 
 const IN_SCOPE = [/^apps\/.+\/src\//, /^openspec\//, /^docs\//, /^[^/]+\.md$/]
-const SKIP_FILES = [/^PROGRESS\.md$/, /^CONTEXT\.md$/, /^docs\/archive\//, /^docs\/research\//]
+const SKIP_FILES = [/^CONTEXT\.md$/]
 const ALLOW_MARK = /vocabulary-allow/
 
 export function inScope(file) {

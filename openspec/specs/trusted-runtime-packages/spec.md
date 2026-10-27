@@ -35,6 +35,12 @@ it holds untouched.
 - **THEN** the save is refused
 - **AND** every row Tasker held before is still there afterward
 
+#### Scenario: A turned-off app can't be opened
+
+- **WHEN** an admin turns Tasker off and a colleague then opens its address
+- **THEN** they are told it is unavailable and that its data is kept
+- **AND** Tasker is no longer in their app catalog
+
 ### Requirement: Re-enabling needs the app's code in place
 
 Turning a disabled app back on SHALL require its code to still be present.
@@ -238,59 +244,66 @@ current address and keeping the rest of what was being looked at intact.
   same thing that link pointed to
 
 ### Requirement: platform_storage_is_explicit
+Featherbase-owned relations and functions SHALL live in PostgreSQL schema
+`featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
+existing objects without replacing their identities, rows, constraints, indexes,
+grants, RLS policies, references or migration history. Core logical identities
+SHALL remain compatible and unqualified; application logical and physical
+identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
+relations deterministically without pooled mutable `search_path` routing.
+Security-definer functions SHALL restrict name resolution and explicitly address
+their dependencies.
 
-Featherbase SHALL keep its own data in a clearly separate place from every
-installed app's data, and from every other app's. Upgrading Featherbase
-itself SHALL NOT move, rewrite, or lose an app's stored rows, permissions,
-or history. A database created before this separation existed SHALL be
-brought up to it automatically, in one uninterrupted step, before Featherbase
-starts using it — nothing already there is lost or duplicated, including if
-that step has to be retried after a failure.
+`public.site` SHALL remain an explicitly named pre-tenant host registry. It SHALL
+NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
+isolated in its selected site schema.
+
+Legacy databases SHALL have all migrations through `0087_dataset_snapshot_tables.ts`
+recorded before upgrading directly with the current release. Older or incomplete
+legacy ledgers SHALL be rejected before migration mutation, naming the missing
+migrations and requiring an intermediate historical upgrade. Supported legacy
+upgrades SHALL apply pending prerequisites in order before convergence. Every
+migration's effects and ledger entry SHALL commit together; retries SHALL skip
+committed prerequisites and resume the first pending migration.
 
 #### Scenario: fresh_and_upgrade_converge_to_same_shape
-
-- **WHEN** a brand-new database and a database created before this
-  separation existed both run the same current upgrade
-- **THEN** both end up with Featherbase's own data and every installed app's
-  data in the same clearly separated shape
-- **AND** existing rows, grants and history are preserved either way
+- **WHEN** a fresh database and an asymmetric exact pre-convergence database run
+  the production migration command
+- **THEN** both expose the same Featherbase-owned object shape, preserve expected
+  upgrade rows and privileges, retain scoped app storage, and leave only the site
+  registry at `public.site`.
 
 #### Scenario: failed_convergence_retries_atomically
-
-- **WHEN** that one-time move is forced to fail partway through and is then
-  retried
-- **THEN** the failed attempt leaves nothing partially moved
-- **AND** the retry finishes cleanly, without duplicating anything
+- **WHEN** convergence is forced to fail before commit and then rerun
+- **THEN** the failed attempt moves no partial object set and the retry produces
+  exactly one complete migrated state without duplicated rows or grants.
 
 #### Scenario: production_era_prerequisites_precede_convergence
-
-- **WHEN** a database from an older, still-supported release runs the
-  current upgrade
-- **THEN** every upgrade step it still needs runs first, in order, before
-  the separation itself completes
-- **AND** existing rows, grants and history are preserved throughout
+- **WHEN** a database released by commit 3a6770ff651a308bfae0e31b5c525705c356a5a5
+  with all migrations through 0087 recorded runs the current release command
+- **THEN** pending runtime-storage prerequisites and schema convergence complete,
+  preserving existing object identities, rows, grants and ledger timestamps
+- **AND** rerunning release makes no duplicate history or grant contributions.
 
 #### Scenario: failed_legacy_prerequisite_retries_atomically
-
-- **WHEN** one of those still-pending older upgrade steps fails partway
-  through
-- **THEN** neither its change nor its record of having run survives
-- **AND** retrying applies it exactly once, keeping every earlier step that
-  had already finished
+- **WHEN** a pending legacy prerequisite fails after beginning its changes
+- **THEN** neither its changes nor its ledger entry survive
+- **AND** retry applies it once while retaining earlier committed prerequisites.
 
 #### Scenario: unsupported_legacy_ledger_rejected
-
-- **WHEN** a database is too old — missing upgrade steps from further back
-  than Featherbase still supports catching up on
-- **THEN** the upgrade refuses and says which earlier steps are missing,
-  without touching anything
+- **WHEN** a legacy database lacks any migration recorded by the supported 0087 floor
+- **THEN** release names the missing migrations and required intermediate upgrade
+  without applying migrations or creating destination storage.
 
 ### Requirement: A new access rule needs a new, reviewed version
 
 An app SHALL only gain a new access rule — such as who may read or act on
 one of its tables — by shipping a new, reviewed version; Featherbase SHALL
 NOT let an already-installed version quietly pick up a rule it didn't
-originally declare.
+originally declare. A new version MAY withdraw a rule its predecessor
+declared; applying it SHALL remove only the grant that app created, and
+record the withdrawal in the activity log. The image SHALL ship the installed
+predecessor beside the new version so the upgrade can find it.
 
 #### Scenario: An old version can't gain a new rule for free
 
@@ -298,6 +311,14 @@ originally declare.
   never declared
 - **THEN** using it requires installing that reviewed new version, previewed
   and turned on like any other upgrade
+
+#### Scenario: A new version can withdraw a rule
+
+- **WHEN** an upgrade's new version no longer declares an access rule its
+  installed version declared
+- **THEN** the preview lists the rule as withdrawn
+- **AND** applying the upgrade removes the grant the app created, and no other
+- **AND** the activity log records the withdrawal
 
 ### Requirement: A row with retained activity or an outdated view resists deletion
 
@@ -316,6 +337,150 @@ delete was made against an out-of-date view of it.
 - **WHEN** someone tries to delete a row using a copy of it they loaded
   before someone else changed it
 - **THEN** the deletion is refused
+
+### Requirement: explicit_runtime_policy_upgrade
+
+Package discovery SHALL validate read/action policy and required callback
+declarations as immutable artifact contents. Missing policies SHALL NOT become
+implicit unscoped grants. The host SHALL recognize exact historical version-1
+artifacts for predecessor verification and reviewed upgrade planning without
+executing undeclared actions. Install/restart SHALL expose their policy-upgrade
+diagnostic while preserving data and unaffected contributions. Adding explicit
+policies SHALL require a new package version and ordinary preview, upgrade and
+activation; stored artifacts SHALL NOT be rewritten or automatically upgraded.
+Pending/obsolete clients SHALL retain existing fail-closed identity behavior.
+
+#### Scenario: tasker_policy_upgrade_preserves_work
+- **WHEN** exact Tasker 2.0.0 is upgraded to a new artifact with explicit Table
+  policies through a code-only cumulative migration and activated
+- **THEN** existing work and retry identities remain intact and actions execute
+  under current Table permissions, without imposing store roles on Tasker
+
+#### Scenario: historical_artifact_is_not_relabelled
+- **WHEN** a policy is inserted into an installed artifact without a new version
+- **THEN** identity verification rejects it rather than trusting edited code
+
+#### Scenario: policy_restart_is_fail_closed
+- **WHEN** a required scope resolver/product authorizer is absent across restart
+- **THEN** the protected contribution remains unavailable with a diagnostic
+- **AND** restoring the exact artifact restores one registration, not duplicate gates
+
+### Requirement: A failed installation leaves nothing behind
+
+If installing an app fails, Featherbase SHALL leave nothing of it behind — no
+tables, no access and no place in anyone's app catalog — so the admin can fix
+the cause and install it again.
+
+#### Scenario: An app with a broken access rule installs nothing
+
+- **WHEN** an admin installs an app whose access rule names a role that
+  doesn't exist
+- **THEN** the installation is refused
+- **AND** none of the app's tables exist and it is in no one's app catalog
+
+### Requirement: An app can't take a name Featherbase uses itself
+
+Featherbase SHALL refuse to offer an app whose name it already uses for its
+own addresses, such as "featherbase" or "api", so an app can never stand in
+front of Featherbase's own screens.
+
+#### Scenario: A reserved name is refused
+
+- **WHEN** an app is delivered under the name "api"
+- **THEN** Featherbase does not offer it for installation and says the name
+  is reserved
+
+### Requirement: Only administrators manage apps
+
+Installing, turning off, upgrading and inspecting installed apps SHALL be open
+only to administrators. An ordinary member sees only the apps they may open.
+
+#### Scenario: A member can't turn an app off
+
+- **WHEN** an ordinary member tries to turn Tasker off or preview an upgrade
+  of it
+- **THEN** it is refused
+- **AND** Tasker stays on
+
+### Requirement: Customizing an app's table can't change what it is
+
+An admin SHALL be able to adjust how an app's table is presented, such as its
+label, but SHALL NOT be able to change its name, where its data is kept or
+which app it belongs to. A change of that kind already on record SHALL be
+refused rather than applied.
+
+#### Scenario: Relabel, but not rename
+
+- **WHEN** an admin gives one of an app's tables a new label and also tries
+  to rename it
+- **THEN** the new label shows
+- **AND** the rename is refused and the table keeps its name
+
+### Requirement: Access an app grants lasts only while it is on
+
+Access an app gives people to shared Featherbase information, such as reading
+comments, SHALL apply only while that app is on. Turning the app off SHALL
+withdraw that access, unless another app that is still on grants the same.
+
+#### Scenario: Turning off the only app that grants it
+
+- **WHEN** Tasker is the only app letting members read comments and an admin
+  turns Tasker off
+- **THEN** members can no longer read comments
+- **AND** turning Tasker back on gives that access back
+
+### Requirement: Changing an app waits for work already under way
+
+Turning an app off, or applying its upgrade, SHALL wait for saves already under
+way in that app — including the follow-up work they trigger — to finish.
+Anything that starts afterward SHALL see the change.
+
+#### Scenario: Turning an app off during a save
+
+- **WHEN** an admin turns an app off while a save and its follow-up work are
+  still running
+- **THEN** turning off waits until both finish, and what they saved is kept
+- **AND** a save started afterward is refused
+
+### Requirement: An open app from before an upgrade is asked to reload
+
+Once an app's new version is active, a screen still running the previous
+version SHALL be refused when it reads or saves, and told to reload, rather
+than working against data shaped for the new version.
+
+#### Scenario: A stale tab after an upgrade
+
+- **WHEN** a colleague still has the previous version of an app open after an
+  admin upgrades and activates it, and they save a change
+- **THEN** the save is refused and they are asked to reload the app
+
+### Requirement: An upgrade never goes backward or rewrites its history
+
+Featherbase SHALL refuse an upgrade to the version already installed or an
+older one, and SHALL refuse a new version that describes an upgrade step
+already applied differently from how it was applied.
+
+#### Scenario: A downgrade is refused
+
+- **WHEN** an admin previews moving an app to an older version, or to the
+  version already installed
+- **THEN** the preview is refused and nothing changes
+
+#### Scenario: Rewritten history is refused
+
+- **WHEN** a new version describes an already-applied upgrade step
+  differently
+- **THEN** its preview is refused
+
+### Requirement: A turned-off app stays off through an upgrade
+
+Upgrading an app that is turned off SHALL leave it off once the new version is
+activated; the admin turns it back on separately.
+
+#### Scenario: Upgrading a turned-off app
+
+- **WHEN** an admin upgrades and activates an app that was turned off
+- **THEN** it stays off until the admin turns it on
 
 ## Deferred
 

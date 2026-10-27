@@ -20,8 +20,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// enabled/disabled and value checks on `[data-field=...]`, plus a regex URL
+// Enabled/disabled and value checks on `[data-field=...]`, plus a regex URL
 // match for the amended doc name, aren't expressible by assertHas/assertPath,
 // so the whole draft→submit→cancel→amend walk stays in one named step;
 // session.visit carries the plain navigation.

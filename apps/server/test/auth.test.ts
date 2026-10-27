@@ -104,3 +104,26 @@ describe('API-004: authentication', () => {
     expect(cleared.toLowerCase()).toContain('max-age=0')
   })
 })
+
+describe('reading a credential for sign-out and from the cookie', () => {
+  test('a percent-encoded sid cookie is decoded, and a malformed or empty one is not a credential', async () => {
+    const { credentialFromCookieHeader } = await import('../src/auth')
+    expect(credentialFromCookieHeader('a=1; sid=ab%2Bcd')).toBe('Bearer ab+cd')
+    expect(credentialFromCookieHeader('sid=%E0%A4%A')).toBeUndefined()
+    expect(credentialFromCookieHeader('sid=')).toBeUndefined()
+    expect(credentialFromCookieHeader('novalue; other=1')).toBeUndefined()
+    expect(credentialFromCookieHeader(undefined)).toBeUndefined()
+  })
+
+  test('only a correctly signed session token with an id and an expiry names a session to sign out', async () => {
+    const { sessionToRevoke } = await import('../src/auth')
+    const { sign } = await import('hono/jwt')
+    const secret = process.env.JWT_SECRET ?? 'dev-secret-change-me'
+    const exp = Math.floor(Date.now() / 1000) - 60 // expired sessions still sign out
+    expect(await sessionToRevoke('Bearer not-a-jwt')).toBeNull()
+    expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', jti: 'j', exp }, 'a-different-secret')}`)).toBeNull()
+    expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', exp }, secret)}`)).toBeNull()
+    expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', jti: 'j' }, secret)}`)).toBeNull()
+    expect(await sessionToRevoke(`Bearer ${await sign({ sub: 'p', jti: 'j', exp }, secret)}`)).toEqual({ jti: 'j', person: 'p', expiresAt: exp })
+  })
+})

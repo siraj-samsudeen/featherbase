@@ -49,7 +49,6 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ session }) => {
   // Open the saved report; group by region so the chart shows per-region counts.
   await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)

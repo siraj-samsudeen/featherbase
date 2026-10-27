@@ -9,8 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // and then go to that screen where the row is imported" and come back to,
 // because there was no *here* to come back to.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const ONE = 'Step One'

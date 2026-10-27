@@ -1,4 +1,4 @@
-// #80: Home Pages — Frappe-style curated navigation. The Admin sidebar lists
+// #80: Home Pages — curated navigation. The Admin sidebar lists
 // Home Pages (one per user module + a seeded System page); each page renders
 // grouped link cards from its `links` sub-table. This module owns the two
 // server-side halves of that:
@@ -23,18 +23,18 @@ import { sql } from './db'
 import { getRoles, permissionScope } from './permissions'
 
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
-export interface HomePageShortcut {
+interface HomePageShortcut {
   label: string
   type?: string // table | report | dashboard | url
   link_to: string
 }
 
-export interface HomePageCard {
+interface HomePageCard {
   label: string | null
   links: { label: string; link_to: string }[]
 }
 
-export interface VisibleHomePage {
+interface VisibleHomePage {
   row_id: string
   label: string
   icon: string | null
@@ -47,7 +47,7 @@ export interface VisibleHomePage {
 // under the default module (created before the Table Builder grew its module
 // field, e.g. a pre-#74 production table) go on a plain "Home" page rather
 // than a page literally named Core among the platform vocabulary.
-export function homePageForModule(module: string): { name: string; label: string } {
+function homePageForModule(module: string): { name: string; label: string } {
   if (module === 'Core') return { name: 'home', label: 'Home' }
   const slug = module
     .toLowerCase()
@@ -59,7 +59,7 @@ export function homePageForModule(module: string): { name: string; label: string
 // Find the module's home page, creating it on demand. Direct SQL on purpose:
 // these are engine-seeded navigation rows (the 0005 core-seeds discipline),
 // not user mutations — nothing in the save lifecycle applies to them.
-export async function ensureModuleHomePage(module: string): Promise<string> {
+async function ensureModuleHomePage(module: string): Promise<string> {
   const [existing] = await sql`
     select row_id from home_page where module = ${module} order by row_id limit 1`
   if (existing) return existing.row_id as string
@@ -173,7 +173,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     for (const r of rows) existing.add(r.name as string)
   }
 
-  // Mirror Frappe's is_item_allowed: a user who cannot read a Table does not
+  // A user who cannot read a Table does not
   // see its link. Cached per table — the same target appears on many pages.
   const readable = new Map<string, boolean>()
   async function canRead(table: string): Promise<boolean> {

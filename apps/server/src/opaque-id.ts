@@ -36,7 +36,3 @@ export function newServiceAccountId(): string {
 
 /** The two built-in persons keep their ids and are never re-keyed (A-B3). */
 export const BUILT_IN_PERSONS = ['Administrator', 'Guest'] as const
-
-export function isServiceAccountId(id: string): boolean {
-  return id.startsWith(SERVICE_ACCOUNT_ID_PREFIX)
-}

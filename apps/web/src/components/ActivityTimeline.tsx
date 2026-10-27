@@ -3,13 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { listResource } from '../lib/api'
 import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
+import { commentsQuery } from './Comments'
 import { fmtInstantIST } from '../lib/inr'
 
-interface CommentRow {
-  content: string
-  created_by: string
-  created_at: string
-}
 interface VersionRow {
   created_by: string
   created_at: string
@@ -24,19 +20,7 @@ type Entry =
 // their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
 export function ActivityTimeline({ table, name }: { table: string; name: string }) {
-  const comments = useQuery({
-    queryKey: ['comments', table, name],
-    queryFn: () =>
-      listResource<CommentRow>('Comment', {
-        filters: [
-          ['ref_table', '=', table],
-          ['ref_name', '=', name],
-        ],
-        fields: ['content', 'created_by', 'created_at'],
-        order_by: 'created_at asc',
-        limit_page_length: 200,
-      }),
-  })
+  const comments = useQuery(commentsQuery(table, name))
   const versions = useQuery({
     queryKey: ['versions', table, name],
     queryFn: () =>

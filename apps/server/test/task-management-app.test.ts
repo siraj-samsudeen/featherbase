@@ -291,3 +291,73 @@ describe('focus_is_private_ordered: private focus settings', () => {
     }
   })
 })
+
+describe('A personal list decides who is responsible', () => {
+  test('moving a task from someone’s personal list to a project takes it off them', async ({ admin, createUser }) => {
+    await install()
+    try {
+      const shahul = await createUser({ roles: [] })
+      const project = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: 'tasker.project', row: { project_name: 'Warehouse review' },
+      })
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK, row: { task_title: 'Count the 37 returned cartons', personal_tasks_owner: shahul.user },
+      })
+      expect(task).toMatchObject({ assigned_to: shahul.user })
+
+      const moved = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK,
+        row: { row_id: task.row_id, updated_at: task.updated_at, project: project.row_id, personal_tasks_owner: null },
+      })
+      expect(moved).toMatchObject({ project: project.row_id, personal_tasks_owner: null, assigned_to: null })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('One responsible person', () => {
+  test('handing a task from one teammate to another leaves only the new one responsible', async ({ admin, createUser }) => {
+    await install()
+    try {
+      const shahul = await createUser({ roles: [] })
+      const siraj = await createUser({ roles: [] })
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK, row: { task_title: 'Phone the supplier about 11 missing crates', assigned_to: shahul.user },
+      })
+      const handed = await shahul.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK, row: { row_id: task.row_id, updated_at: task.updated_at, assigned_to: siraj.user },
+      })
+      expect(handed).toMatchObject({ assigned_to: siraj.user })
+      const mine = await shahul.get<{ data: unknown[] }>(
+        `/api/table/${TASK}?filters=${encodeURIComponent(JSON.stringify([['assigned_to', '=', shahul.user]]))}`,
+      )
+      expect(mine.data).toEqual([])
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('A newer change is never overwritten', () => {
+  test('a save made from an older copy of the task is refused and the newer change stays', async ({ admin, createUser }) => {
+    await install()
+    try {
+      const siraj = await createUser({ roles: [] })
+      const shahul = await createUser({ roles: [] })
+      const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: TASK, row: { task_title: 'Recount aisle 7' },
+      })
+      // Both open the same copy; Shahul saves first.
+      await shahul.post('/api/save_row', {
+        table: TASK, row: { row_id: task.row_id, updated_at: task.updated_at, task_title: 'Recount aisle 7 and 8' },
+      })
+      await expect(siraj.post('/api/save_row', {
+        table: TASK, row: { row_id: task.row_id, updated_at: task.updated_at, task_title: 'Recount aisle 9' },
+      })).rejects.toMatchObject({ status: 409, message: expect.stringContaining('modified after you loaded it') })
+      expect(await admin.get(`/api/table/${TASK}/${task.row_id}`)).toMatchObject({ task_title: 'Recount aisle 7 and 8' })
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})

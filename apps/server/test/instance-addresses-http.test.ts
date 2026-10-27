@@ -508,3 +508,22 @@ describe('emailed links use the address marked for emails', () => {
     expect(String(mail.body)).toContain(`${ADMIN}/featherbase/admin/waiting-for-access`)
   })
 })
+
+describe('an address that opens an installed app package', () => {
+  test('its sign-in page carries the package title, and a person who can open the app lands on its root', async ({ api, admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    const OTHER = 'https://other.example.com'
+    config.instanceAddresses = parseInstanceAddresses(
+      JSON.stringify([{ address: OTHER, opens: 'other', emails: true }, { address: ADMIN, opens: 'admin' }]),
+      'test',
+    )
+    expect(await (await api.fetch(`${OTHER}/api/brand`)).json()).toMatchObject({ app_name: 'Other tasks', opens: 'other' })
+    const manager = await personWith(admin, 'other.opener', ['System Manager'])
+    const { body } = await signIn(api, OTHER, manager.usr)
+    expect(body).toMatchObject({ landing: '/other/' })
+    expect(body.handoff).toBeUndefined()
+  })
+})

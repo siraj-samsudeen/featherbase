@@ -43,7 +43,6 @@ test.afterAll(async ({ request }) => {
 // SET-004: System Settings are applied globally to rendering — dates read
 // DD-Mon-YYYY, rupees group the Indian way, another currency keeps its own
 // grouping, and changing a setting re-renders without any per-Table code.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('SET-004: date format and currency render globally', async ({ session, request }) => {
   await session
     .visit(`/admin/${encodeURIComponent(DT)}`)

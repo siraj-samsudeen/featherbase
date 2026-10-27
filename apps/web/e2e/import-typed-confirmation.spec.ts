@@ -8,8 +8,7 @@ import { deleteTableIfExists } from './cleanup'
 // 25 is not. Small runs stay friction-free — the existing UPS journey (8
 // rows, no prompt) is the other half of this proof.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Confirm Guard Zones'

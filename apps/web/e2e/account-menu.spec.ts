@@ -4,8 +4,7 @@
 // password from the modal, log out, verify the old password is rejected and
 // the new one signs in.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md): the account menu and modal are
+// The account menu and modal are
 // testid-addressed (no accessible name Playwright's role/label matchers can
 // reach), so most of this stays inside named steps — the login-form
 // assertions at top and bottom are the part the DSL can express directly.

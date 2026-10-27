@@ -42,7 +42,7 @@ interface Client {
  *  every Reference to a scoped Table? Decided by the same row read the API
  *  serves (getDoc applies every Data Scope rule), so realtime can never show
  *  a row the list would hide. */
-export async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
+async function rowInScope(principal: string, table: string, rowId: string): Promise<boolean> {
   if (await isPrivileged(principal)) return true
   if (!(await getScopeMap(principal)).size) return true
   const { getDoc } = await import('./document')
@@ -119,7 +119,7 @@ export async function canSubscribe(user: SessionUser, channel: string): Promise<
   return false
 }
 
-export function publish(channel: string, event: string, payload?: unknown): void {
+function publish(channel: string, event: string, payload?: unknown): void {
   const msg: RealtimeEvent = { channel, event, payload }
   for (const l of listeners) {
     try {
@@ -171,7 +171,7 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
 //   also ends sockets whose token has expired, whose person was disabled or
 //   whose sessions were ended (#391), which were otherwise only checked at the upgrade.
 const RECENTLY_REVOKED_MS = 5 * 60_000
-export const SOCKET_RECHECK_MS = 60_000
+const SOCKET_RECHECK_MS = 60_000
 const recentlyRevoked = new Map<string, number>()
 
 function closeSignedOut(client: Client): void {

@@ -11,13 +11,13 @@ import { AppError } from './errors'
 import { logActivity } from './audit'
 import { newServiceAccountId } from './opaque-id'
 
-export const SERVICE_ACCOUNT_TABLE = 'Service Account'
+const SERVICE_ACCOUNT_TABLE = 'Service Account'
 
 // A slug, not an email — 'svc-rama-installer' (#131). It names the account;
 // the id is minted (`svc_…`).
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{1,63}$/
 
-export interface ServiceAccount {
+interface ServiceAccount {
   row_id: string
   label: string
   enabled: boolean

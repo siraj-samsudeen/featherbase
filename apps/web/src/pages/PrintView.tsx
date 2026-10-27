@@ -23,14 +23,21 @@ interface LetterHead {
   footer_html: string
 }
 
-// PRN-002: {{ field }} interpolation over a row. Admin-authored
-// templates are trusted (like Frappe's Jinja print formats).
+// PRN-002: {{ field }} interpolation over a row. The template is
+// administrator-authored and trusted; the row's values are not, so each one
+// is escaped and prints as typed, the same as the server's PDF page.
+function esc(v: unknown): string {
+  return String(v).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string,
+  )
+}
+
 function interpolate(template: string, doc: Row): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
     const v = doc[key]
     if (v == null) return ''
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
-    return String(v)
+    return esc(v)
   })
 }
 

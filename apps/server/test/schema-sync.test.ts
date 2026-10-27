@@ -124,3 +124,70 @@ describe('META-004: schema sync', () => {
     expect((await badType.json()).error.fields.title).toMatch(/column_type cannot change/)
   })
 })
+
+describe('Removing a column keeps its values', () => {
+  test('a column taken out and later put back brings its old values with it', async ({ admin }) => {
+    await setup(admin)
+    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: [baseColumns[0]] })
+    const hidden = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title']))}`,
+    )
+    expect(hidden.data).toHaveLength(2)
+    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, { columns: baseColumns })
+    const back = await admin.get<{ data: { title: string; points: number }[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(JSON.stringify(['title', 'points']))}&order_by=title%20asc`,
+    )
+    expect(back.data.map((r) => [r.title, Number(r.points)])).toEqual([['a', 1], ['b', 1]])
+  })
+})
+
+describe('Changing a Table definition', () => {
+  const put = (admin: TestClient, name: string, body: Record<string, unknown>) =>
+    admin.fetch(`/api/table_def/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(body) })
+
+  test('a definition that is not valid is refused naming each problem', async ({ admin }) => {
+    await setup(admin)
+    const res = await put(admin, DT, { columns: [{ column_name: 'Bad Name', column_type: 'Data' }] })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: { message: 'Invalid Table definition', fields: { 'columns.0.column_name': expect.any(String) } } })
+  })
+
+  test('an existing Table cannot be bound to a data source', async ({ admin }) => {
+    await setup(admin)
+    const res = await put(admin, DT, { columns: baseColumns, data_source: 'some-source', external_table: 'x' })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: { message: 'An existing Table cannot be bound to a data source' } })
+  })
+
+  test('making a Table submittable adds its hidden Amended From column', async ({ admin }) => {
+    await setup(admin)
+    expect((await put(admin, DT, { columns: baseColumns, is_submittable: true })).status).toBe(200)
+    const meta = await admin.get<{ columns: { column_name: string; column_type: string; reference_table?: string; hidden?: boolean }[] }>(
+      `/api/table/${encodeURIComponent(DT)}:meta`,
+    )
+    expect(meta.columns.find((c) => c.column_name === 'amended_from')).toMatchObject({ column_type: 'Reference', reference_table: DT, hidden: true })
+    expect(await columns()).toContain('amended_from')
+  })
+
+  test('a new unique column refuses repeats, and turning unique off allows them again', async ({ admin }) => {
+    await setup(admin)
+    const withCode = [...baseColumns, { column_name: 'code', column_type: 'Data', unique: true }]
+    expect((await put(admin, DT, { columns: withCode })).status).toBe(200)
+    await admin.post('/api/save_row', { table: DT, row: { title: 'c', code: 'X1' } })
+    await expect(admin.post('/api/save_row', { table: DT, row: { title: 'd', code: 'X1' } })).rejects.toMatchObject({
+      status: 417, fields: { code: 'code must be unique' },
+    })
+    expect((await put(admin, DT, { columns: [...baseColumns, { column_name: 'code', column_type: 'Data', unique: false }] })).status).toBe(200)
+    await admin.post('/api/save_row', { table: DT, row: { title: 'd', code: 'X1' } })
+    expect(await sql.unsafe(`select count(*)::int as n from featherbase.${TABLE} where code = 'X1'`)).toEqual([{ n: 2 }])
+  })
+
+  test('a Sub-table column must point at a Table that exists', async ({ admin }) => {
+    const res = await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Sync Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'No Such Lines' }] }),
+    })
+    expect(res.status).toBe(417)
+    expect(await res.json()).toMatchObject({ error: { fields: { lines: 'Sub-table target No Such Lines does not exist' } } })
+  })
+})

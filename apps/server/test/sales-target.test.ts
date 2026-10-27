@@ -436,6 +436,33 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
   })
 })
 
+describe('The Access Log records the store opened', () => {
+  test('a report served from the cache names the cached copy it came from', async ({ admin, api }) => {
+    await seed(admin)
+    const { _setSourceReader, SALES_TARGET_DATASET } = await import('../src/datasets/sales-target-mtd')
+    const { buildSnapshot } = await import('../src/dataset-snapshot')
+    const dayRows = [['1501', 'Attakulangara', 'ATK', '010101001', '2026-09-01', 100, 60], ['1501', 'Attakulangara', 'ATK', '010101003', '2026-09-01', 50, 20]]
+    _setSourceReader(async (text: string) => {
+      if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text)) return [['010101001', 'Shirts'], ['010101003', 'Belts']]
+      return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [['2026-09-17', 2]] : dayRows
+    })
+    try {
+      const built = await buildSnapshot(SALES_TARGET_DATASET)
+      expect(built.status).toBe('activated')
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/report', { headers: r.headers })
+      expect(((await res.json()) as { source: string }).source).toBe('snapshot')
+      const rows = await sql`
+        select method, reference_name, scope from access_log
+        where "user" = ${await idOf('test_employee_1')} and operation = 'view_report'`
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ method: 'snapshot', reference_name: built.snapshotId, scope: 'store=1501' })
+    } finally {
+      _setSourceReader(null)
+    }
+  })
+})
+
 describe('#3783 sales-target host: the assignment is derived from the Store Sections maps', () => {
   // The two Tables the store maintains in Featherbase (featherbase/apps/store-sections in the
   // data-warehouse repo). Created here through the same public API the app manifest uses, with
@@ -529,6 +556,31 @@ describe('#3783 sales-target host: the assignment is derived from the Store Sect
     expect(me.default_store).toBe('1501')
     expect(me.assignment.plant_code).toBe('1501')
     expect(me.assignment.material_groups).toEqual(['010505001', '010505002'])
+  })
+
+  test('a store that comes only from the Section maps is named by the cached figures', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-0103')
+    const { _setSourceReader, SALES_TARGET_DATASET } = await import('../src/datasets/sales-target-mtd')
+    const { buildSnapshot } = await import('../src/dataset-snapshot')
+    const dayRows = [['1501', 'Attakulangara', 'ATK', '010505001', '2026-09-01', 100, 60]]
+    _setSourceReader(async (text: string) => {
+      if (/merchandise_hierarchy/.test(text) && !/with cutoff/.test(text)) return [['010505001', 'Kurti']]
+      return /max\(actuals_as_of_date\)/.test(text) && !/with cutoff/.test(text) ? [['2026-09-17', 1]] : dayRows
+    })
+    try {
+      expect((await buildSnapshot(SALES_TARGET_DATASET)).status).toBe('activated')
+      const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+      const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { stores: unknown }
+      // 1501 has no assignment label (maps only): its name comes from the cache; 1515 keeps its label.
+      expect(me.stores).toEqual([
+        { plant_code: '1501', store_name: 'Attakulangara', sections: ['Kurti'], scope_basis: ['section_staff'] },
+        { plant_code: '1515', store_name: 'Kattakada', sections: [], scope_basis: ['assignment'] },
+      ])
+    } finally {
+      _setSourceReader(null)
+    }
   })
 
   test('more Sections outrank a lower store code; an equal count falls to the lowest store code', async ({ admin, api }) => {
@@ -1145,5 +1197,104 @@ describe('the report period is month to date in India Standard Time', () => {
       if (saved === undefined) delete process.env.SALES_TARGET_TODAY
       else process.env.SALES_TARGET_TODAY = saved
     }
+  })
+})
+
+describe('the shared experiment inputs the seed script reads', () => {
+  test('KEY=VALUE lines are read, comments and quotes handled, and a missing file reads as empty', async () => {
+    const { readSharedEnv, sharedEnvPath, DEFAULT_SHARED_ENV } = await import('../src/sales-target')
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'st-env-'))
+    const file = join(dir, '.env.local')
+    writeFileSync(file, '# a comment\nTEST_EMPLOYEE_1_PASSWORD="pw one"\nDIVE_ID=abc\n  SERVICE_ACCOUNT = svc \nnot a line\n')
+    expect(readSharedEnv(file)).toEqual({ TEST_EMPLOYEE_1_PASSWORD: 'pw one', DIVE_ID: 'abc', SERVICE_ACCOUNT: 'svc' })
+    expect(readSharedEnv(join(dir, 'absent'))).toEqual({})
+
+    const saved = process.env.SALES_TARGET_SHARED_ENV
+    try {
+      delete process.env.SALES_TARGET_SHARED_ENV
+      expect(sharedEnvPath()).toBe(DEFAULT_SHARED_ENV)
+      process.env.SALES_TARGET_SHARED_ENV = file
+      expect(sharedEnvPath()).toBe(file)
+    } finally {
+      if (saved === undefined) delete process.env.SALES_TARGET_SHARED_ENV
+      else process.env.SALES_TARGET_SHARED_ENV = saved
+    }
+  })
+
+  test('embed settings fall back to the shared file when the process sets none', async () => {
+    const { embedConfig } = await import('../src/sales-target')
+    const { mkdtempSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const file = join(mkdtempSync(join(tmpdir(), 'st-env-')), '.env.local')
+    writeFileSync(file, 'DIVE_ID=from-file\nDIVE_VERSION=7\nSERVICE_ACCOUNT=svc-file\n')
+    const keys = ['DIVE_ID', 'DIVE_VERSION', 'SERVICE_ACCOUNT', 'SALES_TARGET_SHARED_ENV'] as const
+    const saved = keys.map((k) => process.env[k])
+    for (const k of keys) delete process.env[k]
+    process.env.SALES_TARGET_SHARED_ENV = file
+    try {
+      expect(embedConfig()).toMatchObject({ diveId: 'from-file', version: 7, serviceAccount: 'svc-file' })
+    } finally {
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k]
+        else process.env[k] = saved[i]
+      })
+    }
+  })
+
+  test('the four test-employee passwords are picked from TEST_EMPLOYEE_N_PASSWORD, skipping any left unset', async () => {
+    const { testPasswords } = await import('../src/sales-target')
+    expect(testPasswords({ TEST_EMPLOYEE_1_PASSWORD: 'a', TEST_EMPLOYEE_3_PASSWORD: 'c', OTHER: 'x' })).toEqual({
+      test_employee_1: 'a',
+      test_employee_3: 'c',
+    })
+  })
+})
+
+describe('the embed session request over a real connection', () => {
+  test('the default fetch posts to the configured API base, and a non-JSON refusal is reported by its text', async () => {
+    const { createServer } = await import('node:http')
+    const { createEmbedSession } = await import('../src/sales-target')
+    const seen: { url?: string; auth?: string }[] = []
+    let answer: { status: number; body: string } = { status: 200, body: JSON.stringify({ session: 'live-session' }) }
+    const server = createServer((req, res) => {
+      seen.push({ url: req.url, auth: req.headers.authorization })
+      res.writeHead(answer.status, { 'content-type': 'text/plain' })
+      res.end(answer.body)
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    const { port } = server.address() as { port: number }
+    process.env.MOTHERDUCK_TOKEN = 'tok'
+    const cfg = { apiBase: `http://127.0.0.1:${port}`, diveId: 'd 1', version: 2, serviceAccount: 'svc' }
+    try {
+      expect(await createEmbedSession({} as never, cfg)).toEqual({ ok: true, session: 'live-session', status: 200 })
+      expect(seen[0]).toEqual({ url: '/v1/dives/d%201/embed-session', auth: 'Bearer tok' })
+      answer = { status: 502, body: '<html>Bad gateway</html>' }
+      expect(await createEmbedSession({} as never, cfg)).toEqual({
+        ok: false,
+        status: 502,
+        error: 'embed API answered HTTP 502: <html>Bad gateway</html>',
+        kind: 'unreachable',
+      })
+    } finally {
+      await new Promise((r) => server.close(r))
+    }
+  })
+})
+
+describe('assignments for people the seed did not create', () => {
+  test('an assignment naming an existing person by username reaches that person', async ({ admin }) => {
+    const { makePerson } = await import('./fixtures')
+    await seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, [])
+    const outsider = await makePerson({ username: 'outside_employee', full_name: 'Outside Employee', roles: [{ role: VIEWER_ROLE }] })
+    const result = await seedSalesTarget((path, init) => admin.fetch(path, init), PASSWORDS, [
+      { username: 'outside_employee', display_name: 'Outside Employee', plant_code: '1501', store_label: 'ATK', material_groups: ['010101009'] },
+    ])
+    expect(result.assignments).toEqual(['1501/010101009'])
+    const listed = await admin.get<{ data: { employee: string }[] }>(`${TABLE_URL}?filters=${encodeURIComponent(JSON.stringify([['store_subcategory', '=', '1501/010101009']]))}&fields=${encodeURIComponent('["employee"]')}`)
+    expect(listed.data.map((r) => r.employee)).toEqual([outsider])
   })
 })

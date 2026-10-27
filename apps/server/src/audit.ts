@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { sql, type Sql, type TxSql } from './db'
+import { PLATFORM_SCHEMA } from './platform-schema'
 
 // PLAT-007: append-only audit logs. Written with direct inserts (not saveDoc)
 // so an activity row can be recorded during login — before any session exists —
@@ -9,8 +10,11 @@ function id(): string {
   return randomBytes(8).toString('hex')
 }
 
+// Only the platform's own schema counts: a same-named table elsewhere is not
+// the audit log (#520).
 async function tableExists(table: string, db: Sql | TxSql = sql): Promise<boolean> {
-  const [row] = await db`select 1 from information_schema.tables where table_name = ${table}`
+  const [row] = await db`
+    select 1 from information_schema.tables where table_schema = ${PLATFORM_SCHEMA} and table_name = ${table}`
   return Boolean(row)
 }
 

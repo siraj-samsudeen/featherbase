@@ -79,6 +79,24 @@ describe('getScopeMap: a scoped service account is narrowed everywhere', () => {
     expect(results.filter((h) => h.table === STORE).map((h) => h.row_id)).toEqual(['ATK'])
   })
 
+  // Export has no server path of its own: the Report view builds the CSV/XLSX
+  // in the browser from this exact list read (fields + order + 500-row page)
+  // and then records the export at /api/access_log. Both server legs are
+  // asserted here for the scoped service account.
+  test('export: the list read an export is built from is scoped, and the export is recorded as the account', async ({ admin }) => {
+    const { svc, id } = await world(admin)
+    const qs = new URLSearchParams({
+      fields: JSON.stringify(['row_id', 'label']),
+      order_by: 'updated_at desc',
+      limit_page_length: '500',
+    })
+    const rows = await svc.get<{ data: { row_id: string; label: string }[] }>(`/api/table/${encodeURIComponent(STORE)}?${qs}`)
+    expect(rows.data).toEqual([expect.objectContaining({ row_id: 'ATK', label: 'scopeprobe ATK store' })])
+    await svc.post('/api/access_log', { table: STORE, method: 'xlsx' })
+    const logged = await sql`select "user", ref_table, method from access_log where operation = 'export' and "user" = ${id}`
+    expect(logged).toEqual([{ user: id, ref_table: STORE, method: 'xlsx' }])
+  })
+
   test('report chart', async ({ admin }) => {
     const { id } = await world(admin)
     await admin.post('/api/save_row', {

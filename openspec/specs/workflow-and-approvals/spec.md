@@ -44,6 +44,12 @@ condition isn't met, the action SHALL be refused, even to an Administrator.
 - **THEN** the action is refused until the amount is fixed, however senior the
   user
 
+#### Scenario: A condition that can't be worked out
+
+- **WHEN** an action's condition is written so that it cannot be evaluated and
+  the user takes that action
+- **THEN** the action is refused and the request stays in its current state
+
 ### Requirement: A disallowed action changes nothing
 
 Taking an action that isn't available from the row's current state, or that
@@ -68,6 +74,18 @@ the actions open to them.
 - **THEN** each Approver gets an email linking to the request and naming the
   actions they can take on it
 
+#### Scenario: Nobody is emailed who can't or needn't act
+
+- **WHEN** an Approver submits a request themselves, while other Approvers
+  include one whose account is switched off and one with no email address
+- **THEN** the submitting Approver and those two are not emailed
+
+#### Scenario: A final state needs no decision
+
+- **WHEN** an Approver approves a request, moving it to a state with no
+  further actions
+- **THEN** no one is emailed
+
 ### Requirement: Finalise a row instead of leaving it open to change
 
 A Table can require its rows to be submitted before they count as finalised.
@@ -85,3 +103,71 @@ fresh draft copy.
 - **WHEN** a user cancels a submitted row and then amends it
 - **THEN** a new draft copy is created, linked back to the original, ready to
   edit again
+
+### Requirement: Only one workflow governs a Table
+
+A Table SHALL have at most one active workflow, including when users activate alternatives at the same time. A conflicting save SHALL be refused with the existing active workflow's name, rather than choosing whichever workflow was edited most recently.
+
+#### Scenario: Save a competing workflow
+
+- **WHEN** the user saves a second active workflow for a Table that already has one
+- **THEN** the save is refused and names the existing active workflow
+- **AND** the existing workflow continues to govern the Table
+
+#### Scenario: Activate alternatives at the same time
+
+- **WHEN** the user and another administrator activate different workflows simultaneously for a Table with no active workflow
+- **THEN** only one activation succeeds
+- **AND** the refused activation names the workflow that became active
+
+### Requirement: Switch workflows explicitly
+
+The user SHALL be able to keep inactive alternatives and switch to one by deactivating the current workflow first. Different Tables SHALL be able to have their own active workflows independently.
+
+#### Scenario: Keep an alternative and switch to it
+
+- **WHEN** the user saves an inactive alternative, deactivates the current workflow, and activates the alternative
+- **THEN** each save succeeds and the alternative governs the Table
+
+#### Scenario: Activate workflows for separate Tables
+
+- **WHEN** the user activates a workflow for each of two different Tables
+- **THEN** both activations succeed and each workflow governs its own Table
+
+### Requirement: A workflow can drive a field the Table already has
+
+A workflow SHALL be able to use a choice field the Table already has as its state, instead of adding a separate one. A workflow that names a field the Table doesn't have SHALL be refused.
+
+#### Scenario: Use an existing status field
+
+- **WHEN** a workflow is set up to use a Table's existing status field and the user takes an action on a row
+- **THEN** that status field changes to the action's next state
+- **AND** the Table gains no extra state field
+
+#### Scenario: Name a field that isn't there
+
+- **WHEN** the user saves an active workflow that names a field the Table doesn't have
+- **THEN** the save is refused
+
+### Requirement: A row's state changes only through the workflow
+
+A new row under a workflow SHALL start at the workflow's first state, whatever the user typed. After that, editing the row SHALL NOT change its state; only taking an action does.
+
+#### Scenario: Edit the state directly
+
+- **WHEN** the user edits a row and changes its state field by hand
+- **THEN** the edit is refused and the row keeps its state
+
+#### Scenario: Create a row in a later state
+
+- **WHEN** the user creates a row and types a later state into its state field
+- **THEN** the row is created at the workflow's first state
+
+### Requirement: A workflow's steps must fit its states
+
+A workflow SHALL be refused unless it has at least one state and every action starts and ends at a state the workflow defines.
+
+#### Scenario: An action leads to a state that doesn't exist
+
+- **WHEN** the user saves a workflow with an action that moves a row to an undefined state
+- **THEN** the save is refused and the workflow is not created

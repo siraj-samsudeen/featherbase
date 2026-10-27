@@ -102,6 +102,22 @@ describe('administrators are never locked out (A-M2, minor 1)', () => {
     // An administrator unlinking that only way in is refused too.
     expect((await admin.fetch('/api/identities/uid_smog', { method: 'DELETE' })).status).toBe(417)
   })
+
+  test('moving a System Manager\'s only way in to someone else is refused and names them; the link stays', async ({ admin }) => {
+    vi.stubEnv('ALLOW_MOCK_OAUTH', '')
+    await configureGoogle({ client_id: 'real-client-id' })
+    const smove = await person('sm.only.moved', { roles: [{ role: 'System Manager' }] })
+    const other = await person('someone.else')
+    await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_smove', ${smove}, 'google', 'g-smove', 'test')`
+    const res = await admin.fetch('/api/identities/uid_smove', { method: 'PATCH', body: JSON.stringify({ person_id: other }) })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${smove}`)
+    expect(await sql`select person_id, ended_at from sign_in_identity where id = 'uid_smove'`).toEqual([{ person_id: smove, ended_at: null }])
+    // Someone who is not an administrator can have theirs moved.
+    await sql`insert into sign_in_identity (id, person_id, method, subject, linked_by) values ('uid_plain', ${other}, 'google', 'g-plain', 'test')`
+    const third = await person('third.person')
+    expect((await admin.fetch('/api/identities/uid_plain', { method: 'PATCH', body: JSON.stringify({ person_id: third }) })).status).toBe(200)
+  })
 })
 
 describe('linking for the roster sync (minor 3) and the audit actor (B-M1)', () => {
@@ -237,6 +253,24 @@ describe('a delegated provider is configuration only (genericity)', () => {
       body: JSON.stringify({ table: 'Sign In Method', row: { row_id: 'bad', kind: 'delegated_password', label: 'Bad', settings: { success_keys: 'token' } } }),
     })
     expect(res.status).toBe(417)
+  })
+})
+
+describe('a delegated method\'s settings may arrive as JSON text', () => {
+  const save = (admin: TestClient, row_id: string, settings: unknown) =>
+    admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Sign In Method', row: { row_id, kind: 'delegated_password', label: row_id, enabled: false, settings } }),
+    })
+
+  test('JSON text is parsed and checked like an object, and text that is not JSON is refused naming the field', async ({ admin }) => {
+    expect((await save(admin, 'text_ok', '{"success_keys":["ok"]}')).status).toBe(201)
+    const bad = await save(admin, 'text_bad', '{"success_keys": ')
+    expect(bad.status).toBe(417)
+    expect(await bad.json()).toMatchObject({ error: { message: 'settings must be JSON', fields: { settings: 'settings must be JSON' } } })
+    const wrong = await save(admin, 'text_wrong', '{"success_keys":"ok"}')
+    expect(wrong.status).toBe(417)
+    expect((await save(admin, 'text_blank', '')).status).toBe(201)
   })
 })
 

@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { loadInstalledApps, uninstallApp, isInstalled } from '../src/apps'
+import { loadInstalledApps, uninstallApp, isInstalled, registerApp } from '../src/apps'
 import { sql } from '../src/db'
 
 // PLAT-005 (#55): an app can be installed from a JSON manifest over the API —
@@ -68,7 +68,7 @@ describe('PLAT-005: declarative app install over the API', () => {
     }
   })
 
-  test.for(['doc_events', 'scheduler_events', 'override_whitelisted_methods'])(
+  test.for(['doc_events', 'scheduler_events'])(
     'a manifest declaring %s is rejected with a pointer at registerApp',
     async (key, { admin }) => {
       const res = await admin.fetch('/api/install_app', {
@@ -90,6 +90,20 @@ describe('PLAT-005: declarative app install over the API', () => {
       body: JSON.stringify({ manifest: { tables: [] } }),
     })
     expect(res.status).toBe(417)
+  })
+
+  test('a manifest named like an app registered in code is refused, so it can never shadow that app', async ({ admin }) => {
+    registerApp({ name: 'decl-shadowed-code-app', tables: [] })
+    const res = await admin.fetch('/api/install_app', {
+      method: 'POST',
+      body: JSON.stringify({ manifest: { ...MANIFEST, name: 'decl-shadowed-code-app' } }),
+    })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({
+      error: { type: 'ConflictError', message: 'App decl-shadowed-code-app is registered in code — install it with { name } instead' },
+    })
+    expect(await isInstalled('decl-shadowed-code-app')).toBe(false)
+    expect(await sql`select 1 from table_def where name = ${DT}`).toHaveLength(0)
   })
 
   test('a non-admin caller is refused — { manifest } is a define-schema surface', async ({

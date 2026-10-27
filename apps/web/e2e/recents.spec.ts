@@ -29,7 +29,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409].includes(doc.status())) throw new Error(`doc: ${doc.status()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 // Every check here is either a regex URL match (assertPath is exact-match
 // only) or a testid-addressed command-bar/sidebar/strip walk with keyboard
 // input, so each test stays as one named step describing the whole trail;

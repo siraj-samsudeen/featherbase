@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { getBrowser } from '../src/print'
 import { isThumbnable, makeThumbnailDataUrl } from '../src/thumbnails'
+import { deleteStored } from '../src/storage'
 
 // FILE-004: image uploads get a downscaled thumbnail; non-images get none.
 
@@ -95,6 +96,20 @@ describe('FILE-004: thumbnails', () => {
     expect(thumb).toBeNull()
   })
 
+  test('returns null for bytes that claim to be an image but cannot be decoded', async () => {
+    expect(await makeThumbnailDataUrl(Buffer.from('this is not really a png'), 'image/png')).toBeNull()
+  }, 30_000)
+
+  test('returns null, rather than failing the upload, when the browser dies while resizing', async () => {
+    const png = await makePng(4000, 4000)
+    const browser = await getBrowser()
+    const resizing = makeThumbnailDataUrl(png, 'image/png', 128)
+    // Wait until the thumbnail's own page is open, then kill the browser under it.
+    while (!browser.contexts().some((c) => c.pages().length > 0)) await new Promise((r) => setTimeout(r, 1))
+    await browser.close()
+    expect(await resizing).toBeNull()
+  }, 60_000)
+
   // The cached Chromium handle used to be memoized unconditionally, so once the
   // browser died under a long-lived server every later thumbnail came back null
   // — silently, because makeThumbnailDataUrl swallows the error — and every PDF
@@ -110,5 +125,29 @@ describe('FILE-004: thumbnails', () => {
     expect(thumb).toMatch(/^data:image\/jpeg;base64,/)
     expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
     expect((await getBrowser()).isConnected()).toBe(true)
+  }, 30_000)
+})
+
+describe('Pictures get a small preview when uploaded', () => {
+  async function uploadAs(admin: { fetch: (p: string, i?: RequestInit) => Promise<Response> }, name: string, body: BlobPart, type: string) {
+    const form = new FormData()
+    form.append('file', new File([body], name, { type }))
+    const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
+    expect(res.status).toBe(201)
+    return (await res.json()) as { file_url: string; thumbnail_url?: string | null }
+  }
+
+  test('an uploaded picture carries a small preview, and a text file does not', async ({ admin }) => {
+    const png = await makePng(600, 300)
+    const pic = await uploadAs(admin, 'wide.png', new Uint8Array(png), 'image/png')
+    const note = await uploadAs(admin, 'note.txt', 'hello', 'text/plain')
+    try {
+      expect(pic.thumbnail_url).toMatch(/^data:image\/jpeg;base64,/)
+      expect(await measure(pic.thumbnail_url!)).toEqual({ w: 128, h: 64 })
+      expect(note.thumbnail_url ?? null).toBeNull()
+    } finally {
+      await deleteStored(pic.file_url).catch(() => {})
+      await deleteStored(note.file_url).catch(() => {})
+    }
   }, 30_000)
 })

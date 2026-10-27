@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { cx } from './cx'
 import { CircleCheck, CircleX, Info, X } from './icons'
 
-export type ToastTone = 'info' | 'positive' | 'negative'
+type ToastTone = 'info' | 'positive' | 'negative'
 interface ToastItem {
   id: number
   tone: ToastTone

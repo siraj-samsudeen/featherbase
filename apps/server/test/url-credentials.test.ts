@@ -1,10 +1,12 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { WebSocket } from 'ws'
-import { describe, expect } from 'vitest'
+import { afterEach, describe, expect, vi } from 'vitest'
 import { deleteStored } from '../src/storage'
 import { attachRealtime } from '../src/realtime'
 import { test } from './pg-test'
+import { issueSession } from '../src/auth'
+import { setSessionHours } from './session-cookie-test-utils'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 // #173 (follow-up to #150): a session JWT must never travel in a URL. Private
@@ -139,5 +141,36 @@ describe('#173: the realtime WebSocket authenticates from the sid cookie', () =>
     expect(
       await handshake(`/ws?token=${encodeURIComponent(admin.token!)}`),
     ).toEqual({ closeCode: 4001 })
+  })
+})
+
+// sign-in-and-accounts "Browser features use the full session length": the
+// cookie-borne features (private files, the realtime socket) honour a session
+// length shorter or longer than seven days right up to its end, and not after.
+describe('Browser features use the full session length', () => {
+  afterEach(() => vi.useRealTimers())
+
+  test('private files and live updates work until a custom session length ends, and stop after', async ({ admin, createUser, api }) => {
+    const { reader, fileUrl } = await setup(admin, createUser)
+    try {
+      for (const hours of [2, 720]) {
+        await setSessionHours(hours)
+        const start = Date.now()
+        // The session every sign-in (password, Google, preview link) is issued through.
+        const { token } = await issueSession(reader.user!)
+        const cookie = `sid=${token}`
+        vi.useFakeTimers({ toFake: ['Date'], now: start + (hours * 3600 - 60) * 1000 })
+        const file = await api.fetch(fileUrl, { headers: { cookie } })
+        expect(file.status, `${hours}h: file a minute before the end`).toBe(200)
+        expect(await handshake('/ws', { cookie }), `${hours}h: socket a minute before the end`).toEqual({ user: reader.user })
+        vi.setSystemTime(start + (hours * 3600 + 60) * 1000)
+        expect((await api.fetch(fileUrl, { headers: { cookie } })).status, `${hours}h: file a minute after`).toBe(401)
+        expect(await handshake('/ws', { cookie }), `${hours}h: socket a minute after`).toEqual({ closeCode: 4001 })
+        vi.useRealTimers()
+      }
+    } finally {
+      vi.useRealTimers()
+      await deleteStored(fileUrl).catch(() => {})
+    }
   })
 })

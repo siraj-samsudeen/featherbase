@@ -2,6 +2,9 @@ import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { planRevert } from '../../src/actions/collection-import-revert'
+import { sql } from '../../src/db'
+import { invalidateMeta } from '../../src/meta'
+import { expectApiError } from '../fixtures'
 
 // Spec 0005 (import revert) — the contract, rule, and invariant layers.
 // RVT-R1: a run becomes addressable (run_id + touched rows in the log).
@@ -310,5 +313,67 @@ describe('RVT-R6: whole-request permission refusal', () => {
     })
     expect(res.status).toBe(403)
     expect(await rowsByZone(admin)).toEqual(before) // Alpha not restored either — refusal is whole
+  })
+})
+
+describe('RVT: rows a revert cannot act on are named, and the rest still revert', () => {
+  test('RVT-R4: an inserted row edited after the import is skipped as edited-after', async ({ admin }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    const { Charlie } = await rowsByZone(admin)
+    await admin.post('/api/save_row', { table: DT, row: { row_id: Charlie.row_id, updated_at: Charlie.updated_at, note: 'kept by hand' } })
+    const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
+    expect(res).toMatchObject({ restored: 1, deleted: 0, skipped: [{ row_id: String(Charlie.row_id), reason: 'edited-after' }] })
+    expect((await rowsByZone(admin)).Charlie.note).toBe('kept by hand')
+  })
+
+  test('RVT-R3: an update whose version row has gone is skipped as no-version-trail, never fabricated', async ({ admin }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    const { Alpha } = await rowsByZone(admin)
+    await sql`delete from version where ref_table = ${DT} and ref_name = ${String(Alpha.row_id)}`
+    const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
+    expect(res).toMatchObject({ restored: 0, deleted: 1, skipped: [{ row_id: String(Alpha.row_id), reason: 'no-version-trail' }], failed: [] })
+    expect(Number((await rowsByZone(admin)).Alpha.pop)).toBe(13500)
+  })
+
+  test('a restore or a delete the Table now refuses is reported as failed with the reason', async ({ admin }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    const { Alpha, Charlie } = await rowsByZone(admin)
+    // Alpha's restore now breaks a rule; Charlie is now referred to by another row.
+    await sql`update column_def set column_type = 'Choice', choices = ${'Low\nHigh'} where parent = ${DT} and column_name = 'pop'`
+    invalidateMeta(DT)
+    const fresh = await rowsByZone(admin)
+    await admin.post('/api/table_def', { name: 'Revert Pointer', columns: [{ column_name: 'target', column_type: 'Reference', reference_table: DT }] })
+    await admin.post('/api/save_row', { table: 'Revert Pointer', row: { target: Charlie.row_id } })
+    const res = await admin.post<RevertRes>(REVERT, { run_id: runId, override: [String(Alpha.row_id)] })
+    expect(res.restored).toBe(0)
+    expect(res.deleted).toBe(0)
+    expect(res.failed.map((f) => f.row_id).sort()).toEqual([String(Alpha.row_id), String(Charlie.row_id)].sort())
+    expect(res.failed.find((f) => f.row_id === Charlie.row_id)?.message).toContain('linked from Revert Pointer')
+    expect(await rowsByZone(admin)).toEqual(fresh)
+  })
+
+  test('a run whose log recorded no written rows cannot be reverted', async ({ admin }) => {
+    await setup(admin)
+    await sql`insert into import_log ${sql({ row_id: 'rvt-legacy-log', ref_table: DT, run_id: 'rvt-legacy', touched: null })}`
+    await expectApiError(admin.post(REVERT, { run_id: 'rvt-legacy' }), {
+      status: 417, message: expect.stringContaining('recorded no written rows'),
+    })
+  })
+
+  test('RVT-R6: a caller who may write only their own rows cannot restore rows someone else wrote', async ({ admin, createUser }) => {
+    await setup(admin)
+    const runId = await seedAndRun(admin)
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Revert Own Rows' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'Revert Own Rows', can_read: true, can_write: true, can_delete: true, own_rows_only: true },
+    })
+    const user = await createUser({ roles: ['Revert Own Rows'] })
+    const before = await rowsByZone(admin)
+    await expectApiError(user.post(REVERT, { run_id: runId }), { status: 403 })
+    expect(await rowsByZone(admin)).toEqual(before)
   })
 })

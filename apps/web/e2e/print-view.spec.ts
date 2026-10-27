@@ -52,8 +52,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the round trip through the form's Print button and the URL-regex landing
+// The round trip through the form's Print button and the URL-regex landing
 // check aren't expressible by assertPath (which is exact-match only), so they
 // stay in a step; the rest is plain presence/text/count assertHas checks.
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({

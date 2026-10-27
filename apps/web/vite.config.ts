@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { request } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
+import istanbul from 'vite-plugin-istanbul'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN } from '../../packages/shared/src/app-routes'
 
 // Parallel checkouts (git worktrees) each need their own ports: WEB_PORT
@@ -48,11 +49,34 @@ function addressRedirects(): Plugin {
   }
 }
 
+// ADR 0012: Istanbul instrumentation for the merged web coverage report, so
+// the Playwright run counts toward the same numbers as the jsdom suite. Only
+// `VITE_COVERAGE=true` (set by `pnpm --filter web coverage:e2e`) adds the
+// plugin at all, so the ordinary dev server, ./init.sh and production builds
+// get exactly the plugin list they had before. `requireEnv` makes the plugin
+// itself refuse to instrument without that variable too.
+const coverage = process.env.VITE_COVERAGE === 'true'
+  ? [
+      istanbul({
+        include: 'src/**',
+        exclude: ['src/**/*.test.*', 'src/main.tsx'],
+        extension: ['.ts', '.tsx'],
+        requireEnv: true,
+        forceBuildInstrument: false,
+      }),
+    ]
+  : []
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), addressRedirects()],
+  plugins: [react(), tailwindcss(), addressRedirects(), ...coverage],
   server: {
     port: Number(process.env.WEB_PORT ?? 5173),
     strictPort: true,
+    // Under coverage, no HMR: with it, @vitejs/plugin-react wraps every
+    // component in React Fast Refresh registration code, which Istanbul then
+    // counts as statements the jsdom run (no refresh) never has — the merge
+    // would report phantom code. A test run edits no files, so nothing is lost.
+    ...(coverage.length ? { hmr: false } : {}),
     proxy: {
       '/api': api,
       '/featherbase/runtime-shell.css': api,

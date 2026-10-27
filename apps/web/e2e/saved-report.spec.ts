@@ -40,8 +40,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers: auth })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// column/filter/groupby controls are testid-addressed selects/checkboxes and
+// Column/filter/groupby controls are testid-addressed selects/checkboxes and
 // the checks are regex URL matches and exact-value assertions, so the whole
 // configure/save/restore walk stays in named steps; session.visit carries
 // the plain navigations between them.

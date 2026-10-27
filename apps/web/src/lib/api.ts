@@ -103,7 +103,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       window.location.href = `${loginHref(next)}${token ? '&ended=1' : ''}`
     }
   }
-  const body = (await res.json().catch(() => ({}))) as {
+  const body = (await res.json().catch(
+    /* istanbul ignore next -- a body that is not JSON comes only from something between the browser and the server (a proxy's error page); the server answers JSON on every path, errors and not-found included */
+    () => ({}),
+  )) as {
     error?: { type: string; message: string; fields?: Record<string, string> }
   }
   if (!res.ok)
@@ -190,7 +193,7 @@ export function landingPath(user: SessionUser | null = getSessionUser()): string
   return user?.landing ?? '/featherbase/admin'
 }
 
-export interface ListResult<T = Record<string, unknown>> {
+interface ListResult<T = Record<string, unknown>> {
   data: T[]
   total: number
   limit_start: number

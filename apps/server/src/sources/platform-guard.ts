@@ -28,7 +28,7 @@ const IDENTITY_SQL = `select
     then (select system_identifier::text from pg_catalog.pg_control_system()) end as system_id,
   extract(epoch from pg_postmaster_start_time())::text as started`
 
-export type Identity = { oid: string; system_id: string | null; started: string }
+type Identity = { oid: string; system_id: string | null; started: string }
 
 type Queryable = { unsafe: (q: string) => PromiseLike<readonly unknown[]> }
 
@@ -54,6 +54,7 @@ export async function assertNotPlatformDatabase(
     // A server that speaks the protocol but lacks these catalog functions
     // (SQLSTATE class 42) is not this platform's PostgreSQL. Anything else,
     // a connection failure above all, is the caller's to report.
+    /* v8 ignore next -- a server that speaks the PostgreSQL protocol without its catalog functions cannot be stood up in the test stack */
     if (/^42/.test(String((err as { code?: string }).code ?? ''))) return
     throw err
   }

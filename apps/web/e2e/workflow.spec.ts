@@ -48,7 +48,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('WF-002: Approve button transitions state and records the audit trail', async ({ session }) => {
   await session
     .visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)

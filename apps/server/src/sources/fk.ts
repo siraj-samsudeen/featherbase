@@ -7,13 +7,13 @@
 // under two constraints keeps the first (deterministic via the driver's
 // ORDER BY).
 
-export interface FkEdge {
+interface FkEdge {
   schema: string
   table: string
   column: string
 }
 
-export interface FkRow {
+interface FkRow {
   constraint_schema?: unknown
   constraint_name?: unknown
   table_schema?: unknown

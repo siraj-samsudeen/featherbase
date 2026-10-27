@@ -5,7 +5,7 @@ import { getToken } from './api'
 // RT-001/002/003: a single shared WebSocket to the server. Views subscribe
 // to channels and receive events; the socket auto-reconnects.
 
-export interface RealtimeEvent {
+interface RealtimeEvent {
   channel: string
   event: string
   payload?: unknown
@@ -122,7 +122,7 @@ export class RealtimeClient {
   }
 }
 
-export const realtime = new RealtimeClient()
+const realtime = new RealtimeClient()
 
 // Subscribe to realtime channels for the lifetime of a component. The
 // latest handler is always invoked (kept in a ref to dodge stale closures).

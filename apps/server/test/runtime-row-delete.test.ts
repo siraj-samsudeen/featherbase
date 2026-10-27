@@ -47,11 +47,22 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   const raw = await admin.fetch(`/api/table/actionproof.work/linked?updated_at=${encodeURIComponent(source.updated_at)}`, { method: 'DELETE' })
   expect(raw.status).toBe(417)
   expect(await raw.json()).toMatchObject({ error: { fields: { files: '2', shares: '1' } } })
-  await expect(admin.post(path, { idempotencyKey: 'delete-links', payload: { ...request.payload, explain: false } })).rejects.toMatchObject({ status: 417 })
+  const refusedRequest = JSON.stringify({ idempotencyKey: 'delete-links', payload: { ...request.payload, explain: false } })
+  const refused = await admin.fetch(path, { method: 'POST', body: refusedRequest })
+  expect(refused.status).toBe(417)
+  const refusal = await refused.json()
+  expect(refusal).toMatchObject({ error: { fields: { files: '2', shares: '1' } } })
   expect(await sql`select * from runtime_action_result where idempotency_key = 'delete-links'`).toHaveLength(0)
   await discoverPackages([directory])
   await loadInstalledApps()
   expect(await admin.post(path, request)).toEqual(result)
+  // The refused delete itself, submitted again after the restart, gives the same reason and deletes nothing.
+  const replayed = await admin.fetch(path, { method: 'POST', body: refusedRequest })
+  expect(replayed.status).toBe(417)
+  expect(await replayed.json()).toEqual(refusal)
+  expect(await sql`select row_id from actionproof.work where row_id = 'linked'`).toHaveLength(1)
+  expect(await sql`select row_id from file where ref_table = 'actionproof.work' and ref_name = 'linked'`).toHaveLength(2)
+  expect(await sql`select row_id from share where row_id = ${share.row_id}`).toHaveLength(1)
   // Exact (table,row) matching, not just ref_name, and no table-wide retention.
   await admin.delete(`/api/table/actionproof.work/bare?updated_at=${encodeURIComponent(bare.updated_at)}`)
   for (const [table, row, field] of [['File', files[0], 'ref_name'], ['Share', share, 'share_name']] as const) {
@@ -62,4 +73,19 @@ test('Admin attachments and shares retain exact targets through raw/action delet
   await admin.post('/api/set_app_enabled', { name: 'actionproof', enabled: false })
   await expect(save('File', { file_name: 'disabled', ref_table: 'actionproof.work', ref_name: 'linked' })).rejects.toMatchObject({ status: 403 })
   await expect(save('Share', { share_table: 'actionproof.work', share_name: 'linked', person: 'Administrator' })).rejects.toMatchObject({ status: 403 })
+})
+
+test('a row another Table refers to is retained, and a reference from a Settings Table refuses the delete it cannot prove', async ({ admin }) => {
+  await discoverPackages([resolve('../..', 'runtime-apps/other')])
+  await admin.post('/api/install_app', { name: 'other' })
+  const source = await admin.post<any>('/api/save_row', { table: 'other.task', row: { row_id: 'kept', quantity: 23 } })
+  await admin.post('/api/table_def', { name: 'Rrd Pointer', columns: [{ column_name: 'task', column_type: 'Reference', reference_table: 'other.task' }] })
+  await admin.post('/api/save_row', { table: 'Rrd Pointer', row: { task: 'kept' } })
+  await expect(deleteDoc('other.task', 'kept', 'Administrator', { expectUpdatedAt: source.updated_at }))
+    .rejects.toMatchObject({ type: 'ValidationError', fields: { references: '1' } })
+
+  await admin.post('/api/table_def', { name: 'Rrd Settings', kind: 'settings', columns: [{ column_name: 'default_task', column_type: 'Reference', reference_table: 'other.task' }] })
+  await expect(deleteDoc('other.task', 'kept', 'Administrator', { expectUpdatedAt: source.updated_at }))
+    .rejects.toMatchObject({ type: 'ValidationError', message: 'Deletion cannot prove references from nonlocal Tables' })
+  expect(await sql`select row_id from other.task where row_id = 'kept'`).toHaveLength(1)
 })

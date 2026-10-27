@@ -77,3 +77,20 @@ describe('META-010: field flags', () => {
     expect(body.error.fields.count_val).toMatch(/out of range/)
   })
 })
+
+describe('A column can be marked unique', () => {
+  // SPEC: A column can be marked unique — suspected defect, see report.
+  // Turning unique on for a column whose rows already repeat a value fails
+  // with a bare internal error instead of a refusal naming the column.
+  test.fails('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (let i = 0; i < 2; i++)
+      await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent('Flag Late Unique')}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
+    })
+    expect(res.status).toBe(417)
+    expect((await res.json()).error.fields.code).toBeTruthy()
+  })
+})

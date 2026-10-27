@@ -3,8 +3,7 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 const DT = 'Sb DT'
 
 // UI-017: form sidebar — assign a user, add a tag, attach a file; all persist
-// and display on reload. Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md): every sidebar control is
+// and display on reload. Every sidebar control is
 // testid-addressed, so the interactions stay in named steps; assertHas
 // covers the plain presence/text checks between them.
 

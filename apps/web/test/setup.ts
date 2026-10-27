@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
+
+// #527: a first render warms the in-process server and Vite's transform cache,
+// which on a busy machine (CI shards, parallel agents) takes longer than
+// Testing Library's 1s default. A missing element still fails, after 5s.
+configure({ asyncUtilTimeout: 5000 })
 
 // The Admin opens a realtime WebSocket on mount. In jsdom that would attempt
 // a real TCP connection (refused → close → 1s reconnect loop). This stub

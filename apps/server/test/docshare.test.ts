@@ -83,3 +83,25 @@ describe('PERM-008: Share', () => {
     await expectApiError(user.get(dt.rowUrl(docName)), { status: 403 })
   })
 })
+
+describe('A single row can be shared beyond its role grants', () => {
+  test('a write-share opens that one row for editing and no other row on the table', async ({
+    admin,
+    createUser,
+  }) => {
+    const { user, dt, docName } = await setup(admin, createUser)
+    const other = await admin.post<Record<string, unknown>>(dt.url, { body: 'another memo' })
+    await share(admin, user, docName, { read: true, write: true })
+
+    const shared = await admin.get<Record<string, unknown>>(dt.rowUrl(docName))
+    await patchDoc(user, dt.rowUrl(docName), { updated_at: shared.updated_at, body: 'edited by sharee' })
+    expect((await admin.get<Record<string, unknown>>(dt.rowUrl(docName))).body).toBe('edited by sharee')
+
+    await expectApiError(user.get(dt.rowUrl(String(other.row_id))), { status: 403 })
+    await expectApiError(
+      patchDoc(user, dt.rowUrl(String(other.row_id)), { updated_at: other.updated_at, body: 'not mine' }),
+      { status: 403 },
+    )
+    expect((await admin.get<Record<string, unknown>>(dt.rowUrl(String(other.row_id)))).body).toBe('another memo')
+  })
+})

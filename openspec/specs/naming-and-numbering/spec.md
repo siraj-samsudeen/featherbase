@@ -18,8 +18,9 @@ whoever creates the row, or a name taken from one of the row's own fields.
 #### Scenario: Switch a Table to a numbered series
 
 - **WHEN** a developer sets a Table's naming to a series with the prefix
-  "INV"
-- **THEN** new rows are named INV.0001, INV.0002 and so on in order
+  "INV-" and three digits
+- **THEN** new rows are named INV-001, INV-002 and so on in order, and rows
+  saved before the switch keep their ids
 
 ### Requirement: A series never reuses a number
 
@@ -30,10 +31,9 @@ it, or the whole Table, is gone.
 
 #### Scenario: Delete a row and add another
 
-- **WHEN** the row named INV.0005 is deleted and a new row is added to the
-  same series
-- **THEN** the new row's number continues after 0005, and 0005 is never
-  reused
+- **WHEN** the row named INV-005, the newest in its series, is deleted and a
+  new row is added to the same series
+- **THEN** the new row is named INV-006, and 005 is never reused
 
 ### Requirement: A typed-in name must be unique
 
@@ -46,3 +46,24 @@ overwriting the existing row.
 - **WHEN** a user creates a row and types in a name already used by another
   row in that Table
 - **THEN** the save is refused and the existing row is untouched
+
+### Requirement: Rows saved at the same moment never share a number
+
+When many rows of a numbered series are saved at the same moment, each SHALL
+get its own number, with no repeats and no gaps.
+
+#### Scenario: Fifty saves at once
+
+- **WHEN** fifty rows of the same series are saved at the same moment
+- **THEN** they are numbered 1 to 50, each number used exactly once
+
+### Requirement: A name that comes from the row can't be left out
+
+A row named by a name its creator types in, or by one of its own fields,
+SHALL be refused when that name or field is left empty.
+
+#### Scenario: The naming field is blank
+
+- **WHEN** a row of a Table named after its country column is saved with no
+  country
+- **THEN** the save is refused and the country column is called out

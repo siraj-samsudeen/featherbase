@@ -6,8 +6,7 @@ import { deleteTableIfExists } from './cleanup'
 // sheets — no column grids — with the sheets the workbook was hiding in their
 // own collapsed section, and NOTHING selected until the user says so.
 //
-// Migrated to the feather-testing-core DSL
-// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// Every control here is testid-addressed,
 // so the walk stays inside named steps; `session.visit` carries navigation.
 
 const PICKED_DT = 'Overview Picked'

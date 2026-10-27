@@ -11,7 +11,7 @@ import { api } from './api'
 
 // ADR 0008: rows per :import call; log rows are per part. Previously
 // declared once per caller.
-export const IMPORT_CHUNK = 500
+const IMPORT_CHUNK = 500
 
 export interface ImportFailure {
   sourceIndex: number
@@ -36,7 +36,7 @@ export interface ImportUpsertArgs {
   columns: string[]
 }
 
-export interface ImportRunReport {
+interface ImportRunReport {
   // Dry runs: rows that passed validation. Real runs: inserted + updated.
   valid: number
   updated: number

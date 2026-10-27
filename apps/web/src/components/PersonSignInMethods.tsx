@@ -109,10 +109,12 @@ export function PersonSignInMethods({ user }: { user: string }) {
   const delegated = all.filter((m) => m.kind === 'delegated_password')
   const google = all.find((m) => m.kind === 'google')
   // Names come from every method row, so a link on a turned-off method is
-  // still labelled (and says it is off).
+  // still labelled (and says it is off). The identities and the method rows
+  // arrive in one answer, and a link's method is a foreign key to a method
+  // row, so the row is always there.
   const labelOf = (k: string) => {
     const row = data?.methods.find((m) => m.key === k)
-    return row ? `${row.label}${row.enabled ? '' : ' (turned off)'}` : (all.find((m) => m.key === k)?.label ?? k)
+    return row ? `${row.label}${row.enabled ? '' : ' (turned off)'}` : k
   }
 
   function onLink(e: React.FormEvent<HTMLFormElement>) {
