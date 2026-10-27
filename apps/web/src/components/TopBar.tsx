@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
-import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
+import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
@@ -77,18 +77,11 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
-interface CatalogEntry {
-  name: string
-  title: string
-  href: string
-}
-
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
- *  the app they can open, else the platform. Undefined until whoami and the
- *  person's apps answer. */
-function personalName(caps: Capabilities | undefined, apps: CatalogEntry[] | undefined): string | undefined {
-  if (!caps || !apps) return undefined
+ *  the app they can open, else the platform. Undefined until whoami answers. */
+function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = []): string | undefined {
+  if (!caps) return undefined
   if (caps.manage || caps.table_access) return ADMIN_NAME
   // #671: an installed app the person can open (one readable by everyone
   // gives no Table grant of their own, so it is not the Admin).
@@ -96,17 +89,6 @@ function personalName(caps: Capabilities | undefined, apps: CatalogEntry[] | und
   // Until Feather Dash is installed, its report is reached by a role alone.
   if (caps.report) return INTERIM_APPS.feather_dash.title
   return PLATFORM_NAME
-}
-
-/** #671: the installed apps this person can open, as the Admin's app
- *  switcher asks for them. Asked only once whoami has answered: signed out
- *  there is nothing to ask. */
-function useAppCatalog(enabled: boolean) {
-  return useQuery({
-    queryKey: ['app-catalog'],
-    queryFn: () => api.get<CatalogEntry[]>('/api/app_catalog'),
-    enabled,
-  })
 }
 
 /** Where the bar's name leads. An app installed under an interim name
@@ -147,11 +129,11 @@ export function TopBar({
   const address = useBarContext(app ? app.name : home)
   const { brand } = address
   const context = app ? app.name : address.context
-  const caps = useWhoAmI().data?.capabilities
-  const catalog = useAppCatalog(Boolean(caps) && !app)
-  // A catalog that cannot be had names no app: the bar still draws.
-  const apps = catalog.data ?? (catalog.isError ? [] : undefined)
-  // An app's own page is an installed app's (#650), whatever the catalog says.
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
+  const apps = whoami?.apps
+  // An app's own page is an installed app's (#650); elsewhere, an installed
+  // app the person can open (#671).
   const installed = Boolean(app) || Boolean(apps?.some((entry) => entry.name === context))
   const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and

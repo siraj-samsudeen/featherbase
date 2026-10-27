@@ -112,3 +112,22 @@ describe('#410 capabilities in whoami', () => {
     expect(await capsOf(writer)).toMatchObject({ table_access: true, own_grant: true, tables: [], creatable: ['Shelf Note'] })
   })
 })
+
+// #671: the shared top bar leads to an installed app, and names it on the
+// account page, without asking the Admin's own endpoints: whoami says which
+// installed apps the person can open.
+describe('whoami lists the installed apps the person can open', () => {
+  test('a person who can open an installed app finds it in whoami', async ({ admin, createUser }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    try {
+      expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+      await admin.post('/api/install_app', { name: 'feather_dash' })
+      const reader = await createUser({ email: 'dash.whoami@example.com' })
+      expect((await reader.get<{ apps: unknown }>('/api/whoami')).apps).toEqual([{ name: 'feather_dash', title: 'Dash stand-in' }])
+    } finally {
+      // The installed app stays loaded in this process after its rows roll back.
+      await discoverPackages([])
+    }
+  })
+})

@@ -876,6 +876,9 @@ app.get('/api/whoami', async (c) => {
     ...user,
     roles,
     capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    // #671: the installed apps this person can open, so the shared top bar can
+    // lead to and name them without asking an Admin endpoint.
+    apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
     theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
