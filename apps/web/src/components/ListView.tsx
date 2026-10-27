@@ -630,7 +630,8 @@ export function ListView({
           >
             Delete
           </button>
-          <span className="flex items-center gap-2">
+          {/* #582: wraps on a phone so Apply stays inside the bar. */}
+          <span className="flex min-w-0 flex-wrap items-center gap-2">
             <select
               value={bulkField}
               onChange={(e) => setBulkField(e.target.value)}
