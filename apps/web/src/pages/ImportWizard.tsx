@@ -1666,7 +1666,10 @@ export function ImportWizard() {
       {stage === 'columns' && sheets.length > 0 && targetIndexes.length > 0 && (
         <div className={cardClasses('mb-3 p-3')} data-testid="iw-stepper">
           <div className="flex flex-wrap items-center gap-3">
-            {sheets.length > 1 && !done && (
+            {/* #325: the overview rebuilds every chosen sheet's plan, which
+                would reset one that already landed to "not imported" and let
+                it be sent again. So the way back closes at the first landing. */}
+            {sheets.length > 1 && !done && landedCount === 0 && (
               <button
                 type="button"
                 onClick={() => setStage('overview')}
@@ -1675,6 +1678,11 @@ export function ImportWizard() {
               >
                 ← Choose sheets
               </button>
+            )}
+            {sheets.length > 1 && !done && landedCount > 0 && (
+              <span className="text-xs text-ink-muted" data-testid="iw-sheets-fixed">
+                Sheets are fixed once a Table is imported.
+              </span>
             )}
             <span
               className="text-sm font-semibold text-ink"
