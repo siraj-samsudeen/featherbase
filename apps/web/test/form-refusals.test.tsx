@@ -61,6 +61,16 @@ test('JSON typed into a JSON column is saved as that JSON', async ({ admin }) =>
   expect(((await admin.get(`/api/table/${enc('Frf Note')}/note-1`)) as { extra: unknown }).extra).toEqual({ shelf: 3 })
 })
 
+test('an empty JSON string typed into a JSON column stays an empty string after saving', async ({ admin }) => {
+  await seedNotes(admin)
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
+  fireEvent.change(field('extra'), { target: { value: '""' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ extra: '' })
+})
+
 test('text in a JSON column that is not JSON is refused at the field, and nothing is saved', async ({ admin }) => {
   await seedNotes(admin)
   await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
