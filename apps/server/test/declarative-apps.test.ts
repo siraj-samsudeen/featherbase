@@ -109,6 +109,7 @@ describe('PLAT-005: declarative app install over the API', () => {
     try {
       const refused = await install([first, second('Decl No Such Table')])
       expect(refused.status).toBe(417)
+      expect((await refused.json()).error.fields.other).toContain('Decl No Such Table')
       expect(await sql`select name from table_def where name = ${first.name}`).toEqual([])
       expect(await sql`select column_name from column_def where parent = ${first.name}`).toEqual([])
       expect((await sql`select to_regclass('featherbase.decl_partial_first')::text as r`)[0].r).toBeNull()

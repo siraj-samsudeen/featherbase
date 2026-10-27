@@ -85,3 +85,10 @@ value in that column.
 - **WHEN** the user gives a category table a "parent" link column pointing
   at that same category table
 - **THEN** the change is accepted
+
+#### Scenario: An app whose later table links to a missing table
+
+- **WHEN** an admin installs an app whose first table links to its second,
+  and whose second links to a table that does not exist
+- **THEN** the installation is refused, naming the missing table, and
+  neither table is left behind
