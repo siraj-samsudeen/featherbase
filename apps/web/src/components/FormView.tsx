@@ -197,6 +197,10 @@ export function FormView({
   const boundSource = m.data_source ?? null
   // #324: rows named by whoever creates them ('prompt') need that name typed
   // in on the new-row form; every other naming rule assigns the ID itself.
+  // #328: a writable binding with no mapped last-changed column saves with no
+  // revision check (last write wins), so an open row says so for as long as
+  // it is open. A new row has nothing at the source to overwrite.
+  const uncheckedSaves = Boolean(boundSource) && !isNew && !rowsReadOnly && !m.external_modified
   const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
@@ -572,6 +576,16 @@ export function FormView({
             dismiss
           </button>
         </div>
+      )}
+      {uncheckedSaves && (
+        <p
+          role="note"
+          className="mb-3 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          data-testid="unchecked-saves-notice"
+        >
+          {boundSource} doesn’t record when its rows last changed, so changes made there while you
+          edit are not detected. Saving replaces what is there.
+        </p>
       )}
       {staleBanner && (
         <div
