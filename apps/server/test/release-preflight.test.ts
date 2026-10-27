@@ -12,8 +12,11 @@ import { sql } from '../src/db'
 import { config } from '../src/config'
 import { parseInstanceAddresses } from '../src/instance-addresses'
 import { migrationBatches } from '../src/migrate'
-import { NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
+import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
+import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
+import { withNamedVariable } from '../src/env'
+import { createTable } from '../src/table-engine'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -141,6 +144,121 @@ describe('release preflight', () => {
   })
 })
 
+// #559: exactly one enabled app may provide people's scope.
+describe('release preflight: the scope provider', () => {
+  async function installed(name: string, provides: boolean, enabled = true) {
+    const manifest = { name, ...(provides ? { scopeProvider: { name: 'positions', tables: [`${name}.position`] } } : {}) }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values (${name}, ${sql.json(manifest)}, ${enabled}, true)`
+  }
+
+  test('one enabled provider passes and says which app it is', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true, false)
+    await installed('consumer', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('one app provides people\'s scope: rostera')
+  })
+
+  test('two enabled providers refuse, naming both', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true)
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/rostera, rosterb/)
+  })
+})
+
+// #620 (E2): an installed, enabled app that lacks a required setting or
+// secret is "not set up yet". The release warns, naming the app and what is
+// missing (names only), and still goes ahead.
+describe('release preflight: app settings and secrets', () => {
+  const manifest = { name: 'setupcheck', settings: [{ name: 'report_id', required: true }, { name: 'theme', required: false }], secrets: ['SETUPCHECK_TOKEN'] }
+  const install = (enabled = true) =>
+    sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupcheck', ${sql.json(manifest)}, ${enabled}, true)`
+
+  test('an enabled app missing a required setting and its secret warns, naming both', async () => {
+    await install()
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('WARNING: app setupcheck is not set up yet: missing setting report_id, secret SETUPCHECK_TOKEN. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
+  test('an app whose required setting and secret are set passes without printing either value', async () => {
+    await install()
+    await sql`insert into app_setting (row_id, app, setting, value) values ('setupcheck.report_id', 'setupcheck', 'report_id', 'R-77')`
+    const lines = await withNamedVariable('SETUPCHECK_TOKEN', 'token-value-620', () => preflightRelease({ environment: 'test' }))
+    expect(lines).toContain('every enabled app has its required settings and secrets')
+    expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
+  })
+
+  test('a disabled app is not checked', async () => {
+    await install(false)
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('every enabled app has its required settings and secrets')
+  })
+})
+
+// #620 (D4): All and Guest are held by every signed-in person or by anyone,
+// so binding an app role to either opens the app to everyone.
+describe('release preflight: app role bindings', () => {
+  test.for(['All', 'Guest'])('a binding to %s refuses the release', async (role) => {
+    await sql`insert into app_role_binding (row_id, app, app_role, bound_role) values ('b-1', 'someapp', 'Some Reader', ${role})`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(`An app role binding gives someapp's role Some Reader to ${role}`)
+  })
+})
+
+// #467: ADMIN_PASSWORD only provisions a null hash, so changing it rotates
+// nothing. A release that finds the variable set but not live says so,
+// without ever printing either value, and still goes ahead.
+describe('release preflight: the configured Administrator password', () => {
+  const live = 'the-live-password-467'
+  const setLive = async (password: string | null) =>
+    sql`update person set password_hash = ${password === null ? null : hashPassword(password)} where row_id = 'Administrator'`
+
+  test('a set ADMIN_PASSWORD that is not the live password warns, and the release goes ahead', async () => {
+    await setLive(live)
+    vi.stubEnv('ADMIN_PASSWORD', 'a-rotated-password-467')
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toContain(ADMIN_PASSWORD_MISMATCH_WARNING)
+    expect(ADMIN_PASSWORD_MISMATCH_WARNING).toMatch(/^WARNING: .*cli set-password Administrator --stdin/)
+    for (const line of lines) {
+      expect(line).not.toContain('a-rotated-password-467')
+      expect(line).not.toContain(live)
+    }
+  })
+
+  test('a set ADMIN_PASSWORD that is the live password passes and says so', async () => {
+    await setLive(live)
+    vi.stubEnv('ADMIN_PASSWORD', live)
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).not.toContain(ADMIN_PASSWORD_MISMATCH_WARNING)
+    expect(lines).toContain("ADMIN_PASSWORD is the Administrator's live password")
+  })
+
+  test('an unset or blank ADMIN_PASSWORD has nothing to compare', async () => {
+    await setLive(live)
+    for (const unset of ['', '   ']) {
+      vi.stubEnv('ADMIN_PASSWORD', unset)
+      const lines = await preflightRelease({ environment: 'test' })
+      expect(lines).not.toContain(ADMIN_PASSWORD_MISMATCH_WARNING)
+      expect(lines).toContain('ADMIN_PASSWORD is not set, so there is no Administrator password to compare')
+    }
+  })
+
+  test('before 0101 renames the table, the Administrator is found under its old name', async () => {
+    await setLive(live)
+    await sql`alter table person rename to "user"`
+    vi.stubEnv('ADMIN_PASSWORD', 'a-rotated-password-467')
+    expect(await preflightRelease({ environment: 'test' })).toContain(ADMIN_PASSWORD_MISMATCH_WARNING)
+    vi.stubEnv('ADMIN_PASSWORD', live)
+    expect(await preflightRelease({ environment: 'test' })).toContain("ADMIN_PASSWORD is the Administrator's live password")
+  })
+
+  test('a set ADMIN_PASSWORD while the Administrator has no password yet does not warn of a mismatch', async () => {
+    await setLive(null)
+    vi.stubEnv('ADMIN_PASSWORD', 'a-first-password-467')
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).not.toContain(ADMIN_PASSWORD_MISMATCH_WARNING)
+    expect(lines).toContain('the Administrator has no password yet; cli seed sets it from ADMIN_PASSWORD')
+  })
+})
+
 // #437: the access configuration a release must never ship with.
 describe('release preflight: access configuration', () => {
   const ACCESS_OK = 'no Permission row grants All or Guest on Person or an access-control Table'
@@ -179,6 +297,12 @@ describe('release preflight: access configuration', () => {
   test('(a) Guest writing a security Table refuses', async () => {
     await grant('Guest', 'Data Scope', { can_create: true })
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) All writing a Table marked as deciding scope refuses (#559)', async () => {
+    await createTable({ name: 'Shift Roster 559', decides_scope: true, columns: [{ column_name: 'place', column_type: 'Data' }] })
+    await grant('All', 'Shift Roster 559', { can_write: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(write\)/)
   })
 
   test('(a) a grant with every action off, or to another role, passes', async () => {

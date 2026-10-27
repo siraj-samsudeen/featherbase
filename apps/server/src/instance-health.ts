@@ -12,6 +12,7 @@ import { cadenceSeconds } from './jobs'
 import { checkVariables, DEV_ENVIRONMENTS } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
+import { appSetupState } from './app-settings'
 
 export const HEALTH_CHECK_JOB = 'check_instance_health'
 
@@ -154,7 +155,7 @@ const overdueAfterMs = (cadence: string) => (2 * cadenceSeconds(cadence) + 600) 
 
 async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
   const rows = await sql`
-    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.updated_at,
+    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.last_result, j.updated_at,
       (select e.error from job_execution e where e.method = j.method and e.outcome = 'error'
         order by e.started_at desc nulls last, e.created_at desc limit 1) as last_error
     from scheduled_job j order by j.method`
@@ -193,6 +194,16 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
         fix: 'Open Jobs in Admin to see the error, fix its cause, then run the job again. The check passes after a run succeeds.',
       }
     }
+    // #464: a run that refused to act is treated like a failure.
+    if (r.last_outcome === 'refused') {
+      const reason = typeof r.last_result === 'string' && r.last_result.trim() ? `: ${r.last_result.trim().slice(0, 200)}` : '.'
+      return {
+        ...base,
+        ok: false,
+        message: `The last run refused to act${reason}`,
+        fix: 'Open Jobs in Admin to see why, fix its cause, then run the job again. The check passes after a run succeeds.',
+      }
+    }
     if (!lastRun) return { ...base, ok: true, message: 'Has not run yet.', fix: null }
     return { ...base, ok: true, message: `The last run succeeded (${fmtInstantIST(lastRun)}).`, fix: null }
   })
@@ -219,6 +230,26 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
   return { ...base, ok: true, message: 'The Administrator does not use the default password.', fix: null }
 }
 
+/** #620 (E2): one check per enabled app that declares settings or secrets.
+ *  Names what is missing, never a value. */
+async function appsSetUp(): Promise<HealthCheck[]> {
+  return (await appSetupState()).map(({ app, title, missing }) => {
+    const base = {
+      key: `app-setup:${app}`,
+      title: `App set up: ${title}`,
+      severity: 'warning' as const,
+      why: 'An app that lacks a required setting or secret answers "not set up yet" instead of working.',
+    }
+    if (!missing.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: `${title} answers "not set up yet": missing ${missing.join(', ')}.`,
+      fix: 'Set each setting in the instance settings file (App Setting) and apply it, and set each secret as a deployment variable, then restart.',
+    }
+  })
+}
+
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
@@ -228,6 +259,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     await settingsApplied(),
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
+    ...(await appsSetUp()),
     await administratorPassword(environment),
   ]
 }

@@ -12,7 +12,7 @@ this repository, with each client's report query, Dive and job bindings kept as
 private instance setup.
 
 On 27-Oct-2026 the owner decided that **Feather Dash is an app for one client**,
-JeyaRama: "This app is for Jeyarama… I build an app for a specific client." A
+its first client: "I build an app for a specific client." A
 future client with a similar need gets a copy to adapt, not a shared generic
 app. This matches the owner's decision of 26-Oct that Feather Dash's code lives
 in the client's private repository.
@@ -28,8 +28,8 @@ both kinds of app.
 | | **Product app** | **Client app** |
 |---|---|---|
 | Built for | Any client | One client |
-| Examples | Feather Tickets, Feather Tasker | Feather Dash (JeyaRama) |
-| Lives in | Shipped with Featherbase as a first-party package | The client's own repository (for JeyaRama, the private rama_dw) |
+| Examples | Feather Tickets, Feather Tasker | Feather Dash (for its first client) |
+| Lives in | Shipped with Featherbase as a first-party package | The client's own private repository |
 | May carry one client's terms, values and examples | No: they reach it as settings or instance setup | **Yes**, directly |
 | A second client gets | The same app, with its own settings | A copy of the code, to adapt |
 | Worth it when | The same app serves many clients | One client needs it now |

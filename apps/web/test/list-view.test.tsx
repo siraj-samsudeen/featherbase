@@ -13,6 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { invalidateSources } from 'server/src/sources/registry'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 // A cold first render on a busy machine can take longer than the 1s default.
@@ -77,6 +78,26 @@ test('Browse a table\'s rows: opening a row takes the user to its full form', as
   await waitFor(() =>
     expect(document.querySelector<HTMLInputElement>('[data-field=title]')).toHaveValue('row-01'),
   )
+})
+
+// SPEC: The list remembers how it's arranged. When remembering fails (#546,
+// item 1) the list says so instead of failing silently, and the change still
+// applies on screen. The failure is a real one: the store refuses the write.
+// (That aborts the test's transaction, so nothing reads the database after it.)
+test('a sort the server could not remember says so, and the heading still shows the new sort', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Unsaved', 3)
+  await openList(admin, 'Lv Unsaved')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(3))
+  await sql.unsafe(`create function featherbase.lv_refuse() returns trigger language plpgsql as $$
+    begin raise exception 'storage unavailable'; end $$`)
+  await sql.unsafe('create trigger lv_refuse before insert or update on featherbase.user_settings for each row execute function featherbase.lv_refuse()')
+  expect(screen.queryByTestId('list-settings-error')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByTestId('col-rank'))
+  expect(screen.getByTestId('col-rank')).toHaveTextContent('Rank ↑')
+  const told = await screen.findByTestId('list-settings-error')
+  expect(told).toHaveTextContent("Couldn't save how this list is sorted and which columns show. It will open the old way next time.")
+  expect(within(told).getByRole('alert')).toBeInTheDocument()
 })
 
 test('Sort by any column: clicking a heading sorts, clicking it again reverses the order', async ({ admin }) => {
@@ -170,9 +191,42 @@ test('Act on many rows at once: selected rows can be deleted together', async ({
   fireEvent.click(checks[1])
   await waitFor(() => expect(screen.getByTestId('bulk-count')).toHaveTextContent('2 selected'))
   fireEvent.click(screen.getByTestId('bulk-delete'))
+  // #327: it asks first, naming how many rows will go.
+  const dialog = screen.getByRole('dialog', { name: 'Delete 2 rows?' })
+  expect(dialog).toHaveTextContent('The selected rows will be permanently deleted. This cannot be undone.')
+  expect(screen.getByTestId('bulk-delete-cancel')).toHaveFocus()
+  fireEvent.click(screen.getByTestId('bulk-delete-confirm'))
 
   await waitFor(() => expect(cellTexts('title')).toHaveLength(2))
   expect(screen.getByTestId('list-total')).toHaveTextContent('2 total')
+  expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
+})
+
+test('Act on many rows at once: backing out of the delete confirmation deletes nothing (#327)', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Bulk Keep', 3)
+  await openList(admin, 'Lv Bulk Keep')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(3))
+  fireEvent.click(within(rowsEl()).getAllByTestId('row-check')[0])
+
+  fireEvent.click(await screen.findByTestId('bulk-delete'))
+  expect(screen.getByRole('dialog', { name: 'Delete 1 row?' })).toBeInTheDocument()
+  fireEvent.click(screen.getByTestId('bulk-delete-cancel'))
+  expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
+
+  // Escape closes it even once focus has left the dialog, and focus returns
+  // to the Delete that opened it.
+  fireEvent.click(screen.getByTestId('bulk-delete'))
+  ;(document.activeElement as HTMLElement).blur()
+  fireEvent.keyDown(document.body, { key: 'Escape' })
+  expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
+  expect(screen.getByTestId('bulk-delete')).toHaveFocus()
+
+  fireEvent.click(screen.getByTestId('bulk-delete'))
+  fireEvent.click(screen.getByTestId('bulk-delete-dialog').parentElement!)
+  expect(screen.queryByTestId('bulk-delete-dialog')).not.toBeInTheDocument()
+
+  expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
+  expect((await admin.get<{ data: unknown[] }>(`/api/table/${enc('Lv Bulk Keep')}`)).data).toHaveLength(3)
 })
 
 test('See a row\'s nested rows without opening it: expanding shows its lines in place and collapsing hides them', async ({ admin }) => {

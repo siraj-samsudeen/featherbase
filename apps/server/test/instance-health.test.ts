@@ -7,7 +7,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { hashPassword } from '../src/auth'
 import { saveDoc } from '../src/document'
-import { withVariable } from '../src/env'
+import { withNamedVariable, withVariable } from '../src/env'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { BREAK_GLASS_ACTOR } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
@@ -133,6 +133,15 @@ describe('the checks (5.1)', () => {
     expect(byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers').ok).toBe(true)
   })
 
+  test('scheduled jobs: a last run that refused to act fails the check like a failure (#464)', async () => {
+    const now = new Date()
+    await sql`update scheduled_job set enabled = true, last_run_at = ${now}, last_outcome = 'refused',
+      last_result = 'disabled nobody: the feed is stale' where method = 'disable_leavers'`
+    const refused = byKey(await runHealthChecks({ now }), 'scheduled-job:disable_leavers')
+    expect(refused).toMatchObject({ ok: false, severity: 'error', message: 'The last run refused to act: disabled nobody: the feed is stale' })
+    expect(refused.fix).toContain('Jobs')
+  })
+
   test('scheduled jobs: a switched-off job passes; an enabled one that stopped running fails', async () => {
     const now = new Date()
     await sql`update scheduled_job set enabled = false, last_outcome = 'error' where method = 'disable_leavers'`
@@ -173,6 +182,18 @@ describe('the checks (5.1)', () => {
 
     await sql`update person set password_hash = ${hashPassword('a-long-rotated-secret')} where row_id = 'Administrator'`
     expect(byKey(await runHealthChecks({ environment: 'production' }), 'administrator-password').ok).toBe(true)
+  })
+
+  test('an app missing a required setting or secret: one failing check per app, naming what is missing', async () => {
+    const manifest = { name: 'healthapp', title: 'Health app', settings: [{ name: 'report_id', required: true }], secrets: ['HEALTHAPP_TOKEN'] }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthapp', ${sql.json(manifest)}, true, true)`
+    const failing = byKey(await withNamedVariable('HEALTHAPP_TOKEN', undefined, () => runHealthChecks()), 'app-setup:healthapp')
+    expect(failing).toMatchObject({ ok: false, severity: 'warning', title: 'App set up: Health app',
+      message: 'Health app answers "not set up yet": missing setting report_id, secret HEALTHAPP_TOKEN.' })
+    await sql`insert into app_setting (row_id, app, setting, value) values ('healthapp.report_id', 'healthapp', 'report_id', 'R-1')`
+    const passing = byKey(await withNamedVariable('HEALTHAPP_TOKEN', 'health-token-620', () => runHealthChecks()), 'app-setup:healthapp')
+    expect(passing).toMatchObject({ ok: true, fix: null })
+    expect(JSON.stringify(passing)).not.toMatch(/R-1|health-token-620/)
   })
 
   test('every check names why it matters, and a failing one says how to fix it', async () => {

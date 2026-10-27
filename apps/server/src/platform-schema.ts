@@ -4,7 +4,7 @@ export const SITE_REGISTRY_RELATION = 'public.site'
 // Physical basenames owned by Featherbase at the cf88a7b convergence boundary.
 // Metadata-backed user Tables are resolved separately by tableRelation().
 const PLATFORM_RELATIONS = new Set([
-  'access_log', 'access_token', 'activity_log', 'assignment_rule',
+  'access_log', 'access_token', 'activity_log', 'app_role_binding', 'app_setting', 'assignment_rule',
   'assignment_rule_user', 'auto_email_report', 'background_job', 'client_script',
   'column_def', 'comment', 'custom_field', 'dashboard', 'data_scope', 'data_source',
   'dataset_miss', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
@@ -36,7 +36,7 @@ const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
 
 export function tableName(table: string): string {
   const naive = table.toLowerCase().replace(/\s+/g, '_')
-  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
+  return Object.hasOwn(PHYSICAL_TABLE_OVERRIDES, naive) ? PHYSICAL_TABLE_OVERRIDES[naive] : naive
 }
 
 // #432: the storage a Table resolves to, as `schema.relation`. App Tables

@@ -106,6 +106,9 @@ export interface SessionOptions {
   /** A hand-off's source expiry (seconds), verified on the source token: the
    *  handed-over session ends exactly then, whatever session_hours says now. */
   expiresAt?: number
+  /** The client's network address, for this sign-in's Activity Log entry
+   *  only; never put in the token (#396). */
+  ipAddress?: string | null
 }
 
 export interface IssuedSession {
@@ -196,6 +199,7 @@ export async function issueSession(userName: string, opts: SessionOptions = {}):
   const session = await issueSessionToken(user.row_id as string, opts)
   await logActivity(user.row_id as string, 'login', {
     full_name: user.full_name as string | null,
+    ip_address: opts.ipAddress ?? null,
     sign_in_method: opts.method ?? (opts.preview ? 'preview' : null),
     test_mode: Boolean(opts.testMode),
   })

@@ -4,6 +4,7 @@ import { describe, expect, vi, afterEach } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { setPasswordMethod } from './identity-fixtures'
+import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 const signUp = (api: { fetch: (p: string, i?: RequestInit) => Promise<Response> }, body: unknown) =>
   api.fetch('/api/signup', { method: 'POST', body: JSON.stringify(body) })
@@ -50,5 +51,16 @@ describe('sign up with a username and password', () => {
     await setPasswordMethod({ new_person: 'create' })
     await signUp(api, { username: 'first', password: 'first-pw-1' })
     expect((await signUp(api, { username: 'second', password: 'second-pw-1' })).status).toBe(429)
+  })
+})
+
+describe('#396: the sign-in records the client address', () => {
+  test('signing up signs in, and that sign-in records the address', async ({ api }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    await setPasswordMethod({ new_person: 'create' })
+    const res = await api.fetch('/api/signup', { method: 'POST', headers: FROM_CLIENT, body: JSON.stringify({ username: 'kavya', password: 'kavya-pw-1' }) })
+    expect(res.status).toBe(201)
+    const { user } = (await res.json()) as { user: { row_id: string } }
+    expect(await signInAddresses(user.row_id)).toEqual([CLIENT])
   })
 })

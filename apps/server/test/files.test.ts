@@ -170,6 +170,35 @@ describe('FILE-001: file upload + storage', () => {
     }
   })
 
+  // #562: a wildcard let an uploader pick a sound or video type a browser may
+  // read as a document (`video/xhtml+xml`). Only the common formats open in place.
+  test('common sound and video formats open in place; any other sound or video type downloads', async ({ admin, api }) => {
+    const uploaded: string[] = []
+    try {
+      for (const type of [
+        'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4',
+        'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
+      ]) {
+        const doc = (await (await upload(admin, 'clip.bin', 'x', type)).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.headers.get('content-type'), type).toBe(type)
+        expect(res.headers.get('content-disposition'), type).toMatch(/^inline;/)
+      }
+      for (const type of ['audio/x-test+xml', 'video/xhtml+xml', 'audio/xml', 'video/x-test+xml', 'audio/x-unknown']) {
+        const doc = (await (
+          await upload(admin, 'clip.xml', '<html xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></html>', type)
+        ).json()) as Record<string, unknown>
+        uploaded.push(doc.file_url as string)
+        const res = await api.fetch(doc.file_url as string)
+        expect(res.headers.get('content-type'), type).toBe('application/octet-stream')
+        expect(res.headers.get('content-disposition'), type).toMatch(/^attachment;/)
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
   test('rejects uploads without a session', async ({ api }) => {
     const form = new FormData()
     form.append('file', new File(['x'], 'x.txt', { type: 'text/plain' }))

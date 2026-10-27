@@ -62,6 +62,12 @@ typing in a field.
 - **THEN** the cursor lands in the search bar, or a blank form for that
   Table opens
 
+#### Scenario: No new row away from a Table
+
+- **WHEN** the user presses the new-row shortcut on an Admin page that is not
+  a Table, such as the jobs page
+- **THEN** the page stays as it is
+
 ### Requirement: Theme and colour palette follow the user, not the device
 
 Choosing a theme or colour palette SHALL apply it right away and save it to

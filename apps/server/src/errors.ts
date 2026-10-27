@@ -7,6 +7,7 @@ type ErrorType =
   | 'PermissionError'
   | 'NotFoundError'
   | 'ConflictError'
+  | 'NotSetUpError'
   | 'MethodNotAllowedError'
   | 'DataSourceError'
   | 'ServiceUnavailableError'
@@ -20,6 +21,9 @@ const STATUS: Record<ErrorType, number> = {
   PermissionError: 403,
   NotFoundError: 404,
   ConflictError: 409,
+  // #620: an installed app whose required settings or secrets are missing:
+  // an instance still to be configured, not an outage.
+  NotSetUpError: 409,
   MethodNotAllowedError: 405,
   // EDS-11: an external data source is unreachable/failed — an upstream
   // failure (502), never disguised as an empty result.

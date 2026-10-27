@@ -325,10 +325,6 @@ async function cmdSettingsSet(io: CommandIO, positional: string[], flags: Record
     if (!['true', 'false'].includes(raw.trim())) throw new Error(`${table} field ${field} is a switch: send true or false`)
     value = raw.trim() === 'true'
   } else if (column.column_type === 'Choice') value = raw.trim()
-  // The same core controllers the server registers, so a sign-in method's
-  // lockout guard runs here too.
-  const { loadControllers } = await import('./controllers')
-  await loadControllers()
   const { BREAK_GLASS_ACTOR } = await import('./managed-settings')
   const { runAsSystemActor } = await import('./system-actor')
   await runAsSystemActor(BREAK_GLASS_ACTOR, async () => {
@@ -379,11 +375,6 @@ async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | st
   } catch (err) {
     throw new Error(`cannot read ${file} as JSON: ${(err as Error).message}`)
   }
-  // The same core controllers the server registers at start (index.ts), so
-  // the CLI enforces what HTTP does: the sign-in lockout guard, a scheduled
-  // job's queue re-timing (Codex adversarial, #465).
-  const { loadControllers } = await import('./controllers')
-  await loadControllers()
   const { applyInstanceSettings } = await import('./instance-settings')
   const result = await applyInstanceSettings(settings, {
     by: 'cli',
@@ -485,6 +476,12 @@ export async function main(argv: string[], io: CommandIO = processIO): Promise<n
 async function runCommand(argv: string[], io: CommandIO): Promise<number> {
   const [cmd, ...rest] = argv
   const { flags, positional } = parseArgs(rest)
+  // #534: the same per-Table controllers the server registers at start
+  // (index.ts), for every command, so a row saved here runs the full save
+  // chain: the Person rules, the sign-in lockout guard, a scheduled job's
+  // queue re-timing.
+  const { loadControllers } = await import('./controllers')
+  await loadControllers()
 
   switch (cmd) {
     case 'migrate':

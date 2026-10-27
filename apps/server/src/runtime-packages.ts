@@ -8,9 +8,12 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { RESERVED_APP_ROOTS, appHref, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
-import { actionDeclaration, readDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
+import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
+import type { ScopeProviderBinding } from './person-scope'
+import { loadAppSetup, secretsDeclaration, settingsDeclaration } from './app-settings'
+import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -51,6 +54,14 @@ const manifestSchema = z.object({
   entryTable: z.string(),
   actions: actionDeclaration.optional(),
   reads: readDeclaration.optional(),
+  // #559: this app provides people's scope for the instance (one app at most).
+  scopeProvider: scopeProviderDeclaration.optional(),
+  // #620 (E2): what the app reads per instance, and the deployment variables
+  // it reads. D4: which of the instance's roles should carry each app role,
+  // written as App Role Binding rows once, at install.
+  settings: settingsDeclaration.optional(),
+  secrets: secretsDeclaration.optional(),
+  roleDefaults: roleDefaultsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -61,6 +72,7 @@ interface RuntimePackage {
   clientRoot?: string
   actions?: DeclaredOperations
   reads?: DeclaredOperations<RuntimeReadHandler>
+  scopeProvider?: ScopeProviderBinding
   root: string
   version: string
   digest: string
@@ -136,6 +148,27 @@ export async function verifySelectedRuntimePackage(name: string) {
   const pkg = await verifyArtifact(packages.get(name))
   const [row] = await sql`select * from installed_app where name = ${name}`
   if (row && !matchesInstalled(pkg, row)) refuse('Restore the exact installed artifact before enabling')
+  await assertOnlyScopeProvider(pkg)
+}
+
+// #559: exactly one enabled app provides people's scope. Checked when an app
+// that provides it is installed, enabled, upgraded or activated.
+async function assertOnlyScopeProvider(pkg: RuntimePackage) {
+  if (!pkg.scopeProvider) return
+  const others = await sql`select name from installed_app where name <> ${pkg.name} and enabled and manifest ? 'scopeProvider' order by name`
+  if (others.length) throw new AppError('ConflictError',
+    `Only one enabled app may provide people's scope; ${others.map(r => String(r.name)).join(', ')} already does`)
+}
+
+// #559: the instance's one scope provider: the enabled, active app whose
+// installed manifest declares it, running its exact installed artifact. None,
+// or more than one, is no provider at all.
+async function findScopeProvider(): Promise<ScopeProviderBinding | undefined> {
+  const rows = await sql`select * from installed_app
+    where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider'`
+  if (rows.length !== 1) return undefined
+  const pkg = packages.get(String(rows[0].name))
+  return pkg && matchesInstalled(pkg, rows[0]) ? pkg.scopeProvider : undefined
 }
 
 function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
@@ -192,6 +225,7 @@ export function discoverPackages(paths: string[]) {
           duplicates.add(key)
           refuse('Duplicate different artifacts for one package version')
         }
+        validateRoleDefaults(manifest.roleDefaults, manifest.roles)
         const names = new Set(manifest.tables.map((t) => t.name))
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
           throw new Error('Duplicate Tables or unknown entryTable')
@@ -210,6 +244,18 @@ export function discoverPackages(paths: string[]) {
         let readHandlers = new Map<string, RuntimeReadHandler>()
         let resolvers = new Map<string, AppScopeResolver>()
         let authorizers = new Map<string, AppProductAuthorizer>()
+        let providers = new Map<string, AppScopeProvider>()
+        const provider = manifest.scopeProvider
+        if (provider) {
+          if (!manifest.server) throw new Error('A scope provider requires a server module')
+          // An owned Table the provider reads must carry the mark; another
+          // Table's mark is checked on every read.
+          for (const table of provider.tables) {
+            const owned = manifest.tables.find(t => t.name === table)
+            if (owned && !owned.decides_scope) throw new Error('A scope provider reads only Tables marked decides_scope')
+            if (owned?.columns.some(column => column.column_type === 'Sub-table')) throw new Error('A scope provider cannot read Tables with Sub-tables')
+          }
+        }
         const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}
         const readOperations = manifest.reads?.operations ?? {}
         const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
@@ -232,6 +278,7 @@ export function discoverPackages(paths: string[]) {
           readHandlers = namedFunctions(module.reads, Object.keys(readOperations))
           resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
           authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
+          providers = namedFunctions(module.scopeProviders, provider ? [provider.name] : [])
           for (const [table, validator] of Object.entries(module.validators ?? {})) {
             if (!names.has(table) || typeof validator !== 'function')
               throw new Error('Validators must target owned Tables')
@@ -243,16 +290,19 @@ export function discoverPackages(paths: string[]) {
         }
         const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
           [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,
-            authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined }]))
+            authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined,
+            ...(declaration.policy.kind === 'person_scope' ? { scopeProvider: findScopeProvider } : {}) }]))
+        const setup = () => loadAppSetup(manifest.name, manifest)
         const app: AppManifest = { name: manifest.name, tables: manifest.tables,
           roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
           runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
           runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
         artifacts.set(key, { name: manifest.name, title: manifest.title,
           entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
+          scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
           // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
-          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations) } : undefined,
-          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations) } : undefined })
+          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
+          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup } : undefined })
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))
@@ -335,6 +385,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
     }
     const prepared = await upgradePlan(name, version)
     if (prepared.plan.planId !== planId) throw new AppError('ConflictError', 'Upgrade plan is stale; preview and review again')
+    if (prepared.row.enabled) await assertOnlyScopeProvider(prepared.target)
     try {
       await withTransaction(async () => {
         await applyAdditions(prepared.pending, name)
@@ -372,6 +423,7 @@ export function activateAppUpgrade(name: string, version: string) {
     if (!row || row.package_version !== version) refuse('Activate requires the committed package version')
     const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
     if (!matchesInstalled(target, row)) refuse('Restore the exact committed artifact before activation')
+    if (row.enabled) await assertOnlyScopeProvider(target)
     selectPackage(target)
     await sql`update installed_app set activation_pending = false where name = ${name}`
     await loadInstalledApps()

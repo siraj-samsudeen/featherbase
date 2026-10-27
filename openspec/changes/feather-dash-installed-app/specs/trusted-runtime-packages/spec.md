@@ -37,6 +37,45 @@ written to any log.
 - **THEN** the app tells its readers it is not set up yet, instead of reporting an
   outage
 
+#### Scenario: An admin sees what an app still needs
+
+- **WHEN** an installed app still lacks a secret it requires
+- **THEN** the instance's health page and the release log name the app and the
+  missing secret, without showing any value
+
+### Requirement: An app gets only the settings it declared
+
+An app SHALL receive only the settings and secrets it declared. A value kept for
+anything else SHALL never reach it.
+
+#### Scenario: A leftover value stays out of the app
+
+- **WHEN** an instance still holds a value for a setting the app no longer declares
+- **THEN** the app does not receive it, and an admin cannot add one for it
+
+### Requirement: An instance sets an app's settings in its settings file
+
+An instance SHALL set each app's settings in its own settings file, the same way as
+its other settings: previewed before applying, kept in the file's history, and
+read-only in Admin once the file sets them.
+
+#### Scenario: Pointing dev at a different report
+
+- **WHEN** the dev section of the instance's settings file names a different report
+  for an app, and the owner applies the file to dev
+- **THEN** the app on dev reads that report, and prod keeps its own
+
+### Requirement: An app's secret never leaves the server
+
+Featherbase SHALL never pass an app's secret on: not in an answer, an error, a log
+line, the Access Log, or a settings export, even when the app's own code tries to.
+
+#### Scenario: An app tries to answer with its secret
+
+- **WHEN** an app's answer, or an error it raises, contains its secret
+- **THEN** the reader gets a message that the answer was withheld, and the secret
+  appears in no log
+
 ### Requirement: Content from outside sites only where the app declared it
 
 An app MAY show content from an outside site only if it declared that site. Featherbase
@@ -91,3 +130,33 @@ serving.
   enabled
 - **THEN** the release refuses to start
 - **AND** people keep using the app on the release already running
+
+### Requirement: An app can provide people's scope
+
+An app SHALL be able to declare that it works out which places each person is
+responsible for, so other apps on the instance can rely on that answer. It SHALL read
+only the records it declared, and only records marked as deciding scope.
+
+#### Scenario: A report app relies on a roster app
+
+- **WHEN** a roster app that provides people's scope and a report app are installed
+  together
+- **THEN** the report shows each manager only the stores the roster app says they cover
+
+#### Scenario: A roster app reaching beyond what it declared
+
+- **WHEN** an app that provides people's scope tries to read records it did not
+  declare, or records not marked as deciding scope
+- **THEN** no one gets a scope from it, and requests are refused
+
+### Requirement: Only one app provides people's scope
+
+An instance SHALL have at most one enabled app that provides people's scope.
+Featherbase SHALL refuse to install, enable or upgrade into a second one, and a release
+SHALL refuse to start on an instance that has two.
+
+#### Scenario: A second roster app is refused
+
+- **WHEN** an admin installs a second app that provides people's scope
+- **THEN** the install is refused, naming the app that already provides it
+
