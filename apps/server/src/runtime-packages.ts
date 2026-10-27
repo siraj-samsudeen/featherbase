@@ -7,7 +7,7 @@ import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeAp
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
-import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
+import { appOperation, appsWithOwnPages, opensAtOwnRoot, provisionApp, withAppIdentity } from './app-lifecycle'
 import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -176,6 +176,8 @@ async function verifyArtifact(pkg: RuntimePackage | undefined): Promise<RuntimeP
 function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
+  if (pkg.clientRoot) appsWithOwnPages.add(pkg.name)
+  else appsWithOwnPages.delete(pkg.name)
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
@@ -379,6 +381,7 @@ export function discoverPackages(paths: string[]) {
     forgetRuntimePackages()
     forgetAppDatasets()
     packages.clear()
+    appsWithOwnPages.clear()
     artifacts.clear()
     packageFailures.length = 0
     const { loaded, failures } = await loadArtifacts(paths)
@@ -613,14 +616,6 @@ export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
 /** A discovered app package's title, for an address that opens it (#488). */
 export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
-}
-
-/** Does this installed app open at its own root, with pages of its own (a
- *  client)? The app catalog's test, and #659's: only such an app's Tables are
- *  kept out of the Admin, since an app without pages is used through the
- *  Admin's generated lists and forms. Enabled or not. */
-export function opensAtOwnRoot(name: string): boolean {
-  return Boolean(packages.get(name)?.clientRoot)
 }
 
 export async function appCatalog(user: string) {

@@ -16,6 +16,18 @@ const locks = postgres(config.databaseUrl, {
 const scope = new AsyncLocalStorage<{ exclusive: boolean; provisioning?: string }>()
 const clientVersion = new AsyncLocalStorage<Map<string, string>>()
 export const activeApps = new Set<string>()
+/** #659: the loaded apps that open at their own root, with pages of their own
+ *  (a client), enabled or not. Kept by runtime-packages beside its package
+ *  map; here so the permission rules can read it without importing it. */
+export const appsWithOwnPages = new Set<string>()
+
+/** Does this installed app open at its own root, with pages of its own? The
+ *  app catalog's test, and #659's: only such an app's Tables are kept out of
+ *  the Admin, since an app without pages is used through the Admin's
+ *  generated lists and forms. */
+export function opensAtOwnRoot(name: string): boolean {
+  return appsWithOwnPages.has(name)
+}
 
 export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
   const identities = new Map<string, string>()

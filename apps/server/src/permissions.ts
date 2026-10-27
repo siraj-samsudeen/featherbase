@@ -1,9 +1,8 @@
 import { sql } from './db'
 import { AppError } from './errors'
-import { activeApps } from './app-lifecycle'
+import { activeApps, opensAtOwnRoot } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
 import { asNameList } from './installed-app-ledger'
-import { opensAtOwnRoot } from './runtime-packages'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
