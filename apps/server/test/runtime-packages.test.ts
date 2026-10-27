@@ -352,8 +352,12 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   test("PKG-R4: the retired runtime shell's stylesheet and script are no longer served", async ({ admin }) => {
-    for (const path of ['/featherbase/runtime-shell.css', '/featherbase/runtime-shell.js'])
-      expect([path, (await admin.fetch(path)).status]).toEqual([path, 404])
+    // Not found, or (where a built web app is present) its page fallback:
+    // never a stylesheet or a script.
+    for (const path of ['/featherbase/runtime-shell.css', '/featherbase/runtime-shell.js']) {
+      const res = await admin.fetch(path)
+      expect([path, res.status === 404 || !/css|javascript/.test(res.headers.get('content-type') ?? '')]).toEqual([path, true])
+    }
   })
 
   test('PKG-R4: runtime catalog and document omit an unauthorized app', async ({ admin, createUser }) => {

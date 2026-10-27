@@ -28,6 +28,11 @@ describe("an app's entry document", () => {
     expect(html).toBe('<script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar><main>bare</main>')
   })
 
+  test('a document with a head but no body gets the host right after the script', () => {
+    const html = composeRuntimeShell('<head><title>t</title></head><main>x</main>', app)
+    expect(html).toBe('<head><title>t</title><script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar></head><main>x</main>')
+  })
+
   test("the old runtime-shell header is gone", () => {
     const html = composeRuntimeShell('<html><head></head><body></body></html>', app)
     expect(html).not.toMatch(/runtime-shell|<select|Switch application/)
