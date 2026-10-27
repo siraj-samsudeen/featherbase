@@ -6,8 +6,7 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { removeRowActivity, repointRowActivity, retainedDocumentCounts } from './document-activity'
-import { deleteStored } from './storage'
+import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -1299,7 +1298,6 @@ async function deleteDocImpl(
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
-  let storedFiles: string[] = []
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdManagedSet(stx, meta.name)
@@ -1314,10 +1312,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      const counts = await retainedDocumentCounts(stx, table, name)
-      if (Object.values(counts).some(Boolean))
-        throw new AppError('ValidationError', 'This document has retained activity or references and cannot be deleted',
-          Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])))
+      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name))
+    } else {
+      // #321: a plain row keeps its comments, history, attachments and shares
+      // by refusing the delete while it has any (links are checked below).
+      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name))
     }
     if ((existing.status as string) === 'submitted')
       throw new AppError(
@@ -1361,23 +1360,16 @@ async function deleteDocImpl(
     }
     await runHooks('on_trash', ctx)
 
-    // Remove this row's own child rows, then the row, and (#321) everything
-    // that names any of them by id, so nothing points at a missing row and
-    // no share wakes up for a later row given the same id.
+    // Remove this row's own child rows, then the row.
     await assertChildRowsWritable(stx, meta, name, user)
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
-      const children = await tx`
+      await tx`
         delete from ${tx(await tableRelation(f.row_table!))}
-        where parent = ${name} and parenttype = ${table}
-        returning ${tx(physicalRowKey(f.row_table!))} as id`
-      for (const child of children)
-        storedFiles.push(...await removeRowActivity(stx, f.row_table!, String(child.id)))
+        where parent = ${name} and parenttype = ${table}`
     }
     await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
-    storedFiles.push(...await removeRowActivity(stx, table, name))
   }))
-  await unlinkUnusedFiles(storedFiles)
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
@@ -1388,17 +1380,6 @@ async function deleteDocImpl(
     isNew: false,
     tx: sql,
   }))
-}
-
-// Stored files go only once the delete is visible (inside an app action,
-// once the action commits), and only those no other attachment still uses.
-async function unlinkUnusedFiles(fileUrls: string[]): Promise<void> {
-  if (fileUrls.length) await afterDocumentCommit(async () => {
-    for (const fileUrl of fileUrls) {
-      const [inUse] = await sql`select 1 from file where file_url = ${fileUrl} limit 1`
-      if (!inUse) await deleteStored(fileUrl)
-    }
-  })
 }
 
 // EDS-6: delete a bound row on the source. The link-integrity check runs
@@ -1452,6 +1433,9 @@ async function deleteBoundDoc(
     isNew: false,
     tx: sql,
   }
+  // #321: a connected row's comments, history, attachments and shares live
+  // here; the delete is refused while it has any, as for a stored row.
+  assertNothingRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)
@@ -1463,14 +1447,6 @@ async function deleteBoundDoc(
       'ConflictError',
       `${meta.name} ${name} has been modified after you loaded it`,
     )
-  // #321: the row is gone on the source; its activity lives here and goes too.
-  // The source has no shared transaction, so this follows the removal, and a
-  // failure here is logged rather than reported as a failed delete.
-  try {
-    await unlinkUnusedFiles(await sql.begin((tx) => removeRowActivity(tx as unknown as typeof sql, meta.name, name)))
-  } catch (error) {
-    console.error(`Deleted ${meta.name} ${name} on its source but could not remove its activity`, error)
-  }
 }
 
 // DOC-012: rename a row's primary key and update every Reference that

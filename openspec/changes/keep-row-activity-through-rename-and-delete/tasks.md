@@ -3,9 +3,9 @@
 - [x] 1.1 Pin the lost timeline with a failing test, then repoint every platform record that names the row by id inside the rename transaction; flip the `test.fails` pin.
 - [x] 1.2 Hold the cascade's list equal to the person registry's row-id columns, so a new one cannot be missed.
 
-## 2. Delete leaves nothing pointing at the row (#321)
+## 2. Delete keeps a row's activity by refusing (#321)
 
-- [x] 2.1 Failing test for a plain row with comments, history, attachments, shares, tags, assignments, notifications and workflow steps; remove them in the delete transaction (data scopes, access and email logs stay) and unlink the stored files after commit (recommended option on #566).
+- [x] 2.1 Failing tests, then refuse deleting a stored or connected row while it has comments, history, attachments or shares, naming each kind's count (owner decision on #566, 27-Oct-2026).
 
 ## 3. History index (#446)
 

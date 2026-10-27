@@ -2,8 +2,6 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { readStored } from '../src/storage'
-import { grantRole } from './fixtures'
 
 const CUSTOMER = 'Del Customer'
 const INVOICE = 'Del Invoice'
@@ -117,101 +115,50 @@ describe('Nested rows and settings are deleted only through what holds them', ()
   })
 })
 
-// SPEC: Deleting a row leaves nothing pointing at it (row-deletion), #321.
-// Comments, history, attachments, shares, assignments, tags, notifications,
-// workflow steps and row-level data scopes name a row by id in plain text.
-// Left behind, they would point at nothing, and a share would wake up for
-// any later row given the same id.
-describe('Deleting a row leaves nothing pointing at it', () => {
-  const activity = (table: string, name: string) => sql`
-    select 'comment' as kind from comment where ref_table = ${table} and ref_name = ${name}
-    union all select 'version' from version where ref_table = ${table} and ref_name = ${name}
-    union all select 'file' from file where ref_table = ${table} and ref_name = ${name}
-    union all select 'share' from share where share_table = ${table} and share_name = ${name}
-    union all select 'tag' from tag_link where ref_table = ${table} and ref_name = ${name}
-    union all select 'todo' from todo where ref_table = ${table} and reference_name = ${name}
-    union all select 'notification' from notification_log where ref_table = ${table} and ref_name = ${name}
-    union all select 'workflow step' from workflow_action where ref_table = ${table} and ref_name = ${name}
-    union all select 'data scope' from data_scope where allow_table = ${table} and for_value = ${name}
-    order by 1`
+// SPEC: A row with comments, history, attachments or shares can't be deleted
+// (row-deletion), #321. Owner decision 27-Oct-2026: refuse, as app rows are,
+// so no one's work is lost, and name what blocks the delete.
+describe('A row with comments, history, attachments or shares can\'t be deleted', () => {
+  let n = 0
+  const comment = (name: string) =>
+    sql`insert into comment (row_id, ref_table, ref_name, content) values (${`del-c-${++n}`}, ${CUSTOMER}, ${name}, 'called them today')`
 
-  async function giveActivity(table: string, name: string) {
-    await sql`insert into tag_link (ref_table, ref_name, tag) values (${table}, ${name}, 'del-vip')`
-    for (const [relation, tableColumn, nameColumn] of [
-      ['comment', 'ref_table', 'ref_name'], ['share', 'share_table', 'share_name'],
-      ['todo', 'ref_table', 'reference_name'], ['notification_log', 'ref_table', 'ref_name'],
-      ['workflow_action', 'ref_table', 'ref_name'], ['data_scope', 'allow_table', 'for_value'],
-    ] as const)
-      await sql`insert into ${sql(`featherbase.${relation}`)} ${sql({
-        row_id: `${relation} ${table} ${name}`, [tableColumn]: table, [nameColumn]: name,
-        ...(relation === 'data_scope' || relation === 'share' ? { person: 'Administrator' } : {}),
-      })}`
-  }
-
-  test('a plain row goes with its comments, history, attachments, shares and the rest', async ({ admin }) => {
+  test('each kind blocks the delete, and the refusal names what blocks it', async ({ admin }) => {
     await setup(admin)
+    // History: one edit.
     const acme = await admin.get<{ updated_at: string }>(docPath(CUSTOMER, 'Acme'))
     await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id: 'Acme', updated_at: acme.updated_at, city: 'Pune' } })
-    const form = new FormData()
-    form.append('file', new File(['invoice 17'], 'invoice-17.txt', { type: 'text/plain' }))
-    form.append('ref_table', CUSTOMER)
-    form.append('ref_name', 'Acme')
-    const uploaded = await (await admin.fetch('/api/upload_file', { method: 'POST', body: form })).json() as { file_url: string }
-    await giveActivity(CUSTOMER, 'Acme')
-    await sql`insert into access_log (row_id, ref_table, reference_name) values ('del-access', ${CUSTOMER}, 'Acme')`
-    await sql`insert into email_queue (row_id, ref_table, reference_name) values ('del-email', ${CUSTOMER}, 'Acme')`
-    // The same id under another Table is someone else's activity.
-    await giveActivity(INVOICE, 'Acme')
-    const kinds = ['comment', 'data scope', 'file', 'notification', 'share', 'tag', 'todo', 'version', 'workflow step']
-    expect((await activity(CUSTOMER, 'Acme')).map((r) => r.kind)).toEqual(kinds)
-
-    await admin.delete(docPath(CUSTOMER, 'Acme'))
-
-    // Only the data scope stays: dropping it would widen what its person sees.
-    expect((await activity(CUSTOMER, 'Acme')).map((r) => r.kind)).toEqual(['data scope'])
-    await expect(readStored(uploaded.file_url)).rejects.toThrow()
-    // Logs of what happened keep the id they recorded.
-    expect(await sql`select row_id from access_log where row_id = 'del-access'
-      union all select row_id from email_queue where row_id = 'del-email' order by 1`)
-      .toEqual([{ row_id: 'del-access' }, { row_id: 'del-email' }])
-    // A new row given the same id starts clean.
-    await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id: 'Acme' } })
-    expect(await admin.get<{ comments: unknown[]; versions: unknown[] }>(`/api/activity/${encodeURIComponent(CUSTOMER)}/Acme`))
-      .toMatchObject({ comments: [], versions: [] })
-    expect((await activity(INVOICE, 'Acme')).map((r) => r.kind))
-      .toEqual(['comment', 'data scope', 'notification', 'share', 'tag', 'todo', 'workflow step'])
-  })
-
-  test('a refused deletion keeps the row\'s activity', async ({ admin }) => {
-    await setup(admin)
-    await admin.post('/api/save_row', { table: INVOICE, row: { customer: 'Acme' } })
-    await giveActivity(CUSTOMER, 'Acme')
-    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 417 })
-    expect(await activity(CUSTOMER, 'Acme')).toHaveLength(7)
-  })
-
-  test('a nested row\'s attachments go with its parent', async ({ admin }) => {
-    await setup(admin)
-    const inv = await admin.post<{ row_id: string; lines: { row_id: string }[] }>('/api/save_row', {
-      table: INVOICE, row: { lines: [{ supplier: 'Globex' }] },
+    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining('it has 1 history entry'),
     })
-    const line = inv.lines[0].row_id
-    await sql`insert into file (row_id, ref_table, ref_name, file_name) values ('del-line-file', ${ROW}, ${line}, 'line.txt')`
-    await admin.delete(docPath(INVOICE, inv.row_id))
-    expect(await sql`select row_id from file where row_id = 'del-line-file'`).toEqual([])
+    // Comments, an attachment and a share on rows with no history.
+    await comment('Globex')
+    await comment('Globex')
+    await sql`insert into file (row_id, ref_table, ref_name, file_name) values ('del-f', ${CUSTOMER}, 'Initech', 'invoice-17.txt')`
+    await sql`insert into share (row_id, share_table, share_name, person, read) values ('del-s', ${CUSTOMER}, 'Umbrella', 'Administrator', true)`
+    await expect(admin.delete(docPath(CUSTOMER, 'Globex'))).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining(`${CUSTOMER} Globex cannot be deleted: it has 2 comments`),
+    })
+    await expect(admin.delete(docPath(CUSTOMER, 'Initech'))).rejects.toMatchObject({ message: expect.stringContaining('1 attachment') })
+    await expect(admin.delete(docPath(CUSTOMER, 'Umbrella'))).rejects.toMatchObject({ message: expect.stringContaining('1 share') })
+    for (const name of ['Acme', 'Globex', 'Initech', 'Umbrella'])
+      expect(await admin.get(docPath(CUSTOMER, name))).toMatchObject({ row_id: name })
+    expect(await sql`select count(*)::int as n from comment where ref_table = ${CUSTOMER} and ref_name = 'Globex'`).toEqual([{ n: 2 }])
   })
 
-  // A data scope narrows its person to the rows it names; deleting the named
-  // row must not lift the narrowing.
-  test('deleting the one row a person is scoped to does not open the others to them', async ({ admin, createUser }) => {
+  test('several kinds are listed together', async ({ admin }) => {
     await setup(admin)
-    await grantRole(admin, { role: 'Del Scoped', table: CUSTOMER, can_read: true, can_delete: true })
-    const sam = await createUser({ roles: ['Del Scoped'] })
-    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: sam.user, allow_table: CUSTOMER, for_value: 'Acme' } })
-    const visible = async () => (await sam.get<{ data: { row_id: string }[] }>(
-      `/api/table/${encodeURIComponent(CUSTOMER)}?fields=${encodeURIComponent('["row_id"]')}`)).data.map((r) => r.row_id)
-    expect(await visible()).toEqual(['Acme'])
-    await sam.delete(docPath(CUSTOMER, 'Acme'))
-    expect(await visible()).toEqual([])
+    await comment('Acme')
+    await sql`insert into share (row_id, share_table, share_name, person, read) values ('del-s2', ${CUSTOMER}, 'Acme', 'Administrator', true)`
+    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({
+      message: expect.stringContaining(`${CUSTOMER} Acme cannot be deleted: it has 1 comment and 1 share`),
+    })
+  })
+
+  test('the same id under another Table does not block, and a row with none of these deletes', async ({ admin }) => {
+    await setup(admin)
+    await sql`insert into comment (row_id, ref_table, ref_name, content) values ('del-other', ${INVOICE}, 'Acme', 'someone else')`
+    await admin.delete(docPath(CUSTOMER, 'Acme'))
+    await expect(admin.get(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 404 })
   })
 })
