@@ -43,6 +43,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 2.16 Local development of a client app: run a client app with hot reload against a featherbase checkout or version, without Docker images (D7); the mechanism is decided and built with B6′.
 - [x] 2.17 An installed app's own pages carry the shared top bar (D3, E8): the platform's bar bundle draws it over the app's page; the runtime shell's header, switcher, stylesheet and script are removed; bar choices reach the app through the address and the `featherbase:bar-change` event; the bar's height is published as `--featherbase-bar-height` (#650).
 - [x] 2.18 Optional secrets: a secret may be marked optional and each read or action names the optional secrets it needs; a missing optional secret holds up only those, a handler never gets an optional secret it does not need, and the release check and Instance health warn naming the secret and what needs it (#666).
+- [ ] 2.19 With the clean-up release (2.14): remove every `feather_dash` / `INTERIM_APPS` literal from platform code (`landing.ts`, `TopBar.tsx`, `instance-addresses.ts`, `packages/shared` `app-routes.ts` and its export). Which app an address opens, and the name its bar shows, come only from `INSTANCE_ADDRESSES` `opens` and the installed app, so the platform names no app (ADR 0011). The literals were accepted in #672 only as part of the interim coupling 2.14 deletes. Then flip the `test.fails` pin in `apps/server/test/platform-names-no-app.test.ts` to a plain test.
 
 ## 3. Stage C — roster redesign (after #449 and #392)
 
