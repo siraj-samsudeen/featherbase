@@ -5,7 +5,8 @@ import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
 import { tableSchemaToZod } from 'shared'
-import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, tableDefSchema, tableRelation, updateTable, type TableDef } from './table-engine'
+import { defaultValueFor } from './document'
+import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { COLUMN_TYPE_VALUES, invalidateMeta, physicalRowKey } from './meta'
 
@@ -419,6 +420,11 @@ const isEmpty = (column: string) => `(${quoteIdent(column)} is null or ${quoteId
 // A backfill, or a required column's default, lands in rows no save ever
 // checked, so it meets the column's own rules first: its kind, its choices,
 // and for a link, a row the target holds.
+// What a column fills its empty rows with when the step names no backfill:
+// a required column's default, converted as a save converts it.
+const automaticFill = (column: Column) =>
+  column.reqd && column.default_value != null ? defaultValueFor(column.column_type, column.default_value) : undefined
+
 async function writeFill(found: Stored, table: string, column: Column, value: unknown, what: string) {
   if (value === undefined || value === null) return
   const name = column.column_name
@@ -426,7 +432,7 @@ async function writeFill(found: Stored, table: string, column: Column, value: un
   if (!parsed.success) refuse(`${what}: the backfill ${JSON.stringify(value)} is not a value ${table}.${name} accepts`)
   if (column.column_type === 'Reference') {
     const target = column.reference_table!
-    const rows = await sql.unsafe(`select 1 from ${quoteRelation(await tableRelation(target))} where ${quoteIdent(physicalRowKey(target))} = $1`, [String(value)])
+    const rows = await sql.unsafe(`select 1 from ${quoteRelation(await storedRelation(target))} where ${quoteIdent(physicalRowKey(target))} = $1`, [String(value)])
     if (!rows.length) refuse(`${what}: the backfill ${JSON.stringify(value)} names no row of ${target}`)
   }
   await sql.unsafe(`update ${found.relation} set ${quoteIdent(name)} = $1 where ${isEmpty(name)}`, [(parsed.data as Record<string, never>)[name]])
@@ -466,7 +472,8 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       const def = await definition(op.table)
       def.columns.splice((op.position ?? def.columns.length + 1) - 1, 0, op.column)
       await updateTable(op.table, def)
-      await writeFill(found, op.table, op.column, op.backfill ?? (op.column.reqd ? op.column.default_value : undefined), what)
+      // An explicit backfill is checked as written; the default as a save converts it.
+      await writeFill(found, op.table, op.column, op.backfill ?? automaticFill(op.column), what)
       return null
     }
     case 'alterColumn': {
@@ -485,16 +492,26 @@ async function applyOperation(owner: string, op: Operation, actor: string, base:
       }
       const def = await definition(op.table)
       const target = def.columns.find(c => c.column_name === op.column)!
+      const wasUnique = Boolean(target.unique)
       const { column_type: _type, ...properties } = op.to
       setProperties(target, properties)
+      // Rules the step withdraws go first and rules it adds go after the
+      // fill, so the fill meets the rules the column ends with: one value
+      // may fill many rows once unique is off, never while it turns on.
+      const addsUnique = Boolean(target.unique) && !wasUnique
+      if (addsUnique) target.unique = false
+      await updateTable(op.table, def)
       // The column as it ends up decides: a narrowing can empty a column
       // that was already required.
-      await writeFill(found, op.table, target, op.backfill ?? (target.reqd ? target.default_value : undefined), what)
+      await writeFill(found, op.table, target, op.backfill ?? automaticFill(target), what)
       if (target.reqd) {
         const empty = await count(`select count(*)::int as n from ${found.relation} where ${isEmpty(op.column)}`)
         if (empty) refuse(`${what}: ${empty} ${empty === 1 ? 'row holds' : 'rows hold'} no value; give the operation a backfill`)
       }
-      await updateTable(op.table, def)
+      if (addsUnique) {
+        target.unique = true
+        await updateTable(op.table, def)
+      }
       return loss
     }
     case 'renameColumn':

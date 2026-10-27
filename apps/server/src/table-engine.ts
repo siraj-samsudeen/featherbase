@@ -252,6 +252,17 @@ export async function tableRelation(name: string): Promise<string> {
   return `${meta.physical_schema}.${meta.physical_relation}`
 }
 
+// #651: where a Table's rows are stored, read straight from its definition.
+// A maintenance sweep (a rename's, a drop's) must reach every Table, even
+// one whose app is turned off, so it never passes the availability check
+// that getMeta (and tableRelation) applies to app Tables.
+export async function storedRelation(name: string): Promise<string> {
+  const [row] = await sql<{ name: string; physical_schema: string | null; physical_relation: string | null }[]>`
+    select name, physical_schema, physical_relation from table_def where name = ${name}`
+  if (!row) throw new AppError('NotFoundError', `Table ${name} not found`)
+  return resolvedRelation(row)
+}
+
 export function quoteRelation(relation: string): string {
   return relation.split('.').map(quoteIdent).join('.')
 }
@@ -776,7 +787,7 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       const children = await tx<{ row_id: string }[]>`
-        delete from ${tx(await tableRelation(f.row_table!))} where parenttype = ${meta.name} returning row_id`
+        delete from ${tx(await storedRelation(f.row_table!))} where parenttype = ${meta.name} returning row_id`
       if (children.length) removedFiles.push(...await tx<{ file_url: string | null }[]>`
         delete from file where ref_table = ${f.row_table!} and ref_name in ${tx(children.map((r) => r.row_id))}
         returning file_url`)
@@ -785,7 +796,7 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       delete from file where ref_table = ${meta.name} returning file_url`)
     for (const p of pointers)
       await tx`
-        delete from ${tx(await tableRelation(p.parent))}
+        delete from ${tx(await storedRelation(p.parent))}
         where ${tx(p.column_name)} = ${meta.name}`
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
@@ -952,10 +963,10 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
   // The Table being renamed may hold such a link itself: by the time the
   // sweep runs, its rows live under the new name.
   for (const p of pointers)
-    relations.set(p.parent, p.parent === from ? quoteRelation(`${meta.physical_schema}.${to.split('.')[1]}`) : quoteRelation(await tableRelation(p.parent)))
+    relations.set(p.parent, p.parent === from ? quoteRelation(`${meta.physical_schema}.${to.split('.')[1]}`) : quoteRelation(await storedRelation(p.parent)))
   const children: string[] = []
   for (const c of meta.columns)
-    if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await tableRelation(c.row_table)))
+    if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await storedRelation(c.row_table)))
 
   const schema = quoteIdent(meta.physical_schema)
   const relation = `${schema}.${quoteIdent(relationName)}`

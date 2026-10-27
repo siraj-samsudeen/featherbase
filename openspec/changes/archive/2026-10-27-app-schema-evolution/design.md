@@ -79,6 +79,15 @@ and the app's table registry.
   grants; a Table renamed into a dropped Table's name does not inherit them.
 - `renameTable` handles a Table that holds links to Tables itself.
 
+## After Codex review round 2 (27-Oct-2026)
+
+- A rename's and a drop's sweeps find each Table's storage from its stored
+  definition, so another app being turned off never stops them.
+- When a step names no backfill, a required column's default is converted
+  as a save converts it (a Check's "1" is true) before it fills rows.
+- An `alterColumn` withdraws rules (unique off) before it fills and adds
+  rules (unique on) after, so the fill meets the rules the column ends with.
+
 ## Not done here
 
 - Changing a table's own properties (label, title column, row naming,

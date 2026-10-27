@@ -24,6 +24,15 @@ async function shop() {
   await sql`insert into shop.line (row_id, parent, parenttype, parentfield, qty) values ('l1', 's1', 'shop.supplier', 'lines', 7)`
 }
 
+// A second installed app, turned off, whose Table links to Tables and holds
+// one link to shop.supplier.
+async function ledgerOff() {
+  await provisionApp('ledger', () => createTable({ name: 'ledger.log', label: 'Log',
+    columns: [{ column_name: 'about', label: 'About', column_type: 'Reference', reference_table: 'Table' }] }, 'ledger'))
+  await sql`insert into ledger.log (row_id, about) values ('g1', 'shop.supplier')`
+  await sql`insert into installed_app (name, tables, enabled) values ('ledger', ${sql.json(['ledger.log'])}, false)`
+}
+
 describe('renameTable', () => {
   shopTest('rows are kept under the new name', async () => {
     await shop()
@@ -82,6 +91,13 @@ describe('renameTable', () => {
     await sql`insert into shop.audit (row_id, about) values ('a1', 'shop.audit'), ('a2', 'Person')`
     await renameTable('shop.audit', 'shop.trail', 'shop')
     expect(await sql`select row_id, about from shop.trail order by row_id`).toEqual([{ row_id: 'a1', about: 'shop.trail' }, { row_id: 'a2', about: 'Person' }])
+  })
+
+  shopTest('another app being disabled does not stop a rename, and its links to the Table follow', async () => {
+    await shop()
+    await ledgerOff()
+    await renameTable('shop.supplier', 'shop.vendor', 'shop')
+    expect(await sql`select about from ledger.log`).toEqual([{ about: 'shop.vendor' }])
   })
 
   shopTest('a Table the app does not own is refused', async () => {
@@ -240,6 +256,43 @@ describe('losses are counted after the steps before them', () => {
     await registered()
     await countLosses('shop', [step([{ kind: 'dropColumn', table: 'shop.supplier', column: lines, destructive: true }])])
     expect(await sql`select row_id from shop.line`).toEqual([{ row_id: 'l1' }])
+  })
+})
+
+describe('round 2: valid upgrades that used to fail', () => {
+  shopTest('another app being disabled does not stop a drop', async () => {
+    await registered()
+    await ledgerOff()
+    await run({ kind: 'dropTable', table: { ...supplier, columns: [...supplier.columns, lines] }, destructive: true })
+    expect(await sql`select to_regclass('shop.supplier') as relation`).toEqual([{ relation: null }])
+  })
+
+  shopTest('a required Check with default 1 fills the rows already there with true', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'active', label: 'Active', column_type: 'Check', reqd: true, default_value: '1' } })
+    expect(await sql`select active from shop.supplier`).toEqual([{ active: true }])
+  })
+
+  shopTest('a required Check with default 0 fills the rows already there with false', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'active', label: 'Active', column_type: 'Check', reqd: true, default_value: '0' } })
+    expect(await sql`select active from shop.supplier`).toEqual([{ active: false }])
+  })
+
+  shopTest('turning unique off lets one backfill fill many rows', async () => {
+    await registered()
+    await sql`insert into shop.supplier (row_id, code) values ('s2', 'BOLT')`
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'badge', label: 'Badge', column_type: 'Data', unique: true } })
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'badge', backfill: 'none', from: { unique: true }, to: { unique: null } })
+    expect(await sql`select badge from shop.supplier order by row_id`).toEqual([{ badge: 'none' }, { badge: 'none' }])
+  })
+
+  shopTest('turning unique on with one backfill for many rows is still refused', async () => {
+    await registered()
+    await sql`insert into shop.supplier (row_id, code) values ('s2', 'BOLT')`
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'badge', label: 'Badge', column_type: 'Data' } })
+    await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'badge', backfill: 'none', from: { unique: null }, to: { unique: true } }))
+      .rejects.toThrow(/cannot repeat a value/)
   })
 })
 

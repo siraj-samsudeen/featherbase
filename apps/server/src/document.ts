@@ -191,13 +191,17 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
     if (own(out, f.column_name) != null) continue
     if (f.default_value == null) continue
-    if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
-      out[f.column_name] = Number(f.default_value)
-    else if (f.column_type === 'Check')
-      out[f.column_name] = f.default_value === '1' || f.default_value === 'true'
-    else out[f.column_name] = f.default_value
+    out[f.column_name] = defaultValueFor(f.column_type, f.default_value)
   }
   return out
+}
+
+/** A column's stored default (always text) as the value a save writes. #651:
+ *  an app upgrade fills existing rows with it the same way. */
+export function defaultValueFor(columnType: string, defaultValue: string): unknown {
+  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') return Number(defaultValue)
+  if (columnType === 'Check') return defaultValue === '1' || defaultValue === 'true'
+  return defaultValue
 }
 
 // The columns a unique violation (23505) is about.
