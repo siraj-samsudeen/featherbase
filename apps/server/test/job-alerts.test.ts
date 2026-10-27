@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, enqueue, loadJobs, registerJob, syncScheduledJobs } from '../src/jobs'
+import { drainJobs, enqueue, loadJobs, registerJob, retryJob, syncScheduledJobs } from '../src/jobs'
 import { _setJobAlertSender, JOB_ALERT_SUBJECT } from '../src/job-alerts'
-import type { MailMessage } from '../src/email'
+import { queueEmail, type MailMessage } from '../src/email'
 
 // #464: the Jobs page and its alerts. A scheduled job's run ends ok, failed
 // or refused; a run that fails for good or refuses emails every System
@@ -35,11 +35,11 @@ async function setup({ enabled = true } = {}) {
 
 afterEach(() => _setJobAlertSender(null))
 
-async function runDue() {
+async function runDue(limit?: number) {
   await sql`
     update background_job set run_at = now()
     where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
-  return drainJobs()
+  return drainJobs(limit)
 }
 
 async function scheduledRow() {
@@ -123,6 +123,42 @@ describe('a scheduled job that fails emails the System Managers', () => {
 })
 
 describe('one email per episode, not per run', () => {
+  test('a partly queued alert rolls back and the next failure queues every recipient once', async ({ createUser }) => {
+    await setup({ enabled: false })
+    await createUser({ email: 'boss.partial-one@example.com', roles: ['System Manager'] })
+    await createUser({ email: 'boss.partial-two@example.com', roles: ['System Manager'] })
+    registerJob(METHOD, async () => { throw new Error('still down') })
+    _setJobAlertSender(async (message) => {
+      await queueEmail(message)
+      throw new Error('alert queue interrupted')
+    })
+    await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue(1)
+    const subject = `${JOB_ALERT_SUBJECT.failed}: Alert probe`
+    expect(await sql`select recipient from email_queue where subject = ${subject}`).toEqual([])
+
+    _setJobAlertSender(null)
+    await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue(1)
+    const queued = await sql`
+      select recipient from email_queue where subject = ${subject}
+      and recipient in ('boss.partial-one@example.com', 'boss.partial-two@example.com') order by recipient`
+    expect(queued.map((m) => m.recipient)).toEqual(['boss.partial-one@example.com', 'boss.partial-two@example.com'])
+  })
+
+  test('retrying the same failed queue row does not email the episode again', async ({ createUser }) => {
+    await setup({ enabled: false })
+    await createUser({ email: 'boss.same-row@example.com', roles: ['System Manager'] })
+    registerJob(METHOD, async () => { throw new Error('still down') })
+    const job = await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })
+    await runDue()
+    expect(sent.filter((m) => m.to === 'boss.same-row@example.com')).toHaveLength(1)
+
+    expect(await retryJob(job)).toBe(true)
+    await runDue()
+    expect(sent.filter((m) => m.to === 'boss.same-row@example.com')).toHaveLength(1)
+  })
+
   test('a job failing run after run mails once; after a run that worked, the next failure mails again', async ({ createUser }) => {
     await setup()
     await createUser({ email: 'boss.episode@example.com', roles: ['System Manager'] })

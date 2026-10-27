@@ -8,7 +8,7 @@
 // own caller to report to, and a failing send must not mail about itself.
 import { JOBS_PATH, fmtInstantIST, jobTitle } from 'shared'
 import { config } from './config'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { queueEmail, type MailMessage } from './email'
 import { adminLinkOrigin } from './instance-addresses'
 import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
@@ -43,16 +43,6 @@ function plain(message: string): string {
   return first.length > 300 ? `${first.slice(0, 299)}…` : first
 }
 
-/** Did the run before this one end the same way? Its last attempt is its
- *  outcome (a retried attempt is followed by the next one). */
-async function sameAsLastRun(p: JobProblem): Promise<boolean> {
-  const [prev] = await sql`
-    select outcome from job_execution
-    where method = ${p.method} and job <> ${p.job}
-    order by started_at desc nulls last, created_at desc limit 1`
-  return prev?.outcome === (p.outcome === 'failed' ? 'error' : 'refused')
-}
-
 function alertBody(p: JobProblem): string {
   const name = jobTitle(p.method)
   const message = plain(p.message)
@@ -77,22 +67,31 @@ function alertBody(p: JobProblem): string {
   ].join('\n')
 }
 
-/** Mail the System Managers about one failed or refused run, unless the run
- *  before it ended the same way. Never throws: the worker has already
+/** Mail the System Managers unless this failure episode was already queued
+ *  for every recipient. Never throws: the worker has already
  *  recorded the run, and a mail problem must not undo that. Returns how many
  *  were mailed, 'no recipients', or 'repeat'. */
 export async function alertJobProblem(p: JobProblem): Promise<number | 'no recipients' | 'repeat'> {
   try {
-    if (await sameAsLastRun(p)) return 'repeat'
-    const managers = await systemManagerEmails()
-    if (!managers.length) {
-      await recordUndeliveredNotice(`job alert: ${p.method}`)
-      return 'no recipients'
-    }
-    const subject = `${JOB_ALERT_SUBJECT[p.outcome]}: ${jobTitle(p.method)}`
-    const body = alertBody(p)
-    for (const to of managers) await sender({ to, subject, body })
-    return managers.length
+    // Queue every recipient and acknowledge the episode together. A failed
+    // lookup or partial queue rolls back, leaving the next run able to retry.
+    return await withTransaction<number | 'no recipients' | 'repeat'>(async () => {
+      const [schedule] = await sql`
+        select problem_alert_queued from scheduled_job
+        where method = ${p.method} and last_outcome = ${p.outcome === 'failed' ? 'error' : 'refused'}
+        for update`
+      if (!schedule || schedule.problem_alert_queued) return 'repeat'
+      const managers = await systemManagerEmails()
+      if (!managers.length) {
+        await recordUndeliveredNotice(`job alert: ${p.method}`)
+        return 'no recipients'
+      }
+      const subject = `${JOB_ALERT_SUBJECT[p.outcome]}: ${jobTitle(p.method)}`
+      const body = alertBody(p)
+      for (const to of managers) await sender({ to, subject, body })
+      await sql`update scheduled_job set problem_alert_queued = true where method = ${p.method}`
+      return managers.length
+    })
   } catch (err) {
     console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
     return 0

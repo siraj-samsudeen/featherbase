@@ -22,4 +22,4 @@ None.
 
 ## Impact
 
-Migration 0127 adds `refused` as a run outcome and a Scheduled Job's last result. The worker records refused runs and sends the alert; the leaver check refuses through it; the instance health check treats a refused last run as failing. The Jobs page replaces the old background job monitor at the same address.
+Migration 0129 adds `refused` as a run outcome and a Scheduled Job's last result. The worker records refused runs and sends the alert; the leaver check refuses through it; the instance health check treats a refused last run as failing. The Jobs page replaces the old background job monitor at the same address.
