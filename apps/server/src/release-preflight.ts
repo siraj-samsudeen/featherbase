@@ -8,7 +8,8 @@ import { sql } from './db'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { delegatedTestMode } from './delegated-login'
-import { checkVariables, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { checkVariables, readVariable, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { verifyPassword } from './auth'
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
@@ -89,6 +90,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(...(await assertAccessConfiguration(environment, pending)))
   passed.push(await assertOneScopeProvider())
   passed.push(await noticeRecipients())
+  passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -212,6 +214,26 @@ async function noticeRecipients(): Promise<string> {
     where p.row_id <> 'Administrator' and p.enabled ${current} and coalesce(trim(p.email), '') <> ''
     limit 1`
   return found ? 'a System Manager with an email address receives system alerts' : NO_NOTICE_RECIPIENTS_WARNING
+}
+
+/** 7. #467: a warning, never a refusal. ADMIN_PASSWORD only provisions a
+ *  null hash (admin-bootstrap.ts), so changing it rotates nothing; a set
+ *  value that is not the live password is a half-done rotation. Neither
+ *  value is ever printed. */
+export const ADMIN_PASSWORD_MISMATCH_WARNING =
+  "WARNING: ADMIN_PASSWORD is set but is not the Administrator's live password. Changing the variable does not rotate it. Run cli set-password Administrator --stdin (docs/DEPLOY.md, \"Rotating credentials\")."
+
+async function administratorPasswordMatches(): Promise<string> {
+  const configured = readVariable('ADMIN_PASSWORD')
+  if (!configured?.trim()) return 'ADMIN_PASSWORD is not set, so there is no Administrator password to compare'
+  // Before 0101 the table is still `user`.
+  const person = (await locate('person')) ?? (await locate('user'))
+  if (!person?.columns.has('password_hash')) return 'Administrator password check skipped (no Person table yet)'
+  const [admin] = await sql`select password_hash from ${sql(person.relation)} where row_id = 'Administrator'`
+  if (!admin?.password_hash) return 'the Administrator has no password yet; cli seed sets it from ADMIN_PASSWORD'
+  return verifyPassword(configured, String(admin.password_hash))
+    ? "ADMIN_PASSWORD is the Administrator's live password"
+    : ADMIN_PASSWORD_MISMATCH_WARNING
 }
 
 /** Addresses anyone can register: admitting them creates a person for any

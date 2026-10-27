@@ -415,7 +415,7 @@ A System Manager SHALL be able to see each cached copy and each request that fou
 
 ### Requirement: The live report fails honestly
 
-When the live report session cannot be started because the instance has no live report set up, the page SHALL quietly show the cached table as the report, with no error. When it is set up but unreachable or refuses, the page SHALL say the report session could not be created and that this is not a sales figure. The live report's credentials SHALL never be sent to the browser.
+When the live report session cannot be started because the instance has no live report set up, the page SHALL quietly show the cached table as the report, with no error. When it is set up but unreachable or refuses, the page SHALL say in one plain sentence that the report couldn't load and offer to try again, without technical detail. The live report's credentials SHALL never be sent to the browser.
 
 #### Scenario: No live report on this instance
 
@@ -425,7 +425,7 @@ When the live report session cannot be started because the instance has no live 
 #### Scenario: The live report service is down
 
 - **WHEN** the live report service cannot be reached
-- **THEN** the page says the report is unavailable and that this is not a sales figure
+- **THEN** the page says the report couldn't load right now, and trying again reopens the report without reloading the page
 
 ### Requirement: The reader is shown by name, never by id
 

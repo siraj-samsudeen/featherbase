@@ -34,7 +34,9 @@ to a log. Only a System Manager can register or manage a data source.
 ### Requirement: A data source can be limited to named tables
 
 A System Manager SHALL be able to list the only tables a data source may
-connect. A table outside the list is refused, however it is asked for.
+connect. A table outside the list is refused, however it is asked for. When
+several tables are asked for together and any one is refused, none of them
+is connected.
 
 #### Scenario: A table that isn't on the list
 
@@ -42,6 +44,13 @@ connect. A table outside the list is refused, however it is asked for.
   connect a different table from it
 - **THEN** it is refused, saying the table is not on the data source's list
 - **AND** the allowed table connects normally
+
+#### Scenario: One refused table among several
+
+- **WHEN** a System Manager asks to connect two allowed tables and one that is
+  not on the list, all at once
+- **THEN** the request is refused, naming the table that is not on the list
+- **AND** neither allowed table is connected
 
 ### Requirement: A data source that is in use can't be removed
 
@@ -120,7 +129,7 @@ connected table can't be submitted or cancelled.
 - **THEN** the table appears in Featherbase, and the database it came from is
   exactly as it was before
 
-### Requirement: Read and write through a connected table
+### Requirement: Read and write a connected table at its source
 
 Listing, filtering, sorting and paging a connected table SHALL run against
 the data source directly, not a local copy. Where the data source allows
@@ -144,25 +153,34 @@ is saved.
 - **THEN** the answer reflects what the data source holds right now, with no
   local copy involved
 
-#### Scenario: "Rows I own" can't be granted here
+### Requirement: "Rows I own" is refused on a connected table
 
-- **WHEN** a builder tries to limit a person's access to a connected table to
-  only the rows they created
-- **THEN** the permission is refused: a connected table can't be limited to
-  rows a person created
+A permission limiting a person to the rows they created SHALL save on a connected table, but every read and write through it SHALL be refused, since a connected table can't be limited to the rows a person created. Nothing is shown through such a grant.
+
+#### Scenario: "Rows I own" is refused when it's used
+
+- **WHEN** a builder limits a person's access to a connected table to only the rows they created, and that person opens the table
+- **THEN** the permission saved, but the person is refused, and is refused again when they try to change a row
 
 ### Requirement: Concurrent edits are caught when the source can tell
 
 WHEN a connected table's rows carry a last-changed time, saving a row SHALL
 check it hasn't changed there since it was loaded, and refuse the save if it
 has. Without a last-changed time to check, a save simply overwrites whatever
-is there.
+is there, and a row open for editing SHALL say so.
 
 #### Scenario: No last-changed time, no check
 
 - **WHEN** a connected table has no last-changed time and a person saves a row
   that was changed at the data source after it was loaded
 - **THEN** the save goes through and replaces what is there
+
+#### Scenario: The form warns that saves aren't checked
+
+- **WHEN** the user opens a row of a connected table that has no last-changed
+  time and can be edited
+- **THEN** the form tells them, for as long as the row is open, that changes
+  made at the data source meanwhile won't be noticed and saving replaces them
 
 #### Scenario: Someone else changed the row first
 
@@ -264,3 +282,17 @@ where the platform keeps its own records, on any database.
 - **WHEN** a System Manager connects a table to a relation in the platform's
   own schema on any data source
 - **THEN** it is refused
+
+### Requirement: A Featherbase table can link to a connected table
+
+A Featherbase table SHALL be able to link its rows to rows of a connected table. Saving checks the linked row on the data source: the row saves when the linked row is there, and the user is told it does not exist when it is not.
+
+#### Scenario: Link a local row to a connected row
+
+- **WHEN** the user saves a row in a "Holders" table whose account link points at an account that exists in a connected "Accounts" table
+- **THEN** the row saves with that link
+
+#### Scenario: Link to a connected row that isn't there
+
+- **WHEN** the user saves a row whose account link names an account the data source does not have
+- **THEN** the row is not saved, and the user is told that account does not exist

@@ -13,6 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { invalidateSources } from 'server/src/sources/registry'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 // A cold first render on a busy machine can take longer than the 1s default.
@@ -77,6 +78,26 @@ test('Browse a table\'s rows: opening a row takes the user to its full form', as
   await waitFor(() =>
     expect(document.querySelector<HTMLInputElement>('[data-field=title]')).toHaveValue('row-01'),
   )
+})
+
+// SPEC: The list remembers how it's arranged. When remembering fails (#546,
+// item 1) the list says so instead of failing silently, and the change still
+// applies on screen. The failure is a real one: the store refuses the write.
+// (That aborts the test's transaction, so nothing reads the database after it.)
+test('a sort the server could not remember says so, and the heading still shows the new sort', async ({ admin }) => {
+  await seedTickets(admin, 'Lv Unsaved', 3)
+  await openList(admin, 'Lv Unsaved')
+  await waitFor(() => expect(cellTexts('title')).toHaveLength(3))
+  await sql.unsafe(`create function featherbase.lv_refuse() returns trigger language plpgsql as $$
+    begin raise exception 'storage unavailable'; end $$`)
+  await sql.unsafe('create trigger lv_refuse before insert or update on featherbase.user_settings for each row execute function featherbase.lv_refuse()')
+  expect(screen.queryByTestId('list-settings-error')).not.toBeInTheDocument()
+
+  fireEvent.click(screen.getByTestId('col-rank'))
+  expect(screen.getByTestId('col-rank')).toHaveTextContent('Rank ↑')
+  const told = await screen.findByTestId('list-settings-error')
+  expect(told).toHaveTextContent("Couldn't save how this list is sorted and which columns show. It will open the old way next time.")
+  expect(within(told).getByRole('alert')).toBeInTheDocument()
 })
 
 test('Sort by any column: clicking a heading sorts, clicking it again reverses the order', async ({ admin }) => {
