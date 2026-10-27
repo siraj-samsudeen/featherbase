@@ -6,10 +6,12 @@
 // cross-host navigation) is in e2e/top-bar.spec.ts.
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { resolve } from 'node:path'
 import { afterEach, vi } from 'vitest'
 import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { config } from 'server/src/config'
 import { parseInstanceAddresses } from 'server/src/instance-addresses'
+import { discoverPackages } from 'server/src/runtime-packages'
 import { VIEWER_ROLE } from 'server/src/sales-target'
 import { PHONE_QUERY } from '../src/components/TopBar'
 import { recordAction } from '../src/lib/recents'
@@ -19,7 +21,10 @@ import { test, expect, renderApp } from './pg-test'
 
 type Client = Parameters<typeof renderApp>[1]
 
-afterEach(() => {
+afterEach(async () => {
+  // An app installed by a test stays loaded in this process after its rows
+  // roll back: forget it, so the next test sees no app installed.
+  await discoverPackages([])
   config.instanceAddresses = null
   followDevice()
   vi.restoreAllMocks()
@@ -166,6 +171,43 @@ test("on an app's address the account page stays named for the app for someone w
   await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
   await settledBar()
   await waitFor(async () => expect(await barName()).toHaveTextContent(/^Feather Dash$/))
+})
+
+// ---- 2b. an installed app of the interim name (#671) -----------------------------
+// INTERIM_APPS stands in for Feather Dash only until an app of that name is
+// installed (design D8): from then on the bar leads to the app's own root.
+
+const DASH_STAND_IN = resolve('../..', 'runtime-apps/fixtures/dash-stand-in')
+
+/** An app installed under the name feather_dash, open to everyone (its entry
+ *  Table is readable by All, which is no Table grant of a person's own). */
+async function installDashApp(admin: Client) {
+  expect(await discoverPackages([DASH_STAND_IN])).toEqual([])
+  await admin.post('/api/install_app', { name: 'feather_dash' })
+}
+
+test("on an app's address whose app is installed, the bar's name leads to the app's root", async ({ admin }) => {
+  await installDashApp(admin)
+  onAddressThatOpens('feather_dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveAttribute('href', '/feather_dash/'))
+})
+
+test("on an app's address whose app is not installed, the bar's name leads to the interim page", async ({ admin }) => {
+  onAddressThatOpens('feather_dash')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, admin)
+  await settledName('Feather Dash')
+  expect(await barName()).toHaveAttribute('href', '/featherbase/sales-target')
+})
+
+test('on the Admin address the account page is named for the installed app a person who cannot use Admin can open', async ({ admin, createUser }) => {
+  await installDashApp(admin)
+  onAddressThatOpens('admin')
+  const reader = await createUser({ email: 'dash.app.reader@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Dash stand-in$/))
 })
 
 // ---- 3. Admin menus on the Admin screens only ---------------------------------

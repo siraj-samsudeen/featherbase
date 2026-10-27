@@ -77,20 +77,44 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
+interface CatalogEntry {
+  name: string
+  title: string
+  href: string
+}
+
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
- *  the app they can open, else the platform. Undefined until whoami answers. */
-function personalName(caps: Capabilities | undefined): string | undefined {
-  if (!caps) return undefined
+ *  the app they can open, else the platform. Undefined until whoami and the
+ *  person's apps answer. */
+function personalName(caps: Capabilities | undefined, apps: CatalogEntry[] | undefined): string | undefined {
+  if (!caps || !apps) return undefined
   if (caps.manage || caps.table_access) return ADMIN_NAME
-  // An installed app is opened through a Table grant, which already lets the
-  // person use Admin; the one app reached without one is Feather Dash.
+  // #671: an installed app the person can open (one readable by everyone
+  // gives no Table grant of their own, so it is not the Admin).
+  if (apps.length) return apps[0].title
+  // Until Feather Dash is installed, its report is reached by a role alone.
   if (caps.report) return INTERIM_APPS.feather_dash.title
   return PLATFORM_NAME
 }
 
-function homeHref(context: string): string {
+/** #671: the installed apps this person can open, as the Admin's app
+ *  switcher asks for them. Asked only once whoami has answered: signed out
+ *  there is nothing to ask. */
+function useAppCatalog(enabled: boolean) {
+  return useQuery({
+    queryKey: ['app-catalog'],
+    queryFn: () => api.get<CatalogEntry[]>('/api/app_catalog'),
+    enabled,
+  })
+}
+
+/** Where the bar's name leads. An app installed under an interim name
+ *  replaces its interim page (#671): the interim root stands in only while
+ *  the person has no such app to open. */
+function homeHref(context: string, installed: boolean): string {
   if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
+  if (installed) return appHref(context)
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
@@ -124,7 +148,12 @@ export function TopBar({
   const { brand } = address
   const context = app ? app.name : address.context
   const caps = useWhoAmI().data?.capabilities
-  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
+  const catalog = useAppCatalog(Boolean(caps) && !app)
+  // A catalog that cannot be had names no app: the bar still draws.
+  const apps = catalog.data ?? (catalog.isError ? [] : undefined)
+  // An app's own page is an installed app's (#650), whatever the catalog says.
+  const installed = Boolean(app) || Boolean(apps?.some((entry) => entry.name === context))
+  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
   // account page's own (item 3). The Portal and the no-access page on the
@@ -162,7 +191,7 @@ export function TopBar({
           className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (context && name && <BarName context={context} name={name} />)}
+          {left ?? (context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
         {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
@@ -199,8 +228,7 @@ function PreviewBanner() {
 
 /** The mark and the name, linking to this address's home. One line; a long
  *  name is cut with an ellipsis rather than wrapped. */
-function BarName({ context, name }: { context: string; name: string }) {
-  const href = homeHref(context)
+function BarName({ href, name }: { href: string; name: string }) {
   return (
     <a
       href={href}
