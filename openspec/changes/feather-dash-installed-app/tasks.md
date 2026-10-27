@@ -40,6 +40,7 @@ the owner reviews. Server, security and data logic gets a Codex review.
 - [ ] 2.13 Install on dev, switch the dev address to the app; then prod with approval. Done in the go-live cut-over (5.1), together with stage D, not on its own.
 - [ ] 2.14 Clean-up release: delete the core page, route, `/api/sales_target/*`, `sales-target*.ts`, `datasets/sales-target-mtd.ts`, old snapshot tables (migration), `capabilities.report`, `landingFor`, `ReportOnlyShell`, the stage A interim target.
 - [ ] 2.15 `cli app:upgrade <app> <version>` wrapping preview → upgrade → activate.
+- [ ] 2.16 Local development of a client app: run a client app with hot reload against a featherbase checkout or version, without Docker images (D7); the mechanism is decided and built with B6′.
 
 ## 3. Stage C — roster redesign (after #449 and #392)
 

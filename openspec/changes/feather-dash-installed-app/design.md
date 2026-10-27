@@ -488,6 +488,13 @@ the client's dbt runner uses. The image won, for three reasons:
 The app contract (the manifest, `platformVersion`, `FEATHERBASE_APP_PATHS`) is the
 same either way, so a package can be added later without changing any app.
 
+**Local development of a client app** (owner requirement 27-Oct-2026). A developer
+working on a client app in the client's repository runs it locally, with hot reload,
+against a featherbase checkout or a chosen featherbase version, without building
+Docker images. That was the one real advantage of the npm-package route, and it is
+kept. The mechanism is decided with B6′: for example, a featherbase dev command that
+takes an app path, or pnpm-linking a local featherbase checkout.
+
 **Nothing from a client's repository enters this one**: #310's
 Feather Dash 0.1.3 and 0.2.1 fixtures, which carry one client's Dive ID and store
 code, must be dropped from that PR.
@@ -557,7 +564,8 @@ to the trial first. The order of work:
   the cache-in-Dive contract (D6); today's query and roster derivation, moved out of
   this repository; the scope provider; the role suggestions and the binding
   stand-in; the Dive's few lines for `cached` and the live-ready notice; the client
-  image.
+  image; and local development of the app with hot reload against a featherbase
+  checkout or version, without Docker images (D7), whose mechanism is decided here.
 - *Check on dev:* install beside the platform page. On a restored dev snapshot, for
   every person with a scope today, the app's `me` and `report` answers must equal the
   platform endpoints' (same scope, rows and totals), and the embed's scope state must
