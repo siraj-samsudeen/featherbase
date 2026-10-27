@@ -153,11 +153,10 @@ describe('identifier systems: Advanced settings and their presets', () => {
     expect(await system('probe-unsaid')).toMatchObject({ match: 'Suggest' })
   })
 
-  // SPEC: person-resolution design D2 — each Advanced setting shows its preset
-  // and whether it differs — suspected defect: retain_after_leaving_days is read
-  // back as a string ('365') and compared with the preset number 365, so a
-  // national ID left at its default is reported as differing.
-  test.fails('a national ID left at its 365-day retention is not reported as differing from the preset', async ({ admin }) => {
+  // person-resolution design D2: each Advanced setting shows its preset and
+  // whether it differs. retain_after_leaving_days reads back as text ('365')
+  // while the preset is the number 365; they are compared as numbers (#533).
+  test('a national ID left at its 365-day retention is not reported as differing from the preset', async ({ admin }) => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-keep', label: 'Keep', kind: 'national-id', match: 'Suggest' } })
     const { differs } = await admin.get<{ differs: string[] }>('/api/identifier_systems/probe-keep/defaults')
     expect(differs).not.toContain('retain_after_leaving_days')
