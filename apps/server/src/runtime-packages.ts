@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
-import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, type AppManifest } from './apps'
+import { registerApp, forgetRuntimePackages, listInstalledApps, suspendRuntimeApp, loadInstalledApps, provisionGrants, type AppManifest } from './apps'
 import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
-import { appOperation, withAppIdentity } from './app-lifecycle'
+import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
 import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
@@ -18,7 +18,7 @@ import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './a
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
-import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
+import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyMigrations, describeLoss, estimateLosses, refuse, replayForward, sameDeclaration, type Loss, type Operation } from './runtime-migrations'
 
 // Public v1 hook contract is structural: packages never import core classes.
 interface PackageHookContext {
@@ -420,28 +420,57 @@ async function upgradePlan(name: string, version: string) {
   const pending = history.slice(installedLedger.length)
   if (!pending.length || pending[0].fromVersion !== prior.version)
     refuse('Migration history skips the installed version')
-  const expected = structuredClone(prior.manifest.tables)
-  for (const m of pending) for (const op of m.operations) {
-    const table = expected.find(t => t.name === op.table)
-    if (!table || table.columns.some(c => c.column_name === op.column.column_name)) refuse('Migration changes an existing column or unknown Table')
-    table.columns.push(op.column)
-  }
-  if (canonical(expected) !== canonical(target.manifest.tables)) refuse('Unsupported destructive or undeclared schema change')
+  // #651: the installed declaration with the pending history replayed must be
+  // exactly the target's declaration; anything else is an undeclared change.
+  const operations = pending.flatMap(m => m.operations)
+  if (!sameDeclaration(replayForward(name, prior.manifest.tables, operations), target.manifest.tables))
+    refuse('Unsupported destructive or undeclared schema change')
   // #437: an upgrade may withdraw grants (narrowing access is always safe to
-  // apply) but never add or widen one; those still need a reviewed install.
-  const priorGrants = new Set(prior.manifest.permissions.map(canonical))
-  if (!target.manifest.permissions.every((p) => priorGrants.has(canonical(p))) || prior.app.runtime_manifest == null ||
+  // apply) but never add or widen one on a Table the app already had; those
+  // still need a reviewed install. A renamed Table's grants follow it. #651:
+  // a Table the upgrade adds arrives with exactly the grants this version
+  // declares for it, listed in the preview.
+  const { added, follow } = tableFates(operations)
+  const priorGrants = prior.manifest.permissions.map(p => ({ prior: p, now: { ...p, table: follow(p.table) } }))
+  const held = new Set(priorGrants.map(g => canonical(g.now)))
+  if (!target.manifest.permissions.every((p) => added.has(p.table) || held.has(canonical(p))) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
   const kept = new Set(target.manifest.permissions.map(canonical))
-  const withdrawn = prior.manifest.permissions.filter((p) => !kept.has(canonical(p)))
+  const withdrawn = priorGrants.filter(g => !kept.has(canonical(g.now))).map(g => g.prior)
+  const granted = target.manifest.permissions.filter(p => added.has(p.table))
+  const destructive = operations.some(op => 'destructive' in op && op.destructive === true)
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
-    tables: [...new Set(pending.flatMap(m => m.operations.map(op => op.table)))],
-    permissions: withdrawn.map((p) => ({ withdraw: p })), jobs: [], indexes: [], destructive: false, dataEffects: 'Existing rows unchanged; added columns are NULL',
-    codeOnly: pending.every(m => m.operations.length === 0) }
-  return { row, target, prior, pending, ledger, withdrawn, plan: { ...plan, planId: checksum(plan) } }
+    tables: [...new Set(operations.flatMap(op => op.kind === 'renameTable' ? [op.from, op.to] : [typeof op.table === 'string' ? op.table : op.table.name]))],
+    permissions: [...withdrawn.map((p) => ({ withdraw: p })), ...granted.map((p) => ({ grant: p }))], jobs: [], indexes: [], destructive,
+    dataEffects: destructive ? 'Destructive: the steps under losses remove data; every other row is unchanged' : 'Existing rows unchanged; added columns are NULL unless backfilled',
+    codeOnly: operations.length === 0 }
+  // What this instance would lose, counted now, outside the plan's identity:
+  // rows written between preview and apply must not make the review stale.
+  const losses = await estimateLosses(name, pending)
+  const unmarked = losses.filter(l => !l.destructive && (l.values ?? 0) > 0)
+  if (unmarked.length)
+    refuse(unmarked.map(l => `${l.kind} ${l.table}.${l.column} would clear ${l.values} ${l.values === 1 ? 'value' : 'values'} outside its new choices; mark the operation destructive: true`).join('; '))
+  return { row, target, prior, pending, ledger, withdrawn, granted,
+    plan: { ...plan, planId: checksum(plan), losses: losses.map(describeLoss) } }
+}
+
+// #651: where an upgrade's operations take the app's Tables: the name each
+// existing Table ends up with, and the Tables it adds.
+function tableFates(operations: Operation[]) {
+  const renames: [string, string][] = []
+  const added = new Set<string>()
+  for (const op of operations) {
+    if (op.kind === 'addTable') added.add(op.table.name)
+    if (op.kind === 'dropTable') added.delete(op.table.name)
+    if (op.kind === 'renameTable') {
+      renames.push([op.from, op.to])
+      if (added.delete(op.from)) added.add(op.to)
+    }
+  }
+  return { added, follow: (name: string) => renames.reduce((current, [from, to]) => current === from ? to : current, name) }
 }
 
 export function previewAppUpgrade(name: string, version: string) {
@@ -460,9 +489,11 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
     if (prepared.plan.planId !== planId) throw new AppError('ConflictError', 'Upgrade plan is stale; preview and review again')
     if (prepared.row.enabled) await assertOnlyScopeProvider(prepared.target)
     try {
-      await withTransaction(async () => {
-        await applyAdditions(prepared.pending, name)
+      // Provisioning: the app's Tables answer the engine while it rebuilds
+      // them, enabled or not. Everything below is one transaction.
+      await withTransaction(() => provisionApp(name, async () => {
         // Only the grants this app owns: an adopted, pre-existing grant stays.
+        // Withdrawn first, under the names the Tables have before any rename.
         for (const p of prepared.withdrawn) {
           const gone = await sql`
             delete from permission
@@ -473,12 +504,22 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
             await logActivity(actor, `app_grant_withdrawn ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'}, ${String(g.row_id)})`.slice(0, 140))
           }
         }
+        const losses = await applyMigrations(prepared.pending, name, actor, { ownsClient: typeof prepared.target.manifest.client === 'string' })
+        // Counts only, never values: what each destructive step removed.
+        for (const loss of losses)
+          await logActivity(actor, `app_data_removed ${name}@${version}: ${describeLoss(loss)}`.slice(0, 140))
+        if (prepared.granted.length) {
+          const created = await provisionGrants({ name, roles: prepared.target.manifest.roles, runtime_package: true }, prepared.granted)
+          await sql`update installed_app set roles = roles || ${sql.json(created.roles)}, perms = perms || ${sql.json(created.perms)} where name = ${name}`
+          for (const p of prepared.granted)
+            await logActivity(actor, `app_grant_added ${name}@${version}: ${p.role} on ${p.table} (${p.tier ?? 'basic'})`.slice(0, 140))
+        }
         await sql`update installed_app set package_version = ${version}, artifact_digest = ${prepared.target.digest},
           manifest = ${sql.json(prepared.target.app.runtime_manifest as never)},
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,
           previous_artifact = ${sql.json({ version: prepared.prior.version, digest: prepared.prior.digest })},
           upgrade_plan = ${planId} where name = ${name}`
-      })
+      }))
     } catch (error) {
       invalidateMeta()
       if (error instanceof AppError) throw error
@@ -502,6 +543,53 @@ export function activateAppUpgrade(name: string, version: string) {
     await loadInstalledApps()
     return { name, version, enabled: row.enabled, activationPending: false }
   }, true)
+}
+
+/** #651: for each installed app (`name`, `package_version`,
+ *  `migration_ledger` rows), the newest version on `paths` newer than the one
+ *  installed, as boot would take it, and the migrations upgrading to it runs. */
+export async function shippedUpgrades(installed: Record<string, unknown>[], paths: string[]) {
+  const shipped = [...(await loadArtifacts(paths)).loaded.values()]
+  return installed.flatMap((row) => {
+    const newest = shipped.filter(pkg => pkg.name === row.name && compareVersions(pkg.version, String(row.package_version)) > 0)
+      .sort((a, b) => compareVersions(b.version, a.version))[0]
+    if (!newest) return []
+    return [{ name: String(row.name), from: String(row.package_version), to: newest.version,
+      ownsClient: typeof newest.manifest.client === 'string',
+      migrations: newest.manifest.migrations.slice((row.migration_ledger as unknown[]).length) }]
+  })
+}
+
+const removesData = (loss: Loss) => (loss.rows ?? 0) + (loss.childRows ?? 0) + (loss.values ?? 0) > 0
+
+/** #651: the release guard's line for one shipped upgrade that would remove
+ *  data on this instance, counted before anything runs; null when it removes
+ *  none. Counts only, never values. */
+export async function upgradeLossWarning(upgrade: Awaited<ReturnType<typeof shippedUpgrades>>[number]): Promise<string | null> {
+  const losses = (await estimateLosses(upgrade.name, upgrade.migrations)).filter(removesData)
+  return losses.length
+    ? `WARNING: upgrading app ${upgrade.name} from ${upgrade.from} to ${upgrade.to} removes data here: ${losses.map(describeLoss).join('; ')}`
+    : null
+}
+
+/** #651 (`cli migrate:rehearse`): run each shipped app upgrade inside the
+ *  caller's rolled-back transaction, one savepoint per app, and say what each
+ *  removed, or why it would fail. Counts only, never values. */
+export async function rehearseAppUpgrades(paths: string[]): Promise<string[]> {
+  const installed = await sql`select name, package_version, migration_ledger from installed_app
+    where runtime_package and package_version is not null order by name`
+  const lines: string[] = []
+  for (const upgrade of await shippedUpgrades(installed, paths)) {
+    const label = `app ${upgrade.name} ${upgrade.from} to ${upgrade.to}`
+    try {
+      const losses = (await sql.begin(() => provisionApp(upgrade.name, () =>
+        applyMigrations(upgrade.migrations, upgrade.name, 'Administrator', { ownsClient: upgrade.ownsClient })))).filter(removesData)
+      lines.push(`${label}: rehearsed; ${losses.length ? `it removes ${losses.map(describeLoss).join('; ')}` : 'it removes no data'}`)
+    } catch (error) {
+      lines.push(`${label}: the upgrade would fail: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  return lines
 }
 
 /** A discovered app package's title, for an address that opens it (#488). */

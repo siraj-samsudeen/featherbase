@@ -215,6 +215,16 @@ async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
 // and grants are not recorded, so uninstall can never remove something that
 // predated the app.
 async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]; perms: string[] }> {
+  return provisionGrants(manifest, manifest.permissions ?? [])
+}
+
+/** #651: the roles `manifest` declares and the given grants of it, as an
+ *  install creates them. An upgrade calls it for the grants on the Tables
+ *  that upgrade adds. */
+export async function provisionGrants(
+  manifest: Pick<AppManifest, 'name' | 'roles' | 'runtime_package'>,
+  permissions: AppPermission[],
+): Promise<{ roles: string[]; perms: string[] }> {
   const roles: string[] = []
   for (const role of manifest.roles ?? []) {
     const [have] = await sql`select 1 from role where row_id = ${role}`
@@ -223,7 +233,7 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
     roles.push(role)
   }
   const perms: string[] = []
-  for (const p of manifest.permissions ?? []) {
+  for (const p of permissions) {
     const [role] = await sql`select 1 from role where row_id = ${p.role}`
     if (!role)
       throw new AppError(

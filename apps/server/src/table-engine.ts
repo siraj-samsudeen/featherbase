@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { sql } from './db'
+import { inAppTransaction, sql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
@@ -49,6 +49,24 @@ const PG_TYPES: Record<string, string | null> = {
   'Column Break': null,
 }
 
+// #651: the column type changes that keep every value. Each maps the target
+// type to the cast that converts stored values (null when the stored type does
+// not change). Anything else is refused: add a new column, copy the data,
+// then drop the old one.
+export const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+  Int: { Float: 'double precision' },
+  Data: { Text: 'text', 'Long Text': 'text', Choice: 'text' },
+  Text: { 'Long Text': null },
+  'Long Text': { Text: null },
+  Choice: { Text: null, 'Long Text': null },
+  Date: { Datetime: 'timestamptz' },
+  Check: { Int: 'bigint' },
+}
+
+export function isSafeTypeChange(from: string, to: string): boolean {
+  return Object.hasOwn(SAFE_TYPE_CHANGES, from) && Object.hasOwn(SAFE_TYPE_CHANGES[from], to)
+}
+
 export function pgType(columnType: string): string | null {
   if (!(columnType in PG_TYPES))
     throw new AppError('ValidationError', `Unknown column type ${columnType}`)
@@ -66,7 +84,7 @@ const optionalString = z
   .nullish()
   .transform((v) => v ?? undefined)
 
-const columnSchema = z.object({
+export const columnSchema = z.object({
   column_name: z
     .string()
     .regex(COLUMN_NAME_RE, 'column_name must be snake_case'),
@@ -697,7 +715,7 @@ export async function createTable(
 
 // DEL-R2..R8 (docs/specs/0003-table-deletion.md): delete a Table outright —
 // definition, columns, physical table, and every live pointer at it.
-export async function deleteTable(name: string, user = 'Administrator'): Promise<void> {
+export async function deleteTable(name: string, user = 'Administrator', opts: { ownerApp?: string } = {}): Promise<void> {
   const meta = await getMeta(name)
   assertNotSystemWritten(meta, 'deleted')
   if (meta.system)
@@ -707,10 +725,13 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   // them, and uninstalling removes them and the record together. Deleting
   // one alone would leave the app recorded as installed without it.
   // The ledger is read as uninstall reads it, so a row stored as a JSON
-  // string counts too.
+  // string counts too. #651: the owning app's own upgrade may drop one; the
+  // upgrade updates the registry in the same transaction.
   const owner = (await sql<{ name: string; tables: unknown }[]>`select name, tables from installed_app order by name`)
     .find((app) => asNameList(app.tables).includes(meta.name))
-  if (owner)
+  if (opts.ownerApp !== undefined && meta.owner_app !== opts.ownerApp)
+    throw new AppError('ValidationError', `${meta.name} belongs to ${meta.owner_app ?? 'the platform'}; only its own app drops it`)
+  if (owner && owner.name !== opts.ownerApp)
     throw new AppError(
       'ValidationError',
       `Cannot delete ${meta.name}: it belongs to the installed app ${owner.name}. Uninstall the app to remove its tables.`,
@@ -780,7 +801,10 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
   // garbage, not a leak. Only managed URLs qualify; another File row may
   // still own these bytes. Failure here cannot undo the committed deletion.
-  for (const url of new Set(files.map((f) => f.file_url))) {
+  // #651: inside an app upgrade's transaction nothing is committed yet, and
+  // a later step may still roll it all back, so the bytes stay (garbage at
+  // worst, never a File row pointing at nothing).
+  for (const url of inAppTransaction() ? [] : new Set(files.map((f) => f.file_url))) {
     if (!url || !/^\/(?:private\/)?files\/[a-f0-9]{16}_[\w.-]+$/.test(url)) continue
     try {
       const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
@@ -885,5 +909,116 @@ export async function renameColumn(
     table: 'Table',
     row_id: meta.name,
   }).catch(() => {})
+  return getMeta(meta.name)
+}
+
+// #651: where the platform keeps a Table's name outside its own definition,
+// beyond the link columns declared Reference -> Table (swept by metadata).
+const TABLE_NAME_COLUMNS: readonly [string, string][] = [
+  ['custom_field', 'reference_table'], ['custom_field', 'row_table'], ['access_log', 'ref_table'],
+  ['saved_view', 'ref_table'], ['user_settings', 'table_name'], ['tag_link', 'ref_table'], ['import_log', 'table_created'],
+]
+
+// #651: rename one of an app's Tables, keeping its rows, its history, the
+// links to it and its grants. Only the owning app's upgrade renames a Table:
+// Admin customization never changes what an app's Table is.
+export async function renameTable(from: string, to: string, ownerApp: string, user = 'Administrator'): Promise<TableMeta> {
+  const meta = await getMeta(from)
+  if (meta.owner_app !== ownerApp || !meta.physical_schema || !meta.physical_relation)
+    throw new AppError('ValidationError', `${from} belongs to ${meta.owner_app ?? 'the platform'}; only its own app renames it`)
+  if (!to.startsWith(`${ownerApp}.`) || !tableDefSchema.shape.name.safeParse(to).success)
+    throw new AppError('ValidationError', `${to} is not a name for one of ${ownerApp}'s Tables`)
+  const relationName = to.split('.')[1]
+  const [taken] = await sql`select 1 from table_def where name = ${to}`
+  const [clash] = await sql`select 1 from information_schema.tables where table_schema = ${ownerApp} and table_name = ${relationName}`
+  if (taken || clash) throw new AppError('ConflictError', `Table ${to} already exists`)
+  const foreign = await sql<{ parent: string; column_name: string }[]>`
+    select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
+    where (cd.reference_table = ${from} or cd.row_table = ${from}) and td.owner_app is not null and td.owner_app <> ${ownerApp}
+    order by 1, 2`
+  if (foreign.length)
+    throw new AppError('ValidationError', `${from} is linked from another app's ${foreign.map((f) => `${f.parent}.${f.column_name}`).join(', ')}`)
+  // Every live pointer at a Table, history included: unlike a deletion, a
+  // rename keeps what history says, under the name the Table now has.
+  const pointers = await sql<{ parent: string; column_name: string }[]>`
+    select cd.parent, cd.column_name from column_def cd join table_def td on td.name = cd.parent
+    where cd.column_type = 'Reference' and cd.reference_table = 'Table'
+      and td.kind <> 'settings' and td.data_source is null
+    order by 1, 2`
+  const relations = new Map<string, string>()
+  for (const p of pointers) relations.set(p.parent, quoteRelation(await tableRelation(p.parent)))
+  const children: string[] = []
+  for (const c of meta.columns)
+    if (c.column_type === 'Sub-table' && c.row_table) children.push(quoteRelation(await tableRelation(c.row_table)))
+
+  const schema = quoteIdent(meta.physical_schema)
+  const relation = `${schema}.${quoteIdent(relationName)}`
+  await sql.begin(async (tx) => {
+    await tx.unsafe(`alter table ${quoteRelation(`${meta.physical_schema}.${meta.physical_relation}`)} rename to ${quoteIdent(relationName)}`)
+    // Names Postgres built from the relation (its primary key, and on 18 its
+    // NOT NULL constraints): a fresh Table under the new name has them so.
+    const built = await tx<{ conname: string }[]>`
+      select conname from pg_constraint where conrelid = (
+        select c.oid from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = ${meta.physical_schema!} and c.relname = ${relationName})
+      and starts_with(conname, ${`${meta.physical_relation}_`})`
+    for (const { conname } of built)
+      await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(conname)} to ${quoteIdent(`${relationName}_${conname.slice(meta.physical_relation!.length + 1)}`)}`)
+    // Names built from the Table's own name, so the next schema change finds them.
+    for (const c of meta.columns)
+      if (c.unique && pgType(c.column_type))
+        await tx.unsafe(`alter table ${relation} rename constraint ${quoteIdent(`${tableName(from)}_${c.column_name}_uq`)} to ${quoteIdent(`${tableName(to)}_${c.column_name}_uq`)}`)
+    if (meta.kind === 'sub_table')
+      await tx.unsafe(`alter index ${schema}.${quoteIdent(`${tableName(from)}_parent_idx`)} rename to ${quoteIdent(`${tableName(to)}_parent_idx`)}`)
+    else {
+      const [policy] = await tx`select 1 from pg_policies where schemaname = ${meta.physical_schema!} and tablename = ${relationName} and policyname = 'fc_select'`
+      if (policy) await tx.unsafe(`alter policy fc_select on ${relation} using (featherbase.fc_has_read('${to.replace(/'/g, "''")}'))`)
+    }
+    // column_def's key on table_def has no ON UPDATE: the definition moves.
+    const [row] = await tx`select * from table_def where name = ${from}`
+    await tx`insert into table_def ${tx({ ...row, name: to, physical_relation: relationName, updated_at: new Date() } as unknown as Record<string, never>)}`
+    await tx`update column_def set parent = ${to} where parent = ${from}`
+    await tx`delete from table_def where name = ${from}`
+    await tx`update column_def set reference_table = ${to} where reference_table = ${from}`
+    await tx`update column_def set row_table = ${to} where row_table = ${from}`
+    for (const child of children)
+      await tx.unsafe(`update ${child} set parenttype = $1 where parenttype = $2`, [to, from])
+    for (const p of pointers)
+      await tx.unsafe(`update ${relations.get(p.parent)} set ${quoteIdent(p.column_name)} = $1 where ${quoteIdent(p.column_name)} = $2`, [to, from])
+    for (const [table, column] of TABLE_NAME_COLUMNS)
+      await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
+    await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
+    await tx`update installed_app set tables = (
+        select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
+        from jsonb_array_elements(tables) with ordinality)
+      where name = ${ownerApp} and jsonb_typeof(tables) = 'array' and tables ? ${from}`
+  })
+  invalidateMeta()
+  await logAccess(user, `rename_table ${from} -> ${to}`, { table: 'Table', row_id: to }).catch(() => {})
+  return getMeta(to)
+}
+
+// #651: change a column's type where every stored value converts as it is
+// (SAFE_TYPE_CHANGES); anything else is refused.
+export async function changeColumnType(table: string, column: string, to: string): Promise<TableMeta> {
+  const meta = await getMeta(table)
+  assertNotSystemWritten(meta, 'changed')
+  if (meta.system || meta.data_source)
+    throw new AppError('ValidationError', `${meta.name}'s column types are not changed here`)
+  const current = meta.columns.find((c) => c.column_name === column)
+  if (!current) throw new AppError('NotFoundError', `${meta.name} has no column ${column}`)
+  const from = current.column_type
+  if (from === to) return meta
+  if (!isSafeTypeChange(from, to))
+    throw new AppError('ValidationError', `${meta.name}.${column}: ${from} to ${to} is not a safe conversion; add a new column, copy the data, then drop the old one`)
+  const cast = SAFE_TYPE_CHANGES[from][to]
+  const relation = quoteRelation(await tableRelation(meta.name))
+  await sql.begin(async (tx) => {
+    const col = quoteIdent(column)
+    if (cast && meta.kind !== 'settings')
+      await tx.unsafe(`alter table ${relation} alter column ${col} type ${cast} using ${col}${from === 'Check' ? '::int' : ''}::${cast}`)
+    await tx`update column_def set column_type = ${to} where parent = ${meta.name} and column_name = ${column}`
+  })
+  invalidateMeta(meta.name)
   return getMeta(meta.name)
 }

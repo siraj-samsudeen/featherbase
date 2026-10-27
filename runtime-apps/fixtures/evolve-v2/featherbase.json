@@ -1,0 +1,83 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "evolve",
+  "title": "Schema evolution proof",
+  "entryTable": "evolve.item",
+  "roles": ["Evolve Clerk"],
+  "tables": [
+    {
+      "name": "evolve.supplier", "label": "Supplier", "id_pattern": "prompt",
+      "columns": [{ "column_name": "supplier_name", "label": "Name", "column_type": "Data" }]
+    },
+    {
+      "name": "evolve.line", "label": "Line", "kind": "sub_table",
+      "columns": [
+        { "column_name": "sku", "label": "SKU", "column_type": "Data" },
+        { "column_name": "count", "label": "Count", "column_type": "Int" }
+      ]
+    },
+    {
+      "name": "evolve.item", "label": "Item", "id_pattern": "prompt", "title_column": "title",
+      "columns": [
+        { "column_name": "title", "label": "Title", "column_type": "Data" },
+        { "column_name": "supplier", "label": "Supplier", "column_type": "Reference", "reference_table": "evolve.supplier" },
+        { "column_name": "quantity", "label": "Quantity", "column_type": "Float" },
+        { "column_name": "grade", "label": "Grade", "column_type": "Choice", "choices": "A\nB\nC\nD" },
+        { "column_name": "legacy_code", "label": "Legacy code", "column_type": "Data" },
+        { "column_name": "on_hold", "label": "On hold", "column_type": "Int" },
+        { "column_name": "lines", "label": "Lines", "column_type": "Sub-table", "row_table": "evolve.line" },
+        { "column_name": "priority", "label": "Priority", "column_type": "Choice", "choices": "Low\nHigh", "reqd": true, "default_value": "Low" }
+      ]
+    },
+    {
+      "name": "evolve.memo", "label": "Note", "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "label": "Body", "column_type": "Text" }]
+    },
+    {
+      "name": "evolve.region", "label": "Zone", "id_pattern": "prompt", "decides_scope": true,
+      "columns": [
+        { "column_name": "zone_name", "label": "Zone", "column_type": "Data" },
+        { "column_name": "code", "label": "Code", "column_type": "Data", "unique": true }
+      ]
+    }
+  ],
+  "permissions": [
+    { "table": "evolve.item", "role": "Evolve Clerk", "can_read": true, "can_write": true, "can_create": true },
+    { "table": "evolve.memo", "role": "Evolve Clerk", "can_read": true },
+    { "table": "evolve.supplier", "role": "Evolve Clerk", "can_read": true }
+  ],
+  "migrations": [
+    {
+      "id": "grow", "fromVersion": "0.1.0", "toVersion": "0.2.0",
+      "operations": [
+        { "kind": "addTable", "table": {
+          "name": "evolve.supplier", "label": "Supplier", "id_pattern": "prompt",
+          "columns": [{ "column_name": "supplier_name", "label": "Name", "column_type": "Data" }] } },
+        { "kind": "addTable", "table": {
+          "name": "evolve.line", "label": "Line", "kind": "sub_table",
+          "columns": [
+            { "column_name": "sku", "label": "SKU", "column_type": "Data" },
+            { "column_name": "count", "label": "Count", "column_type": "Int" }
+          ] } },
+        { "kind": "addColumn", "table": "evolve.item", "position": 2,
+          "column": { "column_name": "supplier", "label": "Supplier", "column_type": "Reference", "reference_table": "evolve.supplier" } },
+        { "kind": "addColumn", "table": "evolve.item",
+          "column": { "column_name": "lines", "label": "Lines", "column_type": "Sub-table", "row_table": "evolve.line" } },
+        { "kind": "addColumn", "table": "evolve.item",
+          "column": { "column_name": "priority", "label": "Priority", "column_type": "Choice", "choices": "Low\nHigh", "reqd": true, "default_value": "Low" } },
+        { "kind": "renameColumn", "table": "evolve.item", "from": "qty", "to": "quantity" },
+        { "kind": "alterColumn", "table": "evolve.item", "column": "quantity",
+          "from": { "column_type": "Int", "label": "Qty" }, "to": { "column_type": "Float", "label": "Quantity" } },
+        { "kind": "alterColumn", "table": "evolve.item", "column": "on_hold",
+          "from": { "column_type": "Check" }, "to": { "column_type": "Int" } },
+        { "kind": "alterColumn", "table": "evolve.item", "column": "grade",
+          "from": { "choices": "A\nB\nC" }, "to": { "choices": "A\nB\nC\nD" } },
+        { "kind": "renameTable", "from": "evolve.note", "to": "evolve.memo" },
+        { "kind": "renameTable", "from": "evolve.zone", "to": "evolve.region" },
+        { "kind": "addColumn", "table": "evolve.region",
+          "column": { "column_name": "code", "label": "Code", "column_type": "Data", "unique": true } }
+      ]
+    }
+  ]
+}
