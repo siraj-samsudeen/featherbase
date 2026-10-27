@@ -21,3 +21,13 @@ named with its reason.
   database, and one of them was removed there meanwhile
 - **THEN** the other two are deleted, the missing row stays selected, and
   the user is told that two of three were deleted and that row was not found
+
+### Requirement: A refused change to many rows says what to fix
+
+When a change to several rows is refused, the user SHALL be told each field
+that was refused and why, not only that the values were invalid.
+
+#### Scenario: A required field is cleared
+
+- **WHEN** the user selects rows and clears a field every row must have
+- **THEN** the user is told that field is required, and no row changes

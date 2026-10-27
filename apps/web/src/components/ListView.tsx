@@ -13,6 +13,7 @@ import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
+import { failureMessage } from '../lib/import-run'
 
 export type Filter = [string, string, unknown]
 
@@ -296,9 +297,15 @@ export function ListView({
     setSelected(new Set(failed.map((f) => f.row_id)))
     setBulkError(
       `${fmtCount(done)} of ${fmtCount(done + failed.length)} ${verb}. ` +
-        failed.map((f) => `${f.row_id}: ${f.message}`).join('; '),
+        failed.map((f) => `${f.row_id}: ${refusal(f)}`).join('; '),
     )
     return queryClient.invalidateQueries({ queryKey: ['list', table] })
+  }
+
+  // #540: a refusal names each refused field by its label, and why.
+  function refusal(err: { message: string; fields?: Record<string, string> }): string {
+    const labels = new Map((meta.data?.columns ?? []).map((f) => [f.column_name, f.label ?? f.column_name]))
+    return failureMessage(err, (column) => labels.get(column) ?? column)
   }
 
   async function bulkDelete() {
@@ -311,7 +318,7 @@ export function ListView({
       )
       await reportPartial('deleted', result.deleted, result.failed ?? [])
     } catch (err) {
-      setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
+      setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk delete failed')
     } finally {
       setBulkBusy(false)
     }
@@ -335,7 +342,7 @@ export function ListView({
       )
       await reportPartial('changed', result.changed, result.failed ?? [])
     } catch (err) {
-      setBulkError(err instanceof ApiError ? err.message : 'Bulk edit failed')
+      setBulkError(err instanceof ApiError ? refusal(err) : 'Bulk edit failed')
     } finally {
       setBulkBusy(false)
     }
