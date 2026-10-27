@@ -138,8 +138,8 @@ describe('on an address that opens an app', () => {
     expect(res.headers.get('location')).toBe(ROOT)
   })
 
-  test('the sign-in pages, the shell assets and the app root are served', async ({ api }) => {
-    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/runtime-shell.css', ROOT, `${ROOT}/`])
+  test("the sign-in pages, the bar's script and the app root are served", async ({ api }) => {
+    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/bar.js', ROOT, `${ROOT}/`])
       expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
   })
 

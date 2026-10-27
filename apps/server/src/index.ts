@@ -78,7 +78,7 @@ import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFa
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
-import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
+import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
 import helpdesk from './sample-apps/helpdesk'
@@ -795,9 +795,6 @@ app.get('*', (c, next) => {
   return target ? c.redirect(target, 302) : next()
 })
 
-app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))
-app.get('/featherbase/runtime-shell.js', c => c.body(runtimeShellJs, 200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }))
-
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
   const url = new URL(c.req.url)
@@ -844,7 +841,7 @@ app.get('*', async (c, next) => {
     }
     const html = bytes.toString('utf8')
     const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
-      : new TextEncoder().encode(composeRuntimeShell(html, name, catalog))
+      : new TextEncoder().encode(composeRuntimeShell(html, { name, title: catalog.find((entry) => entry.name === name)!.title }))
     return new Response(body, {
       headers: {
         'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
