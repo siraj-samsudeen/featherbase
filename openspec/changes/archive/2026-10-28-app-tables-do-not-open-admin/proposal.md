@@ -10,12 +10,18 @@ intended.
 
 ## What Changes
 
-- A grant on an installed app's own tables, or a row of one shared with a person,
-  no longer opens the administration to them. This holds whether the app is
-  switched on or off.
-- People who only use apps are no longer offered the administration, and the
-  administration refuses them as it refuses anyone without access. Signing in
-  takes them to their app.
+- An installed app's tables don't count towards the administration only when
+  that app opens at its own root, with pages of its own (decision of
+  28-Oct-2026, provisional, on Siraj's list). A grant on such an app's tables, or
+  a row of one shared with a person, no longer opens the administration to them,
+  whether the app is switched on or off.
+- An app without pages of its own is used through the administration's generated
+  lists and forms, so its tables keep counting and its people keep the
+  administration.
+- People who only use apps with pages of their own are no longer offered the
+  administration, and the administration refuses them as it refuses anyone
+  without access. Signing in takes them to an app they can open: the one their
+  address opens, else the first by title.
 - The app itself is unchanged for them: it opens, and its tables answer them as
   before.
 - Grants on the instance's own tables open the administration as before, and

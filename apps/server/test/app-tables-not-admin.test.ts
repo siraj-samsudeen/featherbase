@@ -8,8 +8,10 @@ import { afterEach, beforeEach, describe, expect } from 'vitest'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { config } from '../src/config'
+import { parseInstanceAddresses } from '../src/instance-addresses'
 import { discoverPackages } from '../src/runtime-packages'
 import { landingAfterSignIn } from '../src/landing'
+import { sql } from '../src/db'
 
 type Caps = { manage: boolean; admin: boolean; own_grant: boolean; tables: string[] }
 
@@ -116,6 +118,105 @@ describe('grants outside installed apps count as before', () => {
     await installAppWithReaderRole(admin)
     const manager = await createUser({ email: 'manager.659@example.com', roles: ['System Manager', ROLE] })
     expect(await capsOf(manager)).toMatchObject({ manage: true, admin: true })
+  })
+})
+
+// Codex round 1 on #675: once an app's readers cannot use Admin, a sign-in
+// that would have landed them in the Admin must land them in an app they can
+// open, chosen from the app catalog, never by an app's name in platform code.
+describe('signing in, a person who cannot use Admin lands in an app they can open', () => {
+  const BAR_PROOF = resolve('../..', 'runtime-apps/fixtures/bar-proof')
+  const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+  const OTHER = resolve('../..', 'runtime-apps/other')
+  const ADMIN_AT = 'https://admin.example.com'
+  const landingOf = (person: string | null, host: string) => landingAfterSignIn({ token: 'unused', user: { row_id: person! } as never }, host)
+
+  async function install(admin: TestClient, ...names: string[]) {
+    expect(await discoverPackages([BAR_PROOF, ROSTER, OTHER])).toEqual([])
+    for (const name of names) await admin.post('/api/install_app', { name })
+  }
+
+  test('a reader of one app only lands on that app on a host the list does not name', async ({ admin, createUser }) => {
+    await install(admin, 'barproof')
+    const reader = await createUser({ email: 'bar.only.landing@example.com', roles: ['Bar Reader'] })
+    expect(await landingOf(reader.user, 'localhost')).toEqual({ landing: '/barproof/' })
+  })
+
+  test('a reader of several apps lands on the first by title', async ({ admin, createUser }) => {
+    // Installed in the other order, so the catalog's own order would pick Other tasks.
+    await install(admin, 'other', 'barproof')
+    const reader = await createUser({ email: 'two.apps.landing@example.com', roles: ['Bar Reader'] })
+    expect(await landingOf(reader.user, 'localhost')).toEqual({ landing: '/barproof/' })
+  })
+
+  test("on the Admin address, a reader of an app that has no address of its own lands on that app's root there", async ({ admin, createUser }) => {
+    await install(admin, 'barproof')
+    config.instanceAddresses = parseInstanceAddresses(JSON.stringify([{ address: ADMIN_AT, opens: 'admin', emails: true }]), 'test')
+    const reader = await createUser({ email: 'bar.admin.address@example.com', roles: ['Bar Reader'] })
+    expect(await landingOf(reader.user, 'admin.example.com')).toEqual({ landing: '/barproof/' })
+  })
+
+  test("the app the address opens wins over the first by title", async ({ admin, createUser }) => {
+    await install(admin, 'other', 'barproof')
+    config.instanceAddresses = parseInstanceAddresses(
+      JSON.stringify([{ address: 'https://other.example.com', opens: 'other', emails: true }, { address: ADMIN_AT, opens: 'admin' }]),
+      'test',
+    )
+    const reader = await createUser({ email: 'address.app.wins@example.com', roles: ['Bar Reader'] })
+    expect(await landingOf(reader.user, 'other.example.com')).toEqual({ landing: '/other/' })
+  })
+
+  test('a person who can open no app is left to the no-access page', async ({ admin, createUser }) => {
+    await install(admin, 'barproof')
+    const nobody = await createUser({ email: 'opens.nothing@example.com' })
+    expect(await landingOf(nobody.user, 'localhost')).toEqual({})
+  })
+})
+
+// Codex round 1 on #675 (decision, 28-Oct-2026, provisional): only an app that
+// opens at its own root (the app catalog's test) takes its Tables out of the
+// Admin. An app without pages of its own is used through the Admin's generated
+// lists and forms, so its readers keep the Admin.
+describe('an app without pages of its own', () => {
+  const EVOLVE = resolve('../..', 'runtime-apps/fixtures/evolve-v1')
+
+  async function evolveClerk(admin: TestClient, createUser: CreateUserFn) {
+    expect(await discoverPackages([EVOLVE])).toEqual([])
+    await admin.post('/api/install_app', { name: 'evolve' })
+    return createUser({ email: 'evolve.clerk.659@example.com', roles: ['Evolve Clerk'] })
+  }
+
+  test("its reader can still use Admin", async ({ admin, createUser }) => {
+    const clerk = await evolveClerk(admin, createUser)
+    expect((await capsOf(clerk)).admin).toBe(true)
+  })
+
+  test("its reader can still add a row through the Admin's generated form", async ({ admin, createUser }) => {
+    const clerk = await evolveClerk(admin, createUser)
+    const saved = await clerk.post<{ row_id: string }>('/api/save_row', { table: 'evolve.item', row: { row_id: 'it-1', title: 'Shelf' } })
+    expect(saved.row_id).toBe('it-1')
+  })
+})
+
+// Codex round 1 on #675: the installed-app ledger may hold its Tables as a
+// JSON string of an array (installed-app-ledger.ts reads both shapes).
+describe('an app whose ledger holds its Tables as a JSON string', () => {
+  const doubleEncode = () => sql`update installed_app set tables = to_jsonb(tables::text) where name = 'feather_dash'`
+
+  test("a grant on its Table still does not open the Admin", async ({ admin, createUser }) => {
+    await installAppWithReaderRole(admin)
+    await doubleEncode()
+    const reader = await createUser({ email: 'ledger.grant@example.com', roles: [ROLE] })
+    expect((await capsOf(reader)).admin).toBe(false)
+  })
+
+  test("a shared row of its Table still does not open the Admin", async ({ admin, createUser }) => {
+    await installAppWithReaderRole(admin)
+    await admin.post('/api/save_row', { table: APP_TABLE, row: { row_id: 'n-3', body: 'shared' } })
+    await doubleEncode()
+    const guest = await createUser({ email: 'ledger.share@example.com' })
+    await admin.post('/api/save_row', { table: 'Share', row: { share_table: APP_TABLE, share_name: 'n-3', person: guest.user, read: true } })
+    expect((await capsOf(guest)).admin).toBe(false)
   })
 })
 

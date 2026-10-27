@@ -31,7 +31,8 @@ interface Landing {
 }
 
 /** Can this person use Admin at all: manage it, or reach some Table in it
- *  that no installed app owns (#659: tableAccessFor's `admin` is the rule).
+ *  that no installed app with pages of its own owns (#659: tableAccessFor's
+ *  `admin` is the rule).
  *  The same facts /api/whoami's capabilities draw the shell from. */
 async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
@@ -85,7 +86,13 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   // host is served as one address holding everything, as before #488, so a
   // report viewer opens the report right here.
   if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isInstalled('feather_dash')) }
-  return {}
+
+  // #659: no Admin and no address handed them on, but an app they can open
+  // is served right here (the Admin address serves every app's root, as an
+  // unlisted host does): its root, the first by title when they have several.
+  // Chosen from the catalog, so the platform names no app (ADR 0011).
+  const [first] = (await appCatalog(person)).sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
+  return first ? { landing: appRoot(first.name, true) } : {}
 }
 
 const ADMIN_ROOT = '/featherbase/admin'

@@ -615,12 +615,20 @@ export function packageTitle(name: string): string | undefined {
   return packages.get(name)?.title
 }
 
+/** Does this installed app open at its own root, with pages of its own (a
+ *  client)? The app catalog's test, and #659's: only such an app's Tables are
+ *  kept out of the Admin, since an app without pages is used through the
+ *  Admin's generated lists and forms. Enabled or not. */
+export function opensAtOwnRoot(name: string): boolean {
+  return Boolean(packages.get(name)?.clientRoot)
+}
+
 export async function appCatalog(user: string) {
   const installed = await listInstalledApps()
   const result = []
   for (const item of installed) {
     const pkg = packages.get(item.name)
-    if (item.active && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
+    if (item.active && pkg && opensAtOwnRoot(pkg.name) && await hasPermission(user, pkg.entryTable, 'read'))
       result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
   }
   return result

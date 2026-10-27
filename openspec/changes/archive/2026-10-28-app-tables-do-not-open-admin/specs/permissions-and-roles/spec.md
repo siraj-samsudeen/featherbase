@@ -2,11 +2,13 @@
 
 ### Requirement: Using an app does not open the administration
 
-Being able to read an installed app's own tables, or a row of one shared with
-them, SHALL NOT by itself open the administration to a person, whether the app is
-switched on or off. They reach those tables through the app, which keeps working
-for them as before; only a grant on the instance's own tables, or being a System
-Manager, opens the administration.
+An installed app's tables SHALL NOT count towards the administration only when
+that app opens at its own root, with pages of its own, whether it is switched on
+or off. Reading such an app's tables, or a row of one shared with them, does not
+by itself open the administration to a person: they reach those tables through
+the app, which keeps working for them as before, and signing in takes them to it.
+An app without pages of its own is used through the administration, so its
+tables still count, as do grants on the instance's own tables.
 
 #### Scenario: A store manager who only uses Feather Dash
 
@@ -23,3 +25,10 @@ Manager, opens the administration.
   own tables
 - **THEN** they can open the administration, where Feather Dash's tables are
   listed beside that one
+
+#### Scenario: A clerk of an app without pages of its own
+
+- **WHEN** a clerk whose only grant is on the tables of an installed app that
+  has no pages of its own signs in
+- **THEN** they can open the administration and use that app's tables there,
+  as before
