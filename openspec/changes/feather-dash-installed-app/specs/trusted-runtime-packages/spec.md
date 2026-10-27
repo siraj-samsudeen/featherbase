@@ -78,6 +78,26 @@ stored or written to any log.
 - **THEN** the instance's health page and the release log name the app and what is
   missing, without showing any value
 
+### Requirement: A missing optional secret holds up only what needs it
+
+An app SHALL be able to mark a secret as optional and say which of its reads and
+actions need it. While an optional secret is missing, only those SHALL answer that
+the app is not set up yet; the rest of the app SHALL keep working. A part of the
+app that does not say it needs an optional secret SHALL never get it.
+
+#### Scenario: An optional embed without its secret
+
+- **WHEN** an app's embedded report is optional and the instance has not been given
+  the embed's secret
+- **THEN** readers still get the app's plain view, and only the embedded report tells
+  them it is not set up yet
+
+#### Scenario: An admin sees what an optional secret would turn on
+
+- **WHEN** an installed app lacks an optional secret
+- **THEN** the instance's health page and the release log warn, naming the secret and
+  the parts of the app that need it, and say the rest of the app works
+
 ### Requirement: An app gets only the settings it declared
 
 An app SHALL receive only the settings and secrets it declared. A value kept for

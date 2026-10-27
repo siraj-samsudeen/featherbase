@@ -21,6 +21,9 @@ export type AppOperationDeclaration = {
   /** #625 (E5): a read whose handler runs after its authorization
    *  transaction has closed, so it may call out to a slow outside store. */
   outbound?: true
+  /** #666: the optional secrets this operation uses, by name. Only these
+   *  reach its handler, and it answers "not set up yet" while one is missing. */
+  needs?: string[]
 } & ({ policy: Extract<AppAccessPolicy, { kind: 'table' }> } | {
   policy: Extract<AppAccessPolicy, { kind: 'stores' }>
   scope: AppScopeSource

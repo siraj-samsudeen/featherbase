@@ -9,10 +9,10 @@ import { tableRelation } from './table-engine'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
-import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup } from './app-settings'
+import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
 import { appDatasets, type DatasetDeclaration } from './app-datasets'
 
-const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] } }
+const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] }, optionalSecrets: [] }
 
 export interface DeclaredOperations<H = RuntimeActionHandler> {
   entryTable: string
@@ -154,14 +154,15 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
           where caller = ${user} and app = ${app} and action = ${name} and idempotency_key = ${idempotencyKey}`
         return { result: previous.result }
       }
-      const { settings, secrets } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      const { settings, secrets, kept } = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       const context = callerDocuments(app, contribution.tables, user)
-      const result = await withSecretsKept(secrets, async () => {
-        try { return await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject })) }
+      // Serialized inside the guard (Codex round 2 on #670): a getter on the
+      // result is the app's code running, and may log or throw a secret.
+      const json = await withSecretsKept(kept, async () => {
+        try { return canonicalJson(await handler(Object.freeze({ user, payload: normalized, authorization, settings, secrets, documents: context.documents, reject }))) }
         finally { await context.close() }
       })
-      const json = canonicalJson(result)
-      assertNoSecret(secrets, JSON.parse(json))
+      assertNoSecret(kept, JSON.parse(json))
       await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result, "authorization")
         values (${user}, ${app}, ${name}, ${idempotencyKey}, ${canonicalJson(normalized)}, ${sql.json(JSON.parse(json))}, ${sql.json(JSON.parse(JSON.stringify(metadata)))})`
       return { result: JSON.parse(json) as unknown }
@@ -183,7 +184,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
       contribution: contribution.operations.get(name),
     }, async (authorization, payload): Promise<{ answer: unknown } | { outbound: Outbound }> => {
       if (discovery) return { answer: { storeCodes: authorization.storeCodes } }
-      const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP))
+      const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
       // #625 (E5): an outbound read stops here. Its authorization, payload,
       // setup and the app version serving it are decided and frozen; the
       // handler runs once this transaction AND the request's lifecycle lock
@@ -211,7 +212,7 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
 interface Outbound {
   handler: RuntimeReadHandler
   contribution: DeclaredOperations<RuntimeReadHandler>
-  frozen: { authorization: AppAuthorizationContext; payload: unknown; setup: AppSetup }
+  frozen: { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup }
   identity: string
 }
 
@@ -223,16 +224,16 @@ function closedDocuments(): never {
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
 
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
-  { authorization, payload, setup }: { authorization: AppAuthorizationContext; payload: unknown; setup: AppSetup },
+  { authorization, payload, setup }: { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup },
   documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferView?: (write: () => Promise<void>) => void) {
-  const { title, settings, secrets } = setup
+  const { title, settings, secrets, kept } = setup
   const { datasets, recordView } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
     places: authorization.places, outbound: !inAppTransaction(), deferView })
-  const json = await withSecretsKept(secrets, async () => {
+  const json = await withSecretsKept(kept, async () => {
     try {
       return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
     } finally { await close() }
   })
-  assertNoSecret(secrets, JSON.parse(json))
+  assertNoSecret(kept, JSON.parse(json))
   return { result: JSON.parse(json) as unknown }
 }

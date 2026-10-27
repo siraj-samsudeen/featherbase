@@ -233,18 +233,23 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
 /** #620 (E2): one check per enabled app that declares settings or secrets.
  *  Names what is missing, never a value. */
 async function appsSetUp(): Promise<HealthCheck[]> {
-  return (await appSetupState()).map(({ app, title, missing }) => {
+  return (await appSetupState()).map(({ app, title, missing, optional }) => {
     const base = {
       key: `app-setup:${app}`,
       title: `App set up: ${title}`,
       severity: 'warning' as const,
       why: 'An app that lacks a required setting, secret, data source or identifier system answers "not set up yet" instead of working.',
     }
-    if (!missing.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    // #666: a missing optional secret holds up only the reads and actions
+    // that need it: still a warning, but the app is set up.
+    const lacking = optional.length ? `lacks ${optional.join(', ')}. Only those answer "not set up yet".` : ''
+    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
     return {
       ...base,
       ok: false,
-      message: `${title} answers "not set up yet": missing ${missing.join(', ')}.`,
+      message: missing.length
+        ? `${title} answers "not set up yet": missing ${missing.join(', ')}.${lacking ? ` It also ${lacking}` : ''}`
+        : `${title} is set up, but ${lacking}`,
       fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, add each data source in Admin (Data Source), and add each identifier system in Admin (Identifier System), then restart.',
     }
   })

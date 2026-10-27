@@ -11,6 +11,7 @@ import { logAccess } from './audit'
 import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
 import { personScopeSchema } from 'shared'
 import { IDENTIFIER_SYSTEM_KEY } from './identifiers'
+import { secretName } from './app-settings'
 
 const name = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const text = z.string().min(1).refine(s => s.trim().length > 0)
@@ -33,10 +34,13 @@ const personScopePolicy = z.object({ kind: z.literal('person_scope'),
 // #625 (E5): a read declared outbound is authorized inside the transaction
 // and runs its handler after the transaction has closed.
 const outbound = z.literal(true).optional()
+// #666: the app's optional secrets this operation uses, by name. The load
+// checks each is a secret the manifest declares.
+const needs = z.array(secretName).refine(distinct, 'An operation names each secret it needs once').optional()
 const operationSchema = z.union([
-  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound }).strict(),
-  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound }).strict(),
-  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound }).strict(),
+  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound, needs }).strict(),
+  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound, needs }).strict(),
+  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound, needs }).strict(),
 ])
 /** #559: the manifest's `scopeProvider`: the server module's export under
  *  `scopeProviders`, and the Tables it reads. #660: and the identifier

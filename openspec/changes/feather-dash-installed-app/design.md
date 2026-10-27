@@ -260,6 +260,22 @@ that fills it).
   is withheld or replaced before it is answered, stored or logged.
 - The release check warns when an installed, enabled app lacks a required
   setting or secret (names only), and Instance health shows the same per app.
+- **Optional secrets (#666, as built).** A secret is a bare name (required) or
+  `{ "name": "EMBED_KEY", "optional": true }`. A read or action names the
+  optional secrets it uses in `needs: ["EMBED_KEY"]`; the load refuses a
+  `needs` entry the app does not declare. A missing optional secret makes only
+  the operations that need it answer "not set up yet"; a missing required
+  secret still holds up everything. A handler gets the required secrets and
+  the optional ones its operation needs; reaching for an optional secret it
+  does not need fails the operation (500, the server log names the secret),
+  even when the secret is set, so a forgotten `needs` shows up in development
+  rather than on an instance that lacks the secret. A withheld secret is still
+  one of the app's secrets: redaction, the answer check and the stored action
+  result keep in every declared secret that is set, whatever the handler was
+  given (Codex review on #670). The release check and
+  Instance health name a missing optional secret and the operations that need
+  it, as a warning that the rest of the app works. This lets an app with an
+  optional embed integration serve its plain view without the embed's secret.
 - Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
   experiment's password seeding.
 

@@ -12,7 +12,7 @@ import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolv
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
-import { loadAppSetup, secretsDeclaration, settingsDeclaration } from './app-settings'
+import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
 import { sql, withTransaction } from './db'
@@ -284,6 +284,12 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
     if (barKeys.has(control.sets)) throw new Error(`Two bar controls set ${control.sets}; each sets its own key`)
     barKeys.add(control.sets)
   }
+  // #666: an operation needs only secrets the app declares.
+  const declaredSecrets = new Set(secretEntries(manifest.secrets).map(entry => entry.name))
+  for (const [kind, operations] of [['read', readOperations], ['action', actionOperations]] as const)
+    for (const [operation, declaration] of Object.entries(operations))
+      for (const secret of declaration.needs ?? [])
+        if (!declaredSecrets.has(secret)) throw new Error(`The ${kind} ${operation} needs the secret ${secret}, which the app does not declare in its secrets`)
   for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
   for (const declaration of [manifest.actions, manifest.reads]) {
     if (!declaration) continue

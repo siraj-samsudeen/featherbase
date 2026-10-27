@@ -189,6 +189,14 @@ describe('release preflight: app settings and secrets', () => {
     expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
   })
 
+  // #666: an optional secret holds up only the reads and actions that need it.
+  test('an enabled app missing only an optional secret warns, naming the secret and the reads that need it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupoptional', ${sql.json({ name: 'setupoptional',
+      secrets: ['SETUPOPT_TOKEN', { name: 'SETUPOPT_EMBED', optional: true }], reads: { operations: { quick_view: {}, embed: { needs: ['SETUPOPT_EMBED'] } } } })}, true, true)`
+    const lines = await withNamedVariable('SETUPOPT_TOKEN', 'token-opt-666', () => withNamedVariable('SETUPOPT_EMBED', undefined, () => preflightRelease({ environment: 'test' })))
+    expect(lines).toContain('WARNING: app setupoptional lacks optional secret SETUPOPT_EMBED (needed by read embed). Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.')
+  })
+
   // #660: a scope provider's declared identifier system the instance lacks.
   test('an enabled scope provider declaring an identifier system the instance lacks warns, naming it', async () => {
     await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
