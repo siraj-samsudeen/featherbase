@@ -133,16 +133,16 @@ describe('migrate: the person-record changes', () => {
 
 describe('migrate: one file', () => {
   test('a migration that leaves two platform ledgers behind is refused', async () => {
-    await sql`delete from migration where name = '0124_script_api_featherbase.sql'`
+    await sql`delete from migration where name = '0123_instance_health.sql'`
     await sql.unsafe('create table public.migration (name text primary key)')
-    await expect(sql.begin(() => applyMigrationFile('0124_script_api_featherbase.sql')))
+    await expect(sql.begin(() => applyMigrationFile('0123_instance_health.sql')))
       .rejects.toThrow('Migration must leave exactly one platform migration ledger')
   })
 
   test('a pending file reported, applied and recorded', async () => {
-    await sql`delete from migration where name = '0124_script_api_featherbase.sql'`
-    expect(await pendingMigrations()).toEqual(['0124_script_api_featherbase.sql'])
-    await sql.begin(() => applyMigrationFile('0124_script_api_featherbase.sql'))
+    await sql`delete from migration where name = '0123_instance_health.sql'`
+    expect(await pendingMigrations()).toEqual(['0123_instance_health.sql'])
+    await sql.begin(() => applyMigrationFile('0123_instance_health.sql'))
     expect(await pendingMigrations()).toEqual([])
   })
 })

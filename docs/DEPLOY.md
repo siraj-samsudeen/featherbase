@@ -244,12 +244,15 @@ The object Server Scripts and Client Scripts call is now `featherbase`
 (`featherbase.throw(msg)`, `featherbase.ui.form.on(table, handlers)`); the
 runtimes no longer define `frappe`. Migration **0124** rewrites the stored
 `script` source of every Server Script and Client Script, replacing `frappe.`
-member access with `featherbase.` (other names that contain the word are left
-alone). It rewrites the trial's data, so rehearse it as above, then compare
-each changed script before and after (`select row_id, script from
-server_script` / `client_script`). A script that still fails afterwards with
-"frappe is not defined" builds the name some other way (for example
-`var f = frappe`) and needs editing by hand.
+member access in the code with `featherbase.`. Text inside strings, template
+text, comments and regular expressions is left alone, so a URL such as
+`https://frappe.io` keeps its value. It rewrites the trial's data, so rehearse
+it as above. The rehearsal prints how many scripts of each kind changed, and
+names any script it could not read as JavaScript; those are left unchanged and
+need editing by hand. Then compare each changed script before and after
+(`select row_id, script from server_script` / `client_script`). A script that
+still fails afterwards with "frappe is not defined" builds the name some other
+way (for example `var f = frappe`) and needs editing by hand too.
 
 ## Backups and rollback
 
