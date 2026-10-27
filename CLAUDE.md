@@ -94,6 +94,18 @@ belongs, dated.
    platform's own users. Do not reintroduce Frappe-specific wire shapes
    (`exc_type`, `frappe.client.*`, `/api/method/<dotted.path>` RPC naming,
    etc.) for compatibility's sake — they were removed on purpose.
+5. **Each layer knows only the layer below it**
+   ([ADR 0011](docs/adr/0011-platform-app-instance.md)). The **platform** is
+   this repo and the same for every client. An **app** (Tasker, Feather
+   Dash) is installable on any instance. An **instance** is one client's
+   server, database and settings. The platform never names a client. An app
+   never hard-codes one client's values; they reach it as settings or
+   instance setup. Client-specific material (seed packs, runbooks, report
+   queries, real hostnames) lives only in that client's private repository.
+   The test for any file: *would a second client have to change it?* If yes,
+   it is in the wrong layer. Apps are trusted and reviewed (no sandbox): they
+   touch the platform only through declared extension points and declare
+   everything they need.
 
 > `docs/ROADMAP.md` still describes a React + Supabase stack. That is the
 > original plan, not the implementation. Features it frames in terms of
@@ -111,6 +123,9 @@ belongs, dated.
   Tailwind v4. There is **no** shadcn/ui and **no** react-hook-form — UI is
   built from the shared components of the Shop Floor design system (below)
 - `packages/shared` — types and contracts used by both sides
+- `runtime-apps/` — the apps this repo ships (Tasker; Feather Dash to come),
+  each with its own `featherbase.json` manifest and version. In prose they
+  are **apps**; "runtime package" is only the code's name for them
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
   lives in its own repo; fix it there and release, never vendor it back in.
@@ -142,6 +157,12 @@ section in `PROGRESS.md` (Frappe look, Inter, four palettes) is superseded.
   each run, so the connecting user needs permission to create roles.
 - **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
   listeners by port and waits for both to answer.
+- **Addresses:** `INSTANCE_ADDRESSES` (a JSON list) says what each web
+  address of an instance opens — the Admin screens or one app — and which one
+  emails use. It replaced `SITE_URL` (#488) and is required outside
+  development and test. Locally, test two addresses with `*.localhost`
+  hostnames (`admin.localhost`, `dash.localhost`), as the e2e config does.
+  `docs/DEPLOY.md` has the details.
 - **Chromium is resolved from the environment, never hardcoded.** Both
   `apps/web/playwright.config.ts` and `apps/server/src/print.ts` let Playwright
   resolve its own installed browser unless `CHROMIUM_PATH` names one; `print.ts`
@@ -232,6 +253,8 @@ command, that is the first finding.
 
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
+  [ADR 0011](docs/adr/0011-platform-app-instance.md) records the platform /
+  app / instance layers that every design is checked against.
 - `docs/VISION.md` — what this is for and who it serves.
 - `openspec/specs/` — the sole behavior authority. The OpenSpec section below
   defines the workflow; ADR 0010 records why. Use plain, descriptive
