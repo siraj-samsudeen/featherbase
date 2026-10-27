@@ -21,7 +21,11 @@ intended.
 - People who only use apps with pages of their own are no longer offered the
   administration, and the administration refuses them as it refuses anyone
   without access. Signing in takes them to an app they can open: the one their
-  address opens, else the first by title.
+  address opens, else the first by title among the apps a role of their own
+  opens. An app open to everyone never claims a person with no role of use.
+- Whether an app has pages of its own is what its installation declared, never
+  whether its files loaded at the last restart; when that cannot be read, its
+  tables are treated as the app's.
 - The app itself is unchanged for them: it opens, and its tables answer them as
   before.
 - Grants on the instance's own tables open the administration as before, and
