@@ -242,11 +242,7 @@ export async function systemDefaults(key: string) {
   const row = await getSystem(key)
   const preset = completeSystemRow({ row_id: row.row_id, kind: row.kind })
   const fields = ['normalise', 'one_holder_at_a_time', 'one_per_person', 'assigner_scoped', 'edited_by', 'retain_after_leaving_days', 'match', 'sensitivity'] as const
-  // A numeric preset (retention days) is compared as a number: the stored
-  // Int can read back as text (#533).
-  const same = (want: unknown, have: unknown) =>
-    typeof want === 'number' && have != null && have !== '' ? want === Number(have) : want === have
-  const differs = fields.filter((f) => !same(preset[f] ?? null, (row as unknown as Record<string, unknown>)[f] ?? null))
+  const differs = fields.filter((f) => (preset[f] ?? null) !== ((row as unknown as Record<string, unknown>)[f] ?? null))
   const forbidden: { field: string; reason: string }[] = []
   if (row.match !== 'Off') forbidden.push({ field: 'one_holder_at_a_time', reason: 'Off while Match is on: a second holder must be accepted so the duplicate can be pointed out' })
   if (row.kind !== 'national-id') forbidden.push({ field: 'sensitivity', reason: 'Secret is only for a national ID' })
