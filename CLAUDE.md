@@ -273,6 +273,12 @@ an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
 `openspec/config.yaml`. The CLI is pinned to an exact version in root
 `package.json` and bumped by the weekly `openspec-update` workflow.
 
+When a PR carries a change whose tasks are all complete, its last step before
+merge is to verify the change against the code and tests, then archive it with
+`/opsx:archive`: sync the delta into `openspec/specs/` and move the folder to
+`openspec/changes/archive/`. A complete change left unarchived blocks the
+merge; a change with open tasks stays open. `check:specs` checks format only (#553).
+
 The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md).
 
 ## Agent skills
