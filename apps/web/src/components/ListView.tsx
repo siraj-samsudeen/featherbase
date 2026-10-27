@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
@@ -11,7 +11,8 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
-import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { Button, DataCards, NARROW_QUERY, Select, buttonClasses, cardClasses, inputClasses, pillClasses, useMediaQuery, type DataColumn } from './ui'
+import { ArrowDown, ArrowUp } from './ui/icons'
 import { fmtCount } from '../lib/inr'
 
 export type Filter = [string, string, unknown]
@@ -93,6 +94,8 @@ export function ListView({
   // #410: New is offered only to someone the server would let create a row here.
   const canAddRows = Boolean(caps?.manage || caps?.creatable.includes(table))
   const queryClient = useQueryClient()
+  // usable-on-any-device "Lists fit a phone": below 40rem the rows are cards.
+  const narrow = useMediaQuery(NARROW_QUERY)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
   // UI-013: per-user saved settings (sort, hidden columns, filters).
@@ -233,6 +236,50 @@ export function ListView({
     (f) => f.column_type === 'Sub-table' && !f.hidden,
   )
   const expandable = childFields.length > 0
+
+  function toggleExpand(name: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  // What an empty or refused list says, in either shape. A refused list query
+  // is an error, not an empty table — rendering it as "No rows" hides real
+  // data (#176).
+  const noRows = list.isError ? (
+    list.error instanceof ApiError ? (
+      list.error.message
+    ) : (
+      `Cannot load rows for ${table}`
+    )
+  ) : (
+    <>
+      No rows
+      {/* TLC-J1.2: an empty table is the moment the user most
+          needs the way forward, so the empty state carries it
+          too — the toolbar action is not the only door. */}
+      {canAddRows &&
+        !isRowsReadOnly(meta.data) &&
+        meta.data?.kind !== 'settings' &&
+        meta.data?.kind !== 'sub_table' && (
+        <>
+          {' — '}
+          <Link
+            to="/featherbase/admin/$table/$name"
+            params={{ table, name: 'new' }}
+            search={{ prefill: undefined }}
+            className="text-action underline"
+            data-testid="list-empty-new"
+          >
+            add the first one
+          </Link>
+        </>
+      )}
+    </>
+  )
 
   function toggleSort(field: string) {
     setStart(0)
@@ -660,6 +707,36 @@ export function ListView({
           )}
         </div>
       )}
+      {narrow ? (
+        <PhoneList
+          table={table}
+          titleColumn={meta.data?.title_column}
+          rows={rows}
+          columns={columns}
+          settings={settings}
+          selectable={!isRowsReadOnly(meta.data)}
+          selected={selected}
+          onToggleRow={toggleRow}
+          onSelectPage={(all) => setSelected(all ? new Set(rows.map((r) => String(r.row_id))) : new Set())}
+          sort={sort}
+          onSort={(next) => {
+            setStart(0)
+            setSort(next)
+            persist({ sort: next })
+          }}
+          childFields={expandable ? childFields : null}
+          expanded={expanded}
+          onToggleExpand={toggleExpand}
+          empty={
+            <div
+              className={cardClasses(`px-3 py-8 text-center text-control ${list.isError ? 'text-negative' : 'text-ink-subtle'}`)}
+              data-testid={list.isError ? 'list-rows-error' : undefined}
+            >
+              {noRows}
+            </div>
+          }
+        />
+      ) : (
       <div className={cardClasses('overflow-x-auto')} data-testid="list-table-scroll">
         <table className="w-full text-sm">
           <thead className="bg-subtle text-left">
@@ -709,14 +786,7 @@ export function ListView({
                 expandable={expandable}
                 childFields={childFields}
                 expanded={expanded.has(String(row.row_id))}
-                onToggleExpand={() =>
-                  setExpanded((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(String(row.row_id))) next.delete(String(row.row_id))
-                    else next.add(String(row.row_id))
-                    return next
-                  })
-                }
+                onToggleExpand={() => toggleExpand(String(row.row_id))}
               />
             ))}
             {!rows.length && (
@@ -730,45 +800,14 @@ export function ListView({
                   className={`px-3 py-8 text-center ${list.isError ? 'text-negative' : 'text-ink-subtle'}`}
                   data-testid={list.isError ? 'list-rows-error' : undefined}
                 >
-                  {/* A refused list query is an error, not an empty table —
-                      rendering it as "No rows" hides real data (#176). */}
-                  {list.isError ? (
-                    list.error instanceof ApiError ? (
-                      list.error.message
-                    ) : (
-                      `Cannot load rows for ${table}`
-                    )
-                  ) : (
-                    <>
-                      No rows
-                      {/* TLC-J1.2: an empty table is the moment the user most
-                          needs the way forward, so the empty state carries it
-                          too — the toolbar action is not the only door. */}
-                      {canAddRows &&
-                        !isRowsReadOnly(meta.data) &&
-                        meta.data?.kind !== 'settings' &&
-                        meta.data?.kind !== 'sub_table' && (
-                        <>
-                          {' — '}
-                          <Link
-                            to="/featherbase/admin/$table/$name"
-                            params={{ table, name: 'new' }}
-                            search={{ prefill: undefined }}
-                            className="text-action underline"
-                            data-testid="list-empty-new"
-                          >
-                            add the first one
-                          </Link>
-                        </>
-                      )}
-                    </>
-                  )}
+                  {noRows}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      )}
       <div className="mt-3 flex items-center gap-3 text-sm">
         <button
           disabled={start === 0}
@@ -852,36 +891,7 @@ function ListRow({
         )}
         {columns.map((col, i) => (
           <td key={col.column_name} className="px-3 py-2">
-            {i === 0 ? (
-              <Link
-                to="/featherbase/admin/$table/$name"
-                search={{ prefill: undefined }}
-                params={{ table, name: String(row.row_id) }}
-                className={`font-medium text-action hover:underline ${
-                  col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-                }`}
-              >
-                {col.column_name === 'row_id' && isPrincipalTable(table) ? (
-                  <PrincipalName id={String(row.row_id)} />
-                ) : (
-                  cell(row[col.column_name], col.column_type, settings)
-                )}
-              </Link>
-            ) : col.column_type === 'Choice' &&
-              row[col.column_name] != null &&
-              row[col.column_name] !== '' ? (
-              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
-                <Indicator value={String(row[col.column_name])} />
-              </span>
-            ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && row[col.column_name] ? (
-              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
-                <PrincipalName id={String(row[col.column_name])} />
-              </span>
-            ) : (
-              <span className="text-ink" data-testid={`cell-${col.column_name}`}>
-                {cell(row[col.column_name], col.column_type, settings)}
-              </span>
-            )}
+            <ListCell row={row} col={col} table={table} settings={settings} first={i === 0} />
           </td>
         ))}
       </tr>
@@ -896,6 +906,189 @@ function ListRow({
         </tr>
       )}
     </>
+  )
+}
+
+type ListColumn = { column_name: string; label: string; column_type: string; reference_table?: string | null }
+
+// One value of a row, the same in both shapes: the first column links to the
+// row's form, a Choice reads as its status dot and words, a person shows
+// their name, and everything else goes through the display settings.
+function ListCell({
+  row,
+  col,
+  table,
+  settings,
+  first,
+}: {
+  row: Record<string, unknown>
+  col: ListColumn
+  table: string
+  settings: Settings
+  first: boolean
+}) {
+  if (first)
+    return (
+      <Link
+        to="/featherbase/admin/$table/$name"
+        search={{ prefill: undefined }}
+        params={{ table, name: String(row.row_id) }}
+        className={`font-medium text-action hover:underline ${
+          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
+        }`}
+      >
+        {col.column_name === 'row_id' && isPrincipalTable(table) ? (
+          <PrincipalName id={String(row.row_id)} />
+        ) : (
+          cell(row[col.column_name], col.column_type, settings)
+        )}
+      </Link>
+    )
+  const value = row[col.column_name]
+  return (
+    <span className="text-ink" data-testid={`cell-${col.column_name}`}>
+      {col.column_type === 'Choice' && value != null && value !== '' ? (
+        <Indicator value={String(value)} />
+      ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
+        <PrincipalName id={String(value)} />
+      ) : (
+        cell(value, col.column_type, settings)
+      )}
+    </span>
+  )
+}
+
+// usable-on-any-device "Lists fit a phone": the same rows as cards. The first
+// column is the card's title and link, the first Choice its status, and the
+// rest labelled figures. What the table's header row does — select the page,
+// sort by a column — sits above the cards as two controls.
+function PhoneList({
+  table,
+  titleColumn,
+  rows,
+  columns,
+  settings,
+  selectable,
+  selected,
+  onToggleRow,
+  onSelectPage,
+  sort,
+  onSort,
+  childFields,
+  expanded,
+  onToggleExpand,
+  empty,
+}: {
+  table: string
+  /** The Table's own title column, if it has one. */
+  titleColumn: string | null | undefined
+  rows: Record<string, unknown>[]
+  columns: ListColumn[]
+  settings: Settings
+  selectable: boolean
+  selected: Set<string>
+  onToggleRow: (name: string) => void
+  onSelectPage: (all: boolean) => void
+  sort: { field: string; dir: 'asc' | 'desc' } | null
+  onSort: (next: { field: string; dir: 'asc' | 'desc' } | null) => void
+  /** The Sub-table columns a card can show in place; null when there are none. */
+  childFields: import('../lib/meta').ColumnDef[] | null
+  expanded: Set<string>
+  onToggleExpand: (name: string) => void
+  empty: ReactNode
+}) {
+  const key = (row: Record<string, unknown>) => String(row.row_id)
+  // A card leads with the row's title, never an opaque id: the Table's title
+  // column when it is listed, else the first listed column. A person's id
+  // already reads as their name. The id, when it is not the title, is the
+  // card's quiet meta line.
+  const titleCol =
+    columns.find((c) => c.column_name === titleColumn) ??
+    (isPrincipalTable(table) ? columns[0] : (columns[1] ?? columns[0]))
+  const statusColumn = columns.find((c) => c !== titleCol && c.column_type === 'Choice')
+  const cardColumns: DataColumn<Record<string, unknown>>[] = columns.map((col) => ({
+    key: col.column_name,
+    header: col.label,
+    phone: col === titleCol ? 'title' : col === statusColumn ? 'status' : col.column_name === 'row_id' ? 'meta' : 'value',
+    align: ['Int', 'Float', 'Currency', 'Percent'].includes(col.column_type) ? 'end' : 'start',
+    cell: (row) => <ListCell row={row} col={col} table={table} settings={settings} first={col === titleCol} />,
+  }))
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(key(r)))
+  const titleText = (row: Record<string, unknown>) =>
+    titleCol ? cell(row[titleCol.column_name], titleCol.column_type, settings) : key(row)
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {selectable && rows.length > 0 && (
+          <label className="inline-flex min-h-control cursor-pointer items-center gap-2 text-control text-ink">
+            <input
+              type="checkbox"
+              data-testid="select-all"
+              checked={allSelected}
+              onChange={(e) => onSelectPage(e.target.checked)}
+              className="size-5 accent-action"
+            />
+            Select all on this page
+          </label>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <label htmlFor="list-sort-by" className="text-control text-ink-muted">
+            Sort by
+          </label>
+          <Select
+            id="list-sort-by"
+            data-testid="list-sort-by"
+            className="w-auto"
+            value={sort?.field ?? ''}
+            onChange={(e) => onSort(e.target.value ? { field: e.target.value, dir: sort?.dir ?? 'asc' } : null)}
+          >
+            <option value="">Default order</option>
+            {columns.map((c) => (
+              <option key={c.column_name} value={c.column_name}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
+          {sort && (
+            <Button
+              aria-label={`Sort order: ${sort.dir === 'asc' ? 'ascending' : 'descending'}`}
+              data-testid="list-sort-dir"
+              onClick={() => onSort({ field: sort.field, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
+              icon={sort.dir === 'asc' ? <ArrowUp aria-hidden size={18} /> : <ArrowDown aria-hidden size={18} />}
+            />
+          )}
+        </div>
+      </div>
+      {rows.length ? (
+        <DataCards
+          caption={`Rows of ${table}`}
+          testId="list-rows"
+          rows={rows}
+          columns={cardColumns}
+          rowKey={key}
+          select={
+            selectable
+              ? {
+                  isSelected: (row) => selected.has(key(row)),
+                  onToggle: (row) => onToggleRow(key(row)),
+                  label: (row) => `Select ${titleText(row)}`,
+                }
+              : undefined
+          }
+          expand={
+            childFields
+              ? {
+                  isExpanded: (row) => expanded.has(key(row)),
+                  onToggle: (row) => onToggleExpand(key(row)),
+                  render: (row) => <InlineChildren table={table} name={key(row)} childFields={childFields} />,
+                }
+              : undefined
+          }
+        />
+      ) : (
+        empty
+      )}
+    </div>
   )
 }
 

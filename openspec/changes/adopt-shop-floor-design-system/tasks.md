@@ -36,7 +36,7 @@
 
 ## 4. Page adoption (after stage 3)
 
-- [ ] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
+- [x] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
   sorting working in both shapes. This delivers "Lists fit a phone".
 - [ ] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
 - [ ] 4.3 Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).

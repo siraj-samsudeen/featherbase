@@ -2,6 +2,8 @@
 // size). Import icons from here, not from lucide-react directly, so the set
 // stays small and consistent across screens.
 export {
+  ArrowDown,
+  ArrowUp,
   Bell,
   ChevronDown,
   ChevronRight,

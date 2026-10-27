@@ -1,5 +1,25 @@
 # Usable on Any Device Delta
 
+## MODIFIED Requirements
+
+### Requirement: Works on a phone
+
+Every screen SHALL work on a phone-sized screen without the page scrolling
+sideways. A list of rows reads as cards (see "Lists fit a phone"); other wide
+content, such as a report's table, may scroll within its own area.
+
+#### Scenario: Open a list on a phone
+
+- **WHEN** the user opens a list of rows on a phone
+- **THEN** the page fits the width of the screen
+- **AND** each row is a card, so nothing scrolls sideways
+
+#### Scenario: Open a wide report on a phone
+
+- **WHEN** the user opens a report whose table is wider than a phone
+- **THEN** the page fits the width of the screen
+- **AND** the report's table scrolls sideways on its own
+
 ## ADDED Requirements
 
 ### Requirement: Easy to read in bright light
@@ -42,6 +62,14 @@ details stacked.
 
 - **WHEN** the user opens a list on a phone
 - **THEN** each row shows its title, its status in words and its key figures, without sideways scrolling
+
+#### Scenario: Work with a Table's rows on a phone
+
+- **WHEN** the user opens any Table's list on a phone
+- **THEN** each row is a card led by the row's title, which opens the row, never by an opaque id
+- **AND** the card shows its status in words and each other listed column as a labelled figure
+- **AND** the user can still select rows one at a time or all on the page, act on them in bulk, sort by any listed
+  column from a "Sort by" control, show a row's nested rows in place, and page through the rows
 
 ### Requirement: Screens say when they are loading, empty or failed
 

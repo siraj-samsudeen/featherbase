@@ -163,7 +163,7 @@ test('UI-002: one generic ListView renders two different Tables with sort + pagi
 async function assertResponsiveListLayout(
   page: Page,
   screenshot: string,
-  expectTableOverflow: boolean,
+  phone: boolean,
 ): Promise<void> {
   const main = page.locator('main')
   expect(
@@ -184,21 +184,18 @@ async function assertResponsiveListLayout(
     )
   }
 
-  const tableArea = page.getByTestId('list-table-scroll')
-  expect(await tableArea.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
-  if (expectTableOverflow) {
+  if (phone) {
+    // usable-on-any-device "Lists fit a phone": no table to scroll, a card per row that fits the screen.
+    await expect(page.getByTestId('list-table-scroll')).toHaveCount(0)
+    const cards = page.getByTestId('list-rows')
+    await expect(cards.getByRole('listitem').first()).toBeVisible()
     expect(
-      await tableArea.evaluate((element) => element.scrollWidth > element.clientWidth),
-      'wide rows table must retain its own horizontal overflow',
+      await cards.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      'the row cards must fit the phone',
     ).toBe(true)
-    const scrollLeft = await tableArea.evaluate((element) => {
-      element.scrollLeft = element.scrollWidth
-      const moved = element.scrollLeft
-      element.scrollLeft = 0
-      return moved
-    })
-    expect(scrollLeft, 'wide rows table must scroll independently').toBeGreaterThan(0)
   } else {
+    const tableArea = page.getByTestId('list-table-scroll')
+    expect(await tableArea.evaluate((element) => getComputedStyle(element).overflowX)).toBe('auto')
     expect(
       await tableArea.evaluate((element) => element.scrollWidth <= element.clientWidth),
       'rows table must fit its desktop container for this fixture',
@@ -218,7 +215,7 @@ async function openResponsiveList(session: Session<PlaywrightStepContext, Page>)
 test.describe('ListView toolbar phone layout', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
-  test('keeps every metadata-driven header control reachable while only the rows table scrolls sideways', async ({
+  test('keeps every metadata-driven header control reachable and shows the rows as cards that fit the screen', async ({
     session,
   }) => {
     await openResponsiveList(session)
