@@ -12,7 +12,7 @@ import { useCapabilities, useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName } from '../lib/people'
-import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
 import { fmtCount } from '../lib/inr'
 
 export type Filter = [string, string, unknown]
@@ -100,6 +100,7 @@ export function ListView({
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkField, setBulkField] = useState('')
@@ -153,6 +154,7 @@ export function ListView({
   useEffect(() => {
     let cancelled = false
     setSettingsLoaded(false)
+    setSettingsUnsaved(false)
     api
       .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
         `/api/user_settings/${encodeURIComponent(table)}`,
@@ -178,12 +180,17 @@ export function ListView({
   }, [table])
 
   // Persist settings whenever the user changes them (after the initial load).
+  // A save that fails is said, not swallowed (#546): the change still shows
+  // now, but the list would open the old way next time.
   function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
     if (!settingsLoaded) return
-    void api.put(`/api/user_settings/${encodeURIComponent(table)}`, {
-      sort: next.sort !== undefined ? next.sort : sort,
-      hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
-    })
+    api
+      .put(`/api/user_settings/${encodeURIComponent(table)}`, {
+        sort: next.sort !== undefined ? next.sort : sort,
+        hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+      })
+      .then(() => setSettingsUnsaved(false))
+      .catch(() => setSettingsUnsaved(true))
   }
 
   const allColumns = meta.data ? listColumns(meta.data) : []
@@ -548,6 +555,13 @@ export function ListView({
           )}
         </div>
       </div>
+      {settingsUnsaved && (
+        <div className="mb-3" data-testid="list-settings-error">
+          <Notice tone="negative">
+            Couldn't save how this list is sorted and which columns show. It will open the old way next time.
+          </Notice>
+        </div>
+      )}
       {/* DEL-J1.2: a real dialog — labelled, Escape-dismissable — that names
           the Table and its live row count before anything irreversible. */}
       {confirmingDelete && (

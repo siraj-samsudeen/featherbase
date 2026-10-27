@@ -193,10 +193,10 @@ test('after opening a row, then a list, then running a search, the home page has
 }, 30000)
 
 // SPEC: Pin a routine as shortcuts — "shortcuts that stay on the home page
-// until the user unpins them" — suspected defect: the pinned chips offer no
-// way to unpin them (HomeRecall's workspace row has no unpin control), so a
-// pin can never be taken away.
-test.fails('a pinned routine can be unpinned, and stays unpinned on the next visit', async ({ createUser }) => {
+// until the user unpins them" (#548). The pinned row has its own unpin
+// control; once used, the pin is gone on the next visit too, and the same
+// routine isn't offered again until it changes.
+test('a pinned routine can be unpinned, and stays unpinned on the next visit', async ({ createUser }) => {
   const user = await createUser({ roles: ['System Manager'] })
   await user.post('/api/events', { events: habit(5) })
   await openHome(user)
@@ -205,6 +205,8 @@ test.fails('a pinned routine can be unpinned, and stays unpinned on the next vis
 
   within(chips).getByRole('button', { name: /unpin/i }).click()
   await waitFor(() => expect(screen.queryByTestId('workspace-chips')).not.toBeInTheDocument())
+  // Unpinning is an answer: the same routine is not offered again straight away.
+  expect(screen.queryByTestId('routine-card')).not.toBeInTheDocument()
   cleanup()
   await openHome(user)
   await waitFor(async () =>

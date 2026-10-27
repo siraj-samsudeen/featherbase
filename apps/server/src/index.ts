@@ -21,7 +21,7 @@ import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, se
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -1877,15 +1877,19 @@ app.post('/api/assign', async (c) => {
     assign_to?: string
     description?: string
   }
-  if (!table || !name || !assign_to)
+  if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
-  const [target] = await sql`select row_id from person where row_id = ${assign_to}`
-  if (!target) throw new AppError('NotFoundError', `Person ${assign_to} not found`)
+  // The assign box invites an email address (#512), so a person is found by
+  // their id or, failing that, by an email the assigner may read.
+  const asked = assign_to.trim()
+  const [byId] = await sql`select row_id from person where row_id = ${asked}`
+  const target = byId ? String(byId.row_id) : await personByEmail(asked, who(c))
+  if (!target) throw new AppError('NotFoundError', `Person ${asked} not found`)
 
-  const todo = await createAssignment(table, name, assign_to, who(c), description)
+  const todo = await createAssignment(table, name, target, who(c), description)
   return c.json({ todo }, 201)
 })
 
