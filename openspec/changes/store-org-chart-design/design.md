@@ -151,7 +151,7 @@ only where a Team Leader or Staff member holds a section.
   - each Staff member reports to one of the two.
 - **`team_leaders_allowed` (default 1) on `section`.** It is set to 2 through
   maker-and-checker where the store confirms it, so a Team Leader left on an old section is
-  still flagged elsewhere. *Recommended, not yet confirmed by the instance owner.*
+  still flagged elsewhere. *Confirmed by the instance owner, 27-Oct-2026.*
   - *Rejected:* dropping the rule altogether, which would hide real errors.
   - *Rejected:* virtual sections.
 - The one-store-at-a-time rule, the job-to-floor/section shape and non-overlapping
@@ -246,4 +246,9 @@ back to the old sheets, which stay read-only until every store is live.
 5. *(Settled 27-Oct-2026 by the instance owner: a two-Team-Leader section's target is
    split equally between its Team Leaders.)*
 
-**For the instance owner to confirm:** the per-section `team_leaders_allowed` number (D7).
+**Settled by the instance owner, 27-Oct-2026:**
+- the per-section `team_leaders_allowed` number (D7);
+- a job assignment's `person` is a link to the Person row, resolved from the employee
+  code through person identifiers. An unresolved code goes on needs matching, never a
+  guess;
+- a department may span floors.

@@ -25,8 +25,8 @@ attached. A section SHALL NOT be split into "virtual" sections to give each of i
 Leaders one of their own: when two Team Leaders genuinely share a section, the section stays
 whole and allows 2.
 
-*(Recommended by the instance owner's manager thread, not yet confirmed by the instance
-owner: the per-section `team_leaders_allowed` number.)*
+*(Confirmed by the instance owner, 27-Oct-2026: the per-section `team_leaders_allowed`
+number.)*
 
 #### Scenario: A second section with the same name is refused
 
@@ -108,7 +108,8 @@ target or coverage. They SHALL be listed for floor audits.
 
 ### Requirement: A job assignment says who holds which job, where and when
 
-A job assignment SHALL record a person, a job, a store, an `acting` flag, `starts_on`
+A job assignment SHALL record a person (a link to their Person record; an employee code
+that matches no one alone goes on the needs-matching list, never a guess), a job, a store, an `acting` flag, `starts_on`
 and an optional `ends_on`. `ends_on` is exclusive, and an empty `ends_on` means current.
 The job SHALL be one of Store Manager, Floor Manager, Department Manager, Team Leader,
 Staff and Cluster Manager. A Floor Manager's row SHALL name one floor of that store. A
