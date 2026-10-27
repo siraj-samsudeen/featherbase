@@ -66,6 +66,17 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
   return { title: declaration.title, settings: Object.freeze(settings), secrets: Object.freeze(secrets), missing }
 }
 
+/** The secrets installed apps declare that are set here, with their values,
+ *  so a settings export can withhold a setting that holds one. */
+export async function declaredAppSecrets(): Promise<{ name: string; value: string }[]> {
+  const rows = await sql`select distinct jsonb_array_elements_text(manifest->'secrets') as name
+    from installed_app where jsonb_typeof(manifest->'secrets') = 'array' order by name`
+  return rows.flatMap(row => {
+    const value = readNamedVariable(String(row.name))?.trim()
+    return value ? [{ name: String(row.name), value }] : []
+  })
+}
+
 /** The app's setup, or its "not set up yet" answer when a required setting
  *  or secret has no value: never a crash in the app's handler. The answer
  *  names no setting or secret; the server log names the missing ones (names

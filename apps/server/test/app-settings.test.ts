@@ -12,6 +12,7 @@ import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packa
 import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError } from './fixtures'
+import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
@@ -150,6 +151,54 @@ describe('an app secret', () => {
     const outsider = await createUser({ email: 'outsider@example.test', roles: [] })
     await call(outsider, 'config')
     expect(JSON.stringify(await sql`select * from access_log`)).not.toContain(TOKEN)
+  })
+})
+
+describe('the settings file sets app settings', () => {
+  const file = (value: string) => ({ settings: { 'App Setting': [{ row_id: 'setupproof.report_id', value }] } })
+
+  test('an apply fills in the app\'s setting', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const result = await applyInstanceSettings(file('R-9'), { by: 'Administrator' })
+    expect(result.changes).toEqual([{ table: 'App Setting', row_id: 'setupproof.report_id', field: 'value', old: null, new: 'R-9', created: true }])
+    expect(await sql`select app, setting, value from app_setting`).toEqual([{ app: 'setupproof', setting: 'report_id', value: 'R-9' }])
+  })
+
+  test('a dry run reports the change and writes nothing', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const result = await applyInstanceSettings(file('R-9'), { by: 'Administrator', dryRun: true })
+    expect(result.summary).toBe('1 setting would change')
+    expect(await sql`select 1 from app_setting`).toHaveLength(0)
+  })
+
+  test('a file naming a setting the app does not declare is refused whole', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await expect(applyInstanceSettings({ settings: { 'App Setting': [
+      { row_id: 'setupproof.report_id', value: 'R-9' }, { row_id: 'setupproof.retired', value: 'x' },
+    ] } }, { by: 'Administrator' })).rejects.toMatchObject({ fields: { 'App Setting.setupproof.retired.row_id': expect.stringMatching(/does not declare the setting retired/) } })
+    expect(await sql`select 1 from app_setting`).toHaveLength(0)
+  })
+
+  test('an export writes the app\'s settings in the file\'s shape', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-9')
+    expect((await exportInstanceSettings()).file.settings['App Setting']).toEqual([{ row_id: 'setupproof.report_id', value: 'R-9' }])
+  })
+
+  test('an export withholds a setting that holds the value of one of the app\'s secrets', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await setting(admin, 'report_id', `prefix-${TOKEN}`)
+    const exported = await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => exportInstanceSettings())
+    expect(JSON.stringify(exported)).not.toContain(TOKEN)
+    expect(exported.withheld).toEqual(['App Setting.setupproof.report_id.value: holds the value of SETUPPROOF_TOKEN'])
+  })
+
+  test('once the file sets a setting, Admin cannot change it', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await applyInstanceSettings(file('R-9'), { by: 'Administrator' })
+    const [row] = await sql`select updated_at from app_setting where row_id = 'setupproof.report_id'`
+    await expectApiError(admin.post('/api/save_row', { table: 'App Setting', row: { row_id: 'setupproof.report_id', value: 'R-0', updated_at: row.updated_at } }),
+      { status: 403, message: expect.stringMatching(/set in the instance settings file/) })
   })
 })
 
