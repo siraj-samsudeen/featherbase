@@ -72,7 +72,7 @@ test('testing or turning on tables of a source deleted meanwhile says it is not 
   await user.click(screen.getByTestId('sb-test'))
   expect(await screen.findByTestId('sb-test-result', undefined, { timeout: 8000 })).toHaveTextContent(/^Failed: .*not found/i)
   await user.click(screen.getByTestId('sb-reflect'))
-  expect(await screen.findByText(/Data Source web-srf not found/i)).toBeInTheDocument()
+  expect(await screen.findByTestId('sb-error')).toHaveTextContent(/Data Source web-srf not found/i)
 })
 
 test('a table whose name is already taken is skipped, with the reason', async ({ admin }) => {
