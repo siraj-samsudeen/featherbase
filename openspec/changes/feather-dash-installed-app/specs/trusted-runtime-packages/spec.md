@@ -91,3 +91,33 @@ serving.
   enabled
 - **THEN** the release refuses to start
 - **AND** people keep using the app on the release already running
+
+### Requirement: An app can provide people's scope
+
+An app SHALL be able to declare that it works out which places each person is
+responsible for, so other apps on the instance can rely on that answer. It SHALL read
+only the records it declared, and only records marked as deciding scope.
+
+#### Scenario: A report app relies on a roster app
+
+- **WHEN** a roster app that provides people's scope and a report app are installed
+  together
+- **THEN** the report shows each manager only the stores the roster app says they cover
+
+#### Scenario: A roster app reaching beyond what it declared
+
+- **WHEN** an app that provides people's scope tries to read records it did not
+  declare, or records not marked as deciding scope
+- **THEN** no one gets a scope from it, and requests are refused
+
+### Requirement: Only one app provides people's scope
+
+An instance SHALL have at most one enabled app that provides people's scope.
+Featherbase SHALL refuse to install, enable or upgrade into a second one, and a release
+SHALL refuse to start on an instance that has two.
+
+#### Scenario: A second roster app is refused
+
+- **WHEN** an admin installs a second app that provides people's scope
+- **THEN** the install is refused, naming the app that already provides it
+

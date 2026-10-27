@@ -3,9 +3,10 @@ import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import type { WorkflowState } from '../src/workflow'
 
-// WF-004: transitioning a document INTO a state that still has outgoing
-// transitions makes it pending someone's action. The holders of those
+// WF-004: only a state explicitly marked as waiting for approval emails
+// the roles on its outgoing transitions. The holders of those
 // transitions' allowed roles are emailed a pending-approval message that
 // references the document and links to it.
 
@@ -17,7 +18,7 @@ const FLOW = 'Wf Notify Flow'
 // Per-test setup inside the sandbox transaction: the Table, role, perms,
 // approver user (via the createUser fixture — its minted token replaces the
 // legacy password login), and workflow. Returns the approver's client.
-async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestClient> {
+async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApproval = true): Promise<TestClient> {
   await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
@@ -39,7 +40,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
       is_active: true,
       states: [
         { state: 'Draft', target_status: 'draft' },
-        { state: 'Pending', target_status: 'draft' },
+        { state: 'Pending', target_status: 'draft', waits_for_approval: waitsForApproval },
         { state: 'Approved', target_status: 'submitted' },
       ],
       transitions: [
@@ -52,6 +53,25 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
 }
 
 describe('WF-004: pending-approval notifications', () => {
+  test('an unmarked state with role-restricted actions sends no approval email', async ({ admin, createUser }) => {
+    await setup(admin, createUser, false)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'unmarked', title: 'Ordinary work' })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/unmarked:apply_workflow_action`, { action: 'Submit' })
+    const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'unmarked'`
+    expect(emails).toHaveLength(0)
+  })
+
+  test('approval marks default off and survive saving and reopening a workflow', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const path = `/api/table/Workflow/${encodeURIComponent(FLOW)}`
+    const saved = await admin.get<{ row_id: string; states: WorkflowState[] }>(path)
+    expect(saved.states.map((s) => s.waits_for_approval)).toEqual([false, true, false])
+    saved.states[1].waits_for_approval = false
+    await admin.post('/api/save_row', { table: 'Workflow', row: saved })
+    const reopened = await admin.get<{ states: WorkflowState[] }>(path)
+    expect(reopened.states.map((s) => s.waits_for_approval)).toEqual([false, false, false])
+  })
+
   test('entering a pending state queues an email to the approvers referencing the doc', async ({
     admin,
     createUser,

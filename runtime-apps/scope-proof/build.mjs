@@ -7,6 +7,10 @@ const object = { policy, scope: { kind: 'resolver', name: 'object', facts: [
 ] }, authorization: { kind: 'generic' } }
 const product = { policy, scope: { kind: 'resolver', name: 'pairs', facts: [] },
   authorization: { kind: 'product', name: 'pairs', facts: [{ table: 'scopeproof.access', columns: ['pairs'] }] } }
+// #559: operations scoped by the places a person covers. Another app provides
+// the scope (runtime-apps/fixtures/place-roster in the tests).
+const placed = { policy: { kind: 'person_scope', readRoles: ['Scope Reader', 'Scope Planner'], actionRoles: ['Scope Planner'] },
+  authorization: { kind: 'generic' } }
 const tables = [
   ['store', [{ column_name: 'label', column_type: 'Data' }]],
   ['object', [{ column_name: 'stores', column_type: 'JSON' }, { column_name: 'secret', column_type: 'Data' }]],
@@ -22,8 +26,8 @@ await writeFile(new URL('featherbase.json', import.meta.url), JSON.stringify({
     ...tables.map(t => ({ table: t.name, role: 'All', can_read: true, can_create: true, can_write: true, can_delete: true })),
     ...['Scope Reader', 'Scope Planner'].map(role => ({ table: 'scopeproof.object', role, can_read: true })),
   ],
-  actions: { version: 2, tables: tables.map(t => t.name), operations: { write: request, discard: object, product } },
+  actions: { version: 2, tables: tables.map(t => t.name), operations: { write: request, discard: object, product, place: placed } },
   reads: { version: 1, tables: tables.map(t => t.name), operations: {
-    stores: { ...request, discoverStoreAccess: true }, object, product: { ...product, discoverStoreAccess: true },
+    stores: { ...request, discoverStoreAccess: true }, object, product: { ...product, discoverStoreAccess: true }, places: placed,
   } },
 }, null, 2) + '\n')

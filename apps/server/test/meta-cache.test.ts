@@ -55,3 +55,28 @@ describe('META-011: meta cache with invalidation', () => {
     expect(body.columns[0].label).toBe('New Label')
   })
 })
+
+describe('a definition change clears the cache again once its transaction ends (#448)', () => {
+  test('a definition cached while the change was still open is not served after the commit', async ({ admin }) => {
+    await makeDT(admin)
+    await sql.begin(async (tx) => {
+      invalidateMeta(DT)
+      // A read in the window between the change and its commit: another
+      // connection still sees the old definition, and caches it.
+      expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+      await tx`update column_def set label = 'New Label' where parent = ${DT}`
+    })
+    expect((await getMeta(DT)).columns[0].label).toBe('New Label')
+  })
+
+  test('a rolled-back change leaves no definition from inside it in the cache', async ({ admin }) => {
+    await makeDT(admin)
+    await sql.begin(async (tx) => {
+      await tx`update column_def set label = 'Never Committed' where parent = ${DT}`
+      invalidateMeta(DT)
+      expect((await getMeta(DT)).columns[0].label).toBe('Never Committed')
+      throw new Error('roll back')
+    }).catch(() => {})
+    expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+  })
+})

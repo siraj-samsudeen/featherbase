@@ -56,14 +56,14 @@ test('clicking a related row re-centres the map on it, and the trail names where
   expect(within(trail).getByTestId('map-trail-1')).toHaveTextContent('cust-1')
 })
 
-// SPEC: The relationship map remembers the trail — suspected defect, see report.
-// RelationMap.hop() records [target table, current row] in the trail because its `table`
-// parameter shadows the map's own `table`, so clicking an earlier stop opens that row name in
-// the wrong table ("Cannot load Rm Customer ord-1").
-test.fails('the trail leads back to the original order in one click', async ({ admin }) => {
+// SPEC: The relationship map remembers the trail. Each stop on the trail is
+// the row the user stood on, in its own Table (#513), so an earlier stop
+// opens that row again.
+test('the trail leads back to the original order in one click', async ({ admin }) => {
   await hopOrderToCustomerToOtherOrder(admin)
   fireEvent.click(within(screen.getByTestId('map-trail')).getByTestId('map-trail-0'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('First order'), { timeout: 3000 })
+  expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
 })
 
 // A sub-table on the map (ADR 0012 merged coverage showed it untaken): its

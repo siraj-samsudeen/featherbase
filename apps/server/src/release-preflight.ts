@@ -8,7 +8,8 @@ import { sql } from './db'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { delegatedTestMode } from './delegated-login'
-import { checkVariables, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { checkVariables, readVariable, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { verifyPassword } from './auth'
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
@@ -87,7 +88,9 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
+  passed.push(await assertOneScopeProvider())
   passed.push(await noticeRecipients())
+  passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -179,6 +182,19 @@ export function publicationRefusal(blocking: BlockingPublication[]): string {
   return `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`
 }
 
+/** #559: exactly one enabled app may provide people's scope. Install and
+ *  enable refuse a second one; this catches an instance that got there any
+ *  other way. At run time two providers already mean no scope for anyone. */
+async function assertOneScopeProvider(): Promise<string> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return 'scope provider check skipped (no installed apps yet)'
+  const providers = (await sql`
+    select name from ${sql(apps.relation)} where enabled and manifest ? 'scopeProvider' order by name`).map((r) => String(r.name))
+  if (providers.length > 1)
+    throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
+  return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
+}
+
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start
  *  with only the built-in Administrator, which has no address). System
  *  notices go to enabled System Managers with an email address; with none
@@ -198,6 +214,26 @@ async function noticeRecipients(): Promise<string> {
     where p.row_id <> 'Administrator' and p.enabled ${current} and coalesce(trim(p.email), '') <> ''
     limit 1`
   return found ? 'a System Manager with an email address receives system alerts' : NO_NOTICE_RECIPIENTS_WARNING
+}
+
+/** 7. #467: a warning, never a refusal. ADMIN_PASSWORD only provisions a
+ *  null hash (admin-bootstrap.ts), so changing it rotates nothing; a set
+ *  value that is not the live password is a half-done rotation. Neither
+ *  value is ever printed. */
+export const ADMIN_PASSWORD_MISMATCH_WARNING =
+  "WARNING: ADMIN_PASSWORD is set but is not the Administrator's live password. Changing the variable does not rotate it. Run cli set-password Administrator --stdin (docs/DEPLOY.md, \"Rotating credentials\")."
+
+async function administratorPasswordMatches(): Promise<string> {
+  const configured = readVariable('ADMIN_PASSWORD')
+  if (!configured?.trim()) return 'ADMIN_PASSWORD is not set, so there is no Administrator password to compare'
+  // Before 0101 the table is still `user`.
+  const person = (await locate('person')) ?? (await locate('user'))
+  if (!person?.columns.has('password_hash')) return 'Administrator password check skipped (no Person table yet)'
+  const [admin] = await sql`select password_hash from ${sql(person.relation)} where row_id = 'Administrator'`
+  if (!admin?.password_hash) return 'the Administrator has no password yet; cli seed sets it from ADMIN_PASSWORD'
+  return verifyPassword(configured, String(admin.password_hash))
+    ? "ADMIN_PASSWORD is the Administrator's live password"
+    : ADMIN_PASSWORD_MISMATCH_WARNING
 }
 
 /** Addresses anyone can register: admitting them creates a person for any
@@ -241,10 +277,15 @@ async function assertAccessConfiguration(environment: string, pending: string[] 
   if (found) {
     const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
+    // #559: a Table marked as deciding scope is a security Table too (0131 on).
+    const definitions = await locate('table_def')
+    const marked = definitions?.columns.has('decides_scope')
+      ? (await sql`select name from ${sql(definitions.relation)} where decides_scope`).map((r) => String(r.name))
+      : []
     const rows = await sql`
       select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
       from ${sql(found.relation)}
-      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES])}
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES, ...marked])}
       order by role, ref_table, row_id`
     for (const r of rows) {
       const granted = flags.filter((a) => r[`can_${a}`] === true)

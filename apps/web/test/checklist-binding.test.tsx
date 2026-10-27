@@ -83,7 +83,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   )
   expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()
   expect(screen.queryByText('not a checklist item')).not.toBeInTheDocument()
-})
+}, 15_000) // #619: creates four tables and traverses two screens on busy CI runners.
 
 // Checklist Template Item carries must_do and photo_proof but no `done`: it
 // describes the standard rather than executing it. Binding "the first Check"

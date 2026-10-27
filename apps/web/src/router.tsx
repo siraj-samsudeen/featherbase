@@ -28,7 +28,7 @@ import { TableNaming } from './components/TableNaming'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
-import { JobMonitor } from './components/JobMonitor'
+import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccountLayout } from './pages/AccountLayout'
@@ -498,11 +498,14 @@ function ScriptReportPage() {
   )
 }
 
-// JOB-004: background job monitor (static segment).
+// #464: the Jobs page (System Manager only): every scheduled job, and the
+// queue monitor (JOB-004) below it.
 const jobsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'jobs',
-  component: JobMonitor,
+  component: () => (
+    <ManageOnly><Jobs /></ManageOnly>
+  ),
 })
 
 // #131: access tokens + service accounts (static segment).
