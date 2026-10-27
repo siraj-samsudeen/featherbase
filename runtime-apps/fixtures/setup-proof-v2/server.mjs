@@ -21,6 +21,17 @@ export const reads = {
     calls.handler++
     throw new Error(`upstream refused token ${context.secrets.SETUPPROOF_TOKEN}`)
   },
+  log_secret(context) {
+    calls.handler++
+    console.log('calling upstream with', context.secrets.SETUPPROOF_TOKEN)
+    console.error(new Error(`upstream said no to ${context.secrets.SETUPPROOF_TOKEN}`))
+    return { ok: true }
+  },
+  log_then_throw(context) {
+    calls.handler++
+    console.warn({ token: context.secrets.SETUPPROOF_TOKEN })
+    throw new Error('upstream refused')
+  },
   reject_with_secret(context) {
     calls.handler++
     context.reject(`bad token ${context.secrets.SETUPPROOF_TOKEN}`)
@@ -28,4 +39,8 @@ export const reads = {
 }
 export const actions = {
   record: answer,
+  echo_secret(context) {
+    calls.handler++
+    return { token: context.secrets.SETUPPROOF_TOKEN }
+  },
 }

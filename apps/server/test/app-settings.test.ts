@@ -4,6 +4,7 @@
 // declared, and a missing required value is "not set up yet", never a crash.
 // Fixture: runtime-apps/fixtures/setup-proof-v1.
 import { resolve } from 'node:path'
+import { inspect } from 'node:util'
 import { pathToFileURL } from 'node:url'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
@@ -13,6 +14,7 @@ import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
+import { WITHHELD_ANSWER, WITHHELD_MESSAGE, withSecretsKept } from '../src/app-settings'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
@@ -95,13 +97,13 @@ describe('an app secret', () => {
     logged = []
     for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const)
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-        logged.push(args.map(arg => arg instanceof Error ? `${arg.message}\n${arg.stack}` : String(arg)).join(' '))
+        logged.push(args.map(arg => arg instanceof Error ? `${arg.message}\n${arg.stack}` : typeof arg === 'string' ? arg : inspect(arg)).join(' '))
       })
   })
   afterEach(() => { vi.restoreAllMocks() })
 
-  async function call(reader: TestClient, name: string) {
-    const response = await withNamedVariable('SETUPPROOF_TOKEN', TOKEN, () => reader.fetch(read + name, {
+  async function call(reader: TestClient, name: string, token = TOKEN) {
+    const response = await withNamedVariable('SETUPPROOF_TOKEN', token, () => reader.fetch(read + name, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: {} }) }))
     return { status: response.status, body: await response.text() }
   }
@@ -142,6 +144,76 @@ describe('an app secret', () => {
     expect(response.status).toBe(500)
     expect(await response.text()).not.toContain(TOKEN)
     expect(JSON.stringify(await sql`select result from runtime_action_result where app = 'setupproof'`)).not.toContain(TOKEN)
+  })
+
+  // Codex review on #623: a secret that JSON or inspect would escape.
+  const ESCAPED = [
+    ['spans two lines', 'line-one\nline-two-620'],
+    ['holds a quote', 'quote"token-620'],
+    ['holds a backslash', 'back\\slash-620'],
+  ] as const
+
+  test.for(ESCAPED)('a read answer holding a secret that %s is withheld', async ([, token], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-1')
+    const { status, body } = await call(reader, 'echo_secret', token)
+    expect(status).toBe(500)
+    expect(JSON.parse(body)).toEqual({ error: { type: 'InternalError', message: WITHHELD_ANSWER } })
+  })
+
+  test.for(ESCAPED)('an action answer holding a secret that %s is withheld and not stored', async ([, token], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-1')
+    const response = await withNamedVariable('SETUPPROOF_TOKEN', token, () => reader.fetch('/api/app_actions/setupproof/echo_secret', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: 'escaped', payload: {} }) }))
+    expect(response.status).toBe(500)
+    expect(await sql`select 1 from runtime_action_result where app = 'setupproof'`).toHaveLength(0)
+  })
+
+  test.for(ESCAPED)('an error holding a secret that %s is replaced before it is answered or logged', async ([, token], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-1')
+    const { status, body } = await call(reader, 'fail_with_secret', token)
+    expect(status).toBe(500)
+    expect(body).not.toContain('-620')
+    expect(logged.join('\n')).toContain(WITHHELD_MESSAGE)
+    expect(logged.join('\n')).not.toContain('upstream refused token')
+  })
+
+  test('a handler that logs its secret and then answers has the secret redacted from the log', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-1')
+    const { status } = await call(reader, 'log_secret')
+    expect(status).toBe(200)
+    expect(logged.join('\n')).toContain('calling upstream with [secret withheld]')
+    expect(logged.join('\n')).not.toContain(TOKEN)
+  })
+
+  test('a handler that logs its secret and then throws has the secret redacted from the log', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await setting(admin, 'report_id', 'R-1')
+    const { status } = await call(reader, 'log_then_throw')
+    expect(status).toBe(500)
+    expect(logged.join('\n')).toContain('[secret withheld]')
+    expect(logged.join('\n')).not.toContain(TOKEN)
+  })
+
+  test('two apps running at once each have only their own secret redacted', async () => {
+    const first = withSecretsKept({ FIRST_TOKEN: 'first-secret-620' }, async () => {
+      await new Promise(done => setTimeout(done, 20))
+      console.log('first: first-secret-620')
+    })
+    const second = withSecretsKept({ SECOND_TOKEN: 'second-secret-620' }, async () => {
+      console.log('second: second-secret-620, not first-secret-620')
+      await new Promise(done => setTimeout(done, 40))
+    })
+    await Promise.all([first, second])
+    console.log('afterwards: first-secret-620')
+    expect(logged).toEqual([
+      'second: [secret withheld], not first-secret-620',
+      'first: [secret withheld]',
+      'afterwards: first-secret-620',
+    ])
   })
 
   test('the Access Log never records it', async ({ admin, createUser }) => {

@@ -29,6 +29,8 @@
       "echo_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "fail_with_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "reject_with_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "log_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "log_then_throw": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "places": {
         "policy": { "kind": "person_scope", "readRoles": ["Setup Reader"], "actionRoles": [] },
         "authorization": { "kind": "generic" }
@@ -39,7 +41,8 @@
     "version": 2,
     "tables": ["setupproof.note"],
     "operations": {
-      "record": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+      "record": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "echo_secret": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
     }
   }
 }

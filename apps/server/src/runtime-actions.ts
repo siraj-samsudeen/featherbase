@@ -158,7 +158,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
         finally { await context.close() }
       })
       const json = canonicalJson(result)
-      assertNoSecret(secrets, json)
+      assertNoSecret(secrets, JSON.parse(json))
       await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result, "authorization")
         values (${user}, ${app}, ${name}, ${idempotencyKey}, ${canonicalJson(normalized)}, ${sql.json(JSON.parse(json))}, ${sql.json(JSON.parse(JSON.stringify(metadata)))})`
       return { result: JSON.parse(json) as unknown }
@@ -187,7 +187,7 @@ export function executeRuntimeRead(app: string, name: string, input: unknown, us
           return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents: Object.freeze({ get, list, activity }) })))
         } finally { await context.close() }
       })
-      assertNoSecret(secrets, json)
+      assertNoSecret(secrets, JSON.parse(json))
       return { result: JSON.parse(json) as unknown }
     })
   })

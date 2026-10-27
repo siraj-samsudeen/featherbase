@@ -4,7 +4,8 @@
 // and name, and an instance sets it through its settings file
 // (instance-settings.ts). A secret stays a deployment variable: read here,
 // handed to the app's handlers, and never stored, logged or returned.
-import { inspect } from 'node:util'
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { formatWithOptions, inspect } from 'node:util'
 import { z } from 'zod'
 import { sql } from './db'
 import { readNamedVariable } from './env'
@@ -124,27 +125,77 @@ export async function readyAppSetup(app: string, setup: AppSetup): Promise<AppSe
 export const WITHHELD_ANSWER = "The app's answer was withheld: it held one of the app's secrets"
 export const WITHHELD_MESSAGE = "The app's message was withheld: it held one of the app's secrets"
 
-function holdsSecret(secrets: Readonly<Record<string, string>>, text: string): boolean {
-  return Object.values(secrets).some(value => text.includes(value))
+/** Does `value` hold one of `secrets`, in any decoded string or object key
+ *  it reaches? Compares decoded values, never serialized text, so a secret
+ *  that JSON or inspect would escape (a quote, a backslash, a new line) is
+ *  still found. An error's own properties (message, stack, fields, cause)
+ *  are walked too, hidden ones included. */
+export function holdsSecret(secrets: readonly string[], value: unknown, seen = new Set<unknown>()): boolean {
+  if (!secrets.length) return false
+  if (typeof value === 'string') return secrets.some(secret => value.includes(secret))
+  if (!value || typeof value !== 'object' || seen.has(value)) return false
+  seen.add(value)
+  const keys = value instanceof Error ? Reflect.ownKeys(value) : Object.keys(value)
+  for (const key of keys) {
+    if (typeof key === 'string' && holdsSecret(secrets, key, seen)) return true
+    let child: unknown
+    try { child = (value as Record<PropertyKey, unknown>)[key] } catch { continue }
+    if (holdsSecret(secrets, child, seen)) return true
+  }
+  if (value instanceof Error && 'cause' in value && holdsSecret(secrets, value.cause, seen)) return true
+  return false
 }
 
-/** Refuse an answer (already JSON) that holds one of the app's secrets. */
-export function assertNoSecret(secrets: Readonly<Record<string, string>>, json: string): void {
-  if (holdsSecret(secrets, json)) throw new AppError('InternalError', WITHHELD_ANSWER)
+/** Refuse an answer (decoded JSON) that holds one of the app's secrets. */
+export function assertNoSecret(secrets: Readonly<Record<string, string>>, answer: unknown): void {
+  if (holdsSecret(Object.values(secrets), answer)) throw new AppError('InternalError', WITHHELD_ANSWER)
 }
 
-/** Run the app's code; an error it raises that holds one of its secrets
- *  anywhere a log line or a response could show (message, fields, stack,
- *  cause, own properties) is replaced by one that does not. */
+// Console output while an app's handler runs has every one of that app's
+// secrets replaced. This guards against ACCIDENTAL logging (a debug line, an
+// upstream error logged before it is rethrown); it is not a sandbox. Trusted
+// app code (ADR 0011) can still write to process.stdout directly or send a
+// secret anywhere it likes. The secrets are request-scoped (AsyncLocalStorage),
+// so two handlers running at once never see each other's.
+const SECRET_REDACTION = '[secret withheld]'
+const runningSecrets = new AsyncLocalStorage<readonly string[]>()
+const CONSOLE_LEVELS = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const
+const redactors = new WeakSet<object>()
+
+function redact(text: string, secrets: readonly string[]): string {
+  // An object's strings are printed escaped, so each secret's escaped forms
+  // are replaced too. Longest first, so a secret inside another goes whole.
+  const forms = new Set(secrets.flatMap(secret => [secret, JSON.stringify(secret).slice(1, -1), inspect(secret).slice(1, -1)]))
+  for (const form of [...forms].filter(Boolean).sort((a, b) => b.length - a.length)) text = text.split(form).join(SECRET_REDACTION)
+  return text
+}
+
+/** Wrap whatever each console method is now (a test's spy included), once. */
+function redactConsole(): void {
+  for (const level of CONSOLE_LEVELS) {
+    const current = console[level] as (...args: unknown[]) => void
+    if (redactors.has(current)) continue
+    const wrapped = function (this: unknown, ...args: unknown[]) {
+      const secrets = runningSecrets.getStore()
+      if (!secrets?.length || !args.some(arg => holdsSecret(secrets, arg))) return current.apply(this, args)
+      return current.call(this, redact(formatWithOptions({ depth: 8 }, ...args), secrets))
+    }
+    redactors.add(wrapped)
+    console[level] = wrapped
+  }
+}
+
+/** Run the app's code with its secrets kept in: console output redacted
+ *  while it runs, and an error it raises that holds one replaced by one that
+ *  does not, before it is answered or logged. */
 export async function withSecretsKept<T>(secrets: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T> {
+  const values = Object.values(secrets)
+  if (!values.length) return run()
+  redactConsole()
   try {
-    return await run()
+    return await runningSecrets.run(values, run)
   } catch (error) {
-    if (!Object.keys(secrets).length) throw error
-    let text: string
-    try { text = inspect(error, { depth: 8, showHidden: true, breakLength: Infinity }) } catch { text = String(error) }
-    if (error instanceof AppError && error.fields) text += JSON.stringify(error.fields)
-    if (!holdsSecret(secrets, text)) throw error
+    if (!holdsSecret(values, error)) throw error
     throw error instanceof AppError ? new AppError(error.type, WITHHELD_MESSAGE) : new Error(WITHHELD_MESSAGE)
   }
 }
