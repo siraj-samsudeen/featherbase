@@ -6,7 +6,7 @@
    every size a call site can pass. test/pointer-fine-css.test.ts fails when
    src/ uses a size that is missing here. */
 @source inline("pointer-fine:text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl,control}");
-@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,{1..24},0.5,1.5,2.5,3.5}");
+@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,touch,{1..24},0.5,1.5,2.5,3.5}");
 @source inline("pointer-fine:min-h-{[26px],[44px],[70vh]}");
 
 /* Shop Floor design tokens (#380, OpenSpec change adopt-shop-floor-design-system).

@@ -577,6 +577,34 @@ describe('An app declares its phone tabs', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
+  test('a member who cannot open the app gets neither its catalog entry, its tabs nor its pages', async ({ admin, createUser }) => {
+    const directory = await otherWith({ tabs: TABS })
+    try {
+      const file = resolve(directory, 'featherbase.json')
+      const manifest = JSON.parse(await readFile(file, 'utf8'))
+      manifest.permissions = manifest.permissions.map((permission: Record<string, unknown>) => ({ ...permission, role: 'System Manager' }))
+      await writeFile(file, JSON.stringify(manifest))
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const member = await createUser({ email: 'app-tabs-no-read@example.com', roles: [] })
+      expect(await member.get('/api/app_catalog')).toEqual([])
+      expect((await member.fetch('/other/targets', { headers: { accept: 'text/html' } })).status).toBe(404)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test("a tab's deep address serves the app's page with the tab bar", async ({ admin }) => {
+    const directory = await otherWith({ tabs: TABS })
+    try {
+      expect(await discoverPackages([directory])).toEqual([])
+      await admin.post('/api/install_app', { name: 'other' })
+      const res = await admin.fetch('/other/targets', { headers: { accept: 'text/html' } })
+      expect(res.status).toBe(200)
+      const html = await res.text()
+      expect(html).toContain('<nav class="fc-runtime-tabs" aria-label="Other tasks"')
+      expect(html).toContain('<a class="fc-runtime-tab" href="/other/targets">')
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   test('an app that declares no tabs gets none', async ({ admin }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
@@ -594,8 +622,10 @@ describe('An app declares its phone tabs', () => {
       ['an empty label', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: ' ' })] }],
       ['a label too long for the bar', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: 'Thirteen char' })] }],
       ['two tabs opening one path', { version: 1, items: [item({}), item({ label: 'Again' })] }],
+      ['an invisible label', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: '\u200b' })] }],
+      ['a label with a direction override', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', label: 'Tab\u202e' })] }],
       ['an extra field', { version: 1, items: [item({ path: 'a' }), item({ path: 'b', badge: 3 })] }],
-      ...['/admin', '../admin', 'a/../../admin', 'https://elsewhere.example', '//elsewhere.example', 'a?b', 'a#b', 'A', 'a//b', 'a/'].map(
+      ...['/admin', '../admin', 'a/../../admin', 'https://elsewhere.example', '//elsewhere.example', 'a?b', 'a#b', 'A', 'a//b', 'a/', '/', 'a\nb', 'a\\b', '%2e%2e', 'a b', 'javascript:alert(1)'].map(
         (path): [string, unknown] => [`the path ${path}`, { version: 1, items: [item({ path: 'ok' }), item({ path })] }]),
     ]
     for (const [what, tabs] of refused) {

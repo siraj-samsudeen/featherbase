@@ -85,7 +85,7 @@ export function touchRowClasses(className?: string): string {
  */
 export function touchLinkClasses(className?: string): string {
   return cx(
-    'pointer-coarse:inline-flex pointer-coarse:min-h-control pointer-coarse:min-w-control pointer-coarse:items-center',
+    'pointer-coarse:inline-flex pointer-coarse:min-h-control pointer-coarse:min-w-control pointer-coarse:items-center pointer-coarse:justify-center',
     className,
   )
 }

@@ -60,7 +60,11 @@ export function composeRuntimeShell(html: string, currentApp: string, destinatio
   </header>${tabs}`
   const script = '<script src="/featherbase/runtime-shell.js" defer></script>'
   const rootedHtml = rootRuntimeEntryAssets(html, currentApp)
-  const withHead = /<\/head>/i.test(rootedHtml) ? rootedHtml.replace(/<\/head>/i, `${head}</head>`) : `${head}${rootedHtml}`
+  // A page without a viewport lays out 980px wide on a phone, so the phone-only
+  // tab bar would never show; the shell gives it the device's width.
+  const viewport = tabs && !/<meta\s[^>]*name\s*=\s*["']?viewport/i.test(rootedHtml)
+    ? '<meta name="viewport" content="width=device-width, initial-scale=1">' : ''
+  const withHead = /<\/head>/i.test(rootedHtml) ? rootedHtml.replace(/<\/head>/i, `${viewport}${head}</head>`) : `${viewport}${head}${rootedHtml}`
   const withBody = /<body(?:\s[^>]*)?>/i.test(withHead)
     ? withHead.replace(/<body(\s[^>]*)?>/i, `<body$1${bodyMarks}>`)
       .replace(/<body(?:\s[^>]*)?>/i, match => `${match}${shell}`)
@@ -156,12 +160,12 @@ body[data-featherbase-runtime-shell] { --featherbase-runtime-shell-inset: 48px; 
 .fc-runtime-label { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 .fc-runtime-switcher { box-sizing: border-box !important; width: min(280px, calc(100vw - 68px)) !important; min-height: 36px !important; margin: 0 !important; padding: 0 34px 0 11px !important; border: 1px solid #d1d8dd !important; border-radius: 6px !important; background: #fff !important; color: #1c2126 !important; font: 600 14px Inter, ui-sans-serif, system-ui, sans-serif !important; }
 .fc-runtime-home:focus-visible, .fc-runtime-switcher:focus-visible { outline: 3px solid #2490ef !important; outline-offset: 2px !important; }
-/* #380 4.4: the open app's tabs, on a phone only, fixed within reach of a thumb; 48px targets, the open one marked by a bar above it and a bolder label as well as by colour. */
+/* #380 4.4: the open app's tabs, on a phone only, fixed within reach of a thumb; 48px targets, the open one marked by a bar above it and a bolder label as well as by colour. Below an app's own dialogs (z-index 1000); an app that pins something to the bottom keeps --featherbase-runtime-shell-tabs-inset clear. */
 .fc-runtime-tabs { display: none !important; }
 @media (max-width: 639.98px) {
-  body[data-featherbase-runtime-tabs] { padding-bottom: calc(50px + env(safe-area-inset-bottom)) !important; }
-  .fc-runtime-tabs { box-sizing: border-box !important; position: fixed !important; inset: auto 0 0 0 !important; z-index: 2147483647 !important; display: flex !important; padding: 0 0 env(safe-area-inset-bottom) !important; border-top: 1px solid #ebeef0 !important; background: #fff !important; font: 12px Inter, ui-sans-serif, system-ui, sans-serif !important; }
-  .fc-runtime-tab { box-sizing: border-box !important; display: flex !important; min-width: 0 !important; min-height: 48px !important; flex: 1 1 0 !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; gap: 2px !important; padding: 0 4px !important; border-top: 2px solid transparent !important; color: #4b5563 !important; font-weight: 500 !important; text-decoration: none !important; }
+  body[data-featherbase-runtime-tabs] { --featherbase-runtime-shell-tabs-inset: calc(50px + env(safe-area-inset-bottom)); padding-bottom: var(--featherbase-runtime-shell-tabs-inset) !important; }
+  .fc-runtime-tabs { box-sizing: border-box !important; position: fixed !important; inset: auto 0 0 0 !important; z-index: 1000 !important; height: var(--featherbase-runtime-shell-tabs-inset) !important; display: flex !important; padding: 0 0 env(safe-area-inset-bottom) !important; border-top: 1px solid #ebeef0 !important; background: #fff !important; font: 12px Inter, ui-sans-serif, system-ui, sans-serif !important; }
+  .fc-runtime-tab { box-sizing: border-box !important; display: flex !important; min-width: 0 !important; height: 48px !important; flex: 1 1 0 !important; flex-direction: column !important; align-items: center !important; justify-content: center !important; gap: 2px !important; padding: 0 4px !important; border-top: 2px solid transparent !important; color: #4b5563 !important; font-weight: 500 !important; text-decoration: none !important; }
   .fc-runtime-tab span { max-width: 100% !important; overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
   .fc-runtime-tab[aria-current="page"] { border-top-color: #1d4ed8 !important; color: #1d4ed8 !important; font-weight: 600 !important; }
   .fc-runtime-tab:focus-visible { outline: 3px solid #2490ef !important; outline-offset: -3px !important; }
@@ -187,6 +191,10 @@ export const runtimeShellJs = `(() => {
     markTab();
     window.addEventListener('popstate', markTab);
     if (window.navigation) window.navigation.addEventListener('currententrychange', markTab);
+    else for (const method of ['pushState', 'replaceState']) {
+      const original = history[method];
+      history[method] = function (...args) { const result = original.apply(this, args); markTab(); return result; };
+    }
   }
   const switcher = document.querySelector('.fc-runtime-switcher');
   if (!(switcher instanceof HTMLSelectElement)) return;

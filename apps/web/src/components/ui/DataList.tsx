@@ -192,8 +192,9 @@ export function DataCards<Row>({
               <div className="min-w-0 flex-1">
                 {/* Wraps, so a status too wide to sit beside the title moves under it. */}
                 <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-                  {/* With no status beside it, the title takes the whole row. */}
-                  <div className={cx('min-w-0 font-semibold text-ink', !statuses.length && 'flex-1')}>
+                  {/* The title takes the room the status leaves, down to 10rem; only
+                      then does the status move under it. */}
+                  <div className="min-w-0 flex-[1_1_10rem] font-semibold text-ink">
                     {titles.map((c) => (
                       <div key={c.key} className="wrap-anywhere">
                         {c.cell(row)}
@@ -207,7 +208,7 @@ export function DataCards<Row>({
                   ))}
                 </div>
                 {metas.length > 0 && (
-                  <p className="mt-1 min-w-0 text-ink-muted">
+                  <p className="mt-1 min-w-0 text-sm text-ink-muted">
                     {metas.map((c, i) => (
                       <span key={c.key}>
                         {i > 0 && ' · '}
@@ -222,7 +223,7 @@ export function DataCards<Row>({
                     {values.map((c) => (
                       <div key={c.key} className="contents">
                         <dt className="min-w-0 text-ink-muted">{c.header}</dt>
-                        <dd className={cx('min-w-0 wrap-anywhere text-ink', c.align === 'end' && 'text-right tabular-nums')}>{c.cell(row)}</dd>
+                        <dd className={cx('min-w-0 wrap-anywhere text-right text-ink', c.align === 'end' && 'tabular-nums')}>{c.cell(row)}</dd>
                       </div>
                     ))}
                   </dl>

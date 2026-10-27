@@ -522,15 +522,15 @@ export function TableBuilder() {
         <div className={cardClasses('overflow-x-auto')}>
           {/* Wide enough that every box keeps a usable width; on a phone the
               grid scrolls in its own card (Cards is the phone-shaped view). */}
-          <table className="w-full min-w-[40rem] text-sm" data-testid="dt-fields">
+          <table className="w-full min-w-[48rem] text-sm" data-testid="dt-fields">
             <thead className="bg-subtle text-left">
               <tr>
-                <th className={`px-3 py-2 ${KICKER}`}>Field label</th>
-                <th className={`px-2 py-2 ${KICKER}`}>
+                <th className={`min-w-40 px-3 py-2 ${KICKER}`}>Field label</th>
+                <th className={`min-w-32 px-2 py-2 ${KICKER}`}>
                   Database name <span className="font-normal normal-case tracking-normal">(auto)</span>
                 </th>
-                <th className={`px-2 py-2 ${KICKER}`}>Type</th>
-                <th className={`px-2 py-2 ${KICKER}`}>Details</th>
+                <th className={`min-w-36 px-2 py-2 ${KICKER}`}>Type</th>
+                <th className={`min-w-40 px-2 py-2 ${KICKER}`}>Details</th>
                 <th className={`px-2 py-2 ${KICKER}`} title="Must be filled in every row">Reqd</th>
                 <th className={`px-2 py-2 ${KICKER}`} title="Shown in the list view">List</th>
                 <th />

@@ -191,7 +191,7 @@ export function TopBar({
       {isPhone && caps && name && tabs.length > 0 && (
         <TabBar
           label={name}
-          tabs={tabs.map((tab) => ({ label: tab.label, icon: TAB_ICON[tab.icon], href: tab.href, current: tab.href === open }))}
+          tabs={tabs.map((tab) => ({ label: tab.label, icon: TAB_ICON[tab.icon] ?? List, href: tab.href, current: tab.href === open }))}
         />
       )}
     </>

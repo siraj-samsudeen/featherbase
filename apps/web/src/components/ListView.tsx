@@ -1022,12 +1022,15 @@ function ListCell({
   table,
   settings,
   first,
+  quiet = false,
 }: {
   row: Record<string, unknown>
   col: ListColumn
   table: string
   settings: Settings
   first: boolean
+  /** A card's meta line (the row id under the title): grey, not body ink. */
+  quiet?: boolean
 }) {
   if (first)
     return (
@@ -1048,7 +1051,7 @@ function ListCell({
     )
   const value = row[col.column_name]
   return (
-    <span className="text-ink" data-testid={`cell-${col.column_name}`}>
+    <span className={quiet ? 'text-ink-muted' : 'text-ink'} data-testid={`cell-${col.column_name}`}>
       {col.column_type === 'Choice' && value != null && value !== '' ? (
         <Indicator value={String(value)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
@@ -1113,7 +1116,7 @@ function PhoneList({
     header: col.label,
     phone: col === titleCol ? 'title' : col === statusColumn ? 'status' : col.column_name === 'row_id' ? 'meta' : 'value',
     align: ['Int', 'Float', 'Currency', 'Percent'].includes(col.column_type) ? 'end' : 'start',
-    cell: (row) => <ListCell row={row} col={col} table={table} settings={settings} first={col === titleCol} />,
+    cell: (row) => <ListCell row={row} col={col} table={table} settings={settings} first={col === titleCol} quiet={col.column_name === 'row_id' && col !== titleCol} />,
   }))
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(key(r)))
   const titleText = (row: Record<string, unknown>) =>
@@ -1155,6 +1158,7 @@ function PhoneList({
             <Button
               aria-label={`Sort order: ${sort.dir === 'asc' ? 'ascending' : 'descending'}`}
               data-testid="list-sort-dir"
+              className="size-control shrink-0 px-0"
               onClick={() => onSort({ field: sort.field, dir: sort.dir === 'asc' ? 'desc' : 'asc' })}
               icon={sort.dir === 'asc' ? <ArrowUp aria-hidden size={18} /> : <ArrowDown aria-hidden size={18} />}
             />

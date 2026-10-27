@@ -37,7 +37,8 @@ export const SUPPORTED_PLATFORM_VERSIONS: readonly string[] = ['2026-10']
 const tabsDeclaration = z.object({
   version: z.literal(1),
   items: z.array(z.object({
-    label: z.string().trim().min(1).max(APP_TAB_LABEL_MAX),
+    // Visible characters only: no zero-width or direction-control marks.
+    label: z.string().trim().min(1).max(APP_TAB_LABEL_MAX).regex(/^[^\p{C}]*$/u, 'a tab label is visible text').refine(label => /[^\p{Z}]/u.test(label), 'a tab label is visible text'),
     icon: z.enum(APP_TAB_ICONS),
     path: z.string().regex(APP_TAB_PATH, 'a tab path is lower-case segments under the app, like "targets" or "" for its root'),
   }).strict()).min(2).max(5)

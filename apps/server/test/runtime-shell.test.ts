@@ -47,4 +47,18 @@ describe('the runtime shell', () => {
     expect(html).not.toContain('fc-runtime-tabs')
     expect(html).not.toContain('data-featherbase-runtime-tabs')
   })
+
+  test("a page with tabs and no viewport of its own gets the device's width, once", () => {
+    const tabs = [{ name: 'notes', title: 'Notes', href: '/notes/', tabs: [
+      { label: 'Today', icon: 'home' as const, href: '/notes/' }, { label: 'Mine', icon: 'person' as const, href: '/notes/mine' },
+    ] }]
+    const bare = composeRuntimeShell('<html><head><title>n</title></head><body></body></html>', 'notes', tabs)
+    expect(bare).toContain('<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet"')
+    const own = composeRuntimeShell('<html><head><meta name="viewport" content="width=500"></head><body></body></html>', 'notes', tabs)
+    expect(own.match(/name="viewport"/g)).toHaveLength(1)
+    // No tabs, no change to the app's document.
+    const none = composeRuntimeShell('<html><head></head><body></body></html>', 'notes', [{ name: 'notes', title: 'Notes', href: '/notes/' }])
+    expect(none).not.toContain('viewport')
+  })
 })
+
