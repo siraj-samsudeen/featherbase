@@ -80,8 +80,9 @@ describe('DOC: what a save refuses, and the field it names', () => {
   })
 
   test('a Reference whose target Table no longer exists is refused on that field', async ({ admin }) => {
-    await makeTable(admin, { name: 'Doc Ref Holder', columns: ['title', { column_name: 'note', column_type: 'Reference', reference_table: DT }] })
+    // The target exists when the link is made (#511), and goes away afterwards.
     await makeDT(admin)
+    await makeTable(admin, { name: 'Doc Ref Holder', columns: ['title', { column_name: 'note', column_type: 'Reference', reference_table: DT }] })
     await sql`update column_def set reference_table = 'Doc Gone Target' where parent = 'Doc Ref Holder' and column_name = 'note'`
     invalidateMeta('Doc Ref Holder')
     await expectApiError(admin.post('/api/save_row', { table: 'Doc Ref Holder', row: { title: 't', note: 'anything' } }), {

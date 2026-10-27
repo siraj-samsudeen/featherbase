@@ -199,6 +199,26 @@ function validateDef(def: TableDef) {
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
 }
 
+// #511: a link column must name a Table that exists — or its own Table, or
+// one being created alongside it (an app's install) — otherwise every later
+// save with a value in that column is refused. Only the columns given are
+// checked, so an update judges just the links it adds or retargets.
+async function assertLinkTargetsExist(
+  def: TableDef,
+  columns: TableDef['columns'],
+  alongside: readonly string[] = [],
+): Promise<void> {
+  const errs: Record<string, string> = {}
+  for (const f of columns) {
+    if (f.column_type !== 'Reference' || !f.reference_table) continue
+    if (f.reference_table === def.name || alongside.includes(f.reference_table)) continue
+    const [target] = await sql`select 1 from table_def where name = ${f.reference_table}`
+    if (!target) errs[f.column_name] = `Link target ${f.reference_table} does not exist`
+  }
+  if (Object.keys(errs).length)
+    throw new AppError('ValidationError', 'Invalid link column target', errs)
+}
+
 // Existing core Tables keep their bootstrap mapping. Qualified identities must
 // have persisted storage metadata; never infer their location from spelling.
 export async function tableRelation(name: string): Promise<string> {
@@ -336,6 +356,10 @@ export async function updateTable(
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Unsupported schema change', errors)
+  await assertLinkTargetsExist(
+    def,
+    def.columns.filter((f) => before.get(f.column_name)?.reference_table !== f.reference_table),
+  )
 
   // A bound Table's column changes are metadata-only (BV1: no DDL against
   // anyone's storage, ours included).
@@ -459,7 +483,11 @@ export async function updateTable(
   return getMeta(name)
 }
 
-export async function createTable(input: unknown, ownerApp?: string): Promise<TableMeta> {
+export async function createTable(
+  input: unknown,
+  ownerApp?: string,
+  opts: { alongside?: readonly string[] } = {},
+): Promise<TableMeta> {
   const parsed = tableDefSchema.safeParse(input)
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -550,6 +578,8 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
       })),
     })
   }
+
+  await assertLinkTargetsExist(def, def.columns, opts.alongside)
 
   // Sub-table columns must point at an existing sub_table-kind Table.
   for (const f of def.columns) {

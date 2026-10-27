@@ -237,4 +237,35 @@ describe('Changing a Table definition', () => {
     expect(res.status).toBe(417)
     expect(await res.json()).toMatchObject({ error: { fields: { lines: 'Sub-table target No Such Lines does not exist' } } })
   })
+
+  test('a link column must point at a Table that exists (#511)', async ({ admin }) => {
+    const created = await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Sync Linker', columns: [{ column_name: 'other', column_type: 'Reference', reference_table: 'NoSuchTable' }] }),
+    })
+    expect(created.status).toBe(417)
+    expect(await created.json()).toMatchObject({ error: { fields: { other: 'Link target NoSuchTable does not exist' } } })
+    const [stored] = await sql`select 1 from table_def where name = 'Sync Linker'`
+    expect(stored).toBeUndefined()
+
+    await setup(admin)
+    const added = await put(admin, DT, { columns: [...baseColumns, { column_name: 'other', column_type: 'Reference', reference_table: 'NoSuchTable' }] })
+    expect(added.status).toBe(417)
+    expect(await added.json()).toMatchObject({ error: { fields: { other: 'Link target NoSuchTable does not exist' } } })
+    expect(await columns()).not.toContain('other')
+  })
+
+  test('a link column may point at its own Table or at one that exists', async ({ admin }) => {
+    await setup(admin)
+    const self = [...baseColumns, { column_name: 'parent_task', column_type: 'Reference', reference_table: DT }]
+    expect((await put(admin, DT, { columns: self })).status).toBe(200)
+    const created = await admin.fetch('/api/table_def', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Sync Linker', columns: [
+        { column_name: 'task', column_type: 'Reference', reference_table: DT },
+        { column_name: 'next', column_type: 'Reference', reference_table: 'Sync Linker' },
+      ] }),
+    })
+    expect(created.status).toBe(201)
+  })
 })

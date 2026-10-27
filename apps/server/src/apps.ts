@@ -458,6 +458,10 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   const ownsClientRoot = manifest.runtime_package && typeof runtimeManifest?.client === 'string'
   // Reflected Tables are the app's tables for teardown purposes.
   const created: string[] = [...provisioned.tables]
+  const alongside = (manifest.tables ?? []).flatMap((t) => {
+    const name = (t as { name?: unknown } | null)?.name
+    return typeof name === 'string' ? [name] : []
+  })
   for (const def of manifest.tables ?? []) {
     // `system` marks tables created by the migration chain and is rejected on
     // POST /api/table_def — an app manifest gets the same refusal, not a
@@ -467,7 +471,8 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
         'ValidationError',
         `App table declares system: true — the system flag belongs to the migration chain, app tables are user-space`,
       )
-    const meta = await createTable(def, manifest.name)
+    // An app's tables may link to each other in any order (#511).
+    const meta = await createTable(def, manifest.name, { alongside })
     created.push(meta.name)
     // A runtime application with its own client owns normal navigation. Apps
     // without one retain the generated Table home page as their usable UI.

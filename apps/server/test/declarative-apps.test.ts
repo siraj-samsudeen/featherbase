@@ -84,6 +84,22 @@ describe('PLAT-005: declarative app install over the API', () => {
     },
   )
 
+  test('an app\'s tables may link to each other whatever order they are declared in (#511)', async ({ admin }) => {
+    const LINKED = 'test-declarative-linked'
+    try {
+      const res = await admin.fetch('/api/install_app', {
+        method: 'POST',
+        body: JSON.stringify({ manifest: { name: LINKED, tables: [
+          { name: 'Decl Linked Order', columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Decl Linked Customer' }] },
+          { name: 'Decl Linked Customer', columns: [{ column_name: 'last_order', column_type: 'Reference', reference_table: 'Decl Linked Order' }] },
+        ] } }),
+      })
+      expect(res.status).toBe(201)
+    } finally {
+      await uninstallApp(LINKED).catch(() => {})
+    }
+  })
+
   test('an invalid manifest (no name, unknown keys) is rejected', async ({ admin }) => {
     const res = await admin.fetch('/api/install_app', {
       method: 'POST',
