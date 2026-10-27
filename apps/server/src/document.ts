@@ -20,7 +20,7 @@ import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
+import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -35,11 +35,18 @@ import {
 import {
   assertBoundScope,
   boundFetchDoc,
+  explainRefusal,
   isBound,
   mapRowOut,
   mapValuesIn,
   writableContext,
 } from './sources/dispatch'
+
+// #436: a row's value for a column, read only from the row itself: a column
+// named after an Object.prototype key (constructor) must not find the built-in.
+function own(row: RowValues, column: string): unknown {
+  return Object.hasOwn(row, column) ? row[column] : undefined
+}
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -47,7 +54,7 @@ function columnValues(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (f.column_name in row) out[f.column_name] = row[f.column_name]
+    if (Object.hasOwn(row, f.column_name)) out[f.column_name] = row[f.column_name]
   }
   return out
 }
@@ -73,6 +80,10 @@ function validateValues(
   // undefined; write them back as explicit nulls so updates can clear values.
   for (const key of Object.keys(values))
     if (parsed[key] === undefined) parsed[key] = null
+  // #436: zod keeps a key the input only inherits (constructor) as undefined;
+  // a column the row left out stays out.
+  for (const key of Object.keys(parsed))
+    if (parsed[key] === undefined && !Object.hasOwn(values, key)) delete parsed[key]
   return parsed
 }
 
@@ -128,7 +139,7 @@ async function resolveRowId(
   }
   if (rule.startsWith('field:')) {
     const columnName = rule.slice('field:'.length)
-    const value = String(values[columnName] ?? '').trim()
+    const value = String(own(values, columnName) ?? '').trim()
     if (!value)
       throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
         [columnName]: `${columnName} is required for naming`,
@@ -178,7 +189,7 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
   const out = { ...values }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (out[f.column_name] != null) continue
+    if (own(out, f.column_name) != null) continue
     if (f.default_value == null) continue
     if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
       out[f.column_name] = Number(f.default_value)
@@ -239,7 +250,8 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
 }
 
 // META-008: every Reference value must point at an existing row of the
-// target Table. Runs inside the save transaction alongside validation.
+// target Table. Local targets are checked inside the save transaction;
+// source-bound targets are asked of their source.
 async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
@@ -249,13 +261,23 @@ async function validateLinks(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference') continue
-    const value = fieldValues[f.column_name]
+    const value = own(fieldValues, f.column_name)
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
+    // select *: early migrations save rows before table_def has data_source.
+    const [targetMeta] = await tx`select * from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+      continue
+    }
+    // A source-bound target has no local table: ask its source (EDS-5). Like
+    // the native lookup, this checks existence only, not the caller's access.
+    // It runs outside the save transaction, so it is best-effort: the source
+    // can drop the row before this save commits.
+    if (targetMeta.data_source) {
+      if (!(await boundFetchDoc(await getMeta(target), String(value))))
+        errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
     const [row] = await tx`
@@ -331,7 +353,7 @@ function pickChildInputs(meta: TableMeta, values: RowValues) {
   const out: { columnName: string; childTable: string; rows: RowValues[] }[] = []
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table') continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) continue
     if (!Array.isArray(raw))
       throw new AppError('ValidationError', 'Invalid child table payload', {
@@ -379,7 +401,7 @@ function assertRequiredChildren(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table' || !f.reqd) continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) {
       if (mode === 'insert') errors[f.column_name] = 'Required'
       continue
@@ -407,14 +429,14 @@ async function assertAccessColumnsUnchanged(
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
-    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (!(await isSecurityTable(input.childTable))) continue
     if (existing === null) {
       if (input.rows.length) changed.push(input.columnName)
       continue
     }
     const childMeta = await getMeta(input.childTable)
     const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
-    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (r[f.column_name] == null ? '' : String(r[f.column_name]))))
+    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
       select * from ${tx(await tableRelation(childMeta.name))}
       where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
@@ -560,7 +582,7 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
   // line — API responses, the Admin, tests — sees `row_id` and nothing else.
-  if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
+  if (meta.row_key !== ROW_KEY && Object.hasOwn(row, meta.row_key)) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
   return out
@@ -859,7 +881,7 @@ async function saveBoundDoc(
   await assertUserPermissions(user, meta, hctx.row)
   const inserted = await ctx.driver
     .insert(ctx.bind, mapValuesIn(ctx.bind, columnValues(meta, hctx.row)), providedName)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   const doc = mapRowOut(ctx.bind, inserted)
   hctx.row = { ...doc }
   await runHooks('after_insert', hctx)
@@ -882,7 +904,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Admin shows that state).
+// Without one, updates are last-write-wins; the Admin row form says so (#328).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
@@ -931,7 +953,7 @@ async function updateBoundDoc(
   const expect = ctx.bind.modified ? expectedStamp(values.updated_at) : null
   const updated = await ctx.driver
     .update(ctx.bind, name, sourceValues, expect)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   if (updated === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (updated === 'conflict')
@@ -1105,8 +1127,8 @@ async function recordVersion(
   const changed: [string, unknown, unknown][] = []
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    const b = norm(before[f.column_name])
-    const a = norm(after[f.column_name])
+    const b = norm(own(before, f.column_name))
+    const a = norm(own(after, f.column_name))
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
@@ -1233,7 +1255,7 @@ async function amendDocImpl(
     if (f.column_name === 'amended_from') continue
     if (f.column_type === 'Section Break' || f.column_type === 'Column Break') continue
     if (f.column_type === 'Sub-table') {
-      const rows = (source[f.column_name] as RowValues[] | undefined) ?? []
+      const rows = (own(source, f.column_name) as RowValues[] | undefined) ?? []
       values[f.column_name] = rows.map((r) => {
         const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
@@ -1241,10 +1263,24 @@ async function amendDocImpl(
         return copy
       })
     } else {
-      values[f.column_name] = source[f.column_name]
+      values[f.column_name] = own(source, f.column_name)
     }
   }
   return saveDoc(table, values, user)
+}
+
+// #559: deleting or renaming a row removes or re-points its child rows
+// directly, outside saveChildren. A Sub-table marked decides_scope guards
+// those rows as a save would. (A named security child such as a Person's
+// roles goes with its parent, under the parent's own delete rule.)
+async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: string, user: string): Promise<void> {
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !(await getMeta(f.row_table!)).decides_scope) continue
+    const [held] = await tx`
+      select 1 from ${tx(await tableRelation(f.row_table!))}
+      where parent = ${name} and parenttype = ${meta.name} limit 1`
+    if (held) await assertSecurityWriter(f.row_table!, user)
+  }
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
@@ -1328,6 +1364,7 @@ async function deleteDocImpl(
     // Remove this row's own child rows, then the row, and (#321) everything
     // that names any of them by id, so nothing points at a missing row and
     // no share wakes up for a later row given the same id.
+    await assertChildRowsWritable(stx, meta, name, user)
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       const children = await tx`
@@ -1416,7 +1453,9 @@ async function deleteBoundDoc(
     tx: sql,
   }
   await runHooks('on_trash', hctx)
-  const outcome = await ctx.driver.remove(ctx.bind, name, expectUpdatedAt)
+  const outcome = await ctx.driver
+    .remove(ctx.bind, name, expectUpdatedAt)
+    .catch((err) => explainRefusal(meta, ctx.bind, err, name))
   if (outcome === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (outcome === 'conflict')
@@ -1485,6 +1524,7 @@ async function renameDocImpl(
     await assertRowNotManaged(stx, meta, target, user)
     await assertNoManagedReference(stx, table, oldName, user)
 
+    await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 

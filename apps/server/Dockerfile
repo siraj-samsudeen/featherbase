@@ -52,8 +52,15 @@ COPY runtime-apps/fixtures/tasker-v2.2/featherbase.json runtime-apps/fixtures/ta
 COPY runtime-apps/fixtures/tasker-v2.2/src src
 RUN npm run build
 
-# ---- Stage 3: the server image ---------------------------------------------
-FROM node:22-slim
+# ---- Stage 3: the platform image -------------------------------------------
+# The server, the built SPA and the start command, with no app and no
+# FEATHERBASE_APP_PATHS. This is the image published to GHCR by commit
+# (.github/workflows/publish-image.yml, #587); a client image starts FROM it,
+# copies its built app and sets FEATHERBASE_APP_PATHS (docs/DEPLOY.md,
+# "Building a client image"). Build it alone with:
+#
+#   docker build --target platform -f apps/server/Dockerfile -t featherbase-platform .
+FROM node:22-slim AS platform
 WORKDIR /app
 RUN corepack enable
 # Native TLS clients (including the MotherDuck DuckDB extension) use the
@@ -73,6 +80,16 @@ RUN pnpm install --frozen-lockfile --filter server... --prod
 COPY packages/shared packages/shared
 COPY apps/server apps/server
 COPY --from=web-build /app/apps/web/dist apps/web/dist
+
+ENV NODE_ENV=production
+EXPOSE 8000
+CMD ["pnpm", "--filter", "server", "start"]
+
+# ---- Stage 4: this repository's own server image (the default target) ------
+# The platform image plus Tasker and its predecessor, for this repository's
+# Railway services until #563 retires Tasker. NODE_ENV, EXPOSE and CMD come
+# from the platform stage.
+FROM platform
 COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
 COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
@@ -80,7 +97,4 @@ COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/package.json runti
 COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker-2.2.0/featherbase.json
 COPY --from=tasker-predecessor-build /app/runtime-apps/tasker/dist runtime-apps/tasker-2.2.0/dist
 
-ENV NODE_ENV=production
 ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker"]'
-EXPOSE 8000
-CMD ["pnpm", "--filter", "server", "start"]

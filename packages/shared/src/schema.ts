@@ -16,8 +16,11 @@ export interface ColumnDef {
 
 const NO_VALUE_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
+// A row arrives as JSON, so a function is never a value: it is a built-in
+// that a column named after an Object.prototype key (constructor) inherited
+// from a row that leaves the column out (#436).
 const emptyToUndefined = (v: unknown) =>
-  v == null || v === '' ? undefined : v
+  v == null || v === '' || typeof v === 'function' ? undefined : v
 
 function baseSchema(f: ColumnDef): z.ZodTypeAny {
   switch (f.column_type) {

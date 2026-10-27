@@ -71,21 +71,25 @@ test('Keyboard shortcuts: Ctrl+B starts a new row of the Table being looked at',
   await seedDoc(admin, 'Kb New')
   const app = await renderApp(`/featherbase/admin/${enc('Kb New')}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 8000 })
-  // The shortcut reads the Table from the browser's address; the test router
-  // keeps its own history, so point the address at the same page.
-  window.history.pushState({}, '', `/featherbase/admin/${enc('Kb New')}`)
   press({ key: 'b', ctrlKey: true })
   await waitFor(() => expect(here(app)).toBe('/featherbase/admin/Kb New/new'))
 })
 
-// SPEC: The Admin has keyboard shortcuts for the common moves — suspected defect, see report.
-// Ctrl+B on an Admin page that is not a Table (here the list of all tables)
-// reads "all-tables" as a Table name and lands on a "Page not found" screen.
-test.fails('Keyboard shortcuts: Ctrl+B on a page that is not a Table leaves the page as it is', async ({ admin }) => {
+// #515: Ctrl+B on an Admin page that is not a Table (here the list of all
+// tables) used to read "all-tables" as a Table name and land on a "Page not
+// found" screen.
+test('Keyboard shortcuts: Ctrl+B on a page that is not a Table leaves the page as it is', async ({ admin }) => {
   const app = await renderApp('/featherbase/admin/all-tables', admin)
   await screen.findByTestId('all-tables-link', {}, { timeout: 8000 })
-  window.history.pushState({}, '', '/featherbase/admin/all-tables')
   press({ key: 'b', ctrlKey: true })
   await new Promise((r) => setTimeout(r, 500))
   expect(here(app)).toBe('/featherbase/admin/all-tables')
+})
+
+test('Keyboard shortcuts: Ctrl+B on the Jobs page leaves the page as it is', async ({ admin }) => {
+  const app = await renderApp('/featherbase/admin/jobs', admin)
+  await screen.findByRole('heading', { name: 'Jobs', level: 1 }, { timeout: 8000 })
+  press({ key: 'b', ctrlKey: true })
+  await new Promise((r) => setTimeout(r, 500))
+  expect(here(app)).toBe('/featherbase/admin/jobs')
 })

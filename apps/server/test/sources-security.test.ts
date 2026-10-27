@@ -102,6 +102,9 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
   }) => {
     await bindAccount(admin)
     const user = await userWith(admin, createUser, { can_read: true, own_rows_only: true })
+    // The grant itself saves (#543); only its use is refused.
+    expect(await sql`select own_rows_only from permission where ref_table = ${BOUND} and role = 'Sec Role'`)
+      .toEqual([{ own_rows_only: true }])
     await expect(user.get(`/api/table/${encodeURIComponent(BOUND)}`)).rejects.toMatchObject({
       status: 403,
     })
@@ -681,15 +684,34 @@ describe('a bound Table keeps its binding', () => {
     expect(await cli`select id from sec_fixture.account order by id`).toEqual([{ id: 'ACC-A' }])
   })
 
-  // SPEC: a Reference column may point at a source-bound Table (the bound delete path
-  // checks such references) — suspected defect: saving a local row that refers to a
-  // bound row fails with a 500, because the link check reads a local table the bound
-  // Table does not have ("relation featherbase.sec_account does not exist").
-  test.fails('a local row can refer to a bound row', async ({ admin }) => {
+  // SPEC: a Reference column may point at a source-bound Table; the save checks the
+  // linked row on the source (#535).
+  test('a local row can refer to a bound row', async ({ admin }) => {
     await bindAccount(admin)
     await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
     const saved = await admin.post<{ account: string }>('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } })
     expect(saved.account).toBe('ACC-A')
+  })
+
+  test('a local row that refers to a missing bound row gets a validation error, not a 500', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await expectApiError(
+      admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-NOPE' } }),
+      { status: 417, type: 'ValidationError', fields: { account: `${BOUND} ACC-NOPE does not exist` } },
+    )
+  })
+
+  test('a sub-table row that refers to a missing bound row names its own field', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder Line', kind: 'sub_table', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Sec Holder Line' }] })
+    const saved = await admin.post<{ lines: { account: string }[] }>('/api/save_row', { table: 'Sec Holder', row: { lines: [{ account: 'ACC-A' }] } })
+    expect(saved.lines.map((l) => l.account)).toEqual(['ACC-A'])
+    await expectApiError(
+      admin.post('/api/save_row', { table: 'Sec Holder', row: { lines: [{ account: 'ACC-A' }, { account: 'ACC-NOPE' }] } }),
+      { status: 417, type: 'ValidationError', fields: { 'lines.1.account': `${BOUND} ACC-NOPE does not exist` } },
+    )
   })
 
   test('a bound row shared with someone can be read by them without any grant on the Table', async ({ admin, createUser }) => {

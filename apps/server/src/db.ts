@@ -27,6 +27,28 @@ const root: Sql = postgres(config.databaseUrl, {
 let delegate: Sql = root
 const transactions = new AsyncLocalStorage<Sql>()
 
+// #448: work to run once the outermost app transaction has ended, committed
+// or rolled back. Until then other connections still read what was there
+// before, so a cache cleared inside the transaction can be refilled with it.
+const endings = new AsyncLocalStorage<(() => void)[]>()
+
+/** Run `fn` once the transaction this call is inside has ended (and so its
+ *  change is visible to every connection, or gone). Outside one, nothing is
+ *  pending and `fn` is not run. */
+export function whenTransactionEnds(fn: () => void): void {
+  endings.getStore()?.push(fn)
+}
+
+async function endingTransaction<T>(begin: () => Promise<T>): Promise<T> {
+  if (endings.getStore()) return begin()
+  const pending: (() => void)[] = []
+  try {
+    return await endings.run(pending, begin)
+  } finally {
+    for (const fn of pending) fn()
+  }
+}
+
 // An app install composes normal metadata and document operations atomically.
 // Nested begin calls remain savepoints; never swap the process-wide delegate.
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
@@ -78,8 +100,8 @@ export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
       // No caller passes begin() options (an isolation level): only the callback form.
       return (fn: (s: TxSql) => unknown) => {
         const run = (tx: TxSql) => fn(qualifiedClient(tx as unknown as Sql) as unknown as TxSql)
-        if (current !== root) return (current as unknown as TxSql).savepoint(run)
-        return root.begin(run)
+        if (current !== root) return endingTransaction(() => (current as unknown as TxSql).savepoint(run))
+        return endingTransaction(() => root.begin(run))
       }
     }
     if (current !== root && prop === 'end') return async () => {}

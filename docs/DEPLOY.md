@@ -85,12 +85,14 @@ variable.
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
 | `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
+| `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
 | `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
 | `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
+| `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
@@ -128,7 +130,9 @@ when it is unset outside development and test. A request's `Host` only
 *selects* a listed entry; every absolute URL the server builds (the Google
 `redirect_uri`, cookie `Secure`, emailed links) comes from the list. Each
 address keeps its own sign-in (the `sid` cookie is host-only). An address is
-presentation, never a security boundary.
+presentation, never a security boundary. With https addresses listed, every
+sign-in cookie is `Secure`, so signing in over plain http (an unlisted host
+such as the container's own IP) silently fails: use a listed address.
 
 **Register every address with Google.** Google sign-in on each address uses
 `<address>/api/oauth/google/callback` as its `redirect_uri`. In the Google
@@ -188,12 +192,86 @@ on one origin**, with `/ws` and the file routes alongside; `WEB_ORIGINS` is
 then irrelevant. The server-owned prefixes (`/api`, `/files`,
 `/private/files`, `/web`, `/ws`) never fall through to `index.html`.
 
+### Building a client image
+
+A client app lives in the client's own repository (ADR 0013), so it reaches the
+server in a **client image built on the platform image**. This repository
+publishes that platform image to the GitHub Container Registry as a public
+package (made public by hand once; see below):
+
+- `ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>`: one tag per
+  commit on `main`, published only after that commit's `test` workflow passed
+  (`.github/workflows/publish-image.yml`). Pin this one.
+- `ghcr.io/siraj-samsudeen/featherbase-server:main`: follows `main`. It is
+  moved to a commit's image only while that commit is still main's tip, so it
+  never goes back to an older commit, but it can lag a merge or two behind. It
+  moves, so never deploy from it.
+
+**Once, after the first publish:** GHCR creates a new package as private. A
+person must make it public, because neither the workflow nor its
+`GITHUB_TOKEN` can change a package's visibility. On the package page, open
+Package settings → Change visibility → Public. Then check that a pull works
+without credentials:
+
+```sh
+docker logout ghcr.io
+docker pull ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+```
+
+Until then, a client build fails at its `FROM` line with an authentication
+error (`unauthorized` or `denied`) from `ghcr.io`, even though the tag exists.
+(Done for this package on 27-Oct-2026.)
+
+**The image is built for `linux/amd64` only**, the platform Railway runs. On an
+Apple-silicon Mac, a plain `docker pull` answers "no matching manifest for
+linux/arm64"; pull and run with `--platform linux/amd64` (Docker emulates it,
+more slowly), and build a client image the same way:
+
+```sh
+docker pull --platform linux/amd64 ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+docker build --platform linux/amd64 -t my-client-image .
+```
+
+It is the Dockerfile's `platform` target: the server, the built SPA and the
+start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its
+`dev.featherbase.platform-versions` label lists the platform versions it runs
+apps on (`SUPPORTED_PLATFORM_VERSIONS`); an app's `platformVersion` must be one
+of them. It is built for `linux/amd64`.
+
+The client's repository holds a small Dockerfile. A made-up example, for an app
+called `acme_board` built into `build/acme_board/<version>/`:
+
+```dockerfile
+FROM ghcr.io/siraj-samsudeen/featherbase-server:0123456789abcdef0123456789abcdef01234567
+
+# Every version installed on any instance, each in its own directory, so an
+# instance on the older one finds its exact artifact and can upgrade.
+COPY build/acme_board/1.0.0 /app/client-apps/acme_board-1.0.0
+COPY build/acme_board/1.1.0 /app/client-apps/acme_board-1.1.0
+ENV FEATHERBASE_APP_PATHS='["/app/client-apps/acme_board-1.0.0","/app/client-apps/acme_board-1.1.0"]'
+```
+
+Each directory holds the app's `package.json`, `featherbase.json` and the
+built files its manifest names. The start command, `NODE_ENV` and port come
+from the platform image; the release step and `cli boot-check` run in the
+client image exactly as described above.
+
+**Moving an instance to a newer platform.** Bump the SHA in the `FROM` line in
+a pull request on the client's repository, and let its host rebuild on merge.
+The pull request is the record of which platform each instance runs. Before
+bumping, check that the new image's `dev.featherbase.platform-versions` label
+still lists the app's `platformVersion`
+(`docker inspect --format '{{ index .Config.Labels "dev.featherbase.platform-versions" }}' <image>`).
+
 ### Railway
 
 `railway.json` at the repo root encodes this shape: Dockerfile build, a
-pre-deploy step of `pnpm --filter server release && pnpm --filter server
-seed:preview` (the preview seed does nothing unless the preview variables are
-set), and `/api/ping` as the healthcheck. Other platforms map the same
+pre-deploy step of `pnpm --filter server pre-deploy` (the release, then the
+preview seed, which does nothing unless the preview variables are set; either
+failing fails the deploy), and `/api/ping` as the healthcheck. Keep the
+pre-deploy step one command: Railway may run each entry as argv rather than
+through a shell, and a second command chained with `&&` was observed never to
+run while the deploy still went green (#307). Other platforms map the same
 settings onto their own vocabulary. Turn on the host's **deploy-failure
 notification** for each environment (Railway: project notification settings,
 deploy failed, to the owners): a failed release leaves the old code serving,
@@ -338,7 +416,8 @@ restart, and every instance of a service must carry the same value.
   `<read-from-secret-store> | pnpm --filter server cli set-password <person-id> --stdin`
   ([Locked out](#locked-out) shows the remote pipe), then set `ADMIN_PASSWORD`
   to the new value or remove it. Verify the new password works and the old one
-  is refused.
+  is refused. While `ADMIN_PASSWORD` is set but is not the live password, the
+  release and `cli boot-check` print a warning (never either value).
 - **Access tokens** (`fbt_…`) are unaffected by password or `JWT_SECRET`
   changes. `pnpm --filter server cli list-tokens [<principal>]`, then
   `cli issue-token <principal> --label "<purpose>" [--expires <days>]` (prints
@@ -421,6 +500,28 @@ socket peer is the source and forwarded headers are ignored. Behind a proxy,
 list the proxy's exact socket IPs in `TRUSTED_PROXY_IPS` and make sure it
 appends `X-Forwarded-For` correctly. Tune the `PREAUTH_*` budgets for staff who
 share one public IP.
+
+The same address is recorded on each sign-in's Activity Log entry. An edge
+with no fixed addresses to list, such as Railway's, can instead name one header
+it overwrites with the client's address in `CLIENT_ADDRESS_HEADER` (Railway's
+edge sets `X-Real-IP` and `X-Forwarded-For`). The server believes that header
+only when it holds exactly one address. A list, a malformed value or a missing
+header falls back to the socket peer. Set it only when the edge replaces the
+caller's copy rather than appending to it, and only when every route to the
+server passes through that edge (a sibling service on a private network could
+otherwise name any address). Check it on each instance after setting it:
+
+```bash
+curl -s -X POST https://<instance address>/api/login \
+  -H 'content-type: application/json' -H 'X-Forwarded-For: 203.0.113.9' \
+  -d '{"usr":"<your username>","pwd":"<your password>"}' > /dev/null
+```
+
+Send it again with `X-Real-IP: 203.0.113.9` too. Then open the Activity Log.
+Each new sign-in must show your own public address. Anything else is a failed
+check: the forged `203.0.113.9` means the edge passes the caller's header
+through, and an internal address means the header held a list. Try the other
+header, or unset the variable.
 
 ## Instance settings
 

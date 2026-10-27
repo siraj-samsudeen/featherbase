@@ -1,6 +1,15 @@
+import type { ActionListArgs, ActionRow } from './runtime-actions'
+import type { PersonScope } from './person-scope'
+
 export type AppAccessPolicy = { kind: 'table' } | {
   kind: 'stores'
   storeTable: string
+  readRoles: string[]
+  actionRoles: string[]
+} | {
+  // #559: scoped by the places the caller covers, as the instance's one
+  // scope-providing app says.
+  kind: 'person_scope'
   readRoles: string[]
   actionRoles: string[]
 }
@@ -13,7 +22,7 @@ export type AppOperationDeclaration = {
   policy: Extract<AppAccessPolicy, { kind: 'stores' }>
   scope: AppScopeSource
   discoverStoreAccess?: true
-})
+} | { policy: Extract<AppAccessPolicy, { kind: 'person_scope' }> })
 export interface AppScopeFacts {
   get(table: string, rowId: string): Promise<Readonly<Record<string, unknown>>>
 }
@@ -33,9 +42,11 @@ export interface AppAuthorizationContext {
   readonly app: string
   readonly user: string
   readonly operation: string
-  readonly policy: 'table' | 'stores'
+  readonly policy: 'table' | 'stores' | 'person_scope'
   readonly storeCodes: readonly string[]
   readonly productScope?: unknown
+  /** person_scope: the caller's places, narrowed to what the request names. */
+  readonly places?: PersonScope
 }
 export interface AppProductAuthorizationContext {
   readonly authorization: AppAuthorizationContext
@@ -46,8 +57,22 @@ export interface AppProductAuthorizationContext {
 export type AppProductAuthorizer = (context: AppProductAuthorizationContext) => true | Promise<true>
 export interface RuntimeActionAuthorization {
   version: 1
-  policy: 'table' | 'stores'
+  policy: 'table' | 'stores' | 'person_scope'
   storeTable?: string
   storeCodes: readonly string[]
   productScope?: unknown
+  places?: PersonScope
 }
+
+// #559: an app that provides people's scope exports this function by the name
+// its manifest's `scopeProvider` declares. It reads only the Tables it
+// declared, each marked as deciding scope, and returns the person's places;
+// the platform validates the answer against the scope shape.
+export interface AppScopeProviderContext {
+  readonly person: { readonly id: string; readonly email: string | null }
+  readonly documents: {
+    get(table: string, rowId: string): Promise<ActionRow>
+    list(table: string, args?: ActionListArgs): Promise<ActionRow[]>
+  }
+}
+export type AppScopeProvider = (context: AppScopeProviderContext) => PersonScope | Promise<PersonScope>

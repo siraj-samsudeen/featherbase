@@ -9,6 +9,7 @@ import {
 } from '../src/preview'
 import { test as sandboxTest } from './pg-test'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
+import { CLIENT, FROM_CLIENT, signInAddresses } from './sign-in-address-utils'
 
 // The preview sign-in link is an authentication bypass, so what is pinned
 // here is mostly what it REFUSES. A regression that makes it work more
@@ -223,5 +224,18 @@ describe('the boot announcement says once whether preview sign-in is live', () =
       console.log = original
     }
     expect(seen).toEqual(['preview sign-in enabled at /preview as jo'])
+  })
+})
+
+describe('#396: the sign-in records the client address', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  sandboxTest('a preview click-through records the address on its Activity Log entry', async ({ api }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    const id = 'psn_previewaddressaaaaaa'
+    await sql`insert into person (row_id, email, full_name, enabled) values (${id}, 'preview-address@example.com', 'Preview Address', true)`
+    configure(GOOD_KEY, 'preview-address@example.com')
+    expect((await api.fetch(`/preview?key=${GOOD_KEY}`, { headers: FROM_CLIENT })).status).toBe(302)
+    expect(await signInAddresses(id)).toEqual([CLIENT])
   })
 })

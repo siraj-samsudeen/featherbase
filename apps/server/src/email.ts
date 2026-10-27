@@ -5,7 +5,7 @@ import { createTransport } from 'nodemailer'
 import { sql } from './db'
 import { AppError } from './errors'
 import { emailsAddress, parseInstanceAddresses } from './instance-addresses'
-import { registerJob, enqueue } from './jobs'
+import { FinalJobFailure, registerJob, enqueue } from './jobs'
 import { getDoc } from './document'
 import { renderPdf, renderPrintHtml } from './print'
 
@@ -58,7 +58,7 @@ export function renderTemplate(
   row: Record<string, unknown> | undefined,
 ): string {
   return template.replace(/\{\{\s*doc\.([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = row?.[key]
+    const v = row && Object.hasOwn(row, key) ? row[key] : undefined
     return v == null ? '' : String(v)
   })
 }
@@ -374,10 +374,12 @@ export async function queueEmail(msg: MailMessage): Promise<string> {
 // The job that actually delivers a queued email exactly once.
 registerJob('send_email', async (payload, ctx) => {
   const queueName = String(payload.queue ?? '')
-  // Claim the row: only deliver if still queued (idempotent under retries).
+  // Claim the row: only deliver if not yet sent (idempotent under retries).
+  // An `error` row is claimable too: a failed send fails its job at once
+  // (below), so the only run that finds one is a person's retry (#334).
   const [row] = await sql`
     update email_queue set send_status = 'sent', updated_at = now()
-    where row_id = ${queueName} and send_status = 'queued'
+    where row_id = ${queueName} and send_status in ('queued', 'error')
     returning *`
   if (!row) return // already delivered or missing — no double-send
   try {
@@ -433,10 +435,12 @@ registerJob('send_email', async (payload, ctx) => {
       const [job] = await sql`select attempts, max_attempts from background_job where row_id = ${ctx.job.row_id}`
       if (job && Number(job.attempts) + 1 < Number(job.max_attempts)) status = 'queued'
     }
+    const message = err instanceof Error ? err.message : String(err)
     await sql`
-      update email_queue set send_status = ${status}, error = ${
-        err instanceof Error ? err.message : String(err)
-      }, updated_at = now() where row_id = ${queueName}`
+      update email_queue set send_status = ${status}, error = ${message}, updated_at = now() where row_id = ${queueName}`
+    // #334: a send that will not be retried fails its job now, with the
+    // reason, rather than leaving a retry to find nothing and report done.
+    if (status === 'error') throw new FinalJobFailure(message, { cause: err })
     throw err
   }
 })
