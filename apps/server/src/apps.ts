@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
-import { asNameList } from './installed-app-ledger'
+import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -390,6 +390,7 @@ export async function listInstalledApps() {
           ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data' : null,
     available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
     active: activeApps.has(r.name as string) && r.enabled !== false,
+    ownPages: declaresOwnPages(r),
   }))
 }
 

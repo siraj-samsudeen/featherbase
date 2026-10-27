@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
+import { asNameList, declaresOwnPages } from './installed-app-ledger'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -157,17 +158,28 @@ export async function assertPermission(
 
 /**
  * What Tables a principal can use, for drawing the shell (#410): the Tables
- * they can read or create in, and whether they hold any Table grant of their
- * own or a shared row. Display only — every request is still checked by its own
- * route. Sub-tables and dropped Tables never count (same filter as
+ * they can read or create in, and whether they can use the Admin screens.
+ * Sub-tables and dropped Tables never count (same filter as
  * /api/navigable_tables). Grants to the implicit built-in `All` role (they come
  * from runtime apps) make a Table listable but do not by themselves earn the
  * Admin shell.
+ *
+ * `admin` is THE rule for "can use Admin" (#659): whoami's capability, the
+ * sign-in landing and "Open Admin" all read it. It needs a Table grant of the
+ * principal's own, or a shared row, on a Table that no installed app opening
+ * at its own root owns: its installation declares pages of its own
+ * (declaresOwnPages, read from the installed_app row, so it never depends on
+ * the app's files loading). Such an
+ * app's Tables (enabled or not) are reached through the app: every reader of
+ * an app reads its entry Table, so counting them would hand the Admin to
+ * everyone who can open an app. An app without pages of its own is used
+ * through the Admin, so its Tables still count. App Tables are still listed
+ * for anyone who can use Admin for another reason.
  */
 export async function tableAccessFor(
   principal: string,
   roles: string[],
-): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
+): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
@@ -182,16 +194,27 @@ export async function tableAccessFor(
   )
   const names = (pick: (r: (typeof active)[number]) => boolean) =>
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
-  const [shared] = await sql`
-    select 1 from share
-    where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
-  const ownGrant = active.some((r) => r.role !== 'All')
+  const appTables = await tablesOfAppsWithOwnPages()
+  const shared = await sql`
+    select distinct share_table from share
+    where (person = ${principal} or service_account = ${principal}) and read = true`
+  const ownGrant = active.some((r) => r.role !== 'All' && !appTables.has(String(r.ref_table)))
   return {
     readable: names((r) => r.can_read),
+    // Read through a role of the principal's own, never only through All: an
+    // app open to everyone is no one's in particular (the sign-in landing).
+    readableByOwnRole: names((r) => r.can_read && r.role !== 'All'),
     creatable: names((r) => r.can_create),
     ownGrant,
-    any: ownGrant || Boolean(shared),
+    admin: ownGrant || shared.some((r) => !appTables.has(String(r.share_table))),
   }
+}
+
+/** #659: the Tables of installed apps that declare pages of their own,
+ *  enabled or not, loaded here or not, read through the ledger's one decoder. */
+async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
+  const rows = await sql`select tables, runtime_package, manifest from installed_app`
+  return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
 }
 
 /** Administrator, or a principal of either kind holding System Manager. */
