@@ -5,6 +5,7 @@
 // `src/db` is first loaded, so each of those cases loads a fresh copy of the
 // module graph pointed at its own disposable database, then drops it. The
 // rest run on the shared test database inside a rolled-back sandbox.
+import { readdirSync } from 'node:fs'
 import { afterAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
@@ -14,9 +15,11 @@ import { dropScratchDatabases, scratchDatabase } from './scratch-database'
 
 afterAll(dropScratchDatabases, 60_000)
 
-/** Every migration file name, from the shared (fully migrated) test database. */
+/** Every migration file name, in the order they apply. Read from disk, not
+ *  from the shared test database's ledger, which can also name a retired file
+ *  (0124_script_api_featherbase.sql, replaced in #556). */
 async function allMigrations(): Promise<string[]> {
-  return (await sql`select name from migration order by name`).map((r) => String(r.name))
+  return readdirSync(new URL('../migrations', import.meta.url)).filter((f) => f.endsWith('.sql') || f.endsWith('.ts')).sort()
 }
 
 describe('migrate: a database of its own', () => {
@@ -25,7 +28,7 @@ describe('migrate: a database of its own', () => {
     try {
       const first = await runMain(scratch.migrate.main, [])
       expect(first).toMatchObject({ code: 0, stderr: '' })
-      const ledger = (await scratch.db`select name from featherbase.migration order by name`).map((r) => String(r.name))
+      const ledger = (await scratch.db`select name from featherbase.migration`).map((r) => String(r.name)).sort()
       expect(ledger).toEqual(await allMigrations())
       expect(await scratch.db`select value from featherbase.internal_metadata where key = 'environment'`).toEqual([{ value: 'test' }])
       expect(await scratch.migrate.pendingMigrations()).toEqual([])

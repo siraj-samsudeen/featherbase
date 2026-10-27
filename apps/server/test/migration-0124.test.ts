@@ -136,12 +136,29 @@ describe('0124: stored scripts call the featherbase API object', () => {
     expect(await serverScript('m0124-broken')).toBe('frappe.throw("unterminated)')
     expect(report).toContain('script-api-rename: left unchanged, not readable as JavaScript (edit by hand): Server Script m0124-broken')
   })
+
+  // A bare `frappe` the rename cannot follow (a typeof guard, a local of that
+  // name) would change meaning silently, so the script is named for a person.
+  test('a script with a bare frappe left after the rename is named for checking by hand', async ({ admin }) => {
+    await saveRow(admin, 'Server Script', {
+      row_id: 'm0124-bare', script_type: 'API', api_method: 'm0124_bare', enabled: false,
+      script: 'if (typeof frappe !== "undefined") frappe.throw("x")',
+    })
+    await saveRow(admin, 'Server Script', {
+      row_id: 'm0124-local', script_type: 'API', api_method: 'm0124_local', enabled: false,
+      script: 'const frappe = { a: 1 }; result = frappe.a',
+    })
+    const report = await migrate()
+    expect(await serverScript('m0124-bare')).toBe('if (typeof frappe !== "undefined") featherbase.throw("x")')
+    expect(report).toContain('script-api-rename: still names frappe outside a member access (check by hand): Server Script m0124-bare, Server Script m0124-local')
+  })
 })
 
 describe('0124: the rename itself', () => {
   it('returns null for source it cannot read, and the source itself when there is nothing to rename', () => {
     expect(renameScriptApi('"open')).toBeNull()
-    expect(renameScriptApi('return 1')).toBe('return 1')
-    expect(renameScriptApi('await x; return frappe.y')).toBe('await x; return featherbase.y')
+    expect(renameScriptApi('return 1')).toEqual({ source: 'return 1', bare: false })
+    expect(renameScriptApi('await x; return frappe.y')).toEqual({ source: 'await x; return featherbase.y', bare: false })
+    expect(renameScriptApi('var f = frappe; o.frappe = 1')).toEqual({ source: 'var f = frappe; o.frappe = 1', bare: true })
   })
 })
