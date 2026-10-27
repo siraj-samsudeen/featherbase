@@ -97,15 +97,17 @@ export async function appSetupState(where: { installed?: string; settings?: stri
       : new Map<string, { engine: string; url_env: string | null; read_scaling_token?: boolean }>()
     // #660: a scope provider names the identifier systems it reads.
     const systems = declared.scopeProvider?.identifiers ?? []
+    // A turned-off system is not set up either (owner decision 27-Oct-2026, provisional).
     const foundSystems = identifierSystems && systems.length
-      ? new Set((await sql`select row_id from ${sql(identifierSystems)} where row_id in ${sql(systems)}`).map(r => String(r.row_id)))
-      : new Set<string>()
+      ? new Map((await sql`select row_id, enabled from ${sql(identifierSystems)} where row_id in ${sql(systems)}`).map(r => [String(r.row_id), r.enabled === true]))
+      : new Map<string, boolean>()
     const missing = [
       ...required.filter(name => !filled.has(name)).map(name => `setting ${name}`),
       ...(declared.secrets ?? []).filter(name => !present(readNamedVariable(name))).map(name => `secret ${name}`),
       ...wanted.map(name => found.has(name) ? (datasetSourceReadOnly(found.get(name)!) ? null : `read-only data source ${name}`) : `data source ${name}`)
         .filter((gap): gap is string => gap !== null),
-      ...systems.filter(system => !foundSystems.has(system)).map(system => `identifier system ${system}`),
+      ...systems.filter(system => foundSystems.get(system) !== true)
+        .map(system => foundSystems.has(system) ? `identifier system ${system} is turned off` : `identifier system ${system}`),
     ]
     gaps.push({ app, title: declared.title ?? app, missing })
   }

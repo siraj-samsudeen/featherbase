@@ -242,11 +242,17 @@ describe("the person's identifiers a provider receives", () => {
   async function system(admin: TestClient, key: string) {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: key, label: key, kind: 'employee-record' } })
   }
-  async function identifier(person: string, system: string, value: string | null, { ended = false } = {}) {
+  // Validity is half-open, [from, to): a value whose end is today is no
+  // longer held today.
+  async function identifier(person: string, system: string, value: string | null, { ended = false, from = '2020-01-01', to = '' } = {}) {
+    const valid = ended ? '[2020-01-01,2021-01-01)' : `[${from},${to})`
     await sql`insert into person_identifier ${sql({ id: newIdentifierId(), person_id: person, system, assigner: '', value, value_hint: value === null ? 'ends 12' : null,
-      valid: ended ? '[2020-01-01,2021-01-01)' : '[2020-01-01,)', verified: true, one_holder: false, one_per_person: false,
+      valid, verified: true, one_holder: false, one_per_person: false,
       source: 'test', recorded_by: 'test' } as unknown as Record<string, never>)}`
   }
+  // Today in India, the day the platform counts, and a day either side.
+  const day = (offset: number) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() + offset * 86_400_000))
 
   test("passes the person's current values in a declared system", async ({ admin, createUser }) => {
     await declaring(['roster-code'], async providerAt => {
@@ -271,6 +277,23 @@ describe("the person's identifiers a provider receives", () => {
       await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
       await user.post(read + 'places', { payload: {} })
       expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-NEW'] })
+    })
+  })
+
+  // Owner decision 27-Oct-2026 (provisional): current means valid today.
+  test.for([
+    ['a value that starts tomorrow is not passed', { from: day(1) }, []],
+    ['a value that started today is passed', { from: day(0) }, ['R-1']],
+    ['a value that ends today is not passed', { to: day(0) }, []],
+    ['a value that ends tomorrow is passed', { to: day(1) }, ['R-1']],
+  ] as const)('%s', async ([, validity, expected], { admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-1', validity)
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': expected })
     })
   })
 
@@ -328,6 +351,44 @@ describe("the person's identifiers a provider receives", () => {
       await expectApiError(user.post(read + 'places', { payload: {} }), { status: 409, type: 'NotSetUpError',
         message: expect.stringContaining('Place roster proof is not set up yet. An administrator needs to finish setting it up.') })
       expect([roster.calls.provider, app.calls.handler]).toEqual([0, 0])
+    })
+  })
+
+  // Owner decision 27-Oct-2026 (provisional): a turned-off system is treated
+  // as a missing one.
+  test('a declared system that is turned off answers "not set up yet", and no one gets a scope', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster, app } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await sql`update identifier_system set enabled = false where row_id = 'roster-code'`
+      await expectApiError(user.post(read + 'places', { payload: {} }), { status: 409, type: 'NotSetUpError' })
+      expect([roster.calls.provider, app.calls.handler]).toEqual([0, 0])
+    })
+  })
+
+  test('turning a declared system back on passes its values again', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      const { user, roster } = await setup(admin, createUser, { providerAt })
+      await identifier(user.user!, 'roster-code', 'R-1')
+      await position(admin, user.user!, 'North / Kids', 'N1', 'kids')
+      await sql`update identifier_system set enabled = false where row_id = 'roster-code'`
+      await expect(user.post(read + 'places', { payload: {} })).rejects.toMatchObject({ status: 409 })
+      await sql`update identifier_system set enabled = true where row_id = 'roster-code'`
+      await user.post(read + 'places', { payload: {} })
+      expect(roster.calls.person.identifiers).toEqual({ 'roster-code': ['R-1'] })
+    })
+  })
+
+  test('Instance health names a declared identifier system that is turned off', async ({ admin, createUser }) => {
+    await declaring(['roster-code'], async providerAt => {
+      await system(admin, 'roster-code')
+      await sql`update identifier_system set enabled = false where row_id = 'roster-code'`
+      await setup(admin, createUser, { providerAt })
+      const check = (await runHealthChecks()).find(({ key }) => key === 'app-setup:placeroster')
+      expect(check).toMatchObject({ ok: false, message: 'Place roster proof answers "not set up yet": missing identifier system roster-code is turned off.' })
     })
   })
 

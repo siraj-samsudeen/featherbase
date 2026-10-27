@@ -197,6 +197,13 @@ describe('release preflight: app settings and secrets', () => {
       .toContain('WARNING: app setupprovider is not set up yet: missing identifier system setup-missing-code. Set the setting in the instance settings file and the secret as a deployment variable.')
   })
 
+  test('an enabled scope provider declaring a turned-off identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, enabled) values ('setup-off-code', 'Setup off code', 'employee-record', false)`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-off-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain('missing identifier system setup-off-code is turned off.')
+  })
+
   test('a disabled app is not checked', async () => {
     await install(false)
     expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))

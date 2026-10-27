@@ -49,21 +49,25 @@ export async function resolvePersonScope(user: string, binding: ScopeProviderBin
 
 async function assertIdentifierSystems(binding: ScopeProviderBinding) {
   if (!binding.identifiers.length) return
-  const found = new Set((await sql`select row_id from identifier_system where row_id in ${sql(binding.identifiers)}`).map(row => String(row.row_id)))
-  const missing = binding.identifiers.filter(system => !found.has(system))
+  // Owner decision 27-Oct-2026 (provisional): a turned-off system passes no
+  // values; it is treated exactly as a missing one.
+  const on = new Set((await sql`select row_id from identifier_system where row_id in ${sql(binding.identifiers)} and enabled`).map(row => String(row.row_id)))
+  const missing = binding.identifiers.filter(system => !on.has(system))
   if (!missing.length) return
-  console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}`)
+  console.warn(`[apps] ${binding.app} is not set up yet; its scope provider needs the identifier systems ${missing.join(', ')}, present and turned on`)
   throw new AppError('NotSetUpError', `${binding.title} is not set up yet. An administrator needs to finish setting it up.`)
 }
 
 // #660: the person's current values in each system the provider declared,
-// read fresh with the scope, and nothing from any other system. Current is
-// person-resolution's rule: a row whose validity has no end.
+// read fresh with the scope, and nothing from any other system. Current means
+// valid today (owner decision 27-Oct-2026, provisional): started on or before
+// today and not yet ended, so a value with a future start is not passed.
+// Today is India's day, as the leaver check and the access alerts count it.
 async function currentIdentifiers(user: string, systems: readonly string[]): Promise<Readonly<Record<string, readonly string[]>>> {
   const values: Record<string, string[]> = Object.fromEntries(systems.map(system => [system, []]))
   if (systems.length) {
     for (const row of await sql`select system, value from person_identifier
-      where person_id = ${user} and system in ${sql(systems)} and upper_inf(valid) and value is not null order by system, value`)
+      where person_id = ${user} and system in ${sql(systems)} and valid @> (now() at time zone 'Asia/Kolkata')::date and value is not null order by system, value`)
       values[String(row.system)].push(String(row.value))
   }
   return Object.freeze(Object.fromEntries(Object.entries(values).map(([system, list]) => [system, Object.freeze(list)])))
