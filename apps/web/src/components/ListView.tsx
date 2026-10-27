@@ -367,14 +367,18 @@ export function ListView({
             </span>
           )}
         </div>
-        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end">
+        <div
+          className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end"
+          data-testid="list-toolbar"
+        >
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
               className={buttonClasses()}
+              aria-expanded={colPickerOpen}
               data-testid="list-columns"
             >
-              Columns
+              Show columns
             </button>
             {colPickerOpen && (
               <div className={cardClasses('absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2')}>
@@ -457,7 +461,7 @@ export function ListView({
               className={buttonClasses()}
               data-testid="open-columns"
             >
-              Columns
+              Edit columns
             </Link>
           )}
           {/* #208: two Tables that turned out to be the same thing. */}
