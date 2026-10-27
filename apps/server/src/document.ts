@@ -1235,7 +1235,8 @@ async function setStatus(
   }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
-  await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
+  // The loaded row, not the raw one: internal columns never reach a template.
+  await evaluateEmailRules(event as LifecycleEvent, table, result)
   // PLAT-005: fire webhooks for submit/cancel (post-commit).
   await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', table, result)
   return result
