@@ -386,6 +386,22 @@ describe('a person_scope action', () => {
     expect(app.calls.handler).toBe(1)
   })
 
+  // Codex round 2: a fresh place that adds a restriction the stored place did
+  // not have covers less than it did.
+  test.for([
+    ['a whole-store place that became restricted to one section is refused', { store: ['N1'] }, { store: ['N1'], section: ['kids'] }, 403],
+    ['a section place that became the whole store still replays', { store: ['N1'], section: ['kids'] }, { store: ['N1'] }, 200],
+  ] as const)('on replay, %s', async ([, before, after, status], { admin, createUser }) => {
+    const { user, roster } = await setup(admin, createUser, { roles: ['Scope Planner'] })
+    const body = { idempotencyKey: `place-restricted-${status}`, payload: { effect: `effect-restricted-${status}` } }
+    roster.faults.result = [{ label: 'North', filters: before }]
+    expect(await user.post(action, body)).toEqual({ result: { places: 'North' } })
+    roster.faults.result = [{ label: 'North', filters: after }]
+    const replay = await user.fetch(action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    expect(replay.status).toBe(status)
+    expect(await refusals(user)).toEqual(status === 403 ? ['scopeproof.place:scope'] : [])
+  })
+
   test('a replay whose record does not hold the places it ran under is refused', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser, { roles: ['Scope Planner'] })
     await position(admin, user.user!, 'North / Kids', 'N1', 'kids')

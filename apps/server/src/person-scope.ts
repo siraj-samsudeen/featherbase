@@ -88,19 +88,18 @@ const requestedScope = z.object({
     .refine((filters) => Object.keys(filters).length > 0).optional(),
 }).strict()
 
-/** Does `fresh` still cover everything `stored` covered? Every stored place
- *  must still exist under its label, and every filter value it named must
- *  still be in that place (a fresh place that no longer constrains a filter
- *  covers all of its values). A replay answers from its stored result, so it
- *  is admitted only when this holds. */
+/** Does `fresh` still cover everything `stored` covered? Each stored place
+ *  must be allowed whole by some fresh place: every filter the fresh place
+ *  constrains, the stored place constrained too, to a subset of its values.
+ *  A filter the stored place left open but the fresh one restricts is not
+ *  covered. A replay answers from its stored result, so it is admitted only
+ *  when this holds. */
 export function coversPersonScope(stored: PersonScope, fresh: PersonScope): boolean {
-  return stored.every((place) => {
-    const current = fresh.find((candidate) => candidate.label === place.label)
-    return !!current && Object.entries(place.filters).every(([name, values]) => {
-      const own = current.filters[name]
-      return !own || values.every((value) => own.includes(value))
-    })
-  })
+  return stored.every((place) => fresh.some((current) =>
+    Object.entries(current.filters).every(([name, allowed]) => {
+      const values = place.filters[name]
+      return !!values && values.every((value) => allowed.includes(value))
+    })))
 }
 
 /** The person's scope narrowed to what the request names, or null when the
