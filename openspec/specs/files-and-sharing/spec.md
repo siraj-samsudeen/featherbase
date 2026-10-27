@@ -82,6 +82,11 @@ instead.
 - **WHEN** someone uploads a web page and another user opens its link
 - **THEN** the file downloads; nothing in it runs inside Featherbase
 
+#### Scenario: A file whose declared kind hides a web page
+
+- **WHEN** a file's declared kind lists plain text followed by a web page, at upload or edited later
+- **THEN** the browser is told only the first, plain kind, so the file never opens as a page
+
 #### Scenario: A picture still shows
 
 - **WHEN** a user opens an uploaded photo or PDF

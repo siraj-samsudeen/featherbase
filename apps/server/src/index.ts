@@ -365,15 +365,29 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // script open in place; anything else (HTML, SVG, scripts) downloads, so an
   // uploaded page can never run as the app. An <img> ignores the download
   // header, so an SVG still shows where a form embeds it.
-  const type = (row.mime_type as string) || 'application/octet-stream'
-  const disposition = SHOWN_IN_PLACE.test(type) ? 'inline' : 'attachment'
+  // The stored type is an editable field, so it is reduced again here and the
+  // header is built from that, never sent as stored: a browser reads
+  // `text/plain,text/html` as its LAST type and would run it as a page.
+  const type = mimeEssence(row.mime_type as string)
+  const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
+  const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
-    'content-type': type,
+    'content-type': inPlace ? type : 'application/octet-stream',
     'content-disposition': `${disposition}; filename="${(row.file_name as string).replace(/"/g, '')}"`,
   })
 }
 
-const SHOWN_IN_PLACE = /^(image\/(png|jpeg|gif|webp|avif|bmp)|application\/pdf|text\/plain|audio\/|video\/)/i
+const SHOWN_IN_PLACE = new Set([
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
+])
+
+// A declared type reduced to its bare `type/subtype`, lowercased, with nothing
+// after the first `;` or `,`. Anything that isn't a well-formed type becomes
+// application/octet-stream.
+function mimeEssence(declared: string | null | undefined): string {
+  const essence = (declared ?? '').split(/[;,]/)[0].trim().toLowerCase()
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(essence) ? essence : 'application/octet-stream'
+}
 
 app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
 app.get('/private/files/:stored', (c) =>
@@ -1559,7 +1573,7 @@ app.post('/api/upload_file', async (c) => {
   else if (refTable) await assertPermission(who(c), refTable, 'read')
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
-  const mimeType = file.type || 'application/octet-stream'
+  const mimeType = mimeEssence(file.type)
   // FILE-004: for raster images, generate a small inline thumbnail the UI can
   // show without fetching the full-size original. Best-effort — a failure to
   // decode never blocks the upload.

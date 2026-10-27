@@ -105,6 +105,36 @@ describe('FILE-001: file upload + storage', () => {
     }
   })
 
+  test('a type list that ends in HTML is served as one plain type, whether uploaded or edited onto the File row', async ({
+    admin,
+    api,
+  }) => {
+    const uploaded: string[] = []
+    try {
+      for (const type of ['text/plain,text/html', 'text/plain;charset=utf-8, text/html']) {
+        const doc = (await (await upload(admin, 'page.txt', '<script>alert(1)</script>', type)).json()) as Record<
+          string,
+          unknown
+        >
+        uploaded.push(doc.file_url as string)
+        expect(doc.mime_type).toBe('text/plain')
+        // The stored type is an editable field, so serving must not trust it either:
+        // the header carries one type the server built, never the stored list.
+        for (const [stored, header, disposition] of [
+          ['text/plain,text/html', 'text/plain', /^inline;/],
+          ['application/x-anything,text/html', 'application/octet-stream', /^attachment;/],
+        ] as const) {
+          await sql`update file set mime_type = ${stored} where row_id = ${doc.row_id as string}`
+          const res = await api.fetch(doc.file_url as string)
+          expect(res.headers.get('content-type')).toBe(header)
+          expect(res.headers.get('content-disposition')).toMatch(disposition)
+        }
+      }
+    } finally {
+      await cleanupDisk(uploaded)
+    }
+  })
+
   test('a picture, a PDF and plain text still open in place', async ({ admin, api }) => {
     const uploaded: string[] = []
     try {
