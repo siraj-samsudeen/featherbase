@@ -10,7 +10,8 @@ The instance owner settled a clean model in a design walkthrough on
 27-Oct-2026. The walkthrough is recorded in the client's private repository;
 this change carries only the decisions, with synthetic examples. It covers:
 
-- a **store layout**: store, floor, section, the owning section of each
+- a **store layout**: store, floor, department (a named group of sections), section,
+  the owning section of each
   subcategory, and display locations;
 - a dated **store org chart**: one table of job assignments with reporting lines;
 - **coverage** worked out from those, never stored;

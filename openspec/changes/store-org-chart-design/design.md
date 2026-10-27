@@ -82,11 +82,24 @@ only where a Team Leader or Staff member holds a section.
   rebalancing at every rearrangement. And they are easier to game.
 
 ### D4. `job_assignment`: one table, one row per person × job × place × period
-- Floor only for Floor Managers, section only for Team Leaders and Staff. Above them,
-  coverage is worked out (D6).
-- *Rejected:* a DM row per section (it duplicates what the reporting lines say), a link
-  table, and a named "department" or "cluster" entity (pays off only if those are stable
-  named groups).
+- Floor only for Floor Managers, department only for Department Managers, section only
+  for Team Leaders and Staff. So every manager below the Store Manager is assigned to one
+  level of the layout.
+- *Rejected:* a DM row per section, a link table, and a named "cluster" entity (it pays off
+  only if clusters are stable named groups).
+- **Department (added 27-Oct-2026, from the business owner's input; the instance owner
+  chose option A).** A `department` is a named group of sections in one store, as a section
+  is a group of subcategories. Each section has a plain, undated `department` field. A DM's
+  job assignment names a department, and the DM covers its sections.
+  - *Why:* every manager job is then anchored to a layout level (SM store, FM floor, DM
+    department, TL section). A section with no Team Leader, or a TL with a wrong reporting
+    line, is still seen by the right DM. A department survives a change of DM.
+  - *Rejected:*
+    - a department derived from whoever reports to a DM (it vanishes with the DM, and
+      moves whenever one reporting line is corrected);
+    - a dated section → department table. It is worth having only if DMs carry targets
+      or incentives, and switching to it later adds dates without a restructure.
+  - A department may span floors.
 - `store` is carried on the row although the section implies it (a deliberate departure
   from 3NF). A (store, section) reference guarantees the section is in that store, and
   every job filters by store the same way, with no join.
@@ -109,7 +122,7 @@ only where a Team Leader or Staff member holds a section.
 |---|---|
 | Store Manager | the whole store |
 | Floor Manager | their floors only |
-| Department Manager | the sections of the TLs reporting to them |
+| Department Manager | the sections in their departments |
 | Team Leader, Staff | their section |
 | Cluster Manager | their stores |
 
@@ -118,6 +131,9 @@ only where a Team Leader or Staff member holds a section.
 - *Why a Floor Manager sees only their floors:* the floors are what they are assigned
   to, and the reporting lines from the HR system are unreliable. A mismatch is raised as
   a conflict instead of widening anyone's coverage.
+- *Why a Department Manager sees their departments* (revised 27-Oct-2026): the same
+  reason. Coverage comes from the layout level the job is assigned to, and reporting lines
+  are only checked against it. (This replaces "the sections of the TLs reporting to them".)
 - Feather Dash's scope provider (B2) returns this in the platform's shape. The
   `confirmation` field marks a place as `assumed` while its store is "not live yet".
 

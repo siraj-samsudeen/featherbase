@@ -20,7 +20,7 @@ done.
 
 ## 3. Feather Dash tables and views (client app)
 
-- [ ] 3.1 Layout tables: `store`, `store_floor`, `section`, `section_subcategory`,
+- [ ] 3.1 Layout tables: `store`, `store_floor`, `department`, `section`, `section_subcategory`,
       `display_location`, all marked `decides_scope` where they feed coverage.
 - [ ] 3.2 `job_assignment`, with its shape, dating and one-store rules.
 - [ ] 3.3 Alias tables (`section_alias`, `floor_alias`, `job_alias`) and the

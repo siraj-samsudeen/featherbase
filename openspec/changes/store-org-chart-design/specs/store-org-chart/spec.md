@@ -43,6 +43,29 @@ owner: the per-section `team_leaders_allowed` number.)*
 - **WHEN** LKS "Kids Wear" moves from First to Second
 - **THEN** only its floor changes, and its Team Leader's job assignment is untouched
 
+### Requirement: A department is a named group of sections in one store
+
+A department SHALL belong to one store and SHALL have a name that is unique within that
+store. Every section SHALL belong to at most one department of its own store, through the
+section's `department` field. A department MAY hold sections on several floors. Moving a
+section to another department SHALL be one edit to that field. It is not dated, because a
+department decides only who can see a section, never who gets the credit. A section with
+no department SHALL be listed as an org-chart conflict.
+
+*(Revisit: if Department Managers later carry targets or incentives, the section's
+department becomes dated, like the owning section.)*
+
+#### Scenario: A department groups sections across floors
+
+- **WHEN** LKS department "Ladies Ethnic" holds "Sarees" on Ground and "Silk Sarees" on
+  First
+- **THEN** both sections are accepted in it
+
+#### Scenario: A section in another store's department is refused
+
+- **WHEN** someone puts LKS "Sarees" into an HVW department
+- **THEN** the change is refused, because a department belongs to one store
+
 ### Requirement: Each subcategory has one owning section per store at any date
 
 `section_subcategory` SHALL record, for a store and a subcategory, the section that
@@ -89,8 +112,10 @@ A job assignment SHALL record a person, a job, a store, an `acting` flag, `start
 and an optional `ends_on`. `ends_on` is exclusive, and an empty `ends_on` means current.
 The job SHALL be one of Store Manager, Floor Manager, Department Manager, Team Leader,
 Staff and Cluster Manager. A Floor Manager's row SHALL name one floor of that store. A
-Team Leader's or Staff member's row SHALL name one section of that store. Every other
-job's row SHALL name neither. A row MAY name a `reports_to` person.
+Department Manager's row SHALL name one department of that store. A Team Leader's or
+Staff member's row SHALL name one section of that store. Store Manager and Cluster Manager
+rows SHALL name none of these. A row MAY name a `reports_to` person. A manager over
+several floors or departments SHALL have one row for each.
 
 *(Pending the business owner: further jobs for cashiers and assistant titles may be
 added to the list.)*
@@ -169,8 +194,7 @@ on that date:
 - Store Manager: every section of the store, including sections that no reporting
   line reaches;
 - Floor Manager: the sections on their floors only;
-- Department Manager: the sections of the Team Leaders whose current reporting line
-  points to them;
+- Department Manager: the sections in their departments;
 - Team Leader and Staff: their section;
 - Cluster Manager: each of their stores, in full.
 
@@ -178,14 +202,13 @@ Each covered section brings the subcategories it owns on that date. Feather Dash
 scope provider SHALL return this coverage in the platform's scope shape (B2), and no
 coverage SHALL be stored in a table.
 
-#### Scenario: A Department Manager covers through their Team Leaders
+#### Scenario: A Department Manager covers their department
 
-- **WHEN** P-107 is a Department Manager at LKS, and the Team Leaders of "Sarees" and
-  "Silk Sarees" report to P-107
-- **THEN** P-107 covers those two sections
-- **WHEN** the "Silk Sarees" Team Leader's reporting line moves to another Department
-  Manager
-- **THEN** P-107 covers only "Sarees" from that date
+- **WHEN** P-107 is Department Manager of LKS "Ladies Ethnic", which holds "Sarees" and
+  "Silk Sarees"
+- **THEN** P-107 covers both sections, even while "Silk Sarees" has no Team Leader
+- **WHEN** "Silk Sarees" moves to the department "Bridal"
+- **THEN** P-107 covers only "Sarees" from then on
 
 #### Scenario: A Floor Manager sees their floor only
 
@@ -207,7 +230,10 @@ conflict SHALL NOT widen or narrow anyone's coverage. The conflicts SHALL includ
 - a Team Leader on more than one section;
 - a Team Leader, Department Manager or Floor Manager with no reporting line;
 - a section with no Team Leader;
-- a Department Manager reporting to a Floor Manager whose floors do not hold that
+- a section with no department, or a department with no current Department Manager;
+- a Team Leader reporting to a Department Manager whose departments do not hold the
+  Team Leader's section;
+- a Department Manager reporting to a Floor Manager whose floors hold none of that
   Department Manager's sections;
 - a subcategory placed in two sections of one store for the same date;
 - an imported row that places a subcategory on a floor other than its owning
@@ -247,10 +273,17 @@ section.
 - **WHEN** a third person, P-112, is left on "Sarees" after moving to another section
 - **THEN** the conflict list shows "Sarees has 3 Team Leaders, allows 2"
 
+#### Scenario: A Team Leader under the wrong Department Manager
+
+- **WHEN** the Team Leader of "Silk Sarees" ("Ladies Ethnic") reports to the Department
+  Manager of "Bridal"
+- **THEN** the conflict list shows the mismatch, and the "Ladies Ethnic" Department
+  Manager still covers "Silk Sarees"
+
 #### Scenario: A Department Manager under the wrong Floor Manager
 
-- **WHEN** a Department Manager whose sections are on First reports to the Floor Manager
-  of Ground
+- **WHEN** a Department Manager whose sections are all on First reports to the Floor
+  Manager of Ground
 - **THEN** the conflict list shows the mismatch, and neither person's coverage changes
 
 ### Requirement: Other systems' names are aliases that point at real rows
