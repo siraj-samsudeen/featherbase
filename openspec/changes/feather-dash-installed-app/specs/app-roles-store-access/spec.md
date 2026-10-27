@@ -112,3 +112,21 @@ admin's choices.
 - **WHEN** an admin has also let staff members open an app's report, which the app did
   not suggest, and the app is later upgraded
 - **THEN** staff members can still open it
+
+#### Scenario: An upgrade does not bring back a removed suggestion
+
+- **WHEN** an admin removed a job the app suggested, and the app is later upgraded
+- **THEN** that job still does not carry the app's role
+
+### Requirement: An app is never opened to everyone through a job setting
+
+Featherbase SHALL refuse to let an app's role be carried by everyone, or by people
+who are not signed in, and SHALL refuse to let the setting hand out an
+administrator's rights. Only a System Manager SHALL change which jobs carry an app's
+roles.
+
+#### Scenario: Opening an app to everyone is refused
+
+- **WHEN** an admin tries to let every signed-in person carry an app's reading role
+- **THEN** the change is refused, and a release that finds such a setting refuses to
+  start

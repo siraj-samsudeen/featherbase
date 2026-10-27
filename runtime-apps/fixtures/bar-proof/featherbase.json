@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "barproof",
+  "title": "Bar proof",
+  "entryTable": "barproof.note",
+  "server": "server.mjs",
+  "client": "client",
+  "tables": [
+    {
+      "name": "barproof.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Bar Reader"],
+  "permissions": [{ "table": "barproof.note", "role": "Bar Reader", "can_read": true }],
+  "reads": {
+    "version": 1,
+    "tables": ["barproof.note"],
+    "operations": {
+      "stores": {
+        "policy": { "kind": "person_scope", "readRoles": ["Bar Reader"], "actionRoles": [] },
+        "authorization": { "kind": "generic" }
+      },
+      "malformed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "broken": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "waiting": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true }
+    }
+  },
+  "bar": [{ "picker": "Store", "options": "stores", "sets": "store" }]
+}
