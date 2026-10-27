@@ -90,7 +90,7 @@ for (const width of [375, 1440]) {
       await page.getByTestId('form-save').press('Enter')
       await expect(page.getByTestId('form-banner')).toHaveText('Saved')
       const headers = await adminAuth(request)
-      expect(await (await request.get(url, { headers })).json()).toMatchObject({ title: `Northern ${width} crates`, qty: '83', notes: 'Keep **this** description' })
+      expect(await (await request.get(url, { headers })).json()).toMatchObject({ title: `Northern ${width} crates`, qty: 83, notes: 'Keep **this** description' })
     })
 
     await session.step('the attachments sidebar sits beside/below the form section by breakpoint', async ({ page }) => {
