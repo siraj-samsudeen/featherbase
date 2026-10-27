@@ -154,6 +154,25 @@ export async function declaredAppSecrets(): Promise<{ name: string; value: strin
   })
 }
 
+/** The values of every secret the platform keeps in while an app runs. Not
+ *  a name-to-value record, so a handler's view cannot be passed for it. */
+export interface KeptSecrets { readonly values: readonly string[] }
+
+/** Keep in every value of `secrets` (all of the app's set secrets). */
+export function keptSecrets(secrets: Readonly<Record<string, string>>): KeptSecrets {
+  return Object.freeze({ values: Object.freeze(Object.values(secrets)) })
+}
+
+/** One operation's setup, ready to run its handler. */
+export interface ReadySetup {
+  title: string
+  settings: Readonly<Record<string, string>>
+  /** What the handler is given. */
+  secrets: Readonly<Record<string, string>>
+  /** What the platform keeps in: every declared secret that is set. */
+  kept: KeptSecrets
+}
+
 /** The app's setup for one read or action, or its "not set up yet" answer
  *  when a required setting or secret, or an optional secret the operation
  *  `needs` (#666), has no value: never a crash in the app's handler. The
@@ -163,8 +182,14 @@ export async function declaredAppSecrets(): Promise<{ name: string; value: strin
  *  The handler gets the required secrets and the optional ones it needs. An
  *  optional secret it does not declare it needs is withheld even when set,
  *  and reaching for it fails the operation, so a missing declaration shows
- *  up while the secret is set, not first on an instance that lacks it. */
-export async function readyAppSetup(app: string, setup: AppSetup, needs: readonly string[] = []): Promise<AppSetup> {
+ *  up while the secret is set, not first on an instance that lacks it.
+ *
+ *  Two views, kept apart by type (Codex review on #670): `secrets` is what
+ *  the handler sees; `kept` is every declared secret that is set, withheld
+ *  ones included, and is the only thing the guards (`withSecretsKept`,
+ *  `assertNoSecret`) accept. A value the handler was never given can still
+ *  reach it another way (a setting, a stored row), so it is kept in too. */
+export async function readyAppSetup(app: string, setup: AppSetup, needs: readonly string[] = []): Promise<ReadySetup> {
   const optional = new Set(setup.optionalSecrets)
   const used = (name: string) => !optional.has(name) || needs.includes(name)
   const settings = setup.missing.settings
@@ -174,10 +199,12 @@ export async function readyAppSetup(app: string, setup: AppSetup, needs: readonl
       ...settings.map(name => `setting ${name}`), ...secrets.map(name => `secret ${name}`)].join(', ')}`)
     throw new AppError('NotSetUpError', `${setup.title} is not set up yet. An administrator needs to finish setting it up.`)
   }
+  const kept = keptSecrets(setup.secrets)
+  const ready = { title: setup.title, settings: setup.settings, kept }
   const withheld = setup.optionalSecrets.filter(name => !used(name))
-  if (!withheld.length) return setup
+  if (!withheld.length) return { ...ready, secrets: setup.secrets }
   const handed = Object.freeze(Object.fromEntries(Object.entries(setup.secrets).filter(([name]) => used(name))))
-  return { ...setup, secrets: new Proxy(handed, {
+  return { ...ready, secrets: new Proxy(handed, {
     get(target, key, receiver) {
       if (typeof key === 'string' && withheld.includes(key)) {
         console.warn(`[apps] ${app} used the secret ${key} in a read or action that does not declare it needs it`)
@@ -218,8 +245,8 @@ export function holdsSecret(secrets: readonly string[], value: unknown, seen = n
 }
 
 /** Refuse an answer (decoded JSON) that holds one of the app's secrets. */
-export function assertNoSecret(secrets: Readonly<Record<string, string>>, answer: unknown): void {
-  if (holdsSecret(Object.values(secrets), answer)) throw new AppError('InternalError', WITHHELD_ANSWER)
+export function assertNoSecret(kept: KeptSecrets, answer: unknown): void {
+  if (holdsSecret(kept.values, answer)) throw new AppError('InternalError', WITHHELD_ANSWER)
 }
 
 // Console output while an app's handler runs has every one of that app's
@@ -261,8 +288,8 @@ function redactConsole(): void {
 /** Run the app's code with its secrets kept in: console output redacted
  *  while it runs, and an error it raises that holds one replaced by one that
  *  does not, before it is answered or logged. */
-export async function withSecretsKept<T>(secrets: Readonly<Record<string, string>>, run: () => Promise<T>): Promise<T> {
-  const values = Object.values(secrets)
+export async function withSecretsKept<T>(kept: KeptSecrets, run: () => Promise<T>): Promise<T> {
+  const values = kept.values
   if (!values.length) return run()
   redactConsole()
   try {

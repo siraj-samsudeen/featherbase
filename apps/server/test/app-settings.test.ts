@@ -14,7 +14,7 @@ import { withNamedVariable } from '../src/env'
 import { sql } from '../src/db'
 import { expectApiError } from './fixtures'
 import { applyInstanceSettings, exportInstanceSettings } from '../src/instance-settings'
-import { WITHHELD_ANSWER, WITHHELD_MESSAGE, withSecretsKept } from '../src/app-settings'
+import { WITHHELD_ANSWER, WITHHELD_MESSAGE, keptSecrets, withSecretsKept } from '../src/app-settings'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/setup-proof-v1')
 const read = '/api/app_reads/setupproof/'
@@ -199,11 +199,11 @@ describe('an app secret', () => {
   })
 
   test('two apps running at once each have only their own secret redacted', async () => {
-    const first = withSecretsKept({ FIRST_TOKEN: 'first-secret-620' }, async () => {
+    const first = withSecretsKept(keptSecrets({ FIRST_TOKEN: 'first-secret-620' }), async () => {
       await new Promise(done => setTimeout(done, 20))
       console.log('first: first-secret-620')
     })
-    const second = withSecretsKept({ SECOND_TOKEN: 'second-secret-620' }, async () => {
+    const second = withSecretsKept(keptSecrets({ SECOND_TOKEN: 'second-secret-620' }), async () => {
       console.log('second: second-secret-620, not first-secret-620')
       await new Promise(done => setTimeout(done, 40))
     })
@@ -227,7 +227,7 @@ describe('an app secret', () => {
     ['a nested class instance', (): unknown => new Outer(new Inner(PLAIN))],
     ['a format string', (): unknown => PLAIN],
   ] as const)('a handler logging %s has the secret redacted', async ([label, make]) => {
-    await withSecretsKept({ TOKEN: PLAIN }, async () => {
+    await withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => {
       if (label === 'a format string') console.log('token: %s', make())
       else console.log(make())
     })
@@ -236,12 +236,12 @@ describe('an app secret', () => {
   })
 
   test.for(ESCAPED)('a handler logging JSON text of a secret that %s has it redacted', async ([, token]) => {
-    await withSecretsKept({ TOKEN: token }, async () => { console.log(JSON.stringify({ token })) })
+    await withSecretsKept(keptSecrets({ TOKEN: token }), async () => { console.log(JSON.stringify({ token })) })
     expect(logged).toEqual(['{"token":"[secret withheld]"}'])
   })
 
   test('outside an app handler the console is left alone', async () => {
-    await withSecretsKept({ TOKEN: PLAIN }, async () => {})
+    await withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => {})
     console.log('count', 3, { a: 1 })
     expect(logged).toEqual([`count 3 ${inspect({ a: 1 })}`])
   })

@@ -269,7 +269,10 @@ that fills it).
   the optional ones its operation needs; reaching for an optional secret it
   does not need fails the operation (500, the server log names the secret),
   even when the secret is set, so a forgotten `needs` shows up in development
-  rather than on an instance that lacks the secret. The release check and
+  rather than on an instance that lacks the secret. A withheld secret is still
+  one of the app's secrets: redaction, the answer check and the stored action
+  result keep in every declared secret that is set, whatever the handler was
+  given (Codex review on #670). The release check and
   Instance health name a missing optional secret and the operations that need
   it, as a warning that the rest of the app works. This lets an app with an
   optional embed integration serve its plain view without the embed's secret.

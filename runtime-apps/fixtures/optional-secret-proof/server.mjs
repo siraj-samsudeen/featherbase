@@ -8,7 +8,24 @@ const secretNames = (context) => {
   calls.handler++
   return { secrets: Object.keys(context.secrets).sort() }
 }
+// The caption setting can hold a value the app never got as a secret (one
+// withheld from this operation); the platform must still keep it in.
+const caption = (context) => {
+  calls.handler++
+  return { caption: context.settings.caption }
+}
 export const reads = {
+  echo_caption: caption,
+  outbound_caption: caption,
+  log_caption(context) {
+    calls.handler++
+    console.log('caption is', context.settings.caption)
+    return { ok: true }
+  },
+  throw_caption(context) {
+    calls.handler++
+    throw new Error(`upstream refused ${context.settings.caption}`)
+  },
   quick_view: secretNames,
   embed: secretNames,
   reach_embed(context) {
@@ -18,5 +35,6 @@ export const reads = {
 }
 export const actions = {
   note: secretNames,
+  echo_caption: caption,
   embed_note: secretNames,
 }

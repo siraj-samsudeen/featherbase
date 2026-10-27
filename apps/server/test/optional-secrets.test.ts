@@ -7,7 +7,8 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
-import { afterEach, describe, expect } from 'vitest'
+import { inspect } from 'node:util'
+import { afterEach, beforeEach, describe, expect, vi } from 'vitest'
 import { test as pgTest } from './pg-test'
 import { availableRuntimeVersions, discoverPackages } from '../src/runtime-packages'
 import { withNamedVariable } from '../src/env'
@@ -135,6 +136,68 @@ describe('a settings export', () => {
       ${sql.json({ name: 'exportopt', secrets: [{ name: 'EXPORTOPT_EMBED', optional: true }] })}, true, true)`
     expect(await withNamedVariable('EXPORTOPT_EMBED', 'export-embed-666', () => declaredAppSecrets()))
       .toContainEqual({ name: 'EXPORTOPT_EMBED', value: 'export-embed-666' })
+  })
+})
+
+// Codex review on #670: an optional secret withheld from an operation is
+// still one of the app's secrets. The platform keeps it in exactly as it
+// keeps a required one, whatever carries it out (here, a setting).
+describe('an optional secret withheld from an operation but set', () => {
+  let logged: string[] = []
+  beforeEach(() => {
+    logged = []
+    for (const level of ['log', 'info', 'warn', 'error', 'debug'] as const)
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args.map(arg => arg instanceof Error ? `${arg.message}\n${arg.stack}` : typeof arg === 'string' ? arg : inspect(arg)).join(' '))
+      })
+  })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  /** Install the app with its caption setting holding the embed key. */
+  async function captioned(admin: TestClient, createUser: CreateUserFn) {
+    const { reader } = await installed(admin, createUser)
+    await sql`insert into app_setting (row_id, app, setting, value) values ('optproof.caption', 'optproof', 'caption', ${`caption-${EMBED_KEY}`})`
+    return reader
+  }
+  const post = (reader: TestClient, path: string, body: unknown) => withSecrets(TOKEN, EMBED_KEY, async () => {
+    const response = await reader.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    return { status: response.status, body: await response.text() }
+  })
+
+  test('a read answer holding it is withheld', async ({ admin, createUser }) => {
+    const reader = await captioned(admin, createUser)
+    const { status, body } = await post(reader, READ + 'echo_caption', { payload: {} })
+    expect(status).toBe(500)
+    expect(body).not.toContain(EMBED_KEY)
+  })
+
+  test('an outbound read answer holding it is withheld', async ({ admin, createUser }) => {
+    const reader = await captioned(admin, createUser)
+    const { status, body } = await post(reader, READ + 'outbound_caption', { payload: {} })
+    expect(status).toBe(500)
+    expect(body).not.toContain(EMBED_KEY)
+  })
+
+  test('an error holding it reaches neither the response nor the log', async ({ admin, createUser }) => {
+    const reader = await captioned(admin, createUser)
+    const { status, body } = await post(reader, READ + 'throw_caption', { payload: {} })
+    expect(status).toBe(500)
+    expect(body).not.toContain(EMBED_KEY)
+    expect(logged.join('\n')).not.toContain(EMBED_KEY)
+  })
+
+  test('a log line holding it is redacted', async ({ admin, createUser }) => {
+    const reader = await captioned(admin, createUser)
+    expect((await post(reader, READ + 'log_caption', { payload: {} })).status).toBe(200)
+    expect(logged.join('\n')).toContain('caption is caption-[secret withheld]')
+  })
+
+  test('an action result holding it is neither answered nor stored', async ({ admin, createUser }) => {
+    const reader = await captioned(admin, createUser)
+    const { status, body } = await post(reader, ACTION + 'echo_caption', { idempotencyKey: 'leak', payload: {} })
+    expect(status).toBe(500)
+    expect(body).not.toContain(EMBED_KEY)
+    expect(JSON.stringify(await sql`select result from runtime_action_result where app = 'optproof'`)).not.toContain(EMBED_KEY)
   })
 })
 

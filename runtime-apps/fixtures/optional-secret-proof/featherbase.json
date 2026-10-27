@@ -15,11 +15,16 @@
   ],
   "roles": ["Optional Reader"],
   "permissions": [{ "table": "optproof.note", "role": "Optional Reader", "can_read": true }],
+  "settings": [{ "name": "caption", "required": false }],
   "secrets": ["OPTPROOF_TOKEN", { "name": "OPTPROOF_EMBED_KEY", "optional": true }],
   "reads": {
     "version": 1,
     "tables": ["optproof.note"],
     "operations": {
+      "echo_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "throw_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "log_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "outbound_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true },
       "quick_view": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "embed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "needs": ["OPTPROOF_EMBED_KEY"] },
       "reach_embed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
@@ -30,6 +35,7 @@
     "tables": ["optproof.note"],
     "operations": {
       "note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "echo_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
       "embed_note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "needs": ["OPTPROOF_EMBED_KEY"] }
     }
   }
