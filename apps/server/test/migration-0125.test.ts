@@ -1,4 +1,4 @@
-// Migration 0124 (27-Oct-2026, #551): an app's manifest field `apiVersion: 1`
+// Migration 0125 (27-Oct-2026, #551): an app's manifest field `apiVersion: 1`
 // became `platformVersion: "2026-10"`. An installed app records the manifest it
 // was installed from and a fingerprint of its shipped files; the rename changes
 // both. The migration rebinds an installed version to its renamed files only
@@ -6,8 +6,9 @@
 // otherwise fails, changing nothing, so the release can retry once the files
 // are restored.
 import { describe, expect } from 'vitest'
-import { resolve } from 'node:path'
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { relative, resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { test as base } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { taskerClient } from './tasker-client'
@@ -20,33 +21,45 @@ const test = base.extend<{ admin: TestClient }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
 })
 
-const MIGRATION = '0124_app_platform_version.ts'
+const MIGRATION = '0125_app_platform_version.ts'
 const predecessor = resolve('../..', 'runtime-apps/fixtures/tasker-v2.2')
 const current = resolve('../..', 'runtime-apps/tasker')
 
 // A copy of an app directory, edited. Removed after the test body.
 async function copyOf(source: string, edit: (directory: string) => Promise<void>) {
-  const directory = await mkdtemp(resolve('test/.migration-0124-'))
+  const directory = await mkdtemp(resolve('test/.migration-0125-'))
   await cp(source, directory, { recursive: true })
   await edit(directory)
   return directory
 }
 
-async function replaceIn(file: string, from: string, to: string) {
-  const text = await readFile(file, 'utf8')
-  if (!text.includes(from)) throw new Error(`${file} lacks ${from}`)
-  await writeFile(file, text.replaceAll(from, to))
+// The fingerprint a checkout recorded for Tasker 2.2.0 before the rename: the
+// real files of the 2.2 fixture at BEFORE_RENAME.
+async function fingerprintBeforeRename() {
+  const old = await realFilesBeforeRename(predecessor, false)
+  try { return await artifactDigest(old) } finally { await rm(old, { recursive: true, force: true }) }
 }
 
-// The fingerprint the trial recorded for Tasker 2.2.0: its shipped files as
-// origin/main built them, spelled out here as the lines that said apiVersion.
-async function fingerprintBeforeRename() {
-  const old = await copyOf(predecessor, async (directory) => {
-    await replaceIn(resolve(directory, 'featherbase.json'), '"platformVersion": "2026-10"', '"apiVersion": 1')
-    await replaceIn(resolve(directory, 'dist/server.mjs'), 'var platformVersion = "2026-10";', 'var apiVersion = 1;')
-    await replaceIn(resolve(directory, 'dist/server.mjs'), '\n  platformVersion,\n', '\n  apiVersion,\n')
-  })
-  try { return await artifactDigest(old) } finally { await rm(old, { recursive: true, force: true }) }
+// The last origin/main commit before the rename. CI's server job fetches full
+// history; a shallow local checkout must fetch this commit.
+const BEFORE_RENAME = 'd5b9fd5b8b564b8d639b5bb9ea6d104bf407ba6e'
+const repo = resolve('../..')
+
+// The real files of an app directory at BEFORE_RENAME, laid out as init.sh
+// uses them; `build` runs the app's own build, reusing its installed packages.
+async function realFilesBeforeRename(directory: string, build: boolean) {
+  const old = await mkdtemp(resolve('test/.migration-0125-origin-'))
+  const path = relative(repo, directory)
+  const archive = execFileSync('git', ['archive', BEFORE_RENAME, path], { cwd: repo, maxBuffer: 50 * 1024 * 1024 })
+  execFileSync('tar', ['-x', '-C', old, '--strip-components', String(path.split('/').length)], { input: archive })
+  if (build) {
+    await symlink(resolve(directory, 'node_modules'), resolve(old, 'node_modules'))
+    // As `pnpm apps:prepare` runs it: not under the test runner's NODE_ENV,
+    // which would make vite emit a different client bundle.
+    const { NODE_ENV: _runner, ...env } = process.env
+    execFileSync('npm', ['run', 'build', '--silent'], { cwd: old, stdio: 'ignore', env })
+  }
+  return old
 }
 
 // Tasker 2.2.0 as the live trial holds it before this release.
@@ -76,7 +89,7 @@ async function recorded() {
 
 const applied = async () => (await sql`select 1 from featherbase.migration where name = ${MIGRATION}`).length === 1
 
-describe('0124: installed apps follow apiVersion becoming platformVersion', () => {
+describe('0125: installed apps follow apiVersion becoming platformVersion', () => {
   test('the recorded manifest names the platform version', async ({ admin }) => {
     await installedBeforeRename(admin, await fingerprintBeforeRename())
     await migrate([predecessor, current])
@@ -129,6 +142,27 @@ describe('0124: installed apps follow apiVersion becoming platformVersion', () =
     await migrate([])
     expect(await recorded()).toMatchObject({ manifest: { platformVersion: '2026-10' }, artifact_digest: null })
   })
+
+  // Codex round 2: init.sh points FEATHERBASE_APP_PATHS at the source
+  // directories, so the recorded fingerprint covers src/ too. These take the
+  // real files from origin/main as init.sh lays them out (the 2.2 fixture as
+  // committed; Tasker 2.3.0 built as `pnpm apps:prepare` builds it), record
+  // that fingerprint, and swap in this branch's files.
+  for (const [version, directory, build] of [['2.2.0', predecessor, false], ['2.3.0', current, true]] as const)
+    test(`a checkout that installed Tasker ${version} from origin/main rebinds and boots`, async ({ admin }) => {
+      const old = await realFilesBeforeRename(directory, build)
+      try {
+        await discoverPackages([directory])
+        await admin.post('/api/install_app', { name: 'tasker' })
+        await sql`update installed_app
+          set manifest = (manifest - 'platformVersion') || '{"apiVersion": 1}'::jsonb, artifact_digest = ${await artifactDigest(old)}
+          where name = 'tasker'`
+        await migrate([predecessor, current])
+        await discoverPackages([predecessor, current])
+        await loadInstalledApps()
+        expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${version}`])
+      } finally { await rm(old, { recursive: true, force: true }) }
+    }, 120_000)
 
   test('boot after the migration selects the installed 2.2.0, and an upgrade moves it to 2.3.0', async ({ admin }) => {
     await installedBeforeRename(admin, await fingerprintBeforeRename())

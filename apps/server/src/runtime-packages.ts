@@ -96,7 +96,7 @@ async function contained(root: string, name: string): Promise<string> {
 
 // Shipped files, never operator directory spelling, identify an artifact.
 // `transform` may rewrite a file's bytes (by its path relative to the root)
-// before hashing; only migration 0124 uses it, to fingerprint files as they
+// before hashing; only migration 0125 uses it, to fingerprint files as they
 // were before a rename.
 export async function artifactDigest(root: string, transform?: (file: string, bytes: Buffer) => Buffer) {
   const hash = createHash('sha256')
@@ -156,15 +156,13 @@ async function readArtifact(directory: string) {
   packageVersion.parse(pkg.version)
   const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
   const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
-  return { root, pkg: pkg as { name: string; version: string }, manifest, manifestPath }
+  return { root, pkg: pkg as { name: string; version: string }, manifest }
 }
 
-/** An app directory's identity and where its manifest and server module are,
- *  relative to its root (migration 0124 fingerprints them as they were). */
+/** An app directory's name, version and resolved root (migration 0125). */
 export async function artifactIdentity(directory: string) {
-  const { root, pkg, manifest, manifestPath } = await readArtifact(directory)
-  return { name: manifest.name, version: pkg.version, root, manifestFile: relative(root, manifestPath),
-    serverFile: manifest.server ? relative(root, await contained(root, manifest.server)) : undefined }
+  const { root, pkg, manifest } = await readArtifact(directory)
+  return { name: manifest.name, version: pkg.version, root }
 }
 
 // Boot discovery indexes versions without upgrading an installed application.

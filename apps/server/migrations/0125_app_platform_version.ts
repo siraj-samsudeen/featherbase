@@ -11,14 +11,20 @@
 // SAME version on FEATHERBASE_APP_PATHS. The rebinding is safe because the new
 // files are trusted only if undoing the rename in memory reproduces the
 // recorded fingerprint byte for byte: the rename must be the ONLY difference.
-// The inverse is exact and narrow. It touches only the manifest file and the
-// server module, and only the literal forms the rename produced: in
-// featherbase.json `"platformVersion": "2026-10"`; in a server module the
-// hand-written `export const platformVersion = '2026-10'` /
-// `const platformVersion = "2026-10";`, and esbuild's `var platformVersion =
-// "2026-10";` plus its export-list line `  platformVersion,`. Checked on
-// 27-Oct-2026 by building Tasker 2.3.0 and the 2.2 fixture with the
-// Dockerfile's recipe from origin/main and from this change: the shipped trees
+//
+// The inverse is exact and narrow. It runs over every file, because init.sh
+// points FEATHERBASE_APP_PATHS at source directories, so src/ is fingerprinted
+// too. It works on bytes, and undoes only the literal forms the rename
+// produced. These are all the hunks of the diff under runtime-apps/ between
+// d5b9fd5b (the last commit before the rename) and this change:
+//   "platformVersion": "2026-10"                      manifests (JSON)
+//   manifestVersion: 1, platformVersion: '2026-10',   scope-proof's build.mjs
+//   export const platformVersion = '2026-10'          hand-written modules, src/server.ts
+//   const platformVersion = "2026-10";                tasker-v1's server.mjs
+//   var platformVersion = "2026-10";                  esbuild output
+//   <newline>  platformVersion,<newline>              esbuild's export list
+// Checked on 27-Oct-2026 against Tasker 2.3.0 and the 2.2 fixture, built from
+// both sides by the Dockerfile's recipe and as init.sh lays them out. They
 // differ in exactly these lines, and vite's client output is identical. Any
 // other difference leaves the fingerprints unequal, so the app is refused.
 //
@@ -31,26 +37,34 @@ import { sql } from '../src/db'
 import { readVariable } from '../src/env'
 import { artifactDigest, artifactIdentity } from '../src/runtime-packages'
 
-const MANIFEST_RENAME: [string, string][] = [['"platformVersion": "2026-10"', '"apiVersion": 1']]
-const SERVER_RENAME: [string, string][] = [
+const RENAMED: [Buffer, Buffer][] = ([
+  ['"platformVersion": "2026-10"', '"apiVersion": 1'],
+  ["manifestVersion: 1, platformVersion: '2026-10',", 'manifestVersion: 1, apiVersion: 1,'],
   ["export const platformVersion = '2026-10'", 'export const apiVersion = 1'],
   ['const platformVersion = "2026-10";', 'const apiVersion = 1;'],
   ['var platformVersion = "2026-10";', 'var apiVersion = 1;'],
   ['\n  platformVersion,\n', '\n  apiVersion,\n'],
-]
+] as const).map(([renamed, before]) => [Buffer.from(renamed), Buffer.from(before)])
 
-function undo(bytes: Buffer, pairs: [string, string][]): Buffer {
-  let text = bytes.toString('utf8')
-  for (const [renamed, before] of pairs) text = text.replaceAll(renamed, before)
-  return Buffer.from(text, 'utf8')
+// Byte-level replace, so a binary file is never decoded and re-encoded.
+function replaceAll(bytes: Buffer, from: Buffer, to: Buffer): Buffer {
+  const parts: Buffer[] = []
+  let start = 0
+  for (let at = bytes.indexOf(from); at !== -1; at = bytes.indexOf(from, start)) {
+    parts.push(bytes.subarray(start, at), to)
+    start = at + from.length
+  }
+  return start === 0 ? bytes : Buffer.concat([...parts, bytes.subarray(start)])
+}
+
+function undoRename(_file: string, bytes: Buffer): Buffer {
+  return RENAMED.reduce((text, [renamed, before]) => replaceAll(text, renamed, before), bytes)
 }
 
 /** The fingerprint these files had before the rename. */
 export async function fingerprintBeforeRename(directory: string) {
   const app = await artifactIdentity(directory)
-  const digest = await artifactDigest(app.root, (file, bytes) =>
-    file === app.manifestFile ? undo(bytes, MANIFEST_RENAME) : file === app.serverFile ? undo(bytes, SERVER_RENAME) : bytes)
-  return { ...app, digest, renamedDigest: await artifactDigest(app.root) }
+  return { ...app, digest: await artifactDigest(app.root, undoRename), renamedDigest: await artifactDigest(app.root) }
 }
 
 function configuredPaths(): string[] {
@@ -74,7 +88,7 @@ export async function up(paths: string[] = configuredPaths()) {
     else stranded.push(`${String(row.name)}@${String(row.package_version)}`)
   }
   if (stranded.length)
-    throw new Error(`Migration 0124 cannot find the shipped files of ${stranded.join(', ')} with only apiVersion renamed to platformVersion. ` +
+    throw new Error(`Migration 0125 cannot find the shipped files of ${stranded.join(', ')} with only apiVersion renamed to platformVersion. ` +
       'Set FEATHERBASE_APP_PATHS to include them, or restore those exact files, then migrate again. Nothing was changed.')
   for (const row of rows) {
     const { apiVersion: _retired, ...rest } = row.manifest as Record<string, unknown>
