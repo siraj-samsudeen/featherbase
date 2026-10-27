@@ -190,12 +190,16 @@ that fills it).
   rows). It may also name identifier systems, `"identifiers": ["<system>", ...]`
   (#660; for example the employee-code system, so a roster derivation can find a
   person's rows by code). The person it gets then carries `identifiers`: for each
-  named system, and only those, the person's current values (a row whose validity
-  has no end, person-resolution's rule), read fresh on every resolution and frozen
-  with the rest. It gets nothing else about the person, and `identifiers` is empty
-  when it names none. A named system the instance does not have answers "not set up
-  yet" before the provider runs, so no one gets a scope; the release check and
-  Instance health name it with the app's other missing setup.
+  named system, and only those, the person's current values, read fresh on every
+  resolution and frozen with the rest. *Current* means valid today: started on or
+  before today, with no end or an end after today, where today is India's day (as
+  the leaver check counts it), so a value with a future start is not passed (owner
+  decision 27-Oct-2026, provisional, for review 28-Oct). It gets nothing else about
+  the person, and `identifiers` is empty when it names none. A named system the
+  instance does not have, or has turned off (owner decision 27-Oct-2026,
+  provisional: a turned-off system passes no values and counts as missing), answers
+  "not set up yet" before the provider runs, so no one gets a scope; the release
+  check and Instance health name it with the app's other missing setup.
   It reads as the platform, so a manager needs no read grant on the roster,
   and under the provider app's own installed version, whatever the consuming
   request named. Exactly one enabled app may provide the scope on an instance: a
