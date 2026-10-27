@@ -1,0 +1,154 @@
+# Publishes the platform server image to the GitHub Container Registry (#587,
+# design D7 "Delivery" of openspec/changes/feather-dash-installed-app):
+#
+#   ghcr.io/siraj-samsudeen/featherbase-server:<full commit SHA>
+#   ghcr.io/siraj-samsudeen/featherbase-server:main   (follows main's tip; never pin it)
+#
+# GHCR creates the package private; a person makes it public once, after the
+# first publish (docs/DEPLOY.md, "Building a client image"). This token can't.
+#
+# It is the `platform` target of apps/server/Dockerfile: the server, the built
+# SPA and the start command, with no app and no FEATHERBASE_APP_PATHS. A client
+# image starts `FROM` a SHA tag, copies its built app and sets
+# FEATHERBASE_APP_PATHS (docs/DEPLOY.md, "Building a client image").
+#
+# It runs only after the `test` workflow has passed for a push to main, and it
+# builds exactly the commit that run tested (workflow_run.head_sha), so a
+# client never builds on an untested image. Branches, pull requests (forks
+# included) and manual runs of `test` never publish.
+#
+# Two jobs, so `:main` never moves backwards when runs for quick merges finish
+# out of order:
+#   publish       pushes only `:<sha>`; runs for different commits overlap.
+#   promote-main  retags that pushed digest as `:main`, one at a time across
+#                 every run (one shared concurrency group), and only if the
+#                 commit is still main's tip at that moment.
+name: publish-image
+
+on:
+  workflow_run:
+    workflows: [test]
+    types: [completed]
+    branches: [main]
+
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  # One publish per tested commit; different commits publish side by side.
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/siraj-samsudeen/featherbase-server
+  SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  publish:
+    # `branches: [main]` above matches on the branch NAME, which a fork's pull
+    # request can also carry, so check the event and the repository as well.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      # The platform-version label is read from the code's
+      # SUPPORTED_PLATFORM_VERSIONS, never hard-coded here.
+      - name: Decide labels
+        id: meta
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          versions=$(node tools/platform-versions.mjs)
+          {
+            echo "labels<<EOF"
+            echo "org.opencontainers.image.source=$REPO_URL"
+            echo "org.opencontainers.image.revision=$SHA"
+            echo "org.opencontainers.image.version=$SHA"
+            echo "org.opencontainers.image.title=featherbase-server"
+            echo "org.opencontainers.image.description=Featherbase platform server image: no apps; client images add theirs"
+            echo "dev.featherbase.platform-versions=$versions"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing $IMAGE:$SHA (platform versions $versions)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          target: platform
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.SHA }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=platform-image
+          cache-to: type=gha,scope=platform-image,mode=max
+
+  promote-main:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # One group for every run of this workflow: promotions run one at a time,
+    # so the tip check below and the retag cannot interleave with another
+    # commit's. GitHub keeps at most one promotion waiting and cancels the one
+    # it replaces, so with three or more promotions queued, `:main` can stay
+    # on an older commit until the next merge promotes. It never moves back.
+    concurrency:
+      group: publish-image-promote-main
+      cancel-in-progress: false
+    permissions:
+      packages: write
+    steps:
+      - name: Check this commit is still main's tip
+        id: tip
+        env:
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          tip=$(git ls-remote "$REPO_URL" refs/heads/main | cut -f1)
+          if [ "$tip" = "$SHA" ]; then
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "main has moved on to $tip; $IMAGE:$SHA is published but :main stays where it is" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.tip.outputs.promote == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - if: steps.tip.outputs.promote == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Retags the digest the publish job pushed; nothing is rebuilt.
+      - name: Point :main at this commit's image
+        if: steps.tip.outputs.promote == 'true'
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          docker buildx imagetools create -t "$IMAGE:main" "$IMAGE@$DIGEST"
+          echo "$IMAGE:main → $IMAGE:$SHA ($DIGEST)" | tee -a "$GITHUB_STEP_SUMMARY"

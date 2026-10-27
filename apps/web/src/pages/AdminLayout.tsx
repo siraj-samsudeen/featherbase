@@ -213,9 +213,13 @@ function AdminShell() {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
+    // The Table the open page belongs to, from the matched route's own
+    // `$table` param: a fixed Admin page (Jobs, All tables, …) has none, so the
+    // new-row shortcut does nothing there (#515).
     function currentTable(): string | null {
-      const m = /^\/featherbase\/admin\/([^/]+)/.exec(window.location.pathname)
-      return m ? decodeURIComponent(m[1]) : null
+      const match = router.state.matches.find((m) => 'table' in (m.params as Record<string, unknown>))
+      const table = (match?.params as { table?: string } | undefined)?.table
+      return table ?? null
     }
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null
@@ -237,7 +241,7 @@ function AdminShell() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentTable()
-        if (dt && dt !== 'new-table') navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
+        if (dt) navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -254,7 +258,7 @@ function AdminShell() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate])
+  }, [navigate, router])
 
   // #101 Phase 5: the "Last search" resume tile hands its query to the
   // command bar — prefilled and focused, ready to re-run.

@@ -21,7 +21,7 @@ import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled, se
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { resolvePreviewPerson } from './preview-person'
-import { pickPeople, principalNames } from './people-directory'
+import { personByEmail, pickPeople, principalNames } from './people-directory'
 import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-access'
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
@@ -183,12 +183,16 @@ app.get('/api/brand', async (c) => {
 // SPA stores. Either credential authenticates a request; the cookie keeps the
 // token out of reach of page scripts and lets plain browser requests (file
 // links, the print page) carry the session.
+// #353: `secure` by the sign-in challenge cookies' rule (externalOrigin): on
+// whenever the instance is reached over https, off on a plain-http local
+// origin, where a browser would silently drop a Secure cookie.
 function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
     maxAge: maxAgeSeconds,
+    secure: externalOrigin(c).protocol === 'https:',
   })
 }
 
@@ -295,7 +299,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
 // but the caller must not be told the session ended when it did not.
 app.post('/api/logout', async (c) => {
   const sid = getCookie(c, 'sid')
-  deleteCookie(c, 'sid', { path: '/' })
+  deleteCookie(c, 'sid', { path: '/', secure: externalOrigin(c).protocol === 'https:' })
   let incomplete = false
   for (const credential of new Set([c.req.header('authorization'), sid ? `Bearer ${sid}` : undefined])) {
     const session = await sessionToRevoke(credential)
@@ -372,7 +376,7 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   // #561: an SVG keeps its own type, which an <img> needs to draw it; it is
   // still an attachment, so opened directly it downloads and its script never runs.
   const type = mimeEssence(row.mime_type as string)
-  const inPlace = SHOWN_IN_PLACE.has(type) || /^(audio|video)\//.test(type)
+  const inPlace = SHOWN_IN_PLACE.has(type)
   const disposition = inPlace ? 'inline' : 'attachment'
   return c.body(new Uint8Array(content), 200, {
     'content-type': inPlace || type === 'image/svg+xml' ? type : 'application/octet-stream',
@@ -380,8 +384,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   })
 }
 
+// #562: sound and video are a fixed list too, never a wildcard: an uploader
+// could otherwise pick a type such as `video/xhtml+xml` that a browser may
+// render as a document.
 const SHOWN_IN_PLACE = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/bmp', 'application/pdf', 'text/plain',
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/mp4',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime',
 ])
 
 // A declared type reduced to its bare `type/subtype`, lowercased, with nothing
@@ -1869,15 +1878,19 @@ app.post('/api/assign', async (c) => {
     assign_to?: string
     description?: string
   }
-  if (!table || !name || !assign_to)
+  if (!table || !name || typeof assign_to !== 'string' || !assign_to.trim())
     throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(table, name, who(c))
   // Assignments go to people; a service account is not offered (person-rename).
-  const [target] = await sql`select row_id from person where row_id = ${assign_to}`
-  if (!target) throw new AppError('NotFoundError', `Person ${assign_to} not found`)
+  // The assign box invites an email address (#512), so a person is found by
+  // their id or, failing that, by an email the assigner may read.
+  const asked = assign_to.trim()
+  const [byId] = await sql`select row_id from person where row_id = ${asked}`
+  const target = byId ? String(byId.row_id) : await personByEmail(asked, who(c))
+  if (!target) throw new AppError('NotFoundError', `Person ${asked} not found`)
 
-  const todo = await createAssignment(table, name, assign_to, who(c), description)
+  const todo = await createAssignment(table, name, target, who(c), description)
   return c.json({ todo }, 201)
 })
 
