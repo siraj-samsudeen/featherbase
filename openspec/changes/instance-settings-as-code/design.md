@@ -216,7 +216,9 @@ shell on the server). Nothing is kept.
 
 - *Why:* catches a shared `JWT_SECRET` (dev tokens valid on prod) and a
   mismatched `GOOGLE_CLIENT_SECRET`. A new key each run means fingerprints
-  cannot be collected over time or tested against guesses offline.
+  cannot be collected over time, and are useless to anyone without the
+  run's key. The key's holder could test guesses, so these secrets must be
+  long and random.
 
 ## Risks / Trade-offs
 

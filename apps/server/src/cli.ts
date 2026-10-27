@@ -430,11 +430,17 @@ async function cmdSettingsCompare(io: CommandIO, positional: string[]): Promise<
   const pairs = positional.map((p) => /^([^=]+)=(.+)$/.exec(p))
   if (pairs.length < 2 || pairs.some((m) => !m)) throw new Error('usage: cli settings:compare <label>=<report.json> <label>=<report.json> [...]')
   const { readFile } = await import('node:fs/promises')
-  const { compareEnvironments, formatComparison } = await import('./environment-comparison')
+  const { compareEnvironments, formatComparison, parseVariableReport } = await import('./environment-comparison')
   const environments = []
   for (const [, label, file] of pairs as RegExpExecArray[]) {
+    let text: string
     try {
-      environments.push({ label, report: JSON.parse(await readFile(file, 'utf8')) })
+      text = await readFile(file, 'utf8')
+    } catch {
+      throw new Error(`cannot read ${file}`)
+    }
+    try {
+      environments.push({ label, report: parseVariableReport(text) })
     } catch (err) {
       throw new Error(`cannot read ${file} as a variable report: ${(err as Error).message}`)
     }

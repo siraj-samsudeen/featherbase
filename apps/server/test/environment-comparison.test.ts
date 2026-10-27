@@ -102,6 +102,9 @@ describe('the variable report', () => {
     const report = await variableReport(KEY)
     expect(entry(report, 'WAREHOUSE_TEST_URL')).toEqual({ name: 'WAREHOUSE_TEST_URL', secret: true, presence: 'recommended', set: true })
     expect(JSON.stringify(report)).not.toContain('warehouse/db')
+    // A source naming a declared variable does not list it twice.
+    await sql`insert into data_source (row_id, engine, url_env) values ('own', 'postgres', 'DATABASE_URL')`
+    expect((await variableReport(KEY)).variables.filter((v) => v.name === 'DATABASE_URL')).toHaveLength(1)
   })
 
   test('says which file revision was last applied, and whether the settings still match it', async () => {
@@ -185,10 +188,53 @@ describe('the comparison', () => {
     const dev = await environment({})
     const prod = await environment({ INSTANCE_ADDRESSES: ADDRESSES, SMTP_HOST: 'smtp-relay.example.test' })
     const result = compareEnvironments([{ label: 'dev', report: dev }, { label: 'prod', report: prod }])
-    expect(result.rows.find((r) => r.name === 'INSTANCE_ADDRESSES')).toMatchObject({ verdict: 'problem', reason: 'set on prod only', values: { dev: 'unset', prod: 'set' } })
+    expect(result.rows.find((r) => r.name === 'INSTANCE_ADDRESSES')).toMatchObject({ verdict: 'problem', reason: 'set on prod only; dev needs it', values: { dev: 'unset', prod: 'set' } })
     expect(result.rows.find((r) => r.name === 'SMTP_HOST')).toMatchObject({ verdict: 'note', reason: 'set on prod only' })
+    // Recommended counts as needed too.
+    const storage = compareEnvironments([{ label: 'dev', report: dev }, { label: 'prod', report: await environment({ FILE_STORAGE_DIR: '/data/files' }) }])
+    expect(storage.rows.find((r) => r.name === 'FILE_STORAGE_DIR')).toMatchObject({ verdict: 'problem', reason: 'set on prod only; dev needs it' })
     // A variable no environment sets is left out of the table.
     expect(result.rows.find((r) => r.name === 'CHROMIUM_PATH')).toBeUndefined()
+  })
+
+  test('a feature\'s secret missing where the feature is off is a note, and a problem where it is on', async () => {
+    const devOff = await environment({})
+    const prodOn = await environment({ GOOGLE_CLIENT_SECRET: 'google-secret' })
+    const off = compareEnvironments([{ label: 'dev', report: devOff }, { label: 'prod', report: prodOn }])
+    expect(off.rows.find((r) => r.name === 'GOOGLE_CLIENT_SECRET')).toMatchObject({ verdict: 'note', reason: 'set on prod only' })
+    await sql`update sign_in_method set enabled = true, client_id = 'client.apps.example' where row_id = 'google'`
+    const devOn = await environment({})
+    const on = compareEnvironments([{ label: 'dev', report: devOn }, { label: 'prod', report: prodOn }])
+    expect(on.rows.find((r) => r.name === 'GOOGLE_CLIENT_SECRET')).toMatchObject({ verdict: 'problem', reason: 'set on prod only; dev needs it' })
+  })
+
+  test('with three environments, each group sharing a secret is named', async () => {
+    const dev = await environment({ JWT_SECRET: JWT })
+    const staging = await environment({ JWT_SECRET: JWT })
+    const prod = await environment({ JWT_SECRET: `${JWT}-prod` })
+    const result = compareEnvironments([{ label: 'dev', report: dev }, { label: 'staging', report: staging }, { label: 'prod', report: prod }])
+    expect(result.rows.find((r) => r.name === 'JWT_SECRET')).toMatchObject({ verdict: 'problem', reason: 'the same on dev and staging; it must differ between environments' })
+    const google = compareEnvironments([
+      { label: 'dev', report: await environment({ GOOGLE_CLIENT_SECRET: 'one' }) },
+      { label: 'staging', report: await environment({ GOOGLE_CLIENT_SECRET: 'one' }) },
+      { label: 'prod', report: await environment({ GOOGLE_CLIENT_SECRET: 'two' }) },
+    ])
+    expect(google.rows.find((r) => r.name === 'GOOGLE_CLIENT_SECRET')).toMatchObject({ verdict: 'problem', reason: 'differs between dev, staging and prod; it must be the same in every environment' })
+  })
+
+  test('two environments applied with one section, or with no revision, are flagged', async () => {
+    const dev = await environment({})
+    const at = (settings: Partial<VariableReport['settings']>): VariableReport => ({ ...dev, settings: { ...APPLIED, ...settings } })
+    const one = compareEnvironments([{ label: 'dev', report: at({ environment: 'dev' }) }, { label: 'prod', report: at({ environment: 'dev' }) }])
+    expect(one.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({
+      verdict: 'problem', reason: 'dev and prod were both applied with the dev section', values: { dev: 'aaaaaaaaaaaa (dev)', prod: 'aaaaaaaaaaaa (dev)' },
+    })
+    const none = compareEnvironments([{ label: 'dev', report: at({ revision: null }) }, { label: 'prod', report: at({ revision: null }) }])
+    expect(none.rows.find((r) => r.name === 'Settings file revision')).toMatchObject({
+      verdict: 'note', reason: 'no revision recorded on dev and prod, so the files cannot be told apart', values: { dev: 'no revision', prod: 'no revision' },
+    })
+    const unknown = compareEnvironments([{ label: 'dev', report: at({ matches_file: null }) }, { label: 'prod', report: at({}) }])
+    expect(unknown.rows.find((r) => r.name === 'Settings match the file')).toMatchObject({ verdict: 'note', values: { dev: 'unknown', prod: 'yes' } })
   })
 
   test('environments on different file revisions, or changed outside the file, are a problem', async () => {
@@ -198,7 +244,7 @@ describe('the comparison', () => {
     const applied = { applied: true, environment: 'dev', revision: 'a'.repeat(40), matches_file: true }
     const same = compareEnvironments([{ label: 'dev', report: at(applied) }, { label: 'prod', report: { ...prod, settings: { ...applied, environment: 'prod' } } }])
     expect(same.rows.filter((r) => r.kind === 'settings')).toEqual([
-      { kind: 'settings', name: 'Settings file revision', values: { dev: 'aaaaaaaaaaaa', prod: 'aaaaaaaaaaaa' }, verdict: 'ok', reason: '' },
+      { kind: 'settings', name: 'Settings file revision', values: { dev: 'aaaaaaaaaaaa (dev)', prod: 'aaaaaaaaaaaa (prod)' }, verdict: 'ok', reason: '' },
       { kind: 'settings', name: 'Settings match the file', values: { dev: 'yes', prod: 'yes' }, verdict: 'ok', reason: '' },
     ])
 
@@ -207,7 +253,7 @@ describe('the comparison', () => {
       { label: 'prod', report: { ...prod, settings: { ...applied, matches_file: false } } },
     ])
     expect(apart.rows.filter((r) => r.kind === 'settings')).toEqual([
-      { kind: 'settings', name: 'Settings file revision', values: { dev: 'never applied', prod: 'aaaaaaaaaaaa' }, verdict: 'problem', reason: 'never applied on dev' },
+      { kind: 'settings', name: 'Settings file revision', values: { dev: 'never applied', prod: 'aaaaaaaaaaaa (dev)' }, verdict: 'problem', reason: 'never applied on dev' },
       { kind: 'settings', name: 'Settings match the file', values: { dev: 'not applied', prod: 'no' }, verdict: 'problem', reason: 'changed outside the file on prod' },
     ])
     const revisions = compareEnvironments([
@@ -232,7 +278,7 @@ describe('the comparison', () => {
     const lines = table.split('\n')
     expect(lines[0]).toMatch(/^Variable\s+dev\s+prod\s+Result$/)
     expect(lines.find((l) => l.startsWith('JWT_SECRET'))).toMatch(/^JWT_SECRET\s+set\s+set\s+PROBLEM: the same on dev and prod; it must differ between environments$/)
-    expect(lines.find((l) => l.startsWith('INSTANCE_ADDRESSES'))).toMatch(/unset\s+set\s+PROBLEM: set on prod only$/)
+    expect(lines.find((l) => l.startsWith('INSTANCE_ADDRESSES'))).toMatch(/unset\s+set\s+PROBLEM: set on prod only; dev needs it$/)
     expect(lines.at(-1)).toMatch(/^\d+ problems?(, \d+ notes?)?\.$/)
     expect(table).not.toContain(JWT)
 
@@ -279,7 +325,18 @@ describe('on the command line', () => {
     expect(usage.stderr).toContain('usage: cli settings:compare <label>=<report.json> <label>=<report.json> [...]')
     const unreadable = await runMain(main, ['settings:compare', `dev=${dev}`, `prod=${join(dir, 'missing.json')}`])
     expect(unreadable.code).toBe(1)
-    expect(unreadable.stderr).toContain('cannot read')
+    expect(unreadable.stderr).toContain(`cannot read ${join(dir, 'missing.json')}`)
+    // A wrong file is named, and none of its text reaches the output.
+    const dotenv = join(dir, 'prod.env')
+    writeFileSync(dotenv, `DATABASE_URL=${DB}\n`)
+    const notJson = await runMain(main, ['settings:compare', `dev=${dev}`, `prod=${dotenv}`])
+    expect(notJson.code).toBe(1)
+    expect(notJson.stderr).toContain(`cannot read ${dotenv} as a variable report: it is not JSON`)
+    expect(notJson.stderr + notJson.stdout).not.toContain('DATABASE_U')
+    const errorPage = write('error.json', { error: { type: 'PermissionError', message: 'Not permitted' } } as unknown as VariableReport)
+    const wrongShape = await runMain(main, ['settings:compare', `dev=${dev}`, `prod=${errorPage}`])
+    expect(wrongShape.code).toBe(1)
+    expect(wrongShape.stderr).toContain('it is not a variable report (environment, key_id, variables)')
   })
 })
 

@@ -4,14 +4,18 @@
 // variables are set, a truncated HMAC-SHA256 of each secret with a
 // cross-environment rule, and where its settings stand against the file.
 // compareEnvironments puts the reports side by side. A new key each run means
-// fingerprints cannot be collected over time or tested against guesses
-// offline; nothing here is kept, and no value is ever returned.
+// fingerprints cannot be collected and matched across runs, and are useless
+// to anyone without that run's key; nothing here is kept, and no value is
+// ever returned. Whoever holds the key (a System Manager) could test guesses
+// against a fingerprint, so the rule-bearing secrets must be long and random,
+// as DEPLOY.md says.
 import { createHash, createHmac } from 'node:crypto'
+import { z } from 'zod'
 import { AppError } from './errors'
 import { currentEnvironment, isSet, readNamedVariable, readVariable, VARIABLES, type Variable, type VariableName } from './env'
 import { lastApply } from './managed-settings'
 
-/** Long enough that a run's key cannot be guessed to test fingerprints offline. */
+/** Long enough that nobody without the run's key can guess it. */
 export const MIN_KEY_LENGTH = 32
 const MAX_KEY_LENGTH = 512
 
@@ -86,7 +90,7 @@ export async function variableReport(key: unknown): Promise<VariableReport> {
   // A data source's connection string: the instance names the variable, and
   // the release warns while it is missing (release-preflight.ts).
   for (const { name } of named ?? [])
-    variables.push({ name, secret: true, presence: 'recommended', set: Boolean(readNamedVariable(name)?.trim()) })
+    if (!variables.some((v) => v.name === name)) variables.push({ name, secret: true, presence: 'recommended', set: Boolean(readNamedVariable(name)?.trim()) })
   return {
     environment: currentEnvironment(),
     key_id: createHash('sha256').update(key).digest('hex').slice(0, 8),
@@ -132,12 +136,10 @@ function compareVariable(name: string, entries: (VariableEntry | undefined)[], l
   const values = Object.fromEntries(labels.map((l, i) => [l, entries[i]?.set ? 'set' : 'unset']))
   const row = (verdict: Verdict, reason = ''): ComparisonRow => ({ kind: 'variable', name, values, verdict, reason })
   const rule = entries.find((e) => e?.rule)?.rule
-  const presence = entries.some((e) => e?.presence === 'required') ? 'required'
-    : entries.some((e) => e?.presence === 'recommended') ? 'recommended' : 'optional'
   const fingerprints = entries.map((e) => e?.fingerprint)
 
   if (rule === 'must-differ') {
-    // Every pair of environments that both set it.
+    // Every group of environments that share one value.
     const shared = new Map<string, string[]>()
     labels.forEach((l, i) => {
       if (fingerprints[i]) shared.set(fingerprints[i]!, [...(shared.get(fingerprints[i]!) ?? []), l])
@@ -148,15 +150,21 @@ function compareVariable(name: string, entries: (VariableEntry | undefined)[], l
   if (rule === 'must-match' && new Set(fingerprints.filter(Boolean)).size > 1)
     return row('problem', `differs between ${and(setOn)}; it must be the same in every environment`)
   if (setOn.length < labels.length) {
-    const reason = `set on ${and(setOn)} only`
-    return row(presence === 'optional' && rule !== 'must-match' ? 'note' : 'problem', reason)
+    // Missing is a problem only where that environment itself needs it: a
+    // feature's secret is not needed where the feature is off.
+    const needed = labels.filter((_, i) => !entries[i]?.set && entries[i]?.presence !== undefined && entries[i]?.presence !== 'optional')
+    const reason = needed.length ? `set on ${and(setOn)} only; ${and(needed)} ${needed.length === 1 ? 'needs' : 'need'} it` : `set on ${and(setOn)} only`
+    return row(needed.length ? 'problem' : 'note', reason)
   }
   return row('ok')
 }
 
 function compareSettings(reports: VariableReport[], labels: string[]): ComparisonRow[] {
-  const revisionCell = (r: VariableReport) =>
-    !r.settings.applied ? 'never applied' : r.settings.revision ? r.settings.revision.slice(0, 12) : 'no revision'
+  const revisionCell = (r: VariableReport) => {
+    if (!r.settings.applied) return 'never applied'
+    const revision = r.settings.revision ? r.settings.revision.slice(0, 12) : 'no revision'
+    return r.settings.environment ? `${revision} (${r.settings.environment})` : revision
+  }
   const revisions: ComparisonRow = {
     kind: 'settings', name: 'Settings file revision',
     values: Object.fromEntries(labels.map((l, i) => [l, revisionCell(reports[i])])), verdict: 'ok', reason: '',
@@ -165,6 +173,21 @@ function compareSettings(reports: VariableReport[], labels: string[]): Compariso
   if (never.length) Object.assign(revisions, { verdict: 'problem', reason: `never applied on ${and(never)}` })
   else if (new Set(reports.map((r) => r.settings.revision)).size > 1)
     Object.assign(revisions, { verdict: 'problem', reason: `${and(labels)} were applied from different revisions` })
+  else {
+    // Each environment applies its own section of the file; two on one section
+    // means one of them has the other's values.
+    const bySection = new Map<string, string[]>()
+    labels.forEach((l, i) => {
+      const section = reports[i].settings.environment
+      if (section) bySection.set(section, [...(bySection.get(section) ?? []), l])
+    })
+    const shared = [...bySection.entries()].filter(([, group]) => group.length > 1)
+    const unrevised = labels.filter((_, i) => !reports[i].settings.revision)
+    if (shared.length)
+      Object.assign(revisions, { verdict: 'problem', reason: shared.map(([section, group]) => `${and(group)} were both applied with the ${section} section`).join('; ') })
+    else if (unrevised.length)
+      Object.assign(revisions, { verdict: 'note', reason: `no revision recorded on ${and(unrevised)}, so the files cannot be told apart` })
+  }
 
   const matchCell = (r: VariableReport) =>
     !r.settings.applied ? 'not applied' : r.settings.matches_file === null ? 'unknown' : r.settings.matches_file ? 'yes' : 'no'
@@ -177,6 +200,39 @@ function compareSettings(reports: VariableReport[], labels: string[]): Compariso
   if (changed.length) Object.assign(matches, { verdict: 'problem', reason: `changed outside the file on ${and(changed)}` })
   else if (unknown.length) Object.assign(matches, { verdict: 'note', reason: `cannot tell on ${and(unknown)} until the file is applied again` })
   return [revisions, matches]
+}
+
+const reportSchema = z.object({
+  environment: z.string(),
+  key_id: z.string().regex(/^[0-9a-f]{8}$/),
+  variables: z.array(z.object({
+    name: z.string(),
+    secret: z.boolean(),
+    presence: z.enum(['required', 'recommended', 'optional']),
+    set: z.boolean(),
+    rule: z.enum(['must-differ', 'must-match']).optional(),
+    fingerprint: z.string().optional(),
+  })),
+  settings: z.object({
+    applied: z.boolean(),
+    environment: z.string().nullable(),
+    revision: z.string().nullable(),
+    matches_file: z.boolean().nullable(),
+  }),
+})
+
+/** Read a report someone saved, without echoing its text: a wrong file (an
+ *  error page, a .env) must not reach a CI log. */
+export function parseVariableReport(text: string): VariableReport {
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    throw new Error('it is not JSON')
+  }
+  const parsed = reportSchema.safeParse(json)
+  if (!parsed.success) throw new Error(`it is not a variable report (${parsed.error.issues.map((i) => i.path.join('.') || 'the file').slice(0, 3).join(', ')})`)
+  return parsed.data
 }
 
 /** Put two or more environments' reports side by side. Every report must

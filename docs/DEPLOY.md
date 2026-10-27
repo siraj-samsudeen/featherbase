@@ -466,11 +466,12 @@ run. It picks a fresh key, asks every environment for its variable report
 with that key, and puts the reports side by side:
 
 ```bash
-KEY=$(openssl rand -hex 32)   # new every run; never stored
+set -euo pipefail
+KEY=$(openssl rand -hex 32)   # new every run; never stored (in Actions, ::add-mask:: it)
 for env in dev prod; do        # each with its own System Manager service-account token
-  curl --fail-with-body "https://<$env host>/api/instance-settings/variables" \
+  printf '{"key":"%s"}' "$KEY" | curl --fail-with-body "https://<$env host>/api/instance-settings/variables" \
     -H "Authorization: Bearer <$env token>" -H 'Content-Type: application/json' \
-    --data "{\"key\":\"$KEY\"}" > "$env.json"
+    --data @- > "$env.json"
 done
 pnpm --filter server cli settings:compare dev=dev.json prod=prod.json
 ```
@@ -479,9 +480,11 @@ A report says, for every declared variable, whether it is set, and for the
 secrets with a cross-environment rule (the "must differ" `DATABASE_URL`,
 `JWT_SECRET` and `FILE_URL_SECRET`; the "must match" `GOOGLE_CLIENT_SECRET`)
 a 16-digit HMAC-SHA256 of the value under that run's key. It also names the
-settings-file revision last applied and whether the settings still match it.
-No value leaves the server, and a new key each run means fingerprints cannot
-be collected or tested against guesses. From a shell on the server (for
+settings-file revision and section last applied, and whether the settings
+still match it. No value leaves the server. A new key each run means
+fingerprints cannot be collected and matched across runs, and are useless
+without that run's key. Whoever holds the key could still test guesses
+against them, so keep these secrets long and random. From a shell on the server (for
 example over `railway ssh`), `printf %s "$KEY" | pnpm --filter server cli
 settings:variables --stdin` prints the same report.
 
@@ -489,22 +492,24 @@ The comparison prints one line per variable that any environment sets, then
 the settings file:
 
 ```text
-Variable                 dev           prod          Result
-DATABASE_URL             set           set           ok
-INSTANCE_ADDRESSES       unset         set           PROBLEM: set on prod only
-JWT_SECRET               set           set           PROBLEM: the same on dev and prod; it must differ between environments
-GOOGLE_CLIENT_SECRET     set           set           ok
-SMTP_HOST                unset         set           note: set on prod only
-Settings file revision   4f0c2a91b7de  4f0c2a91b7de  ok
-Settings match the file  yes           no            PROBLEM: changed outside the file on prod
+Variable                 dev                 prod                 Result
+DATABASE_URL             set                 set                  ok
+INSTANCE_ADDRESSES       unset               set                  PROBLEM: set on prod only; dev needs it
+JWT_SECRET               set                 set                  PROBLEM: the same on dev and prod; it must differ between environments
+GOOGLE_CLIENT_SECRET     set                 set                  ok
+SMTP_HOST                unset               set                  note: set on prod only
+Settings file revision   4f0c2a91b7de (dev)  4f0c2a91b7de (prod)  ok
+Settings match the file  yes                 no                   PROBLEM: changed outside the file on prod
 3 problems, 1 note.
 ```
 
-It exits 1 while there is a problem: a rule broken, a required or
-recommended variable set on some environments only, an environment never
-applied or applied from another revision, or settings changed outside the
-file. A note (an optional variable set on one side only, such as real email
-on prod) is for reading, not failing. Reports made with different keys are
+It exits 1 while there is a problem: a rule broken, a variable missing on an
+environment that needs it (required or recommended there, such as the Google
+secret where Google sign-in is on), an environment never applied, applied
+from another revision, or applied with another environment's section, or
+settings changed outside the file. A note (a variable set on one side only
+that the other does not need, such as real email on prod, or an apply with no
+revision recorded) is for reading, not failing. Reports made with different keys are
 refused. Values that should differ, such as each environment's own web
 addresses, are compared by presence only.
 
