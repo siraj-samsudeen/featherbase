@@ -14,6 +14,7 @@ import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateO
 import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
+import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -62,6 +63,8 @@ const manifestSchema = z.object({
   settings: settingsDeclaration.optional(),
   secrets: secretsDeclaration.optional(),
   roleDefaults: roleDefaultsDeclaration.optional(),
+  // #625 (E3): the cached datasets the app reads, built by the platform.
+  datasets: datasetsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -142,6 +145,7 @@ async function verifyArtifact(pkg: RuntimePackage | undefined): Promise<RuntimeP
 function selectPackage(pkg: RuntimePackage) {
   registerApp(pkg.app)
   packages.set(pkg.name, pkg)
+  registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
 export async function verifySelectedRuntimePackage(name: string) {
@@ -203,6 +207,7 @@ export async function artifactIdentity(directory: string) {
 export function discoverPackages(paths: string[]) {
   return appOperation(async () => {
     forgetRuntimePackages()
+    forgetAppDatasets()
     packages.clear()
     artifacts.clear()
     packageFailures.length = 0
@@ -302,7 +307,7 @@ export function discoverPackages(paths: string[]) {
           scopeProvider: provider ? { app: manifest.name, version: pkg.version, tables: provider.tables, provide: providers.get(provider.name)! } : undefined,
           // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
           actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations), setup } : undefined,
-          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup } : undefined })
+          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations), setup, datasets: manifest.datasets } : undefined })
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))

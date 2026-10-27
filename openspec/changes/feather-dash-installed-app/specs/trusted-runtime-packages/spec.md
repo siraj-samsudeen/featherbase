@@ -1,18 +1,53 @@
 ## ADDED Requirements
 
-### Requirement: An instance brings its own report to an app
+### Requirement: An app keeps a fast copy of its report data
 
-An app SHALL be able to accept a report definition from the instance it is installed
-on, so the same app serves different clients' data without changing the app.
-Featherbase SHALL refresh that report on a schedule and serve each reader only the part
-their own access allows.
+An app SHALL be able to declare the report data it reads: which of the instance's
+data sources it comes from, the question it asks of that source, and which of its
+columns follow a person's places. Featherbase SHALL keep a copy of that data
+(a cached copy), refresh it on a schedule, and hand each reader only their own part.
 
-#### Scenario: Two clients use the same report app
+#### Scenario: A report opens from the cached copy
 
-- **WHEN** two instances install the same report app, each with its own report
-  definition
-- **THEN** each instance's readers see their own instance's report, and neither app
-  copy was changed
+- **WHEN** a Team Leader opens a sales report whose data was refreshed this morning
+- **THEN** they see their own section's figures at once, from this morning's copy
+- **AND** they never see another section's figures
+
+### Requirement: Cached and live figures always agree in form
+
+An app SHALL be able to ask for the same report data live from its source. The live
+answer SHALL be limited to the same places and laid out exactly as the cached one, so
+the two can only differ where the data itself has changed.
+
+#### Scenario: Switching to live figures
+
+- **WHEN** a reader asks for live figures after reading the cached copy, and nothing
+  has changed at the source
+- **THEN** the live figures match the cached ones, row for row and in every total
+
+### Requirement: Report data leaves only through a reader's own scope
+
+A cached copy holds every place's figures, so Featherbase SHALL let it out only
+through an app's read, limited to the reader's places. A reader with no places SHALL
+get no figures. An app SHALL be able to narrow a read only by the columns it declared
+for that.
+
+#### Scenario: A cached copy cannot be exported
+
+- **WHEN** an administrator looks for the cached copy among the instance's tables or
+  in an export
+- **THEN** it is not there to find
+
+#### Scenario: Two neighbouring account numbers
+
+- **WHEN** two readers each cover one of two very long account numbers that differ
+  only in the last digit
+- **THEN** each sees only their own account, cached and live
+
+#### Scenario: A place the report cannot split by
+
+- **WHEN** a person's place is a floor, and the report has no floor column
+- **THEN** that place adds no figures, rather than the whole store's
 
 ### Requirement: A failed refresh never replaces the last good copy
 
@@ -27,9 +62,9 @@ replace the last good copy, and an admin SHALL be able to see why it was refused
 
 ### Requirement: An app says what settings and secrets it needs
 
-An app SHALL declare the settings and secrets it needs. An admin SHALL be able to see
-which required ones are missing. A secret's value SHALL never be shown, stored or
-written to any log.
+An app SHALL declare the settings, secrets and data sources it needs. An admin SHALL be
+able to see which required ones are missing. A secret's value SHALL never be shown,
+stored or written to any log.
 
 #### Scenario: A missing setting is explained, not mistaken for a fault
 
@@ -39,9 +74,9 @@ written to any log.
 
 #### Scenario: An admin sees what an app still needs
 
-- **WHEN** an installed app still lacks a secret it requires
-- **THEN** the instance's health page and the release log name the app and the
-  missing secret, without showing any value
+- **WHEN** an installed app still lacks a secret or a data source it requires
+- **THEN** the instance's health page and the release log name the app and what is
+  missing, without showing any value
 
 ### Requirement: An app gets only the settings it declared
 
@@ -160,3 +195,33 @@ SHALL refuse to start on an instance that has two.
 - **WHEN** an admin installs a second app that provides people's scope
 - **THEN** the install is refused, naming the app that already provides it
 
+
+### Requirement: A slow outside call never holds up other people's work
+
+When an app's read asks an outside service, Featherbase SHALL decide who may see what
+first, and then let the app make the call with nothing in the instance held waiting
+for it.
+
+#### Scenario: The warehouse is slow
+
+- **WHEN** a reader opens live figures and the warehouse takes half a minute to answer
+- **THEN** other people saving records meanwhile, and an administrator turning an
+  app off, are not kept waiting by that read
+
+#### Scenario: An app turned off while it waits
+
+- **WHEN** an administrator turns an app off while one of its reads waits on the
+  warehouse
+- **THEN** that read's answer is refused, and no view of it is recorded
+
+### Requirement: Every view of a report is recorded
+
+An app SHALL be able to record that a person viewed a report. Featherbase SHALL write
+the record itself, saying who looked, at which places, and whether they saw the
+cached copy or live figures.
+
+#### Scenario: Tracing a disputed figure
+
+- **WHEN** a manager says a figure they saw yesterday was wrong
+- **THEN** an administrator can find their view, and the exact cached copy it came
+  from

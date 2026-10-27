@@ -1,5 +1,6 @@
 import { registerJob } from '../jobs'
-import { buildSnapshot, pendingMisses, pruneSnapshots, registeredDatasets, activeSnapshot } from '../dataset-snapshot'
+import { buildSnapshot, forgetMisses, pendingMisses, pruneSnapshots, registeredDatasets, activeSnapshot } from '../dataset-snapshot'
+import { appDatasetServing } from '../app-datasets'
 // Importing the definition is what registers it. Datasets are registered by
 // import, like controllers and job handlers, so adding one is adding a file.
 import '../datasets/sales-target-mtd'
@@ -16,9 +17,23 @@ import '../datasets/sales-target-mtd'
  * follows demand rather than a list someone maintained.
  */
 export async function datasetsDue(): Promise<string[]> {
-  const misses = new Set(await pendingMisses())
-  for (const name of registeredDatasets()) if (await activeSnapshot(name)) misses.add(name)
-  return [...misses]
+  const registered = new Set(registeredDatasets())
+  const due = new Set<string>()
+  for (const name of await pendingMisses()) {
+    // #625: a dataset no app version declares any more (an upgrade dropped
+    // it) can never build; its ask is closed rather than failing every run.
+    if (registered.has(name)) due.add(name)
+    else await forgetMisses(name)
+  }
+  for (const name of registered) if (await activeSnapshot(name)) due.add(name)
+  const serving: string[] = []
+  for (const name of due) {
+    // #625: an app that is disabled or mid-upgrade is not refreshed, and its
+    // asks are closed; a reader of the enabled app asks again.
+    if (await appDatasetServing(name)) serving.push(name)
+    else await forgetMisses(name)
+  }
+  return serving
 }
 
 registerJob('refresh_datasets', async (_payload, ctx) => {
