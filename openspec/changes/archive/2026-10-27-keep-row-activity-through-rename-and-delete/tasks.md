@@ -13,4 +13,4 @@
 
 ## 4. Verification
 
-- [ ] 4.1 Full suites and checks on a fresh database; independent review; archive this change.
+- [x] 4.1 Full suites and checks on a fresh database; independent review; archive this change.
