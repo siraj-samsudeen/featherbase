@@ -6,4 +6,4 @@
 
 ## 2. App tables
 
-- [ ] 2.1 Deleting a table an installed app owns is refused, naming the app and pointing at uninstalling it (#122).
+- [x] 2.1 Deleting a table an installed app owns is refused, naming the app and pointing at uninstalling it (#122).

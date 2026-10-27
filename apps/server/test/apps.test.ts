@@ -116,6 +116,29 @@ describe('PLAT-001: app install/uninstall', () => {
       await unwire(APP1, APP1_DT)
     }
   })
+
+  // #122: deleting an app's Table directly left the app recorded as
+  // installed with none of its tables, so installing it again was refused.
+  // A Table an installed app owns is refused, naming the app; uninstalling
+  // removes the app's tables and its record together.
+  test('a Table an installed app owns cannot be deleted on its own; uninstall is the way', async ({ admin }: { admin: TestClient }) => {
+    registerApps()
+    try {
+      await installApp(APP1)
+      await expect(admin.delete(`/api/table_def/${encodeURIComponent(APP1_DT)}`)).rejects.toMatchObject({
+        status: 417,
+        message: expect.stringContaining(`Cannot delete ${APP1_DT}: it belongs to the installed app ${APP1}. Uninstall the app to remove its tables.`),
+      })
+      const [dt] = await sql`select 1 from table_def where name = ${APP1_DT}`
+      expect(dt).toBeDefined()
+      expect(await isInstalled(APP1)).toBe(true)
+
+      await uninstallApp(APP1)
+      expect((await installApp(APP1)).tables).toEqual([APP1_DT])
+    } finally {
+      await unwire(APP1, APP1_DT)
+    }
+  })
 })
 
 describe('PLAT-002: app doc_events fire alongside the core controller', () => {

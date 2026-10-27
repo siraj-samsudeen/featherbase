@@ -597,6 +597,19 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
+  // #122: an installed app owns its tables as a set — the registry records
+  // them, and uninstalling removes them and the record together. Deleting
+  // one alone would leave the app recorded as installed without it.
+  const [owner] = await sql<{ name: string }[]>`
+    select name from installed_app
+    where jsonb_typeof(tables) = 'array' and tables @> ${sql.json([meta.name])}
+    order by name limit 1`
+  if (owner)
+    throw new AppError(
+      'ValidationError',
+      `Cannot delete ${meta.name}: it belongs to the installed app ${owner.name}. Uninstall the app to remove its tables.`,
+    )
+
   // DEL-R3: DOC-006's reverse lookup, one level up. Any OTHER Table whose
   // schema targets this one — a Reference column or a Sub-table's row
   // storage — blocks, even with zero data rows: the column is the dependency.
