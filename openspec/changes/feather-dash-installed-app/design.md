@@ -285,6 +285,17 @@ The platform allows them as frame sources only on that app's own pages. The glob
 `EMBED_ORIGIN` entry goes away. The browser-level stub keeps working through a
 development-only setting.
 
+- **As built (#642).** `frameOrigins` must be exact `https` origins (the URL
+  parser's origin reads back the same text: no wildcard, path, trailing slash,
+  credentials or written-out default port); discovery refuses anything else.
+  Every response's policy is `frame-src 'self'` plus the origins of the app
+  whose page it is, set only on the HTML an app serves. There is no
+  instance-wide outside origin. Until B9 the Sales Target page
+  (`/featherbase/sales-target`) keeps `MOTHERDUCK_EMBED_ORIGIN` for that page
+  alone, which also keeps the browser-level stub working. A document keeps the
+  policy it was loaded with, so the report's route enters by a full load when
+  the document was loaded at another page (sign-in, the Admin hand-over).
+
 **E5. Reads that call out.** A read declared `"outbound": true` has its
 authorization decided and frozen inside the platform transaction; its handler runs
 *after* the transaction closes, so no row lock is held during a MotherDuck call.
@@ -318,11 +329,38 @@ app's exact installed version is missing from the image. A refused release keeps
 the previous deployment serving, so a deploy can never silently take the report
 away.
 
+- **As built (#642).** `preflightRelease` loads every app on
+  `FEATHERBASE_APP_PATHS` exactly as boot does (registering nothing) and
+  refuses when an installed, enabled app's `package_version` and fingerprint
+  (`artifact_digest`, or the recorded manifest for a legacy install) are not
+  among them, before the first migration. The message names the app and
+  version and says to ship them in the image or disable the app. A version
+  shipped twice with different files counts as not shipped, as boot drops it
+  (Codex round 1 on #643). The server's start and `cli boot-check` run the
+  same check and refuse, except on a `development` server: init.sh runs apps
+  from their source folders, so editing an app or switching branches changes
+  its fingerprint, and there the server starts with the app unavailable and
+  warns, naming the app, the version and how to bring it back (init.sh repeats
+  the warning). A disabled app never blocks, and a row with no recorded
+  version (mid-recovery, which no image can serve) is not checked.
+
 **E8. Bar controls.** An app may declare a control for the shared top bar:
 `"bar": [{ "picker": "Store", "options": "<one of the app's reads>", "sets": "store" }]`.
 The platform draws it in Shop Floor style, fills it from the app's own read (which
 is scope-checked), and puts the choice in the address (`?store=12`), where the app
 reads it. An app never runs its own code in the bar (ADR 0011).
+
+- **As built, server side (#642).** Discovery refuses a control whose
+  `options` is not one of the app's reads, whose `sets` is not a query-string
+  key (`^[a-z][a-z0-9_]{0,63}$`), or whose key another control already sets.
+  `GET /api/app_bar/:app` answers `{ controls: [{ picker, sets, options }] }`
+  for an app the person can open (the same gate as its pages; otherwise
+  404). Each picker's options are its read's answer, run for the person under
+  their own scope as the app's serving version, and must be a list of
+  `{ value, label }`, both text, in the read's order; any other answer fails
+  the request. A person the read refuses gets no options, so the bar leaves
+  the control out; the read has logged the refusal. The top bar's picker is
+  built once the owner confirms its checklist (#642).
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures

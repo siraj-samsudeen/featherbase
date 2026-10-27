@@ -74,9 +74,9 @@ import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
@@ -104,7 +104,9 @@ await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
 
-type Env = { Variables: { user: SessionUser } }
+// frameOrigins (#642, E4): the outside sites this response's page may frame,
+// set by the handler that serves an app's own page.
+type Env = { Variables: { user: SessionUser; frameOrigins?: readonly string[] } }
 
 export const app = new Hono<Env>()
 
@@ -118,10 +120,21 @@ app.notFound((c) =>
 // API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
-// #3755: the personalised sales-target report embeds MotherDuck's sandbox
-// origin in an iframe, so frames from that origin are allowed; everything
-// else secureHeaders() sets stays as it was.
-app.use('*', secureHeaders({ contentSecurityPolicy: { frameSrc: ["'self'", EMBED_ORIGIN] } }))
+// #642 (E4): the frame policy is decided per response. A page frames its own
+// origin, plus the outside sites the app whose page it is declared; there is
+// no instance-wide outside origin.
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))
+})
+app.use('*', secureHeaders())
+// #3755: until the report moves into its app (B9), its page frames
+// MotherDuck's embed sandbox: that page alone, not the instance, with or
+// without a trailing slash (Codex round 2 on #643).
+app.use('*', async (c, next) => {
+  if (ownFramePolicyPage(c.req.path)) c.set('frameOrigins', [EMBED_ORIGIN])
+  await next()
+})
 app.use(
   '/api/*',
   cors({
@@ -742,7 +755,8 @@ app.use('/api/*', async (c, next) => {
     // #625 (E5): an app read takes the lifecycle lock itself, only while it
     // authorizes (and, unless outbound, runs), so an outbound handler waiting
     // on an outside call holds no lifecycle connection.
-    const appRead = c.req.path.startsWith('/api/app_reads/')
+    // #642: the top bar's options are app reads too (Codex round 1 on #643).
+    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
     return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
@@ -817,7 +831,8 @@ app.get('*', async (c, next) => {
         404,
       )
     }
-    const { file, bytes, catalog, clientEntry } = resource
+    const { file, bytes, catalog, clientEntry, frameOrigins } = resource
+    if (path.extname(file) === '.html') c.set('frameOrigins', frameOrigins)
     const types: Record<string, string> = {
       '.html': 'text/html',
       '.js': 'text/javascript',
@@ -1729,6 +1744,12 @@ app.get('/api/apps', async (c) => {
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// #642 (E8): the controls an app declared for the shared top bar, filled for
+// this person.
+app.get('/api/app_bar/:app', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await appBar(c.req.param('app'), who(c)))
+})
 // Authenticated bootstrap contains identities only, never manager metadata.
 app.get('/api/runtime_app_versions', async (c) => {
   c.header('Cache-Control', 'no-store')
@@ -2242,8 +2263,11 @@ serveWebDist(app, webDist)
 export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
-  const { settingsRequirements } = await import('./release-preflight')
+  const { installedAppsAtStart, settingsRequirements } = await import('./release-preflight')
   for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
+  // #642 (E7): never serve without an installed, enabled app's exact version
+  // (a developer's server warns instead).
+  for (const line of await installedAppsAtStart()) console.warn(line)
   const { server, listening } = await new Promise<{ server: ReturnType<typeof serve>; listening: number }>((resolve) => {
     const server = serve({ fetch: app.fetch, port }, (info) => {
       console.log(`server listening on :${info.port}`)
