@@ -77,17 +77,27 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
+/** The one app a person can belong to without a Table grant of their own:
+ *  Feather Dash, the report page until an app is installed under its name. */
+const DASH = 'feather_dash'
+
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
- *  the app they can open, else the platform. Undefined until whoami answers. */
-function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = []): string | undefined {
+ *  Feather Dash if they can open it, else the platform. Undefined until
+ *  whoami answers.
+ *
+ *  Other installed apps never name the page: an app opened through a Table
+ *  grant of the person's own already makes them an Admin user, and one every
+ *  person can open (Tasker grants All) is no one's in particular. */
+function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
   if (caps.manage || caps.table_access) return ADMIN_NAME
-  // #671: an installed app the person can open (one readable by everyone
-  // gives no Table grant of their own, so it is not the Admin).
-  if (apps.length) return apps[0].title
-  // Until Feather Dash is installed, its report is reached by a role alone.
-  if (caps.report) return INTERIM_APPS.feather_dash.title
+  // #671: once an app is installed under Feather Dash's name, its readers
+  // belong to it; until then, the report role does (design D8).
+  if (installed.includes(DASH)) {
+    const opened = apps.find((entry) => entry.name === DASH)
+    if (opened) return opened.title
+  } else if (caps.report) return INTERIM_APPS[DASH].title
   return PLATFORM_NAME
 }
 
@@ -136,7 +146,7 @@ export function TopBar({
   // the installation, as the server's address routing does (#671): a disabled
   // app's root says it is unavailable, never the interim page.
   const installed = Boolean(app) || Boolean(context && whoami?.installed_apps?.includes(context))
-  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps) : nameOf(context, brand)
+  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps, whoami?.installed_apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
   // account page's own (item 3). The Portal and the no-access page on the

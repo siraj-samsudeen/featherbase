@@ -196,6 +196,32 @@ test("on an app's address whose app is installed, the bar's name leads to the ap
 
 // Codex round 1 on #672: the link follows the installation, not whether the
 // app can be opened right now; a disabled app's root says it is unavailable.
+// #501 names the account page for the app a person belongs to: an app that
+// everyone can open (Tasker grants All) is no one's in particular, so only the
+// app installed under the interim name takes Feather Dash's place (e2e
+// top-bar.spec.ts, items 3).
+const OTHER_APP = resolve('../..', 'runtime-apps/other')
+
+test('on the Admin address the account page is Featherbase for someone who can open only an app open to everyone', async ({ admin, createUser }) => {
+  expect(await discoverPackages([OTHER_APP])).toEqual([])
+  await admin.post('/api/install_app', { name: 'other' })
+  onAddressThatOpens('admin')
+  const nobody = await createUser({ email: 'nobody.other.app@example.com' })
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, nobody)
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
+})
+
+test('on the Admin address the account page names Feather Dash for a report viewer who can also open an app open to everyone', async ({ admin, createUser }) => {
+  expect(await discoverPackages([OTHER_APP])).toEqual([])
+  await admin.post('/api/install_app', { name: 'other' })
+  onAddressThatOpens('admin')
+  const viewer = await viewerOnly(admin, createUser, 'viewer.other.app@example.com')
+  await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, viewer)
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Feather Dash$/))
+})
+
 test("on an app's address whose installed app is disabled, the bar's name still leads to the app's root", async ({ admin }) => {
   await installDashApp(admin)
   await admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
