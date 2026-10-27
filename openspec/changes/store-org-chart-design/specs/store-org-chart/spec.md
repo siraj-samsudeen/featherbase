@@ -45,8 +45,11 @@ number.)*
 
 ### Requirement: A department is a named group of sections in one store
 
-A department SHALL belong to one store and SHALL have a name that is unique within that
-store. Every section SHALL belong to at most one department of its own store, through the
+A department SHALL belong to one store and SHALL have a `department_key` that is unique
+within that store and never changes: it is the identity loads match on and that sections and job
+assignments point at. Its name is optional until the store gives one, and a name, once given,
+SHALL be unique within the store. Screens show the key while the name is blank, and a department
+with no name SHALL be listed on the store's conflict list. Every section SHALL belong to at most one department of its own store, through the
 section's `department` field. A department MAY hold sections on several floors. Moving a
 section to another department SHALL be one edit to that field. It is not dated, because a
 department decides only who can see a section, never who gets the credit. A section with
@@ -60,6 +63,14 @@ department becomes dated, like the owning section.)*
 - **WHEN** LKS department "Ladies Ethnic" holds "Sarees" on Ground and "Silk Sarees" on
   First
 - **THEN** both sections are accepted in it
+
+#### Scenario: A department seeded without a name
+
+- **WHEN** the preparation seeds LKS department "dm-P-107" with no name
+- **THEN** it is accepted, shown as "dm-P-107", and listed as "name this department"
+- **WHEN** the store names it "Ladies Ethnic", and later tries to give another LKS department the
+  same name
+- **THEN** the second name is refused
 
 #### Scenario: A section in another store's department is refused
 
