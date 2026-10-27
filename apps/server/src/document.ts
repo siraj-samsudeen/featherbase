@@ -7,7 +7,7 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
-import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
+import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -194,14 +194,6 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
     out[f.column_name] = defaultValueFor(f.column_type, f.default_value)
   }
   return out
-}
-
-/** A column's stored default (always text) as the value a save writes. #651:
- *  an app upgrade fills existing rows with it the same way. */
-export function defaultValueFor(columnType: string, defaultValue: string): unknown {
-  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') return Number(defaultValue)
-  if (columnType === 'Check') return defaultValue === '1' || defaultValue === 'true'
-  return defaultValue
 }
 
 // The columns a unique violation (23505) is about.

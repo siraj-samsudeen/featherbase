@@ -5,10 +5,9 @@ import { AppError } from './errors'
 import { sql, withTransaction } from './db'
 import { provisionApp } from './app-lifecycle'
 import { tableSchemaToZod } from 'shared'
-import { defaultValueFor } from './document'
 import { changeColumnType, columnSchema, createTable, deleteTable, isSafeTypeChange, pgType, quoteRelation, renameColumn, renameTable, STANDARD_COLUMNS, storedRelation, tableDefSchema, updateTable, type TableDef } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
-import { COLUMN_TYPE_VALUES, invalidateMeta, physicalRowKey } from './meta'
+import { COLUMN_TYPE_VALUES, defaultValueFor, invalidateMeta, physicalRowKey } from './meta'
 
 export const packageVersion = z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)
 export function compareVersions(a: string, b: string): number {

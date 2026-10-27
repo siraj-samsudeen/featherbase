@@ -75,6 +75,14 @@ export const ROW_KEY = 'row_id'
 // `row_id`, so nothing above the SQL layer — the Admin included — has to know.
 const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
 
+/** A column's stored default (always text) as the value a save writes. #651:
+ *  an app upgrade fills existing rows with it the same way. */
+export function defaultValueFor(columnType: string, defaultValue: string): unknown {
+  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') return Number(defaultValue)
+  if (columnType === 'Check') return defaultValue === '1' || defaultValue === 'true'
+  return defaultValue
+}
+
 export function physicalRowKey(table: string): string {
   return Object.hasOwn(PHYSICAL_ROW_KEY_OVERRIDES, table) ? PHYSICAL_ROW_KEY_OVERRIDES[table] : ROW_KEY
 }
