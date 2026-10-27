@@ -107,6 +107,36 @@ async function waitForHits(pred: (r: Received) => boolean, want: number, ms = 50
   }
 }
 
+// #340: a webhook payload never carries a sensitive column, on the row or on
+// its lines, whoever saved it.
+test('a webhook payload leaves out sensitive columns, on the row and its lines', async ({ admin }) => {
+  received.length = 0
+  failuresLeft.clear()
+  await admin.post('/api/table_def', {
+    name: 'Webhook Line', kind: 'sub_table',
+    columns: [{ column_name: 'item', column_type: 'Data' }, { column_name: 'unit_cost', column_type: 'Currency', tier: 'restricted' }],
+  })
+  await admin.post('/api/table_def', {
+    name: 'Webhook Sensitive',
+    columns: [
+      { column_name: 'employee', column_type: 'Data' },
+      { column_name: 'salary', column_type: 'Currency', tier: 'restricted' },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: 'Webhook Line' },
+    ],
+  })
+  await admin.post('/api/save_row', {
+    table: 'Webhook',
+    row: { webhook_table: 'Webhook Sensitive', webhook_event: 'after_insert', request_url: `http://127.0.0.1:${port}/sensitive`, webhook_secret: SECRET, enabled: true },
+  })
+  await admin.post('/api/save_row', { table: 'Webhook Sensitive', row: { employee: 'Alice', salary: 98765, lines: [{ item: 'Bolt', unit_cost: 4321 }] } })
+  const [hit] = await waitForHits((r) => r.path === '/sensitive', 1)
+  const payload = JSON.parse(hit.body) as Record<string, unknown> & { lines: Record<string, unknown>[] }
+  expect(payload.employee).toBe('Alice')
+  expect('salary' in payload).toBe(false)
+  expect(payload.lines[0].item).toBe('Bolt')
+  expect('unit_cost' in payload.lines[0]).toBe(false)
+})
+
 describe('PLAT-005: webhooks', () => {
   test('on_update posts the doc JSON with a valid signature', async ({ admin }) => {
     await setup(admin)

@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { sql } from './db'
 import { registerJob, enqueue } from './jobs'
+import { withoutRestrictedColumns } from './permissions'
 
 // PLAT-005: outbound webhooks. On a matching lifecycle event we enqueue a
 // delivery job per enabled Webhook; the job POSTs the row JSON to the
@@ -26,9 +27,12 @@ export async function evaluateWebhooks(
   const hooks = await sql`
     select row_id from webhook
     where webhook_table = ${table} and webhook_event = ${event} and enabled = true`
+  if (!hooks.length) return
+  // Snapshot the row so the payload reflects the state at event time,
+  // without its sensitive columns (#340).
+  const payload = await withoutRestrictedColumns(table, row)
   for (const h of hooks) {
-    // Snapshot the row so the payload reflects the state at event time.
-    await enqueue('deliver_webhook', { webhook: h.row_id as string, event, row }, { maxAttempts: 3 })
+    await enqueue('deliver_webhook', { webhook: h.row_id as string, event, row: payload }, { maxAttempts: 3 })
   }
 }
 

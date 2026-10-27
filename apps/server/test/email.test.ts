@@ -134,6 +134,31 @@ describe('EML-005: template rendering', () => {
   )
 })
 
+// #340: an email rule is configured by an administrator but read by whoever
+// it is addressed to, so a sensitive column never reaches the message.
+test('an email rule leaves sensitive columns out of the message it renders', async () => {
+  await setup()
+  const { createTable } = await import('../src/table-engine')
+  await createTable({
+    name: 'Eml Sensitive',
+    columns: [
+      { column_name: 'employee', column_type: 'Data' },
+      { column_name: 'salary', column_type: 'Currency', tier: 'restricted' },
+    ],
+  })
+  await sql`insert into email_rule ${sql({
+    row_id: 'Eml Sensitive Rule', created_by: 'Administrator', updated_by: 'Administrator',
+    ref_table: 'Eml Sensitive', event: 'on_create', recipient: 'hr@x.com',
+    subject: 'New hire {{ doc.employee }} {{ doc.salary }}', message: 'Pay: [{{ doc.salary }}] for {{ doc.employee }}', enabled: true,
+  })}`
+  const { saveDoc } = await import('../src/document')
+  await saveDoc('Eml Sensitive', { employee: 'Alice', salary: 98765 }, 'Administrator')
+  await drainDueJobs()
+  const [sink] = await sql`select subject, body from email_sink where mail_to = 'hr@x.com' order by created_at desc limit 1`
+  expect(sink.body).toContain('Pay: [] for Alice')
+  expect(`${sink.subject} ${sink.body}`).not.toContain('98765')
+}, 20_000)
+
 describe('EML-003: PDF attachment', () => {
   test(
     'a queued email with attach_pdf delivers a PDF whose text matches the document',

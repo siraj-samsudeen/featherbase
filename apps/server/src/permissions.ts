@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
+import { getMeta } from './meta'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -254,6 +255,35 @@ export function filterReadFields(
   )
   for (const [k, v] of Object.entries(row)) if (!hidden.has(k)) out[k] = v
   return out
+}
+
+// #341: the same, on a whole row and on each of its sub-table rows. A child
+// row has no standing of its own (see assertParentReadable in document.ts),
+// so it is read at the parent's tiers.
+export async function filterReadRow(
+  meta: { columns: { column_name: string; column_type: string; tier: 'basic' | 'restricted'; row_table?: string | null }[] },
+  row: Record<string, unknown>,
+  tiers: ReadonlySet<'basic' | 'restricted'>,
+): Promise<Record<string, unknown>> {
+  if (tiers.has('basic') && tiers.has('restricted')) return row
+  const out = filterReadFields(meta.columns, tiers as Set<'basic' | 'restricted'>, row)
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !f.row_table || !Array.isArray(out[f.column_name])) continue
+    const childMeta = await getMeta(f.row_table)
+    out[f.column_name] = (out[f.column_name] as Record<string, unknown>[]).map((r) =>
+      filterReadFields(childMeta.columns, tiers as Set<'basic' | 'restricted'>, r))
+  }
+  return out
+}
+
+// #340: what leaves the instance on an administrator's configuration — a
+// webhook payload, a rendered email rule — is addressed to people outside
+// any role, so it carries only the basic tier.
+export async function withoutRestrictedColumns(
+  table: string,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return filterReadRow(await getMeta(table), row, new Set(['basic']))
 }
 
 // Drop writes to columns above the user's write tier (silently ignored,

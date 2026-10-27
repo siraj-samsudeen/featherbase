@@ -7,6 +7,7 @@ import { AppError } from './errors'
 import { emailsAddress, parseInstanceAddresses } from './instance-addresses'
 import { registerJob, enqueue } from './jobs'
 import { getDoc } from './document'
+import { withoutRestrictedColumns } from './permissions'
 import { renderPdf, renderPrintHtml } from './print'
 
 // EML-001/002/003/005: outbound email. With SMTP_HOST unset (development,
@@ -402,10 +403,13 @@ registerJob('send_email', async (payload, ctx) => {
 
     if ((opts.render || opts.attach_pdf) && refTable && refName) {
       const refRow = await getDoc(refTable, refName)
-      // EML-005: render subject/body templates against the row.
+      // EML-005: render subject/body templates against the row, never with
+      // its sensitive columns (#340): an administrator writes the template,
+      // but anyone it is addressed to reads the result.
       if (opts.render) {
-        subject = renderTemplate(subject, refRow)
-        body = renderTemplate(body, refRow)
+        const shown = await withoutRestrictedColumns(refTable, refRow)
+        subject = renderTemplate(subject, shown)
+        body = renderTemplate(body, shown)
       }
       // EML-003: attach a PDF of the row.
       if (opts.attach_pdf) {

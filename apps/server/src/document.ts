@@ -26,6 +26,7 @@ import {
   assertPermission,
   checkUserPermissions,
   filterReadFields,
+  filterReadRow,
   getScopeMap,
   isPrivileged,
   isSharedWith,
@@ -578,25 +579,6 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
 
 const ALL_TIERS: ReadonlySet<'basic' | 'restricted'> = new Set(['basic', 'restricted'])
 
-// #341: hide the columns a reader's tiers don't reach, on the row and on each
-// of its sub-table rows. A child row has no standing of its own (see
-// assertParentReadable), so it is read at the parent's tiers.
-async function withReadTiers(
-  meta: TableMeta,
-  row: RowValues,
-  tiers: ReadonlySet<'basic' | 'restricted'>,
-): Promise<RowValues> {
-  if (tiers.has('basic') && tiers.has('restricted')) return row
-  const out = filterReadFields(meta.columns, tiers as Set<'basic' | 'restricted'>, row) as RowValues
-  for (const f of meta.columns) {
-    if (f.column_type !== 'Sub-table' || !Array.isArray(out[f.column_name])) continue
-    const childMeta = await getMeta(f.row_table!)
-    out[f.column_name] = (out[f.column_name] as RowValues[]).map((r) =>
-      filterReadFields(childMeta.columns, tiers as Set<'basic' | 'restricted'>, r))
-  }
-  return out
-}
-
 // What a save hands back to the person who made it: the saved row as they
 // could read it, so a write never reveals what a read would hide (#341).
 async function savedAsReadBy(meta: TableMeta, row: RowValues, user: string, trusted: boolean): Promise<RowValues> {
@@ -605,7 +587,7 @@ async function savedAsReadBy(meta: TableMeta, row: RowValues, user: string, trus
   const tiers = (await isSharedWith(user, meta.name, name, 'read'))
     ? ALL_TIERS
     : await permittedTiers(user, meta.name, 'read')
-  return withReadTiers(meta, row, tiers)
+  return filterReadRow(meta, row, tiers)
 }
 
 async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues> {
@@ -1574,7 +1556,7 @@ async function getDocImpl(
   const readTiers = shared
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
     : await permittedTiers(user, table, 'read')
-  return withReadTiers(meta, await loadChildren(meta, { table, ...(row as RowValues) }), readTiers)
+  return filterReadRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), readTiers)
 }
 
 // SET-001: read a Settings Table's one instance from the EAV store, applying
