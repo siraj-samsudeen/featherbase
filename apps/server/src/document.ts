@@ -238,7 +238,8 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
 }
 
 // META-008: every Reference value must point at an existing row of the
-// target Table. Runs inside the save transaction alongside validation.
+// target Table. Local targets are checked inside the save transaction;
+// source-bound targets are asked of their source.
 async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
@@ -252,9 +253,19 @@ async function validateLinks(
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
+    // select *: early migrations save rows before table_def has data_source.
+    const [targetMeta] = await tx`select * from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+      continue
+    }
+    // A source-bound target has no local table: ask its source (EDS-5). Like
+    // the native lookup, this checks existence only, not the caller's access.
+    // It runs outside the save transaction, so it is best-effort: the source
+    // can drop the row before this save commits.
+    if (targetMeta.data_source) {
+      if (!(await boundFetchDoc(await getMeta(target), String(value))))
+        errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
     const [row] = await tx`

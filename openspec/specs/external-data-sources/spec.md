@@ -34,7 +34,9 @@ to a log. Only a System Manager can register or manage a data source.
 ### Requirement: A data source can be limited to named tables
 
 A System Manager SHALL be able to list the only tables a data source may
-connect. A table outside the list is refused, however it is asked for.
+connect. A table outside the list is refused, however it is asked for. When
+several tables are asked for together and any one is refused, none of them
+is connected.
 
 #### Scenario: A table that isn't on the list
 
@@ -42,6 +44,13 @@ connect. A table outside the list is refused, however it is asked for.
   connect a different table from it
 - **THEN** it is refused, saying the table is not on the data source's list
 - **AND** the allowed table connects normally
+
+#### Scenario: One refused table among several
+
+- **WHEN** a System Manager asks to connect two allowed tables and one that is
+  not on the list, all at once
+- **THEN** the request is refused, naming the table that is not on the list
+- **AND** neither allowed table is connected
 
 ### Requirement: A data source that is in use can't be removed
 
@@ -266,3 +275,17 @@ where the platform keeps its own records, on any database.
 - **WHEN** a System Manager connects a table to a relation in the platform's
   own schema on any data source
 - **THEN** it is refused
+
+### Requirement: A Featherbase table can link to a connected table
+
+A Featherbase table SHALL be able to link its rows to rows of a connected table. Saving checks the linked row on the data source: the row saves when the linked row is there, and the user is told it does not exist when it is not.
+
+#### Scenario: Link a local row to a connected row
+
+- **WHEN** the user saves a row in a "Holders" table whose account link points at an account that exists in a connected "Accounts" table
+- **THEN** the row saves with that link
+
+#### Scenario: Link to a connected row that isn't there
+
+- **WHEN** the user saves a row whose account link names an account the data source does not have
+- **THEN** the row is not saved, and the user is told that account does not exist
