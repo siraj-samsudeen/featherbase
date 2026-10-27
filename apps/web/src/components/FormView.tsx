@@ -111,7 +111,13 @@ export function FormView({
     return doc.data ?? {}
   }, [doc.data, isNew])
 
+  // The baseline the form was last reset to. StrictMode replays effects on
+  // mount; resetting again to the SAME baseline would wipe what onload set
+  // in the first pass, and onload (once per row) wouldn't restore it.
+  const appliedBaseline = useRef<Row | null>(null)
   useEffect(() => {
+    if (appliedBaseline.current === baseline) return
+    appliedBaseline.current = baseline
     // Prefilled values on a new row count as edits (the form starts dirty,
     // so a pure-prefill save is possible), not as the saved baseline.
     // valuesRef moves with it, so an onload firing in this same effect flush
