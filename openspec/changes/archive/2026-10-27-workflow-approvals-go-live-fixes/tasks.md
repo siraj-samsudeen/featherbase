@@ -12,4 +12,4 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Run the server suite, both typechecks and `pnpm check:specs`; verify the change against the code and tests, then archive it.
+- [x] 3.1 Run the server suite, both typechecks and `pnpm check:specs`; verify the change against the code and tests, then archive it.
