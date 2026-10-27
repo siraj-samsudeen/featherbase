@@ -3,8 +3,10 @@
 ### Requirement: Assign someone by their email address
 
 When assigning a row, the user SHALL be able to name the person by their
-email address, in any letter case. The row is then assigned to that person,
-and the list of who it's assigned to shows their name.
+email address, in any letter case, as long as the user may see people's
+addresses. The row is then assigned to that person, and the list of who it's
+assigned to shows their name. An address the user may not see, or one left on
+a record merged into another, finds no one.
 
 #### Scenario: Assign by email
 
