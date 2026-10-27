@@ -5,7 +5,7 @@ A row's comments, change history, attachments and shares name it by its id. Rena
 ## What Changes
 
 - Renaming a row carries along everything that names it: comments, history, attachments, shares, assignments, tags, notifications, emails, access entries and row-level access limits.
-- Deleting a row leaves nothing behind that still names it.
+- Deleting a row takes its comments, history, attachments, shares, assignments, tags and notifications with it. Access and email logs keep what they recorded, and limits on what a person may see stay in place, so a delete never widens anyone's access.
 - A row's history is found by an index rather than a scan.
 
 ## Capabilities
@@ -17,7 +17,7 @@ None.
 ### Modified Capabilities
 
 - `tables-and-fields`: a renamed row keeps its activity.
-- `row-deletion`: deleting a row leaves nothing pointing at it.
+- `row-deletion`: deleting a row takes its activity with it and never widens access.
 
 ## Impact
 

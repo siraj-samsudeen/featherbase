@@ -1425,8 +1425,13 @@ async function deleteBoundDoc(
       `${meta.name} ${name} has been modified after you loaded it`,
     )
   // #321: the row is gone on the source; its activity lives here and goes too.
-  // The source has no shared transaction, so this follows the removal.
-  await unlinkUnusedFiles(await sql.begin((tx) => removeRowActivity(tx as unknown as typeof sql, meta.name, name)))
+  // The source has no shared transaction, so this follows the removal, and a
+  // failure here is logged rather than reported as a failed delete.
+  try {
+    await unlinkUnusedFiles(await sql.begin((tx) => removeRowActivity(tx as unknown as typeof sql, meta.name, name)))
+  } catch (error) {
+    console.error(`Deleted ${meta.name} ${name} on its source but could not remove its activity`, error)
+  }
 }
 
 // DOC-012: rename a row's primary key and update every Reference that
