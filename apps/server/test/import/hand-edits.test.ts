@@ -25,6 +25,7 @@ describe('Import remembers hand edits (#626)', () => {
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../../src/db'
 import { invalidateMeta } from '../../src/meta'
+import { registerController, unregisterController, type TableController } from '../../src/controllers'
 async function correction(admin: TestClient) {
   await makeTable(admin, { name: table, columns: ['code', 'city', 'phone'] })
   await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'North', phone: '111' }], context: { run_id: 'first' } })
@@ -239,4 +240,28 @@ test('the remembered source is the supplied value even when an insert automation
   await load(admin, 'North', 'same-source')
   expect((await conflicts(admin)).conflicts).toEqual([])
   expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
+})
+test('a row refused for changing a protected field runs none of its after-commit effects', async ({ admin }) => {
+  await correction(admin)
+  await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'correction-automation', script_type: 'Document Event', ref_table: table, event: 'before_save', script: 'doc.city = "Automation"', enabled: true } })
+  const committed: unknown[] = []
+  const controller: TableController = { table, hooks: { after_commit: async ({ row }) => { committed.push(row.city) } } }
+  registerController(controller)
+  try {
+    expect(await load(admin, 'North', 'refused')).toMatchObject({ updated: 0, failed: [{ index: 0 }] })
+    expect(committed).toEqual([])
+  } finally { unregisterController(controller) }
+})
+test('an empty optional Datetime or number is no value, as a save treats it', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code', 'at:Datetime', 'amount:Int'] })
+  expect(await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', at: '', amount: '' }] })).toMatchObject({ inserted: 1, failed: [] })
+  const row = await admin.get<Record<string, unknown>>(`${path}/A`)
+  expect(row).toMatchObject({ at: null, amount: null })
+  await patchDoc(admin, `${path}/A`, { at: '2026-10-28T01:02:03.000Z', amount: 0, updated_at: row.updated_at })
+  const args = { key_column: 'code', rows: [{ code: 'A', at: '', amount: '' }], columns: ['code', 'at', 'amount'], empty_cells: 'clear' }
+  // The source still supplies the same empty cells it did at insert: no change, no conflict.
+  expect(await admin.post(`${path}:import`, { ...args, dry_run: true })).toMatchObject({ failed: [], fields_kept: 0 })
+  expect(await admin.post(`${path}:import`, args)).toMatchObject({ updated: 1, failed: [] })
+  expect(await admin.get(`${path}/A`)).toMatchObject({ at: '2026-10-28T01:02:03.000Z', amount: 0 })
+  expect((await conflicts(admin)).conflicts).toEqual([])
 })

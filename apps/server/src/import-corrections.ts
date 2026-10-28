@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
+import { calendarDay } from 'shared'
 import { AppError } from './errors'
 import { sql } from './db'
 import { actionTransaction } from './action-transaction'
@@ -16,8 +17,9 @@ interface History { row_id: string; created_by: string; created_at: Date; data: 
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
 export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row; protected_values: Row }
 const normalized = (value: unknown, type: string): unknown => {
-  if (value == null) return null
-  if (type === 'Date') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
+  // A save stores an empty cell as no value in every type but JSON.
+  if (value == null || (value === '' && type !== 'JSON')) return null
+  if (type === 'Date') return value instanceof Date ? calendarDay(value) : String(value).slice(0, 10)
   if (type === 'Datetime') return (value instanceof Date ? value : new Date(String(value))).toISOString()
   if (['Int', 'Float', 'Currency'].includes(type)) return Number(value)
   if (type === 'Check') return value === true || value === 1 || value === '1'
