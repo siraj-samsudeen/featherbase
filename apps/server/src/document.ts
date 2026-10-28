@@ -361,6 +361,10 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
   const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  // Nothing is attached to a comment, an edit or a file (assertAttachedTarget),
+  // so one that claims to be is refused rather than followed — following it
+  // could loop, and the list leaves such rows out too.
+  if (ROW_ATTACHED_TABLES.has(refTable)) throw refused()
   const refMeta = await getMeta(refTable).catch(() => null)
   if (!refMeta) throw refused()
   try {
@@ -371,6 +375,27 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   }
   if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
+}
+
+// #609, #610: a comment or file is attached only to a row its writer may
+// open, and one already on a row is changed only by someone who may open that
+// row, so moving it elsewhere cannot carry it out of its row's reach. Nothing
+// is attached to another comment, edit or file. Judged on the row as written.
+async function assertAttachedTarget(
+  meta: TableMeta,
+  row: RowValues,
+  old: RowValues | null,
+  user: string,
+  trusted: boolean,
+) {
+  if (!ROW_ATTACHED_TABLES.has(meta.name)) return
+  const refTable = String(row.ref_table ?? '')
+  if (ROW_ATTACHED_TABLES.has(refTable) && String(row.ref_name ?? ''))
+    throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} row`)
+  if (trusted) return
+  if (old) await assertAttachedRowReadable(meta.name, old, user)
+  if (!old || String(old.ref_table ?? '') !== refTable || String(old.ref_name ?? '') !== String(row.ref_name ?? ''))
+    await assertAttachedRowReadable(meta.name, row, user)
 }
 
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
@@ -835,6 +860,7 @@ async function writeDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
       // snapshotting template items into a new row, say) — re-pick from the
       // hooked row so what saves is what the chain left behind.
@@ -1121,6 +1147,7 @@ async function updateDoc(
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
+      await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),

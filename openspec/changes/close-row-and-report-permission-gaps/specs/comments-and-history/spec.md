@@ -10,3 +10,9 @@ is on, whatever their access to comments in general.
 - **WHEN** a user who may remove comments names a comment on a row they
   cannot open
 - **THEN** it is refused and the comment is kept
+
+#### Scenario: Moving a comment off a row the user cannot open
+
+- **WHEN** a user who may edit comments moves a comment from a row they
+  cannot open onto one they can
+- **THEN** it is refused and the comment stays where it was

@@ -91,6 +91,41 @@ describe('#609: files follow the row they are attached to', () => {
   })
 })
 
+describe('#609: attaching follows the row too', () => {
+  test('a File row cannot be saved onto a row the writer cannot open', async ({ admin, createUser }) => {
+    const { agent, theirs } = await setup(admin, createUser)
+    const res = await agent.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'File', row: { file_name: 'x.pdf', file_url: '/files/rafd-x.pdf', ref_table: PLAIN, ref_name: theirs } }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('nothing is attached to another file or comment, and one stored that way is refused, not followed', async ({ admin, createUser }) => {
+    const { agent, files } = await setup(admin, createUser)
+    const res = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', file_url: '/files/rafd-y.pdf', ref_table: 'File', ref_name: files.mine } }),
+    })
+    expect(res.status).toBe(417)
+    // Two files pointing at each other, as only a direct write could leave them.
+    await sql`update file set ref_table = 'File', ref_name = ${files.loose} where row_id = ${files.mine}`
+    await sql`update file set ref_table = 'File', ref_name = ${files.mine} where row_id = ${files.loose}`
+    expect((await agent.fetch(FILE.rowUrl(files.mine))).status).toBe(403)
+    expect((await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' })).status).toBe(403)
+  })
+
+  test('the files on a source-bound row show to whoever may read every row of it', async ({ admin, createUser }) => {
+    const { agent } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
+    await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', file_url: '/files/rafd-o.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
+    await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
+    expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual(['outside.pdf'])
+  })
+})
+
 describe('#610: removing a comment or a file needs access to its row', () => {
   test('a comment on a row the caller cannot open is not deleted by its id', async ({ admin, createUser }) => {
     const { agent, comments } = await setup(admin, createUser)
@@ -111,6 +146,18 @@ describe('#610: removing a comment or a file needs access to its row', () => {
     expect(res.status).toBe(403)
     const [after] = await sql`select content from comment where row_id = ${comments.theirs}`
     expect(after.content).toBe('secret plan')
+  })
+
+  test('a comment on a row the caller cannot open is not moved onto one they can', async ({ admin, createUser }) => {
+    const { agent, mine, comments } = await setup(admin, createUser)
+    const [cur] = await sql`select updated_at from comment where row_id = ${comments.theirs}`
+    const res = await agent.fetch(COMMENT.rowUrl(comments.theirs), {
+      method: 'PATCH',
+      body: JSON.stringify({ updated_at: cur.updated_at, ref_name: mine }),
+    })
+    expect(res.status).toBe(403)
+    const [after] = await sql`select ref_name from comment where row_id = ${comments.theirs}`
+    expect(after.ref_name).not.toBe(mine)
   })
 
   test('a file on a row the caller cannot open is not deleted by its id', async ({ admin, createUser }) => {

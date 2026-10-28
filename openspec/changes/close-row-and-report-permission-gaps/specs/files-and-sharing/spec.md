@@ -4,8 +4,10 @@
 
 A file attached to a row SHALL be listed, opened and removed only by someone
 who can open that row, or with whom the row is shared, whatever their access
-to files in general. A file attached to a whole table, or to nothing, SHALL
-follow the access to files.
+to files in general, and SHALL be attached to a row only by someone who can
+open it. A file attached to a whole table, or to nothing, SHALL follow the
+access to files. On a table whose rows live in an outside source, the files
+on its rows SHALL be listed for someone who may read every row of it.
 
 #### Scenario: Files on someone else's row
 
