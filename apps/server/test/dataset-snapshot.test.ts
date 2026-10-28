@@ -567,6 +567,11 @@ it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve
   })
+  let signalStarted: () => void = () => {}
+  const firstStarted = new Promise<void>((resolve) => {
+    signalStarted = resolve
+  })
+  const builds: ReturnType<typeof buildSnapshot>[] = []
   let calls = 0
 
   registerDataset({
@@ -576,7 +581,10 @@ it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second
       calls += 1
       const n = calls
       events.push(`fetch:${n}:start`)
-      if (n === 1) await firstGate
+      if (n === 1) {
+        signalStarted()
+        await firstGate
+      }
       events.push(`fetch:${n}:end`)
       return { rows: [[n]], sourceAsOf: n === 1 ? '2026-01-01' : '2026-01-02' }
     },
@@ -585,11 +593,13 @@ it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second
 
   try {
     const first = buildSnapshot(dataset, { trigger: 'script' })
-    // Give the first call time to acquire the lock and enter its (blocked) fetch.
-    await new Promise((r) => setTimeout(r, 100))
+    builds.push(first)
+    // Observe fetch entry rather than assuming the database answered in 100ms.
+    await firstStarted
     expect(events).toEqual(['fetch:1:start'])
 
     const second = buildSnapshot(dataset, { trigger: 'script' })
+    builds.push(second)
     // The second call must be stuck waiting on the lock, not fetching.
     await new Promise((r) => setTimeout(r, 100))
     expect(events).toEqual(['fetch:1:start']) // fetch:2:start has NOT happened yet
@@ -606,6 +616,8 @@ it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second
     const active = await activeSnapshot(dataset)
     expect(active?.row_id).toBe(out2.snapshotId) // the later request is the one left serving
   } finally {
+    releaseFirst()
+    await Promise.allSettled(builds)
     await sql`delete from dataset_snapshot where dataset = ${dataset}`
   }
 })
