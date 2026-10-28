@@ -4,7 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { isRowsReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
-import { fmtCount } from '../lib/inr'
+import { fmtCount, fmtDate, timelineDayKey } from '../lib/inr'
 
 type Row = Record<string, unknown>
 
@@ -155,12 +155,13 @@ function progressParts(v: unknown): { done: number; total: number } | null {
   return m ? { done: Number(m[1]), total: Number(m[2]) } : null
 }
 
-function dayLabel(iso: string): string {
-  const today = new Date().toISOString().slice(0, 10)
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
-  if (iso === today) return 'Today'
-  if (iso === yesterday) return 'Yesterday'
-  return iso || 'Undated'
+// A run's day heading: Today and Yesterday on the reader's own calendar, any
+// older day as DD-Mon-YYYY (#539).
+export function dayLabel(iso: string, now: Date = new Date()): string {
+  if (!iso) return 'Undated'
+  if (iso === timelineDayKey(now)) return 'Today'
+  if (iso === timelineDayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))) return 'Yesterday'
+  return fmtDate(iso)
 }
 
 // ---------------------------------------------------------------- run list

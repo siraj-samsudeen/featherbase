@@ -175,3 +175,8 @@ export function timelineDayKey(d: Date): string {
 export function fmtClockTime(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
+
+/** An instant as "21-Oct-2024 02:00": DD-Mon-YYYY and a 24-hour time, on the reader's clock (#390). */
+export function fmtDateTime(d: Date): string {
+  return `${fmtDate(localIsoDay(d))} ${fmtClockTime(d)}`
+}

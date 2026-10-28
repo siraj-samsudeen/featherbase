@@ -1173,12 +1173,15 @@ async function recordVersion(
   user: string,
 ) {
   if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
-  const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v ?? null)
+  // #421: a Date column is a calendar day, which the driver hands back as UTC
+  // midnight; record the day itself. A Datetime keeps its full instant.
+  const norm = (v: unknown, type: string) =>
+    v instanceof Date ? (type === 'Date' ? v.toISOString().slice(0, 10) : v.toISOString()) : v ?? null
   const changed: [string, unknown, unknown][] = []
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    const b = norm(own(before, f.column_name))
-    const a = norm(own(after, f.column_name))
+    const b = norm(own(before, f.column_name), f.column_type)
+    const a = norm(own(after, f.column_name), f.column_type)
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return

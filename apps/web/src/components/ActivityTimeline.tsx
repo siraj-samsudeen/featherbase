@@ -4,6 +4,8 @@ import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
 import { activityQuery } from './Comments'
 import { fmtInstantIST } from '../lib/inr'
+import { useMeta } from '../lib/meta'
+import { formatValue, useSettings } from '../lib/settings'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
@@ -29,7 +31,19 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
 
-  const fmt = (v: unknown) => (v == null || v === '' ? '∅' : String(v))
+  // #421: a changed value reads the way the rest of the Admin shows it (a Date
+  // as DD-Mon-YYYY, money the Indian way), by its column's type.
+  const meta = useMeta(table)
+  const settings = useSettings()
+  const columnType = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.column_type ?? 'Data'
+  // A Settings Table records its values as stored text, so a checkbox is '1'/'0'.
+  const asStored = (type: string, v: unknown) =>
+    type === 'Check' && typeof v === 'string' ? v === '1' || v === 'true' : v
+  const fmt = (column: string, v: unknown) => {
+    if (v == null || v === '') return '∅'
+    const type = columnType(column)
+    return formatValue(type, asStored(type, v), settings) || String(v)
+  }
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">
@@ -51,7 +65,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink"><PrincipalName id={e.who} /></span>{' '}
                 {e.kind === 'comment' ? 'commented' : 'edited'} ·{' '}
-                <span data-testid="activity-time">{fmtInstantIST(e.at)}</span>
+                <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstantIST(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
                 <div className="whitespace-pre-wrap break-words text-ink">
@@ -63,7 +77,8 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
                   {e.changes.map(([column, from, to], j) => (
                     <li key={j}>
                       <span className="font-medium text-ink">{column}</span>:{' '}
-                      {fmt(from)} → {fmt(to)}
+                      <span className="whitespace-nowrap">{fmt(column, from)}</span> →{' '}
+                      <span className="whitespace-nowrap">{fmt(column, to)}</span>
                     </li>
                   ))}
                 </ul>

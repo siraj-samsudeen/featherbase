@@ -35,6 +35,8 @@ function isPrincipalTable(table: string | null | undefined): boolean {
   return table === 'Person' || table === 'Service Account'
 }
 
+const DATE_TYPES = new Set(['Date', 'Datetime'])
+
 function cell(value: unknown, columnType: string, settings: Settings): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? '✓' : '✗'
@@ -1065,7 +1067,11 @@ function ListCell({
     )
   const value = row[col.column_name]
   return (
-    <span className={quiet ? 'text-ink-muted' : 'text-ink'} data-testid={`cell-${col.column_name}`}>
+    <span
+      // A date never breaks at its hyphens in a narrow cell.
+      className={`${quiet ? 'text-ink-muted' : 'text-ink'} ${DATE_TYPES.has(col.column_type) ? 'whitespace-nowrap' : ''}`}
+      data-testid={`cell-${col.column_name}`}
+    >
       {col.column_type === 'Choice' && value != null && value !== '' ? (
         <Indicator value={String(value)} />
       ) : col.column_type === 'Reference' && isPrincipalTable(col.reference_table) && value ? (
