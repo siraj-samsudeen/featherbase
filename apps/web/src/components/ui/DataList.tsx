@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ChevronDown } from './icons'
 import { Button } from './Button'
 import { cx } from './cx'
 import { EmptyState, type EmptyDescriptor } from './EmptyState'
@@ -23,7 +24,7 @@ export interface DataColumn<Row> {
 }
 
 /** Below this width a list reads as cards (the usable-on-any-device promise). */
-const NARROW_QUERY = '(width < 40rem)'
+export const NARROW_QUERY = '(width < 40rem)'
 
 /**
  * One list, two shapes: a table on a wide screen and a card per row on a
@@ -78,61 +79,7 @@ export function DataList<Row>({
       <EmptyState {...empty} className={className} />
     )
 
-  if (cards) {
-    const role = (r: PhoneRole) => columns.filter((c) => (c.phone ?? 'value') === r)
-    const [titles, statuses, metas, values] = [role('title'), role('status'), role('meta'), role('value')]
-    return (
-      <ul aria-label={caption} className={cx('flex flex-col gap-2 text-control', className)}>
-        {rows.map((row) => (
-          // Everything inside a card wraps rather than widening it: overflow-wrap is
-          // inherited, and the descendant rule beats any nowrap a cell brings.
-          <li
-            key={rowKey(row)}
-            data-testid={rowTestId?.(row)}
-            className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
-          >
-            {/* Wraps, so a status too wide to sit beside the title moves under it. */}
-            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              {/* With no status beside it, the title takes the whole row. */}
-              <div className={cx('min-w-0 font-semibold text-ink', !statuses.length && 'flex-1')}>
-                {titles.map((c) => (
-                  <div key={c.key} className="wrap-anywhere">
-                    {c.cell(row)}
-                  </div>
-                ))}
-              </div>
-              {statuses.map((c) => (
-                <div key={c.key} className="min-w-0 max-w-full wrap-anywhere [&_*]:whitespace-normal">
-                  {c.cell(row)}
-                </div>
-              ))}
-            </div>
-            {metas.length > 0 && (
-              <p className="mt-1 min-w-0 text-ink-muted">
-                {metas.map((c, i) => (
-                  <span key={c.key}>
-                    {i > 0 && ' · '}
-                    {c.cell(row)}
-                  </span>
-                ))}
-              </p>
-            )}
-            {values.length > 0 && (
-              // A label takes at most half the card and a value the rest, both able to wrap, so neither widens the card.
-              <dl className="mt-2 grid grid-cols-[fit-content(50%)_minmax(0,1fr)] gap-x-4 gap-y-1">
-                {values.map((c) => (
-                  <div key={c.key} className="contents">
-                    <dt className="min-w-0 text-ink-muted">{c.header}</dt>
-                    <dd className={cx('min-w-0 wrap-anywhere text-ink', c.align === 'end' && 'text-right tabular-nums')}>{c.cell(row)}</dd>
-                  </div>
-                ))}
-              </dl>
-            )}
-          </li>
-        ))}
-      </ul>
-    )
-  }
+  if (cards) return <DataCards caption={caption} rows={rows} columns={columns} rowKey={rowKey} rowTestId={rowTestId} className={className} />
 
   return (
     // Focusable and named, so a keyboard can scroll a table wider than the screen.
@@ -184,5 +131,127 @@ export function DataList<Row>({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/**
+ * The phone shape of a list on its own: one card per row. A list that can
+ * select or expand its rows passes `select` and `expand`, and each card then
+ * carries a checkbox before its title and a show/hide toggle under its
+ * figures, both thumb-sized.
+ */
+export function DataCards<Row>({
+  caption,
+  rows,
+  columns,
+  rowKey,
+  rowTestId,
+  select,
+  expand,
+  className,
+  testId,
+}: {
+  caption: string
+  rows: Row[]
+  columns: DataColumn<Row>[]
+  rowKey: (row: Row) => string
+  rowTestId?: (row: Row) => string | undefined
+  select?: { isSelected: (row: Row) => boolean; onToggle: (row: Row) => void; label: (row: Row) => string }
+  expand?: { isExpanded: (row: Row) => boolean; onToggle: (row: Row) => void; render: (row: Row) => ReactNode }
+  className?: string
+  testId?: string
+}) {
+  const role = (r: PhoneRole) => columns.filter((c) => (c.phone ?? 'value') === r)
+  const [titles, statuses, metas, values] = [role('title'), role('status'), role('meta'), role('value')]
+  return (
+    <ul aria-label={caption} data-testid={testId} className={cx('flex flex-col gap-2 text-control', className)}>
+      {rows.map((row) => {
+        const open = expand?.isExpanded(row) ?? false
+        return (
+          // Everything inside a card wraps rather than widening it: overflow-wrap is
+          // inherited, and the descendant rule beats any nowrap a cell brings.
+          <li
+            key={rowKey(row)}
+            data-testid={rowTestId?.(row)}
+            className="min-w-0 wrap-anywhere rounded-card border border-border bg-surface p-3.5 [&_*]:whitespace-normal"
+          >
+            <div className="flex items-start gap-2">
+              {select && (
+                // The box is small; the label around it is the thumb-sized target.
+                <label className="-my-2 -ml-2 inline-flex size-control shrink-0 cursor-pointer items-center justify-center">
+                  <input
+                    type="checkbox"
+                    data-testid="row-check"
+                    aria-label={select.label(row)}
+                    checked={select.isSelected(row)}
+                    onChange={() => select.onToggle(row)}
+                    className="size-5 accent-action"
+                  />
+                </label>
+              )}
+              <div className="min-w-0 flex-1">
+                {/* Wraps, so a status too wide to sit beside the title moves under it. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                  {/* The title takes the room the status leaves, down to 8rem; only
+                      then does the status move under it. */}
+                  <div className="min-w-0 flex-[1_1_8rem] font-semibold text-ink">
+                    {titles.map((c) => (
+                      <div key={c.key} className="wrap-anywhere">
+                        {c.cell(row)}
+                      </div>
+                    ))}
+                  </div>
+                  {statuses.map((c) => (
+                    <div key={c.key} className="min-w-0 max-w-full wrap-anywhere [&_*]:whitespace-normal">
+                      {c.cell(row)}
+                    </div>
+                  ))}
+                </div>
+                {metas.length > 0 && (
+                  <p className="mt-1 min-w-0 text-sm text-ink-muted">
+                    {metas.map((c, i) => (
+                      <span key={c.key}>
+                        {i > 0 && ' · '}
+                        {c.cell(row)}
+                      </span>
+                    ))}
+                  </p>
+                )}
+                {values.length > 0 && (
+                  // A label takes at most half the card and a value the rest, both able to wrap, so neither widens the card.
+                  <dl className="mt-2 grid grid-cols-[fit-content(50%)_minmax(0,1fr)] gap-x-4 gap-y-1">
+                    {values.map((c) => (
+                      <div key={c.key} className="contents">
+                        <dt className="min-w-0 text-ink-muted">{c.header}</dt>
+                        <dd className={cx('min-w-0 wrap-anywhere text-right text-ink', c.align === 'end' && 'tabular-nums')}>{c.cell(row)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </div>
+            </div>
+            {expand && (
+              <>
+                <Button
+                  variant="quiet"
+                  className="-mb-1 mt-2 -ml-2"
+                  aria-expanded={open}
+                  data-testid="row-expand"
+                  onClick={() => expand.onToggle(row)}
+                  icon={<ChevronDown aria-hidden size={18} className={cx('transition-transform motion-reduce:transition-none', open && 'rotate-180')} />}
+                >
+                  {open ? 'Hide nested rows' : 'Show nested rows'}
+                </Button>
+                {open && (
+                  <div className="mt-2 border-t border-border pt-3" data-testid="expanded-row">
+                    {expand.render(row)}
+                  </div>
+                )}
+              </>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

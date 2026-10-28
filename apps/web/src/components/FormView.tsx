@@ -23,7 +23,7 @@ import { WorkflowActions } from './WorkflowActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 import { refreshWaitingAfterSave } from '../pages/WaitingForAccess'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, pillClasses, touchLinkClasses } from './ui'
 
 type Row = Record<string, unknown>
 
@@ -376,19 +376,19 @@ export function FormView({
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
-      <nav className="mb-2 text-xs text-ink-muted" data-testid="breadcrumbs">
-        <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
-        <span className="mx-1">/</span>
+      <nav className="mb-2 flex flex-wrap items-center gap-x-1 text-xs text-ink-muted" data-testid="breadcrumbs">
+        <RouterLink to="/featherbase/admin" className={touchLinkClasses('hover:underline')}>Admin</RouterLink>
+        <span aria-hidden="true">/</span>
         <RouterLink
           to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
-          className="hover:underline"
+          className={touchLinkClasses('hover:underline')}
         >
           {table}
         </RouterLink>
-        <span className="mx-1">/</span>
-        <span className="text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
+        <span aria-hidden="true">/</span>
+        <span className="min-w-0 text-ink">{isNew ? 'New' : <RowTitle table={table} rowId={name} />}</span>
       </nav>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 max-w-full">
@@ -803,13 +803,17 @@ function FieldControl({
   switch (field.column_type) {
     case 'Check':
       return wrap(
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-4 w-4"
-          {...common}
-        />,
+        // On a touch screen the label around the box (no text of its own, so
+        // the field's name is unchanged) is the thumb-sized target (index.css).
+        <label className="inline-flex cursor-pointer items-center">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+            className="size-4 pointer-coarse:size-5"
+            {...common}
+          />
+        </label>,
       )
     case 'Choice':
       return wrap(
@@ -1026,7 +1030,7 @@ function ChildGrid({
                     checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
                     value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
-                    className={c.column_type === 'Check' ? 'h-4 w-4' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
+                    className={c.column_type === 'Check' ? 'size-4 pointer-coarse:size-5' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
                     data-childfield={c.column_name}
                   />
                   </label>
@@ -1300,7 +1304,7 @@ function AttachControl({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="min-w-0 text-action hover:underline"
+              className={touchLinkClasses("min-w-0 text-action hover:underline")}
               data-testid={`attach-link-${field.column_name}`}
             >
               {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
@@ -1311,7 +1315,7 @@ function AttachControl({
                 aria-label={`Clear ${fieldLabel}`}
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
-                className="shrink-0 text-xs text-ink-subtle hover:text-negative"
+                className={touchLinkClasses("shrink-0 text-xs text-ink-subtle hover:text-negative")}
               >
                 Clear
               </button>

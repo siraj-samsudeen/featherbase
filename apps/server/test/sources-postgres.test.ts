@@ -380,6 +380,20 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     expect(rows).toHaveLength(0)
   })
 
+  // SPEC: A row with comments, history, attachments or shares can't be
+  // deleted (row-deletion), #321. A connected row's comments live here.
+  test('delete is refused while the connected row has comments', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const made = (await admin.post('/api/table/Ext%20Tenant', { slug: 'kept-commented' })) as { row_id: string }
+    const id = String(made.row_id)
+    await sql`insert into featherbase.comment (row_id, ref_table, ref_name, content) values ('ext-c', 'Ext Tenant', ${id}, 'note')`
+    const loaded = (await admin.get(`/api/table/Ext%20Tenant/${id}`)) as Record<string, unknown>
+    const res = await admin.fetch(`/api/table/Ext%20Tenant/${id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`, { method: 'DELETE' })
+    expect(res.status).toBe(417)
+    expect(await cli`select 1 from ext_fixture.tenant where slug = 'kept-commented'`).toHaveLength(1)
+  })
+
   test('rename is rejected — the pk belongs to the source', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)

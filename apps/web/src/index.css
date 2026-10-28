@@ -6,7 +6,7 @@
    every size a call site can pass. test/pointer-fine-css.test.ts fails when
    src/ uses a size that is missing here. */
 @source inline("pointer-fine:text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl,control}");
-@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,{1..24},0.5,1.5,2.5,3.5}");
+@source inline("pointer-fine:{min-h,size}-{0,px,full,screen,fit,auto,control,touch,{1..24},0.5,1.5,2.5,3.5}");
 @source inline("pointer-fine:min-h-{[26px],[44px],[70vh]}");
 
 /* Shop Floor design tokens (#380, OpenSpec change adopt-shop-floor-design-system).
@@ -75,6 +75,33 @@
     --spacing-control: 3rem;
     --spacing-control-x: 1rem;
     --text-control: 1rem;
+  }
+}
+
+/* #380 4.5: on a touch screen a checkbox or radio is a 20px box, and the label
+   around it is at least the control size, so the label is the thumb-sized
+   target. In the base layer, so a screen's own display or size classes still
+   win; a box with no label around it gets one at the call site. */
+@layer base {
+  @media (pointer: coarse) {
+    input:is([type='checkbox'], [type='radio']) {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    label:has(> input:is([type='checkbox'], [type='radio'])) {
+      display: inline-flex;
+      align-items: center;
+      min-height: var(--spacing-control);
+      min-width: var(--spacing-control);
+    }
+  }
+}
+
+/* #380 4.4: while a phone tab bar is drawn (TabBar, fixed to the bottom), the
+   page keeps room for it, so it never covers the last row. */
+@media (width < 40rem) {
+  body:has([data-tab-bar]) {
+    padding-bottom: calc(var(--spacing-touch) + 2px + env(safe-area-inset-bottom));
   }
 }
 

@@ -33,6 +33,8 @@ export function announceBarChange(key: string, value: string) {
  *  history instead, so it never drives the app's navigation. */
 export interface BarAddress {
   search: string
+  /** The document's own path, for the app's phone tabs (#380 task 4.4). */
+  pathname?: string
   /** A new history entry, or with `replace` the current one rewritten. */
   set: (key: string, value: string, opts?: { replace?: boolean }) => void
 }
@@ -68,9 +70,13 @@ function watchHistoryWrites() {
  *  document, never a reload. */
 export function useDocumentAddress(): BarAddress {
   const [search, setSearch] = useState(window.location.search)
+  const [pathname, setPathname] = useState(window.location.pathname)
   useEffect(() => {
     watchHistoryWrites()
-    const follow = () => setSearch(window.location.search)
+    const follow = () => {
+      setSearch(window.location.search)
+      setPathname(window.location.pathname)
+    }
     follow()
     window.addEventListener('popstate', follow)
     historyWrites.addEventListener('write', follow)
@@ -88,5 +94,5 @@ export function useDocumentAddress(): BarAddress {
     else window.history.pushState(null, '', href)
     setSearch(url.search)
   }
-  return { search, set }
+  return { search, pathname, set }
 }

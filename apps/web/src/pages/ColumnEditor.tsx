@@ -23,7 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { RESERVED, SNAKE, TARGET_REQUIRED_TYPES, slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, labelClasses } from '../components/ui'
+import { buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from '../components/ui'
 
 interface NewColumn {
   label: string
@@ -75,7 +75,7 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
     return (
       <button
         type="button"
-        className="underline"
+        className={touchLinkClasses('underline')}
         aria-label={`Rename ${column.column_name}`}
         data-testid={`ce-rename-${column.column_name}`}
         onClick={() => {
