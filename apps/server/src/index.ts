@@ -1213,6 +1213,18 @@ app.get('/api/instance-settings/export', async (c) => {
   return c.json(await exportInstanceSettings())
 })
 
+// D10: the variable report the environment comparison reads. The caller
+// sends a new random key each run; the answer says which declared variables
+// are set and fingerprints only the secrets with a cross-environment rule.
+app.post('/api/instance-settings/variables', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => null)) as { key?: unknown } | null
+  const { variableReport } = await import('./environment-comparison')
+  const report = await variableReport(body?.key)
+  c.header('Cache-Control', 'no-store')
+  return c.json(report)
+})
+
 // D5: which fields of one row the last apply set, so the form shows them
 // read-only. Only someone who can read the row learns which are locked.
 app.get('/api/instance-settings/managed/:table/:name', async (c) => {
