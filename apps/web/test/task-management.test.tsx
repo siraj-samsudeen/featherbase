@@ -53,7 +53,7 @@ test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ a
     await user.type(capture, 'Review September stock variance{Enter}')
 
     expect(await screen.findByText('Review September stock variance')).toBeInTheDocument()
-    expect(capture).toHaveValue('')
+    await waitFor(() => expect(capture).toHaveValue(''))
     const rows = (await admin.get(
       '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22project%22%2C%22personal_tasks_owner%22%2C%22assigned_to%22%5D',
     )) as { data: Record<string, unknown>[] }
