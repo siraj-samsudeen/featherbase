@@ -6,6 +6,8 @@ import { sql } from './db'
 
 interface SystemSettings {
   app_name: string
+  /** The instance's own mark for the sign-in page; null shows Featherbase's. */
+  logo: string | null
   time_zone: string
   date_format: string
   session_hours: number
@@ -18,6 +20,7 @@ const DEFAULTS: SystemSettings = {
   ...DISPLAY_DEFAULTS,
   time_zone: 'UTC',
   session_hours: 8,
+  logo: null,
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {
@@ -34,6 +37,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   }
   return {
     app_name: str('app_name'),
+    logo: stored.get('logo') || null,
     time_zone: str('time_zone'),
     date_format: str('date_format'),
     session_hours: num('session_hours'),

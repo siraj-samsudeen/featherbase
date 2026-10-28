@@ -1,4 +1,5 @@
 import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
+import { deleteTableIfExists } from './cleanup'
 
 const DT = 'Bulk DT'
 
@@ -10,6 +11,9 @@ const DT = 'Bulk DT'
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const token = await adminToken(request)
   const auth = bearer(token)
+  // A leftover run's edited rows can't be deleted one by one (their history
+  // blocks it, #321), so the leftover Table goes as a whole.
+  await deleteTableIfExists(request, token, DT)
   const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
@@ -20,12 +24,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
-  const listed = (await (
-    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
-  ).json()) as { data: { row_id: string }[] }
-  for (const row of listed.data)
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, { headers: auth })
+  if (dt.status() !== 201) throw new Error(`table: ${dt.status()}`)
   for (const title of ['one', 'two', 'three', 'four', 'five']) {
     await request.post(`/api/table/${encodeURIComponent(DT)}`, {
       headers: auth,
@@ -66,19 +65,23 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ sessio
     expect(listed.data.length).toBe(5)
   })
 
-  await session.step('select-all then bulk delete removes every row on the page', async ({ page }) => {
-    await page.getByTestId('select-all').check()
-    await expect(page.getByTestId('bulk-count')).toContainText('5 selected')
+  // The three edited rows now have history, which blocks deleting them
+  // (#321, owner decision 27-Oct-2026); the two untouched rows can go.
+  await session.step('bulk delete removes the selected rows', async ({ page }) => {
+    const drafts = page.getByTestId('list-rows').locator('tr').filter({ hasText: /^.*draft.*$/ })
+    await expect(drafts).toHaveCount(2)
+    for (const row of await drafts.all()) await row.getByTestId('row-check').check()
+    await expect(page.getByTestId('bulk-count')).toContainText('2 selected')
     await page.getByTestId('bulk-delete').click()
-    await expect(page.getByRole('dialog', { name: 'Delete 5 rows?' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: 'Delete 2 rows?' })).toBeVisible()
     await page.getByTestId('bulk-delete-confirm').click()
-    await expect(page.getByTestId('list-total')).toContainText('0 total')
+    await expect(page.getByTestId('list-total')).toContainText('3 total')
     const token = await page.evaluate(() => localStorage.getItem('fc_token'))
     const after = (await (
       await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
         headers: { Authorization: `Bearer ${token}` },
       })
     ).json()) as { data: { row_id: string }[] }
-    expect(after.data.length).toBe(0)
+    expect(after.data.length).toBe(3)
   })
 })

@@ -207,13 +207,18 @@ reaches the Admin screen.
 `POST /api/instance-settings/variables` (System Manager token) takes a random
 key per call. It returns, per registry entry, whether the variable is set,
 and for entries with a cross-environment rule, a truncated
-`HMAC-SHA256(key, value)`. The rama_dw workflow uses one key for all
-environments in a run, compares the fingerprints against the rules, and
-prints the side-by-side table. Nothing is kept.
+`HMAC-SHA256(key, value)`. It also says which file revision the last apply
+used and whether the settings still match it. The instance repository's
+workflow asks every environment with one key per run, and the platform's
+`cli settings:compare` checks the reports against the rules and prints the
+side-by-side table (`cli settings:variables` produces the same report from a
+shell on the server). Nothing is kept.
 
 - *Why:* catches a shared `JWT_SECRET` (dev tokens valid on prod) and a
   mismatched `GOOGLE_CLIENT_SECRET`. A new key each run means fingerprints
-  cannot be collected over time or tested against guesses offline.
+  cannot be collected over time, and are useless to anyone without the
+  run's key. The key's holder could test guesses, so these secrets must be
+  long and random.
 
 ## Risks / Trade-offs
 

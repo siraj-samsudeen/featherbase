@@ -6,7 +6,7 @@ import { AppError } from './errors'
 import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
-import { retainedDocumentCounts } from './document-activity'
+import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -293,15 +293,22 @@ async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: Row
   const nameField = meta.name === 'Share' ? 'share_name' : 'ref_name'
   for (const target of [old, row]) {
     const table = target?.[tableField]
-    if (typeof table !== 'string' || !table.includes('.')) continue
+    if (typeof table !== 'string' || !table) continue
     const name = String(target?.[nameField] ?? '')
     // File may attach to a Table rather than one document, or be unattached.
     if (meta.name === 'File' && !name) continue
+    const appTable = table.includes('.')
+    // #321: a plain stored row is locked too, so this write and the row's
+    // deletion serialise: either the delete waits and then sees this activity
+    // and refuses, or this write waits and then finds the row gone. A
+    // connected row lives on its source and a settings table has no rows.
+    const [def] = await tx`select kind, data_source from table_def where name = ${table}`
+    if (!appTable && (!def || def.data_source || def.kind === 'settings')) continue
     const targetMeta = await getMeta(table)
     const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
       where ${tx(targetMeta.row_key)} = ${name} for key share`
     if (!exists) throw new AppError('NotFoundError', `${table} ${name} not found`)
-    await getDoc(table, name, user)
+    if (appTable) await getDoc(table, name, user)
   }
 }
 
@@ -1360,10 +1367,11 @@ async function deleteDocImpl(
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
         || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
         throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
-      const counts = await retainedDocumentCounts(stx, table, name)
-      if (Object.values(counts).some(Boolean))
-        throw new AppError('ValidationError', 'This document has retained activity or references and cannot be deleted',
-          Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])))
+      assertNothingRetained(table, name, await retainedDocumentCounts(stx, table, name))
+    } else {
+      // #321: a plain row keeps its comments, history, attachments and shares
+      // by refusing the delete while it has any (links are checked below).
+      assertNothingRetained(table, name, await retainedActivityCounts(stx, table, name))
     }
     if ((existing.status as string) === 'submitted')
       throw new AppError(
@@ -1480,6 +1488,9 @@ async function deleteBoundDoc(
     isNew: false,
     tx: sql,
   }
+  // #321: a connected row's comments, history, attachments and shares live
+  // here; the delete is refused while it has any, as for a stored row.
+  assertNothingRetained(meta.name, name, await retainedActivityCounts(sql, meta.name, name))
   await runHooks('on_trash', hctx)
   const outcome = await ctx.driver
     .remove(ctx.bind, name, expectUpdatedAt)
@@ -1495,7 +1506,8 @@ async function deleteBoundDoc(
 
 // DOC-012: rename a row's primary key and update every Reference that
 // pointed at the old name — across all Tables and child tables — in one
-// transaction. The row keeps all its other data and children.
+// transaction. The row keeps all its other data and children, and its
+// comments, history, attachments and shares (#509).
 export function renameDoc(...args: Parameters<typeof renameDocImpl>) {
   return appOperation(() => renameDocImpl(...args))
 }
@@ -1568,6 +1580,9 @@ async function renameDocImpl(
         update ${tx(await tableRelation(parentTable))} set ${tx(col)} = ${target}
         where ${tx(col)} = ${oldName}`
     }
+
+    // #509: and every record that names the row by id in plain text.
+    await repointRowActivity(stx, table, oldName, target)
   })
   return getDoc(table, target, user)
 }

@@ -68,8 +68,11 @@ describe('PERM-007: own_rows_only permissions', () => {
         })
       ).status,
     ).toBe(200)
+    // The edited row now has history, which blocks deleting it (#321); an
+    // unedited row of her own shows she may delete what she owns.
+    const spare = await alice.post<Record<string, unknown>>(dt.url, { t: 'mine, spare' })
     expect(
-      (await alice.fetch(dt.rowUrl(String(mine.row_id)), { method: 'DELETE' })).status,
+      (await alice.fetch(dt.rowUrl(String(spare.row_id)), { method: 'DELETE' })).status,
     ).toBe(200)
   })
 

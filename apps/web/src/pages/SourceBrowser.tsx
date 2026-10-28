@@ -252,20 +252,22 @@ export default function SourceBrowser({ name }: { name: string }) {
                     data-testid={`sb-row-${t.table}`}
                   >
                     <td className="px-3 py-2">
-                      <input
-                        type="checkbox"
-                        aria-label={`Reflect ${key}`}
-                        disabled={!selectable}
-                        checked={selected.has(key)}
-                        onChange={() =>
-                          setSelected((prev) => {
-                            const next = new Set(prev)
-                            if (next.has(key)) next.delete(key)
-                            else next.add(key)
-                            return next
-                          })
-                        }
-                      />
+                      <label className="cursor-pointer">
+                        <input
+                          type="checkbox"
+                          aria-label={`Reflect ${key}`}
+                          disabled={!selectable}
+                          checked={selected.has(key)}
+                          onChange={() =>
+                            setSelected((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(key)) next.delete(key)
+                              else next.add(key)
+                              return next
+                            })
+                          }
+                        />
+                      </label>
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">
                       {t.schema ? `${t.schema}.` : ''}

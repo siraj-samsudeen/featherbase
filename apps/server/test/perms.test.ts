@@ -117,8 +117,11 @@ describe("Roles decide what's possible", () => {
     const row = await manager.get<Record<string, unknown>>(dt.rowUrl(name))
     await patchDoc(manager, dt.rowUrl(name), { updated_at: row.updated_at, title: 'edited' })
     expect((await manager.get<Record<string, unknown>>(dt.rowUrl(name))).title).toBe('edited')
-    expect((await manager.fetch(dt.rowUrl(name), { method: 'DELETE' })).status).toBe(200)
-    await expectApiError(manager.get(dt.rowUrl(name)), { status: 404 })
+    // The edited row now has history, which blocks deleting it (#321); a
+    // second, unedited row shows the manager may delete.
+    const spare = String((await manager.post<Record<string, unknown>>(dt.url, { title: 'spare' })).row_id)
+    expect((await manager.fetch(dt.rowUrl(spare), { method: 'DELETE' })).status).toBe(200)
+    await expectApiError(manager.get(dt.rowUrl(spare)), { status: 404 })
   })
 })
 

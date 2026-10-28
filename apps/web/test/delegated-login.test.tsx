@@ -22,7 +22,8 @@ function providerAnswers(answer: () => Response | Promise<Response>) {
 }
 
 async function submitDelegated(id: string, password: string) {
-  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  // #380 4.2: a connected service's form is the one the page opens on.
+  await screen.findByTestId('delegated-login-form')
   await userEvent.type(screen.getByLabelText('StyleHR ID'), id)
   await userEvent.type(screen.getByLabelText('Password'), password)
   await userEvent.click(screen.getByTestId('delegated-login-submit'))
@@ -48,12 +49,38 @@ test('a linked Team Leader signs in with their StyleHR ID', async ({ createUser 
   providerAnswers(() => Response.json({ ok: true }))
 
   await renderApp('/featherbase/login', anonymous)
-  expect(await screen.findByTestId('delegated-login-toggle')).toHaveTextContent('Sign in with StyleHR')
+  expect(await screen.findByTestId('delegated-login-submit')).toHaveTextContent('Sign in with StyleHR')
   await submitDelegated('tl_web_1', 'hr-password')
 
   await screen.findByTestId('no-access') // no role yet (#410)
   expect(JSON.parse(localStorage.getItem('fc_user')!).row_id).toBe(tl.user)
   expect(localStorage.getItem('fc_token')).toBeTruthy()
+})
+
+// #380 4.2: store staff know their employee ID, so the service comes first.
+test('with a connected service the page opens on its form, and the other ways in sit under it', async () => {
+  vi.stubEnv('ALLOW_MOCK_OAUTH', '1')
+  try {
+    await connectStyleHR()
+    await renderApp('/featherbase/login', anonymous)
+    const form = await screen.findByTestId('delegated-login-form')
+    expect(screen.getByTestId('login-subtitle')).toHaveTextContent('Sign in with StyleHR')
+    expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
+    // The ID box comes before the password box, and both before the other ways in.
+    const id = screen.getByLabelText('StyleHR ID')
+    expect(id.compareDocumentPosition(screen.getByLabelText('Password')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const google = await screen.findByTestId('google-login')
+    expect(google).toHaveTextContent('Sign in with Google')
+    expect(form.compareDocumentPosition(google) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await userEvent.click(screen.getByTestId('password-login-toggle'))
+    expect(await screen.findByTestId('login-form')).toBeInTheDocument()
+    // Chosen by the person, so it stays; the service is one tap back.
+    await userEvent.click(screen.getByTestId('delegated-login-toggle'))
+    expect(await screen.findByTestId('delegated-login-form')).toBeInTheDocument()
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
 
 test('wrong password, an outage and a person who has left each read differently', async ({ createUser }) => {
@@ -97,7 +124,6 @@ test('test mode: the form looks like the ordinary one, and an employee code with
     providerAnswers(() => Response.json({ error: 'the provider must not be asked' }))
 
     await renderApp('/featherbase/login', anonymous)
-    await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
     const form = await screen.findByTestId('delegated-login-form')
     expect(screen.queryByTestId('delegated-test-mode')).not.toBeInTheDocument()
     expect(form).not.toHaveTextContent(/test mode|no password|employee code/i)
@@ -120,7 +146,6 @@ test('with passwords off, the service form offers no way back to a password form
   await connectStyleHR()
   await setPasswordMethod({ enabled: false })
   await renderApp('/featherbase/login', anonymous)
-  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
   await screen.findByTestId('delegated-login-form')
   expect(screen.queryByTestId('password-login-toggle')).not.toBeInTheDocument()
   expect(screen.queryByTestId('login-form')).not.toBeInTheDocument()
@@ -129,7 +154,8 @@ test('with passwords off, the service form offers no way back to a password form
 test('forgot password says where service users reset theirs', async () => {
   await connectStyleHR()
   await renderApp('/featherbase/login', anonymous)
-  await screen.findByTestId('delegated-login-toggle')
+  await screen.findByTestId('delegated-login-form')
+  await userEvent.click(screen.getByTestId('password-login-toggle'))
   await userEvent.click(screen.getByTestId('forgot-password'))
   expect(await screen.findByTestId('forgot-delegated-hint')).toHaveTextContent('StyleHR users reset their password in StyleHR.')
 })
@@ -157,7 +183,7 @@ test('in test mode, submitting nothing says what the ordinary form says and send
     providerAnswers(asked)
     const requests = vi.spyOn(globalThis, 'fetch')
     await renderApp('/featherbase/login', anonymous)
-    await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+    await screen.findByTestId('delegated-login-form')
     requests.mockClear()
     await userEvent.click(screen.getByTestId('delegated-login-submit'))
     expect(await screen.findByText('Enter your StyleHR ID and password.')).toBeInTheDocument()
@@ -176,7 +202,7 @@ test('an ID without a password says what to enter and sends nothing', async () =
   providerAnswers(asked)
   const requests = vi.spyOn(globalThis, 'fetch')
   await renderApp('/featherbase/login', anonymous)
-  await userEvent.click(await screen.findByTestId('delegated-login-toggle'))
+  await screen.findByTestId('delegated-login-form')
   await userEvent.type(screen.getByLabelText('StyleHR ID'), 'someone')
   requests.mockClear()
   await userEvent.click(screen.getByTestId('delegated-login-submit'))

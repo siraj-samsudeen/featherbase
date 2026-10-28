@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
 // person-rename: a person's id is opaque (`psn_…`), so a screen never shows
@@ -65,6 +65,21 @@ export function principalLabel(id: string, name: string | null, loading: boolean
   if (name) return name
   if (!isOpaqueId(id)) return id
   return loading ? '…' : 'Unnamed person'
+}
+
+/** Labels for many principal ids at once — for text that can't hold a
+ *  component, such as a list's checkbox names. Text that is not an opaque id
+ *  reads as itself. */
+export function usePrincipalLabels(ids: readonly string[]): (id: string) => string {
+  const opaque = [...new Set(ids.filter(isOpaqueId))]
+  const results = useQueries({
+    queries: opaque.map((id) => ({ queryKey: ['principal-name', id], staleTime: 5 * 60_000, queryFn: () => loadName(id) })),
+  })
+  const byId = new Map(opaque.map((id, i) => [id, results[i]]))
+  return (id) => {
+    const q = byId.get(id)
+    return q ? principalLabel(id, q.data ?? null, q.isLoading) : id
+  }
 }
 
 export function PrincipalName({ id }: { id: string }) {

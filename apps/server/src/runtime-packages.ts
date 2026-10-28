@@ -8,7 +8,7 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation, provisionApp, withAppIdentity } from './app-lifecycle'
-import { RESERVED_APP_ROOTS, appHref, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, RESERVED_APP_ROOTS, appHref, appTabLinks, type AppScopeProvider, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
 import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
 import { actionDeclaration, readDeclaration, scopeProviderDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import type { ScopeProviderBinding } from './person-scope'
@@ -33,6 +33,20 @@ type Validator = (context: PackageHookContext) => void | Promise<void>
 // #551 (ADR 0011): an app names the platform version it was built for, dated by
 // month. These are the versions this Featherbase runs apps on.
 export const SUPPORTED_PLATFORM_VERSIONS: readonly string[] = ['2026-10']
+
+// #380 task 4.4: the tabs an app's staff move between on a phone, drawn by
+// the shared top bar. An extension point with its own version, so the bar can
+// change shape without moving the whole manifest.
+const tabsDeclaration = z.object({
+  version: z.literal(1),
+  items: z.array(z.object({
+    // Visible characters only: no zero-width or direction-control marks.
+    label: z.string().trim().min(1).max(APP_TAB_LABEL_MAX).regex(/^[^\p{C}]*$/u, 'a tab label is visible text').refine(label => /[^\p{Z}]/u.test(label), 'a tab label is visible text'),
+    icon: z.enum(APP_TAB_ICONS),
+    path: z.string().regex(APP_TAB_PATH, 'a tab path is lower-case segments under the app, like "targets" or "" for its root'),
+  }).strict()).min(2).max(5)
+    .refine(items => new Set(items.map(item => item.path)).size === items.length, 'each tab opens a path of its own'),
+}).strict()
 
 // #642 (E4): an outside site the app frames, written as its exact origin:
 // https, no wildcard, no path. The URL parser's own origin must read back the
@@ -96,6 +110,7 @@ const manifestSchema = z.object({
   frameOrigins: z.array(frameOrigin).optional(),
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
+  tabs: tabsDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -636,7 +651,10 @@ export async function appCatalog(user: string) {
     // Its installation declares pages of its own (#659's classification), and
     // this process holds them to serve.
     if (item.active && item.ownPages && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
-      result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
+      result.push({
+        name: pkg.name, title: pkg.title, href: appHref(pkg.name),
+        ...(pkg.manifest.tabs && { tabs: appTabLinks(appHref(pkg.name), pkg.manifest.tabs.items) }),
+      })
   }
   return result
 }

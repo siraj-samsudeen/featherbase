@@ -114,3 +114,51 @@ describe('Nested rows and settings are deleted only through what holds them', ()
     expect(after.lines).toHaveLength(1)
   })
 })
+
+// SPEC: A row with comments, history, attachments or shares can't be deleted
+// (row-deletion), #321. Owner decision 27-Oct-2026: refuse, as app rows are,
+// so no one's work is lost, and name what blocks the delete.
+describe('A row with comments, history, attachments or shares can\'t be deleted', () => {
+  let n = 0
+  const comment = (name: string) =>
+    sql`insert into comment (row_id, ref_table, ref_name, content) values (${`del-c-${++n}`}, ${CUSTOMER}, ${name}, 'called them today')`
+
+  test('each kind blocks the delete, and the refusal names what blocks it', async ({ admin }) => {
+    await setup(admin)
+    // History: one edit.
+    const acme = await admin.get<{ updated_at: string }>(docPath(CUSTOMER, 'Acme'))
+    await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id: 'Acme', updated_at: acme.updated_at, city: 'Pune' } })
+    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining('it has 1 history entry'),
+    })
+    // Comments, an attachment and a share on rows with no history.
+    await comment('Globex')
+    await comment('Globex')
+    await sql`insert into file (row_id, ref_table, ref_name, file_name) values ('del-f', ${CUSTOMER}, 'Initech', 'invoice-17.txt')`
+    await sql`insert into share (row_id, share_table, share_name, person, read) values ('del-s', ${CUSTOMER}, 'Umbrella', 'Administrator', true)`
+    await expect(admin.delete(docPath(CUSTOMER, 'Globex'))).rejects.toMatchObject({
+      status: 417, message: expect.stringContaining(`${CUSTOMER} Globex cannot be deleted: it has 2 comments`),
+    })
+    await expect(admin.delete(docPath(CUSTOMER, 'Initech'))).rejects.toMatchObject({ message: expect.stringContaining('1 attachment') })
+    await expect(admin.delete(docPath(CUSTOMER, 'Umbrella'))).rejects.toMatchObject({ message: expect.stringContaining('1 share') })
+    for (const name of ['Acme', 'Globex', 'Initech', 'Umbrella'])
+      expect(await admin.get(docPath(CUSTOMER, name))).toMatchObject({ row_id: name })
+    expect(await sql`select count(*)::int as n from comment where ref_table = ${CUSTOMER} and ref_name = 'Globex'`).toEqual([{ n: 2 }])
+  })
+
+  test('several kinds are listed together', async ({ admin }) => {
+    await setup(admin)
+    await comment('Acme')
+    await sql`insert into share (row_id, share_table, share_name, person, read) values ('del-s2', ${CUSTOMER}, 'Acme', 'Administrator', true)`
+    await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({
+      message: expect.stringContaining(`${CUSTOMER} Acme cannot be deleted: it has 1 comment and 1 share`),
+    })
+  })
+
+  test('the same id under another Table does not block, and a row with none of these deletes', async ({ admin }) => {
+    await setup(admin)
+    await sql`insert into comment (row_id, ref_table, ref_name, content) values ('del-other', ${INVOICE}, 'Acme', 'someone else')`
+    await admin.delete(docPath(CUSTOMER, 'Acme'))
+    await expect(admin.get(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({ status: 404 })
+  })
+})

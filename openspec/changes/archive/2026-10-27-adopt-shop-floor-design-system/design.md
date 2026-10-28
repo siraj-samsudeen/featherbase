@@ -13,7 +13,9 @@ router, Comments, FormView, `lib/api.ts` and `lib/session.ts` until it merges.
 guards in the test suite; no old name left once the last stage lands.
 
 **Non-Goals:** new page behaviour beyond what the approved direction names (employee-code-first sign-in, the sales
-headline and the staff tab bar are separate page-adoption changes after this one).
+headline and the staff tab bar are separate page-adoption changes after this one). Section 4 later took in
+employee-code-first sign-in and the tab bar's building block; the sales headline was dropped, because
+`feather-dash-installed-app` design D6 (#550) makes the Dive the whole report (owner, 27-Oct-2026).
 
 ## Decisions
 
