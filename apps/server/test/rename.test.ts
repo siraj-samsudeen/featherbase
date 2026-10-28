@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { PLATFORM_SCHEMA } from '../src/platform-schema'
 
 // DOC-012: rename a Customer; documents that linked to the old name now
 // point at the new name — parent Link fields and child-table Link fields.
@@ -111,11 +112,8 @@ describe('Rename a row and every link follows', () => {
     await expect(admin.get(`/api/table/${encodeURIComponent(ORDER)}/ORD-9`)).rejects.toMatchObject({ status: 404 })
   })
 
-  // SPEC: See a row's whole history in order (comments-and-history) — suspected
-  // defect, see report. Comments, change history, attachments and shares name
-  // their row by id in plain text, and the rename cascade only follows link
-  // columns, so a renamed row loses its own timeline.
-  test.fails("a renamed row's comments and change history come with it", async ({ admin }) => {
+  // SPEC: A renamed row keeps its activity (tables-and-fields), #509.
+  test("a renamed row's comments and change history come with it", async ({ admin }) => {
     await setup(admin)
     const created = await admin.post<{ updated_at: string }>('/api/table/' + encodeURIComponent(CUST), {
       row_id: 'Acme',
@@ -141,5 +139,57 @@ describe('Rename a row and every link follows', () => {
     )
     expect(after.comments).toHaveLength(1)
     expect(after.versions).toHaveLength(1)
+  })
+
+  // SPEC: A renamed row keeps its activity (tables-and-fields), #509. Every platform
+  // record that names a row by its id in plain text follows the rename; the
+  // same id under another Table is left alone.
+  test('every record that names the row by id follows the rename, and only that row', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/table/' + encodeURIComponent(CUST), { row_id: 'Acme', city: 'NYC' })
+    const holders = [
+      ['access_log', 'ref_table', 'reference_name'],
+      ['comment', 'ref_table', 'ref_name'],
+      ['data_scope', 'allow_table', 'for_value'],
+      ['email_queue', 'ref_table', 'reference_name'],
+      ['file', 'ref_table', 'ref_name'],
+      ['notification_log', 'ref_table', 'ref_name'],
+      ['share', 'share_table', 'share_name'],
+      ['todo', 'ref_table', 'reference_name'],
+      ['version', 'ref_table', 'ref_name'],
+      ['workflow_action', 'ref_table', 'ref_name'],
+    ] as const
+    for (const [relation, tableColumn, nameColumn] of holders) {
+      for (const owner of [CUST, ORDER])
+        await sql`insert into ${sql(`${PLATFORM_SCHEMA}.${relation}`)} ${sql({
+          row_id: `${relation} ${owner}`, [tableColumn]: owner, [nameColumn]: 'Acme',
+          ...(relation === 'data_scope' || relation === 'share' ? { person: 'Administrator' } : {}),
+        })}`
+    }
+    for (const owner of [CUST, ORDER])
+      await sql`insert into tag_link (ref_table, ref_name, tag) values (${owner}, 'Acme', 'rn-tag')`
+
+    await admin.post(`/api/table/${encodeURIComponent(CUST)}/Acme:rename`, { new_name: 'Acme Corp' })
+
+    for (const [relation, tableColumn, nameColumn] of [...holders, ['tag_link', 'ref_table', 'ref_name'] as const]) {
+      const rows = await sql`
+        select ${sql(tableColumn)} as owner, ${sql(nameColumn)} as name from ${sql(`${PLATFORM_SCHEMA}.${relation}`)}
+        where ${sql(tableColumn)} in ${sql([CUST, ORDER])} and ${sql(nameColumn)} in ('Acme', 'Acme Corp')
+        order by 1`
+      expect({ relation, rows: rows.map((r) => [r.owner, r.name]) })
+        .toEqual({ relation, rows: [[CUST, 'Acme Corp'], [ORDER, 'Acme']] })
+    }
+  })
+
+  // A tag left under the new id by an earlier row of that id must not make
+  // the rename collide; the row ends with the tag once.
+  test('a tag already under the new id does not stop the rename', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/table/' + encodeURIComponent(CUST), { row_id: 'Acme', city: 'NYC' })
+    for (const name of ['Acme', 'Acme Corp'])
+      await sql`insert into tag_link (ref_table, ref_name, tag) values (${CUST}, ${name}, 'rn-vip')`
+    await admin.post(`/api/table/${encodeURIComponent(CUST)}/Acme:rename`, { new_name: 'Acme Corp' })
+    expect(await sql`select ref_name from tag_link where ref_table = ${CUST} order by 1`)
+      .toEqual([{ ref_name: 'Acme Corp' }])
   })
 })

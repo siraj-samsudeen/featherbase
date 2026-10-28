@@ -2,9 +2,13 @@
 // size). Import icons from here, not from lucide-react directly, so the set
 // stays small and consistent across screens.
 export {
+  ArrowDown,
+  ArrowUp,
   Bell,
   Check,
   CalendarClock,
+  CalendarDays,
+  ChartColumn,
   ChevronDown,
   ChevronRight,
   CircleCheck,
@@ -17,6 +21,7 @@ export {
   EyeOff,
   FileText,
   History,
+  House,
   Inbox,
   Info,
   Key,
@@ -34,7 +39,9 @@ export {
   ShieldLock,
   Sun,
   Table,
+  Target,
   TriangleAlert,
+  UserRound,
   UserRoundSearch,
   X,
 } from 'lucide-react'

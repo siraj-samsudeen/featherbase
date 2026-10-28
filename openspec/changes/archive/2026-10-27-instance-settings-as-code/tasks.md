@@ -38,9 +38,9 @@
 
 ## 7. Environment comparison
 
-- [ ] 7.1 Add the variable report with per-call keyed fingerprints for rule-bearing secrets. Verify: test that two calls with different keys give different fingerprints for the same value, and the response contains no value.
-- [ ] 7.2 Document the comparison in DEPLOY.md, with the side-by-side table the instance workflow prints.
+- [x] 7.1 Add the variable report with per-call keyed fingerprints for rule-bearing secrets. Verify: test that two calls with different keys give different fingerprints for the same value, and the response contains no value.
+- [x] 7.2 Document the comparison in DEPLOY.md, with the side-by-side table the instance workflow prints.
 
 ## 8. Integration
 
-- [ ] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in Admin, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.
+- [x] 8.1 End to end on a local instance: export, edit, dry run, apply, lock visible in Admin, health page and history update, and fingerprint comparison between two local databases. Verify: the commands and screenshots recorded in the implementation PR.

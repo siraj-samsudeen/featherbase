@@ -14,13 +14,14 @@ import {
   Select,
   Skeleton,
   StatusPill,
+  TabBar,
   TextInput,
   ToastProvider,
   useToast,
   type DataColumn,
 } from '../components/ui'
 import { fmtCount, fmtINR, fmtPct } from '../lib/inr'
-import { ExternalLink, Moon, Plus, Sun } from '../components/ui/icons'
+import { ChartColumn, ExternalLink, House, ListChecks, Moon, Plus, Sun, UserRound } from '../components/ui/icons'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -194,6 +195,22 @@ export function Gallery() {
             rowKey={lineKey}
             empty={{ title: 'No checklists yet', body: 'Runs you start appear here.', action: <Button variant="primary">Start a checklist</Button> }}
           />
+        </Section>
+
+        <Section title="Tab bar (phone only)">
+          <div className="mx-auto w-full max-w-sm overflow-hidden rounded-card border border-border">
+            <TabBar
+              preview
+              label="Example app"
+              testId="gallery-tab-bar"
+              tabs={[
+                { label: 'Today', icon: House, href: '#today' },
+                { label: 'Targets', icon: ChartColumn, href: '#targets', current: true },
+                { label: 'Checklists', icon: ListChecks, href: '#checklists' },
+                { label: 'Me', icon: UserRound, href: '#me' },
+              ]}
+            />
+          </div>
         </Section>
 
         <Section title="Toasts">

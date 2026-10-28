@@ -11,7 +11,15 @@ const BAR_ELEMENT = 'featherbase-bar'
 interface ShellApp {
   name: string
   title: string
+  /** #380 task 4.4: the app declares phone tabs, which the bar draws. */
+  tabs?: boolean
 }
+
+// A page without a viewport lays out 980px wide on a phone, so the bar's
+// phone-only tabs would never show; for an app with tabs the shell gives such
+// a page the device's width.
+const VIEWPORT = '<meta name="viewport" content="width=device-width, initial-scale=1">'
+const HAS_VIEWPORT = /<meta\s[^>]*name\s*=\s*["']?viewport/i
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, character => ({
@@ -20,7 +28,7 @@ function escapeHtml(value: string): string {
 }
 
 export function composeRuntimeShell(html: string, app: ShellApp): string {
-  const script = `<script type="module" src="${BAR_SCRIPT}"></script>`
+  const script = `${app.tabs && !HAS_VIEWPORT.test(html) ? VIEWPORT : ''}<script type="module" src="${BAR_SCRIPT}"></script>`
   const host = `<${BAR_ELEMENT} data-app="${escapeHtml(app.name)}" data-title="${escapeHtml(app.title)}"></${BAR_ELEMENT}>`
   const rooted = rootRuntimeEntryAssets(html, app.name)
   const body = /<body(?:\s[^>]*)?>/i

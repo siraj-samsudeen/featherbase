@@ -2028,31 +2028,35 @@ export function ImportWizard() {
                       >
                         {merged && (
                           <td className="px-2 py-1 text-center">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(combinePick[`${i}:${groupColumns[ci]?.key ?? ci}`])}
-                              onChange={(e) =>
-                                setCombinePick((prev) => ({
-                                  ...prev,
-                                  [`${i}:${groupColumns[ci]?.key ?? ci}`]: e.target.checked,
-                                }))
-                              }
-                              data-testid={`iw-combine-pick-${i}-${ci}`}
-                              aria-label={`Combine ${c.label || c.column_name}`}
-                            />
+                            <label className="cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(combinePick[`${i}:${groupColumns[ci]?.key ?? ci}`])}
+                                onChange={(e) =>
+                                  setCombinePick((prev) => ({
+                                    ...prev,
+                                    [`${i}:${groupColumns[ci]?.key ?? ci}`]: e.target.checked,
+                                  }))
+                                }
+                                data-testid={`iw-combine-pick-${i}-${ci}`}
+                                aria-label={`Combine ${c.label || c.column_name}`}
+                              />
+                            </label>
                           </td>
                         )}
                         <td className="px-2 py-1 text-center">
-                          <input
-                            type="checkbox"
-                            checked={plan.include[ci]}
-                            onChange={(e) =>
-                              setPlan(i, {
-                                include: plan.include.map((v, j) => (j === ci ? e.target.checked : v)),
-                              })
-                            }
-                            data-rowfield="include"
-                          />
+                          <label className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={plan.include[ci]}
+                              onChange={(e) =>
+                                setPlan(i, {
+                                  include: plan.include.map((v, j) => (j === ci ? e.target.checked : v)),
+                                })
+                              }
+                              data-rowfield="include"
+                            />
+                          </label>
                         </td>
                         <td className="px-2 py-1 text-ink-muted">{sheet.headers[ci]}</td>
                         <td className="px-1 py-1">
@@ -2323,29 +2327,31 @@ export function ImportWizard() {
                         {/* Skipping is the checkbox, same as the new-Table
                             grid — not a buried option inside the select. */}
                         <td className="px-2 py-1 text-center">
-                          <input
-                            type="checkbox"
-                            checked={plan.include[hi] && !retired}
-                            disabled={Boolean(retired)}
-                            onChange={(e) => {
-                              const include = plan.include.map((v, j) =>
-                                j === hi ? e.target.checked : v,
-                              )
-                              setPlan(i, {
-                                include,
-                                // Unticking the key's file column strands the
-                                // match key — clear it rather than match on
-                                // a column that no longer imports.
-                                key:
-                                  plan.key &&
-                                  plan.mapping.some((m, j) => m === plan.key && include[j])
-                                    ? plan.key
-                                    : null,
-                              })
-                            }}
-                            data-testid={`iw-map-use-${i}-${hi}`}
-                            data-rowfield="include"
-                          />
+                          <label className="cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={plan.include[hi] && !retired}
+                              disabled={Boolean(retired)}
+                              onChange={(e) => {
+                                const include = plan.include.map((v, j) =>
+                                  j === hi ? e.target.checked : v,
+                                )
+                                setPlan(i, {
+                                  include,
+                                  // Unticking the key's file column strands the
+                                  // match key — clear it rather than match on
+                                  // a column that no longer imports.
+                                  key:
+                                    plan.key &&
+                                    plan.mapping.some((m, j) => m === plan.key && include[j])
+                                      ? plan.key
+                                      : null,
+                                })
+                              }}
+                              data-testid={`iw-map-use-${i}-${hi}`}
+                              data-rowfield="include"
+                            />
+                          </label>
                         </td>
                         <td className="px-2 py-1 text-ink">
                           {h || <em>(blank)</em>}

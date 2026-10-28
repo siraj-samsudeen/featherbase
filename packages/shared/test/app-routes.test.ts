@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, FEATHERBASE_ADMIN_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
+import { describe, expect, test } from 'vitest'
+import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks } from '../src/index'
 
 test('the canonical Featherbase Admin destination has its product label and path', () => {
   expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
@@ -48,4 +48,31 @@ test('only the System Manager pages need manage (#465, #476 recents rule)', () =
   expect(adminPageNeedsManage('imports')).toBe(true)
   expect(adminPageNeedsManage('access-tokens')).toBe(false)
   expect(adminPageNeedsManage('no-such-page')).toBe(false)
+})
+
+// #380 task 4.4: an interim app's tabs are typed only, not validated like a
+// manifest's, so the same rules are pinned here.
+describe('interim app tabs', () => {
+  test('every interim app declares no tabs or 2-5 drawable tabs under its own root', () => {
+    for (const [name, interim] of Object.entries(INTERIM_APPS)) {
+      const tabs = interim.tabs ?? []
+      if (!tabs.length) continue
+      expect(tabs.length, name).toBeGreaterThanOrEqual(2)
+      expect(tabs.length, name).toBeLessThanOrEqual(5)
+      expect(new Set(tabs.map((t) => t.path)).size, name).toBe(tabs.length)
+      for (const tab of tabs) {
+        expect(tab.path, name).toMatch(APP_TAB_PATH)
+        expect(tab.label.trim().length, name).toBeGreaterThan(0)
+        expect(tab.label.length, name).toBeLessThanOrEqual(APP_TAB_LABEL_MAX)
+        expect(APP_TAB_ICONS, name).toContain(tab.icon)
+      }
+    }
+  })
+
+  test('tab links sit under the app root, with or without its trailing slash', () => {
+    expect(appTabLinks('/other/', [{ label: 'Today', icon: 'home', path: '' }, { label: 'Targets', icon: 'target', path: 'targets' }]))
+      .toEqual([{ label: 'Today', icon: 'home', href: '/other/' }, { label: 'Targets', icon: 'target', href: '/other/targets' }])
+    expect(appTabLinks('/featherbase/sales-target', [{ label: 'Report', icon: 'report', path: '' }, { label: 'Me', icon: 'person', path: 'me' }]))
+      .toEqual([{ label: 'Report', icon: 'report', href: '/featherbase/sales-target' }, { label: 'Me', icon: 'person', href: '/featherbase/sales-target/me' }])
+  })
 })

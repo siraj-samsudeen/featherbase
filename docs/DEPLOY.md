@@ -582,6 +582,64 @@ applied; settings match the file; each enabled scheduled job ran recently;
 each enabled app has its required settings and secrets; Administrator not on
 the default password.
 
+### Comparing environments
+
+Dev and prod drift silently: a variable set on one and not the other, a
+secret shared where it must differ, or a settings file applied to one
+environment only. The instance repository's workflow compares them on each
+run. It picks a fresh key, asks every environment for its variable report
+with that key, and puts the reports side by side:
+
+```bash
+set -euo pipefail
+KEY=$(openssl rand -hex 32)   # new every run; never stored (in Actions, ::add-mask:: it)
+for env in dev prod; do        # each with its own System Manager service-account token
+  printf '{"key":"%s"}' "$KEY" | curl --fail-with-body "https://<$env host>/api/instance-settings/variables" \
+    -H "Authorization: Bearer <$env token>" -H 'Content-Type: application/json' \
+    --data @- > "$PWD/$env.json"
+done
+pnpm --silent --filter server cli settings:compare dev="$PWD/dev.json" prod="$PWD/prod.json"
+```
+
+A report says, for every declared variable, whether it is set, and for the
+secrets with a cross-environment rule (the "must differ" `DATABASE_URL`,
+`JWT_SECRET` and `FILE_URL_SECRET`; the "must match" `GOOGLE_CLIENT_SECRET`)
+a 16-digit HMAC-SHA256 of the value under that run's key. It also names the
+settings-file revision and section last applied, and whether the settings
+still match it. No value leaves the server. A new key each run means
+fingerprints cannot be collected and matched across runs, and are useless
+without that run's key. Whoever holds the key could still test guesses
+against them, so keep these secrets long and random. From a shell on the server (for
+example over `railway ssh`), `printf %s "$KEY" | pnpm --silent --filter server
+cli settings:variables --stdin` prints the same report. (`pnpm --filter`
+runs the command in `apps/server`, so give report files as absolute paths.)
+
+The comparison prints one line per variable that any environment sets, then
+the settings file:
+
+```text
+Variable                 dev                 prod                 Result
+DATABASE_URL             set                 set                  ok
+INSTANCE_ADDRESSES       unset               set                  PROBLEM: set on prod only; dev needs it
+JWT_SECRET               set                 set                  PROBLEM: the same on dev and prod; it must differ between environments
+GOOGLE_CLIENT_SECRET     set                 set                  ok
+SMTP_HOST                unset               set                  note: set on prod only
+Settings file revision   4f0c2a91b7de (dev)  4f0c2a91b7de (prod)  ok
+Settings match the file  yes                 no                   PROBLEM: changed outside the file on prod
+3 problems, 1 note.
+```
+
+It exits 1 while there is a problem: a rule broken, a variable missing on an
+environment that needs it (required or recommended there as its release
+judges it, such as the Google secret where Google sign-in is on; a
+`development` environment needs almost nothing), an environment never applied, applied
+from another revision, or applied with another environment's section, or
+settings changed outside the file. A note (a variable set on one side only
+that the other does not need, such as real email on prod, or an apply with no
+revision recorded) is for reading, not failing. Reports made with different keys are
+refused. Values that should differ, such as each environment's own web
+addresses, are compared by presence only.
+
 ## Sign-in methods and linked identities
 
 The ways in are rows of the system Table **Sign In Method** (Admin → Sign In

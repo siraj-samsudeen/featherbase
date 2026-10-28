@@ -46,12 +46,14 @@ function FilterControl({
   }
   if (def.column_type === 'Check')
     return (
-      <input
-        type="checkbox"
-        data-testid={testid}
-        checked={value === '1'}
-        onChange={(e) => onChange(e.target.checked ? '1' : '')}
-      />
+      <label className="cursor-pointer">
+        <input
+          type="checkbox"
+          data-testid={testid}
+          checked={value === '1'}
+          onChange={(e) => onChange(e.target.checked ? '1' : '')}
+        />
+      </label>
     )
   const type = def.column_type === 'Date' ? 'date' : def.column_type === 'Int' ? 'number' : 'text'
   return (

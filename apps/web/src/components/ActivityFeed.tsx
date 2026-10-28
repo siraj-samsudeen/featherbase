@@ -6,7 +6,7 @@ import { fmtClockTime, fmtTimelineDay, timelineDayKey } from '../lib/inr'
 import { KindIcon } from '../lib/kind-icons'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
-import { cardClasses } from './ui'
+import { cardClasses, touchRowClasses } from './ui'
 
 interface FeedItem {
   /** Display name (#440). The feed carries no person id, by design. */
@@ -110,7 +110,7 @@ export function ActivityFeed() {
             // kind's icon, with the clock time trailing.
             <div
               key={`${item.at}-${i}`}
-              className="flex items-center gap-2.5 border-t border-border px-3 py-1.5 text-sm"
+              className={touchRowClasses('relative flex items-center gap-2.5 border-t border-border px-3 py-1.5 text-sm')}
               data-testid="feed-item"
             >
               <KindIcon kind={item.kind} />
@@ -133,7 +133,9 @@ export function ActivityFeed() {
                     type="button"
                     onClick={() => router.history.push(item.path)}
                     title={item.title ? item.label : undefined}
-                    className="min-w-[4ch] truncate text-left font-medium text-action hover:underline"
+                    // On a touch screen the object's tap area is the whole row
+                    // (the row is `relative`), not its few letters of text.
+                    className="min-w-[4ch] truncate text-left font-medium text-action hover:underline pointer-coarse:before:absolute pointer-coarse:before:inset-0 pointer-coarse:before:content-['']"
                     data-testid="feed-object"
                   >
                     {item.title ?? item.label}
@@ -189,7 +191,7 @@ function FeedTab({
       onClick={onClick}
       data-testid={testid}
       aria-pressed={on}
-      className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${
+      className={`-mb-px border-b-2 px-3 py-1.5 text-sm font-medium ${touchRowClasses()} ${
         on
           ? 'border-action text-action'
           : 'border-transparent text-ink-muted hover:text-ink'

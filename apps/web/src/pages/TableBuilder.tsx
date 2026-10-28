@@ -22,7 +22,7 @@ import {
   parseWorkbook,
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
-import { buttonClasses, cardClasses, inputClasses, labelClasses, touchTargetClasses } from '../components/ui'
+import { buttonClasses, cardClasses, iconButtonClasses, inputClasses, labelClasses, touchRowClasses, touchTargetClasses } from '../components/ui'
 import { fmtCount, fmtDate, fmtDay } from '../lib/inr'
 
 // A column as SENT: its grid row travels with it. The payload drops
@@ -485,7 +485,7 @@ export function TableBuilder() {
             accelerator, not a mode. Hidden while a file drives the columns. */}
         <div>{!imported && <PasteColumns onBuild={addPastedColumns} />}</div>
         <div
-          className="mb-3 inline-flex overflow-hidden rounded-[var(--radius-control)] border border-border-control text-xs"
+          className="mb-3 inline-flex shrink-0 overflow-hidden rounded-[var(--radius-control)] border border-border-control text-xs"
           role="group"
           aria-label="Column editor view"
         >
@@ -520,15 +520,17 @@ export function TableBuilder() {
 
       {view === 'grid' && (
         <div className={cardClasses('overflow-x-auto')}>
-          <table className="w-full text-sm" data-testid="dt-fields">
+          {/* Wide enough that every box keeps a usable width; on a phone the
+              grid scrolls in its own card (Cards is the phone-shaped view). */}
+          <table className="w-full min-w-[48rem] text-sm" data-testid="dt-fields">
             <thead className="bg-subtle text-left">
               <tr>
-                <th className={`px-3 py-2 ${KICKER}`}>Field label</th>
-                <th className={`px-2 py-2 ${KICKER}`}>
+                <th className={`min-w-40 px-3 py-2 ${KICKER}`}>Field label</th>
+                <th className={`min-w-32 px-2 py-2 ${KICKER}`}>
                   Database name <span className="font-normal normal-case tracking-normal">(auto)</span>
                 </th>
-                <th className={`px-2 py-2 ${KICKER}`}>Type</th>
-                <th className={`px-2 py-2 ${KICKER}`}>Details</th>
+                <th className={`min-w-36 px-2 py-2 ${KICKER}`}>Type</th>
+                <th className={`min-w-40 px-2 py-2 ${KICKER}`}>Details</th>
                 <th className={`px-2 py-2 ${KICKER}`} title="Must be filled in every row">Reqd</th>
                 <th className={`px-2 py-2 ${KICKER}`} title="Shown in the list view">List</th>
                 <th />
@@ -643,28 +645,32 @@ export function TableBuilder() {
                       />
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
-                      <input
-                        type="checkbox"
-                        checked={c.reqd}
-                        onChange={(e) => setColumn(i, { reqd: e.target.checked })}
-                        data-rowfield="reqd"
-                        className="accent-action"
-                      />
+                      <label className="cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={c.reqd}
+                          onChange={(e) => setColumn(i, { reqd: e.target.checked })}
+                          data-rowfield="reqd"
+                          className="accent-action"
+                        />
+                      </label>
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
-                      <input
-                        type="checkbox"
-                        checked={c.in_list_view}
-                        onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
-                        data-rowfield="in_list_view"
-                        className="accent-action"
-                      />
+                      <label className="cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={c.in_list_view}
+                          onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
+                          data-rowfield="in_list_view"
+                          className="accent-action"
+                        />
+                      </label>
                     </td>
                     <td className="px-2 py-2 text-center align-middle">
                       <button
                         aria-label="Remove column"
                         onClick={() => removeColumn(i)}
-                        className="rounded px-1.5 text-sm text-ink-subtle transition hover:bg-subtle hover:text-negative"
+                        className={iconButtonClasses('text-sm text-ink-subtle hover:text-negative pointer-fine:size-7')}
                       >
                         ✕
                       </button>
@@ -677,7 +683,7 @@ export function TableBuilder() {
           <button
             onClick={addColumn}
             data-testid="dt-add-field"
-            className="w-full border-t border-border px-3 py-1.5 text-left text-xs font-medium text-ink-muted transition hover:bg-subtle hover:text-action"
+            className={touchRowClasses('w-full border-t border-border px-3 py-1.5 text-left text-xs font-medium text-ink-muted transition hover:bg-subtle hover:text-action')}
           >
             + Add column
           </button>

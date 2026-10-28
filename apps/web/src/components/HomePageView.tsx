@@ -2,7 +2,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
 import { ActivityFeed } from './ActivityFeed'
 import { ResumeStrip, RoutineCard } from './HomeRecall'
-import { cardClasses } from './ui'
+import { cardClasses, touchRowClasses } from './ui'
 
 // UI-027 / #80: a Home Page renders its grouped link cards (curated in the
 // `links` sub-table through the generic FormView — no dedicated editor) plus
@@ -81,7 +81,7 @@ export function HomePageView({ name }: { name: string }) {
                     params={{ table: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}
-                    className="block rounded px-1.5 py-1 text-sm text-ink hover:bg-action-tint hover:text-action"
+                    className={touchRowClasses('flex items-center rounded px-1.5 py-1 text-sm text-ink hover:bg-action-tint hover:text-action')}
                   >
                     {l.label}
                   </Link>

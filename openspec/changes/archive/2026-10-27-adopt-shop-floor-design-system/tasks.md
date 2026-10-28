@@ -36,10 +36,17 @@
 
 ## 4. Page adoption (after stage 3)
 
-- [ ] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
+- [x] 4.1 ListView on DataList, so a list fits a phone as cards. Keep selection, bulk actions, expandable rows and
   sorting working in both shapes. This delivers "Lists fit a phone".
-- [ ] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
-- [ ] 4.3 Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).
-- [ ] 4.4 A tab bar for staff roles on phones.
-- [ ] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
+- [x] 4.2 Sign-in: employee code first when a connected service is configured; `app_name` plus a logo field.
+- [x] 4.3 ~~Sales target: a Headline over a responsive, light-themed Dive (the Dive restyle lives in the data warehouse).~~
+  Dropped (owner, 27-Oct-2026): design D6 of `feather-dash-installed-app` (#550), "the Dive is the report",
+  supersedes it, so no Featherbase headline sits over the Dive. An answer-first headline, if wanted, belongs inside
+  the Dive in the client's data warehouse, not in Featherbase.
+- [x] 4.4 A tab bar for staff roles on phones: the platform building block only (owner, 27-Oct-2026). A Shop Floor
+  `TabBar` primitive (phone only, icon and label, 48px targets, the open tab marked, in the gallery) and an
+  app-declared `tabs` list, its own extension-point version (`tabs.version` 1, #617), that the shared top bar and the
+  installed-app shell draw on a phone. No app declares tabs yet; Feather Dash fills them in with B6′ and stage D, so
+  nothing changes for staff until then.
+- [x] 4.5 A touch-target pass on every remaining control (menu rows, dense toolbars) using the recipes, with a browser
   check that measures controls at phone width.
