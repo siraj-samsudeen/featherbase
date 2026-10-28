@@ -502,20 +502,37 @@ once. Do not mix an already approved CP1 with a test that requires it pending.
 
 ## Prototype interaction plan
 
-Default to a business-facing flow, with an optional inspectable data view:
+Start with a chronological, one-table-at-a-time setup walkthrough (owner
+feedback on the prototype). Hide the completed seed, role summaries and business
+screens until the setup journey finishes.
 
-1. **Responsibilities:** as Meera, select Arun, contact maintenance, Store A and
-   Homeware; show the resulting plain-language authority statement before saving.
-2. **Employees:** switch to Arun, see only authorised records and readable details;
-   permitted edits create proposals; read-only details remain visibly read-only.
-3. **Approvals:** switch to Meera; review original/proposed values, approve or
-   reject with a reason. Show that live data stays unchanged until approval.
-4. **Try a situation:** isolated controls for transfer date, revocation, conflict,
-   handover and the acting-manager escalation. Explanations identify the rule,
-   without implying inaccessible data is visible in the real user's screen.
-5. **Behind the scenes:** read-only sample records using ID — Name links, grouped
-   in bootstrap/install/setup/delegate/propose/decide order. This is a prototype
-   teaching aid, not a required business workflow.
+1. **Platform bootstrap:** show Role R0 first, then bootstrap Person, Scope
+   Definition, Scope and Role Assignment RA0 on separate screens. Explain why
+   each record is needed before introducing the next dependency.
+2. **App installation:** introduce the installed app, table/column metadata,
+   app roles, per-operation permissions and their column associations. Display
+   only the rows introduced at the current stage, with Back/Next controlled by
+   the user. This is an illustrated sample setup, not an executable installer or
+   a physical migration order.
+3. **Instance setup:** introduce people, stores, departments, sections, jobs and
+   employees, then dated job assignments; follow with scope declarations,
+   bindings, continuing authority, delegation bounds, derived assignments and
+   approval rules. Use ID — Name references. Split large tables into small
+   additions where that makes the sequence easier to read.
+4. **Hands-on delegation:** after setup, offer the current tables for inspection
+   and a task. Open Meera's form without saving. Optional example filling changes
+   inputs only. The user chooses scope/columns and saves, inspects the changed
+   rows, then opens as Arun to exercise the actual permission they granted.
+5. **Hands-on correction and approval:** the user enters and saves the correction,
+   inspects the proposal, opens as Meera and explicitly approves. Navigation does
+   not create grants, corrections or approvals. After each save, show affected
+   rows and suggest the next action based on actual state.
+6. **Other situations:** retain the isolated transfer, revocation, conflict,
+   handover and escalation demonstrations, clearly labelled as automated examples
+   until they have been converted to the agreed hands-on flow.
+
+Table inspection is a teaching aid, not a required business workflow. Reset
+returns to the first bootstrap screen; no production data is involved.
 
 Use synthetic data, clear local-only labelling and a reset. Follow Shop Floor
 visual direction. Owner edits to these artifacts drive the next version. No
