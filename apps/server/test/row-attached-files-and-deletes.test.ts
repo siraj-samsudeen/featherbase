@@ -122,6 +122,17 @@ describe('#609: attaching follows the row too', () => {
     expect((await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' })).status).toBe(403)
   })
 
+  test('a file with a comment of its own is not moved onto another file', async ({ admin, createUser }) => {
+    const { files } = await setup(admin, createUser)
+    await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'File', ref_name: files.loose, content: 'on the logo' } })
+    const [cur] = await sql`select updated_at from file where row_id = ${files.loose}`
+    const res = await admin.fetch(FILE.rowUrl(files.loose), {
+      method: 'PATCH',
+      body: JSON.stringify({ updated_at: cur.updated_at, ref_table: 'File', ref_name: files.mine }),
+    })
+    expect(res.status).toBe(417)
+  })
+
   test('a file is not moved onto a row the caller cannot open, nor taken off its row', async ({ admin, createUser }) => {
     const { agent, theirs, files } = await setup(admin, createUser)
     const move = async (ref: Record<string, string | null>) => {

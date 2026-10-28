@@ -386,6 +386,15 @@ async function attachedToAttached(table: string, name: string): Promise<boolean>
   return Boolean(held && ROW_ATTACHED_TABLES.has(String(held.ref_table ?? '')) && String(held.ref_name ?? ''))
 }
 
+async function hasAttachments(table: string, name: string): Promise<boolean> {
+  for (const held of ROW_ATTACHED_TABLES) {
+    const [hit] = await sql`
+      select 1 from ${sql(await tableRelation(held))} where ref_table = ${table} and ref_name = ${name} limit 1`
+    if (hit) return true
+  }
+  return false
+}
+
 // #609, #610: a comment or file is attached only to a row its writer may
 // open, and one already on a row is changed only by someone who may open that
 // row, so moving it elsewhere cannot carry it out of its row's reach, and
@@ -403,8 +412,13 @@ async function assertAttachedTarget(
   const refTable = String(row.ref_table ?? '')
   const refName = String(row.ref_name ?? '')
   if (refName && !refTable) throw new AppError('ValidationError', `A ${meta.name} on a row must name its Table`)
-  if (refName && ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName)))
-    throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} that is itself attached to one`)
+  if (refName && ROW_ATTACHED_TABLES.has(refTable)) {
+    if (await attachedToAttached(refTable, refName))
+      throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} that is itself attached to one`)
+    // Whatever already hangs on this row would then sit two levels deep.
+    if (old && (await hasAttachments(meta.name, String(row[ROW_KEY] ?? old[ROW_KEY]))))
+      throw new AppError('ValidationError', `This ${meta.name} has comments, files or history of its own, so it cannot be attached to a ${refTable}`)
+  }
   if (trusted) return
   if (old) await assertAttachedRowReadable(meta.name, old, user)
   const moved = !old || String(old.ref_table ?? '') !== refTable || String(old.ref_name ?? '') !== refName
