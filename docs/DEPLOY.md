@@ -314,7 +314,17 @@ variables:**
    preflight lines.
 4. Run every pending migration in one rolled-back transaction:
    `pnpm --filter server cli migrate:rehearse` (or add `--database-url <dsn>`
-   to point it at the copy without exporting `DATABASE_URL`)
+   to point it at the copy without exporting `DATABASE_URL`). It refuses a
+   database other sessions are connected to, because that looks like the live
+   instance, not the copy: the rehearsal holds each migration's locks until it
+   ends. Stop anything else connected to the copy, or pass `--allow-live` if
+   you truly mean it. The check only sees sessions that are connected now: a
+   live server whose connections have all gone idle and closed looks like a
+   copy, so check the address too. A migration that waits more than 2 seconds
+   for a lock fails the rehearsal instead of queueing, and no one statement
+   may run longer than 5 minutes; on a very large copy a migration that
+   rewrites a lot can hit that limit in the rehearsal although the release
+   has none.
 5. `pnpm --filter server release` on the copy, then check the data the
    migration rewrites.
 
@@ -324,12 +334,16 @@ The object Server Scripts and Client Scripts call is now `featherbase`
 (`featherbase.throw(msg)`, `featherbase.ui.form.on(table, handlers)`); the
 runtimes no longer define `frappe`. Migration **0124** rewrites the stored
 `script` source of every Server Script and Client Script, replacing `frappe.`
-member access with `featherbase.` (other names that contain the word are left
-alone). It rewrites the trial's data, so rehearse it as above, then compare
-each changed script before and after (`select row_id, script from
-server_script` / `client_script`). A script that still fails afterwards with
-"frappe is not defined" builds the name some other way (for example
-`var f = frappe`) and needs editing by hand.
+member access in the code with `featherbase.`. Text inside strings, template
+text, comments and regular expressions is left alone, so a URL such as
+`https://frappe.io` keeps its value. It rewrites the trial's data, so rehearse
+it as above. The rehearsal prints how many scripts of each kind changed, and
+names any script it could not read as JavaScript (left unchanged, to edit by
+hand) and any that still name `frappe` outside a member access, such as a
+`typeof frappe` guard, whose meaning may have changed. Check those by hand. Then compare each changed script before and after
+(`select row_id, script from server_script` / `client_script`). A script that
+still fails afterwards with "frappe is not defined" builds the name some other
+way (for example `var f = frappe`) and needs editing by hand too.
 
 ## Backups and rollback
 

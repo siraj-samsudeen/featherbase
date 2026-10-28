@@ -5,50 +5,21 @@
 // `src/db` is first loaded, so each of those cases loads a fresh copy of the
 // module graph pointed at its own disposable database, then drops it. The
 // rest run on the shared test database inside a rolled-back sandbox.
-import { randomUUID } from 'node:crypto'
-import postgres from 'postgres'
-import { afterAll, describe, expect, it, vi } from 'vitest'
-import { config } from '../src/config'
-import { sql } from '../src/db'
+import { readdirSync } from 'node:fs'
+import { afterAll, describe, expect, it } from 'vitest'
+import { _getUnqualifiedSql, sql, withTransaction } from '../src/db'
 import { applyMigrationFile, pendingMigrations } from '../src/migrate'
 import { runMain } from './command-io'
 import { test } from './pg-test'
+import { dropScratchDatabases, scratchDatabase } from './scratch-database'
 
-const admin = postgres(config.databaseUrl, { max: 1, onnotice: () => {} })
-const created: string[] = []
-afterAll(async () => {
-  for (const name of created) await admin.unsafe(`drop database if exists "${name}" with (force)`)
-  await admin.end()
-}, 60_000)
+afterAll(dropScratchDatabases, 60_000)
 
-/** A disposable database, a connection to it for the test's own checks, and
- *  the migrate module loaded against it. */
-async function scratchDatabase(setup = '') {
-  const name = `featherbase_migrate_${randomUUID().replaceAll('-', '')}`
-  await admin.unsafe(`create database "${name}"`)
-  created.push(name)
-  const url = new URL(config.databaseUrl)
-  url.pathname = `/${name}`
-  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
-  if (setup) await db.unsafe(setup)
-  vi.resetModules()
-  vi.stubEnv('DATABASE_URL', url.toString())
-  const migrate = await import('../src/migrate')
-  const { sql: appSql } = await import('../src/db')
-  vi.unstubAllEnvs()
-  return {
-    db,
-    migrate,
-    async close() {
-      await appSql.end({ timeout: 5 })
-      await db.end({ timeout: 5 })
-    },
-  }
-}
-
-/** Every migration file name, from the shared (fully migrated) test database. */
+/** Every migration file name, in the order they apply. Read from disk, not
+ *  from the shared test database's ledger, which can also name a retired file
+ *  (0124_script_api_featherbase.sql, replaced in #556). */
 async function allMigrations(): Promise<string[]> {
-  return (await sql`select name from migration order by name`).map((r) => String(r.name))
+  return readdirSync(new URL('../migrations', import.meta.url)).filter((f) => f.endsWith('.sql') || f.endsWith('.ts')).sort()
 }
 
 describe('migrate: a database of its own', () => {
@@ -57,7 +28,7 @@ describe('migrate: a database of its own', () => {
     try {
       const first = await runMain(scratch.migrate.main, [])
       expect(first).toMatchObject({ code: 0, stderr: '' })
-      const ledger = (await scratch.db`select name from featherbase.migration order by name`).map((r) => String(r.name))
+      const ledger = (await scratch.db`select name from featherbase.migration`).map((r) => String(r.name)).sort()
       expect(ledger).toEqual(await allMigrations())
       expect(await scratch.db`select value from featherbase.internal_metadata where key = 'environment'`).toEqual([{ value: 'test' }])
       expect(await scratch.migrate.pendingMigrations()).toEqual([])
@@ -165,16 +136,25 @@ describe('migrate: the person-record changes', () => {
 
 describe('migrate: one file', () => {
   test('a migration that leaves two platform ledgers behind is refused', async () => {
-    await sql`delete from migration where name = '0124_script_api_featherbase.sql'`
+    await sql`delete from migration where name = '0123_instance_health.sql'`
     await sql.unsafe('create table public.migration (name text primary key)')
-    await expect(sql.begin(() => applyMigrationFile('0124_script_api_featherbase.sql')))
+    await expect(sql.begin(() => applyMigrationFile('0123_instance_health.sql')))
       .rejects.toThrow('Migration must leave exactly one platform migration ledger')
   })
 
   test('a pending file reported, applied and recorded', async () => {
-    await sql`delete from migration where name = '0124_script_api_featherbase.sql'`
-    expect(await pendingMigrations()).toEqual(['0124_script_api_featherbase.sql'])
-    await sql.begin(() => applyMigrationFile('0124_script_api_featherbase.sql'))
+    await sql`delete from migration where name = '0123_instance_health.sql'`
+    expect(await pendingMigrations()).toEqual(['0123_instance_health.sql'])
+    await sql.begin(() => applyMigrationFile('0123_instance_health.sql'))
     expect(await pendingMigrations()).toEqual([])
+  })
+
+  test('the unqualified client the legacy files run on exists only inside a transaction', async () => {
+    expect(() => _getUnqualifiedSql()).toThrow('_getUnqualifiedSql needs a transaction (withTransaction)')
+    // Unqualified: `migration` resolves by search_path, not to featherbase.migration.
+    await expect(withTransaction(async () => {
+      await _getUnqualifiedSql().unsafe('set local search_path = pg_catalog')
+      await _getUnqualifiedSql().unsafe('select 1 from migration')
+    })).rejects.toThrow('relation "migration" does not exist')
   })
 })

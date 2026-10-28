@@ -68,8 +68,23 @@ async function endingTransaction<T>(begin: () => Promise<T>): Promise<T> {
 
 // An app install composes normal metadata and document operations atomically.
 // Nested begin calls remain savepoints; never swap the process-wide delegate.
+// Like `sql.begin`, work deferred with whenTransactionEnds runs only once the
+// outermost transaction has ended.
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
-  return sql.begin((tx) => transactions.run(tx as unknown as Sql, fn)) as Promise<T>
+  const current = transactions.getStore() ?? delegate
+  const run = (tx: TxSql) => transactions.run(tx as unknown as Sql, fn)
+  return endingTransaction(() => (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>)
+}
+
+/** The current transaction WITHOUT platform-name
+ *  qualification: for SQL that must resolve its names by `search_path`, such
+ *  as the migrations written before the platform schema existed (0088–0093). */
+export function _getUnqualifiedSql(): Sql {
+  const tx = transactions.getStore()
+  // Outside a transaction a `set local search_path` would not reach the next
+  // statement, which the pool may run on another connection.
+  if (!tx) throw new Error('_getUnqualifiedSql needs a transaction (withTransaction)')
+  return tx
 }
 
 /** #625: is this async context inside an app transaction? While it is, `sql`
