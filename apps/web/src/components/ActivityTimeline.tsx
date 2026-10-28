@@ -2,14 +2,14 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { PrincipalName } from '../lib/people'
 import { cardClasses } from './ui'
-import { activityQuery } from './Comments'
+import { activityQuery, type VersionRow } from './Comments'
 import { fmtInstantIST } from '../lib/inr'
 import { useMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 
 type Entry =
   | { kind: 'comment'; at: string; who: string; content: string }
-  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][] }
+  | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][]; importRun?: string; resolution?: NonNullable<VersionRow['data']>['resolution'] }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
@@ -27,6 +27,8 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
         at: v.created_at,
         who: v.created_by,
         changes: v.data?.changed ?? [],
+        importRun: v.data?.import_run,
+        resolution: v.data?.resolution,
       })
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
   }, [activity.data])
@@ -35,6 +37,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
   // as DD-Mon-YYYY, money the Indian way), by its column's type.
   const meta = useMeta(table)
   const settings = useSettings()
+  const columnLabel = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.label ?? column
   const columnType = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.column_type ?? 'Data'
   // A Settings Table records its values as stored text, so a checkbox is '1'/'0'.
   const asStored = (type: string, v: unknown) =>
@@ -64,7 +67,7 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
             <div className="min-w-0 flex-1">
               <div className="text-xs text-ink-muted">
                 <span className="font-medium text-ink"><PrincipalName id={e.who} /></span>{' '}
-                {e.kind === 'comment' ? 'commented' : 'edited'} ·{' '}
+                {e.kind === 'comment' ? 'commented' : e.resolution ? (e.resolution.decision === 'keep' ? 'kept their correction' : 'adopted the import value') : e.importRun ? 'imported' : 'edited'} ·{' '}
                 <span className="whitespace-nowrap" data-testid="activity-time">{fmtInstantIST(e.at)}</span>
               </div>
               {e.kind === 'comment' ? (
@@ -73,7 +76,9 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
                 </div>
               ) : (
                 <ul className="text-xs text-ink-muted" data-testid="activity-diff">
-                  {e.changes.length === 0 && <li>row updated</li>}
+                  {e.importRun && <li className="break-all">Import: {e.importRun}</li>}
+                  {e.resolution && <li className="break-words">{columnLabel(e.resolution.field)}: {e.resolution.decision === 'keep' ? `kept the current value instead of ${fmt(e.resolution.field, e.resolution.incoming)}` : 'accepted the source; future imports can update this field'}</li>}
+                  {e.changes.length === 0 && !e.importRun && !e.resolution && <li>row updated</li>}
                   {e.changes.map(([column, from, to], j) => (
                     <li key={j}>
                       <span className="font-medium text-ink">{column}</span>:{' '}
