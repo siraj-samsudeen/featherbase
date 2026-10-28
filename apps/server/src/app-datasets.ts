@@ -525,11 +525,13 @@ const DROP_STATEMENT_TIMEOUT = '2s'
  * elsewhere times out quickly; any failure is logged and the read stands. A
  * drop already recorded under the same versions within the last hour is not
  * written again: the select spares a busy report the row lock, and the
- * conflict clause holds the rule when two recordings race. Returns how many
+ * conflict clause holds the rule when two recordings race. Each pair of
+ * versions keeps its own row, so a late read authorized under older versions
+ * never replaces a current record (Codex round 2 on #678). Returns how many
  * rows were written.
  */
 export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sql): Promise<number> {
-  const order = (d: PlaceDrop) => [d.app, d.dataset, d.versions.provider.app, d.keys.join(',')].join('\u0000')
+  const order = (d: PlaceDrop) => [d.app, d.dataset, d.versions.provider.app, d.keys.join(','), d.versions.app, d.versions.provider.version].join('\u0000')
   const unique = [...new Map(drops.map((d) => [order(d), d])).entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, d]) => d)
   if (!unique.length) return 0
   const table = db(platformRelation('dataset_place_drop'))
@@ -546,10 +548,8 @@ export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sq
         if (fresh) continue
         written += (await tx`insert into ${table} as d (app, dataset, provider, filter_keys, app_version, provider_version)
           values (${app}, ${dataset}, ${provider.app}, ${keys}, ${version}, ${provider.version})
-          on conflict (app, dataset, provider, filter_keys) do update set last_seen = now(),
-            app_version = excluded.app_version, provider_version = excluded.provider_version
+          on conflict (app, dataset, provider, filter_keys, app_version, provider_version) do update set last_seen = now()
           where d.last_seen <= now() - ${DROP_RECORD_INTERVAL}::interval
-            or d.app_version <> excluded.app_version or d.provider_version <> excluded.provider_version
           returning 1`).length
       }
       // Inside a test's sandbox this is a savepoint: put its settings back.

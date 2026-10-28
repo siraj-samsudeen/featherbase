@@ -1091,6 +1091,43 @@ describe('a place a dataset cannot apply', () => {
     expect(await recordedDrops()).toEqual([])
   })
 
+  // Codex round 2 on #678: a place the request narrowed away never reached
+  // the dataset, so it is not a drop this read met.
+  test('a request narrowed to a place the dataset applies records no drop for the others', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: { scope: { places: ['South'] } } }))
+    expect(await recordedDrops()).toEqual([])
+  })
+
+  // Codex round 2 on #678: an outbound read authorized under an older
+  // provider can finish after a read under the current one recorded the
+  // same drop; the current record, and its warning, stay.
+  test('a late write under an older provider version leaves the current drop and its warning', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await sql`update installed_app set package_version = '2.0.0' where name = 'placeroster'`
+    const recorded = (provider: string) => ({ app: 'datasetproof', dataset: 'sales', keys: ['floor'],
+      versions: { app: '1.0.0', provider: { app: 'placeroster', version: provider } } })
+    await recordPlaceDrops([recorded('2.0.0')])
+    await recordPlaceDrops([recorded('1.0.0')])
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+  })
+
+  test('a delayed outbound read under the older provider leaves the current drop\'s warning', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = async (context: Context) => {
+      // While this read, authorized under provider 1.0.0, is out: the
+      // provider moves to 2.0.0 and a read under it records the same drop.
+      await sql`update installed_app set package_version = '2.0.0' where name = 'placeroster'`
+      await recordPlaceDrops([{ app: 'datasetproof', dataset: 'sales', keys: ['floor'],
+        versions: { app: '1.0.0', provider: { app: 'placeroster', version: '2.0.0' } } }])
+      return context.datasets.active('sales')
+    }
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'outside', { payload: {} }))
+    expect((await recordedDrops()).map(r => r.provider_version).sort()).toEqual(['1.0.0', '2.0.0'])
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+  })
+
   test('a read whose drop cannot be recorded still answers its rows', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await buildSnapshot('datasetproof.sales')

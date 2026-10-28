@@ -356,7 +356,14 @@ that fills it).
       timeout and a 2 s statement timeout; a failure is logged and never fails
       the read;
     - the hourly rule holds in the upsert's conflict clause, so racing
-      recordings write once. Instance health has one check per enabled app with
+      recordings write once.
+
+    Codex round 2 added two rules:
+    - only places that survived the request's narrowing are recorded, by
+      their provider-origin keys;
+    - each pair of versions keeps its own row (both are in the key), and
+      health reads only the current pair, so a late read under older
+      versions never hides a current warning. Instance health has one check per enabled app with
     datasets, `scope-place-drops:<app>`, a warning naming the dataset, the
     provider and the keys while both apps run the versions the drop was seen
     under and for seven days after reads last met it. A static check is not

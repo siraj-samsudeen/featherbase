@@ -191,9 +191,12 @@ async function callerPlaces(request: AccessRequest, contribution: DeclaredAppOpe
   })
   const places = narrowPersonScope(scope, (payload as Record<string, unknown>).scope)
   if (!places) refuseAppAccess()
-  // #667: the filter keys of each place as the provider returned it. The
-  // request may have added keys by naming filters; these are the provider's.
-  const providerKeys = freezeJson(scope.map((place) => Object.keys(place.filters).sort()))
+  // #667: the filter keys of each place that survived narrowing, as the
+  // provider returned it. The request may have added keys by naming filters;
+  // these are the provider's. A place narrowed away never reaches a dataset
+  // (Codex round 2 on #678). Labels are unique within a scope.
+  const providerKeys = freezeJson(places.map((kept) =>
+    Object.keys(scope.find((place) => place.label === kept.label)!.filters).sort()))
   return { places: freezeJson(JSON.parse(canonicalJson(places)) as typeof places), providerKeys }
 }
 
