@@ -9,14 +9,31 @@ export type TxSql = postgres.TransactionSql<Record<string, never>>
 /** Server NOTICEs (an `if exists` that found nothing, …) are not worth a log line. */
 export function ignoreNotice(): void {}
 
-const root: Sql = postgres(config.databaseUrl, {
+// #541: a whole-number (Int) column is a bigint, and the client hands bigint
+// back as text by default, so a saved 13 read back as '13'. Parse it as a
+// number; a value past the safe-integer range stays text rather than
+// silently losing digits (a save can't write one — Int is bounded there).
+// Currency (numeric) stays text on purpose: its precision exceeds a float.
+export const BIGINT_AS_NUMBER = {
+  to: 20,
+  from: [20],
+  serialize: (value: unknown) => String(value),
+  parse: (text: string) => {
+    const n = Number(text)
+    return Number.isSafeInteger(n) ? n : text
+  },
+}
+
+// The custom type widens the client's generic; the app's Sql type stays the plain one.
+const root = postgres(config.databaseUrl, {
   onnotice: ignoreNotice,
+  types: { bigint: BIGINT_AS_NUMBER },
   // META-004: schema sync ALTERs tables at runtime. Cached prepared
   // statements on warm pooled connections then fail with PG 0A000
   // ("cached plan must not change result type") on their next use, so
   // statement caching must stay off in a system that changes its own DDL.
   prepare: false,
-})
+}) as unknown as Sql
 
 // Test sandbox seam (Ecto SQL Sandbox pattern): the exported `sql` delegates
 // to the real pool by default; a test harness can swap in a transaction

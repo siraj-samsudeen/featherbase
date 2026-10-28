@@ -44,6 +44,18 @@ describe('Tables and Columns named after JavaScript built-ins (#436)', () => {
     expect(stored.constructor).toBeNull()
   })
 
+  // #596 review: JSON columns skip the empty-string-to-empty step (an empty
+  // string is a JSON value) but must still not read the inherited function.
+  test('a JSON Column named constructor left out stays empty', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Proto Json', columns: [
+      { column_name: 'constructor', column_type: 'JSON' },
+      { column_name: 'title', column_type: 'Data' },
+    ] })
+    const saved = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Proto Json', row: { title: 'only a title' } })
+    const [stored] = await sql`select "constructor" from featherbase.proto_json where row_id = ${saved.row_id}`
+    expect(stored.constructor).toBeNull()
+  })
+
   test('a Column named constructor gets its default, and a Reference named constructor may be left out', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Proto Target', columns: [{ column_name: 'title', column_type: 'Data' }] })
     await admin.post('/api/table_def', { name: 'Proto Defaults', track_changes: true, columns: [

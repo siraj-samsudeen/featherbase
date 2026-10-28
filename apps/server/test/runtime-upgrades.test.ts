@@ -142,7 +142,7 @@ describe('runtime upgrades', () => {
       const plan = await admin.post<{ planId: string; currentVersion: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
       expect(plan).toMatchObject({ currentVersion: '0.0.1', targetVersion: '2.0.0', destructive: false, codeOnly: false,
         migrations: [{ id: 'add_notes' }], permissions: [], jobs: [], indexes: [] })
-      expect(await admin.get('/api/table/other.task/kept')).toMatchObject({ quantity: '37', validation_runs: '1' })
+      expect(await admin.get('/api/table/other.task/kept')).toMatchObject({ quantity: 37, validation_runs: 1 })
       await expect(admin.post('/api/upgrade_app', { name: 'other', version: '2.0.0', planId: 'stale' })).rejects.toMatchObject({ status: 409 })
       const body = { name: 'other', version: '2.0.0', planId: plan.planId }
       expect(await admin.post('/api/upgrade_app', body)).toMatchObject({ activationPending: true })
@@ -170,9 +170,9 @@ describe('runtime upgrades', () => {
         'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'other@2.0.0',
       }, body: JSON.stringify({ table: 'other.task', row: { row_id: 'new', quantity: 19, notes: '**markdown**' } }) })
       expect(response.status).toBe(201)
-      expect(await response.json()).toMatchObject({ quantity: '19', notes: '**markdown**', validation_runs: '1' })
+      expect(await response.json()).toMatchObject({ quantity: 19, notes: '**markdown**', validation_runs: 1 })
       expect(await sql`select * from permission where owner_app = 'other' order by row_id`).toEqual(grants)
-      expect(await sql`select quantity, validation_runs, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: '37', validation_runs: '1', notes: null }])
+      expect(await sql`select quantity, validation_runs, notes from other.task where row_id = 'kept'`).toEqual([{ quantity: 37, validation_runs: 1, notes: null }])
       await discoverPackages([source])
       await loadInstalledApps()
       await expect(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
@@ -201,7 +201,7 @@ describe('runtime upgrades', () => {
       expect(await sql`select package_version, migration_ledger, activation_pending from installed_app where name = 'other'`).toEqual([
         { package_version: '0.0.1', migration_ledger: [], activation_pending: false },
       ])
-      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'old-hook', quantity: 47 } })).toMatchObject({ validation_runs: '1' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'old-hook', quantity: 47 } })).toMatchObject({ validation_runs: 1 })
       await sql`alter table other.task drop column second`
       await admin.post('/api/upgrade_app', body)
       await admin.post('/api/upgrade_app', body)
@@ -238,7 +238,7 @@ describe('runtime upgrades', () => {
         await loadInstalledApps()
         await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
       }
-      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'still-old', quantity: 31 } })).toMatchObject({ validation_runs: '1' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'still-old', quantity: 31 } })).toMatchObject({ validation_runs: 1 })
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -290,7 +290,7 @@ describe('runtime upgrades', () => {
       work.push(admin.post('/api/set_app_enabled', { name: 'other', enabled: false }))
       release()
       await Promise.all(work)
-      expect(await sql`select quantity, validation_runs from other.task where row_id = 'tail'`).toEqual([{ quantity: '83', validation_runs: '1' }])
+      expect(await sql`select quantity, validation_runs from other.task where row_id = 'tail'`).toEqual([{ quantity: 83, validation_runs: 1 }])
       expect(await admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).toMatchObject({ enabled: false })
       await expect(admin.get('/api/table/other.task/tail')).rejects.toMatchObject({ status: 403 })
     } finally {

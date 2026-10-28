@@ -121,8 +121,13 @@ export function mapRowOut(bind: Binding, row: SourceRow): SourceRow {
     status: 'draft',
     position: 0,
   }
-  for (const c of bind.columns)
-    if (Object.hasOwn(row, c.source_column)) out[c.column_name] = row[c.source_column]
+  for (const c of bind.columns) {
+    if (!Object.hasOwn(row, c.source_column)) continue
+    const value = row[c.source_column]
+    // A Reference holds a row id, and row ids are text (as ROW_KEY above),
+    // even when the source keys rows by a whole number.
+    out[c.column_name] = c.column_type === 'Reference' && value != null ? String(value) : value
+  }
   return out
 }
 

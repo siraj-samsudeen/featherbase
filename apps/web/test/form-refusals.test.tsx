@@ -3,7 +3,7 @@
 // the person to, long text typed into a Text column, a Reference to a service
 // account shown by its label, a Reference search the server refuses, an
 // attachment the server refuses, an onload handler reading a value, and JSON
-// typed into a JSON column (one suspected defect, pinned). Each failure is a
+// typed into a JSON column (#545). Each failure is a
 // real server answer — a deleted row, a refused permission.
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -49,11 +49,9 @@ test('long text typed into a Text column is saved', async ({ admin }) => {
   expect(((await admin.get(`/api/table/${enc('Frf Note')}/note-1`)) as { body: string }).body).toBe('line one')
 })
 
-// SPEC: a JSON column holds the JSON value the person typed into it (the form
-// shows a stored object as JSON text, so typing JSON back is how it is edited)
-// — suspected defect: the form sends the text as it is, and the column stores
-// a JSON *string* ("{\"shelf\": 3}") rather than the object { shelf: 3 }.
-test.fails('JSON typed into a JSON column is saved as that JSON', async ({ admin }) => {
+// #545: a JSON column holds the JSON value the person typed into it (the form
+// shows a stored object as JSON text, so typing JSON back is how it is edited).
+test('JSON typed into a JSON column is saved as that JSON', async ({ admin }) => {
   await seedNotes(admin)
   await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
   await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
@@ -61,6 +59,72 @@ test.fails('JSON typed into a JSON column is saved as that JSON', async ({ admin
   await userEvent.click(screen.getByTestId('form-save'))
   await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
   expect(((await admin.get(`/api/table/${enc('Frf Note')}/note-1`)) as { extra: unknown }).extra).toEqual({ shelf: 3 })
+})
+
+test('an empty JSON string typed into a JSON column stays an empty string after saving', async ({ admin }) => {
+  await seedNotes(admin)
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
+  fireEvent.change(field('extra'), { target: { value: '""' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ extra: '' })
+})
+
+test('text in a JSON column that is not JSON is refused at the field, and nothing is saved', async ({ admin }) => {
+  await seedNotes(admin)
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
+  fireEvent.change(field('title'), { target: { value: 'second' } })
+  fireEvent.change(field('extra'), { target: { value: '{shelf: 3' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Please fix the highlighted fields'))
+  expect(screen.getByText('must be valid JSON')).toBeInTheDocument()
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ title: 'first', extra: null })
+})
+
+test('emptying a JSON column clears it', async ({ admin }) => {
+  await seedNotes(admin)
+  await admin.post('/api/save_row', { table: 'Frf Note', row: { row_id: 'note-3', title: 'full', extra: { shelf: 3 } } })
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-3`, admin)
+  await waitFor(() => expect(field('extra')).toBeInTheDocument(), { timeout: 8000 })
+  fireEvent.change(field('extra'), { target: { value: '   ' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-3`)).toMatchObject({ extra: null })
+})
+
+// #596 review: a client script assigns a value, not typed JSON text, so the
+// form keeps what the script set rather than reading it as JSON.
+for (const [assigned, label] of [['plain words', 'text'], ['13', 'digits']] as const)
+  test(`a JSON value a client script sets is saved as it was set (${label})`, async ({ admin }) => {
+    await seedNotes(admin)
+    await admin.post('/api/save_row', {
+      table: 'Client Script',
+      row: {
+        row_id: `frf-json-${label}`,
+        ref_table: 'Frf Note',
+        enabled: true,
+        script: `featherbase.ui.form.on('Frf Note', { before_save: function (frm) { frm.set_value('extra', ${JSON.stringify(assigned)}) } })`,
+      },
+    })
+    await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+    await waitFor(() => expect(field('title')).toBeInTheDocument(), { timeout: 8000 })
+    fireEvent.change(field('title'), { target: { value: 'scripted' } })
+    await userEvent.click(screen.getByTestId('form-save'))
+    await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+    expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ title: 'scripted', extra: assigned })
+  })
+
+test('a stored JSON value saves unchanged when the person edits another field', async ({ admin }) => {
+  await seedNotes(admin)
+  await admin.post('/api/save_row', { table: 'Frf Note', row: { row_id: 'note-2', title: 'kept', extra: 'plain words' } })
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-2`, admin)
+  await waitFor(() => expect(field('title')).toBeInTheDocument(), { timeout: 8000 })
+  fireEvent.change(field('title'), { target: { value: 'kept again' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-2`)).toMatchObject({ title: 'kept again', extra: 'plain words' })
 })
 
 test('submitting a row someone else already submitted is refused with the reason', async ({ admin }) => {

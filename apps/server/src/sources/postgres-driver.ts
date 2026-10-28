@@ -1,4 +1,5 @@
 import postgres from 'postgres'
+import { BIGINT_AS_NUMBER } from '../db'
 import { readNamedVariable } from '../env'
 import { AppError } from '../errors'
 import { fkKey } from './fk'
@@ -46,8 +47,10 @@ function pool(cfg: SourceConfig): ReturnType<typeof postgres> {
     connect_timeout: 10,
     idle_timeout: 60,
     prepare: false,
+    // #541: a bound Int column reads back as a number, as a local one does.
+    types: { bigint: BIGINT_AS_NUMBER },
     connection: { statement_timeout: cfg.statement_timeout_ms },
-  })
+  }) as unknown as ReturnType<typeof postgres>
   pools.set(cfg.name, client)
   return client
 }

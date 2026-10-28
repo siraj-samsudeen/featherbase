@@ -53,7 +53,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await discoverPackages([directory])
       await admin.post('/api/install_app', { name: 'other' })
       await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 409 })
-      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'once', quantity: 17 } })).toMatchObject({ validation_runs: '1' })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'once', quantity: 17 } })).toMatchObject({ validation_runs: 1 })
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -112,7 +112,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       await disable
       await expect(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } })).rejects.toMatchObject({ status: 403 })
       await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
-      expect(await admin.get('/api/table/other.task/tail')).toMatchObject({ quantity: '29', validation_runs: '1' })
+      expect(await admin.get('/api/table/other.task/tail')).toMatchObject({ quantity: 29, validation_runs: 1 })
     } finally {
       release()
       await Promise.allSettled([save, disable])
@@ -132,7 +132,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/save_row', { table: 'other.task', row: { row_id: id, quantity: 37 } })
     expect(await member.get(`/api/table/tasker.task/${id}`)).toMatchObject({ task_title: 'Only Tasker owns this title', task_state: 'In progress' })
     const other = await member.get<Record<string, unknown>>(`/api/table/other.task/${id}`)
-    expect(other).toMatchObject({ quantity: '37', validation_runs: '1' })
+    expect(other).toMatchObject({ quantity: 37, validation_runs: 1 })
     expect(other).not.toHaveProperty('task_title')
     await expect(member.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 18 } })).rejects.toMatchObject({ status: 403 })
     await expect(admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: -2 } })).rejects.toMatchObject({ status: 417 })
@@ -147,7 +147,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).rejects.toMatchObject({ status: 403 })
     await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
     await expect(member.get('/api/table/Person')).rejects.toMatchObject({ status: 403 })
-    expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } })).toMatchObject({ quantity: '23', validation_runs: '2' })
+    expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } })).toMatchObject({ quantity: 23, validation_runs: 2 })
     await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: true })
     expect(await member.get('/api/table/Comment')).toMatchObject({ data: [] })
     expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })
@@ -215,20 +215,20 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     const row = await admin.post<Record<string, unknown>>('/api/save_row', {
       table: 'other.task', row: { row_id: 'same', quantity: 37 },
     })
-    expect(row.validation_runs).toBe('1')
+    expect(row.validation_runs).toBe(1)
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
     await expect(admin.post('/api/save_row', {
       table: 'other.task', row: { ...row, quantity: -9 },
     })).rejects.toMatchObject({ status: 403 })
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
-    expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: '37' })
+    expect(await admin.get('/api/table/other.task/same')).toMatchObject({ quantity: 37 })
     await expect(admin.post('/api/save_row', {
       table: 'other.task', row: { ...row, quantity: -9 },
     })).rejects.toMatchObject({ status: 417, fields: { quantity: 'Must be positive' } })
     expect(await admin.post('/api/save_row', {
       table: 'other.task', row: { ...row, quantity: 11 },
-    })).toMatchObject({ validation_runs: '2' })
+    })).toMatchObject({ validation_runs: 2 })
   })
 
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
@@ -328,9 +328,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await loadInstalledApps()
     await loadInstalledApps()
     const row = await admin.get<Record<string, unknown>>('/api/table/other.task/survivor')
-    expect(row).toMatchObject({ quantity: '19', validation_runs: '1' })
+    expect(row).toMatchObject({ quantity: 19, validation_runs: 1 })
     expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...row, quantity: 23 } }))
-      .toMatchObject({ validation_runs: '2' })
+      .toMatchObject({ validation_runs: 2 })
   })
 
   // #650 (design D3): the shared top bar replaced the runtime shell's header
@@ -428,7 +428,7 @@ describe('An app states the platform version it was built for', () => {
       expect(await discoverPackages([directory])).toEqual([])
       await admin.post('/api/install_app', { name: 'other' })
       expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'built-for', quantity: 3 } }))
-        .toMatchObject({ validation_runs: '1' })
+        .toMatchObject({ validation_runs: 1 })
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
@@ -467,7 +467,7 @@ describe('Removing an app isn’t offered yet', () => {
       .rejects.toMatchObject({ status: 417, message: expect.stringContaining('Use disable') })
     expect(await sql`select name from installed_app where name = 'other'`).toEqual([{ name: 'other' }])
     expect(await sql`select name from table_def where name = 'other.task'`).toEqual([{ name: 'other.task' }])
-    expect(await admin.get('/api/table/other.task/keep-me')).toMatchObject({ quantity: '43' })
+    expect(await admin.get('/api/table/other.task/keep-me')).toMatchObject({ quantity: 43 })
   })
 })
 
@@ -495,7 +495,7 @@ describe("Dashboards reach an app's data only while it is on", () => {
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
     await expect(admin.post('/api/dashboard/count', { table: 'other.task' })).rejects.toMatchObject({ status: 403 })
     await expect(admin.post('/api/dashboard/chart', { table: 'other.task', group_by: 'quantity' })).rejects.toMatchObject({ status: 403 })
-    expect(await sql`select quantity from other.task where row_id = 'counted'`).toEqual([{ quantity: '37' }])
+    expect(await sql`select quantity from other.task where row_id = 'counted'`).toEqual([{ quantity: 37 }])
   })
 })
 
