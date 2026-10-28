@@ -29,6 +29,7 @@ import {
   getScopeMap,
   isPrivileged,
   isSharedWith,
+  insertTiers,
   permittedTiers,
   stripUnwritableFields,
 } from './permissions'
@@ -785,7 +786,7 @@ async function writeDoc(
   }
   const writeTiers = opts.skipPermissions
     ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-    : await permittedTiers(user, table, 'write')
+    : await insertTiers(user, table)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -914,7 +915,7 @@ async function saveBoundDoc(
   // PERM-005: Data Scopes judge the incoming Reference values exactly as on
   // a native insert.
   await assertUserPermissions(user, meta, values)
-  const writeTiers = await permittedTiers(user, meta.name, 'write')
+  const writeTiers = await insertTiers(user, meta.name)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
@@ -1362,6 +1363,9 @@ async function deleteDocImpl(
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    // #610: a comment or file on a row is removed only by someone who may
+    // open that row, as only they may read it (#342, #609).
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, existing as RowValues, user)
     await assertRowNotManaged(stx, meta, name, user)
     if (meta.owner_app) {
       if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))

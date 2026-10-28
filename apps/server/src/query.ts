@@ -402,7 +402,9 @@ async function parentScopeCond(
 // opens the row itself. Columns are qualified so the predicate also holds
 // inside a 'related' subquery.
 // A list that names its Table (the row's panels and apps all do) builds that
-// one branch, without first reading which Tables the rows hang on.
+// one branch, without first reading which Tables the rows hang on. A row not
+// attached to one row (#609: a File on a whole Table, or on nothing) has no
+// row to defer to, so the grant on its own Table, already applied, governs.
 async function attachedRowScopeCond(
   table: string,
   user: string,
@@ -415,7 +417,7 @@ async function attachedRowScopeCond(
   const targets = pinned !== undefined
     ? [pinned]
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
-  const branches: ReturnType<typeof sql>[] = []
+  const branches: ReturnType<typeof sql>[] = [sql`coalesce(${rel}.ref_name, '') = ''`]
   for (const target of targets) {
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
@@ -433,7 +435,6 @@ async function attachedRowScopeCond(
     branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select ${sql(scoped.meta.row_key)} from ${sql(scoped.table)} where ${scoped.where}))`)
   }
-  if (!branches.length) return { frag: sql`false` }
   return { frag: sql`(${branches.reduce((acc, b) => sql`${acc} or ${b}`)})` }
 }
 
