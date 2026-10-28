@@ -292,7 +292,10 @@ test('A typed-in name is asked for on the new-row form: typing it and saving cre
   fireEvent.change(field('aisle'), { target: { value: 'A' } })
   screen.getByTestId('form-save').click()
 
-  await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('shelf-a1'))
+  // Saved: the form has moved to the new row, so its name is no longer asked for.
+  // (The heading shows the Row ID only until the row's readable title loads, so
+  // it is not a stable sign of the save; the server read below proves the name.)
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: /Row ID/ })).toBeNull())
   const saved = await admin.get<{ row_id: string; aisle: string }>(`/api/table/${enc('Core Shelf')}/shelf-a1`)
   expect(saved.aisle).toBe('A')
   // Once the row exists its name changes through Rename, not this field.

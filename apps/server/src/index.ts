@@ -12,6 +12,7 @@ import { runInSession } from './session-context'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
+import { rowForCaller } from './row-readers'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { assertCanChangeAccess, assertFreshForLinking, getAccessToken, issueAccessToken, listAccessTokens, resolveToken, revokeAccessToken, setUserPassword, issueSession, revokeSession, sessionToRevoke, type SessionOptions, type SessionUser } from './auth'
@@ -26,7 +27,7 @@ import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-acces
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
-import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -49,6 +50,8 @@ import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
+import './actions/collection-summary'
+import './actions/collection-bulk'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
@@ -69,15 +72,15 @@ import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
-import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
+import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, packageTitle, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
+import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref } from 'shared'
+import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
-import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
+import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
 import helpdesk from './sample-apps/helpdesk'
@@ -103,7 +106,9 @@ await loadInstalledApps()
 // Custom fields may target app-owned Tables, so activation precedes replay.
 await reapplyCustomFields()
 
-type Env = { Variables: { user: SessionUser } }
+// frameOrigins (#642, E4): the outside sites this response's page may frame,
+// set by the handler that serves an app's own page.
+type Env = { Variables: { user: SessionUser; frameOrigins?: readonly string[] } }
 
 export const app = new Hono<Env>()
 
@@ -117,10 +122,21 @@ app.notFound((c) =>
 // API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
-// #3755: the personalised sales-target report embeds MotherDuck's sandbox
-// origin in an iframe, so frames from that origin are allowed; everything
-// else secureHeaders() sets stays as it was.
-app.use('*', secureHeaders({ contentSecurityPolicy: { frameSrc: ["'self'", EMBED_ORIGIN] } }))
+// #642 (E4): the frame policy is decided per response. A page frames its own
+// origin, plus the outside sites the app whose page it is declared; there is
+// no instance-wide outside origin.
+app.use('*', async (c, next) => {
+  await next()
+  c.res.headers.set('Content-Security-Policy', ["frame-src 'self'", ...(c.get('frameOrigins') ?? [])].join(' '))
+})
+app.use('*', secureHeaders())
+// #3755: until the report moves into its app (B9), its page frames
+// MotherDuck's embed sandbox: that page alone, not the instance, with or
+// without a trailing slash (Codex round 2 on #643).
+app.use('*', async (c, next) => {
+  if (ownFramePolicyPage(c.req.path)) c.set('frameOrigins', [EMBED_ORIGIN])
+  await next()
+})
 app.use(
   '/api/*',
   cors({
@@ -165,7 +181,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #489: what this address opens — `admin`, an app's name, or null for a
@@ -214,7 +230,7 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const issued = await passwordSignIn(usr, pwd)
+  const issued = await passwordSignIn(usr, pwd, clientAddress(c))
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -244,7 +260,7 @@ app.post('/api/login/delegated', publicLimit('LOGIN'), async (c) => {
   // The shared pipeline (sign-in.ts) does the rest: an outage never falls
   // back to another way in, and a leaver is disabled everywhere.
   const status = await checkWithProvider(cfg, id, pwd)
-  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode() })
+  const issued = await completeSignIn(cfg.method, { status }, account, { testMode: delegatedTestMode(), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
   setSidCookie(c, session.token, issued.maxAgeSeconds)
@@ -279,7 +295,7 @@ app.post('/api/signup', publicLimit('SIGNUP'), async (c) => {
     return String(created.row_id)
   })
   // The same tail as every other sign-in (sign-in.ts).
-  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null })
+  const issued = await completeSignIn(method, { status: 'verified' }, { user: personId, identity: null }, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session), 201)
@@ -603,7 +619,7 @@ async function googleCallback(c: Context) {
     }
   }
   const verified = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const issued = await completeSignIn(google, verified, null)
+  const issued = await completeSignIn(google, verified, null, { ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
@@ -633,7 +649,7 @@ app.post('/api/oauth/session', async (c) => {
   deleteCookie(c, HANDOFF_NONCE_COOKIE, { path: '/' })
   // Signed out, expired, or ended by a password reset since: no hand-off.
   const source = await resolveToken(`Bearer ${redeemed.sourceToken}`)
-  const issued = await issueSession(source.row_id, sessionOptionsOf(source))
+  const issued = await issueSession(source.row_id, { ...sessionOptionsOf(source), ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.json(await withLanding(c, session, { handOff: false }))
@@ -710,7 +726,7 @@ app.get('/preview', async (c) => {
   const person = await resolvePreviewPerson(config.user)
   if (!person) return c.notFound()
   // Marked, so the click-through cannot add lasting access (review B-M2).
-  const issued = await issueSession(person, { preview: true })
+  const issued = await issueSession(person, { preview: true, ipAddress: clientAddress(c) })
   const session = { token: issued.token, user: issued.user }
   setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
@@ -731,14 +747,20 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', rateLimit)
 
 // Lock the complete request, including internal SQL and post-commit work.
-// Lifecycle endpoints take the exclusive counterpart inside their handlers.
+// Lifecycle endpoints take the exclusive counterpart inside their handlers
+// (the upgrade preview too since #651: it runs the steps to count losses).
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
   try {
     // Do not await here: only synchronous identity parsing failures belong to
     // this refusal path, not admitted asynchronous business-handler errors.
-    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+    // #625 (E5): an app read takes the lifecycle lock itself, only while it
+    // authorizes (and, unless outbound, runs), so an outbound handler waiting
+    // on an outside call holds no lifecycle connection.
+    // #642: the top bar's options are app reads too (Codex round 1 on #643).
+    const appRead = c.req.path.startsWith('/api/app_reads/') || c.req.path.startsWith('/api/app_bar/')
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appRead ? next() : appOperation(next))
   } catch (error) {
     const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
     if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
@@ -769,15 +791,14 @@ app.get('*', (c, next) => {
 // needs, nothing else. `/`, every other Featherbase page and every other app's
 // root go to the app's root. An address is presentation, never a security
 // boundary: every API call is authorized on its own merits on every address.
-app.get('*', (c, next) => {
+app.get('*', async (c, next) => {
   const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
   if (!entry || entry.opens === ADMIN) return next()
-  const target = addressRedirect(entry, c.req.path)
+  // #671: by the installation every process shares, never this process's
+  // serving state, so replicas agree and a disabled app keeps its root.
+  const target = addressRedirect(entry, c.req.path, await isInstalled(entry.opens))
   return target ? c.redirect(target, 302) : next()
 })
-
-app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))
-app.get('/featherbase/runtime-shell.js', c => c.body(runtimeShellJs, 200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }))
 
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
@@ -812,7 +833,8 @@ app.get('*', async (c, next) => {
         404,
       )
     }
-    const { file, bytes, catalog, clientEntry } = resource
+    const { file, bytes, catalog, clientEntry, frameOrigins } = resource
+    if (path.extname(file) === '.html') c.set('frameOrigins', frameOrigins)
     const types: Record<string, string> = {
       '.html': 'text/html',
       '.js': 'text/javascript',
@@ -824,7 +846,7 @@ app.get('*', async (c, next) => {
     }
     const html = bytes.toString('utf8')
     const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
-      : new TextEncoder().encode(composeRuntimeShell(html, name, catalog))
+      : new TextEncoder().encode(composeRuntimeShell(html, { name, title: catalog.find((entry) => entry.name === name)!.title }))
     return new Response(body, {
       headers: {
         'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
@@ -850,12 +872,18 @@ app.get('/api/whoami', async (c) => {
   // Table list itself, so none are sent here.
   const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
   const access = manage
-    ? { readable: [], creatable: [], ownGrant: true, any: true }
+    ? { readable: [], creatable: [], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    // #671: the installed apps this person can open, so the shared top bar can
+    // lead to and name them without asking an Admin endpoint.
+    apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
+    // Every installed app, open or not (disabled, pending): where the bar's
+    // name leads follows the installation, as the address routing does.
+    installed_apps: await installedAppNames(),
     theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
@@ -1147,6 +1175,15 @@ app.get('/api/people/:id/identities', async (c) => {
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+})
+
+// #667: why a person sees nothing from an app's datasets: the provider's
+// places for them, and which each dataset applies or drops. System Manager
+// only, the person themself included.
+app.get('/api/people/:id/scope', async (c) => {
+  await assertSystemManager(who(c))
+  const { explainPersonScope } = await import('./scope-explain')
+  return c.json(await explainPersonScope(who(c), c.req.param('id'), c.req.query('app') ?? ''))
 })
 
 // Instance settings as code (#465, D3): the instance repository's workflow
@@ -1504,7 +1541,7 @@ app.delete('/api/table_def/:name', async (c) => {
 
 // #209 (issue #197): rename a column in place, keeping its data. PUT
 // /api/table_def/:name matches columns BY NAME, so a changed name there reads
-// as delete-plus-add and silently orphans the rows — hence its own route.
+// as delete-plus-add, which it refuses (#250) — hence this route.
 app.post('/api/table_def/:name/rename_column', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as { from?: unknown; to?: unknown }
@@ -1515,10 +1552,12 @@ app.post('/api/table_def/:name/rename_column', async (c) => {
 
 app.put('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
+  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean; remove_columns?: unknown }
   rejectSystemClaim(body)
-  const { drop_columns, ...def } = body
-  return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
+  const { drop_columns, remove_columns, ...def } = body
+  if (remove_columns !== undefined && !(Array.isArray(remove_columns) && remove_columns.every((c) => typeof c === 'string')))
+    throw new AppError('ValidationError', 'remove_columns must be a list of column names')
+  return c.json(await updateTable(c.req.param('name'), def, { drop_columns, remove_columns }))
 })
 
 app.post('/api/save_row', async (c) => {
@@ -1528,7 +1567,7 @@ app.post('/api/save_row', async (c) => {
   const hadRowId = Boolean(body.row[ROW_KEY])
   const saved = await saveDoc(body.table, body.row, who(c))
   publishDocEvent(body.table, String(saved.row_id), hadRowId ? 'updated' : 'created')
-  return c.json(saved, 201)
+  return c.json(await rowForCaller(body.table, saved, who(c)), 201)
 })
 
 // PRN-003: server-side PDF of any document / print format.
@@ -1724,6 +1763,12 @@ app.get('/api/apps', async (c) => {
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// #642 (E8): the controls an app declared for the shared top bar, filled for
+// this person.
+app.get('/api/app_bar/:app', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await appBar(c.req.param('app'), who(c)))
+})
 // Authenticated bootstrap contains identities only, never manager metadata.
 app.get('/api/runtime_app_versions', async (c) => {
   c.header('Cache-Control', 'no-store')
@@ -2134,7 +2179,7 @@ app.post('/api/table/:table', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   const saved = await saveDoc(table, doc, user.row_id, 'insert')
   publishDocEvent(table, String(saved.row_id), 'created')
-  return c.json(saved, 201)
+  return c.json(await rowForCaller(table, saved, user.row_id), 201)
 })
 
 app.get('/api/table/:table/:name', async (c) => {
@@ -2180,7 +2225,7 @@ app.patch('/api/table/:table/:name', async (c) => {
   doc.row_id = name
   const saved = await saveDoc(table, doc, user.row_id)
   publishDocEvent(table, String(saved.row_id), 'updated')
-  return c.json(saved)
+  return c.json(await rowForCaller(table, saved, user.row_id))
 })
 
 app.delete('/api/table/:table/:name', async (c) => {
@@ -2237,8 +2282,11 @@ serveWebDist(app, webDist)
 export async function startServer(port: number = config.port): Promise<{ port: number; stop: () => Promise<void> }> {
   // Refuse to boot on a missing required variable, or with a switch on that
   // production must never have (instance-settings D7; test mode is one, D5).
-  const { settingsRequirements } = await import('./release-preflight')
+  const { installedAppsAtStart, settingsRequirements } = await import('./release-preflight')
   for (const line of assertServerStart(undefined, await settingsRequirements())) if (line.startsWith('WARNING')) console.warn(line)
+  // #642 (E7): never serve without an installed, enabled app's exact version
+  // (a developer's server warns instead).
+  for (const line of await installedAppsAtStart()) console.warn(line)
   const { server, listening } = await new Promise<{ server: ReturnType<typeof serve>; listening: number }>((resolve) => {
     const server = serve({ fetch: app.fetch, port }, (info) => {
       console.log(`server listening on :${info.port}`)

@@ -45,6 +45,11 @@ test for any file is whether a second client would have to change it.
   inside one transaction. Install, preview → upgrade → activate are operator calls.
   Discovery serves the installed *exact* version, identified by a fingerprint of its
   files (`artifact_digest`). Upgrades refuse new Tables and new or wider grants.
+  *(27-Oct-2026, #651: no longer true for new Tables. An upgrade can now add,
+  remove and rename the app's own Tables and add, change, rename and remove
+  columns; a Table it adds arrives with the grants its version declares. Wider
+  grants on Tables the app already had are still refused. See the archived
+  OpenSpec change `app-schema-evolution`.)*
 - **Measured on dev, 26-Oct-2026** (two runs, a Team Leader):
 
   | | cached numbers | embed session | Dive frame loaded | Dive numbers drawn |
@@ -144,9 +149,10 @@ flowchart TB
 | Which address opens what | **Instance** (`INSTANCE_ADDRESSES`) | Configuration |
 | The scope shape, its provider, the snapshot engine, sign-in, addresses, the top bar, the Access Log | **Platform** | Shared by every app |
 
-Per-instance settings still travel through the existing instance install route
-(the client's `manifest.json`, installed with a service-account token). The app's
-code reaches the server in a client image built on the platform's image (D7).
+Per-instance settings travel through the instance's settings file
+(`instance-settings.json`, applied with a service-account token; revised by #620:
+#491 took instance settings out of manifests). The app's code reaches the server in
+a client image built on the platform's image (D7).
 
 ### D2. Platform extensions
 
@@ -154,44 +160,124 @@ Each is generic: none names Feather Dash or a client. Each joins the
 extension-point catalogue (ADR 0011), which is generated from the manifest schema
 and checked in CI.
 
-**E1. The scope shape and a swappable provider.**
+**E1. The scope shape and an app-declared provider** (owner decision 27-Oct-2026,
+#559: the platform defines the shape and enforces it; an app declares the provider
+that fills it).
 
 - **The shape** is a list of *places* the person covers. Each place has a label and
   the filter values that go with it. For a Team Leader of one section:
-  `{ place: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
+  `{ label: "Store 12 / Kids Wear", filters: { store: ["12"], subcategory: [...] } }`.
   A place may also carry the basis (section staff, team leader, department manager,
-  floor manager, store manager) for display.
-- **A `person_scope` operation policy** sits beside `table` and `stores`. The platform
-  computes the caller's scope fresh on every request and hands it to the handler,
-  frozen. Naming a store or section outside it refuses the *whole* request, records
-  the refusal in the Access Log, and reveals nothing. An empty scope is never read
-  as all stores, for an administrator too. An ambiguous employee code still yields
-  no scope.
-- **The provider** fills the shape. Stage B moves today's derivation (the nine
-  tables) into it unchanged. #449 decides where the roster lives (the platform, or
-  a "store structure" app) and swaps the provider. **No app changes either way.**
-  The provider's output in this shape is also #449's parity target.
+  floor manager, store manager) for display, and a confirmation status
+  (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
+  always names at least one filter value, and labels are unique within a scope. The
+  shape is a shared type, validated at the boundary. A place must use the filter
+  keys the app's datasets map: a dataset drops a place naming any other key (E3,
+  #667).
+- **A `person_scope` operation policy** sits beside `table` and `stores`, with read
+  and action roles like `stores`. The platform calls the provider fresh on every
+  request, validates and freezes the answer, and hands it to the handler. A request
+  may narrow it by naming places or filter values (`payload.scope`); naming a place
+  or value outside it, or values that no single place covers together, refuses the
+  *whole* request, records the refusal in the Access Log, and reveals nothing. It
+  **fails closed**: no provider, a provider that throws or reads outside what it
+  declared, an invalid shape, or an empty scope all mean no access. An empty scope
+  is never read as everything, for an administrator too. An ambiguous employee code
+  still yields no scope.
+- **The provider is declared by an app.** Its manifest says
+  `"scopeProvider": { "name": "<export>", "tables": [...] }` and its server module
+  exports the function under `scopeProviders`. The function gets the person and a
+  read context limited to the Tables it declared, each of which must be marked as
+  deciding scope and hold no Sub-tables (a row read would hand over undeclared child
+  rows). It may also name identifier systems, `"identifiers": ["<system>", ...]`
+  (#660; for example the employee-code system, so a roster derivation can find a
+  person's rows by code). The person it gets then carries `identifiers`: for each
+  named system, and only those, the person's current values, read fresh on every
+  resolution and frozen with the rest. *Current* means valid today: started on or
+  before today, with no end or an end after today, where today is India's day (as
+  the leaver check counts it), so a value with a future start is not passed (owner
+  decision 27-Oct-2026, provisional, for review 28-Oct). Each value comes as
+  `{ value, shared }` (#662): `shared` is true when the same value in the same
+  system is valid today on another person, so a derivation can refuse a code that
+  cannot say whose rows are whose. Holders are counted by the person they resolve
+  to: a record merged away (`replaced_by`) counts as its survivor, so a person's own
+  replaced record is not someone else. Only the boolean is passed, never who else
+  holds the value or how many, and it is worked out in the same read as the values,
+  under the same locks. It gets nothing else about the person, and `identifiers` is
+  empty when it names none. A named system the
+  instance does not have, or has turned off (owner decision 27-Oct-2026,
+  provisional: a turned-off system passes no values and counts as missing), or has
+  made Secret (Codex round 1 on #661: a system made Secret after values were
+  recorded still holds them in plain, so a Secret system's values and hints never
+  reach an app, whatever is stored), answers
+  "not set up yet" before the provider runs, so no one gets a scope; the release
+  check and Instance health name it with the app's other missing setup. The
+  declared systems are locked (FOR SHARE) in the request's transaction before they
+  are checked and until the provider has answered (Codex round 2 on #661), so an
+  admin turning one off or making it Secret waits for requests in flight, and the
+  next request sees the change.
+  It reads as the platform, so a manager needs no read grant on the roster,
+  and under the provider app's own installed version, whatever the consuming
+  request named. Exactly one enabled app may provide the scope on an instance: a
+  second is refused at install, enable, upgrade and activation, the release
+  preflight refuses an instance with two, and two at run time mean no scope for
+  anyone. A replayed action answers from its stored result, so it is admitted only
+  while the caller's scope still covers every place and value that run used. Feather Dash is a client app in the
+  client's private repository (ADR 0013) and supplies the client's roster derivation
+  (B6′). That derivation never moves into the platform. #449 decides where the
+  roster Tables live; the provider follows them. **No consuming app changes either
+  way.** The provider's output in this shape is also #449's parity target.
 - **The report definition maps filters to query columns**, for example
   `subcategory` → the hierarchy code. So the app and the platform never learn the
   client's column names.
-- **One-way knowledge in the security list.** `security-tables.ts` stops naming the
-  client's roster tables. The provider's own tables are marked as scope-deciding by
-  their definition, not by a platform list of names.
+- **One-way knowledge in the security list.** A Table whose rows decide scope is
+  marked by its own definition (`decides_scope`), and the platform guards a marked
+  Table like the named security Tables. The client's roster table names leave
+  `security-tables.ts` only once the client's instance setup marks those Tables, in
+  the go-live cut-over (task 5.2). Today's platform report keeps its current code
+  until the clean-up release.
 - Rejected: the platform computing retail scope itself (it would know store, floor
   and section, which a CRM client does not have). Also rejected: each app reading
   the roster tables (the readings drift, and client table names would enter the
-  app).
+  app). Also rejected (27-Oct-2026): moving today's derivation into a platform
+  provider for a while; it would put the client's roster logic in this repository.
 
 **E2. Declared settings and secrets.**
 
 - Manifest: `"settings": [{ "name": "dive_id", "required": true }, …]` and
   `"secrets": ["MOTHERDUCK_TOKEN"]`.
-- Values live in a platform `App Setting` Table, keyed by app and name. It is a
-  security Table. The instance sets them through its manifest install. Secrets
-  stay environment variables and are never stored, logged or returned.
+- Values live in a platform `App Setting` Table, keyed by app and name (row
+  `<app>.<setting>`). It is a security Table. Settings hold only what differs
+  per instance (ADR 0013). The instance sets them through its **instance
+  settings file** (`instance-settings-as-code`; #491 removed instance settings
+  from manifests), with its apply, dry run and export: `App Setting` is in the
+  file's managed scope (the `value` field), and a setting the file sets is
+  read-only in Admin (#494). A setting the app does not declare is refused at
+  save, and a stored value for one never reaches the app. Secrets stay
+  deployment variables and are never stored, logged or returned (#620).
 - Handlers receive `context.settings` and `context.secrets`, holding only what was
-  declared. A missing required value gives the app's own "not set up yet" answer.
-  The release check warns when an installed, enabled app lacks a required secret.
+  declared and set. A missing required value gives a "not set up yet" answer
+  (`NotSetUpError`, 409) before the handler runs, so the app's client can show
+  it and nothing crashes. An answer or error that holds one of the app's secrets
+  is withheld or replaced before it is answered, stored or logged.
+- The release check warns when an installed, enabled app lacks a required
+  setting or secret (names only), and Instance health shows the same per app.
+- **Optional secrets (#666, as built).** A secret is a bare name (required) or
+  `{ "name": "EMBED_KEY", "optional": true }`. A read or action names the
+  optional secrets it uses in `needs: ["EMBED_KEY"]`; the load refuses a
+  `needs` entry the app does not declare. A missing optional secret makes only
+  the operations that need it answer "not set up yet"; a missing required
+  secret still holds up everything. A handler gets the required secrets and
+  the optional ones its operation needs; reaching for an optional secret it
+  does not need fails the operation (500, the server log names the secret),
+  even when the secret is set, so a forgotten `needs` shows up in development
+  rather than on an instance that lacks the secret. A withheld secret is still
+  one of the app's secrets: redaction, the answer check and the stored action
+  result keep in every declared secret that is set, whatever the handler was
+  given (Codex review on #670). The release check and
+  Instance health name a missing optional secret and the operations that need
+  it, as a warning that the rest of the app works. This lets an app with an
+  optional embed integration serve its plain view without the embed's secret.
 - Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
   experiment's password seeding.
 
@@ -209,16 +295,123 @@ and checked in CI.
   same shaping function, so cached and live cannot disagree in layout or maths.
 - Reads get `context.datasets.active(name)`, with equality or `in` filters on
   declared keys only. No SQL crosses from the app to the platform.
+- **As built (#625, migration 0135).** The manifest's `datasets` entry is
+  `{ name, source, query, columns: [{ name, type }], keys, filters }`; `type` is
+  `text`, `integer`, `number`, `money`, `date` or `boolean`. Keys and mapped
+  columns must be `text`, `integer` or `date` (they compare as text), and the query
+  must be one statement. Each dataset registers on the snapshot engine as
+  `<app>.<name>`, with the declaration's hash as its definition version, so a
+  changed query never serves old rows. Rows are stored, shaped, in the raw
+  `app_dataset_row` relation; an empty candidate is refused like any failed build.
+  The query reaches its source wrapped twice: projected to its declared columns,
+  a `date` column cast to a day in the source (so a time of day lands on the same
+  day cached and live), then limited to the reader's rows as bound values.
+- **Exact keys (Codex round 1).** An integer key or scope-mapped column keeps its
+  exact digits, answered as text in both the cached and the live read, so ids
+  above 2^53 never round into each other's scope. Any other integer must be one a
+  JavaScript number holds exactly, or the build or read fails loudly.
+- **Read-only sources (Codex round 1).** Postgres runs the query in a `read only`
+  transaction. A local DuckDB file is opened in DuckDB's `READ_ONLY` mode, one
+  instance per source shared by browsing, connection tests and dataset queries
+  (the driver never writes; round 2). A MotherDuck
+  connection cannot be opened read-only: its guarantee is a read-scaling token
+  (MotherDuck: such a token "grants permission for read operations" while
+  "restricting write and administrative operations"), which the platform cannot
+  detect. So the Data Source gets a "Read-scaling token" checkbox (migration
+  0136); until an administrator ticks it, a MotherDuck source cannot back an app
+  dataset: reads answer "not set up yet" and the setup checks name a
+  `read-only data source`. Other engines cannot run a dataset query. Today's Sales
+  Target reader is untouched.
+- **The scope through the mapping.** Each of the reader's places is one group of
+  conditions; a place adds rows only when the dataset maps every filter it names
+  (an unmapped filter would widen it), and no place means no row. `active` answers
+  `{ dataset, served, at, rows }`, or `null` when nothing has built yet, recording
+  the miss. `live(name, filters)` answers the same shape and is available only in
+  an outbound read (E5). A dataset whose source the instance lacks answers "not set
+  up yet", and Instance health and the release check name the missing data source.
+- **The rule: a place must use the dataset's filter keys** (#667, decision of
+  28-Oct-2026: options (a) and (c)). A provider emits places in the filter keys
+  the datasets map; a place naming any other key (a floor or a section, where the
+  dataset is per store and product category) is still dropped whole from that
+  dataset, never widened to the keys it does map. The drop is made visible, not
+  changed:
+  - `GET /api/people/:id/scope?app=<app>`, System Manager only (403 for anyone
+    else, the person themself included): `{ provider: { app, title }, problem,
+    places: [{ label, filters: [key…] }], datasets: [{ name, applied: [label…],
+    dropped: [{ place, keys: [key…] }] }] }`. `problem` is the fail-closed reason
+    when the person has no usable scope (`configuration`, `provider`, `scope`),
+    else null. Keys only, never a filter value, row or figure. The provider runs
+    as it does for a read; nothing is written except one Access Log row
+    (`view_person_scope`, the person and the app), and it records no drop.
+  - App reads record each drop by app, dataset, provider and the sorted set of
+    unappliable keys, with the two apps' versions (migration 0137,
+    `dataset_place_drop`; no person, place label or value; written at most once
+    an hour per drop). Codex round 1 on #678 shaped how:
+    - only the provider's own place keys are recorded, never keys a request
+      added by naming filters to narrow its places;
+    - the versions are those the read was authorized under;
+    - recording happens only once the read's answer stands (after its
+      transaction commits, or after an outbound read's final serving check),
+      on a transaction of its own, in one sorted order, with a 250 ms lock
+      timeout and a 2 s statement timeout; a failure is logged and never fails
+      the read;
+    - the hourly rule holds in the upsert's conflict clause, so racing
+      recordings write once.
+
+    Codex round 2 added two rules:
+    - only places that survived the request's narrowing are recorded, by
+      their provider-origin keys;
+    - each pair of versions keeps its own row (both are in the key), and
+      health reads only the current pair, so a late read under older
+      versions never hides a current warning. Instance health has one check per enabled app with
+    datasets, `scope-place-drops:<app>`, a warning naming the dataset, the
+    provider and the keys while both apps run the versions the drop was seen
+    under and for seven days after reads last met it. A static check is not
+    possible: a provider answers only for a person.
+  - Deferred, not built: a dataset-declared expansion of another key into its
+    own (option (b)), because a wrong expansion would widen what a person sees.
 
 **E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
 The platform allows them as frame sources only on that app's own pages. The global
 `EMBED_ORIGIN` entry goes away. The browser-level stub keeps working through a
 development-only setting.
 
+- **As built (#642).** `frameOrigins` must be exact `https` origins (the URL
+  parser's origin reads back the same text: no wildcard, path, trailing slash,
+  credentials or written-out default port); discovery refuses anything else.
+  Every response's policy is `frame-src 'self'` plus the origins of the app
+  whose page it is, set only on the HTML an app serves. There is no
+  instance-wide outside origin. Until B9 the Sales Target page
+  (`/featherbase/sales-target`) keeps `MOTHERDUCK_EMBED_ORIGIN` for that page
+  alone, which also keeps the browser-level stub working. A document keeps the
+  policy it was loaded with, so the report's route enters by a full load when
+  the document was loaded at another page (sign-in, the Admin hand-over).
+
 **E5. Reads that call out.** A read declared `"outbound": true` has its
 authorization decided and frozen inside the platform transaction; its handler runs
 *after* the transaction closes, so no row lock is held during a MotherDuck call.
 `context.recordView(...)` writes the Access Log row (platform-written, #441).
+
+- **As built (#625).** The places, payload, settings and secrets are decided and
+  frozen inside the authorization transaction, which then commits; the handler
+  runs after it on the pool, holding no transaction (`inAppTransaction()` is false
+  in it) and no lifecycle lock: an app read takes the lifecycle lock itself, only
+  while it authorizes (the request middleware no longer wraps `/api/app_reads/*`),
+  so stalled outbound handlers cannot exhaust the lifecycle pool or hold off an
+  install, upgrade or enable (Codex round 1). The serving app version is frozen
+  with the authorization. The handler's view records are held until it answers,
+  then written under one shared lifecycle lock together with the check that the
+  app is still enabled and serving that version; if the check fails, nothing is
+  written and the answer is refused (round 2).
+- **Retired datasets (round 2).** The refresh closes the asks for a dataset no
+  app version declares any more, and skips and closes those of a disabled or
+  mid-upgrade app, so the shared refresh job never fails on them. Document reads would lock rows, so in an outbound handler they fail
+  loudly; `context.datasets.live` is allowed only there. Actions cannot be
+  outbound.
+- `context.recordView({ dataset })` writes one `view_report` Access Log row for
+  the viewing person: the dataset (or the read), the places' labels, and what this
+  request actually served (cached with its snapshot, or live). The platform fills
+  each field; the app only names the dataset.
 
 **E6. App roles bound to jobs.** See D4.
 
@@ -227,11 +420,84 @@ app's exact installed version is missing from the image. A refused release keeps
 the previous deployment serving, so a deploy can never silently take the report
 away.
 
+- **As built (#642).** `preflightRelease` loads every app on
+  `FEATHERBASE_APP_PATHS` exactly as boot does (registering nothing) and
+  refuses when an installed, enabled app's `package_version` and fingerprint
+  (`artifact_digest`, or the recorded manifest for a legacy install) are not
+  among them, before the first migration. The message names the app and
+  version and says to ship them in the image or disable the app. A version
+  shipped twice with different files counts as not shipped, as boot drops it
+  (Codex round 1 on #643). The server's start and `cli boot-check` run the
+  same check and refuse, except on a `development` server: init.sh runs apps
+  from their source folders, so editing an app or switching branches changes
+  its fingerprint, and there the server starts with the app unavailable and
+  warns, naming the app, the version and how to bring it back (init.sh repeats
+  the warning). A disabled app never blocks, and a row with no recorded
+  version (mid-recovery, which no image can serve) is not checked.
+
 **E8. Bar controls.** An app may declare a control for the shared top bar:
 `"bar": [{ "picker": "Store", "options": "<one of the app's reads>", "sets": "store" }]`.
 The platform draws it in Shop Floor style, fills it from the app's own read (which
 is scope-checked), and puts the choice in the address (`?store=12`), where the app
 reads it. An app never runs its own code in the bar (ADR 0011).
+
+- **As built, server side (#642).** Discovery refuses a control whose
+  `options` is not one of the app's reads, whose `sets` is not a query-string
+  key (`^[a-z][a-z0-9_]{0,63}$`), or whose key another control already sets.
+  `GET /api/app_bar/:app` answers `{ controls: [{ picker, sets, options }] }`
+  for an app the person can open (the same gate as its pages; otherwise
+  404). Each picker's options are its read's answer, run for the person under
+  their own scope as the app's serving version, and must be a list of
+  `{ value, label }`, both text, in the read's order; any other answer fails
+  the request. A person the read refuses gets no options, so the bar leaves
+  the control out; the read has logged the refusal.
+- **As built, the bar (#642, to the owner's checklist and mockup).** On an
+  app's address the shared top bar draws each declared picker after the app's
+  name: the declared word as a muted label, then a select-only combobox whose
+  list is the read's options in order (the current one ticked and bold). One
+  option shows as plain text; none hides the control. The choice is written to
+  the address through the router (`?<sets>=<value>`, a history entry, no
+  reload). With no choice in the address, or one that is not among the reader's
+  options, the picker writes the first option into the address in place
+  (`history.replaceState`: no Back step, no reload) and announces it once, so
+  the app and a shared link always see an explicit choice; with one option it
+  writes that one, with none it writes nothing (owner decision 27-Oct-2026,
+  #650). On a phone the label is visually hidden
+  but stays the accessible name, and the value is cut with an ellipsis.
+- **As built, the bar over the app's own pages (#650).** The bar is drawn over
+  the app's own pages too (D3, "As built"), so the picker sits above the app's
+  content on any address that opens the app's page. There the choice goes into
+  the document's own address (`?<sets>=<value>`, a history entry, no reload), and
+  the app learns of it in two ways, both part of the extension-point catalogue:
+  - on load, from `location.search`;
+  - for each later choice, from one browser event on `window`,
+    **`featherbase:bar-change`**, whose `detail` is `{ key, value }`, both text
+    (for example `{ key: "store", value: "S103" }`). It fires once per choice,
+    after the address has changed, and once for the first option the bar
+    writes in on load. Moving through history fires the browser's own
+    `popstate` only.
+  - **An app must listen for the event, not only read the address on load.**
+    The bar writes the first option in on load *after* the app's own startup
+    script may already have read the address, so on a page opened with no
+    choice the first store reaches the app only through the event. The
+    recommended pattern: read `location.search` on load, then update on every
+    `featherbase:bar-change` (and on `popstate`, for Back and Forward):
+
+    ```js
+    let store = new URLSearchParams(location.search).get('store')
+    window.addEventListener('featherbase:bar-change', ({ detail }) => {
+      if (detail.key === 'store') store = detail.value // then redraw
+    })
+    ```
+  - **An app may change `?<sets>=` itself** with `history.pushState` or
+    `replaceState`; the bar follows (it observes those writes; Codex round 1
+    on #658). A valid value the app sets is not announced back to it. If the
+    app drops the key, or sets a value the reader does not have, the bar
+    writes the first option back in place and announces it once, as on load.
+  - **No platform module paints as it loads** (GitHub Codex on #658). In a
+    production build the theme code can share a chunk with the Admin and load
+    before the bar has chosen its own root, so painting at load time would
+    overwrite the app's `<html data-theme>`. Each entry paints as it starts.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
@@ -316,6 +582,37 @@ Portal and the restricted shell.
   - no bell until the app sends notifications.
 - #309 rejected a *package-chosen* presentation mode. Here the *address*, an
   instance setting, picks the contents.
+- **As built, an app's own pages (#650).** The runtime shell's server-drawn
+  header, its app switcher, `runtime-shell.css` and `runtime-shell.js` are
+  removed outright. The shell now adds two things to the app's entry document:
+  a `<featherbase-bar data-app data-title>` host, first in the body, and the
+  platform's bar script, `/featherbase/bar.js`. The app's assets, its frame
+  policy (E4), the client version header and identity are served as before.
+  - **How the bar gets in: the platform's bar bundle, not the app inside the
+    platform's page.** `/featherbase/bar.js` is a second entry of the web app
+    that renders the real `TopBar` into the host's shadow root, so there is one
+    bar implementation and the app keeps owning its document. Rejected: mounting
+    the app's page inside the platform's single-page app, which would take the
+    app's document, address and styling away from it and run its code in the
+    platform's page.
+  - **The bar stays the platform's, and the page stays the app's** (ADR 0011).
+    The bar's styles live in its shadow root and its theme is painted on its own
+    root, never on the app's `<html>`. Its router is private and in memory, so it
+    never reads or rewrites the app's address or history state. Every way out of
+    the bar (Sign-in methods, Log out, Open Admin) loads the platform's page in
+    full. App code must not reach into the bar's host.
+  - The bar is sticky at the top of the window, above the app's content, as
+    the runtime shell's header was. It publishes its height on the app's root as
+    **`--featherbase-bar-height`**, for an app that pins something to the window
+    below the bar. This replaces the shell's `--featherbase-runtime-shell-inset`,
+    with no alias, and joins the extension-point catalogue. Tasker 2.3.0 still
+    reads the retired name, so its phone inspector opens under the bar until a
+    new Tasker version reads the new one; its shipped files are left alone,
+    because an installed app is matched by fingerprint.
+  - On an app's own page the bar names the app on every address, draws the
+    app's declared controls, and offers "Open Admin" to people who can use
+    Admin, since the page is never the Admin. The app's page keeps its own
+    document title.
 - **Branding.** `/api/brand` answers with the opened app's title on an app's
   address. The login page and document title use it.
 
@@ -336,12 +633,22 @@ feature (follow-up).
   roles to app roles** (owner decision 26-Oct-2026). It is a security Table, `App
   Role Binding`, written by a System Manager only. The release check refuses a
   binding to `All` or `Guest`.
-- **Seeded from the app's suggestions.** `"roleDefaults"` in the manifest is written
-  as binding rows at install, once. An upgrade never re-imposes it, so widening the
-  audience is an instance decision, not an app release. The planner's "never widen a
-  grant" rule still holds, because a binding is not an app grant.
+- **Seeded from the app's suggestions.** `"roleDefaults"` in the manifest
+  (`{ "<app role>": ["<instance role>", …] }`) is written as binding rows at
+  install, once; a suggested role the instance does not have is skipped and the
+  Activity Log says so. An upgrade never re-imposes it, so widening the audience
+  is an instance decision, not an app release. The planner's "never widen a
+  grant" rule still holds, because a binding is not an app grant. A suggestion
+  for a role the app does not declare, or through `All` or `Guest`, stops the
+  app from loading.
 - **The role check** treats a person as holding an app role if they hold it directly
-  or hold any role bound to it, checked fresh on every request.
+  or hold any role bound to it, checked fresh on every request. It is one level
+  deep, only for an enabled app and a role that app declares, and never a
+  platform role (System Manager, Administrator), so it applies to the `table`,
+  `stores` and `person_scope` policies and to the app's grants alike (#620).
+- **Bindings are not in the instance settings file.** They are people-and-access
+  decisions an admin makes in Admin, which the settings file deliberately leaves
+  out (instance-settings-as-code D2).
 - **Rows come from scope, never from roles.** A Team Leader and a Store Manager hold
   the same Reader role and see different rows.
 - **A stand-in until the roster lands.** Before stage C, no jobs exist, so the
@@ -457,6 +764,10 @@ a request.
 A new optional column is an `addColumn` migration. A new Table or a wider grant is
 refused by the upgrade planner, so **1.0.0 already declares the request Table and
 every grant stage D needs**.
+*(27-Oct-2026, #651: the upgrade planner now accepts a new Table, with the grants
+its version declares, and every other schema change in `app-schema-evolution`;
+only a wider grant on a Table the app already had is still refused. 1.0.0 no
+longer has to declare Tables a later version needs.)*
 
 **Delivery** (owner decision 27-Oct-2026, Q2 = (a)). The client's repository
 builds a **client image on top of the platform's image**: it starts from a pinned
@@ -647,7 +958,7 @@ Owner decisions on PR #460, 26-Oct-2026 (in the PR comment, then in review):
    first answer, "the app's code in the private repository", once the split removed
    everything private from the app.)
 2. **Scope** is a fixed platform shape with a swappable provider; #449 decides where
-   the roster lives.
+   the roster lives. (Revised 27-Oct-2026: an app declares the provider, #559.)
 3. **Section edits** are change requests applied by a reviewer who is not a System
    Manager. The generic role is #462, and stage D waits for it.
 4. **Emails** link to the address marked for emails (dash). Anyone landing on the

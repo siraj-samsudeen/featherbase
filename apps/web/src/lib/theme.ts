@@ -34,14 +34,20 @@ export function applyTheme(theme: Theme) {
   }
 }
 
-// Before React renders: the signed-in person's last choice, or the device.
-// whoami then repaints from the server value (a stale mirror is corrected).
-try {
-  const key = storageKey()
-  const saved = key ? localStorage.getItem(key) : null
-  paintTheme(isTheme(saved) ? saved : 'device')
-} catch {
-  paintTheme('device')
+/** Paint the signed-in person's last choice, or the device's, before React
+ *  renders; whoami then repaints from the server value (a stale mirror is
+ *  corrected). Each entry calls it as it starts (main.tsx, the bar's mount):
+ *  never as this module loads, because in a production build this module can
+ *  load before the bar has said where to paint, and over an app's page that
+ *  would overwrite the app's own <html> theme (#650). */
+export function paintSavedTheme() {
+  try {
+    const key = storageKey()
+    const saved = key ? localStorage.getItem(key) : null
+    paintTheme(isTheme(saved) ? saved : 'device')
+  } catch {
+    paintTheme('device')
+  }
 }
 
 export function useTheme(): { theme: Theme; set: (t: Theme) => void } {

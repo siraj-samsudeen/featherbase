@@ -634,6 +634,22 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
       status: 417,
     })
   })
+
+  // #330: the summary view's totals take the same path — counts per group at the source, sums refused.
+  test(':summary counts bound rows overall and per group, and rejects sums', async ({ admin }) => {
+    await bindAccount(admin)
+    const enc = encodeURIComponent(BOUND)
+    const summary = (await admin.get(`/api/table/${enc}:summary?group_by=label`)) as {
+      count: number
+      groups: { value: string | null; count: number }[]
+    }
+    expect(summary.count).toBe(2)
+    expect(summary.groups.map((g) => g.count)).toEqual([1, 1])
+    expect((await admin.get(`/api/table/${enc}:summary`)) as { groups: unknown[] }).toMatchObject({ count: 2, groups: [] })
+    await expect(
+      admin.get(`/api/table/${enc}:summary?sums=${encodeURIComponent(JSON.stringify(['label']))}`),
+    ).rejects.toMatchObject({ status: 417 })
+  })
 })
 
 describe('a bound Table keeps its binding', () => {
@@ -700,6 +716,25 @@ describe('a bound Table keeps its binding', () => {
       admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-NOPE' } }),
       { status: 417, type: 'ValidationError', fields: { account: `${BOUND} ACC-NOPE does not exist` } },
     )
+  })
+
+  // SPEC: owner decision 27-Oct-2026 on #566 — the link can't be checked, so the save is refused.
+  test('a local row that refers to a bound row is refused while its source is down', async ({ admin }) => {
+    await bindAccount(admin)
+    await admin.post('/api/table_def', { name: 'Sec Holder', columns: [{ column_name: 'account', column_type: 'Reference', reference_table: BOUND }] })
+    const live = process.env[EXT_URL_ENV]
+    process.env[EXT_URL_ENV] = 'postgres://nobody:nothing@127.0.0.1:59999/nope'
+    invalidateSources()
+    try {
+      await expectApiError(
+        admin.post('/api/save_row', { table: 'Sec Holder', row: { account: 'ACC-A' } }),
+        { status: 502, type: 'DataSourceError' },
+      )
+      expect(await sql`select 1 from ${sql(await tableRelation('Sec Holder'))}`).toHaveLength(0)
+    } finally {
+      process.env[EXT_URL_ENV] = live
+      invalidateSources()
+    }
   })
 
   test('a sub-table row that refers to a missing bound row names its own field', async ({ admin }) => {

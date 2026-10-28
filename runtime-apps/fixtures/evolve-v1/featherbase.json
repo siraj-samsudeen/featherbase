@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "evolve",
+  "title": "Schema evolution proof",
+  "entryTable": "evolve.item",
+  "roles": ["Evolve Clerk"],
+  "tables": [
+    {
+      "name": "evolve.item", "label": "Item", "id_pattern": "prompt", "title_column": "title",
+      "columns": [
+        { "column_name": "title", "label": "Title", "column_type": "Data", "description": "The material group this item belongs to" },
+        { "column_name": "qty", "label": "Qty", "column_type": "Int" },
+        { "column_name": "grade", "label": "Grade", "column_type": "Choice", "choices": "A\nB\nC" },
+        { "column_name": "legacy_code", "label": "Legacy code", "column_type": "Data" },
+        { "column_name": "on_hold", "label": "On hold", "column_type": "Check", "description": "Paused until the count is checked" }
+      ]
+    },
+    {
+      "name": "evolve.note", "label": "Note", "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "label": "Body", "column_type": "Text" }]
+    },
+    {
+      "name": "evolve.zone", "label": "Zone", "id_pattern": "prompt", "decides_scope": true,
+      "columns": [{ "column_name": "zone_name", "label": "Zone", "column_type": "Data" }]
+    }
+  ],
+  "permissions": [
+    { "table": "evolve.item", "role": "Evolve Clerk", "can_read": true, "can_write": true, "can_create": true },
+    { "table": "evolve.note", "role": "Evolve Clerk", "can_read": true }
+  ]
+}

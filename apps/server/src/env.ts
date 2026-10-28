@@ -127,6 +127,7 @@ export const VARIABLES = [
   { name: 'PREAUTH_SIGNUP_MAX', secret: false, required: 'optional', default: '`10`', purpose: 'sign-ups per source and window' },
   { name: 'PREAUTH_HANDOFF_MAX', secret: false, required: 'optional', default: '`200`', purpose: 'steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets' },
   { name: 'TRUSTED_PROXY_IPS', secret: false, required: 'optional', purpose: 'comma-separated exact socket IPs trusted to append `X-Forwarded-For`' },
+  { name: 'CLIENT_ADDRESS_HEADER', secret: false, required: 'optional', purpose: 'one request header the edge overwrites with the client\'s address (Railway\'s edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller\'s copy; see [Behind a proxy](#behind-a-proxy)' },
   { name: 'RATE_LIMIT_WINDOW_MS', secret: false, required: 'optional', default: '`60000`', purpose: 'per-user API rate-limit window' },
   { name: 'RATE_LIMIT_MAX', secret: false, required: 'optional', default: '`100000`', purpose: 'per-user API requests per window, unless the person has their own limit' },
   // ---- Switches that must never be on in production
@@ -145,6 +146,8 @@ export const VARIABLES = [
   { name: 'PREVIEW_LOGIN_USER', secret: false, required: 'forbidden-in-production',
     purpose: 'preview deployments: the account the link signs in as (never Administrator)',
     fix: `Preview sign-in is a one-link login. ${ON_FORBIDDEN} Unset it, or run the preview as staging.` },
+  { name: 'PREVIEW_USER_NAME', secret: false, required: 'optional',
+    purpose: 'preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`)' },
   // ---- Break-glass and tooling
   { name: 'DISABLE_DATABASE_ENVIRONMENT_CHECK', secret: false, required: 'optional',
     purpose: '`1` skips the check that the database was stamped by this environment. Break-glass only' },
@@ -154,7 +157,7 @@ export const VARIABLES = [
   // ---- Sales target (Feather Dash)
   { name: 'MOTHERDUCK_TOKEN', secret: true, required: 'optional', purpose: 'MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored' },
   { name: 'MOTHERDUCK_API_BASE', secret: false, required: 'optional', default: '`https://api.motherduck.com`', purpose: 'MotherDuck API base' },
-  { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin; overridable only for a local stub' },
+  { name: 'MOTHERDUCK_EMBED_ORIGIN', secret: false, required: 'optional', default: '`https://embed-motherduck.com`', purpose: 'the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub' },
   { name: 'DIVE_ID', secret: false, required: 'optional', purpose: 'the sales-target Dive' },
   { name: 'DIVE_VERSION', secret: false, required: 'optional', purpose: 'the sales-target Dive version' },
   { name: 'SERVICE_ACCOUNT', secret: false, required: 'optional', purpose: 'the MotherDuck service account the embed runs as' },
@@ -211,6 +214,20 @@ export function isSet(name: VariableName): boolean {
  *  release-preflight.ts). */
 export function readNamedVariable(name: string): string | undefined {
   return process.env[name]
+}
+
+/** Run `fn` with a named variable (not in the registry, such as an app's
+ *  declared secret) set, or unset, in this process, then restore it. */
+export async function withNamedVariable<T>(name: string, value: string | undefined, fn: () => Promise<T>): Promise<T> {
+  const previous = process.env[name]
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+  try {
+    return await fn()
+  } finally {
+    if (previous === undefined) delete process.env[name]
+    else process.env[name] = previous
+  }
 }
 
 /** The environment a child process inherits, with `extra` on top. */

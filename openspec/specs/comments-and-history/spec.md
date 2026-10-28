@@ -12,7 +12,7 @@ depend on remembering or asking around.
 
 People allowed to comment on that table SHALL be able to add a comment to a
 row they can open, and every comment SHALL be visible to anyone who can read
-the row.
+the row, and to no one else, whatever their access to comments in general.
 
 #### Scenario: Add a comment
 
@@ -31,6 +31,13 @@ the row.
   comment on it by naming it
 - **THEN** it is refused, no comment is saved and nobody mentioned in it is
   notified
+
+#### Scenario: Comments on someone else's row
+
+- **WHEN** a user who may read only their own orders looks through all
+  comments
+- **THEN** they see the comments on their own orders and none on anyone
+  else's
 
 ### Requirement: Mention someone in a comment
 
@@ -78,3 +85,14 @@ edit showing what changed from and to.
 
 - **WHEN** a row's start date is moved from 23-Oct-2026 to 24-Oct-2026
 - **THEN** the timeline shows the change as 23-Oct-2026 → 24-Oct-2026, with no time or zone
+
+### Requirement: History follows the row
+
+A row's edits SHALL be visible only to someone who can open the row, and an
+edit SHALL never show a change to a column hidden from them.
+
+#### Scenario: A change to a hidden column
+
+- **WHEN** a case's subject and its sensitive payout are changed together,
+  and a user without the deeper access opens the case's history
+- **THEN** they see the subject change and nothing about the payout

@@ -117,7 +117,7 @@ describe('declared transactional runtime actions', () => {
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
     expect((await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })).status).toBe(401)
     await expect(admin.post(action + 'constructor', request)).rejects.toMatchObject({ status: 404 })
-    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'reject', 'user'] })
+    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'reject', 'secrets', 'settings', 'user'] })
     for (const table of ['Permission', 'runtime_action_result', 'other.task']) {
       await expect(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } })).rejects.toMatchObject({ status: 417 })
     }

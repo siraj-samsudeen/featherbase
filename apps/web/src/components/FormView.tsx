@@ -311,7 +311,7 @@ export function FormView({
         : await api.post<Row>('/api/save_row', { table, row: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
@@ -973,7 +973,7 @@ function ChildGrid({
         <thead className="bg-subtle text-left">
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-border px-2 py-1 text-xs font-medium text-ink-muted">
+              <th key={c.column_name} className={`border-b border-border px-2 py-1 text-xs font-medium text-ink-muted${c.column_type === 'Check' ? ' whitespace-nowrap' : ''}`}>
                 {c.label ?? c.column_name}
               </th>
             ))}
@@ -985,14 +985,18 @@ function ChildGrid({
             <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
+                  <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
                   <input
                     id={`${id}-${rowKey(row)}-${c.column_name}`}
                     aria-label={`${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`}
-                    value={String(row[c.column_name] ?? '')}
-                    onChange={(e) => setCell(i, c.column_name, e.target.value)}
-                    className="w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control"
+                    type={c.column_type === 'Check' ? 'checkbox' : 'text'}
+                    checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
+                    value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
+                    onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
+                    className={c.column_type === 'Check' ? 'h-4 w-4' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
                     data-childfield={c.column_name}
                   />
+                  </label>
                 </td>
               ))}
               <td className="whitespace-nowrap px-1 text-center">

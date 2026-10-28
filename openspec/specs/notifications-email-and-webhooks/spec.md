@@ -199,3 +199,40 @@ use it to find out which accounts exist.
   password
 - **THEN** they see the usual confirmation, and the administrator finds the
   failed send in the server's log
+
+### Requirement: A failed email shows as a failed job
+
+An email that cannot be sent SHALL show as a failed background job, with the
+reason, once it will not be tried again. An administrator who retries that
+job SHALL get the email sent, once.
+
+#### Scenario: The mail server refuses an email
+
+- **WHEN** the mail server refuses a queued email for good
+- **THEN** the administrator's list of background jobs shows its job as
+  failed, with the mail server's reason, and it is not tried again on its own
+
+#### Scenario: Retry after fixing the mail server
+
+- **WHEN** the administrator fixes the mail server and retries that failed job
+- **THEN** the email is sent, once, and the job shows as done
+
+### Requirement: Nothing sent out carries a sensitive column
+
+A webhook call and a rule's email SHALL leave out every sensitive column,
+on the row and in its line items, because whoever receives them is not
+known to have the deeper access. A rule may still match on a sensitive
+column, or take its recipient's address from one, since neither puts the
+value in the email.
+
+#### Scenario: A payslip webhook
+
+- **WHEN** a webhook is set up for payslips and a payslip with a sensitive
+  salary is saved
+- **THEN** the receiving system gets the payslip without the salary
+
+#### Scenario: A rule email that mentions a sensitive column
+
+- **WHEN** a rule's message includes a payslip's sensitive salary and the
+  rule fires
+- **THEN** the email goes out with that part left empty

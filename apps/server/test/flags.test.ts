@@ -79,10 +79,10 @@ describe('META-010: field flags', () => {
 })
 
 describe('A column can be marked unique', () => {
-  // SPEC: A column can be marked unique — suspected defect, see report.
-  // Turning unique on for a column whose rows already repeat a value fails
-  // with a bare internal error instead of a refusal naming the column.
-  test.fails('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
+  // SPEC: A column can be marked unique (#510) — turning unique on over
+  // repeated values is refused naming the column and the value, and the
+  // Table is left as it was.
+  test('making a column unique while its rows repeat a value is refused, naming the column', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Flag Late Unique', columns: [{ column_name: 'code', column_type: 'Data' }] })
     for (let i = 0; i < 2; i++)
       await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
@@ -91,6 +91,65 @@ describe('A column can be marked unique', () => {
       body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
     })
     expect(res.status).toBe(417)
-    expect((await res.json()).error.fields.code).toBeTruthy()
+    expect((await res.json()).error.fields.code).toMatch(/"A" is held by 2 rows/)
+    const meta = await admin.get<{ columns: { column_name: string; unique: boolean }[] }>(
+      `/api/table/${encodeURIComponent('Flag Late Unique')}:meta`,
+    )
+    expect(meta.columns.find((c) => c.column_name === 'code')?.unique).toBe(false)
+    // The refusal adds no constraint behind the definition's back.
+    await admin.post('/api/save_row', { table: 'Flag Late Unique', row: { code: 'A' } })
+  })
+
+  test('a column whose filled-in values are distinct becomes unique, however many rows leave it empty', async ({ admin }) => {
+    const T = 'Flag Distinct Unique'
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (const code of ['A', 'B', null, null]) await admin.post('/api/save_row', { table: T, row: { code } })
+    await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'code', column_type: 'Data', unique: true }] })
+    await expect(admin.post('/api/save_row', { table: T, row: { code: 'A' } })).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('putting a removed column back as unique over its kept repeats is refused the same way', async ({ admin }) => {
+    const T = 'Flag Back Unique'
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data' }] })
+    for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { title: `t${i}`, code: 'B' } })
+    await admin.put(`/api/table_def/${encodeURIComponent(T)}`, { columns: [{ column_name: 'title', column_type: 'Data' }], remove_columns: ['code'] })
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [{ column_name: 'title', column_type: 'Data' }, { column_name: 'code', column_type: 'Data', unique: true }] }),
+    })
+    expect(res.status).toBe(417)
+    expect((await res.json()).error.fields.code).toMatch(/"B" is held by 2 rows/)
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${encodeURIComponent(T)}:meta`)
+    expect(meta.columns.map((c) => c.column_name)).toEqual(['title'])
+  })
+
+  test('a unique column taken out stops refusing repeats, and comes back unique only over distinct values', async ({ admin }) => {
+    const T = 'Flag Removed Unique'
+    const title = { column_name: 'title', column_type: 'Data' }
+    const put = (body: object) => admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, { method: 'PUT', body: JSON.stringify(body) })
+    await admin.post('/api/table_def', { name: T, columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
+    await admin.post('/api/save_row', { table: T, row: { title: 't0', code: 'C' } })
+    expect((await put({ columns: [title], remove_columns: ['code'] })).status).toBe(200)
+    // Put back without unique: the old rule must not linger out of sight.
+    expect((await put({ columns: [title, { column_name: 'code', column_type: 'Data' }] })).status).toBe(200)
+    expect((await admin.fetch('/api/save_row', { method: 'POST', body: JSON.stringify({ table: T, row: { title: 't1', code: 'C' } }) })).status).toBe(201)
+    // Removed again and put back unique: the repeat is named, not a bare 500.
+    expect((await put({ columns: [title], remove_columns: ['code'] })).status).toBe(200)
+    const res = await put({ columns: [title, { column_name: 'code', column_type: 'Data', unique: true }] })
+    expect(res.status).toBe(417)
+    expect((await res.json()).error.fields.code).toMatch(/"C" is held by 2 rows/)
+  })
+
+  test('a long repeated value is shortened in the refusal', async ({ admin }) => {
+    const T = 'Flag Long Unique'
+    const long = 'x'.repeat(130)
+    await admin.post('/api/table_def', { name: T, columns: [{ column_name: 'code', column_type: 'Data' }] })
+    for (let i = 0; i < 2; i++) await admin.post('/api/save_row', { table: T, row: { code: long } })
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(T)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ columns: [{ column_name: 'code', column_type: 'Data', unique: true }] }),
+    })
+    const message = (await res.json()).error.fields.code as string
+    expect(message).toMatch(/^"x{60}…" is held by 2 rows/)
   })
 })

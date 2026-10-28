@@ -15,6 +15,10 @@ import { migrationBatches } from '../src/migrate'
 import { ADMIN_PASSWORD_MISMATCH_WARNING, NO_NOTICE_RECIPIENTS_WARNING, preflightRelease } from '../src/release-preflight'
 import { hashPassword } from '../src/auth'
 import { makePerson } from './fixtures'
+import { withNamedVariable } from '../src/env'
+import { createTable } from '../src/table-engine'
+import { artifactDigest } from '../src/runtime-packages'
+import { cp, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -142,6 +146,144 @@ describe('release preflight', () => {
   })
 })
 
+// #559: exactly one enabled app may provide people's scope.
+describe('release preflight: the scope provider', () => {
+  async function installed(name: string, provides: boolean, enabled = true) {
+    const manifest = { name, ...(provides ? { scopeProvider: { name: 'positions', tables: [`${name}.position`] } } : {}) }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values (${name}, ${sql.json(manifest)}, ${enabled}, true)`
+  }
+
+  test('one enabled provider passes and says which app it is', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true, false)
+    await installed('consumer', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('one app provides people\'s scope: rostera')
+  })
+
+  test('two enabled providers refuse, naming both', async () => {
+    await installed('rostera', true)
+    await installed('rosterb', true)
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/rostera, rosterb/)
+  })
+})
+
+// #620 (E2): an installed, enabled app that lacks a required setting or
+// secret is "not set up yet". The release warns, naming the app and what is
+// missing (names only), and still goes ahead.
+describe('release preflight: app settings and secrets', () => {
+  const manifest = { name: 'setupcheck', settings: [{ name: 'report_id', required: true }, { name: 'theme', required: false }], secrets: ['SETUPCHECK_TOKEN'] }
+  const install = (enabled = true) =>
+    sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupcheck', ${sql.json(manifest)}, ${enabled}, true)`
+
+  test('an enabled app missing a required setting and its secret warns, naming both', async () => {
+    await install()
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('WARNING: app setupcheck is not set up yet: missing setting report_id, secret SETUPCHECK_TOKEN. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
+  test('an app whose required setting and secret are set passes without printing either value', async () => {
+    await install()
+    await sql`insert into app_setting (row_id, app, setting, value) values ('setupcheck.report_id', 'setupcheck', 'report_id', 'R-77')`
+    const lines = await withNamedVariable('SETUPCHECK_TOKEN', 'token-value-620', () => preflightRelease({ environment: 'test' }))
+    expect(lines).toContain('every enabled app has its required settings and secrets')
+    expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
+  })
+
+  // #666: an optional secret holds up only the reads and actions that need it.
+  test('an enabled app missing only an optional secret warns, naming the secret and the reads that need it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupoptional', ${sql.json({ name: 'setupoptional',
+      secrets: ['SETUPOPT_TOKEN', { name: 'SETUPOPT_EMBED', optional: true }], reads: { operations: { quick_view: {}, embed: { needs: ['SETUPOPT_EMBED'] } } } })}, true, true)`
+    const lines = await withNamedVariable('SETUPOPT_TOKEN', 'token-opt-666', () => withNamedVariable('SETUPOPT_EMBED', undefined, () => preflightRelease({ environment: 'test' })))
+    expect(lines).toContain('WARNING: app setupoptional lacks optional secret SETUPOPT_EMBED (needed by read embed). Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.')
+  })
+
+  // #660: a scope provider's declared identifier system the instance lacks.
+  test('an enabled scope provider declaring an identifier system the instance lacks warns, naming it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-missing-code'] } })}, true, true)`
+    expect(await preflightRelease({ environment: 'test' }))
+      .toContain('WARNING: app setupprovider is not set up yet: missing identifier system setup-missing-code. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
+  test('an enabled scope provider declaring a turned-off identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, enabled) values ('setup-off-code', 'Setup off code', 'employee-record', false)`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-off-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain('missing identifier system setup-off-code is turned off.')
+  })
+
+  test('an enabled scope provider declaring a Secret identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, sensitivity, match) values ('setup-secret-code', 'Setup secret code', 'national-id', 'Secret', 'Off')`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-secret-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain("missing identifier system setup-secret-code is secret and can't be given to an app.")
+  })
+
+  test('a disabled app is not checked', async () => {
+    await install(false)
+    expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
+      .toContain('every enabled app has its required settings and secrets')
+  })
+})
+
+// #620 (D4): All and Guest are held by every signed-in person or by anyone,
+// so binding an app role to either opens the app to everyone.
+describe('release preflight: app role bindings', () => {
+  test.for(['All', 'Guest'])('a binding to %s refuses the release', async (role) => {
+    await sql`insert into app_role_binding (row_id, app, app_role, bound_role) values ('b-1', 'someapp', 'Some Reader', ${role})`
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(`An app role binding gives someapp's role Some Reader to ${role}`)
+  })
+})
+
+// #642 (E7): a release that lacks the exact version of an installed, enabled
+// app refuses, so a deploy never silently takes the app away.
+describe('release preflight: installed apps ship in the release', () => {
+  const OTHER = resolve(dirname(fileURLToPath(import.meta.url)), '../../../runtime-apps/other')
+  const install = (version: string, digest: string, enabled = true) =>
+    sql`insert into installed_app (name, manifest, enabled, runtime_package, package_version, artifact_digest)
+      values ('other', ${sql.json({ name: 'other' })}, ${enabled}, true, ${version}, ${digest})`
+
+  test('an enabled app whose installed version is not shipped refuses, naming the app and version', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await install('0.0.1', 'a-fingerprint-this-release-lacks')
+    await expect(preflightRelease({ environment: 'test' })).rejects
+      .toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it. Ship other 0.0.1 in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.')
+  })
+
+  test('an enabled app whose exact version and fingerprint are shipped passes, naming it', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER]))
+    await install('0.0.1', await artifactDigest(await realpath(OTHER)))
+    expect(await preflightRelease({ environment: 'test' })).toContain('every installed, enabled app ships in this release: other 0.0.1')
+  })
+
+  test('the same version with other files refuses', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER]))
+    await install('0.0.1', 'the-fingerprint-of-different-files')
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+  })
+
+  // Codex round 1 on #643: boot drops a version shipped twice with different
+  // files, so it is not shipped, even when one copy matches.
+  test('two different artifacts for the installed version refuse, though one of them matches', async () => {
+    const conflicting = await mkdtemp(resolve(dirname(fileURLToPath(import.meta.url)), '.b5-642-conflict-'))
+    try {
+      await cp(OTHER, conflicting, { recursive: true })
+      await writeFile(resolve(conflicting, 'client', 'extra.txt'), 'different files, same version')
+      vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([OTHER, conflicting]))
+      await install('0.0.1', await artifactDigest(await realpath(OTHER)))
+      await expect(preflightRelease({ environment: 'test' })).rejects.toThrow('App other version 0.0.1 is installed and enabled, but this release does not ship it.')
+    } finally {
+      await rm(conflicting, { recursive: true, force: true })
+    }
+  })
+
+  test('a disabled app that is not shipped does not block the release', async () => {
+    vi.stubEnv('FEATHERBASE_APP_PATHS', '[]')
+    await install('0.0.1', 'a-fingerprint-this-release-lacks', false)
+    expect(await preflightRelease({ environment: 'test' })).toContain('no installed, enabled app to find in this release')
+  })
+})
+
 // #467: ADMIN_PASSWORD only provisions a null hash, so changing it rotates
 // nothing. A release that finds the variable set but not live says so,
 // without ever printing either value, and still goes ahead.
@@ -236,6 +378,12 @@ describe('release preflight: access configuration', () => {
   test('(a) Guest writing a security Table refuses', async () => {
     await grant('Guest', 'Data Scope', { can_create: true })
     await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "Guest" on "Data Scope" \(create\)/)
+  })
+
+  test('(a) All writing a Table marked as deciding scope refuses (#559)', async () => {
+    await createTable({ name: 'Shift Roster 559', decides_scope: true, columns: [{ column_name: 'place', column_type: 'Data' }] })
+    await grant('All', 'Shift Roster 559', { can_write: true })
+    await expect(preflightRelease({ environment: 'test' })).rejects.toThrow(/role "All" on "Shift Roster 559" \(write\)/)
   })
 
   test('(a) a grant with every action off, or to another role, passes', async () => {
@@ -374,6 +522,46 @@ it('a legacy everyone-reads-User grant in public refuses BEFORE migrating', asyn
     expect(failed).toBe(true)
     expect(output).toMatch(/Permission legacy-grant grants role "All" on "User" \(read\)/)
     expect(output).not.toMatch(/applied 0001/)
+  } finally {
+    await db.end()
+  }
+}, 90_000)
+
+// #642 (E7): the refusal comes before the first migration, so the database the
+// running release serves is left exactly as it was.
+it('a release that does not ship an installed, enabled app refuses BEFORE migrating', async () => {
+  const name = `featherbase_preflight_${randomUUID().replaceAll('-', '')}`
+  await admin.unsafe(`create database "${name}"`)
+  created.push(name)
+  const url = new URL(config.databaseUrl)
+  url.pathname = `/${name}`
+  const db = postgres(url.toString(), { max: 1, onnotice: () => {} })
+  try {
+    await db.unsafe(`create schema featherbase;
+      create table featherbase.internal_metadata (key text primary key, value text not null, updated_at timestamptz not null default now());
+      insert into featherbase.internal_metadata (key, value) values ('environment', 'test');
+      create table featherbase.installed_app (name text primary key, manifest jsonb, enabled boolean not null default true,
+        runtime_package boolean not null default false, package_version text, artifact_digest text);
+      insert into featherbase.installed_app (name, manifest, runtime_package, package_version, artifact_digest)
+        values ('acme_board', '{"name": "acme_board"}', true, '1.2.0', 'fingerprint-of-1.2.0')`)
+    const before = await db`select * from featherbase.installed_app`
+    let output = ''
+    let failed = false
+    try {
+      execFileSync(process.execPath, [tsx, 'src/release.ts'], {
+        cwd: server, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '', FEATHERBASE_APP_PATHS: '[]' },
+      })
+    } catch (error) {
+      failed = true
+      const e = error as { stdout?: string; stderr?: string }
+      output = `${e.stdout ?? ''}${e.stderr ?? ''}`
+    }
+    expect(failed).toBe(true)
+    expect(output).toMatch(/release failed — aborting: App acme_board version 1\.2\.0 is installed and enabled, but this release does not ship it/)
+    const [ledger] = await db`select to_regclass('featherbase.migration') as m, to_regclass('public.migration') as p`
+    expect(ledger).toEqual({ m: null, p: null })
+    expect(await db`select * from featherbase.installed_app`).toEqual(before)
   } finally {
     await db.end()
   }

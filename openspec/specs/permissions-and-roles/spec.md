@@ -96,9 +96,12 @@ on the table it belongs to.
 ### Requirement: A column can be marked sensitive
 
 A column SHALL be markable so that only roles with the deeper access it
-requires can see, search or change it. Wherever rows are listed, searched or
-opened, that column is omitted for everyone else, and a write to it from them
-is silently dropped rather than saved.
+requires can see, search or change it. Wherever rows are listed, searched,
+opened, printed or returned after a save, that column is omitted for
+everyone else, and a write to it from them is silently dropped rather than
+saved. A sensitive column in a row's line items is treated the same way: it
+shows to someone whose access to the row, or to the line items themselves,
+reaches it.
 
 #### Scenario: A sensitive column is hidden
 
@@ -106,6 +109,13 @@ is silently dropped rather than saved.
   column
 - **THEN** the column is absent from what they see, not shown blank or
   masked
+
+#### Scenario: A sensitive column in the line items
+
+- **WHEN** a user without the deeper access opens a quote whose lines carry a
+  sensitive unit cost, edits a line and saves
+- **THEN** no line shows the unit cost, in the form, in the saved reply or in
+  print, and the stored unit costs are unchanged
 
 ### Requirement: Stored passwords and secrets never leave the server
 
@@ -298,3 +308,36 @@ domain.
 
 - **WHEN** a production release finds password sign-in set to create new people
 - **THEN** the release stops and says to set it to refuse
+
+### Requirement: Using an app does not open the administration
+
+An installed app's tables SHALL NOT count towards the administration only when
+that app opens at its own root, with pages of its own, whether it is switched on
+or off. Reading such an app's tables, or a row of one shared with them, does not
+by itself open the administration to a person: they reach those tables through
+the app, which keeps working for them as before, and signing in takes them to it.
+An app without pages of its own is used through the administration, so its
+tables still count, as do grants on the instance's own tables.
+
+#### Scenario: A store manager who only uses Feather Dash
+
+- **WHEN** a store manager whose only grant is to read Feather Dash's own tables
+  opens Feather Dash
+- **THEN** Feather Dash opens with their figures, and nothing offers them the
+  administration
+- **AND** if they type an administration address, they are told they have no
+  access there
+
+#### Scenario: A manager who also reads an instance table
+
+- **WHEN** the same manager is also given a grant to read one of the instance's
+  own tables
+- **THEN** they can open the administration, where Feather Dash's tables are
+  listed beside that one
+
+#### Scenario: A clerk of an app without pages of its own
+
+- **WHEN** a clerk whose only grant is on the tables of an installed app that
+  has no pages of its own signs in
+- **THEN** they can open the administration and use that app's tables there,
+  as before

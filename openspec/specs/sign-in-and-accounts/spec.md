@@ -994,6 +994,24 @@ Google sign-in yet; after that the link is permanent and the mark is used up.
   mark a person as expecting Google sign-in
 - **THEN** they are refused and the person is unchanged
 
+### Requirement: Each sign-in records where it came from
+
+Every sign-in SHALL record the network address it came from, whichever way the
+person signed in, so an administrator can see from where an account was used.
+An address the person's browser could have made up is never recorded as theirs.
+
+#### Scenario: See where a sign-in came from
+
+- **WHEN** the user signs in with their password from the shop's network
+- **THEN** the administrator finds the sign-in in the Activity Log with the
+  shop's public address
+
+#### Scenario: A made-up address is not believed
+
+- **WHEN** someone signs in with a request that claims to come from another
+  address
+- **THEN** the Activity Log shows the address the request really came from
+
 ### Requirement: A session travels only over a secure connection
 
 On an instance reached at a secure address, the browser SHALL be told to send the user's session only over a secure connection, so it never crosses the network in the clear. A developer's own plain local address keeps signing people in as before.
