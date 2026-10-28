@@ -227,7 +227,7 @@ themselves platform authority.
 
 | ID | Name | Enabled |
 |---|---|---|
-| P0 | Bootstrap Administrator | Yes |
+| P0 | Asha | Yes |
 | P1 | Meera | Yes |
 | P2 | Arun | Yes |
 | P3 | Priya | Yes |
@@ -244,7 +244,7 @@ contact information are part of this sample.
 | Role | R0 | Platform Admin; platform-owned; administer platform configuration |
 | Scope Definition | SD0 | Explicit unrestricted platform scope |
 | Scope | SC0 | SD0 — Explicit unrestricted platform scope |
-| Role Assignment | RA0 | P0 — Bootstrap Administrator; R0 — Platform Admin; SC0 — Platform scope; trusted bootstrap source |
+| Role Assignment | RA0 | P0 — Asha; R0 — Platform Admin; SC0 — Platform scope; trusted bootstrap source |
 
 R0's protected bootstrap capabilities are a platform primitive, not ordinary
 app Permission rows granting write access to the security configuration. This
@@ -416,11 +416,11 @@ bounded grant operation, not ordinary writes to this protected configuration.
 
 | ID | Person | Role | Scope | Source | Recorded issuer |
 |---|---|---|---|---|---|
-| RA1 | P1 — Meera | R1 — Employee Contact Admin | SC1 — Store A | JA1 + JC1 | P0 — Bootstrap Administrator |
-| RA2 | P1 — Meera | R2 — Employee Contact Approver | SC1 — Store A | JA1 + JC2 | P0 — Bootstrap Administrator |
-| RA3 | P1 — Meera | R3 — Employee Contact Access Admin | SC1 — Store A | JA1 + JC3 | P0 — Bootstrap Administrator |
-| RA4 | P1 — Meera | R4 — Store Staffing Admin | SC1 — Store A | JA1 + JC4 | P0 — Bootstrap Administrator |
-| RA5 | P2 — Arun | R6 — Employee Self-Service | SC3 — Own employee | Explicit setup grant | P0 — Bootstrap Administrator |
+| RA1 | P1 — Meera | R1 — Employee Contact Admin | SC1 — Store A | JA1 + JC1 | P0 — Asha |
+| RA2 | P1 — Meera | R2 — Employee Contact Approver | SC1 — Store A | JA1 + JC2 | P0 — Asha |
+| RA3 | P1 — Meera | R3 — Employee Contact Access Admin | SC1 — Store A | JA1 + JC3 | P0 — Asha |
+| RA4 | P1 — Meera | R4 — Store Staffing Admin | SC1 — Store A | JA1 + JC4 | P0 — Asha |
+| RA5 | P2 — Arun | R6 — Employee Self-Service | SC3 — Own employee | Explicit setup grant | P0 — Asha |
 
 These job-derived assignments may be computed views rather than persisted rows;
 the prototype shows stable IDs to make the explanation inspectable. Do not persist
