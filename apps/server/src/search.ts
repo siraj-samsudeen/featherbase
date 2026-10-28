@@ -1,3 +1,4 @@
+import { activeApps } from './app-lifecycle'
 import { sql } from './db'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
@@ -41,9 +42,16 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
-  const tables = await sql`
-    select name from table_def where kind = 'table' and data_source is null
-    order by name`
+  // #648: so are a turned-off app's Tables. Reading one refuses with 403, and
+  // that refusal used to fail the whole search for everyone. Available means
+  // what assertAppAvailable requires: enabled, not pending activation, and
+  // its exact files loaded (activeApps).
+  const tables = (await sql`
+    select d.name, d.owner_app from table_def d
+    left join installed_app a on a.name = d.owner_app
+    where d.kind = 'table' and d.data_source is null
+      and (d.owner_app is null or (a.enabled and not a.activation_pending))
+    order by d.name`).filter((t) => t.owner_app == null || activeApps.has(String(t.owner_app)))
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
   tables.sort((a, b) => isRegistry(a.name) - isRegistry(b.name))
