@@ -10,7 +10,7 @@ import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 import { assertNoSecret, readyAppSetup, withSecretsKept, type AppSetup, type ReadySetup } from './app-settings'
-import { appDatasets, type DatasetDeclaration } from './app-datasets'
+import { appDatasets, recordPlaceDrops, type DatasetDeclaration, type DropProvenance, type DropVersions, type PlaceDrop } from './app-datasets'
 
 const NO_SETUP: AppSetup = { title: '', settings: Object.freeze({}), secrets: Object.freeze({}), missing: { settings: [], secrets: [] }, optionalSecrets: [] }
 
@@ -182,37 +182,49 @@ export async function executeRuntimeRead(app: string, name: string, input: unkno
     return withAppAuthorization({ app, operation: name, kind: discovery ? 'discovery' : 'read', user,
       payload: parsed.success ? parsed.data.payload : undefined, entryTable: contribution.entryTable,
       contribution: contribution.operations.get(name),
-    }, async (authorization, payload): Promise<{ answer: unknown } | { outbound: Outbound }> => {
-      if (discovery) return { answer: { storeCodes: authorization.storeCodes } }
+    }, async (authorization, payload, _metadata, _replay, providerKeys): Promise<{ answer: unknown; drops: PlaceDrop[] } | { outbound: Outbound }> => {
+      if (discovery) return { answer: { storeCodes: authorization.storeCodes }, drops: [] }
       const setup = await readyAppSetup(app, await (contribution.setup?.() ?? NO_SETUP), contribution.operations.get(name)?.declaration.needs)
+      // #667: the versions a dropped place is recorded against, decided with
+      // the places, under the same lifecycle lock (Codex round 1 on #678).
+      const versions = authorization.places && providerKeys ? await dropVersions(app, contribution.operations.get(name)?.scopeProvider) : undefined
+      const provenance = versions && providerKeys ? { versions, providerKeys } : undefined
       // #625 (E5): an outbound read stops here. Its authorization, payload,
       // setup and the app version serving it are decided and frozen; the
       // handler runs once this transaction AND the request's lifecycle lock
       // have been released, so it holds no row lock, no transaction and no
       // lifecycle connection while it calls out.
-      if (outbound) return { outbound: { handler, contribution, frozen: { authorization, payload, setup }, identity: await servingIdentity(app) } }
+      if (outbound) return { outbound: { handler, contribution, frozen: { authorization, payload, setup, provenance }, identity: await servingIdentity(app) } }
       const context = callerDocuments(app, contribution.tables, user)
       const { get, list, activity } = context.documents
-      return { answer: await runRead(app, name, user, handler, contribution, { authorization, payload, setup },
-        Object.freeze({ get, list, activity }), () => context.close()) }
+      return await runRead(app, name, user, handler, contribution, { authorization, payload, setup, provenance },
+        Object.freeze({ get, list, activity }), () => context.close())
     })
   })
-  if ('answer' in decided) return decided.answer
+  // #667: drops are recorded once the read's transaction has committed, on
+  // a transaction of their own; a read that failed never gets here.
+  if ('answer' in decided) {
+    await recordPlaceDrops(decided.drops)
+    return decided.answer
+  }
   // Outside every lock. Whatever the handler produced is written or answered
   // only if the app is still enabled and serving the version it ran under.
   const { handler, contribution, frozen, identity } = decided.outbound
   const views: (() => Promise<void>)[] = []
-  const answer = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS, async () => {}, (write) => views.push(write))
+  const { answer, drops } = await runRead(app, name, user, handler, contribution, frozen, CLOSED_DOCUMENTS, async () => {}, (write) => views.push(write))
   // One shared lifecycle lock for the final check and the view records, so
   // the app cannot be disabled or upgraded between them.
   await assertStillServing(app, identity, async () => { for (const write of views) await write() })
+  // #667: only an answer that stands records its drops, against the
+  // versions it was authorized under.
+  await recordPlaceDrops(drops)
   return answer
 }
 
 interface Outbound {
   handler: RuntimeReadHandler
   contribution: DeclaredOperations<RuntimeReadHandler>
-  frozen: { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup }
+  frozen: Frozen
   identity: string
 }
 
@@ -223,17 +235,28 @@ function closedDocuments(): never {
 }
 const CLOSED_DOCUMENTS: RuntimeReadContext['documents'] = Object.freeze({ get: closedDocuments, list: closedDocuments, activity: closedDocuments })
 
+interface Frozen { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup; provenance?: DropProvenance }
+
+// The app's installed version and the scope provider that answered, as they
+// are while the read is authorized. No provider means no drop to name.
+async function dropVersions(app: string, scopeProvider: (() => Promise<{ app: string; version: string } | undefined>) | undefined): Promise<DropVersions | undefined> {
+  const provider = await scopeProvider?.()
+  if (!provider) return undefined
+  const [installed] = await sql`select package_version from installed_app where name = ${app}`
+  return { app: String(installed?.package_version ?? ''), provider: { app: provider.app, version: provider.version } }
+}
+
 async function runRead(app: string, name: string, user: string, handler: RuntimeReadHandler, contribution: DeclaredOperations<RuntimeReadHandler>,
-  { authorization, payload, setup }: { authorization: AppAuthorizationContext; payload: unknown; setup: ReadySetup },
-  documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferView?: (write: () => Promise<void>) => void) {
+  { authorization, payload, setup, provenance }: Frozen,
+  documents: RuntimeReadContext['documents'], close: () => Promise<void>, deferWrite?: (write: () => Promise<void>) => void) {
   const { title, settings, secrets, kept } = setup
-  const { datasets, recordView } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
-    places: authorization.places, outbound: !inAppTransaction(), deferView, scopeProvider: contribution.operations.get(name)?.scopeProvider })
+  const { datasets, recordView, drops } = appDatasets({ app, operation: name, user, title, declarations: contribution.datasets ?? [],
+    places: authorization.places, outbound: !inAppTransaction(), deferWrite, provenance })
   const json = await withSecretsKept(kept, async () => {
     try {
       return canonicalJson(await handler(Object.freeze({ user, payload, authorization, settings, secrets, reject, documents, datasets, recordView })))
     } finally { await close() }
   })
   assertNoSecret(kept, JSON.parse(json))
-  return { result: JSON.parse(json) as unknown }
+  return { answer: { result: JSON.parse(json) as unknown }, drops: drops() }
 }

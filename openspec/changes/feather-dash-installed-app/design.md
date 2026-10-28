@@ -346,7 +346,17 @@ that fills it).
   - App reads record each drop by app, dataset, provider and the sorted set of
     unappliable keys, with the two apps' versions (migration 0137,
     `dataset_place_drop`; no person, place label or value; written at most once
-    an hour per drop). Instance health has one check per enabled app with
+    an hour per drop). Codex round 1 on #678 shaped how:
+    - only the provider's own place keys are recorded, never keys a request
+      added by naming filters to narrow its places;
+    - the versions are those the read was authorized under;
+    - recording happens only once the read's answer stands (after its
+      transaction commits, or after an outbound read's final serving check),
+      on a transaction of its own, in one sorted order, with a 250 ms lock
+      timeout and a 2 s statement timeout; a failure is logged and never fails
+      the read;
+    - the hourly rule holds in the upsert's conflict clause, so racing
+      recordings write once. Instance health has one check per enabled app with
     datasets, `scope-place-drops:<app>`, a warning naming the dataset, the
     provider and the keys while both apps run the versions the drop was seen
     under and for seven days after reads last met it. A static check is not
