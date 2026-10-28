@@ -26,9 +26,10 @@ import { withNamedVariable } from '../src/env'
 import { appSetupState } from '../src/app-settings'
 import { drainJobs, enqueue, loadJobs } from '../src/jobs'
 import { datasetsDue } from '../src/jobs/refresh-datasets'
-import { guardRefusal, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard } from '../src/app-datasets'
-import { inAppTransaction, sql } from '../src/db'
+import { guardRefusal, recordPlaceDrops, shapeRows, storedRowJson, type DatasetDeclaration, type DatasetGuard, type PlaceDrop } from '../src/app-datasets'
+import { _getRootSql, inAppTransaction, sql } from '../src/db'
 import { assertStillServing, servingIdentity } from '../src/app-lifecycle'
+import { runHealthChecks } from '../src/instance-health'
 
 const fixture = resolve('../..', 'runtime-apps/fixtures/dataset-proof')
 const provider = resolve('../..', 'runtime-apps/fixtures/place-roster')
@@ -962,5 +963,291 @@ describe('the refresh job', () => {
     } finally {
       await rm(upgraded, { recursive: true, force: true })
     }
+  })
+})
+
+// #667: a place naming a filter a dataset cannot apply still adds no rows
+// (fail closed), but the drop is visible: a System Manager can ask why a
+// person sees nothing, and Instance health names what was dropped.
+describe('a place a dataset cannot apply', () => {
+  const FLOOR_PLACES = [{ label: 'North floor 1', filters: { store: ['N1'], floor: ['1'] } }, { label: 'South', filters: { store: ['S1'] } }]
+  async function withPlaces<T>(places: unknown, work: () => Promise<T>): Promise<T> {
+    const roster = await fixtureModule('placeroster', provider)
+    roster.faults.result = places
+    try { return await work() } finally { delete roster.faults.result }
+  }
+  interface ScopeExplanation {
+    provider: { app: string; title: string } | null
+    problem: string | null
+    places: { label: string; filters: string[] }[]
+    datasets: { name: string; applied: string[]; dropped: { place: string; keys: string[] }[] }[]
+  }
+  const scopeOf = (client: TestClient, person: string, app = 'datasetproof') =>
+    client.get<ScopeExplanation>(`/api/people/${encodeURIComponent(person)}/scope?app=${app}`)
+
+  test('a System Manager sees which places each dataset dropped, and the keys it could not apply', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const explained = await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(explained.datasets.find(d => d.name === 'sales')).toEqual({
+      name: 'sales', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] })
+  })
+
+  test.for(['the person being explained', 'another person without the System Manager role'] as const)(
+    'is refused to %s', async (who, { admin, createUser }) => {
+      const { reader } = await setup(admin, createUser)
+      const asker = who === 'the person being explained' ? reader : await createUser({ email: 'other@example.test', roles: ['Dataset Reader'] })
+      await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(asker, reader.user!), { status: 403 }))
+    })
+
+  test.for([
+    ['an empty scope', [], 'scope'],
+    ['a scope of the wrong shape', [{ label: 'North' }], 'provider'],
+  ] as const)('a provider answering %s is named as the reason, with no places', async ([, answer, reason], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    const explained = await withPlaces(answer, () => scopeOf(admin, reader.user!))
+    expect({ problem: explained.problem, places: explained.places }).toEqual({ problem: reason, places: [] })
+  })
+
+  test.for([
+    ['a person who does not exist', 'psn_nobody', 'datasetproof'],
+    ['an app that is not installed', undefined, 'elsewhere'],
+  ] as const)('answers not found for %s', async ([, person, app], { admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => expectApiError(scopeOf(admin, person ?? reader.user!, app), { status: 404 }))
+  })
+
+  const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
+
+  test('after a read drops a place, Instance health names the provider, the dataset and the keys', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    expect(await dropsCheck()).toMatchObject({ ok: false, severity: 'warning',
+      message: 'sales drops places from Place roster proof that name floor, which it cannot apply, so those places add nothing from it.' })
+  })
+
+  // Fail closed, as before: recording the drop changes no one's rows.
+  test.for([['cached', 'inside', 'active'], ['live', 'outside', 'live']] as const)(
+    'a %s read still gets nothing from the dropped place', async ([, operation, method], { admin, createUser }) => {
+      const { reader, app } = await setup(admin, createUser)
+      await buildSnapshot('datasetproof.sales')
+      app.hooks.run = (context: Context) => context.datasets[method]('sales')
+      const answer = await withPlaces(FLOOR_PLACES, () => reader.post<{ result: { rows: unknown[] } }>(read + operation, { payload: {} }))
+      expect(answer.result.rows).toEqual([row('S1', 'kids', '2026-10-01', 40, 2, 'south kids')])
+    })
+
+  test('what a drop records names no person, place or filter value', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    const recorded = await sql`select app, dataset, provider, filter_keys, app_version, provider_version from dataset_place_drop`
+    expect(recorded.map(r => ({ ...r }))).toEqual([{ app: 'datasetproof', dataset: 'sales', provider: 'placeroster',
+      filter_keys: ['floor'], app_version: '1.0.0', provider_version: '1.0.0' }])
+    expect(JSON.stringify(await dropsCheck())).not.toContain(reader.user!)
+  })
+
+  // Codex round 1 on #678: a drop is recorded against the versions the read
+  // was authorized under, and only once the read's answer stands.
+  const recordedDrops = async () => (await sql`select app_version, provider_version from dataset_place_drop`).map(r => ({ ...r }))
+
+  test('an outbound read records its drop once its answer stands', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'outside', { payload: {} }))
+    expect(await recordedDrops()).toEqual([{ app_version: '1.0.0', provider_version: '1.0.0' }])
+  })
+
+  test('an outbound read refused because its app changed version meanwhile records no drop', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = async (context: Context) => {
+      await sql`update installed_app set package_version = '1.1.0', artifact_digest = 'another-artifact' where name = 'datasetproof'`
+      return context.datasets.active('sales')
+    }
+    await withPlaces(FLOOR_PLACES, () => expectApiError(reader.post(read + 'outside', { payload: {} }), { status: 409 }))
+    expect(await recordedDrops()).toEqual([])
+  })
+
+  test('a drop is recorded against the provider version that answered, not one installed meanwhile', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = async (context: Context) => {
+      await sql`update installed_app set package_version = '1.1.0', artifact_digest = 'another-artifact' where name = 'placeroster'`
+      return context.datasets.active('sales')
+    }
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'outside', { payload: {} }))
+    expect(await recordedDrops()).toEqual([{ app_version: '1.0.0', provider_version: '1.0.0' }])
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  // Adversarial round 1 on #678: a request may narrow its places by naming
+  // filters, which adds those keys to them. Only the provider's own places
+  // are recorded, so a reader cannot write a key into a health warning.
+  test('filter keys a request names record no drop, a person-id-shaped one included', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await position(admin, reader.user!, 'North / Kids', 'N1', 'kids')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const answer = await reader.post<{ result: unknown }>(read + 'inside',
+      { payload: { scope: { filters: { floor: ['1'], [reader.user!]: ['x'] } } } })
+    expect(answer).toEqual({ result: null })
+    expect(await recordedDrops()).toEqual([])
+  })
+
+  // Codex round 2 on #678: a place the request narrowed away never reached
+  // the dataset, so it is not a drop this read met.
+  test('a request narrowed to a place the dataset applies records no drop for the others', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: { scope: { places: ['South'] } } }))
+    expect(await recordedDrops()).toEqual([])
+  })
+
+  // Codex round 2 on #678: an outbound read authorized under an older
+  // provider can finish after a read under the current one recorded the
+  // same drop; the current record, and its warning, stay.
+  test('a late write under an older provider version leaves the current drop and its warning', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    await sql`update installed_app set package_version = '2.0.0' where name = 'placeroster'`
+    const recorded = (provider: string) => ({ app: 'datasetproof', dataset: 'sales', keys: ['floor'],
+      versions: { app: '1.0.0', provider: { app: 'placeroster', version: provider } } })
+    await recordPlaceDrops([recorded('2.0.0')])
+    await recordPlaceDrops([recorded('1.0.0')])
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+  })
+
+  test('a delayed outbound read under the older provider leaves the current drop\'s warning', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = async (context: Context) => {
+      // While this read, authorized under provider 1.0.0, is out: the
+      // provider moves to 2.0.0 and a read under it records the same drop.
+      await sql`update installed_app set package_version = '2.0.0' where name = 'placeroster'`
+      await recordPlaceDrops([{ app: 'datasetproof', dataset: 'sales', keys: ['floor'],
+        versions: { app: '1.0.0', provider: { app: 'placeroster', version: '2.0.0' } } }])
+      return context.datasets.active('sales')
+    }
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'outside', { payload: {} }))
+    expect((await recordedDrops()).map(r => r.provider_version).sort()).toEqual(['1.0.0', '2.0.0'])
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+  })
+
+  test('a read whose drop cannot be recorded still answers its rows', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    await sql`alter table dataset_place_drop rename to dataset_place_drop_away`
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const answer = await withPlaces(FLOOR_PLACES, () => reader.post<{ result: { rows: unknown[] } }>(read + 'inside', { payload: {} }))
+    expect(answer.result.rows).toEqual([row('S1', 'kids', '2026-10-01', 40, 2, 'south kids')])
+  })
+
+  test('a writer holding the drop\'s row does not hold up the read', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    const held = stall()
+    // Another connection, outside the sandbox, holds the row uncommitted.
+    const holder = _getRootSql().begin(async tx => {
+      await tx`insert into featherbase.dataset_place_drop (app, dataset, provider, filter_keys, app_version, provider_version)
+        values ('datasetproof', 'sales', 'placeroster', ${['floor']}, '1.0.0', '1.0.0')`
+      held.entered()
+      await held.gate
+      throw new Error('roll back')
+    }).catch(() => {})
+    await held.inside
+    try {
+      const answer = await withPlaces(FLOOR_PLACES, () => within(reader.post<{ result: { rows: unknown[] } }>(read + 'inside', { payload: {} })))
+      expect(answer.result.rows).toEqual([row('S1', 'kids', '2026-10-01', 40, 2, 'south kids')])
+    } finally {
+      held.release()
+      await settle(holder)
+    }
+  })
+
+  test('before any read drops a place, the check passes', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('explaining a person\'s scope records no drop', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('a drop seen under an earlier version of the app no longer counts', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    await upgradeSales(admin, fixture, {})
+    expect(await dropsCheck()).toMatchObject({ ok: true })
+  })
+
+  test('an app with no datasets gets no check', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const keys = (await runHealthChecks()).map(check => check.key).filter(key => key.startsWith('scope-place-drops:'))
+    expect(keys).toEqual(['scope-place-drops:datasetproof'])
+  })
+
+  test('the Access Log records which System Manager looked at whose places, for which app', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    const rows = await sql`select "user", ref_table, reference_name, method from access_log where operation = 'view_person_scope'`
+    expect(rows.map(r => ({ ...r }))).toEqual([{ user: admin.user, ref_table: 'Person', reference_name: reader.user, method: 'datasetproof' }])
+  })
+
+  // Built, so there are figures it could leak; the whole answer is pinned.
+  test('the explanation holds the provider, place labels and filter keys, and nothing else', async ({ admin, createUser }) => {
+    const { reader } = await setup(admin, createUser)
+    await buildSnapshot('datasetproof.sales')
+    const explained = await withPlaces(FLOOR_PLACES, () => scopeOf(admin, reader.user!))
+    expect(explained).toEqual({
+      provider: { app: 'placeroster', title: 'Place roster proof' },
+      problem: null,
+      places: [{ label: 'North floor 1', filters: ['floor', 'store'] }, { label: 'South', filters: ['store'] }],
+      datasets: [
+        { name: 'sales', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] },
+        { name: 'accounts', applied: [], dropped: [
+          { place: 'North floor 1', keys: ['floor', 'store'] }, { place: 'South', keys: ['store'] }] },
+        { name: 'unplugged', applied: ['South'], dropped: [{ place: 'North floor 1', keys: ['floor'] }] },
+      ],
+    })
+  })
+})
+
+// Adversarial round 1 on #678: recording a drop runs on its own transaction,
+// in one order, with short timeouts. These need real connections, so they
+// commit under a made-up app name and clean up after themselves.
+describe('recording a dropped place', () => {
+  const root = _getRootSql()
+  const drop = (dataset: string, keys: string[]): PlaceDrop =>
+    ({ app: 'droptest', dataset, keys, versions: { app: '1.0.0', provider: { app: 'droproster', version: '1.0.0' } } })
+  const cleanUp = () => root`delete from featherbase.dataset_place_drop where app = 'droptest'`
+
+  test('two recordings of overlapping drops in opposite orders both complete', async () => {
+    try {
+      const one = [drop('a', ['floor']), drop('b', ['section']), drop('c', ['zone'])]
+      const results = await Promise.all([recordPlaceDrops(one, root), recordPlaceDrops([...one].reverse(), root)])
+      expect(results.reduce((a, b) => a + b)).toBe(3)
+      expect((await root`select count(*)::int as n from featherbase.dataset_place_drop where app = 'droptest'`)[0].n).toBe(3)
+    } finally { await cleanUp() }
+  })
+
+  test('two recordings of the same stale drop update it once', async () => {
+    try {
+      await root`insert into featherbase.dataset_place_drop (app, dataset, provider, filter_keys, app_version, provider_version, last_seen)
+        values ('droptest', 'a', 'droproster', ${['floor']}, '1.0.0', '1.0.0', now() - interval '2 hours')`
+      // A third connection holds the row while both read it as stale, then
+      // lets go well inside their lock timeout, so both reach the write.
+      const held = stall()
+      const holder = root.begin(async tx => {
+        await tx`select 1 from featherbase.dataset_place_drop where app = 'droptest' for update`
+        held.entered()
+        await held.gate
+      })
+      await held.inside
+      const both = Promise.all([recordPlaceDrops([drop('a', ['floor'])], root), recordPlaceDrops([drop('a', ['floor'])], root)])
+      await new Promise(resolve => setTimeout(resolve, 60))
+      held.release()
+      await holder
+      const results = await both
+      expect(results.reduce((a, b) => a + b)).toBe(1)
+    } finally { await cleanUp() }
   })
 })

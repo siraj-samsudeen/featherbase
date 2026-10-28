@@ -191,13 +191,21 @@ async function callerPlaces(request: AccessRequest, contribution: DeclaredAppOpe
   })
   const places = narrowPersonScope(scope, (payload as Record<string, unknown>).scope)
   if (!places) refuseAppAccess()
-  return freezeJson(JSON.parse(canonicalJson(places)) as typeof places)
+  // #667: the filter keys of each place that survived narrowing, as the
+  // provider returned it. The request may have added keys by naming filters;
+  // these are the provider's. A place narrowed away never reaches a dataset
+  // (Codex round 2 on #678). Labels are unique within a scope.
+  const providerKeys = freezeJson(places.map((kept) =>
+    Object.keys(scope.find((place) => place.label === kept.label)!.filters).sort()))
+  return { places: freezeJson(JSON.parse(canonicalJson(places)) as typeof places), providerKeys }
 }
 
 // A context is valid only inside this callback and transaction. Never accept a
 // client context or keep this decision for another request.
 export function withAppAuthorization<T>(request: AccessRequest,
-  handler: (authorization: AppAuthorizationContext, payload: unknown, metadata: RuntimeActionAuthorization, replay: boolean) => Promise<T>): Promise<T> {
+  handler: (authorization: AppAuthorizationContext, payload: unknown, metadata: RuntimeActionAuthorization, replay: boolean,
+    /** #667: the provider's own place keys, for a person_scope operation. */
+    providerKeys?: readonly (readonly string[])[]) => Promise<T>): Promise<T> {
   return appOperation(async () => {
     try {
       return await (request.kind === 'action' ? actionTransaction : withTransaction)(async () => {
@@ -216,7 +224,8 @@ export function withAppAuthorization<T>(request: AccessRequest,
             { version: 1, policy: 'stores', storeTable: policy.storeTable, storeCodes }, false)
         }
         let payload = request.payload
-        const places = policy.kind === 'person_scope' ? await callerPlaces(request, contribution, payload) : undefined
+        const resolved = policy.kind === 'person_scope' ? await callerPlaces(request, contribution, payload) : undefined
+        const places = resolved?.places
         let requested: readonly string[] | undefined
         if (policy.kind === 'stores') {
           if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !('scope' in declaration)) refuseAppAccess()
@@ -278,7 +287,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
         // Final barrier after every possible authorization-fact lock wait.
         const final = await currentAccess(request, declaration)
         if (policy.kind === 'stores') subset(metadata.storeCodes, final)
-        return handler(authorization, payload, freezeJson(metadata), !!previous)
+        return handler(authorization, payload, freezeJson(metadata), !!previous, resolved?.providerKeys)
       })
     } catch (error) {
       // Outside the failed business transaction so the audit survives rollback.

@@ -1177,6 +1177,15 @@ app.get('/api/people/:id/identities', async (c) => {
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
 })
 
+// #667: why a person sees nothing from an app's datasets: the provider's
+// places for them, and which each dataset applies or drops. System Manager
+// only, the person themself included.
+app.get('/api/people/:id/scope', async (c) => {
+  await assertSystemManager(who(c))
+  const { explainPersonScope } = await import('./scope-explain')
+  return c.json(await explainPersonScope(who(c), c.req.param('id'), c.req.query('app') ?? ''))
+})
+
 // Instance settings as code (#465, D3): the instance repository's workflow
 // sends its settings file here with a System Manager token, on merge and on
 // demand. `dry_run` previews; `files` carries what the file names with

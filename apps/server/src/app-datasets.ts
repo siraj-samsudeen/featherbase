@@ -6,8 +6,9 @@
 // hard-codes a client's column names in platform code.
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { sql } from './db'
-import type { PersonScope } from 'shared'
+import { sql, type Sql } from './db'
+import { platformRelation } from './platform-schema'
+import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError } from './errors'
 import { logAccess } from './audit'
@@ -175,6 +176,8 @@ const datasetSchema = z.object({
   columns: z.array(z.object({ name: identifier, type: z.enum(DATASET_COLUMN_TYPES) }).strict()).min(1)
     .refine(columns => distinct(columns.map(column => column.name)), 'Dataset column names must be distinct'),
   keys: z.array(identifier).refine(distinct, 'Dataset keys must be distinct'),
+  // Scope filter key → column. A place must use these keys: one naming any
+  // other key adds no rows from this dataset (#667).
   filters: z.record(identifier, identifier).refine(filters => Object.keys(filters).length > 0, 'A dataset maps at least one scope filter'),
   guard: z.array(guardSchema).optional(),
 }).strict().superRefine((dataset, context) => {
@@ -424,11 +427,20 @@ export function datasetWhere(dataset: DatasetDeclaration, places: PersonScope | 
     return { column: key, values: list.map(String) }
   })
   const any = (places ?? []).flatMap((place) => {
-    const named = Object.entries(place.filters)
-    if (named.some(([name]) => !Object.hasOwn(dataset.filters, name))) return []
-    return [named.map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
+    if (unappliableKeys(dataset, place).length) return []
+    return [Object.entries(place.filters).map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
   })
   return { any, all }
+}
+
+/** #667: the filter keys a place names that the dataset maps to no column,
+ *  sorted. Any one drops the whole place from the dataset (fail closed). */
+export function unappliableKeys(dataset: DatasetDeclaration, place: ScopePlace): string[] {
+  return unmappedKeys(dataset, Object.keys(place.filters))
+}
+
+function unmappedKeys(dataset: DatasetDeclaration, keys: readonly string[]): string[] {
+  return keys.filter((name) => !Object.hasOwn(dataset.filters, name)).sort()
 }
 
 // The same where, over the snapshot's stored rows.
@@ -472,16 +484,99 @@ export interface DatasetReadRequest {
   /** An outbound read holds its view records here until its answer: they
    *  are written with the final check that the app still serves the version
    *  the read ran under, under one lock, or not at all. */
-  deferView?: (write: () => Promise<void>) => void
+  deferWrite?: (write: () => Promise<void>) => void
+  /** #667: where a dropped place came from, decided while the read was
+   *  authorized. Absent, nothing is noted. */
+  provenance?: DropProvenance
+}
+
+/** #667: the versions the read was authorized under (the app's, and the
+ *  scope provider's that answered), and the filter keys of each place the
+ *  provider returned, before the request narrowed them. A request may add
+ *  keys by naming filters; only the provider's own keys are ever recorded. */
+export interface DropProvenance {
+  versions: DropVersions
+  providerKeys: readonly (readonly string[])[]
+}
+
+export interface DropVersions {
+  app: string
+  provider: { app: string; version: string }
+}
+
+/** One dropped place, by what it names: never the person, place or value. */
+export interface PlaceDrop {
+  app: string
+  dataset: string
+  keys: string[]
+  versions: DropVersions
+}
+
+/** How long a recorded drop stands before a read records it again. */
+const DROP_RECORD_INTERVAL = '1 hour'
+/** Recording is a note for Instance health: it never waits long for a lock. */
+const DROP_LOCK_TIMEOUT = '250ms'
+const DROP_STATEMENT_TIMEOUT = '2s'
+
+/**
+ * #667: record drops a finished read met, on a transaction of its own after
+ * the read's, never on its path (adversarial round 1 on #678). Rows are
+ * written in one sorted order so two recordings cannot deadlock; a lock held
+ * elsewhere times out quickly; any failure is logged and the read stands. A
+ * drop already recorded under the same versions within the last hour is not
+ * written again: the select spares a busy report the row lock, and the
+ * conflict clause holds the rule when two recordings race. Each pair of
+ * versions keeps its own row, so a late read authorized under older versions
+ * never replaces a current record (Codex round 2 on #678). Returns how many
+ * rows were written.
+ */
+export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sql): Promise<number> {
+  const order = (d: PlaceDrop) => [d.app, d.dataset, d.versions.provider.app, d.keys.join(','), d.versions.app, d.versions.provider.version].join('\u0000')
+  const unique = [...new Map(drops.map((d) => [order(d), d])).entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, d]) => d)
+  if (!unique.length) return 0
+  const table = db(platformRelation('dataset_place_drop'))
+  try {
+    return await db.begin(async (tx) => {
+      const [before] = await tx`select current_setting('lock_timeout') as lock, current_setting('statement_timeout') as statement`
+      await tx`select set_config('lock_timeout', ${DROP_LOCK_TIMEOUT}, true), set_config('statement_timeout', ${DROP_STATEMENT_TIMEOUT}, true)`
+      let written = 0
+      for (const { app, dataset, keys, versions: { app: version, provider } } of unique) {
+        const [fresh] = await tx`select 1 from ${table}
+          where app = ${app} and dataset = ${dataset} and provider = ${provider.app} and filter_keys = ${keys}
+            and app_version = ${version} and provider_version = ${provider.version}
+            and last_seen > now() - ${DROP_RECORD_INTERVAL}::interval`
+        if (fresh) continue
+        written += (await tx`insert into ${table} as d (app, dataset, provider, filter_keys, app_version, provider_version)
+          values (${app}, ${dataset}, ${provider.app}, ${keys}, ${version}, ${provider.version})
+          on conflict (app, dataset, provider, filter_keys, app_version, provider_version) do update set last_seen = now()
+          where d.last_seen <= now() - ${DROP_RECORD_INTERVAL}::interval
+          returning 1`).length
+      }
+      // Inside a test's sandbox this is a savepoint: put its settings back.
+      await tx`select set_config('lock_timeout', ${String(before.lock)}, true), set_config('statement_timeout', ${String(before.statement)}, true)`
+      return written
+    }) as number
+  } catch (error) {
+    console.warn(`[apps] a dropped place could not be recorded for Instance health: ${error instanceof Error ? error.message : String(error)}`)
+    return 0
+  }
 }
 
 /**
  * `context.datasets` and `context.recordView` for one read: the app's own
  * datasets only, read through the reader's frozen places. No SQL crosses
  * from the app: it names a dataset and filter values, and the query is the
- * declared one.
+ * declared one. `drops()` lists the provider's places a dataset read could
+ * not apply, for the caller to record once the read's answer stands.
  */
-export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferView }: DatasetReadRequest) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferWrite, provenance }: DatasetReadRequest) {
+  const met = new Map<string, PlaceDrop>()
+  function noteDrops(dataset: DatasetDeclaration) {
+    for (const keys of provenance?.providerKeys ?? []) {
+      const unmapped = unmappedKeys(dataset, keys)
+      if (unmapped.length) met.set(`${dataset.name}\u0000${unmapped.join(',')}`, { app, dataset: dataset.name, keys: unmapped, versions: provenance!.versions })
+    }
+  }
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
@@ -499,6 +594,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
     async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      noteDrops(dataset)
       const snapshot = await activeSnapshot(datasetKey(app, name))
       if (!snapshot) {
         await recordMiss(datasetKey(app, name))
@@ -514,6 +610,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       if (!outbound) throw new AppError('ValidationError', 'A live dataset read calls out to its data source: declare the read outbound')
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      noteDrops(dataset)
       const at = new Date().toISOString()
       const rows = shapeRows(dataset, await runQuery(dataset, where))
       served.set(name, { served: 'live' })
@@ -535,8 +632,8 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       scope: places ? places.map((place) => place.label).join('; ').slice(0, 140) : undefined,
       required: true,
     })
-    if (deferView) deferView(write)
+    if (deferWrite) deferWrite(write)
     else await write()
   }
-  return { datasets, recordView }
+  return { datasets, recordView, drops: () => [...met.values()] }
 }

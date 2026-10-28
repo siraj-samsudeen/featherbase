@@ -171,7 +171,9 @@ that fills it).
   floor manager, store manager) for display, and a confirmation status
   (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
   always names at least one filter value, and labels are unique within a scope. The
-  shape is a shared type, validated at the boundary.
+  shape is a shared type, validated at the boundary. A place must use the filter
+  keys the app's datasets map: a dataset drops a place naming any other key (E3,
+  #667).
 - **A `person_scope` operation policy** sits beside `table` and `stores`, with read
   and action roles like `stores`. The platform calls the provider fresh on every
   request, validates and freezes the answer, and hands it to the handler. A request
@@ -327,6 +329,47 @@ that fills it).
   the miss. `live(name, filters)` answers the same shape and is available only in
   an outbound read (E5). A dataset whose source the instance lacks answers "not set
   up yet", and Instance health and the release check name the missing data source.
+- **The rule: a place must use the dataset's filter keys** (#667, decision of
+  28-Oct-2026: options (a) and (c)). A provider emits places in the filter keys
+  the datasets map; a place naming any other key (a floor or a section, where the
+  dataset is per store and product category) is still dropped whole from that
+  dataset, never widened to the keys it does map. The drop is made visible, not
+  changed:
+  - `GET /api/people/:id/scope?app=<app>`, System Manager only (403 for anyone
+    else, the person themself included): `{ provider: { app, title }, problem,
+    places: [{ label, filters: [key…] }], datasets: [{ name, applied: [label…],
+    dropped: [{ place, keys: [key…] }] }] }`. `problem` is the fail-closed reason
+    when the person has no usable scope (`configuration`, `provider`, `scope`),
+    else null. Keys only, never a filter value, row or figure. The provider runs
+    as it does for a read; nothing is written except one Access Log row
+    (`view_person_scope`, the person and the app), and it records no drop.
+  - App reads record each drop by app, dataset, provider and the sorted set of
+    unappliable keys, with the two apps' versions (migration 0137,
+    `dataset_place_drop`; no person, place label or value; written at most once
+    an hour per drop). Codex round 1 on #678 shaped how:
+    - only the provider's own place keys are recorded, never keys a request
+      added by naming filters to narrow its places;
+    - the versions are those the read was authorized under;
+    - recording happens only once the read's answer stands (after its
+      transaction commits, or after an outbound read's final serving check),
+      on a transaction of its own, in one sorted order, with a 250 ms lock
+      timeout and a 2 s statement timeout; a failure is logged and never fails
+      the read;
+    - the hourly rule holds in the upsert's conflict clause, so racing
+      recordings write once.
+
+    Codex round 2 added two rules:
+    - only places that survived the request's narrowing are recorded, by
+      their provider-origin keys;
+    - each pair of versions keeps its own row (both are in the key), and
+      health reads only the current pair, so a late read under older
+      versions never hides a current warning. Instance health has one check per enabled app with
+    datasets, `scope-place-drops:<app>`, a warning naming the dataset, the
+    provider and the keys while both apps run the versions the drop was seen
+    under and for seven days after reads last met it. A static check is not
+    possible: a provider answers only for a person.
+  - Deferred, not built: a dataset-declared expansion of another key into its
+    own (option (b)), because a wrong expansion would widen what a person sees.
 
 **E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
 The platform allows them as frame sources only on that app's own pages. The global
