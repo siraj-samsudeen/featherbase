@@ -1,4 +1,5 @@
 import { sql } from './db'
+import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 
@@ -42,7 +43,7 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // old query 500'd the whole search the moment one existed), and fanning a
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
   const tables = await sql`
-    select name from table_def where kind = 'table' and data_source is null
+    select name, owner_app from table_def where kind = 'table' and data_source is null
     order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
@@ -52,7 +53,17 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   for (const t of tables) {
     if (hits.length >= TOTAL_CAP) break
     if (!(await hasPermission(user, t.name as string, 'read'))) continue
-    const { meta, table, where, cols } = await scopedWhere(t.name as string, user, [])
+    // #648: an app's Tables answer only while it is available to this
+    // request: switched on, not awaiting activation, and the version the
+    // client last loaded. When one refuses, search skips that Table instead
+    // of failing for everyone; assertAppAvailable stays the one judge.
+    const scoped = await scopedWhere(t.name as string, user, []).catch((error: unknown) => {
+      if (t.owner_app != null && error instanceof AppError &&
+          (error.type === 'PermissionError' || error.type === 'ConflictError')) return null
+      throw error
+    })
+    if (!scoped) continue
+    const { meta, table, where, cols } = scoped
     const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)
