@@ -4,7 +4,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
 import { FilterBar, type Filter } from './ListView'
-import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses } from './ui'
+import { Notice, buttonClasses, cardClasses, inputClasses, labelClasses, touchLinkClasses } from './ui'
 import { fmtCount, fmtNumber } from '../lib/inr'
 
 type Row = Record<string, unknown>
@@ -406,7 +406,7 @@ export function ReportView({
           to="/featherbase/admin/$table/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
-          className="text-action hover:underline"
+          className={touchLinkClasses('text-action hover:underline')}
         >
           {String(row.row_id)}
         </RouterLink>

@@ -201,15 +201,15 @@ export function AccessTokens() {
                 </tr>
               )
             })}
-            {!rows.length && (
-              <tr>
-                <td colSpan={isSM ? 7 : 6} className="px-3 py-8 text-center text-ink-subtle">
-                  No tokens yet — issue one to authenticate scripts and integrations.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
+        {/* Under the table, not in a row of it, so on a phone the words fit the
+            card instead of being centred across the table's scrolled width. */}
+        {!rows.length && (
+          <p className="px-3 py-8 text-center text-sm text-ink-subtle">
+            No tokens yet — issue one to authenticate scripts and integrations.
+          </p>
+        )}
       </div>
 
       {isSM && (

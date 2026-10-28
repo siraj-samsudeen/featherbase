@@ -164,8 +164,10 @@ app.get('/api/ping', async (c) => {
 })
 
 // SET-004: the instance's display name, public so the login page (pre-auth)
-// can brand itself. app_name only — everything else in System Settings
-// stays behind the session like /api/settings.
+// can brand itself. app_name and the logo only — everything else in System
+// Settings stays behind the session like /api/settings.
+const PUBLIC_FILE = /^\/files\/[^/\\?#]+$/
+
 app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
   // person-identities: the login page renders the enabled sign-in methods.
@@ -184,6 +186,9 @@ app.get('/api/brand', async (c) => {
   const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
+    // #380: named only when it is a public file this instance serves; a
+    // private file, or any other address, would not load before sign-in.
+    logo: s.logo && PUBLIC_FILE.test(s.logo) ? s.logo : null,
     // #489: what this address opens — `admin`, an app's name, or null for a
     // host the list does not name — so the shared top bar can name itself.
     opens: opened ?? null,
@@ -845,8 +850,9 @@ app.get('*', async (c, next) => {
       '.woff2': 'font/woff2',
     }
     const html = bytes.toString('utf8')
+    const shellOf = (entry: (typeof catalog)[number]) => ({ name, title: entry.title, tabs: Boolean(entry.tabs?.length) })
     const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
-      : new TextEncoder().encode(composeRuntimeShell(html, { name, title: catalog.find((entry) => entry.name === name)!.title }))
+      : new TextEncoder().encode(composeRuntimeShell(html, shellOf(catalog.find((entry) => entry.name === name)!)))
     return new Response(body, {
       headers: {
         'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',

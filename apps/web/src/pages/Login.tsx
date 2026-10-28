@@ -133,26 +133,34 @@ export function LoginPage() {
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
   const [appName, setAppName] = useState('Featherbase')
+  // #380 4.2: the instance's own logo (System Settings), else the Featherbase mark.
+  const [logo, setLogo] = useState<string | null>(null)
   // person-identities: the ways in an administrator has turned on (password,
   // Google, a connected service such as StyleHR), and whether sign-up is open.
   const [methods, setMethods] = useState<BrandSignInMethod[] | null>(null)
   const [signUpOpen, setSignUpOpen] = useState(false)
-  const [mode, setMode] = useState<'password' | 'delegated' | 'signup'>('password')
-  const [delegatedKey, setDelegatedKey] = useState<string | null>(null)
+  // null until the person picks a way in: the page then opens on a connected
+  // service's form when there is one (#380 4.2: store staff know their
+  // employee ID), else on the password form.
+  const [chosenMode, setMode] = useState<'password' | 'delegated' | 'signup' | null>(null)
+  const [chosenKey, setDelegatedKey] = useState<string | null>(null)
   useEffect(() => {
     fetch('/api/brand')
       .then((r) => (r.ok ? r.json() : null))
-      .then((b: { app_name?: string; sign_in_methods?: BrandSignInMethod[]; sign_up_open?: boolean } | null) => {
+      .then((b: { app_name?: string; logo?: string | null; sign_in_methods?: BrandSignInMethod[]; sign_up_open?: boolean } | null) => {
         if (b?.app_name) {
           setAppName(b.app_name)
           document.title = b.app_name
         }
+        setLogo(typeof b?.logo === 'string' && b.logo ? b.logo : null)
         setMethods(Array.isArray(b?.sign_in_methods) ? b.sign_in_methods : null)
         setSignUpOpen(b?.sign_up_open === true)
       })
       .catch(() => {})
   }, [])
   const delegatedMethods = (methods ?? []).filter((m) => m.kind === 'delegated_password')
+  const mode = chosenMode ?? (delegatedMethods.length ? 'delegated' : 'password')
+  const delegatedKey = chosenMode ? chosenKey : (delegatedMethods[0]?.key ?? null)
   const delegated = delegatedMethods.find((m) => m.key === delegatedKey) ?? null
   const delegatedLabel = delegated?.label ?? null
   // If the brand cannot be read, offer Google as before; the server decides.
@@ -284,7 +292,15 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <Logo className="h-11 w-11 rounded-xl shadow-sm" />
+          {logo ? (
+            // Decorative: the name under it already says whose page this is.
+            // A logo that will not load (a deleted file) falls back to the mark.
+            <img src={logo} alt="" data-testid="login-logo" className="max-h-16 max-w-48 object-contain" onError={() => setLogo(null)} />
+          ) : (
+            <span data-testid="login-mark">
+              <Logo className="h-11 w-11 rounded-xl shadow-sm" />
+            </span>
+          )}
           <h1 className="text-lg font-semibold text-ink">{appName}</h1>
           {/* The refusal panel's own heading takes the subtitle's place. */}
           {!panelShowing && <p className="text-sm text-ink-muted" data-testid="login-subtitle">
@@ -333,7 +349,7 @@ export function LoginPage() {
               <button
                 type="button"
                 data-testid="refused-other-ways"
-                className="inline-flex min-h-10 items-center text-sm text-action hover:underline"
+                className="inline-flex min-h-control items-center text-sm text-action hover:underline"
                 onClick={() => switchMode('password')}
               >
                 Other ways to sign in
@@ -378,11 +394,33 @@ export function LoginPage() {
                   {busy ? 'Signing in…' : `Sign in with ${delegatedLabel}`}
                 </button>
               </form>
+              {/* The other ways in, one tap away under the service's form. */}
+              {google && (
+                <a
+                  href="/api/oauth/google/login"
+                  onClick={() => rememberLoginNext(next)}
+                  data-testid="google-login"
+                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                >
+                  Sign in with {google.label}
+                </a>
+              )}
+              {delegatedMethods.filter((m) => m.key !== delegated?.key).map((m) => (
+                <button
+                  key={m.key}
+                  type="button"
+                  data-testid={`delegated-login-toggle-${m.key}`}
+                  className={buttonClasses({ className: 'mt-3 flex w-full justify-center py-2' })}
+                  onClick={() => switchMode('delegated', m.key)}
+                >
+                  Sign in with {m.label}
+                </button>
+              ))}
               {passwordOn && (
                 <button
                   type="button"
                   data-testid="password-login-toggle"
-                  className="mt-4 text-sm text-action hover:underline"
+                  className="mt-4 inline-flex min-h-control items-center text-control text-action hover:underline"
                   onClick={() => switchMode('password')}
                 >
                   Use email and password instead
@@ -476,7 +514,7 @@ export function LoginPage() {
             {!forgot ? (
               <button
                 type="button"
-                className="text-sm text-action hover:underline"
+                className="inline-flex min-h-control items-center text-sm text-action hover:underline"
                 data-testid="forgot-password"
                 onClick={() => setForgot(true)}
               >

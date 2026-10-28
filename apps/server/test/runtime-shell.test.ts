@@ -37,4 +37,16 @@ describe("an app's entry document", () => {
     const html = composeRuntimeShell('<html><head></head><body></body></html>', app)
     expect(html).not.toMatch(/runtime-shell|<select|Switch application/)
   })
+
+  // #380 task 4.4: the bar draws an app's phone tabs, which a page laid out
+  // 980px wide (no viewport of its own) would never show.
+  test("a page of an app with tabs and no viewport of its own gets the device's width, once", () => {
+    const bare = composeRuntimeShell('<html><head><title>n</title></head><body></body></html>', { ...app, tabs: true })
+    expect(bare).toContain('<title>n</title><meta name="viewport" content="width=device-width, initial-scale=1"><script type="module"')
+    const own = composeRuntimeShell('<html><head><meta name="viewport" content="width=500"></head><body></body></html>', { ...app, tabs: true })
+    expect(own.match(/name="viewport"/g)).toHaveLength(1)
+    // No tabs, no change to the app's document beyond the bar.
+    expect(composeRuntimeShell('<html><head></head><body></body></html>', app)).not.toContain('viewport')
+  })
 })
+

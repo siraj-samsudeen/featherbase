@@ -39,8 +39,10 @@ const SCOPE = [
   { table: 'App Setting', shape: 'rows', fields: ['value'], createRows: true },
 ] as const
 
-/** Column types that hold no value, or a secret: never in scope. */
-const UNMANAGED_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break', 'Tab Break', 'Password'])
+/** Column types that hold no value, a secret, or a file in one instance's own
+ *  storage (the System Settings logo, #380): never in scope. A settings file
+ *  can carry none of them from one environment to another. */
+const UNMANAGED_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break', 'Tab Break', 'Password', 'Attach', 'Attach Image'])
 
 interface ScopeEntry {
   table: string

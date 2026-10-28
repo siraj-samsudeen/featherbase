@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react'
 import { inferColumnType } from 'shared'
 import { slugify } from '../lib/column-rules'
-import { buttonClasses, cardClasses, inputClasses, pillClasses } from './ui'
+import { buttonClasses, cardClasses, inputClasses, pillClasses, touchRowClasses } from './ui'
 
 export interface PastedColumn {
   label: string
@@ -49,7 +49,7 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
       <button
         data-testid="dt-paste-open"
         onClick={() => setOpen(true)}
-        className="mb-3 text-xs text-ink-muted underline decoration-border-control underline-offset-2 hover:text-action"
+        className={touchRowClasses('mb-3 text-xs text-ink-muted underline decoration-border-control underline-offset-2 hover:text-action')}
       >
         Or paste the columns as a list — like a spreadsheet header row
       </button>
