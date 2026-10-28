@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { assertNotSystemWritten } from './system-written'
-import { assertNotAccessTarget, assertSecurityWriter } from './security-tables'
+import { assertDirectWriteAllowed, assertSecurityWriter } from './security-tables'
 import { assertFieldNotManaged, holdManagedSet } from './managed-settings'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
@@ -213,54 +213,51 @@ export async function applyWorkflowAction(
   const field = stateField(wf)
   // #437: also checked when the Workflow is saved; a row saved before that
   // rule existed must not act either.
-  await assertNotAccessTarget(table, field, 'A workflow')
+  await assertDirectWriteAllowed(table, field, 'A workflow')
   await ensureStateField(table, sql, field)
 
-  const row = await getDoc(table, name, user)
-  const from = currentState(wf, row)
-  const transition = wf.transitions.find((t) => t.state === from && t.action === action)
-  if (!transition)
-    throw new AppError('ValidationError', `Action "${action}" is not allowed from state "${from}"`)
-
-  const roles = await getRoles(user)
-  const privileged = roles.includes('Administrator') || roles.includes('System Manager')
-  if (!privileged && !roles.includes(transition.allowed))
-    throw new AppError(
-      'PermissionError',
-      `Your roles cannot perform "${action}" (requires ${transition.allowed})`,
-    )
-
-  // Conditional transitions: the condition is a property of the ROW, so it
-  // is enforced for everyone (Administrator included) and independently of the
-  // UI — a transition whose condition is false cannot be applied even by API.
-  if (!evalCondition(transition.condition, row, `${from}→${action}`))
-    throw new AppError(
-      'ValidationError',
-      `Action "${action}" is not allowed: its condition is not met`,
-    )
-
-  const target = wf.states.find((s) => s.state === transition.next_state)
-  const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
-
-  // The whole row before the move, for the email rules below.
-  const before = await getDoc(table, name)
-
-  // Persist via a direct update (bypasses the submitted-row write lock — a
-  // workflow legitimately moves a submitted row between states/statuses).
   const relation = await tableRelation(table)
-  await sql.begin(async (tx) => {
-    const stx = tx as unknown as typeof sql
+  const { transition, before } = await withTransaction(async () => {
     // #465 D5: nor may it rewrite a field the instance settings file sets,
     // judged under the settings lock held to commit (#493).
-    await holdManagedSet(stx, table)
-    await assertFieldNotManaged(stx, table, name, field, user)
-    await stx`
-      update ${stx(relation)}
-      set ${stx(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
-      where ${stx(physicalRowKey(table))} = ${name}`
+    await holdManagedSet(sql, table)
+    // #572: lock before reading or deciding. withTransaction also routes
+    // getDoc's reads through this connection, including after a lock wait.
+    const [held] = await sql`select 1 from ${sql(relation)}
+      where ${sql(physicalRowKey(table))} = ${name} for update`
+    if (!held) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    const row = await getDoc(table, name, user)
+    const from = currentState(wf, row)
+    const transition = wf.transitions.find((t) => t.state === from && t.action === action)
+    if (!transition)
+      throw new AppError('ValidationError', `Action "${action}" is not allowed from state "${from}"`)
 
-    await stx`
-      insert into workflow_action ${stx({
+    const roles = await getRoles(user)
+    const privileged = roles.includes('Administrator') || roles.includes('System Manager')
+    if (!privileged && !roles.includes(transition.allowed))
+      throw new AppError(
+        'PermissionError',
+        `Your roles cannot perform "${action}" (requires ${transition.allowed})`,
+      )
+
+    // Conditions depend on the current row, including for Administrators.
+    if (!evalCondition(transition.condition, row, `${from}→${action}`))
+      throw new AppError('ValidationError', `Action "${action}" is not allowed: its condition is not met`)
+
+    const target = wf.states.find((s) => s.state === transition.next_state)
+    const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
+    // The whole row before the move, for the email rules below.
+    const before = await getDoc(table, name)
+
+    // A workflow legitimately moves submitted rows between states/statuses.
+    await assertFieldNotManaged(sql, table, name, field, user)
+    await sql`
+      update ${sql(relation)}
+      set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      where ${sql(physicalRowKey(table))} = ${name}`
+
+    await sql`
+      insert into workflow_action ${sql({
         row_id: randomBytes(5).toString('hex'),
         created_by: user,
         updated_by: user,
@@ -271,6 +268,7 @@ export async function applyWorkflowAction(
         to_state: transition.next_state,
         actor: user,
       })}`
+    return { transition, before }
   })
 
   // WF-004: entering a state that still has outgoing transitions means the

@@ -41,7 +41,8 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   const file = async (file_name: string, ref: Record<string, string>) =>
     String((await admin.post<Record<string, any>>('/api/save_row', {
       table: 'File',
-      row: { file_name, file_url: `/files/rafd-${file_name}`, is_private: false, ...ref },
+      // Metadata-only fixtures: stored paths are assigned only by uploads.
+      row: { file_name, is_private: false, ...ref },
     })).row_id)
   const comment = async (content: string, ref_name: string) =>
     String((await admin.post<Record<string, any>>('/api/save_row', {
@@ -112,9 +113,12 @@ describe('#609: attaching follows the row too', () => {
     // Nothing goes on that comment in turn.
     const deeper = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', file_url: '/files/rafd-y.pdf', ref_table: 'Comment', ref_name: note.row_id } }),
+      body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', ref_table: 'Comment', ref_name: note.row_id } }),
     })
     expect(deeper.status).toBe(417)
+    expect(await deeper.json()).toMatchObject({ error: {
+      type: 'ValidationError', message: 'A File cannot be attached to a Comment that is itself attached to one',
+    } })
     // Two files pointing at each other, as only a direct write could leave them.
     await sql`update file set ref_table = 'File', ref_name = ${files.loose} where row_id = ${files.mine}`
     await sql`update file set ref_table = 'File', ref_name = ${files.mine} where row_id = ${files.loose}`
@@ -151,7 +155,7 @@ describe('#609: attaching follows the row too', () => {
     await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
     await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true })
-    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', file_url: '/files/rafd-o.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
     expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual(['outside.pdf'])
   })
@@ -160,7 +164,7 @@ describe('#609: attaching follows the row too', () => {
     const { agent } = await setup(admin, createUser)
     await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
     await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
-    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', file_url: '/files/rafd-o.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
     // Own rows only: a bound row has no creator, so it never opens.
     await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true, own_rows_only: true })
