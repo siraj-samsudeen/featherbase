@@ -430,7 +430,7 @@ async function attachedRowScopeCond(
         and (person = ${user} or service_account = ${user})))`)
     const scope = await permissionScope(user, target, 'read')
     if (scope === 'none') continue
-    if (table === 'Version' && !(await seesEveryColumn(user, targetMeta))) continue
+    if (['Version', 'Import Conflict', 'Import Source'].includes(table) && !(await seesEveryColumn(user, targetMeta))) continue
     if (isBound(targetMeta)) {
       const narrowed = scopes.has(target)
         || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))

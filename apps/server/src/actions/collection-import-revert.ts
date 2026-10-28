@@ -216,6 +216,7 @@ registerCollectionAction('import-revert', {
 
     // J1.5: the run's log entries record the revert. System-written like the
     // log itself; best-effort for the same reason writeImportLog is.
+    await sql`update featherbase.import_conflict set closed = true where ref_table = ${table} and run_id = ${runId}`
     const now = new Date().toISOString()
     for (const p of parts)
       await sql`

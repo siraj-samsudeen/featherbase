@@ -375,7 +375,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError) throw refused()
     throw err
   }
-  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (['Version', 'Import Conflict', 'Import Source'].includes(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
 }
 
