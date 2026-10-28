@@ -85,13 +85,13 @@ function asRow(wording: Wording) {
 
 const blank = (value: unknown) => value == null || String(value).trim() === ''
 
-async function wordingsOf(ids: string[]): Promise<Map<string, Wording>> {
+async function wordingsOf(ids: string[], db: typeof sql = sql): Promise<Map<string, Wording>> {
   const result = new Map<string, Wording>()
   if (!ids.length) return result
-  const rows = await sql`select row_id, term, definition, examples from glossary_term where row_id in ${sql(ids)}`
-  const avoid = await sql`select parent, word, reason from glossary_avoid_word
+  const rows = await db`select row_id, term, definition, examples from glossary_term where row_id in ${sql(ids)}`
+  const avoid = await db`select parent, word, reason from glossary_avoid_word
     where parenttype = 'Glossary Term' and parent in ${sql(ids)} order by parent, position`
-  const links = await sql`select parent, link_table, link_column from glossary_link
+  const links = await db`select parent, link_table, link_column from glossary_link
     where parenttype = 'Glossary Term' and parent in ${sql(ids)} order by parent, position`
   for (const row of rows) {
     const id = String(row.row_id)
@@ -144,11 +144,13 @@ export async function takeAppWording(id: string, user: string) {
 }
 
 /** After any save of a term: once its wording is the app's again, the mark
- *  that the app's wording changed has been dealt with, and goes. */
-export async function settleAppWordingMark(id: string) {
-  const [row] = await sql`select app_wording from glossary_term where row_id = ${id} and app_wording_changed`
-  if (row && canonical((await wordingsOf([id])).get(id)) === canonical(row.app_wording))
-    await sql`update glossary_term set app_wording_changed = false where row_id = ${id}`
+ *  that the app's wording changed has been dealt with, and goes. Runs on the
+ *  save's own transaction `tx`: it must read what the save wrote, and update
+ *  the row the save holds locked. */
+export async function settleAppWordingMark(id: string, tx: typeof sql) {
+  const [row] = await tx`select app_wording from glossary_term where row_id = ${id} and app_wording_changed`
+  if (row && canonical((await wordingsOf([id], tx)).get(id)) === canonical(row.app_wording))
+    await tx`update glossary_term set app_wording_changed = false where row_id = ${id}`
 }
 
 /** Everything the glossary shows `user`: the terms of every installed,

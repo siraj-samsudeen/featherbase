@@ -3,7 +3,7 @@ import { api } from './api'
 
 // #629: the glossary, as GET /api/glossary answers it: the terms of every
 // installed, turned-on app, then the instance's own, and whether this person
-// may edit them. Read once and shared by the Glossary page and every "?".
+// may edit them. Shared by the Glossary page and every "?".
 
 export interface GlossaryTerm {
   id: string
@@ -38,7 +38,8 @@ export function useGlossary() {
   return useQuery({
     queryKey: GLOSSARY_QUERY_KEY,
     queryFn: () => api.get<Glossary>('/api/glossary'),
-    staleTime: 5 * 60_000,
+    // Fetched afresh on each page that shows it: a term saved in the
+    // ordinary form shows on the next page without any cache to clear.
     retry: false,
   })
 }

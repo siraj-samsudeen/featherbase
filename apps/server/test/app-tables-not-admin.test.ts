@@ -102,7 +102,8 @@ describe('grants outside installed apps count as before', () => {
     await installAppWithReaderRole(admin)
     await instanceTableWithRole(admin, 'Office Clerk')
     const both = await createUser({ email: 'both.grants@example.com', roles: [ROLE, 'Office Clerk'] })
-    expect(await capsOf(both)).toMatchObject({ admin: true, own_grant: true, tables: ['Back Office', APP_TABLE] })
+    // Glossary Term: everyone signed in reads the glossary (#629).
+    expect(await capsOf(both)).toMatchObject({ admin: true, own_grant: true, tables: ['Back Office', 'Glossary Term', APP_TABLE] })
   })
 
   test("an app's Table grant is not a grant of their own beside a shared instance row", async ({ admin, createUser }) => {

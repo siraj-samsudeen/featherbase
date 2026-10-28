@@ -145,3 +145,13 @@ test('a described field opens its term in place, and Escape closes it back to th
   await user.click(help)
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
+
+test('a term saved elsewhere shows when the glossary is opened again (Codex review on #685)', async ({ admin }) => {
+  await renderApp('/featherbase/admin/glossary', admin)
+  expect(await screen.findByText('No terms yet.')).toBeInTheDocument()
+  const user = userEvent.setup()
+  await user.click(screen.getByTestId('all-tables-link'))
+  await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
+  await user.click(await screen.findByTestId('glossary-link'))
+  expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
+})
