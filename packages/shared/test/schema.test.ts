@@ -282,6 +282,13 @@ describe('tableSchemaToZod: a column named after an Object.prototype key (#436)'
     expect(s.safeParse({ constructor: 'built', title: 'x' })).toMatchObject({ success: true, data: { constructor: 'built' } })
   })
 
+  it('reads a missing JSON constructor column as absent, and keeps a JSON empty string', () => {
+    const s = tableSchemaToZod([col('constructor', 'JSON'), col('title', 'Data')])
+    const r = s.safeParse({ title: 'x' })
+    expect(r.success && r.data.constructor).toBeUndefined()
+    expect(s.safeParse({ constructor: '', title: 'x' })).toMatchObject({ success: true, data: { constructor: '' } })
+  })
+
   it('still requires a required constructor column', () => {
     const s = tableSchemaToZod([col('constructor', 'Data', { reqd: true })])
     expect(s.safeParse({}).success).toBe(false)
