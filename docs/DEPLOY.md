@@ -21,8 +21,9 @@ The release step takes a Postgres advisory lock
 (`hashtext('featherbase-release')`) for its whole run, so N instances that
 all execute it on boot serialize instead of racing. It runs a **preflight**
 before the first migration (`src/release-preflight.ts`: environment stamp,
-test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods); any
-refusal stops the release before it has changed anything. Each migration then
+test mode, required variables, `INSTANCE_ADDRESSES`, sign-in methods, and
+every installed, enabled app); any refusal stops the release before it has
+changed anything. Each migration then
 runs in its own transaction; the release exits non-zero on the first failure
 without recording the failed step, so the next release retries it. The
 release also prints the [instance health](#instance-health) checks; a failing
@@ -85,19 +86,21 @@ variable.
 | `PREAUTH_SIGNUP_MAX` | no | no | `10` | sign-ups per source and window |
 | `PREAUTH_HANDOFF_MAX` | no | no | `200` | steps of the hand-off between instance addresses per source and window; each hand-off takes two, apart from the Google buckets |
 | `TRUSTED_PROXY_IPS` | no | no |  | comma-separated exact socket IPs trusted to append `X-Forwarded-For` |
+| `CLIENT_ADDRESS_HEADER` | no | no |  | one request header the edge overwrites with the client's address (Railway's edge sets `X-Real-IP` and `X-Forwarded-For`), recorded on each sign-in and used for the pre-auth budgets. Set it only when the edge replaces the caller's copy; see [Behind a proxy](#behind-a-proxy) |
 | `RATE_LIMIT_WINDOW_MS` | no | no | `60000` | per-user API rate-limit window |
 | `RATE_LIMIT_MAX` | no | no | `100000` | per-user API requests per window, unless the person has their own limit |
 | `DELEGATED_LOGIN_TEST_MODE` | **never in production**: development, test and staging only | no |  | `trust-any-password` lets a linked account sign in by its employee code without a password, to try a rollout as any linked Team Leader. Any other value is ignored |
 | `ALLOW_MOCK_OAUTH` | **never outside development and test** | no |  | `1` turns on the mock Google provider, which mints a session for any typed email from a pre-auth endpoint. For development and the test suites |
 | `PREVIEW_LOGIN_KEY` | **never in production**: development, test and staging only | yes |  | preview deployments: the one-link sign-in's secret, 32+ characters. See [PREVIEW.md](PREVIEW.md) |
 | `PREVIEW_LOGIN_USER` | **never in production**: development, test and staging only | no |  | preview deployments: the account the link signs in as (never Administrator) |
+| `PREVIEW_USER_NAME` | no | no |  | preview deployments: the full name the pre-deploy step gives the preview person (default `Preview Visitor`) |
 | `DISABLE_DATABASE_ENVIRONMENT_CHECK` | no | no |  | `1` skips the check that the database was stamped by this environment. Break-glass only |
 | `FEATHERBASE_APP_PATHS` | no | no | `[]` | JSON array of extra app package directories to discover at boot |
 | `JOB_POLL_MS` | no | no | `500` | background worker poll interval |
 | `SERVER_URL` | no | no | `http://localhost:8000` | the server `pnpm smoke` probes |
 | `MOTHERDUCK_TOKEN` | no | yes |  | MotherDuck access for the sales-target embed and warehouse reads; never logged, returned or stored |
 | `MOTHERDUCK_API_BASE` | no | no | `https://api.motherduck.com` | MotherDuck API base |
-| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin; overridable only for a local stub |
+| `MOTHERDUCK_EMBED_ORIGIN` | no | no | `https://embed-motherduck.com` | the embed sandbox origin, framed by the Sales Target page alone (#642); overridable only for a local stub |
 | `DIVE_ID` | no | no |  | the sales-target Dive |
 | `DIVE_VERSION` | no | no |  | the sales-target Dive version |
 | `SERVICE_ACCOUNT` | no | no |  | the MotherDuck service account the embed runs as |
@@ -218,6 +221,17 @@ docker pull ghcr.io/siraj-samsudeen/featherbase-server:<sha>
 
 Until then, a client build fails at its `FROM` line with an authentication
 error (`unauthorized` or `denied`) from `ghcr.io`, even though the tag exists.
+(Done for this package on 27-Oct-2026.)
+
+**The image is built for `linux/amd64` only**, the platform Railway runs. On an
+Apple-silicon Mac, a plain `docker pull` answers "no matching manifest for
+linux/arm64"; pull and run with `--platform linux/amd64` (Docker emulates it,
+more slowly), and build a client image the same way:
+
+```sh
+docker pull --platform linux/amd64 ghcr.io/siraj-samsudeen/featherbase-server:<sha>
+docker build --platform linux/amd64 -t my-client-image .
+```
 
 It is the Dockerfile's `platform` target: the server, the built SPA and the
 start command, with **no app** and no `FEATHERBASE_APP_PATHS`. Its
@@ -239,7 +253,13 @@ ENV FEATHERBASE_APP_PATHS='["/app/client-apps/acme_board-1.0.0","/app/client-app
 ```
 
 Each directory holds the app's `package.json`, `featherbase.json` and the
-built files its manifest names. The start command, `NODE_ENV` and port come
+built files its manifest names. **An image that leaves out a version still
+installed and enabled on the instance is refused:** the release stops before
+its first migration, naming the app and version, so the deployment already
+running keeps serving it. The server's start and `cli boot-check` refuse the
+same way, except on a `development` server, which starts with the app
+unavailable and warns how to bring it back. A disabled app never blocks a
+release. The start command, `NODE_ENV` and port come
 from the platform image; the release step and `cli boot-check` run in the
 client image exactly as described above.
 
@@ -253,9 +273,12 @@ still lists the app's `platformVersion`
 ### Railway
 
 `railway.json` at the repo root encodes this shape: Dockerfile build, a
-pre-deploy step of `pnpm --filter server release && pnpm --filter server
-seed:preview` (the preview seed does nothing unless the preview variables are
-set), and `/api/ping` as the healthcheck. Other platforms map the same
+pre-deploy step of `pnpm --filter server pre-deploy` (the release, then the
+preview seed, which does nothing unless the preview variables are set; either
+failing fails the deploy), and `/api/ping` as the healthcheck. Keep the
+pre-deploy step one command: Railway may run each entry as argv rather than
+through a shell, and a second command chained with `&&` was observed never to
+run while the deploy still went green (#307). Other platforms map the same
 settings onto their own vocabulary. Turn on the host's **deploy-failure
 notification** for each environment (Railway: project notification settings,
 deploy failed, to the owners): a failed release leaves the old code serving,
@@ -485,15 +508,39 @@ list the proxy's exact socket IPs in `TRUSTED_PROXY_IPS` and make sure it
 appends `X-Forwarded-For` correctly. Tune the `PREAUTH_*` budgets for staff who
 share one public IP.
 
+The same address is recorded on each sign-in's Activity Log entry. An edge
+with no fixed addresses to list, such as Railway's, can instead name one header
+it overwrites with the client's address in `CLIENT_ADDRESS_HEADER` (Railway's
+edge sets `X-Real-IP` and `X-Forwarded-For`). The server believes that header
+only when it holds exactly one address. A list, a malformed value or a missing
+header falls back to the socket peer. Set it only when the edge replaces the
+caller's copy rather than appending to it, and only when every route to the
+server passes through that edge (a sibling service on a private network could
+otherwise name any address). Check it on each instance after setting it:
+
+```bash
+curl -s -X POST https://<instance address>/api/login \
+  -H 'content-type: application/json' -H 'X-Forwarded-For: 203.0.113.9' \
+  -d '{"usr":"<your username>","pwd":"<your password>"}' > /dev/null
+```
+
+Send it again with `X-Real-IP: 203.0.113.9` too. Then open the Activity Log.
+Each new sign-in must show your own public address. Anything else is a failed
+check: the forged `203.0.113.9` means the edge passes the caller's header
+through, and an internal address means the header held a list. Try the other
+header, or unset the variable.
+
 ## Instance settings
 
 An instance's non-secret settings are kept in one reviewed file in the
 instance's own private repository, `featherbase/instance-settings.json`. It
 manages `System Settings` (any field, e.g. `app_name`, `time_zone`,
 `privacy_notice`, `invitation_email_intro`), `Sign In Method` rows by `row_id`,
-and `Scheduled Job` rows (`enabled` only). Values that differ by environment go
-in that environment's section; when the file has sections, every apply must
-name one. Secrets never go in it.
+and `Scheduled Job` rows (`enabled` only), and installed apps' declared
+settings as `App Setting` rows (`row_id` `<app>.<setting>`, `value` only).
+Values that differ by environment go in that environment's section; when the
+file has sections, every apply must name one. Secrets never go in it: an app's
+declared secrets are deployment variables, set like any other.
 
 ```bash
 pnpm --filter server cli settings:apply --file featherbase/instance-settings.json --environment dev --dry-run
@@ -518,7 +565,8 @@ on every Admin page while one fails. The release prints the same checks, and
 the `check_instance_health` job runs them every 15 minutes. Checks: a System
 Manager with an email address; recommended variables set; settings file
 applied; settings match the file; each enabled scheduled job ran recently;
-Administrator not on the default password.
+each enabled app has its required settings and secrets; Administrator not on
+the default password.
 
 ## Sign-in methods and linked identities
 
@@ -580,6 +628,11 @@ curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer 
 curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>","planId":"<reviewed planId>"}'
 curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"<app>","version":"<version>"}'
 ```
+
+An app's role suggestions (`roleDefaults`) become App Role Binding rows once,
+at install; an upgrade never writes them again, so a binding an admin removed
+stays removed. Edit bindings in Admin (*App Role Binding*); a binding to `All`
+or `Guest` is refused, and a release that finds one refuses to start.
 
 Back up first. **After the upgrade commits, restoring the old code alone is not
 recovery:** restore the exact target artifact and activate it. There is no

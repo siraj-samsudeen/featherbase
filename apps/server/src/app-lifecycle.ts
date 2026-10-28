@@ -29,6 +29,18 @@ export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
   return clientVersion.run(identities, fn)
 }
 
+/** #559: platform-internal work done on an app's behalf (its scope provider)
+ *  runs as that app's verified installed version, whatever the request named
+ *  for it. The request's identities for every other app are kept. */
+export function withAppIdentity<T>(app: string, version: string, fn: () => Promise<T>) {
+  const supplied = clientVersion.getStore()
+  // A trusted in-process call has no HTTP identities to correct.
+  if (supplied === undefined) return fn()
+  const identities = new Map(supplied)
+  identities.set(app, `${app}@${version}`)
+  return clientVersion.run(identities, fn)
+}
+
 // Identity discovery grants no data access. Never infer a request's version here.
 export async function activeRuntimeVersions(): Promise<string[]> {
   const rows = await sql`select name, package_version from installed_app
@@ -49,6 +61,29 @@ export async function appOperation<T>(fn: () => Promise<T>, exclusive = false): 
     else await tx`select pg_advisory_xact_lock_shared(296, 1)`
     return scope.run({ exclusive }, fn)
   }) as Promise<T>
+}
+
+/** #625 (E5): the installed version and artifact an app is serving now. An
+ *  outbound read records it before its handler runs outside every lock. */
+export async function servingIdentity(app: string): Promise<string> {
+  const [row] = await sql`select package_version, artifact_digest from installed_app where name = ${app}`
+  return `${String(row?.package_version)}:${String(row?.artifact_digest)}`
+}
+
+/** #625 (E5): after an outbound handler ran outside every lock, is its app
+ *  still enabled, active and serving the version it was authorized under?
+ *  Checked under the shared lifecycle lock, before anything it produced is
+ *  answered; `then` (its view records) runs under that same lock, only when
+ *  the check passes, so nothing is written for an app changed meanwhile. */
+export function assertStillServing(app: string, identity: string, then: () => Promise<void>): Promise<void> {
+  return appOperation(async () => {
+    const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
+    if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
+      throw new AppError('PermissionError', `App ${app} is disabled or unavailable`)
+    if (await servingIdentity(app) !== identity)
+      throw new AppError('ConflictError', `App ${app} was upgraded while this read ran. Reload its current client and retry`)
+    await then()
+  })
 }
 
 export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> {

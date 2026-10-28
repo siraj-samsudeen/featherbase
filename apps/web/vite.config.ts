@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { request } from 'node:http'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import istanbul from 'vite-plugin-istanbul'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN } from '../../packages/shared/src/app-routes'
@@ -21,7 +22,6 @@ const api = { target: `http://localhost:${apiPort}`, changeOrigin: false }
 // forwards) ask the API the same question, with the browser's Host, and follow
 // a redirect it gives; anything else is served as before. The API runs no
 // handler for these paths but that redirect, so asking has no side effects.
-const SHELL_ASSETS = /^\/featherbase\/runtime-shell\.(css|js)$/
 function addressRedirects(): Plugin {
   return {
     name: 'featherbase-address-redirects',
@@ -29,7 +29,7 @@ function addressRedirects(): Plugin {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split('?')[0]
         const page = req.method === 'GET' && (req.headers.accept ?? '').includes('text/html')
-        if (!page || !(path === '/' || path.startsWith('/featherbase/')) || SHELL_ASSETS.test(path)) return next()
+        if (!page || !(path === '/' || path.startsWith('/featherbase/'))) return next()
         const ask = request(
           { host: 'localhost', port: apiPort, path: req.url, method: 'GET', headers: { host: req.headers.host ?? '', accept: 'text/html' } },
           (answer) => {
@@ -44,6 +44,42 @@ function addressRedirects(): Plugin {
         )
         ask.on('error', () => next()) // API not up yet: serve the page as before
         ask.end()
+      })
+    },
+  }
+}
+
+// #650: the shared top bar over an installed app's own page. The server's
+// copy of the app's entry document loads /featherbase/bar.js (runtime-shell.ts),
+// a second entry of this app (src/bar/main.tsx). A build emits it at that
+// fixed path beside the SPA (its shared chunks stay hashed under assets/). In
+// dev, Vite answers that path with a module that installs the React refresh
+// preamble (which index.html gets from Vite, and an app's page does not) and
+// then imports the entry's source.
+const BAR_ENTRY = 'src/bar/main.tsx'
+const BAR_SCRIPT = 'featherbase/bar.js'
+function barBundle(): Plugin {
+  return {
+    name: 'featherbase-bar-bundle',
+    config: () => ({
+      build: {
+        rollupOptions: {
+          input: { main: fileURLToPath(new URL('./index.html', import.meta.url)), bar: fileURLToPath(new URL(`./${BAR_ENTRY}`, import.meta.url)) },
+          output: { entryFileNames: (chunk) => (chunk.name === 'bar' ? BAR_SCRIPT : 'assets/[name]-[hash].js') },
+        },
+      },
+    }),
+    configureServer(server) {
+      server.middlewares.use(`/${BAR_SCRIPT}`, (_req, res) => {
+        res.setHeader('content-type', 'text/javascript')
+        res.setHeader('cache-control', 'no-store')
+        res.end(`import RefreshRuntime from '/@react-refresh'
+RefreshRuntime.injectIntoGlobalHook(window)
+window.$RefreshReg$ = () => {}
+window.$RefreshSig$ = () => (type) => type
+window.__vite_plugin_react_preamble_installed__ = true
+await import('/${BAR_ENTRY}')
+`)
       })
     },
   }
@@ -68,7 +104,7 @@ const coverage = process.env.VITE_COVERAGE === 'true'
   : []
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), addressRedirects(), ...coverage],
+  plugins: [react(), tailwindcss(), addressRedirects(), barBundle(), ...coverage],
   server: {
     port: Number(process.env.WEB_PORT ?? 5173),
     strictPort: true,
@@ -79,8 +115,6 @@ export default defineConfig({
     ...(coverage.length ? { hmr: false } : {}),
     proxy: {
       '/api': api,
-      '/featherbase/runtime-shell.css': api,
-      '/featherbase/runtime-shell.js': api,
       [APP_ROOT_PATTERN]: api,
       [LEGACY_HUMAN_ROOT_PATTERN]: api,
       '/files': api,

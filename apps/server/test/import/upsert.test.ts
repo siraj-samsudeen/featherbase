@@ -360,6 +360,41 @@ describe('UPS-R2: match resolution', () => {
     expect(count.count).toBe(1)
   })
 
+  // #517: the file's key is trimmed, and so is the stored one, so a stored
+  // key with stray spaces (or a tab, line break or no-break space from a
+  // pasted cell) still matches and the re-import updates.
+  test('UPS-R2: a stored key with spaces around it still matches the file’s key', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, {
+      rows: [
+        { zone: 'Alpha ', pop: 1 },
+        { zone: '\tBravo\u00a0', pop: 2 },
+      ],
+    })
+    const res = await admin.post<{ updated: number; inserted: number; failed: unknown[] }>(PATH, {
+      key_column: 'zone',
+      rows: [
+        { zone: 'Alpha', pop: 10 },
+        { zone: ' Bravo ', pop: 20 },
+      ],
+    })
+    expect(res).toMatchObject({ updated: 2, inserted: 0, failed: [] })
+    const count = await admin.get<{ count: number }>(`/api/table/${encodeURIComponent(DT)}:count`)
+    expect(count.count).toBe(2)
+    expect((await listRows(admin)).map((r) => Number(r.pop)).sort((a, b) => a - b)).toEqual([10, 20])
+  })
+
+  test('UPS-R2: two stored keys that differ only by spaces are an unclear match, refused with the count', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ zone: 'Echo', pop: 1 }, { zone: 'Echo  ', pop: 2 }] })
+    const res = await admin.post<{ updated: number; failed: { message: string }[] }>(PATH, {
+      key_column: 'zone',
+      rows: [{ zone: 'Echo', pop: 3 }],
+    })
+    expect(res.updated).toBe(0)
+    expect(res.failed[0].message).toContain('matches 2 existing rows')
+  })
+
   test('UPS-R2 property: every row resolves to exactly one action and the arithmetic closes', async ({
     admin,
   }) => {

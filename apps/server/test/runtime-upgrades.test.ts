@@ -189,10 +189,11 @@ describe('runtime upgrades', () => {
     try {
       await discoverPackages([source])
       await admin.post('/api/install_app', { name: 'other' })
-      await sql`alter table other.task add column second text`
       await discoverPackages([source, directory])
       await loadInstalledApps()
       const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      // #651: the preview runs the steps, so the collision arrives after it.
+      await sql`alter table other.task add column second text`
       const body = { name: 'other', version: '2.0.0', planId: plan.planId }
       await expect(admin.post('/api/upgrade_app', body)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('unchanged') })
       expect(await sql`select column_name from information_schema.columns where table_schema = 'other' and table_name = 'task' and column_name = 'notes'`).toEqual([])

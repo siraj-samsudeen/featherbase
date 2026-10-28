@@ -61,6 +61,16 @@ interface UpsertArgs {
 // text for one `= any(...)` scan per request — a seq scan on an unindexed
 // key column. That is the stated answer for now: one scan per 500-row chunk,
 // not per row; an index-on-demand lands when a real dataset hurts.
+// #517: a key is compared with its surrounding whitespace trimmed from BOTH
+// sides — the file's value here, the stored value in SQL — so a stored "A1 "
+// matches a file's "A1". KEY_PADDING is exactly the set JavaScript's trim()
+// removes (the web's duplicate check trims the same way), so both sides
+// agree on every character.
+export const KEY_PADDING =
+  '\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff'
+// The stored side: the exact expression the key index is built on.
+const storedKey = (column: string) => `btrim((${quoteIdent(column)})::text, '${KEY_PADDING}')`
+
 async function resolveRows(
   meta: TableMeta,
   rows: unknown[],
@@ -87,8 +97,8 @@ async function resolveRows(
             select ${key} as row_id, ${key} as k, updated_at, created_by
             from ${sql(tbl)} where ${key} = any(${wanted})`
         : await sql`
-            select ${key} as row_id, ${sql(keyColumn)}::text as k, updated_at, created_by
-            from ${sql(tbl)} where ${sql(keyColumn)}::text = any(${wanted})`
+            select ${key} as row_id, ${sql.unsafe(storedKey(keyColumn))} as k, updated_at, created_by
+            from ${sql(tbl)} where ${sql.unsafe(storedKey(keyColumn))} = any(${wanted})`
     for (const r of found) {
       const k = String(r.k)
       if (!matches.has(k)) matches.set(k, [])
@@ -150,9 +160,9 @@ async function assertRunPermitted(
   }
 }
 
-// #145: resolveRows compares `${key}::text = any(...)`, so only an
-// EXPRESSION index on exactly that cast serves the query — a plain column
-// index would not. Once per process per (table, key); IF NOT EXISTS
+// #145: resolveRows compares the trimmed text of the key (storedKey), so
+// only an EXPRESSION index on exactly that expression serves the query — a
+// plain column index would not. Once per process per (table, key); IF NOT EXISTS
 // carries restarts. The hash suffix keeps long table/column names inside
 // Postgres's 63-char identifier limit without truncation collisions.
 const ensuredKeyIndexes = new Set<string>()
@@ -164,7 +174,7 @@ async function ensureKeyIndex(table: string, keyColumn: string): Promise<void> {
   const tbl = await tableRelation(table)
   const suffix = createHash('sha256').update(cacheKey).digest('hex').slice(0, 8)
   const idx = `${tbl}_${keyColumn}`.slice(0, 46) + `_${suffix}_ukidx`
-  await sql.unsafe(`create index if not exists ${quoteIdent(idx)} on ${quoteRelation(tbl)} (((${quoteIdent(keyColumn)})::text))`)
+  await sql.unsafe(`create index if not exists ${quoteIdent(idx)} on ${quoteRelation(tbl)} ((${storedKey(keyColumn)}))`)
   ensuredKeyIndexes.add(cacheKey)
 }
 
@@ -214,7 +224,7 @@ function updateValues(
   const values: Record<string, unknown> = { ...row }
   if (upsert.emptyCells === 'clear')
     for (const col of upsert.columns!)
-      if (col !== ROW_KEY && col !== upsert.keyColumn && !(col in values)) values[col] = null
+      if (col !== ROW_KEY && col !== upsert.keyColumn && !Object.hasOwn(values, col)) values[col] = null
   values[ROW_KEY] = matched.row_id
   // The optimistic-concurrency stamp updateDoc demands; saveDoc normalizes it.
   values.updated_at = matched.updated_at

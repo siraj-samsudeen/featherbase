@@ -15,6 +15,8 @@ import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
 import { applyMigrationFile, pendingMigrations } from './migrate'
 import { invalidateMeta } from './meta'
+import { readVariable } from './env'
+import { rehearseAppUpgrades } from './runtime-packages'
 
 /** Where the rehearsal's report goes: the terminal, or a test's buffer. */
 type RehearsalOutput = (line: string) => void
@@ -44,6 +46,8 @@ export async function rehearse(out: RehearsalOutput = console.log): Promise<void
     await withTransaction(async () => {
       try {
         for (const file of pending) await applyReporting(file, out)
+        // #651: then each app upgrade this release ships, with what it removes.
+        for (const line of await rehearseAppUpgrades(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) out(line)
       } finally {
         invalidateMeta()
       }

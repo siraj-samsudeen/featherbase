@@ -18,7 +18,7 @@ import { AppError, markLogged, statusOf } from './errors'
 import { getRoles } from './permissions'
 import { logAccess } from './audit'
 import type { SessionUser } from './auth'
-import { platformRelation } from './platform-schema'
+import { platformRelation, tableName } from './platform-schema'
 import { tableRelation } from './table-engine'
 import { EMPLOYEE_CODE_SYSTEM } from './person-identifiers'
 
@@ -417,11 +417,15 @@ async function currentAssignments(user: string, period: Period = currentPeriod()
   // D10: a code we cannot attribute to one person blocks the whole reader — no partial scope.
   const { codes, ambiguous } = await currentEmployeeCodes(user)
   if (ambiguous) return []
-  const explicit = await sql`
-    select plant_code, store_label, material_group
-    from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
-    where employee = ${user}
-    order by material_group`
+  // #448: an install that never seeded the report has no assignment Table:
+  // that is "no assignment rows", not an error.
+  const explicit = (await relationExists(tableName(ASSIGNMENT_TABLE)))
+    ? await sql`
+      select plant_code, store_label, material_group
+      from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
+      where employee = ${user}
+      order by material_group`
+    : []
   const derived = await derivedFromSections(codes, period.period_end)
   const plants = [...new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])].sort()
   // The maps are edited by the store, and the live read and the Dive both put these codes into

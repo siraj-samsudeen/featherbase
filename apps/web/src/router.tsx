@@ -17,6 +17,7 @@ import { ManageOnly } from './pages/RestrictedShell'
 import { EmptyState, buttonClasses } from './components/ui'
 import { useCapabilities } from './lib/session'
 import { ApiError, getToken, landingPath, loginHref } from './lib/api'
+import { crossesFramePolicy } from './lib/document-path'
 import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -28,7 +29,7 @@ import { TableNaming } from './components/TableNaming'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
-import { JobMonitor } from './components/JobMonitor'
+import { Jobs } from './pages/Jobs'
 import { AccessTokens } from './pages/AccessTokens'
 import { SignInMethods } from './pages/SignInMethods'
 import { AccountLayout } from './pages/AccountLayout'
@@ -52,7 +53,15 @@ import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
 
-const rootRoute = createRootRoute({ component: Outlet })
+// #642 (E4): a page with a frame policy of its own (the Sales Target report)
+// is entered and left by a full load, so each document carries the policy the
+// server set for the page it shows. Checked on every navigation.
+const rootRoute = createRootRoute({
+  component: Outlet,
+  beforeLoad: ({ location }) => {
+    if (crossesFramePolicy(location.pathname)) throw redirect({ href: location.href, reloadDocument: true })
+  },
+})
 
 // #87: every search param below is a string to the app, but TanStack's default
 // search parser runs JSON.parse over each value — so a URL that was TYPED or
@@ -498,11 +507,14 @@ function ScriptReportPage() {
   )
 }
 
-// JOB-004: background job monitor (static segment).
+// #464: the Jobs page (System Manager only): every scheduled job, and the
+// queue monitor (JOB-004) below it.
 const jobsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'jobs',
-  component: JobMonitor,
+  component: () => (
+    <ManageOnly><Jobs /></ManageOnly>
+  ),
 })
 
 // #131: access tokens + service accounts (static segment).

@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { isActingSystemActor } from './system-actor'
+import { asNameList, declaresOwnPages } from './installed-app-ledger'
 
 // PERM-001: role resolution for a principal — a person or a service account
 // (person-rename R2). Every enabled principal implicitly holds 'All';
@@ -12,12 +13,51 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (principal === 'Guest') return ['Guest']
   // The server's own actor (system-actor.ts), only inside its operation.
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
+  // Migrations before App Role Binding's own (0133) resolve roles too.
+  if (!bindingsExist) {
+    const [{ ok }] = await sql`select to_regclass('featherbase.app_role_binding') is not null as ok`
+    if (!ok) {
+      const rows = await sql`
+        select role from has_role
+        where parent = ${principal} and parenttype in ('Person', 'Service Account')
+        order by role`
+      return ['All', ...rows.map((r) => r.role as string)]
+    }
+    bindingsExist = true
+  }
+  // One round trip: the roles held directly (app null), then the app roles
+  // bound to them (#620, D4). getRoles runs on nearly every permission check.
   const rows = await sql`
-    select role from has_role
-    where parent = ${principal} and parenttype in ('Person', 'Service Account')
-    order by role`
-  return ['All', ...rows.map((r) => r.role as string)]
+    with held as (
+      select role from has_role
+      where parent = ${principal} and parenttype in ('Person', 'Service Account'))
+    select role, null as app from held
+    union all
+    select distinct b.app_role as role, b.app from app_role_binding b
+    join installed_app a on a.name = b.app and a.enabled and not a.activation_pending
+    where b.bound_role in (select role from held)
+      and b.bound_role not in ${sql(OPEN_ROLES)}
+      and b.app_role not in ${sql(PLATFORM_ROLES)}
+      and jsonb_typeof(a.manifest->'roles') = 'array' and a.manifest->'roles' ? b.app_role
+    order by app nulls first, role`
+  const held = ['All', ...rows.filter((r) => r.app === null).map((r) => r.role as string)]
+  // The same availability assertAppAvailable requires: enabled, not pending
+  // activation, and its exact files loaded (activeApps).
+  const bound = rows.filter((r) => r.app !== null && activeApps.has(String(r.app))).map((r) => r.role as string)
+  return [...held, ...[...new Set(bound)].filter((role) => !held.includes(role)).sort()]
 }
+
+// #620 (D4): an app role is held through any role bound to it (App Role
+// Binding), read fresh on every call. Only a role the app itself declares, of
+// an enabled and available app, and never a platform role: a binding cannot
+// hand out System Manager. One level: a role held only through a binding
+// binds nothing further.
+/** Roles no binding may involve as the app role: the platform's own. */
+export const PLATFORM_ROLES: readonly string[] = ['Administrator', 'System Manager', 'All', 'Guest']
+/** Roles no binding may carry an app role through: every signed-in person
+ *  holds All, and anyone holds Guest. */
+export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
+let bindingsExist = false
 
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
@@ -118,17 +158,28 @@ export async function assertPermission(
 
 /**
  * What Tables a principal can use, for drawing the shell (#410): the Tables
- * they can read or create in, and whether they hold any Table grant of their
- * own or a shared row. Display only — every request is still checked by its own
- * route. Sub-tables and dropped Tables never count (same filter as
+ * they can read or create in, and whether they can use the Admin screens.
+ * Sub-tables and dropped Tables never count (same filter as
  * /api/navigable_tables). Grants to the implicit built-in `All` role (they come
  * from runtime apps) make a Table listable but do not by themselves earn the
  * Admin shell.
+ *
+ * `admin` is THE rule for "can use Admin" (#659): whoami's capability, the
+ * sign-in landing and "Open Admin" all read it. It needs a Table grant of the
+ * principal's own, or a shared row, on a Table that no installed app opening
+ * at its own root owns: its installation declares pages of its own
+ * (declaresOwnPages, read from the installed_app row, so it never depends on
+ * the app's files loading). Such an
+ * app's Tables (enabled or not) are reached through the app: every reader of
+ * an app reads its entry Table, so counting them would hand the Admin to
+ * everyone who can open an app. An app without pages of its own is used
+ * through the Admin, so its Tables still count. App Tables are still listed
+ * for anyone who can use Admin for another reason.
  */
 export async function tableAccessFor(
   principal: string,
   roles: string[],
-): Promise<{ readable: string[]; creatable: string[]; ownGrant: boolean; any: boolean }> {
+): Promise<{ readable: string[]; readableByOwnRole: string[]; creatable: string[]; ownGrant: boolean; admin: boolean }> {
   const rows = await sql`
     select p.ref_table, p.role, p.can_read, p.owner_app,
       -- #432: a grant never makes a system-written Table creatable.
@@ -143,16 +194,27 @@ export async function tableAccessFor(
   )
   const names = (pick: (r: (typeof active)[number]) => boolean) =>
     [...new Set(active.filter(pick).map((r) => r.ref_table as string))].sort()
-  const [shared] = await sql`
-    select 1 from share
-    where (person = ${principal} or service_account = ${principal}) and read = true limit 1`
-  const ownGrant = active.some((r) => r.role !== 'All')
+  const appTables = await tablesOfAppsWithOwnPages()
+  const shared = await sql`
+    select distinct share_table from share
+    where (person = ${principal} or service_account = ${principal}) and read = true`
+  const ownGrant = active.some((r) => r.role !== 'All' && !appTables.has(String(r.ref_table)))
   return {
     readable: names((r) => r.can_read),
+    // Read through a role of the principal's own, never only through All: an
+    // app open to everyone is no one's in particular (the sign-in landing).
+    readableByOwnRole: names((r) => r.can_read && r.role !== 'All'),
     creatable: names((r) => r.can_create),
     ownGrant,
-    any: ownGrant || Boolean(shared),
+    admin: ownGrant || shared.some((r) => !appTables.has(String(r.share_table))),
   }
+}
+
+/** #659: the Tables of installed apps that declare pages of their own,
+ *  enabled or not, loaded here or not, read through the ledger's one decoder. */
+async function tablesOfAppsWithOwnPages(): Promise<Set<string>> {
+  const rows = await sql`select tables, runtime_package, manifest from installed_app`
+  return new Set(rows.filter(declaresOwnPages).flatMap((r) => asNameList(r.tables)))
 }
 
 /** Administrator, or a principal of either kind holding System Manager. */
@@ -199,7 +261,7 @@ export function checkUserPermissions(
     if (!f.reference_table) continue
     const allowed = map.get(f.reference_table)
     if (!allowed) continue
-    const value = row[f.column_name]
+    const value = Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined
     if (value == null || value === '') continue
     if (!allowed.has(String(value)))
       throw new AppError(

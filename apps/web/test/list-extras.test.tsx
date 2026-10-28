@@ -64,7 +64,7 @@ test("an expanded row totals its money column", async ({ admin }) => {
   expect(lines.textContent).toMatch(/Σ Price: ₹\s?1,500\.50/)
 })
 
-test('a bulk edit the server refuses says why, and leaves the rows as they were', async ({ admin }) => {
+test('a bulk edit the server refuses names the field and why, and leaves the rows as they were', async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
   await renderApp(`/featherbase/admin/${ENC}`, admin)
@@ -74,7 +74,8 @@ test('a bulk edit the server refuses says why, and leaves the rows as they were'
   await user.selectOptions(await screen.findByTestId('bulk-edit-field'), 'customer')
   // Customer is required: clearing it is refused.
   await user.click(screen.getByTestId('bulk-edit-apply'))
-  expect(await screen.findByTestId('bulk-error')).toHaveTextContent('Invalid values for Lx Order')
+  // #540: the refusal names the field and why, not just "Invalid values".
+  expect(await screen.findByTestId('bulk-error')).toHaveTextContent(/Invalid values for Lx Order — Customer: \S/)
   const rows = (await admin.get(`/api/table/${ENC}?fields=${encodeURIComponent('["customer"]')}`)) as { data: { customer: string }[] }
   expect(rows.data.map((r) => r.customer).sort()).toEqual(['Asha', 'Ashok', 'Ravi'])
 })

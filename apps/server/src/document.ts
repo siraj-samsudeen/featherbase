@@ -7,19 +7,20 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { retainedDocumentCounts } from './document-activity'
-import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
+import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
-import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workflow'
+import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApproversOfNewRow } from './workflow'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
-import { SECURITY_TABLES, assertSecurityWriter, securityRefusal } from './security-tables'
+import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
 import {
   assertDocPermission,
   assertPermission,
@@ -34,11 +35,18 @@ import {
 import {
   assertBoundScope,
   boundFetchDoc,
+  explainRefusal,
   isBound,
   mapRowOut,
   mapValuesIn,
   writableContext,
 } from './sources/dispatch'
+
+// #436: a row's value for a column, read only from the row itself: a column
+// named after an Object.prototype key (constructor) must not find the built-in.
+function own(row: RowValues, column: string): unknown {
+  return Object.hasOwn(row, column) ? row[column] : undefined
+}
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -46,7 +54,7 @@ function columnValues(meta: TableMeta, row: RowValues): RowValues {
   const out: RowValues = {}
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (f.column_name in row) out[f.column_name] = row[f.column_name]
+    if (Object.hasOwn(row, f.column_name)) out[f.column_name] = row[f.column_name]
   }
   return out
 }
@@ -72,6 +80,10 @@ function validateValues(
   // undefined; write them back as explicit nulls so updates can clear values.
   for (const key of Object.keys(values))
     if (parsed[key] === undefined) parsed[key] = null
+  // #436: zod keeps a key the input only inherits (constructor) as undefined;
+  // a column the row left out stays out.
+  for (const key of Object.keys(parsed))
+    if (parsed[key] === undefined && !Object.hasOwn(values, key)) delete parsed[key]
   return parsed
 }
 
@@ -127,7 +139,7 @@ async function resolveRowId(
   }
   if (rule.startsWith('field:')) {
     const columnName = rule.slice('field:'.length)
-    const value = String(values[columnName] ?? '').trim()
+    const value = String(own(values, columnName) ?? '').trim()
     if (!value)
       throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
         [columnName]: `${columnName} is required for naming`,
@@ -177,13 +189,9 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
   const out = { ...values }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    if (out[f.column_name] != null) continue
+    if (own(out, f.column_name) != null) continue
     if (f.default_value == null) continue
-    if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
-      out[f.column_name] = Number(f.default_value)
-    else if (f.column_type === 'Check')
-      out[f.column_name] = f.default_value === '1' || f.default_value === 'true'
-    else out[f.column_name] = f.default_value
+    out[f.column_name] = defaultValueFor(f.column_type, f.default_value)
   }
   return out
 }
@@ -238,7 +246,8 @@ async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Pr
 }
 
 // META-008: every Reference value must point at an existing row of the
-// target Table. Runs inside the save transaction alongside validation.
+// target Table. Local targets are checked inside the save transaction;
+// source-bound targets are asked of their source.
 async function validateLinks(
   tx: typeof sql,
   meta: TableMeta,
@@ -248,13 +257,23 @@ async function validateLinks(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Reference') continue
-    const value = fieldValues[f.column_name]
+    const value = own(fieldValues, f.column_name)
     if (value == null || value === '') continue
     const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
+    // select *: early migrations save rows before table_def has data_source.
+    const [targetMeta] = await tx`select * from table_def where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
+      continue
+    }
+    // A source-bound target has no local table: ask its source (EDS-5). Like
+    // the native lookup, this checks existence only, not the caller's access.
+    // It runs outside the save transaction, so it is best-effort: the source
+    // can drop the row before this save commits.
+    if (targetMeta.data_source) {
+      if (!(await boundFetchDoc(await getMeta(target), String(value))))
+        errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
       continue
     }
     const [row] = await tx`
@@ -324,13 +343,35 @@ async function assertParentReadable(row: RowValues, user: string) {
   await assertUserPermissions(user, parentMeta, parent as RowValues)
 }
 
+// #342: a comment or an edit opens only for someone who may open its row;
+// an edit also needs every column of that row, unless the row is shared with
+// them (a share shows every column). The row's activity is the way in for
+// everyone else. Privileged callers pass, as everywhere.
+async function assertAttachedRowReadable(table: string, row: RowValues, user: string) {
+  if (await isPrivileged(user)) return
+  const refTable = row.ref_table ? String(row.ref_table) : ''
+  const refName = row.ref_name ? String(row.ref_name) : ''
+  if (!refTable || !refName) return
+  const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
+  const refMeta = await getMeta(refTable).catch(() => null)
+  if (!refMeta) throw refused()
+  try {
+    await getDoc(refTable, refName, user)
+  } catch (err) {
+    if (err instanceof AppError) throw refused()
+    throw err
+  }
+  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+    throw refused()
+}
+
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
 // saved as child rows in the same transaction as the parent.
 function pickChildInputs(meta: TableMeta, values: RowValues) {
   const out: { columnName: string; childTable: string; rows: RowValues[] }[] = []
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table') continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) continue
     if (!Array.isArray(raw))
       throw new AppError('ValidationError', 'Invalid child table payload', {
@@ -378,7 +419,7 @@ function assertRequiredChildren(
   const errors: Record<string, string> = {}
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table' || !f.reqd) continue
-    const raw = values[f.column_name]
+    const raw = own(values, f.column_name)
     if (raw === undefined) {
       if (mode === 'insert') errors[f.column_name] = 'Required'
       continue
@@ -403,17 +444,19 @@ async function assertAccessColumnsUnchanged(
   existing: RowValues | null,
   user: string,
   trusted: boolean,
+  writeTiers: Tiers,
 ): Promise<void> {
   const changed: string[] = []
   for (const input of pickChildInputs(meta, values)) {
-    if (!SECURITY_TABLES.has(input.childTable)) continue
+    if (!(await isSecurityTable(input.childTable))) continue
     if (existing === null) {
       if (input.rows.length) changed.push(input.columnName)
       continue
     }
     const childMeta = await getMeta(input.childTable)
+    const childTiers = await childWriteTiers(user, writeTiers, childMeta.name)
     const cols = childMeta.columns.filter((f) => !NO_COLUMN_TYPES.has(f.column_type))
-    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (r[f.column_name] == null ? '' : String(r[f.column_name]))))
+    const key = (r: RowValues) => JSON.stringify(cols.map((f) => (own(r, f.column_name) == null ? '' : String(r[f.column_name]))))
     const current = await tx`
       select * from ${tx(await tableRelation(childMeta.name))}
       where parent = ${String(existing[meta.row_key] ?? existing[ROW_KEY])} and parenttype = ${meta.name}
@@ -434,7 +477,7 @@ async function assertAccessColumnsUnchanged(
       named.add(id)
       let written: RowValues
       try {
-        written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update') }
+        written = { ...stored.get(id)!, ...childFieldValues(childMeta, r, 'update', childTiers) }
       } catch {
         // A row that fails validation counts as a change; the save that
         // follows meets the same failure and reports it.
@@ -476,8 +519,23 @@ async function assertAccessColumnsUnchanged(
 }
 
 // The column values saveChildren writes for one payload row.
-function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update'): RowValues {
-  return validateValues(childMeta, applyDefaults(childMeta, pickFieldValues(childMeta, row)), mode)
+// #341: as readerFor, for writes — the parent's grant or the sub-table's own
+// reaches a restricted child column. Basic columns stay writable whatever the
+// tier grant says: whether this writer may save these child rows at all was
+// already settled on the parent (a create-only grant carries no write tier).
+async function childWriteTiers(user: string, parentWriteTiers: Tiers, childTable: string): Promise<Tiers> {
+  return new Set(['basic', ...parentWriteTiers, ...(await permittedTiers(user, childTable, 'write'))])
+}
+
+// Tiers are stripped before defaults on insert (a hidden column still gets
+// its default) and after them on update (a default never lands on a stored
+// value the writer could not see).
+function childFieldValues(childMeta: TableMeta, row: RowValues, mode: 'insert' | 'update', writeTiers: Tiers): RowValues {
+  const strip = (values: RowValues) => stripUnwritableFields(childMeta.columns, writeTiers, values)
+  const values = mode === 'insert'
+    ? applyDefaults(childMeta, strip(pickFieldValues(childMeta, row)))
+    : strip(applyDefaults(childMeta, pickFieldValues(childMeta, row)))
+  return validateValues(childMeta, values, mode)
 }
 
 async function saveChildren(
@@ -486,8 +544,12 @@ async function saveChildren(
   parentRowId: string,
   input: { columnName: string; childTable: string; rows: RowValues[] },
   user: string,
+  parentWriteTiers: Tiers,
 ) {
   const childMeta = await getMeta(input.childTable)
+  // #341: a child column above the writer's tier is dropped, as on the
+  // parent — so a form that was never shown it cannot overwrite or set it.
+  const writeTiers = await childWriteTiers(user, parentWriteTiers, childMeta.name)
   const table = await tableRelation(childMeta.name)
   const childKey = childMeta.row_key
   const existing = await tx`
@@ -503,7 +565,7 @@ async function saveChildren(
     const isExisting = rowId != null && existingIds.has(String(rowId))
     let fieldValues: RowValues
     try {
-      fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert')
+      fieldValues = childFieldValues(childMeta, row, isExisting ? 'update' : 'insert', writeTiers)
     } catch (err) {
       // childFieldValues refuses only field by field; anything else is a bug.
       if (!(err instanceof AppError) || !err.fields) throw err
@@ -559,12 +621,15 @@ function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   // #132: the single physical→wire crossing. Storage may key the row under a
   // different column (only `Table` does, see meta.ts); everything above this
   // line — API responses, the Admin, tests — sees `row_id` and nothing else.
-  if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
+  if (meta.row_key !== ROW_KEY && Object.hasOwn(row, meta.row_key)) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
   return out
 }
 
+// The whole row with its sub-table rows, every tier included. Only the
+// server's own consumers (hooks, assignment rules) take it as it is; anything
+// a person or another system sees passes through restrictRow first.
 async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues> {
   for (const f of meta.columns) {
     if (f.column_type !== 'Sub-table') continue
@@ -768,7 +833,7 @@ async function writeDoc(
       const finalChildInputs = pickChildInputs(meta, row)
       // #437: judged on the row the hooks and scripts leave behind, the one
       // that is written — not on the payload.
-      await assertAccessColumnsUnchanged(stx, meta, row, null, user, Boolean(opts.skipPermissions))
+      await assertAccessColumnsUnchanged(stx, meta, row, null, user, Boolean(opts.skipPermissions), writeTiers)
       const dbRow = {
         ...columnValues(meta, row),
         [meta.row_key]: String(row[ROW_KEY]),
@@ -786,7 +851,7 @@ async function writeDoc(
       // #465 D5: a new row under a locked row's id would set its locked fields.
       await assertManagedUnchanged(stx, meta, String(rowId), null, inserted[0] as RowValues, user)
       for (const input of finalChildInputs)
-        await saveChildren(stx, meta, rowId, input, user)
+        await saveChildren(stx, meta, rowId, input, user, writeTiers)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
@@ -801,6 +866,7 @@ async function writeDoc(
   await afterDocumentCommit(async () => {
     await evaluateEmailRules('on_create', meta.name, insertResult)
     await evaluateEmailRules('on_save', meta.name, insertResult)
+    await notifyApproversOfNewRow(meta.name, insertResult, user)
     await evaluateAssignmentRules(meta.name, insertResult)
     await evaluateWebhooks('after_insert', meta.name, insertResult)
     await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
@@ -858,7 +924,7 @@ async function saveBoundDoc(
   await assertUserPermissions(user, meta, hctx.row)
   const inserted = await ctx.driver
     .insert(ctx.bind, mapValuesIn(ctx.bind, columnValues(meta, hctx.row)), providedName)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   const doc = mapRowOut(ctx.bind, inserted)
   hctx.row = { ...doc }
   await runHooks('after_insert', hctx)
@@ -881,7 +947,7 @@ function expectedStamp(value: unknown): string {
 
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
-// Without one, updates are last-write-wins (the Admin shows that state).
+// Without one, updates are last-write-wins; the Admin row form says so (#328).
 async function updateBoundDoc(
   meta: TableMeta,
   ctx: Awaited<ReturnType<typeof writableContext>>,
@@ -930,7 +996,7 @@ async function updateBoundDoc(
   const expect = ctx.bind.modified ? expectedStamp(values.updated_at) : null
   const updated = await ctx.driver
     .update(ctx.bind, name, sourceValues, expect)
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => explainRefusal(meta, ctx.bind, err))
   if (updated === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (updated === 'conflict')
@@ -1046,7 +1112,7 @@ async function updateDoc(
       // #437: neither a role grant nor a write-share opens access columns.
       // Judged on the row the hooks and scripts leave behind — the one that
       // is written — against the stored row.
-      await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted)
+      await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),
@@ -1065,7 +1131,7 @@ async function updateDoc(
       // carries no Sub-table columns, so the key exists only if the payload
       // sent it or a hook set it.
       for (const input of pickChildInputs(meta, row))
-        await saveChildren(stx, meta, name, input, user)
+        await saveChildren(stx, meta, name, input, user, writeTiers)
       await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
       ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
@@ -1104,8 +1170,8 @@ async function recordVersion(
   const changed: [string, unknown, unknown][] = []
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
-    const b = norm(before[f.column_name])
-    const a = norm(after[f.column_name])
+    const b = norm(own(before, f.column_name))
+    const a = norm(own(after, f.column_name))
     if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
@@ -1188,7 +1254,8 @@ async function setStatus(
   }))
   const result = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
-  await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
+  // The loaded row, not the raw one: internal columns never reach a template.
+  await evaluateEmailRules(event as LifecycleEvent, table, result)
   // PLAT-005: fire webhooks for submit/cancel (post-commit).
   await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', table, result)
   return result
@@ -1232,7 +1299,7 @@ async function amendDocImpl(
     if (f.column_name === 'amended_from') continue
     if (f.column_type === 'Section Break' || f.column_type === 'Column Break') continue
     if (f.column_type === 'Sub-table') {
-      const rows = (source[f.column_name] as RowValues[] | undefined) ?? []
+      const rows = (own(source, f.column_name) as RowValues[] | undefined) ?? []
       values[f.column_name] = rows.map((r) => {
         const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
@@ -1240,10 +1307,24 @@ async function amendDocImpl(
         return copy
       })
     } else {
-      values[f.column_name] = source[f.column_name]
+      values[f.column_name] = own(source, f.column_name)
     }
   }
   return saveDoc(table, values, user)
+}
+
+// #559: deleting or renaming a row removes or re-points its child rows
+// directly, outside saveChildren. A Sub-table marked decides_scope guards
+// those rows as a save would. (A named security child such as a Person's
+// roles goes with its parent, under the parent's own delete rule.)
+async function assertChildRowsWritable(tx: typeof sql, meta: TableMeta, name: string, user: string): Promise<void> {
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !(await getMeta(f.row_table!)).decides_scope) continue
+    const [held] = await tx`
+      select 1 from ${tx(await tableRelation(f.row_table!))}
+      where parent = ${name} and parenttype = ${meta.name} limit 1`
+    if (held) await assertSecurityWriter(f.row_table!, user)
+  }
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
@@ -1324,6 +1405,7 @@ async function deleteDocImpl(
     await runHooks('on_trash', ctx)
 
     // Remove this row's own child rows, then the row.
+    await assertChildRowsWritable(stx, meta, name, user)
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       await tx`
@@ -1396,7 +1478,9 @@ async function deleteBoundDoc(
     tx: sql,
   }
   await runHooks('on_trash', hctx)
-  const outcome = await ctx.driver.remove(ctx.bind, name, expectUpdatedAt)
+  const outcome = await ctx.driver
+    .remove(ctx.bind, name, expectUpdatedAt)
+    .catch((err) => explainRefusal(meta, ctx.bind, err, name))
   if (outcome === 'missing')
     throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   if (outcome === 'conflict')
@@ -1456,6 +1540,7 @@ async function renameDocImpl(
     await assertRowNotManaged(stx, meta, target, user)
     await assertNoManagedReference(stx, table, oldName, user)
 
+    await assertChildRowsWritable(stx, meta, oldName, user)
     // Rename the row itself.
     await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 
@@ -1525,13 +1610,12 @@ async function getDocImpl(
     await assertDocPermission(user, table, 'read', String(row.created_by))
     await assertUserPermissions(user, meta, row as RowValues)
     if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
+    if (ROW_ATTACHED_TABLES.has(meta.name)) await assertAttachedRowReadable(meta.name, row as RowValues, user)
   }
-  // A share grants full field visibility; otherwise honor tiers.
-  const readTiers = shared
-    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
-    : await permittedTiers(user, table, 'read')
-  const visible = filterReadFields(meta.columns, readTiers, row as RowValues)
-  return loadChildren(meta, { table, ...visible })
+  // A share grants full field visibility; otherwise honor tiers, on the row
+  // and on its sub-table rows alike (#341).
+  const reader = shared ? FULL_READER : await readerFor(user, table, 'read')
+  return restrictRow(meta, await loadChildren(meta, { table, ...(row as RowValues) }), reader)
 }
 
 // SET-001: read a Settings Table's one instance from the EAV store, applying

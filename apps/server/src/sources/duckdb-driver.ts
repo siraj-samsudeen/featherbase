@@ -1,4 +1,6 @@
 import { AppError } from '../errors'
+import { datasetQueryText } from './dataset-query'
+import { datasetSourceReadOnly } from './read-only'
 import { readNamedVariable } from '../env'
 import type {
   Binding,
@@ -48,13 +50,22 @@ function requireUrl(cfg: SourceConfig): string {
   return value
 }
 
+// #625: every path through this driver only reads (it has no write path), so
+// one instance per source serves them all, and a local file is opened with
+// DuckDB's READ_ONLY access mode: browsing, testing the connection and an
+// app's dataset query share it, and any write (nextval included) is refused.
+// One instance per file, one setting, so DuckDB never meets the same file
+// opened twice with different settings. MotherDuck (`md:`) cannot be opened
+// read-only; its guarantee is a read-scaling token (read-only.ts).
+const isMotherDuck = (url: string) => url.startsWith('md:')
+
 async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
   const url = requireUrl(cfg)
   const cached = await instances.get(cfg.name)?.catch(() => null)
   if (cached && cached.url === url) return cached
   const entry = (async () => {
     const { DuckDBInstance } = await loadDuckdb()
-    const instance = await DuckDBInstance.create(url)
+    const instance = await DuckDBInstance.create(url, isMotherDuck(url) ? undefined : { access_mode: 'READ_ONLY' })
     return { instance, url }
   })()
   instances.set(cfg.name, entry)
@@ -164,6 +175,16 @@ const READ_ONLY = () => {
 export const duckdbDriver: SourceDriver = {
   engine: 'duckdb',
   writable: false,
+
+  // #625: an app's dataset query (MotherDuck in production). Wrapped as a
+  // sub-query, so only a query that reads can run.
+  async query(cfg, query, columns, where) {
+    if (!datasetSourceReadOnly(cfg))
+      throw new AppError('PermissionError', `Data source ${cfg.name} is MotherDuck without a read-scaling token, so it cannot run an app's dataset query`)
+    const { text, values } = datasetQueryText(query, columns, where,
+      { placeholder: () => '?', asText: (column) => `cast(${column} as varchar)`, asDay: (column) => `cast(cast(${column} as date) as varchar)` })
+    return run(cfg, text, values)
+  },
 
   async test(cfg) {
     await run(cfg, 'select 1', [])

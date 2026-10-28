@@ -1,4 +1,4 @@
-import { sql } from './db'
+import { sql, whenTransactionEnds } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 import { assertAppAvailable } from './app-lifecycle'
@@ -75,8 +75,16 @@ export const ROW_KEY = 'row_id'
 // `row_id`, so nothing above the SQL layer — the Admin included — has to know.
 const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
 
+/** A column's stored default (always text) as the value a save writes. #651:
+ *  an app upgrade fills existing rows with it the same way. */
+export function defaultValueFor(columnType: string, defaultValue: string): unknown {
+  if (columnType === 'Int' || columnType === 'Float' || columnType === 'Currency') return Number(defaultValue)
+  if (columnType === 'Check') return defaultValue === '1' || defaultValue === 'true'
+  return defaultValue
+}
+
 export function physicalRowKey(table: string): string {
-  return PHYSICAL_ROW_KEY_OVERRIDES[table] ?? ROW_KEY
+  return Object.hasOwn(PHYSICAL_ROW_KEY_OVERRIDES, table) ? PHYSICAL_ROW_KEY_OVERRIDES[table] : ROW_KEY
 }
 
 export interface TableMeta {
@@ -105,6 +113,8 @@ export interface TableMeta {
   // #432: rows are written by the server's own code alone; every public write
   // path refuses the Table for every principal (system-written.ts).
   system_written?: boolean
+  // #559: the Table's rows decide which places people cover (from 0131 on).
+  decides_scope?: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes
   // dispatch through sources/ (see sources/dispatch.ts).
@@ -147,6 +157,13 @@ let backlinksCache: Map<string, Backlink[]> | null = null
 let generation = 0
 
 export function invalidateMeta(name?: string) {
+  clearMeta(name)
+  // #448: and again once the change commits, so nothing read in between —
+  // the old definition, from another connection — outlives it.
+  whenTransactionEnds(() => clearMeta(name))
+}
+
+function clearMeta(name?: string) {
   generation++
   if (name) cache.delete(name)
   else cache.clear()

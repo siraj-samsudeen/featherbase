@@ -141,6 +141,9 @@ export default defineConfig({
             DATABASE_URL: e2eDatabaseUrl(),
             FEATHERBASE_APP_PATHS: JSON.stringify([
               resolve('../../runtime-apps/tasker'), resolve('../../runtime-apps/other'),
+              // #642: an app that declares a top-bar picker, and the app that
+              // gives its readers their places (top-bar-picker.spec.ts).
+              resolve('../../runtime-apps/fixtures/bar-proof'), resolve('../../runtime-apps/fixtures/place-roster'),
             ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
             // database for the 'test' environment (which is what lets the reset
@@ -165,6 +168,8 @@ export default defineConfig({
             INSTANCE_ADDRESSES: JSON.stringify([
               { address: `http://admin.localhost:${webPort}`, opens: 'admin', emails: true },
               { address: `http://dash.localhost:${webPort}`, opens: 'feather_dash' },
+              // #642: an installed app's own address, for its top-bar picker.
+              { address: `http://barproof.localhost:${webPort}`, opens: 'barproof' },
             ]),
           },
         },

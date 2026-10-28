@@ -227,7 +227,7 @@ function applyValues(model: CsvModel, fields: string[], values: SourceRow): stri
   const next = [...fields]
   while (next.length < model.headers.length) next.push('')
   model.headers.forEach((h, i) => {
-    if (h in values) next[i] = toCell(values[h])
+    if (Object.hasOwn(values, h)) next[i] = toCell(values[h])
   })
   return next
 }

@@ -8,12 +8,16 @@
 // Needs a running MySQL and MYSQL_TEST_URL (e.g. mysql://root@127.0.0.1:3306
 // — no database path; the suite creates/drops ext_mysql itself). Without the
 // variable the whole file skips: CI and checkouts without MySQL stay green.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import mysql from 'mysql2/promise'
 import { test, patchDoc } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
 import { mysqlDriver } from '../src/sources/mysql-driver'
 import type { Binding } from '../src/sources/types'
+
+// mysql2's promise wrappers; their typings leave the classes out.
+type QueryProto = { prototype: { query: (...args: unknown[]) => Promise<unknown> } }
+const { PromisePool, PromiseConnection } = mysql as unknown as Record<'PromisePool' | 'PromiseConnection', QueryProto>
 
 const MYSQL_URL = process.env.MYSQL_TEST_URL
 const EXT_URL_ENV = 'EXT_MYSQL_URL'
@@ -130,6 +134,54 @@ beforeAll(async () => {
   await cli.query(`
     create trigger ext_mysql.shifty_prefix before insert on ext_mysql.shifty
     for each row set new.code = concat('x-', new.code)`)
+  // An older schema: a key in a character set that can't hold every id.
+  await cli.query(`
+    create table ext_mysql.legacy (
+      code varchar(10) character set latin1 primary key,
+      v int
+    )`)
+  // Other rows point at a badge through its code, not its id.
+  await cli.query(`
+    create table ext_mysql.badge (
+      id int auto_increment primary key,
+      code varchar(20) not null unique
+    )`)
+  await cli.query(`
+    create table ext_mysql.badge_holder (
+      id int auto_increment primary key,
+      badge_code varchar(20),
+      foreign key (badge_code) references badge(code)
+    )`)
+  await cli.query(`insert into ext_mysql.badge (code) values ('B1')`)
+  await cli.query(`insert into ext_mysql.badge_holder (badge_code) values ('B1')`)
+  // The insert id belongs to `seq`, not to the key: a new row without a
+  // key must not be read back through it.
+  await cli.query(`
+    create table ext_mysql.sequenced (
+      code varchar(40) primary key default (uuid()),
+      seq int auto_increment unique,
+      note varchar(20)
+    )`)
+  // #154: every way the database refuses a write for a constraint. Its
+  // `status` column is renamed on reflection (status is a Featherbase field),
+  // so a refusal must be translated from the source column to the field.
+  await cli.query(`
+    create table ext_mysql.gauge (
+      id int auto_increment primary key,
+      status varchar(20),
+      level int,
+      vehicle_id int,
+      constraint gauge_level_range check (level between 0 and 10),
+      foreign key (vehicle_id) references vehicle(id)
+    )`)
+  // A revision stored to the microsecond, while a loaded row echoes it to
+  // the millisecond: the conflict check must compare whole milliseconds.
+  await cli.query(`
+    create table ext_mysql.revisioned (
+      id int auto_increment primary key,
+      note varchar(50),
+      changed_at datetime(6) not null
+    )`)
 })
 
 afterAll(async () => {
@@ -726,9 +778,61 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
         type: 'DataSourceError',
         message: expect.stringContaining('cannot address it'),
       })
+      // #155: the row it could not address is not left behind at the source.
+      const [left] = await cli.query(`select count(*) as n from ext_mysql.nokey`)
+      expect(Number((left as { n: number }[])[0].n)).toBe(0)
     } finally {
       await cli.query(`delete from ext_mysql.nokey`)
     }
+  })
+
+  test('a new row is never read back through an auto-numbered column that is not its key', async () => {
+    await cli.query(`insert into ext_mysql.sequenced (code, seq, note) values ('101', 100, 'someone else')`)
+    try {
+      await expect(mysqlDriver.insert(bindFor('sequenced', 'code'), { note: 'mine' }, null)).rejects.toMatchObject({
+        type: 'DataSourceError',
+        message: expect.stringContaining('cannot address it'),
+      })
+      const [rows] = await cli.query(`select note from ext_mysql.sequenced`)
+      expect((rows as { note: string }[]).map((r) => r.note)).toEqual(['someone else'])
+    } finally {
+      await cli.query(`delete from ext_mysql.sequenced`)
+    }
+  })
+
+  test('saving one row leaves other rows free for other writers', async () => {
+    const bind = bindFor('plain', 'id')
+    const [a] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('mine', 1), ('theirs', 1)`)
+    const mine = (a as { insertId: number }).insertId
+    try {
+      // While the save holds its own row, another writer edits a DIFFERENT
+      // row, giving up after a second if the save has locked that one too.
+      const saved = await withWriterAfter(
+        /^update /,
+        `set session innodb_lock_wait_timeout = 1;
+         update ext_mysql.plain set qty = 2 where id = ${mine + 1}`,
+        () => mysqlDriver.update(bind, String(mine), { note: 'mine, saved' }, null),
+        // Longer than the other writer's lock wait, so a lock on its row shows.
+        1500,
+      )
+      expect(saved).toMatchObject({ note: 'mine, saved' })
+      const [theirs] = await cli.query(`select qty from ext_mysql.plain where id = ?`, [mine + 1])
+      expect((theirs as { qty: number }[])[0].qty).toBe(2)
+    } finally {
+      await cli.query(`set session innodb_lock_wait_timeout = 50`)
+      await cli.query(`delete from ext_mysql.plain where id in (?, ?)`, [mine, mine + 1])
+    }
+  })
+
+  test('a key that only looks like a number finds no row', async () => {
+    expect(await mysqlDriver.getDoc(bindFor('plain', 'id'), '1abc')).toBeNull()
+  })
+
+  test('a key the table could never hold finds no row', async () => {
+    const legacy = bindFor('legacy', 'code')
+    expect(await mysqlDriver.getDoc(legacy, '😀')).toBeNull()
+    expect(await mysqlDriver.update(legacy, '😀', { v: 1 }, null)).toBe('missing')
+    expect(await mysqlDriver.remove(legacy, '😀', null)).toBe('missing')
   })
 
   test('an insert with an explicit key reads that row back', async () => {
@@ -746,8 +850,109 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
         type: 'DataSourceError',
         message: expect.stringContaining('inserted row k1 not found on re-read'),
       })
+      const [left] = await cli.query(`select count(*) as n from ext_mysql.shifty`)
+      expect(Number((left as { n: number }[])[0].n)).toBe(0)
     } finally {
       await cli.query(`delete from ext_mysql.shifty`)
+    }
+  })
+
+  // #155: run `concurrent` (another writer, through the unsandboxed CLI
+  // connection) right after the driver's own statement matching `after`, and
+  // give it a moment to land before the driver carries on. A driver that
+  // re-reads its row outside the statement's transaction then sees the other
+  // writer's change; one that holds its row until it has read it back makes
+  // the other writer wait instead.
+  async function withWriterAfter<T>(after: RegExp, concurrent: string, work: () => Promise<T>, patience = 300) {
+    let other: Promise<unknown> | null = null
+    const spies = [PromisePool.prototype, PromiseConnection.prototype].map((proto) => {
+      const original = proto.query
+      return vi.spyOn(proto, 'query').mockImplementation(async function (this: unknown, ...args: unknown[]) {
+        const result = await original.apply(this, args)
+        if (this !== cli && !other && after.test(String(args[0]))) {
+          other = cli.query(concurrent)
+          await Promise.race([other.catch(() => {}), new Promise((r) => setTimeout(r, patience))])
+        }
+        return result
+      } as never)
+    })
+    try {
+      const outcome = await work()
+      expect(other, `no statement matched ${after}`).not.toBeNull()
+      await other
+      return outcome
+    } finally {
+      for (const spy of spies) spy.mockRestore()
+    }
+  }
+
+  test('a save returns the row it wrote, even when another writer changes it straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const [ins] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('raced', 1)`)
+    const id = (ins as { insertId: number }).insertId
+    try {
+      const saved = await withWriterAfter(/^update /, `update ext_mysql.plain set note = 'other writer' where id = ${id}`, () =>
+        mysqlDriver.update(bind, String(id), { note: 'mine' }, null),
+      )
+      expect(saved).toMatchObject({ id, note: 'mine' })
+      // The other writer still lands — after the save, not inside it.
+      const [after] = await cli.query(`select note from ext_mysql.plain where id = ?`, [id])
+      expect((after as { note: string }[])[0].note).toBe('other writer')
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [id])
+    }
+  })
+
+  test('a save is not reported missing when another writer deletes the row straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const [ins] = await cli.query(`insert into ext_mysql.plain (note, qty) values ('raced', 1)`)
+    const id = (ins as { insertId: number }).insertId
+    try {
+      const saved = await withWriterAfter(/^update /, `delete from ext_mysql.plain where id = ${id}`, () =>
+        mysqlDriver.update(bind, String(id), { note: 'mine' }, null),
+      )
+      expect(saved).toMatchObject({ id, note: 'mine' })
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [id])
+    }
+  })
+
+  test('a new row comes back as inserted, even when another writer changes it straight after', async () => {
+    const bind = bindFor('plain', 'id')
+    const created = await withWriterAfter(
+      /^insert /,
+      `update ext_mysql.plain set note = 'other writer' where note = 'brand new'`,
+      () => mysqlDriver.insert(bind, { note: 'brand new', qty: 4 }, null),
+    )
+    try {
+      expect(created).toMatchObject({ note: 'brand new', qty: 4 })
+    } finally {
+      await cli.query(`delete from ext_mysql.plain where id = ?`, [created.id])
+    }
+  })
+
+  test('the conflict check compares whole milliseconds, as the Postgres driver does', async () => {
+    const bind = bindFor('revisioned', 'id', 'changed_at')
+    const [ins] = await cli.query(
+      `insert into ext_mysql.revisioned (note, changed_at) values ('loaded', '2026-01-01 00:00:00.123456')`,
+    )
+    const id = String((ins as { insertId: number }).insertId)
+    try {
+      const loaded = await mysqlDriver.getDoc(bind, id)
+      const echo = (loaded!.changed_at as Date).toISOString()
+      expect(echo).toBe('2026-01-01T00:00:00.123Z')
+      // Another writer stamps the row 0.3ms away, in the millisecond before.
+      await cli.query(
+        `update ext_mysql.revisioned set note = 'other writer', changed_at = '2026-01-01 00:00:00.122700' where id = ?`,
+        [id],
+      )
+      expect(await mysqlDriver.update(bind, id, { note: 'stale save' }, echo)).toBe('conflict')
+      expect(await mysqlDriver.remove(bind, id, echo)).toBe('conflict')
+      // The echo of what is there now, in the same millisecond, is accepted.
+      const saved = await mysqlDriver.update(bind, id, { note: 'fresh save' }, '2026-01-01T00:00:00.122Z')
+      expect(saved).toMatchObject({ note: 'fresh save' })
+    } finally {
+      await cli.query(`delete from ext_mysql.revisioned where id = ?`, [id])
     }
   })
 
@@ -788,6 +993,151 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     expect(patch.status).toBe(403)
     const del = await admin.fetch(`/api/table/Ext%20Tenant/${id}`, { method: 'DELETE' })
     expect(del.status).toBe(403)
+  })
+})
+
+describe.skipIf(!MYSQL_URL)('mysql: refused saves (#154)', () => {
+  // A refusal must reach the user as a plain error on the field; the
+  // database's own text goes to the server log only.
+  const RAW = /cannot be null|doesn't have a default|foreign key constraint|is violated|for column|ext_mysql/i
+
+  async function refusal(res: Response) {
+    const body = (await res.json()) as { error: { type: string; message: string; fields?: Record<string, string> } }
+    expect(body.error.message).not.toMatch(RAW)
+    for (const text of Object.values(body.error.fields ?? {})) expect(text).not.toMatch(RAW)
+    return { status: res.status, ...body.error }
+  }
+
+  async function gaugeTable(admin: Parameters<typeof makeSource>[0] & Parameters<typeof reflectOne>[0]) {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'gauge')
+    return `/api/table/${encodeURIComponent(name)}`
+  }
+
+  const post = (admin: Parameters<typeof makeSource>[0], path: string, body: unknown) =>
+    admin.fetch(path, { method: 'POST', body: JSON.stringify(body) })
+
+  test('a value the database requires comes back as a required field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    // The database starts requiring it after the table was connected.
+    await cli.query(`alter table ext_mysql.gauge modify status varchar(20) not null`)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const omitted = await refusal(await post(admin, path, { level: 1 }))
+      expect(omitted).toMatchObject({ status: 417, type: 'ValidationError', fields: { status_1: 'Required' } })
+      const blank = await refusal(await post(admin, path, { level: 1, status_1: null }))
+      expect(blank).toMatchObject({ status: 417, fields: { status_1: 'Required' } })
+      // The server log keeps what the database said.
+      expect(warn.mock.calls.flat().join(' ')).toMatch(/status/)
+    } finally {
+      warn.mockRestore()
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a link to a row the database does not have comes back on that field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const res = await refusal(await post(admin, path, { status_1: 'ok', vehicle_id: 999 }))
+      expect(res).toMatchObject({ status: 417, type: 'ValidationError', fields: { vehicle_id: expect.any(String) } })
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a value that breaks one of the database rules is refused in plain words', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const res = await refusal(await post(admin, path, { status_1: 'ok', level: 50 }))
+      expect(res).toMatchObject({ status: 417, type: 'ValidationError' })
+      expect(res.message).toContain('gauge_level_range')
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('a value too long or of the wrong kind comes back on its field', async ({ admin }) => {
+    const path = await gaugeTable(admin)
+    try {
+      const long = await refusal(await post(admin, path, { status_1: 'x'.repeat(30) }))
+      expect(long).toMatchObject({ status: 417, fields: { status_1: expect.any(String) } })
+      const big = await refusal(await post(admin, path, { status_1: 'ok', level: 99999999999 }))
+      expect(big).toMatchObject({ status: 417, fields: { level: expect.any(String) } })
+    } finally {
+      await cli.query(`delete from ext_mysql.gauge`)
+    }
+  })
+
+  test('deleting a row other rows at the database still point at is refused in plain words', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'vehicle')
+    const path = `/api/table/${encodeURIComponent(name)}/1`
+    const loaded = (await admin.get(path)) as Record<string, unknown>
+    const res = await refusal(
+      await admin.fetch(`${path}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`, { method: 'DELETE' }),
+    )
+    expect(res).toMatchObject({ status: 417, type: 'ValidationError' })
+    expect(res.message).toMatch(/still point/)
+    const [rows] = await cli.query(`select 1 from ext_mysql.vehicle where id = 1`)
+    expect(rows as unknown[]).toHaveLength(1)
+  })
+
+  test('changing the key of a row other rows still point at is refused in plain words', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'vehicle')
+    const err = await mysqlDriver.update(bindFor('vehicle', 'id'), '1', { id: 77 }, null).catch((e) => e)
+    expect(err).toMatchObject({ code: '23503', detail: expect.stringContaining('still referenced') })
+    const { explainRefusal } = await import('../src/sources/dispatch')
+    const { getMeta } = await import('../src/meta')
+    const meta = await getMeta(name)
+    let thrown: unknown
+    try {
+      explainRefusal(meta, bindFor('vehicle', 'id'), err)
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toMatchObject({ type: 'ValidationError', message: expect.stringMatching(/still point/) })
+    expect((thrown as { fields?: unknown }).fields).toBeUndefined()
+  })
+
+  test('changing a value other rows point at is refused on that field', async ({ admin }) => {
+    await makeSource(admin)
+    const name = await reflectOne(admin, 'badge')
+    const bind = { ...bindFor('badge', 'id'), columns: [{ column_name: 'code', source_column: 'code', column_type: 'Data' }] }
+    const [rows] = await cli.query(`select id from ext_mysql.badge where code = 'B1'`)
+    const err = await mysqlDriver.update(bind, String((rows as { id: number }[])[0].id), { code: 'B2' }, null).catch((e) => e)
+    expect(err).toMatchObject({ code: '23503', column_name: 'code' })
+    const { explainRefusal } = await import('../src/sources/dispatch')
+    const { getMeta } = await import('../src/meta')
+    let thrown: unknown
+    try {
+      explainRefusal(await getMeta(name), bind, err)
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toMatchObject({ type: 'ValidationError', fields: { code: expect.stringMatching(/still point/) } })
+  })
+
+  test('each refusal arrives from the driver in the shared shape', async () => {
+    const gauge = bindFor('gauge', 'id')
+    const shape = (values: Record<string, unknown>) => mysqlDriver.insert(gauge, values, null).catch((e) => e)
+    try {
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) not null`)
+      expect(await shape({ level: 1 })).toMatchObject({ code: '23502', column_name: 'status' })
+      expect(await shape({ status: null })).toMatchObject({ code: '23502', column_name: 'status' })
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      expect(await shape({ vehicle_id: 999 })).toMatchObject({ code: '23503', column_name: 'vehicle_id' })
+      expect(await shape({ level: 50 })).toMatchObject({ code: '23514', constraint_name: 'gauge_level_range' })
+      expect(await shape({ status: 'x'.repeat(30) })).toMatchObject({ code: '22001', column_name: 'status' })
+      expect(await shape({ level: 'abc' })).toMatchObject({ code: '22003', column_name: 'level' })
+      const stillUsed = await mysqlDriver.remove(bindFor('vehicle', 'id'), '1', null).catch((e) => e)
+      expect(stillUsed).toMatchObject({ code: '23503' })
+    } finally {
+      await cli.query(`alter table ext_mysql.gauge modify status varchar(20) null`)
+      await cli.query(`delete from ext_mysql.gauge`)
+      await mysqlDriver.dispose('ext-mysql-direct')
+    }
   })
 })
 

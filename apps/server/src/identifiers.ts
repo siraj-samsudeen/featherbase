@@ -9,6 +9,9 @@
 // setting that decides storage, display and tier together.
 import { AppError } from './errors'
 
+/** An identifier system's key: a lowercase slug like `stylehr-employee-code`. */
+export const IDENTIFIER_SYSTEM_KEY = /^[a-z][a-z0-9-]{1,62}$/
+
 export const IDENTIFIER_KINDS = ['employee-record', 'external-record', 'national-id', 'contact'] as const
 export type IdentifierKind = (typeof IDENTIFIER_KINDS)[number]
 

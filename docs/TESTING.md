@@ -141,6 +141,11 @@ Every non-sandboxed test file says why in its header comment.
   setup migrates it and the proof checks its test-environment stamp before
   writing. It keeps its records for inspection, so never point the ordinary
   suite at that database.
+- `apps/server/test/managed-settings-commit.test.ts` proves a workflow action
+  and an assignment rule's stamp honour a locked set that an instance-settings
+  apply commits while they wait (#493). Create a disposable database
+  `featherbase_<worker>_settings_commit_e2e`, migrate it, and run the opt-in
+  command in the test's header; CI runs it in shard 3. It keeps its records.
 - `pnpm apps:prove` builds the runtime packages as npm tarballs, runs them on
   plain Node against compiled core through real restarts, and writes evidence
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`

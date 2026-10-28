@@ -9,8 +9,9 @@ import { createRoot } from 'react-dom/client'
 import { routeTree } from './router'
 import { ApiError } from './lib/api'
 import './index.css'
-// Paints the theme before anything renders, so even the sign-in page follows the device.
-import './lib/theme'
+// Paints the theme before anything renders, so even the sign-in page follows
+// the device. No module paints as it loads (lib/theme.ts says why).
+import { paintSavedTheme } from './lib/theme'
 
 // Client errors (401/403/404/417) are definitive — retrying them just
 // leaves views stuck in loading states.
@@ -34,6 +35,8 @@ const queryClient = new QueryClient({
 // mechanism unidentified. The rewrite below is provably safe regardless:
 // the default stringifier emits a literal '+' as %2B, so a raw '+' in its
 // output can only ever mean a space (pinned by search-stringify.test.ts).
+paintSavedTheme()
+
 const router = createRouter({
   routeTree,
   stringifySearch: (search) => defaultStringifySearch(search).replace(/\+/g, '%20'),

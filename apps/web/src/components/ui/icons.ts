@@ -3,6 +3,8 @@
 // stays small and consistent across screens.
 export {
   Bell,
+  Check,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   CircleCheck,

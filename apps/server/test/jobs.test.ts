@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { drainJobs, enqueue, loadJobs, runOneJob, startWorker, stopWorker } from '../src/jobs'
+import { FinalJobFailure, drainJobs, enqueue, loadJobs, registerJob, runOneJob, startWorker, stopWorker } from '../src/jobs'
 
 // JOB-001: enqueue → worker processes → queue drains.
 // JOB-002: retries until success; permanent failure lands in `failed`.
@@ -102,6 +102,21 @@ describe('JOB-002: retries and failure state', () => {
     const execs = await sql`select outcome from job_execution where job = ${id}`
     expect(execs).toHaveLength(3)
     expect(execs.every((e) => e.outcome === 'error')).toBe(true)
+  })
+
+  test('a job that ends in a final failure is failed at once, without spending its other attempts (#334)', async () => {
+    await setup()
+    registerJob('test_final_failure', () => {
+      throw new FinalJobFailure('refused for good')
+    })
+    const id = await enqueue('test_final_failure', {}, { maxAttempts: 3 })
+    await nudgeDueJobs()
+    await drainJobs()
+    const [job] = await sql`select job_status, attempts, error from background_job where row_id = ${id}`
+    expect(job).toMatchObject({ job_status: 'failed', error: 'refused for good' })
+    expect(Number(job.attempts)).toBe(1)
+    const execs = await sql`select outcome, error from job_execution where job = ${id}`
+    expect(execs).toEqual([expect.objectContaining({ outcome: 'error', error: 'refused for good' })])
   })
 
   test('an unknown job method fails cleanly rather than hanging', async () => {

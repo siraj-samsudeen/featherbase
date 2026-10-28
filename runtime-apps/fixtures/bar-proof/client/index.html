@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" data-theme="app-owned"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bar proof</title>
+<style>
+  body { margin: 0; font: 20px/2 Georgia, serif; color: rgb(120, 20, 20); background: rgb(250, 245, 230); }
+  main { padding: 8px 16px; }
+  .long { height: 150vh; }
+  .pinned { position: fixed; inset: var(--featherbase-bar-height, 0) 0 auto auto; padding: 4px 8px; background: rgb(220, 235, 250); }
+</style>
+<body>
+<main id="bar-proof-page">
+  <h1>Bar proof</h1>
+  <p>Reads the store the top bar sets.</p>
+  <p>On load, from the address: <output id="store-on-load"></output></p>
+  <p>From the bar's event: <output id="store-from-event">none</output></p>
+  <div class="long"></div>
+  <p id="page-end">End of the page</p>
+</main>
+<div class="pinned" id="pinned-under-bar">Pinned below the bar</div>
+<script>
+  // #650: an app learns the bar's choice from the address on load, and of
+  // every later choice from the documented `featherbase:bar-change` event.
+  document.getElementById('store-on-load').textContent = new URLSearchParams(location.search).get('store') || 'none'
+  window.addEventListener('featherbase:bar-change', (event) => {
+    if (event.detail.key === 'store') document.getElementById('store-from-event').textContent = event.detail.value
+  })
+</script>
+</body></html>

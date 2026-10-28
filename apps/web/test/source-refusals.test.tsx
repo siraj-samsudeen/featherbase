@@ -54,9 +54,35 @@ test('bulk-deleting rows of a connected Table removes them from the source', asy
   fireEvent.click(checks[0])
   fireEvent.click(checks[1])
   fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
   await waitFor(() => expect(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')).toHaveLength(1))
   const left = await cli`select id from web_srf.shelf order by id`
   expect(left).toHaveLength(1)
+})
+
+test('a bulk delete on a connected Table tries every row and keeps the failed ones selected (#332)', async ({ admin }) => {
+  await cli.unsafe(`delete from web_srf.shelf; insert into web_srf.shelf (id, label) values (1, 'A1'), (2, 'A2'), (3, 'A3')`)
+  await source(admin)
+  await admin.post('/api/table_def', {
+    name: 'Srf Partial',
+    data_source: 'web-srf',
+    external_schema: 'web_srf',
+    external_table: 'shelf',
+    external_pk: 'id',
+    external_modified: 'updated_at',
+    columns: [{ column_name: 'label', column_type: 'Data', in_list_view: true }],
+  })
+  await renderApp('/featherbase/admin/Srf%20Partial', admin)
+  const rows = await screen.findByTestId('list-rows', {}, { timeout: 8000 })
+  await waitFor(() => expect(within(rows).getAllByTestId('row-check')).toHaveLength(3))
+  for (const check of within(rows).getAllByTestId('row-check')) fireEvent.click(check)
+  // Gone from the source meanwhile: that row alone fails.
+  await cli.unsafe('delete from web_srf.shelf where id = 2')
+  fireEvent.click(await screen.findByTestId('bulk-delete'))
+  fireEvent.click(await screen.findByTestId('bulk-delete-confirm'))
+  expect(await screen.findByTestId('bulk-error')).toHaveTextContent('2 of 3 deleted. 2: Srf Partial 2 not found')
+  expect(screen.getByTestId('bulk-count')).toHaveTextContent('1 selected')
+  expect(await cli`select id from web_srf.shelf`).toHaveLength(0)
 })
 
 test('testing or turning on tables of a source deleted meanwhile says it is not found', async ({ admin }) => {

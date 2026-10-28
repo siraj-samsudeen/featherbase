@@ -1,4 +1,4 @@
-import { managedFieldsOf } from './managed-settings'
+import { holdManagedSet, managedFieldsOf } from './managed-settings'
 import { sql } from './db'
 import { tableRelation } from './table-engine'
 import { getMeta } from './meta'
@@ -30,7 +30,7 @@ export async function evaluateAssignmentRules(
   for (const rule of rules) {
     // #437: refused when the rule is saved; a rule saved before that check
     // existed never acts on access either.
-    if (isAccessTarget(table, String(rule.assign_to_field ?? '').trim())) {
+    if (await isAccessTarget(table, String(rule.assign_to_field ?? '').trim())) {
       console.warn(`[assignment-rules] ${String(rule.row_id)} targets ${table} access data; skipped`)
       continue
     }
@@ -62,13 +62,20 @@ export async function evaluateAssignmentRules(
       // Stamp the assignee into the row's own column (post-commit, so the
       // column must exist on the Table; unknown columns are ignored).
       const meta = await getMeta(table)
-      // #465 D5: never a field the instance settings file sets.
-      if (meta.columns.some((f) => f.column_name === field) && !(await managedFieldsOf(table, String(row.row_id))).includes(field)) {
-        await sql`
-          update ${sql(await tableRelation(table))} set ${sql(field)} = ${next}
-          where ${sql(meta.row_key)} = ${String(row.row_id)}`
-        row[field] = next
-      }
+      if (!meta.columns.some((f) => f.column_name === field)) continue
+      const relation = await tableRelation(table)
+      const stamped = await sql.begin(async (tx) => {
+        const stx = tx as unknown as typeof sql
+        // #465 D5: never a field the instance settings file sets, judged
+        // under the settings lock held to commit (#493).
+        await holdManagedSet(stx, table)
+        if ((await managedFieldsOf(table, String(row.row_id), stx)).includes(field)) return false
+        await stx`
+          update ${stx(relation)} set ${stx(field)} = ${next}
+          where ${stx(meta.row_key)} = ${String(row.row_id)}`
+        return true
+      })
+      if (stamped) row[field] = next
     }
   }
 }

@@ -226,6 +226,21 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(calls).toEqual([])
   })
 
+  test('on an install that never created the assignment Table, a reader gets the no-assignment marker, not an error (#448)', async ({ admin, createUser }) => {
+    expect((await sql`select to_regclass('featherbase.sales_target_assignment') as relation`)[0].relation).toBeNull()
+    // Only the role: no seed, so no assignment Table.
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: VIEWER_ROLE } })
+    const calls = stubUpstream()
+    const reader = await createUser({ email: 'test_employee_fresh@example.com', roles: [VIEWER_ROLE] })
+    const res = await reader.fetch('/api/sales_target/embed_session', { method: 'POST' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ no_assignment: true })
+    const me = await reader.get<{ assignment: unknown; stores: unknown }>('/api/sales_target/me')
+    expect(me.assignment).toBeNull()
+    expect(me.stores).toEqual([])
+    expect(calls).toEqual([])
+  })
+
   test('the identity route carries the display chrome and never an amount or credential', async ({ admin, api }) => {
     await seed(admin)
     const r = await loginAs(api, 'test_employee_2', PASSWORDS.test_employee_2)
@@ -353,11 +368,19 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     }
   })
 
-  test('frame policy: MotherDuck embed origin allowed in frame-src; the other security headers stay', async ({ api }) => {
-    const res = await api.fetch('/api/ping')
+  // #642 (E4): the instance-wide embed origin is gone. Until the report moves
+  // into its app (B9), its own page keeps the MotherDuck embed origin.
+  test('frame policy: the report page allows the MotherDuck embed origin; the other security headers stay', async ({ api }) => {
+    const res = await api.fetch('/featherbase/sales-target')
     expect(res.headers.get('content-security-policy')).toBe("frame-src 'self' https://embed-motherduck.com")
     expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+  })
+
+  // Codex round 2 on #643: the web app shows the report with a trailing slash too.
+  test('frame policy: the report page with a trailing slash allows the MotherDuck embed origin too', async ({ api }) => {
+    const res = await api.fetch('/featherbase/sales-target/')
+    expect(res.headers.get('content-security-policy')).toBe("frame-src 'self' https://embed-motherduck.com")
   })
 })
 

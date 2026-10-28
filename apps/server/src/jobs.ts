@@ -47,6 +47,11 @@ export interface JobContext {
   /** A one-line outcome kept on this attempt's Job Execution row, for what
    *  success alone cannot say (e.g. a summary that reached nobody, #463). */
   setResult: (text: string) => void
+  /** End this run as refused: the job declined to act (a stale feed, an
+   *  implausible batch). Recorded like a failure and alerted (#464), but not
+   *  retried — refusing again a minute later helps nobody — and the schedule
+   *  carries on. `reason` becomes the run's one-line result. */
+  refuse: (reason: string) => void
   /** The queue row being run, and why it exists. */
   job: { row_id: string; trigger: JobTrigger }
 }
@@ -54,6 +59,13 @@ export type JobHandler = (
   payload: Record<string, unknown>,
   ctx: JobContext,
 ) => unknown | Promise<unknown>
+
+/** Thrown by a handler whose job cannot succeed by running again: the job
+ *  is failed at once, with this message, without spending its other
+ *  attempts; a person can still retry it (#334: a refused email). Like
+ *  running out of attempts, it ends a recurrence that has no Scheduled Job
+ *  row. */
+export class FinalJobFailure extends Error {}
 
 const registry = new Map<string, JobHandler>()
 
@@ -95,11 +107,14 @@ export async function enqueue(
   return name
 }
 
+/** How one attempt ended. 'refused' is the job declining to act (#464). */
+export type RunOutcome = 'success' | 'error' | 'refused'
+
 interface ExecutionRecord {
   job: string
   method: string
   attempt: number
-  outcome: 'success' | 'error'
+  outcome: RunOutcome
   startedAt: Date
   durationMs: number
   error?: string
@@ -108,7 +123,7 @@ interface ExecutionRecord {
 
 // Every attempt is a Job Execution row, and the method's Scheduled Job row
 // (when it has one) carries the latest: "when did this last run, did it work,
-// how long did it take" answered from the list view without a query.
+// how long did it take, what did it come to" answered from one row (#464).
 async function logExecution(r: ExecutionRecord): Promise<void> {
   await sql`
     insert into job_execution ${sql({
@@ -127,7 +142,10 @@ async function logExecution(r: ExecutionRecord): Promise<void> {
   await sql`
     update scheduled_job
     set last_run_at = ${r.startedAt}, last_outcome = ${r.outcome}, last_duration_ms = ${r.durationMs},
-        updated_at = now()
+        problem_alert_queued = case
+          when last_outcome is distinct from ${r.outcome} or ${r.outcome} = 'success' then false
+          else problem_alert_queued end,
+        last_result = ${r.outcome === 'error' ? (r.error ?? null) : (r.result ?? null)}, updated_at = now()
     where method = ${r.method}`
 }
 
@@ -137,6 +155,19 @@ async function logExecution(r: ExecutionRecord): Promise<void> {
 async function scheduledJob(method: string): Promise<{ cadence: string; enabled: boolean } | null> {
   const [row] = await sql`select cadence, enabled from scheduled_job where method = ${method}`
   return row ? { cadence: String(row.cadence), enabled: Boolean(row.enabled) } : null
+}
+
+// Loaded on first use: job-alerts reaches email.ts, which registers its own
+// job against this module at import, so a static import would be a cycle.
+// Never throws: the run is already recorded and its recurrence queued, and a
+// mail problem must not turn a finished run back into a failed one.
+async function alertProblem(p: import('./job-alerts').JobProblem): Promise<void> {
+  try {
+    const { alertJobProblem } = await import('./job-alerts')
+    await alertJobProblem(p)
+  } catch (err) {
+    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
+  }
 }
 
 // Claim and run a single due job. Returns true if one was processed.
@@ -178,9 +209,15 @@ async function runOneJobImpl(): Promise<boolean> {
   const trigger: JobTrigger =
     (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
   let result: string | undefined
+  let refused = false
   const ctx: JobContext = {
     setResult: (text) => {
-      result = text
+      // A refusal's reason is the run's result; nothing after it replaces it.
+      if (!refused) result = text
+    },
+    refuse: (reason) => {
+      refused = true
+      result = reason
     },
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
@@ -193,7 +230,7 @@ async function runOneJobImpl(): Promise<boolean> {
   }
 
   const startedAt = new Date()
-  const record = (outcome: 'success' | 'error', error?: string): ExecutionRecord => ({
+  const record = (outcome: RunOutcome, error?: string): ExecutionRecord => ({
     job: claimed.row_id as string,
     method,
     attempt,
@@ -210,7 +247,7 @@ async function runOneJobImpl(): Promise<boolean> {
     await sql`
       update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
       where row_id = ${claimed.row_id as string}`
-    await logExecution(record('success'))
+    await logExecution(record(refused ? 'refused' : 'success'))
 
     // JOB-003: recurring jobs re-enqueue for the next interval. A Scheduled
     // Job row, when there is one, is the authority: its cadence (edited since
@@ -248,16 +285,20 @@ async function runOneJobImpl(): Promise<boolean> {
           trigger: 'schedule',
         })
     }
+    if (administered && refused)
+      await alertProblem({ job: claimed.row_id as string, method, outcome: 'refused', message: result ?? 'no reason given', attempts: attempt, at: startedAt })
     return true
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    // JOB-002: retry until max_attempts, then land in failed.
-    const nextStatus = attempt >= maxAttempts ? 'failed' : 'queued'
+    // JOB-002: retry until max_attempts, then land in failed. A final
+    // failure lands there now.
+    const nextStatus = err instanceof FinalJobFailure || attempt >= maxAttempts ? 'failed' : 'queued'
     await sql`
       update background_job
       set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
       where row_id = ${claimed.row_id as string}`
     await logExecution(record('error', message))
+    const administered = nextStatus === 'failed' ? await scheduledJob(method) : null
     // A recurrence must survive its own failure. Before Scheduled Job, a run
     // that exhausted its attempts ended the recurrence until the next restart
     // re-seeded it from a literal — a schedule that silently stopped. Now the
@@ -266,7 +307,6 @@ async function runOneJobImpl(): Promise<boolean> {
     // the schedule's own occurrence advances the schedule, so a demand or
     // manual run that exhausts its attempts does not fork a second chain.
     if (nextStatus === 'failed' && trigger === 'schedule') {
-      const administered = await scheduledJob(method)
       if (administered?.enabled) {
         const every = cadenceSeconds(administered.cadence)
         await enqueue(method, payload, {
@@ -277,6 +317,10 @@ async function runOneJobImpl(): Promise<boolean> {
         })
       }
     }
+    // #464: a run that has failed for good tells the System Managers; an
+    // attempt that will be retried does not.
+    if (administered)
+      await alertProblem({ job: claimed.row_id as string, method, outcome: 'failed', message, attempts: attempt, at: startedAt })
     return true
   }
 }

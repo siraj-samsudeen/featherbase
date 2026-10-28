@@ -1,6 +1,7 @@
 import { AppError } from '../errors'
 import { amendDoc, cancelDoc, renameDoc, submitDoc } from '../document'
 import { applyWorkflowAction } from '../workflow'
+import { rowForCaller } from '../row-readers'
 import { registerRowAction } from '../actions'
 
 // The row actions every Table gets from the engine itself (not app/plugin
@@ -11,19 +12,19 @@ import { registerRowAction } from '../actions'
 registerRowAction('submit', {
   effect: 'write',
   description: 'Submit a draft row (only if its Table is_submittable).',
-  handler: ({ table, name, user }) => submitDoc(table, name, user.row_id),
+  handler: async ({ table, name, user }) => rowForCaller(table, await submitDoc(table, name, user.row_id), user.row_id),
 })
 
 registerRowAction('cancel', {
   effect: 'write',
   description: 'Cancel a submitted row.',
-  handler: ({ table, name, user }) => cancelDoc(table, name, user.row_id),
+  handler: async ({ table, name, user }) => rowForCaller(table, await cancelDoc(table, name, user.row_id), user.row_id),
 })
 
 registerRowAction('amend', {
   effect: 'write',
   description: 'Create an editable copy of a cancelled row (amended_from).',
-  handler: ({ table, name, user }) => amendDoc(table, name, user.row_id),
+  handler: async ({ table, name, user }) => rowForCaller(table, await amendDoc(table, name, user.row_id), user.row_id),
 })
 
 registerRowAction('apply_workflow_action', {

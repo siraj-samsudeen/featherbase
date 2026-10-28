@@ -7,7 +7,7 @@ import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { assertNotSystemWritten } from './system-written'
 import { assertNotAccessTarget, assertSecurityWriter } from './security-tables'
-import { assertFieldNotManaged } from './managed-settings'
+import { assertFieldNotManaged, holdManagedSet } from './managed-settings'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -22,6 +22,7 @@ export interface WorkflowState {
   // this named state (distinct from the sub_table's own reserved `status`
   // column, which every Table gets and which isn't what this represents).
   target_status: 'draft' | 'submitted' | 'cancelled'
+  waits_for_approval?: boolean
 }
 export interface WorkflowTransition {
   state: string
@@ -47,7 +48,8 @@ export function stateField(wf: Workflow): string {
   return (wf.state_field ?? '').trim() || 'workflow_state'
 }
 
-// The Workflow tables arrive in migration 0015 and `state_field` only in 0048,
+// Workflow tables arrive in 0015, state_field in 0048, and the approval mark
+// in 0134,
 // but earlier bootstrap migrations already save rows — and every save asks
 // for the active workflow. Probe for the newest column this query needs, which
 // covers both the missing table and the not-yet-added column on a fresh
@@ -58,7 +60,8 @@ async function hasWorkflowSchema(): Promise<boolean> {
   if (workflowSchemaReady) return true
   const [row] = await sql`
     select 1 as ok from information_schema.columns
-    where table_name = 'workflow' and column_name = 'state_field'`
+    where table_schema = 'featherbase'
+      and table_name = 'workflow_document_state' and column_name = 'waits_for_approval'`
   workflowSchemaReady = Boolean(row)
   return workflowSchemaReady
 }
@@ -87,7 +90,7 @@ export async function getActiveWorkflow(table: string): Promise<Workflow | null>
   const [wf] = workflows
   if (!wf) return null
   const states = await sql<WorkflowState[]>`
-    select state, target_status from workflow_document_state
+    select state, target_status, waits_for_approval from workflow_document_state
     where parent = ${wf.row_id as string} and parenttype = 'Workflow' order by position`
   const transitions = await sql<WorkflowTransition[]>`
     select state, action, next_state, allowed, "condition" from workflow_transition
@@ -165,6 +168,9 @@ export function currentState(wf: Workflow, row: Record<string, unknown>): string
 // Administrator / System Manager bypass the ROLE gate, but the CONDITION gate
 // still applies to everyone (a condition is a property of the row, not the
 // user). When `row` is omitted, conditions are not evaluated (role-only view).
+// #516: a condition that can't be evaluated hides only its own action, so one
+// broken condition never blocks the row's other actions; taking that action
+// is still refused by applyWorkflowAction.
 export function availableActions(
   wf: Workflow,
   state: string,
@@ -176,9 +182,18 @@ export function availableActions(
   return wf.transitions.filter((t) => {
     if (t.state !== state) return false
     if (!privileged && !roleSet.has(t.allowed)) return false
-    if (row && !evalCondition(t.condition, row, `${t.state}→${t.action}`)) return false
+    if (row && !conditionHolds(t, row)) return false
     return true
   })
+}
+
+function conditionHolds(t: WorkflowTransition, row: Record<string, unknown>): boolean {
+  try {
+    return evalCondition(t.condition, row, `${t.state}→${t.action}`)
+  } catch (err) {
+    console.warn(`[workflow] hiding "${t.action}": ${err instanceof Error ? err.message : String(err)}`)
+    return false
+  }
 }
 
 // WF-002/003: apply an action. Enforces the transition exists from the
@@ -198,9 +213,7 @@ export async function applyWorkflowAction(
   const field = stateField(wf)
   // #437: also checked when the Workflow is saved; a row saved before that
   // rule existed must not act either.
-  assertNotAccessTarget(table, field, 'A workflow')
-  // #465 D5: nor may it rewrite a field the instance settings file sets.
-  await assertFieldNotManaged(table, name, field, user)
+  await assertNotAccessTarget(table, field, 'A workflow')
   await ensureStateField(table, sql, field)
 
   const row = await getDoc(table, name, user)
@@ -229,25 +242,36 @@ export async function applyWorkflowAction(
   const target = wf.states.find((s) => s.state === transition.next_state)
   const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
 
+  // The whole row before the move, for the email rules below.
+  const before = await getDoc(table, name)
+
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
-  await sql`
-    update ${sql(await tableRelation(table))}
-    set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
-    where ${sql(physicalRowKey(table))} = ${name}`
+  const relation = await tableRelation(table)
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    // #465 D5: nor may it rewrite a field the instance settings file sets,
+    // judged under the settings lock held to commit (#493).
+    await holdManagedSet(stx, table)
+    await assertFieldNotManaged(stx, table, name, field, user)
+    await stx`
+      update ${stx(relation)}
+      set ${stx(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      where ${stx(physicalRowKey(table))} = ${name}`
 
-  await sql`
-    insert into workflow_action ${sql({
-      row_id: randomBytes(5).toString('hex'),
-      created_by: user,
-      updated_by: user,
-      ref_table: table,
-      ref_name: name,
-      action,
-      from_state: from,
-      to_state: transition.next_state,
-      actor: user,
-    })}`
+    await stx`
+      insert into workflow_action ${stx({
+        row_id: randomBytes(5).toString('hex'),
+        created_by: user,
+        updated_by: user,
+        ref_table: table,
+        ref_name: name,
+        action,
+        from_state: from,
+        to_state: transition.next_state,
+        actor: user,
+      })}`
+  })
 
   // WF-004: entering a state that still has outgoing transitions means the
   // row is now pending someone's action. Email every user who could take
@@ -259,13 +283,34 @@ export async function applyWorkflowAction(
   // A transition is a save of the state field: conditional on_save Email
   // Rules (e.g. "email the requester when status becomes Resolved") fire on
   // it, and list subscribers get the update over realtime.
-  await evaluateEmailRules('on_save', table, result, row)
+  // The whole row, as on any save: a rule may match on, or address from, a
+  // column the acting user cannot see; it strips those from what it sends.
+  await evaluateEmailRules('on_save', table, await getDoc(table, name), before)
   publishDocEvent(table, name, 'updated')
   return result
 }
 
+// WF-004 / #336: a row created straight into a state that waits on someone's
+// action notifies them, by the same rule as moving a row there. Called after
+// the create commits; the creator is skipped like any acting user.
+export async function notifyApproversOfNewRow(
+  table: string,
+  row: Record<string, unknown>,
+  creator: string,
+): Promise<void> {
+  // The row is already saved: a failure to notify is logged, never reported
+  // as a failed create, and never skips the effects that follow.
+  try {
+    const wf = await getActiveWorkflow(table)
+    if (!wf?.states.length) return
+    await notifyPendingApprovers(wf, table, String(row.row_id), currentState(wf, row), creator)
+  } catch (err) {
+    console.error(`[workflow] ${table} ${String(row.row_id)}: approvers not notified:`, err)
+  }
+}
+
 // WF-004: notify the users who can act on a row that has just entered a
-// pending state. Approvers are the holders of the roles named on the outgoing
+// state marked as waiting for approval. Approvers are the holders of the roles named on the outgoing
 // transitions from `state`. The acting user is skipped (no self-notification),
 // as are disabled users. Each email references the row so it threads to
 // the record, and carries a deep link plus the list of available actions.
@@ -276,6 +321,7 @@ async function notifyPendingApprovers(
   state: string,
   actingUser: string,
 ): Promise<void> {
+  if (!wf.states.find((s) => s.state === state)?.waits_for_approval) return
   const outgoing = wf.transitions.filter((t) => t.state === state)
   if (outgoing.length === 0) return // terminal state — nobody left to act
 

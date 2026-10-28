@@ -1,18 +1,75 @@
 ## ADDED Requirements
 
-### Requirement: An instance brings its own report to an app
+### Requirement: An app keeps a fast copy of its report data
 
-An app SHALL be able to accept a report definition from the instance it is installed
-on, so the same app serves different clients' data without changing the app.
-Featherbase SHALL refresh that report on a schedule and serve each reader only the part
-their own access allows.
+An app SHALL be able to declare the report data it reads: which of the instance's
+data sources it comes from, the question it asks of that source, and which of its
+columns follow a person's places. Featherbase SHALL keep a copy of that data
+(a cached copy), refresh it on a schedule, and hand each reader only their own part.
 
-#### Scenario: Two clients use the same report app
+#### Scenario: A report opens from the cached copy
 
-- **WHEN** two instances install the same report app, each with its own report
-  definition
-- **THEN** each instance's readers see their own instance's report, and neither app
-  copy was changed
+- **WHEN** a Team Leader opens a sales report whose data was refreshed this morning
+- **THEN** they see their own section's figures at once, from this morning's copy
+- **AND** they never see another section's figures
+
+### Requirement: Cached and live figures always agree in form
+
+An app SHALL be able to ask for the same report data live from its source. The live
+answer SHALL be limited to the same places and laid out exactly as the cached one, so
+the two can only differ where the data itself has changed.
+
+#### Scenario: Switching to live figures
+
+- **WHEN** a reader asks for live figures after reading the cached copy, and nothing
+  has changed at the source
+- **THEN** the live figures match the cached ones, row for row and in every total
+
+### Requirement: Report data leaves only through a reader's own scope
+
+A cached copy holds every place's figures, so Featherbase SHALL let it out only
+through an app's read, limited to the reader's places. A reader with no places SHALL
+get no figures. An app SHALL be able to narrow a read only by the columns it declared
+for that.
+
+#### Scenario: A cached copy cannot be exported
+
+- **WHEN** an administrator looks for the cached copy among the instance's tables or
+  in an export
+- **THEN** it is not there to find
+
+#### Scenario: Two neighbouring account numbers
+
+- **WHEN** two readers each cover one of two very long account numbers that differ
+  only in the last digit
+- **THEN** each sees only their own account, cached and live
+
+#### Scenario: A place the report cannot split by
+
+- **WHEN** a person's place is a floor, and the report has no floor column
+- **THEN** that place adds no figures, rather than the whole store's
+
+### Requirement: A place left out of a report is never left out silently
+
+A place must use the report's own filters: one that names a filter the report cannot
+split by adds no figures, and Featherbase SHALL show an admin which places were left
+out and why, without showing any figures. Seeing why SHALL never change what anyone
+sees.
+
+#### Scenario: Finding out why a person sees an empty report
+
+- **WHEN** a person's places are floors, and the report splits only by store and
+  category
+- **THEN** an admin can look up that person and see each of their places, which ones
+  the report used, and which it left out because it cannot split by floor
+- **AND** the person themself, or anyone else who is not an admin, cannot look it up
+
+#### Scenario: An admin is warned before anyone complains
+
+- **WHEN** people have opened a report that left some of their places out
+- **THEN** the instance's health page warns that the report leaves out places from the
+  app that provides people's places, naming the filter it cannot split by
+- **AND** the warning names no person
 
 ### Requirement: A failed refresh never replaces the last good copy
 
@@ -25,17 +82,134 @@ replace the last good copy, and an admin SHALL be able to see why it was refused
 - **THEN** readers keep getting the last good copy
 - **AND** an admin can see that the refresh was refused, and why
 
+### Requirement: An app can say what a complete refresh looks like
+
+An app SHALL be able to declare checks a refresh of its report data must pass before it
+replaces the last good copy: at least so many rows, a figure that is not empty or zero
+everywhere, or a figure that has not fallen by more than a stated share since the last
+good copy, counted in rows or in its total. A total SHALL be compared exactly, to the
+paisa. A check on a fall SHALL be able to stay within one reporting period: it then
+compares a refresh only with a last good copy of the same period, and a refresh that
+does not hold exactly one period SHALL be refused. A refresh that fails one SHALL be
+refused, and the refusal SHALL name the check and the numbers. Featherbase SHALL refuse
+to install an app whose checks name a figure or a period the report does not have.
+
+#### Scenario: Targets half missing after an upstream rebuild
+
+- **WHEN** a report says its targets may not fall by more than half, and a refresh
+  comes back with targets for 336 rows where the last good copy had 1,200
+- **THEN** readers keep getting the last good copy
+- **AND** an admin sees that the refresh was refused because targets dropped 72%,
+  against a limit of 50%
+
+#### Scenario: The first refresh has nothing to fall from
+
+- **WHEN** a report with that check is refreshed for the first time
+- **THEN** the refresh is kept, since there is no earlier copy to compare it with
+
+#### Scenario: Targets' total half missing after an upstream rebuild
+
+- **WHEN** a report says its target total may not fall by more than half, and a
+  refresh keeps every row but its targets total 45,60,000 where the last good copy's
+  totalled 1,20,00,000
+- **THEN** readers keep getting the last good copy
+- **AND** an admin sees that the refresh was refused because the target total dropped
+  62%, against a limit of 50%
+
+#### Scenario: A total that falls by exactly the limit
+
+- **WHEN** a report's total may not fall by more than 43%, and a refresh totals 0.57
+  where the last good copy totalled 1.00
+- **THEN** the refresh is kept
+
+#### Scenario: A new month starts smaller than the last one ended
+
+- **WHEN** a report's checks on a fall stay within its month, and the first refresh of
+  November holds far fewer targets than October's last good copy
+- **THEN** the refresh is kept, since November has no earlier copy to fall from
+
+#### Scenario: Targets fall within the month
+
+- **WHEN** a report's checks on a fall stay within its month, and a refresh for the
+  same month has lost more than the limit allows
+- **THEN** readers keep getting the last good copy, and the refusal names the drop
+
+#### Scenario: A refresh that holds two months
+
+- **WHEN** a report's checks on a fall stay within its month, and a refresh holds rows
+  for two months, or rows with no month
+- **THEN** the refresh is refused, naming the month column and what it held
+
 ### Requirement: An app says what settings and secrets it needs
 
-An app SHALL declare the settings and secrets it needs. An admin SHALL be able to see
-which required ones are missing. A secret's value SHALL never be shown, stored or
-written to any log.
+An app SHALL declare the settings, secrets and data sources it needs. An admin SHALL be
+able to see which required ones are missing. A secret's value SHALL never be shown,
+stored or written to any log.
 
 #### Scenario: A missing setting is explained, not mistaken for a fault
 
 - **WHEN** an app is installed before its required setting has been filled in
 - **THEN** the app tells its readers it is not set up yet, instead of reporting an
   outage
+
+#### Scenario: An admin sees what an app still needs
+
+- **WHEN** an installed app still lacks a secret or a data source it requires
+- **THEN** the instance's health page and the release log name the app and what is
+  missing, without showing any value
+
+### Requirement: A missing optional secret holds up only what needs it
+
+An app SHALL be able to mark a secret as optional and say which of its reads and
+actions need it. While an optional secret is missing, only those SHALL answer that
+the app is not set up yet; the rest of the app SHALL keep working. A part of the
+app that does not say it needs an optional secret SHALL never get it.
+
+#### Scenario: An optional embed without its secret
+
+- **WHEN** an app's embedded report is optional and the instance has not been given
+  the embed's secret
+- **THEN** readers still get the app's plain view, and only the embedded report tells
+  them it is not set up yet
+
+#### Scenario: An admin sees what an optional secret would turn on
+
+- **WHEN** an installed app lacks an optional secret
+- **THEN** the instance's health page and the release log warn, naming the secret and
+  the parts of the app that need it, and say the rest of the app works
+
+### Requirement: An app gets only the settings it declared
+
+An app SHALL receive only the settings and secrets it declared. A value kept for
+anything else SHALL never reach it.
+
+#### Scenario: A leftover value stays out of the app
+
+- **WHEN** an instance still holds a value for a setting the app no longer declares
+- **THEN** the app does not receive it, and an admin cannot add one for it
+
+### Requirement: An instance sets an app's settings in its settings file
+
+An instance SHALL set each app's settings in its own settings file, the same way as
+its other settings: previewed before applying, kept in the file's history, and
+read-only in Admin once the file sets them.
+
+#### Scenario: Pointing dev at a different report
+
+- **WHEN** the dev section of the instance's settings file names a different report
+  for an app, and the owner applies the file to dev
+- **THEN** the app on dev reads that report, and prod keeps its own
+
+### Requirement: An app's secret never leaves the server
+
+Featherbase SHALL never pass an app's secret on: not in an answer, an error, a log
+line, the Access Log, or a settings export, even when the app's own code tries to.
+
+#### Scenario: An app tries to answer with its secret
+
+- **WHEN** an app's answer, or an error it raises, contains its secret
+- **THEN** the reader gets a message that the answer was withheld, and the secret
+  appears in no log
 
 ### Requirement: Content from outside sites only where the app declared it
 
@@ -48,6 +222,12 @@ SHALL allow that site on that app's pages and nowhere else.
 - **THEN** the embedded report shows inside that app
 - **AND** the same site cannot be embedded on any other Featherbase page
 
+#### Scenario: A loosely written outside site is refused
+
+- **WHEN** an app declares an outside site as any site under a domain, or names a
+  page rather than the site itself
+- **THEN** the app is not loaded, and the refusal says how to write the site
+
 ### Requirement: An app can add a control to the top bar by declaring it
 
 An app SHALL be able to add a control, such as a picker, to the shared top bar by
@@ -59,6 +239,42 @@ only choices the reader is allowed.
 - **WHEN** a manager responsible for two stores opens an app that declared a store
   picker
 - **THEN** the top bar offers exactly their two stores
+
+#### Scenario: No picker for someone with nothing to choose
+
+- **WHEN** a person responsible for no store opens an app that declared a store
+  picker
+- **THEN** the top bar shows no store picker
+
+#### Scenario: One store is shown, not offered
+
+- **WHEN** a manager responsible for one store opens an app that declared a store
+  picker
+- **THEN** the top bar shows that store as plain text, with nothing to choose
+
+#### Scenario: The chosen store is kept in the address
+
+- **WHEN** a reader chooses a store in the top bar
+- **THEN** the address carries the choice without the page reloading, so a refresh
+  or a shared link keeps it and the back button returns to the earlier choice
+
+#### Scenario: The app hears of the choice at once
+
+- **WHEN** a reader chooses a store in the top bar above an app's screen
+- **THEN** the app is told the new store straight away, without the page
+  reloading, and shows that store's figures
+
+#### Scenario: A page opened without a store gets the first one
+
+- **WHEN** a reader opens an app's screen from a link with no store in it
+- **THEN** the top bar picks their first store for them, the app is told it as
+  it would be told any choice, and the back button still leads to the page
+  they came from
+
+#### Scenario: The bar follows the app
+
+- **WHEN** an app's screen moves to another store on its own
+- **THEN** the top bar shows that store
 
 ### Requirement: An app states the platform version it was built for
 
@@ -91,3 +307,180 @@ serving.
   enabled
 - **THEN** the release refuses to start
 - **AND** people keep using the app on the release already running
+
+#### Scenario: A switched-off app does not hold up a release
+
+- **WHEN** a release is deployed without the version of an app that is installed but
+  switched off
+- **THEN** the release goes ahead
+
+### Requirement: An app can provide people's scope
+
+An app SHALL be able to declare that it works out which places each person is
+responsible for, so other apps on the instance can rely on that answer. It SHALL read
+only the records it declared, and only records marked as deciding scope. It MAY also
+declare the kinds of identifier it needs, such as employee codes. It SHALL then be
+given the person's identifiers of those kinds that are valid today, read afresh each
+time, and nothing else about the person. Each identifier SHALL say whether another
+person holds the same one today, and SHALL say nothing about who that is or how many
+there are. If the instance does not have a kind it
+declared, has turned that kind off, or keeps that kind secret, the app SHALL answer
+that it is not set up yet, and no one SHALL get a scope from it. A secret kind's
+values SHALL never be given to an app.
+
+#### Scenario: A report app relies on a roster app
+
+- **WHEN** a roster app that provides people's scope and a report app are installed
+  together
+- **THEN** the report shows each manager only the stores the roster app says they cover
+
+#### Scenario: A roster app reaching beyond what it declared
+
+- **WHEN** an app that provides people's scope tries to read records it did not
+  declare, or records not marked as deciding scope
+- **THEN** no one gets a scope from it, and requests are refused
+
+#### Scenario: A roster app finds a manager's rows by employee code
+
+- **WHEN** a roster app that declared employee codes works out a manager's scope
+- **THEN** it is given the employee codes the manager holds today
+- **AND** it is not given a code the manager no longer holds, a code that starts
+  later, or any other kind of identifier
+
+#### Scenario: Two people hold the same employee code
+
+- **WHEN** two people in different firms both hold an employee code today, and a
+  roster app that declared employee codes works out one of their scopes
+- **THEN** it is told that the code is shared
+- **AND** it is not told who else holds the code, or how many people do
+
+#### Scenario: A code another person held in the past
+
+- **WHEN** a manager's employee code was another person's until yesterday
+- **THEN** the roster app is told that the code is not shared
+
+#### Scenario: An instance without the kind of identifier a roster app needs
+
+- **WHEN** a roster app declares employee codes on an instance that does not record
+  them
+- **THEN** the report tells its readers it is not set up yet
+- **AND** the instance's health page and the release log name the missing kind
+
+#### Scenario: A kind of identifier turned off on the instance
+
+- **WHEN** an admin turns off the kind of identifier a roster app declared
+- **THEN** the report tells its readers it is not set up yet, and no codes of that
+  kind are given to the roster app
+- **AND** once the admin turns it back on, the roster app is given the codes again
+
+#### Scenario: A kind of identifier made secret after values were recorded
+
+- **WHEN** an admin makes secret a kind of identifier a roster app declared, after
+  people's values were recorded in it
+- **THEN** the report tells its readers it is not set up yet
+- **AND** the roster app is never given any of those values
+- **AND** the instance's health page and the release log say the kind is secret and
+  cannot be given to an app
+
+### Requirement: Only one app provides people's scope
+
+An instance SHALL have at most one enabled app that provides people's scope.
+Featherbase SHALL refuse to install, enable or upgrade into a second one, and a release
+SHALL refuse to start on an instance that has two.
+
+#### Scenario: A second roster app is refused
+
+- **WHEN** an admin installs a second app that provides people's scope
+- **THEN** the install is refused, naming the app that already provides it
+
+
+### Requirement: A slow outside call never holds up other people's work
+
+When an app's read asks an outside service, Featherbase SHALL decide who may see what
+first, and then let the app make the call with nothing in the instance held waiting
+for it.
+
+#### Scenario: The warehouse is slow
+
+- **WHEN** a reader opens live figures and the warehouse takes half a minute to answer
+- **THEN** other people saving records meanwhile, and an administrator turning an
+  app off, are not kept waiting by that read
+
+#### Scenario: An app turned off while it waits
+
+- **WHEN** an administrator turns an app off while one of its reads waits on the
+  warehouse
+- **THEN** that read's answer is refused, and no view of it is recorded
+
+### Requirement: Every view of a report is recorded
+
+An app SHALL be able to record that a person viewed a report. Featherbase SHALL write
+the record itself, saying who looked, at which places, and whether they saw the
+cached copy or live figures.
+
+#### Scenario: Tracing a disputed figure
+
+- **WHEN** a manager says a figure they saw yesterday was wrong
+- **THEN** an administrator can find their view, and the exact cached copy it came
+  from
+
+### Requirement: An app owns its screen under the shared top bar
+
+An app that brings its own screen SHALL fully control its address, document,
+inner navigation and styling. Featherbase SHALL serve only that app's declared
+client files, SHALL NOT show one app's screen or its own in place of a missing
+piece, and SHALL preserve an app-owned deep path, query and fragment across
+sign-in and refresh while loading the app's entry document.
+
+Featherbase SHALL show the shared top bar above every app screen: the app's
+name, the controls the app declared for the bar, a way to open the Admin
+screens for people who can use them, the theme and the account menu. The bar
+SHALL NOT offer a list of apps to switch between. Featherbase SHALL draw the
+bar itself, and SHALL keep the bar's look and theme out of the app's screen;
+the app's own content SHALL start below the bar and never be covered by it. An
+app with its own screen SHALL NOT also create a competing generated Home Page;
+its tables remain available to administrators.
+
+#### Scenario: A missing piece stays missing
+
+- **WHEN** something inside Tasker's screen fails to load
+- **THEN** it shows as missing
+- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
+
+#### Scenario: Signing in returns to the app that was opened
+
+- **WHEN** a signed-out person opens a nested Tasker address with query state
+  and a selected task in its fragment
+- **THEN** after signing in and refreshing they remain at that exact address
+  with the selected task open
+
+#### Scenario: Every app opens under the shared top bar
+
+- **WHEN** the user opens an app on a computer or a phone
+- **THEN** the same top bar as on every other page sits above it, named for
+  that app, while the app's own navigation, content and styling show
+  unchanged below it
+
+#### Scenario: The Admin screens are one step away
+
+- **WHEN** the user, who can use the Admin screens, opens them from the bar on
+  an app's screen
+- **THEN** the Admin screens load in place of the app
+
+#### Scenario: An app can be delivered without rebuilding core
+
+- **WHEN** built Tasker is staged after Featherbase core was built
+- **THEN** Tasker opens under the shared top bar without a core rebuild or a
+  Tasker-specific core route
+
+## REMOVED Requirements
+
+### Requirement: An app owns its own screen
+
+**Reason**: Design D3 puts one shared top bar on every page (#650). The host
+shell's own header, its Home icon and its list of apps to switch between are
+gone, so the promises about them no longer hold.
+
+**Migration**: Everything else this requirement promised carries on in "An app
+owns its screen under the shared top bar". People reach the Admin screens from
+the bar, and another app from the Admin screens.

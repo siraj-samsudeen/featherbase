@@ -10,6 +10,7 @@ import { applySeedPack } from '../src/seed-packs'
 import { addIdentifier } from '../src/person-identifiers'
 import { CORE_PEOPLE_REVIEW } from '../src/person-identifiers'
 import { makePerson } from './fixtures'
+import { applyMigrationFile } from '../src/migrate'
 
 const system = async (key: string) => (await sql`select * from identifier_system where row_id = ${key}`)[0]
 
@@ -144,11 +145,10 @@ describe('identifier systems: Advanced settings and their presets', () => {
     expect((await clerk.fetch('/api/identifier_systems/probe-locker/defaults')).status).toBe(403)
   })
 
-  // SPEC: person-resolution design D2 — "kind drives every other default": a
-  // contact or national-ID system's Match preset is Suggest — suspected defect:
-  // the column default (Off) is applied before the kind preset, so a system
-  // saved without Match is stored Off.
-  test.fails('a contact system saved without Match gets its kind’s preset, Suggest', async ({ admin }) => {
+  // person-resolution design D2, "kind drives every other default": a contact
+  // or national-ID system's Match preset is Suggest. The match column carries
+  // no default of its own, so the kind's preset fills it (#532).
+  test('a contact system saved without Match gets its kind’s preset, Suggest', async ({ admin }) => {
     await admin.post('/api/save_row', { table: 'Identifier System', row: { row_id: 'probe-unsaid', label: 'Unsaid', kind: 'contact' } })
     expect(await system('probe-unsaid')).toMatchObject({ match: 'Suggest' })
   })
@@ -177,5 +177,24 @@ describe('the Jeyarama seed pack', () => {
     const again = await applySeedPack('jeyarama')
     expect(again).toMatchObject({ added: [], methodsLinked: [], peopleReview: 'kept' })
     expect(again.kept.sort()).toEqual(['stylehr-employee-code', 'stylehr-employee-id'])
+  })
+})
+
+describe('migration 0127', () => {
+  test('migration 0127 clears the Off default on Match and leaves any other default as set', async () => {
+    const MIGRATION = '0127_identifier_system_match_from_kind.sql'
+    const matchDefault = async () =>
+      (await sql`select default_value from column_def where parent = 'Identifier System' and column_name = 'match'`)[0].default_value
+    expect(await matchDefault()).toBeNull()
+    const reapply = async () => {
+      await sql`delete from migration where name = ${MIGRATION}`
+      await sql.begin(() => applyMigrationFile(MIGRATION))
+    }
+    await sql`update column_def set default_value = 'Off' where parent = 'Identifier System' and column_name = 'match'`
+    await reapply()
+    expect(await matchDefault()).toBeNull()
+    await sql`update column_def set default_value = 'Suggest' where parent = 'Identifier System' and column_name = 'match'`
+    await reapply()
+    expect(await matchDefault()).toBe('Suggest')
   })
 })
