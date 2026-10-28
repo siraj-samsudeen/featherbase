@@ -72,10 +72,13 @@ test('a sign-out the server could not complete says so and keeps the person sign
   const told = vi.spyOn(window, 'alert').mockImplementation(() => {})
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   const r = await renderApp('/featherbase/admin', admin)
+  // Admin first redirects to its Home page. Settle that navigation before
+  // testing whether the refused sign-out leaves the current page unchanged.
+  await waitFor(() => expect(pathOf(r)).toBe('/featherbase/admin/home/system'))
   await userEvent.click(await screen.findByTestId('session-user', {}, { timeout: 8000 }))
   await userEvent.click(await screen.findByTestId('logout'))
   await waitFor(() => expect(told).toHaveBeenCalledWith(SIGN_OUT_INCOMPLETE))
   expect(getToken()).toBe(admin.token)
-  expect(pathOf(r)).toBe('/featherbase/admin')
+  expect(pathOf(r)).toBe('/featherbase/admin/home/system')
   expect(errors).toHaveBeenCalledWith('sign-out: revoking a session failed', expect.anything())
 })
