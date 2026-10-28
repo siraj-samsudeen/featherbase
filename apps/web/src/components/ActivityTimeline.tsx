@@ -36,8 +36,14 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
   const meta = useMeta(table)
   const settings = useSettings()
   const columnType = (column: string) => meta.data?.columns.find((c) => c.column_name === column)?.column_type ?? 'Data'
-  const fmt = (column: string, v: unknown) =>
-    v == null || v === '' ? '∅' : formatValue(columnType(column), v, settings) || String(v)
+  // A Settings Table records its values as stored text, so a checkbox is '1'/'0'.
+  const asStored = (type: string, v: unknown) =>
+    type === 'Check' && typeof v === 'string' ? v === '1' || v === 'true' : v
+  const fmt = (column: string, v: unknown) => {
+    if (v == null || v === '') return '∅'
+    const type = columnType(column)
+    return formatValue(type, asStored(type, v), settings) || String(v)
+  }
 
   return (
     <div className={cardClasses('p-4')} data-testid="activity-timeline">

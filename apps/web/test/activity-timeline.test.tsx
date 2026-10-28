@@ -73,3 +73,22 @@ test('a Datetime change reads on the viewer\'s clock, and an empty side reads �
   const diff = await diffLines(admin, rowId)
   await waitFor(() => expect(diff).toHaveTextContent('handed_over: ∅ → 23-Oct-2026 02:00'))
 })
+
+// A Settings Table records its history as stored text, so a checkbox is '1'/'0'; both are truthy
+// strings, and switching one off read ✓ → ✓.
+test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => {
+  const S = 'Atl Store Settings'
+  await admin.post('/api/table_def', {
+    name: S,
+    kind: 'settings',
+    columns: [{ column_name: 'open_sundays', label: 'Open Sundays', column_type: 'Check' }],
+  })
+  await admin.post('/api/save_row', { table: S, row: { open_sundays: true } })
+  await admin.post('/api/save_row', { table: S, row: { open_sundays: false } })
+  await renderApp(`/featherbase/admin/${encodeURIComponent(S)}`, admin)
+  const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 10_000 })
+  await waitFor(() => {
+    const diffs = within(timeline).getAllByTestId('activity-diff')
+    expect(diffs.at(-1)).toHaveTextContent('open_sundays: ✓ → ✗')
+  })
+})
