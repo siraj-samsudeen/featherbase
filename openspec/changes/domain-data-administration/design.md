@@ -166,8 +166,9 @@ production architecture:
   prototype requires the complete footprint to be covered. Do not fabricate a
   store/department pair by mixing two different assignments. The broader policy
   for cross-store personal data must be confirmed before production.
-- The prototype uses in-memory state with optional local reset and no real API,
-  notifications, credentials or database writes. It is an interaction experiment.
+- The prototype evaluates synthetic state in the browser and saves progress and
+  form drafts to browser local storage. Reset clears that progress. There is no
+  real API, notification, credential or database write; it is an interaction experiment.
 
 ## Proposed logical records
 
@@ -532,7 +533,11 @@ screens until the setup journey finishes.
    until they have been converted to the agreed hands-on flow.
 
 Table inspection is a teaching aid, not a required business workflow. Reset
-returns to the first bootstrap screen; no production data is involved.
+clears locally saved progress and returns to the first bootstrap screen; no
+production data is involved. At the owner’s request, preserve the setup step,
+sample state, scenario, open views and form entries in browser local storage
+across refreshes. Keep a setup-step picker for resuming an older unsaved session.
+No server persistence is introduced.
 
 Use synthetic data, clear local-only labelling and a reset. Follow Shop Floor
 visual direction. Owner edits to these artifacts drive the next version. No
