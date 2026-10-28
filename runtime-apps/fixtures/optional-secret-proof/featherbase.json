@@ -1,0 +1,46 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "optproof",
+  "title": "Optional secret proof",
+  "entryTable": "optproof.note",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "optproof.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "roles": ["Optional Reader"],
+  "permissions": [{ "table": "optproof.note", "role": "Optional Reader", "can_read": true }],
+  "settings": [{ "name": "caption", "required": false }],
+  "secrets": ["OPTPROOF_TOKEN", { "name": "OPTPROOF_EMBED_KEY", "optional": true }],
+  "reads": {
+    "version": 1,
+    "tables": ["optproof.note"],
+    "operations": {
+      "echo_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "throw_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "log_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "outbound_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "outbound": true },
+      "quick_view": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "embed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "needs": ["OPTPROOF_EMBED_KEY"] },
+      "reach_embed": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } }
+    }
+  },
+  "actions": {
+    "version": 2,
+    "tables": ["optproof.note"],
+    "operations": {
+      "note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "echo_caption": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "getter_rejects": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "getter_logs": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "error_getter_logs": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "message_flips": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" } },
+      "embed_note": { "policy": { "kind": "table" }, "authorization": { "kind": "generic" }, "needs": ["OPTPROOF_EMBED_KEY"] }
+    }
+  }
+}

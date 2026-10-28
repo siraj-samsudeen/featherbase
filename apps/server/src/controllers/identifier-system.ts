@@ -3,6 +3,7 @@ import { AppError } from '../errors'
 import {
   EDITED_BY,
   IDENTIFIER_KINDS,
+  IDENTIFIER_SYSTEM_KEY,
   MATCH,
   NORMALISE_RULES,
   SENSITIVITIES,
@@ -17,7 +18,6 @@ import {
 // revertible); Sensitivity decides storage, display and tier together; and a
 // few combinations are refused because they would defeat the system.
 const truthy = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true'
-const KEY = /^[a-z][a-z0-9-]{1,62}$/
 
 const FLAGS = ['one_holder_at_a_time', 'one_per_person', 'assigner_scoped', 'enabled'] as const
 
@@ -32,7 +32,7 @@ const controller: TableController = {
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
       const key = String(row.row_id ?? old?.row_id ?? '')
-      if (isNew && !KEY.test(key))
+      if (isNew && !IDENTIFIER_SYSTEM_KEY.test(key))
         throw new AppError('ValidationError', 'An identifier system key is a lowercase slug like "stylehr-employee-code"', { row_id: 'lowercase slug' })
       const kind = oneOf(row.kind ?? old?.kind, IDENTIFIER_KINDS, 'kind') as IdentifierKind
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind) {

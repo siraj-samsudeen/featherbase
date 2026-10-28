@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
-import { asNameList } from './installed-app-ledger'
+import { asNameList, declaresOwnPages } from './installed-app-ledger'
 import { ensureHomePageForTable } from './home-pages'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -215,6 +215,16 @@ async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
 // and grants are not recorded, so uninstall can never remove something that
 // predated the app.
 async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]; perms: string[] }> {
+  return provisionGrants(manifest, manifest.permissions ?? [])
+}
+
+/** #651: the roles `manifest` declares and the given grants of it, as an
+ *  install creates them. An upgrade calls it for the grants on the Tables
+ *  that upgrade adds. */
+export async function provisionGrants(
+  manifest: Pick<AppManifest, 'name' | 'roles' | 'runtime_package'>,
+  permissions: AppPermission[],
+): Promise<{ roles: string[]; perms: string[] }> {
   const roles: string[] = []
   for (const role of manifest.roles ?? []) {
     const [have] = await sql`select 1 from role where row_id = ${role}`
@@ -223,7 +233,7 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
     roles.push(role)
   }
   const perms: string[] = []
-  for (const p of manifest.permissions ?? []) {
+  for (const p of permissions) {
     const [role] = await sql`select 1 from role where row_id = ${p.role}`
     if (!role)
       throw new AppError(
@@ -349,9 +359,19 @@ async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
   }
 }
 
+/** Whether an app of this name is installed, from the database record every
+ *  process shares — enabled or not, pending activation or not, loaded by this
+ *  process or not. One primary-key lookup, uncached, so it is never stale.
+ *  Installing asks it, and so does an app address's routing (#671); serving
+ *  the app is a separate question (activeApps). */
 export async function isInstalled(name: string): Promise<boolean> {
   const [row] = await sql`select 1 from installed_app where name = ${name}`
   return Boolean(row)
+}
+
+/** The names of every installed app, by the same record. */
+export async function installedAppNames(): Promise<string[]> {
+  return (await sql`select name from installed_app order by name`).map((row) => String(row.name))
 }
 
 export async function listInstalledApps() {
@@ -370,6 +390,7 @@ export async function listInstalledApps() {
           ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data' : null,
     available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
     active: activeApps.has(r.name as string) && r.enabled !== false,
+    ownPages: declaresOwnPages(r),
   }))
 }
 

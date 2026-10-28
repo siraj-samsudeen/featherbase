@@ -6,8 +6,9 @@
 // hard-codes a client's column names in platform code.
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { sql } from './db'
-import type { PersonScope } from 'shared'
+import { sql, type Sql } from './db'
+import { platformRelation } from './platform-schema'
+import type { PersonScope, ScopePlace } from 'shared'
 import { activeSnapshot, recordMiss, registerDataset, unregisterDataset } from './dataset-snapshot'
 import { AppError } from './errors'
 import { logAccess } from './audit'
@@ -24,6 +25,148 @@ export const DATASET_COLUMN_TYPES = ['text', 'integer', 'number', 'money', 'date
  *  text form is the same in the source and in the snapshot qualify. */
 const FILTERABLE: readonly string[] = ['text', 'integer', 'date']
 
+/** #669: the completeness checks a dataset may declare. Each is checked on a
+ *  refresh's candidate before it can replace the active snapshot. */
+export const DATASET_GUARD_KINDS = ['min_rows', 'not_all_zero', 'max_drop_pct', 'max_sum_drop_pct'] as const
+/** A guarded column holds figures, so "zero" and "a drop" mean something. */
+const GUARDABLE: readonly string[] = ['integer', 'number', 'money']
+
+const guardSchema = z.object({
+  kind: z.enum(DATASET_GUARD_KINDS, { errorMap: () => ({ message: `A dataset guard kind must be one of ${DATASET_GUARD_KINDS.join(', ')}` }) }),
+  column: identifier.optional(),
+  value: z.number().optional(),
+  within: identifier.optional(),
+}).strict().superRefine((guard, context) => {
+  const issue = (message: string) => context.addIssue({ code: 'custom', message })
+  // #676: a period bounds a comparison with the active snapshot; the absolute
+  // checks compare nothing.
+  if (guard.within !== undefined && guard.kind !== 'max_drop_pct' && guard.kind !== 'max_sum_drop_pct')
+    issue(`A ${guard.kind} guard compares nothing with the active snapshot; only a drop guard compares within a column`)
+  if (guard.kind === 'min_rows') {
+    if (guard.column !== undefined) issue('A min_rows guard counts rows, so it names no column')
+    if (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0)
+      issue('A min_rows value must be a whole number of rows, 0 or more')
+    return
+  }
+  if (guard.column === undefined) issue(`A ${guard.kind} guard needs a column`)
+  if (guard.kind === 'not_all_zero' && guard.value !== undefined) issue('A not_all_zero guard takes no value')
+  // Whole percentages, so the limit is checked in integers, exactly.
+  if (guard.kind !== 'not_all_zero' && (guard.value === undefined || !Number.isInteger(guard.value) || guard.value < 0 || guard.value > 100))
+    issue(`A ${guard.kind} value must be a whole percentage from 0 to 100`)
+})
+
+export type DatasetGuard = z.infer<typeof guardSchema>
+
+/** What a guard reads of a snapshot: its rows; per guarded column how many
+ *  of its values are neither empty nor zero, and their exact total as decimal
+ *  text; and per `within` column what values it holds. */
+export interface GuardCounts {
+  rows: number
+  nonZero: Record<string, number>
+  /** #676: SQL numeric sums, as text, so no total is ever a float. */
+  sums: Record<string, string>
+  periods: Record<string, GuardPeriod>
+}
+
+/** #676: what a snapshot holds in a `within` column: how many different
+ *  values, how many rows have none, and the value when every row holds the
+ *  same one (null otherwise). */
+export interface GuardPeriod {
+  distinct: number
+  empty: number
+  value: string | null
+}
+
+const whole = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
+const percent = (value: number) => `${Math.round(value * 10) / 10}%`
+/** A total keeps its paise: the same Indian grouping as `whole`, with up to
+ *  two decimals. Formatted from its decimal text, so it is never rounded
+ *  through a float. */
+const total = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
+const exactTotal = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 100 })
+/** Two totals for a message: to the paisa, or in every digit when the paisa
+ *  cannot tell them apart. */
+function formatTotals(before: string, now: string): string {
+  const [b, n] = [before, now].map(decimal => total.format(decimal as unknown as number))
+  if (b !== n) return `${b} → ${n}`
+  return `${exactTotal.format(before as unknown as number)} → ${exactTotal.format(now as unknown as number)}`
+}
+
+/** #676: a decimal text as an integer count of 10^-scale units. */
+function scaled(decimal: string, scale: number): bigint {
+  const [, sign, digits, fraction = ''] = /^(-?)(\d+)(?:\.(\d+))?$/.exec(decimal.trim()) ?? []
+  if (digits === undefined) throw new Error(`not a decimal total: ${decimal}`)
+  const units = BigInt(digits + fraction.padEnd(scale, '0'))
+  return sign ? -units : units
+}
+const scaleOf = (decimal: string) => decimal.split('.')[1]?.length ?? 0
+
+/**
+ * #676: the drop from `before` to `now`, both decimal text, against a whole
+ * percentage `limit`, decided in integers: both totals are scaled to the
+ * same whole number of units, so neither 0.1 + 0.2 nor 0.57 * 100 can move
+ * the boundary. Null when the drop is within the limit; otherwise the drop
+ * in words, to a tenth, or "more than" the limit when a tenth cannot show it.
+ */
+function sumDrop(before: string, now: string, limit: number): string | null {
+  const scale = Math.max(scaleOf(before), scaleOf(now))
+  const b = scaled(before, scale)
+  const n = scaled(now, scale)
+  if (n * 100n >= b * BigInt(100 - limit)) return null
+  const tenths = ((b - n) * 2000n + b) / (2n * b)  // rounded half up; b > 0
+  if (tenths <= BigInt(limit * 10)) return `more than ${limit}%`
+  return `${tenths / 10n}${tenths % 10n ? `.${tenths % 10n}` : ''}%`
+}
+
+/**
+ * #669: the first of `guards` that the candidate fails, said in words that
+ * name the dataset, the guard and the numbers; null when every guard passes.
+ * A drop is measured against the active snapshot, so a first refresh, with
+ * none to compare, cannot fail one.
+ *
+ * #676: a drop guard `within` a column compares only when the candidate and
+ * the active snapshot each hold one and the same value there, so a new
+ * period starts without a baseline. A candidate that is not one period is
+ * refused; an active snapshot that is not one is no baseline.
+ */
+export function guardRefusal(dataset: string, guards: readonly DatasetGuard[], candidate: GuardCounts, previous: GuardCounts | null): string | null {
+  for (const guard of guards) {
+    if (guard.kind === 'min_rows') {
+      if (candidate.rows < guard.value!) return `${dataset}: ${whole.format(candidate.rows)} rows, at least ${whole.format(guard.value!)} required`
+      continue
+    }
+    const column = guard.column!
+    const now = candidate.nonZero[column]
+    if (guard.kind === 'not_all_zero') {
+      if (now === 0) return `${dataset}: every ${column} value is empty or zero (${whole.format(candidate.rows)} rows)`
+      continue
+    }
+    let baseline = previous
+    if (guard.within) {
+      const period = candidate.periods[guard.within]
+      if (period.distinct !== 1 || period.empty !== 0)
+        return `${dataset}: ${guard.within} holds ${whole.format(period.distinct)} value${period.distinct === 1 ? '' : 's'} and ${whole.format(period.empty)} empty, but ${column} is compared within one ${guard.within}`
+      if (previous?.periods[guard.within].value !== period.value) baseline = null
+    }
+    if (guard.kind === 'max_sum_drop_pct') {
+      const before = baseline?.sums[column]
+      // A drop is a share of a positive total: from zero or below there is
+      // no share to take, so there is nothing to compare.
+      if (before === undefined || scaled(before, scaleOf(before)) <= 0n) continue
+      const drop = sumDrop(before, candidate.sums[column], guard.value!)
+      if (drop) return `${dataset}: ${column} total dropped ${drop} (${formatTotals(before, candidate.sums[column])}), limit ${percent(guard.value!)}`
+      continue
+    }
+    const before = baseline?.nonZero[column]
+    if (!before) continue
+    // Decided in integers: a computed percentage is not exact (100 → 93 is
+    // 7.000000000000001%), and a drop of exactly the limit must pass.
+    if (now * 100 < before * (100 - guard.value!))
+      return `${dataset}: ${column} values dropped ${percent(((before - now) / before) * 100)} (${whole.format(before)} → ${whole.format(now)}), limit ${percent(guard.value!)}`
+  }
+  return null
+}
+
 const datasetSchema = z.object({
   name: identifier,
   source: z.string().min(1).max(140),
@@ -33,9 +176,25 @@ const datasetSchema = z.object({
   columns: z.array(z.object({ name: identifier, type: z.enum(DATASET_COLUMN_TYPES) }).strict()).min(1)
     .refine(columns => distinct(columns.map(column => column.name)), 'Dataset column names must be distinct'),
   keys: z.array(identifier).refine(distinct, 'Dataset keys must be distinct'),
+  // Scope filter key → column. A place must use these keys: one naming any
+  // other key adds no rows from this dataset (#667).
   filters: z.record(identifier, identifier).refine(filters => Object.keys(filters).length > 0, 'A dataset maps at least one scope filter'),
+  guard: z.array(guardSchema).optional(),
 }).strict().superRefine((dataset, context) => {
   const types = new Map(dataset.columns.map(column => [column.name, column.type]))
+  for (const { column } of dataset.guard ?? []) {
+    if (column === undefined) continue
+    if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} is not one of its columns` })
+    else if (!GUARDABLE.includes(types.get(column)!))
+      context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard column ${column} must be integer, number or money` })
+  }
+  // #676: a period is compared as text, like a key, so it takes a key's types.
+  for (const { within } of dataset.guard ?? []) {
+    if (within === undefined) continue
+    if (!types.has(within)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard within column ${within} is not one of its columns` })
+    else if (!FILTERABLE.includes(types.get(within)!))
+      context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s guard within column ${within} must be text, integer or date` })
+  }
   for (const [what, column] of [...dataset.keys.map(key => ['key', key]), ...Object.values(dataset.filters).map(c => ['scope filter', c])]) {
     if (!types.has(column)) context.addIssue({ code: 'custom', message: `Dataset ${dataset.name}'s ${what} ${column} is not one of its columns` })
     else if (!FILTERABLE.includes(types.get(column)!))
@@ -99,12 +258,83 @@ export function shapeRows(dataset: DatasetDeclaration, raw: Record<string, unkno
   })
 }
 
+/** #676: a source's decimal text as a JSON number literal, digit for digit;
+ *  null when it is not plain decimal text. */
+function decimalLiteral(text: string): string | null {
+  const [, sign, whole = '', fraction = '', exponent] = /^\s*([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?\s*$/.exec(text) ?? []
+  if (sign === undefined || !(whole + fraction)) return null
+  return `${sign === '-' ? '-' : ''}${whole.replace(/^0+(?=\d)/, '') || '0'}${fraction ? `.${fraction}` : ''}${exponent ? `e${exponent}` : ''}`
+}
+
+/**
+ * #676: the rows a snapshot stores, as JSON text. Each is the shaped row,
+ * except that a money or number figure is written with the digits its
+ * source gave, so the stored copy keeps what a JavaScript number cannot and
+ * the guards' SQL numeric sums are exact. Parsed, it is the shaped row: a
+ * cached read answers the same numbers a live read does.
+ */
+export function storedRowJson(dataset: DatasetDeclaration, raw: Record<string, unknown>[]): string[] {
+  const shaped = shapeRows(dataset, raw)
+  return shaped.map((row, i) => `{${dataset.columns.map(({ name, type }) => {
+    const value = raw[i][name]
+    const exact = (type === 'money' || type === 'number') && typeof value === 'string' ? decimalLiteral(value) : null
+    return `${JSON.stringify(name)}:${exact ?? JSON.stringify(row[name])}`
+  }).join(',')}}`)
+}
+
 /** Run the declared query on its source, read-only, limited to `where`. */
 async function runQuery(dataset: DatasetDeclaration, where?: DatasetWhere) {
   const source = await getSource(dataset.source)
   const driver = getDriver(source)
   if (!driver.query) throw new Error(`Data source ${dataset.source} (${source.engine}) cannot run a dataset query`)
   return driver.query(source, dataset.query, dataset.columns, where)
+}
+
+/** The whitespace a JavaScript trim removes, as a Postgres regex class:
+ *  `\s` alone is locale-dependent in Postgres and misses U+00A0. */
+const SPACE = '[\\s\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]'
+const TRIM = `^${SPACE}+|${SPACE}+$`
+
+/**
+ * #676 (Codex rounds 1 and 2): the one definition of a stored row's period,
+ * read by every period aggregate: its text, trimmed of whitespace, and null
+ * when nothing is left. So a blank period is a missing one, never a new one,
+ * and a padded period (a source's char(n), say) is the period it pads. Text
+ * shaping does not trim, so this is the only place "blank" is defined.
+ */
+const periodValue = (column: string) => sql`nullif(regexp_replace(row->>${column}, ${TRIM}, '', 'g'), '')`
+
+/**
+ * A stored snapshot's counts for its guards, in one pass over its rows.
+ * #676: a total is summed in SQL numeric from each value's JSON decimal
+ * text and returned as text, so it is exact; a period is read as text, as
+ * the snapshot stores it.
+ */
+async function guardCounts(snapshotId: string, guards: readonly DatasetGuard[]): Promise<GuardCounts> {
+  const columns = [...new Set(guards.flatMap((guard) => (guard.column ? [guard.column] : [])))]
+  const periods = [...new Set(guards.flatMap((guard) => (guard.within ? [guard.within] : [])))]
+  const parts = [
+    ...columns.map((column, i) => sql`, count(*) filter (where coalesce((row->>${column})::numeric, 0) <> 0) as ${sql(`c${i}`)}
+      , coalesce(sum((row->>${column})::numeric), 0)::text as ${sql(`s${i}`)}`),
+    ...periods.map((column, i) => {
+      const period = periodValue(column)
+      return sql`, count(distinct ${period}) as ${sql(`pd${i}`)}
+        , count(*) filter (where ${period} is null) as ${sql(`pe${i}`)}, min(${period}) as ${sql(`pv${i}`)}`
+    }),
+  ]
+  const [counted] = await sql`
+    select count(*) as rows ${parts.length ? parts.reduce((all, one) => sql`${all} ${one}`) : sql``}
+    from app_dataset_row where snapshot_id = ${snapshotId}`
+  return {
+    rows: Number(counted.rows),
+    nonZero: Object.fromEntries(columns.map((column, i) => [column, Number(counted[`c${i}`])])),
+    sums: Object.fromEntries(columns.map((column, i) => [column, String(counted[`s${i}`])])),
+    periods: Object.fromEntries(periods.map((column, i) => {
+      const distinct = Number(counted[`pd${i}`])
+      const empty = Number(counted[`pe${i}`])
+      return [column, { distinct, empty, value: distinct === 1 && empty === 0 ? String(counted[`pv${i}`]) : null }]
+    })),
+  }
 }
 
 /** The registry name of an app's dataset: `<app>.<dataset>`. */
@@ -117,21 +347,24 @@ const registered = new Map<string, string[]>()
  * Register the selected version of `app`'s datasets on the snapshot engine
  * (dataset-snapshot.ts), replacing whatever that app registered before. The
  * declaration is part of each snapshot's identity, so a changed query or
- * column never serves rows cut to the old one.
+ * column never serves rows cut to the old one. Its guard is not (#669): a
+ * guard decides which refresh may replace the copy, not what the copy holds,
+ * so an upgrade that adds or tunes one keeps the copy and checks against it.
  */
 export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] = []): void {
   for (const key of registered.get(app) ?? []) unregisterDataset(key)
   registered.set(app, datasets.map((dataset) => datasetKey(app, dataset.name)))
   for (const dataset of datasets) {
-    registerDataset<DatasetRow>({
+    registerDataset<string>({
       name: datasetKey(app, dataset.name),
-      version: createHash('sha256').update(JSON.stringify(dataset)).digest('hex').slice(0, 16),
+      version: createHash('sha256').update(JSON.stringify({ ...dataset, guard: undefined })).digest('hex').slice(0, 16),
       async fetch() {
-        return { rows: shapeRows(dataset, await runQuery(dataset)), sourceAsOf: null }
+        return { rows: storedRowJson(dataset, await runQuery(dataset)), sourceAsOf: null }
       },
       async load(snapshotId, rows) {
         for (let i = 0; i < rows.length; i += CHUNK)
-          await sql`insert into app_dataset_row ${sql(rows.slice(i, i + CHUNK).map((row) => ({ snapshot_id: snapshotId, row: sql.json(row) })))}`
+          await sql`insert into app_dataset_row (snapshot_id, row)
+            select ${snapshotId}, value::jsonb from unnest(${rows.slice(i, i + CHUNK)}::text[]) as value`
         return rows.length
       },
       async sizeOf(snapshotId) {
@@ -139,8 +372,15 @@ export function registerAppDatasets(app: string, datasets: DatasetDeclaration[] 
         return Number(size.bytes)
       },
       // An empty candidate is how a silent upstream failure looks; the last
-      // good copy keeps serving instead.
-      validate: (rowCount) => (rowCount === 0 ? 'candidate is empty: the query returned no rows' : null),
+      // good copy keeps serving instead. #669: so does one that fails a guard
+      // the app declared, counted the same way in the candidate and the
+      // active snapshot, from their stored rows.
+      async validate(rowCount, previous, snapshotId) {
+        if (rowCount === 0) return 'candidate is empty: the query returned no rows'
+        if (!dataset.guard?.length) return null
+        return guardRefusal(dataset.name, dataset.guard, await guardCounts(snapshotId, dataset.guard),
+          previous ? await guardCounts(previous.row_id, dataset.guard) : null)
+      },
     })
   }
 }
@@ -187,11 +427,20 @@ export function datasetWhere(dataset: DatasetDeclaration, places: PersonScope | 
     return { column: key, values: list.map(String) }
   })
   const any = (places ?? []).flatMap((place) => {
-    const named = Object.entries(place.filters)
-    if (named.some(([name]) => !Object.hasOwn(dataset.filters, name))) return []
-    return [named.map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
+    if (unappliableKeys(dataset, place).length) return []
+    return [Object.entries(place.filters).map(([name, values]) => ({ column: dataset.filters[name], values: [...values] }))]
   })
   return { any, all }
+}
+
+/** #667: the filter keys a place names that the dataset maps to no column,
+ *  sorted. Any one drops the whole place from the dataset (fail closed). */
+export function unappliableKeys(dataset: DatasetDeclaration, place: ScopePlace): string[] {
+  return unmappedKeys(dataset, Object.keys(place.filters))
+}
+
+function unmappedKeys(dataset: DatasetDeclaration, keys: readonly string[]): string[] {
+  return keys.filter((name) => !Object.hasOwn(dataset.filters, name)).sort()
 }
 
 // The same where, over the snapshot's stored rows.
@@ -235,16 +484,99 @@ export interface DatasetReadRequest {
   /** An outbound read holds its view records here until its answer: they
    *  are written with the final check that the app still serves the version
    *  the read ran under, under one lock, or not at all. */
-  deferView?: (write: () => Promise<void>) => void
+  deferWrite?: (write: () => Promise<void>) => void
+  /** #667: where a dropped place came from, decided while the read was
+   *  authorized. Absent, nothing is noted. */
+  provenance?: DropProvenance
+}
+
+/** #667: the versions the read was authorized under (the app's, and the
+ *  scope provider's that answered), and the filter keys of each place the
+ *  provider returned, before the request narrowed them. A request may add
+ *  keys by naming filters; only the provider's own keys are ever recorded. */
+export interface DropProvenance {
+  versions: DropVersions
+  providerKeys: readonly (readonly string[])[]
+}
+
+export interface DropVersions {
+  app: string
+  provider: { app: string; version: string }
+}
+
+/** One dropped place, by what it names: never the person, place or value. */
+export interface PlaceDrop {
+  app: string
+  dataset: string
+  keys: string[]
+  versions: DropVersions
+}
+
+/** How long a recorded drop stands before a read records it again. */
+const DROP_RECORD_INTERVAL = '1 hour'
+/** Recording is a note for Instance health: it never waits long for a lock. */
+const DROP_LOCK_TIMEOUT = '250ms'
+const DROP_STATEMENT_TIMEOUT = '2s'
+
+/**
+ * #667: record drops a finished read met, on a transaction of its own after
+ * the read's, never on its path (adversarial round 1 on #678). Rows are
+ * written in one sorted order so two recordings cannot deadlock; a lock held
+ * elsewhere times out quickly; any failure is logged and the read stands. A
+ * drop already recorded under the same versions within the last hour is not
+ * written again: the select spares a busy report the row lock, and the
+ * conflict clause holds the rule when two recordings race. Each pair of
+ * versions keeps its own row, so a late read authorized under older versions
+ * never replaces a current record (Codex round 2 on #678). Returns how many
+ * rows were written.
+ */
+export async function recordPlaceDrops(drops: readonly PlaceDrop[], db: Sql = sql): Promise<number> {
+  const order = (d: PlaceDrop) => [d.app, d.dataset, d.versions.provider.app, d.keys.join(','), d.versions.app, d.versions.provider.version].join('\u0000')
+  const unique = [...new Map(drops.map((d) => [order(d), d])).entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, d]) => d)
+  if (!unique.length) return 0
+  const table = db(platformRelation('dataset_place_drop'))
+  try {
+    return await db.begin(async (tx) => {
+      const [before] = await tx`select current_setting('lock_timeout') as lock, current_setting('statement_timeout') as statement`
+      await tx`select set_config('lock_timeout', ${DROP_LOCK_TIMEOUT}, true), set_config('statement_timeout', ${DROP_STATEMENT_TIMEOUT}, true)`
+      let written = 0
+      for (const { app, dataset, keys, versions: { app: version, provider } } of unique) {
+        const [fresh] = await tx`select 1 from ${table}
+          where app = ${app} and dataset = ${dataset} and provider = ${provider.app} and filter_keys = ${keys}
+            and app_version = ${version} and provider_version = ${provider.version}
+            and last_seen > now() - ${DROP_RECORD_INTERVAL}::interval`
+        if (fresh) continue
+        written += (await tx`insert into ${table} as d (app, dataset, provider, filter_keys, app_version, provider_version)
+          values (${app}, ${dataset}, ${provider.app}, ${keys}, ${version}, ${provider.version})
+          on conflict (app, dataset, provider, filter_keys, app_version, provider_version) do update set last_seen = now()
+          where d.last_seen <= now() - ${DROP_RECORD_INTERVAL}::interval
+          returning 1`).length
+      }
+      // Inside a test's sandbox this is a savepoint: put its settings back.
+      await tx`select set_config('lock_timeout', ${String(before.lock)}, true), set_config('statement_timeout', ${String(before.statement)}, true)`
+      return written
+    }) as number
+  } catch (error) {
+    console.warn(`[apps] a dropped place could not be recorded for Instance health: ${error instanceof Error ? error.message : String(error)}`)
+    return 0
+  }
 }
 
 /**
  * `context.datasets` and `context.recordView` for one read: the app's own
  * datasets only, read through the reader's frozen places. No SQL crosses
  * from the app: it names a dataset and filter values, and the query is the
- * declared one.
+ * declared one. `drops()` lists the provider's places a dataset read could
+ * not apply, for the caller to record once the read's answer stands.
  */
-export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferView }: DatasetReadRequest) {
+export function appDatasets({ app, operation, user, title, declarations, places, outbound, deferWrite, provenance }: DatasetReadRequest) {
+  const met = new Map<string, PlaceDrop>()
+  function noteDrops(dataset: DatasetDeclaration) {
+    for (const keys of provenance?.providerKeys ?? []) {
+      const unmapped = unmappedKeys(dataset, keys)
+      if (unmapped.length) met.set(`${dataset.name}\u0000${unmapped.join(',')}`, { app, dataset: dataset.name, keys: unmapped, versions: provenance!.versions })
+    }
+  }
   // What this read served, per dataset, for the Access Log: the platform
   // says what was served, never the app.
   const served = new Map<string, { served: DatasetAnswer['served']; snapshot?: string }>()
@@ -262,6 +594,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
     async active(name: string, filters?: unknown): Promise<DatasetAnswer | null> {
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      noteDrops(dataset)
       const snapshot = await activeSnapshot(datasetKey(app, name))
       if (!snapshot) {
         await recordMiss(datasetKey(app, name))
@@ -277,6 +610,7 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       if (!outbound) throw new AppError('ValidationError', 'A live dataset read calls out to its data source: declare the read outbound')
       const dataset = await declared(name)
       const where = datasetWhere(dataset, places, filters)
+      noteDrops(dataset)
       const at = new Date().toISOString()
       const rows = shapeRows(dataset, await runQuery(dataset, where))
       served.set(name, { served: 'live' })
@@ -298,8 +632,8 @@ export function appDatasets({ app, operation, user, title, declarations, places,
       scope: places ? places.map((place) => place.label).join('; ').slice(0, 140) : undefined,
       required: true,
     })
-    if (deferView) deferView(write)
+    if (deferWrite) deferWrite(write)
     else await write()
   }
-  return { datasets, recordView }
+  return { datasets, recordView, drops: () => [...met.values()] }
 }

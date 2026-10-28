@@ -15,7 +15,7 @@ import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
 import { appSetupState } from './app-settings'
-import { unshippedApps } from './runtime-packages'
+import { shippedUpgrades, unshippedApps, upgradeLossWarning } from './runtime-packages'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -94,6 +94,7 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   passed.push(await assertInstalledAppsShipped())
   passed.push(await assertNoOpenAppRoleBinding())
   passed.push(...(await appsSetUp()))
+  passed.push(...(await appUpgradeLosses()))
   passed.push(await noticeRecipients())
   passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
@@ -244,6 +245,25 @@ async function installedNotShipped() {
   return { installed: rows.map(named), missing: missing.map(named) }
 }
 
+/** 5e. #651: a warning, never a refusal (the step's destructive: true is the
+ *  author's own declaration). For each installed app this release ships a
+ *  newer version of, what upgrading to it would remove here, counted per
+ *  instance before anything runs. Counts only: no value is ever printed. */
+async function appUpgradeLosses(): Promise<string[]> {
+  const apps = await locate('installed_app')
+  if (apps?.relation !== platformRelation('installed_app') ||
+      !['runtime_package', 'package_version', 'migration_ledger'].every((c) => apps.columns.has(c)))
+    return ['app upgrade loss check skipped (no app versions recorded yet)']
+  const installed = await sql`select name, package_version, migration_ledger from ${sql(apps.relation)}
+    where runtime_package and package_version is not null order by name`
+  const warnings: string[] = []
+  for (const upgrade of await shippedUpgrades(installed, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) {
+    const warning = await upgradeLossWarning(upgrade)
+    if (warning) warnings.push(warning)
+  }
+  return warnings.length ? warnings : ['no app upgrade this release ships removes data here']
+}
+
 /** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that
  *  lacks a required setting or one of its secrets answers "not set up yet"
  *  until it gets them. Names only: no value is ever printed. */
@@ -252,9 +272,14 @@ async function appsSetUp(): Promise<string[]> {
   if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return ['app setup check skipped (no installed apps yet)']
   const settings = await locate('app_setting')
   const sources = await locate('data_source')
-  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null, sources: sources?.relation ?? null }))
-    .filter(({ missing }) => missing.length)
-    .map(({ app, missing }) => `WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`)
+  const identifierSystems = await locate('identifier_system')
+  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null, sources: sources?.relation ?? null,
+    identifierSystems: identifierSystems?.relation ?? null }))
+    .flatMap(({ app, missing, optional }) => [
+      ...(missing.length ? [`WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`] : []),
+      // #666: a missing optional secret holds up only what needs it.
+      ...(optional.length ? [`WARNING: app ${app} lacks ${optional.join(', ')}. Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.`] : []),
+    ])
   return warnings.length ? warnings : ['every enabled app has its required settings and secrets']
 }
 

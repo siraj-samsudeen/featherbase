@@ -5,6 +5,7 @@
 // `{ picker: 'Store', options: 'stores', sets: 'store' }`; its `stores` read
 // answers the reader's places from `runtime-apps/fixtures/place-roster`.
 // Widths, pixels and real focus rings are in e2e/top-bar-picker.spec.ts.
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -196,4 +197,34 @@ test('Escape closes the list and leaves focus on the picker', async ({ admin, cr
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
   expect(store).toHaveFocus()
+})
+
+// Codex round 1 on #658: two declared controls, both missing from the address,
+// must not overwrite each other when each writes its first option in place.
+test('two declared controls missing from the address both get their first option', async ({ admin, createUser }) => {
+  const copy = await mkdtemp(resolve('test/.b650-two-controls-'))
+  try {
+    await cp(BAR_PROOF, copy, { recursive: true })
+    const file = resolve(copy, 'featherbase.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.bar = [...manifest.bar, { picker: 'Region', options: 'stores', sets: 'region' }]
+    await writeFile(file, JSON.stringify(manifest))
+    expect(await discoverPackages([copy, ROSTER])).toEqual([])
+    await admin.post('/api/install_app', { name: 'barproof' })
+    await admin.post('/api/install_app', { name: 'placeroster' })
+    const reader = await createUser({ email: 'bar-reader-two-controls@example.test', roles: ['Bar Reader'] })
+    for (const [place, store] of STORES)
+      await admin.post('/api/save_row', {
+        table: 'placeroster.position',
+        row: { row_id: `${reader.user}-${store}`, person: reader.user, place, store, section: 'all' },
+      })
+    onAddressThatOpens('barproof')
+    const { router } = await renderApp(ACCOUNT_SIGN_IN_METHODS_PATH, reader)
+    await waitFor(() => {
+      const params = new URLSearchParams(locationOf(router).split('?')[1] ?? '')
+      expect([params.get('store'), params.get('region')]).toEqual(['S102', 'S102'])
+    })
+  } finally {
+    await rm(copy, { recursive: true, force: true })
+  }
 })

@@ -30,8 +30,9 @@ interface DatasetDefinition<Row = unknown[]> {
   fetch: () => Promise<{ rows: Row[]; sourceAsOf: string | null }>
   /** Write the fetched rows under this snapshot id. Returns the row count written. */
   load: (snapshotId: string, rows: Row[]) => Promise<number>
-  /** Last gate before activation. Return a reason to refuse, or null to accept. */
-  validate?: (rowCount: number, previous: SnapshotRecord | null) => string | null
+  /** Last gate before activation, once the candidate's rows are loaded under
+   *  `snapshotId`. Return a reason to refuse, or null to accept. */
+  validate?: (rowCount: number, previous: SnapshotRecord | null, snapshotId: string) => string | null | Promise<string | null>
   /** Bytes this snapshot's rows occupy, for the registry. Optional: a dataset that cannot say leaves it null. */
   sizeOf?: (snapshotId: string) => Promise<number>
 }
@@ -226,7 +227,7 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
     }
 
     const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
-    const refusal = def.validate?.(rowCount, previous) ?? null
+    const refusal = (await def.validate?.(rowCount, previous, snapshotId)) ?? null
     if (refusal) {
       // A refused candidate is never activated and never deleted: the row is the
       // record of why the refresh did not take, which a silent no-op would lose.

@@ -278,7 +278,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(page.status).toBe(200)
     const rootHtml = await page.text()
     expect(rootHtml).toContain('<h1>Other tasks</h1>')
-    expect(rootHtml).toContain('data-testid="runtime-shell"')
+    expect(rootHtml).toContain('<featherbase-bar data-app="other" data-title="Other tasks"></featherbase-bar>')
     const deepPage = await member.fetch('/other/review/37?filter=a%26b', { headers: { accept: 'text/html' } })
     expect(deepPage.status).toBe(200)
     const deepHtml = await deepPage.text()
@@ -291,7 +291,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(deepHtml).toContain('mask-image: url(#preview-mask)')
     expect(deepHtml).toContain('<a href="#task=1">Selected task</a>')
     expect(deepHtml).toContain('<a href="?owner=me">My tasks</a>')
-    expect(deepHtml).toContain('data-testid="runtime-shell"')
+    expect(deepHtml).toContain('<featherbase-bar data-app="other" data-title="Other tasks"></featherbase-bar>')
     for (const path of ['server.mjs', 'package.json', 'missing.js', '%2e%2e%2fserver.mjs'])
       expect((await member.fetch(`/other/${path}`)).status).toBe(404)
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
@@ -333,7 +333,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       .toMatchObject({ validation_runs: '2' })
   })
 
-  test('PKG-R4: runtime entry HTML composes one authorized host switcher', async ({ admin }) => {
+  // #650 (design D3): the shared top bar replaced the runtime shell's header
+  // and its app switcher; the bar names only the app it stands on.
+  test("PKG-R4: an app's entry document carries the shared bar's host, named by the app's title", async ({ admin }) => {
     expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     await admin.post('/api/install_app', { name: 'other' })
@@ -341,16 +343,21 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     const page = await admin.fetch('/tasker/review/37?filter=a%26b', { headers: { accept: 'text/html' } })
     expect(page.status).toBe(200)
     const html = await page.text()
-    expect(html).toContain('data-featherbase-runtime-shell')
-    expect(html).toContain('data-testid="runtime-shell"')
-    expect(html).toContain('aria-label="Featherbase Admin"')
-    expect(html).toContain('<option value="/featherbase/admin">Featherbase Admin</option>')
-    expect(html).toContain('<option value="/tasker/" selected>Tasker</option>')
-    expect(html).toContain('<option value="/other/">Other tasks</option>')
-    expect(html).toContain('/featherbase/runtime-shell.js')
+    expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
+    expect(html).toContain('<script type="module" src="/featherbase/bar.js"></script>')
+    expect(html).not.toContain('Other tasks')
     const secondary = await admin.fetch('/tasker/help/index.html', { headers: { accept: 'text/html' } })
     expect(await secondary.text()).toBe('<!doctype html><html><head><script src="./help.js" defer></script></head><body><h1>Tasker help</h1></body></html>\n')
     expect((await admin.fetch('/tasker/help/help.js')).status).toBe(200)
+  })
+
+  test("PKG-R4: the retired runtime shell's stylesheet and script are no longer served", async ({ admin }) => {
+    // Not found, or (where a built web app is present) its page fallback:
+    // never a stylesheet or a script.
+    for (const path of ['/featherbase/runtime-shell.css', '/featherbase/runtime-shell.js']) {
+      const res = await admin.fetch(path)
+      expect([path, res.status === 404 || !/css|javascript/.test(res.headers.get('content-type') ?? '')]).toEqual([path, true])
+    }
   })
 
   test('PKG-R4: runtime catalog and document omit an unauthorized app', async ({ admin, createUser }) => {
@@ -367,7 +374,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       const member = await createUser({ email: 'runtime-shell-no-manager@example.com', roles: [] })
       expect(await member.get('/api/app_catalog')).toEqual([{ name: 'tasker', title: 'Tasker', href: '/tasker/' }])
       const html = await (await member.fetch('/tasker/')).text()
-      expect(html).toContain('<option value="/tasker/" selected>Tasker</option>')
+      expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
       expect(html).not.toContain('Other tasks')
       expect((await member.fetch('/other/')).status).toBe(404)
     } finally {
@@ -529,8 +536,7 @@ describe('An app owns its own screen', () => {
       const page = await member.fetch('/tasker/', { headers: { accept: 'text/html' } })
       expect(page.status).toBe(200)
       const html = await page.text()
-      expect(html).toContain('data-testid="runtime-shell"')
-      expect(html).toContain('<option value="/tasker/" selected>Tasker</option>')
+      expect(html).toContain('<featherbase-bar data-app="tasker" data-title="Tasker"></featherbase-bar>')
       // The client's own entry script is served from the staged package.
       const entry = /<script type="module"[^>]*src="(\/tasker\/[^"]+\.js)"/.exec(html)?.[1]
       expect(entry).toBeDefined()
@@ -592,7 +598,7 @@ describe('An app declares its phone tabs', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  test("a tab's deep address serves the app's page with the tab bar", async ({ admin }) => {
+  test("a tab's deep address serves the app's page with the bar, at the device's width", async ({ admin }) => {
     const directory = await otherWith({ tabs: TABS })
     try {
       expect(await discoverPackages([directory])).toEqual([])
@@ -600,8 +606,8 @@ describe('An app declares its phone tabs', () => {
       const res = await admin.fetch('/other/targets', { headers: { accept: 'text/html' } })
       expect(res.status).toBe(200)
       const html = await res.text()
-      expect(html).toContain('<nav class="fc-runtime-tabs" aria-label="Other tasks"')
-      expect(html).toContain('<a class="fc-runtime-tab" href="/other/targets">')
+      expect(html).toContain('<featherbase-bar data-app="other" data-title="Other tasks"></featherbase-bar>')
+      expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1">')
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 

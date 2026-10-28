@@ -196,6 +196,17 @@ describe('the checks (5.1)', () => {
     expect(JSON.stringify(passing)).not.toMatch(/R-1|health-token-620/)
   })
 
+  // #666: an optional secret holds up only what needs it, so it is a warning
+  // naming those reads and actions, not "not set up yet" for the whole app.
+  test('an app missing only an optional secret: a warning naming the secret and what needs it', async () => {
+    const manifest = { name: 'healthopt', title: 'Health optional', secrets: ['HEALTHOPT_TOKEN', { name: 'HEALTHOPT_EMBED', optional: true }],
+      reads: { operations: { quick_view: {}, embed: { needs: ['HEALTHOPT_EMBED'] } } }, actions: { version: 2, operations: { embed_note: { needs: ['HEALTHOPT_EMBED'] } } } }
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('healthopt', ${sql.json(manifest)}, true, true)`
+    const check = byKey(await withNamedVariable('HEALTHOPT_TOKEN', 'health-opt-666', () => withNamedVariable('HEALTHOPT_EMBED', undefined, () => runHealthChecks())), 'app-setup:healthopt')
+    expect(check).toMatchObject({ ok: false, severity: 'warning',
+      message: 'Health optional is set up, but lacks optional secret HEALTHOPT_EMBED (needed by read embed, action embed_note). Only those answer "not set up yet".' })
+  })
+
   test('every check names why it matters, and a failing one says how to fix it', async () => {
     await sql`delete from instance_settings_apply`
     for (const check of await runHealthChecks()) {

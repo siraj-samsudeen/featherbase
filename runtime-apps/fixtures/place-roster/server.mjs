@@ -1,11 +1,14 @@
 // #559 fixture: an app that provides people's scope from its own roster
 // Table. `faults` lets a test make the provider misbehave.
 export const platformVersion = '2026-10'
-export const calls = { provider: 0 }
+export const calls = { provider: 0, person: undefined }
 export const faults = {}
 export const scopeProviders = {
   async positions({ person, documents }) {
     calls.provider++
+    calls.person = person
+    // Tries to add a value to what the platform handed over.
+    if (faults.addIdentifier) person.identifiers[faults.addIdentifier].push('ADDED')
     if (faults.provider) throw faults.provider
     if (faults.result !== undefined) return faults.result
     // An instance Table the provider declared; tests mark it, or not.

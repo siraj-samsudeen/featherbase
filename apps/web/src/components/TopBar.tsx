@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, appHref, appTabLinks, type AppTabIcon, type AppTabLink } from 'shared'
 import { SIGN_OUT_INCOMPLETE, api, clearSession, getSessionUser, signOut } from '../lib/api'
 import { flushPendingEvents } from '../lib/recents'
-import { useIsPreview, useWhoAmI, type Capabilities } from '../lib/session'
+import { useBarAddress } from '../lib/bar-address'
+import { useIsPreview, useWhoAmI, type Capabilities, type OpenableApp } from '../lib/session'
 import { THEMES, THEME_LABEL, type Theme } from '../lib/theme'
 import { useThemeChoice } from '../lib/theme-choice'
 import { useI18n } from '../lib/i18n'
@@ -81,20 +82,38 @@ function nameOf(context: string, brand: Brand | undefined): string {
   return INTERIM_APPS[context]?.title ?? context
 }
 
+/** The one app a person can belong to without a Table grant of their own:
+ *  Feather Dash, the report page until an app is installed under its name. */
+const DASH = 'feather_dash'
+
 /** #501 item 3: on the Admin side, a page of the person's own (the account
  *  page) is named for where they belong — the Admin if they can use it, else
- *  the app they can open, else the platform. Undefined until whoami answers. */
-function personalName(caps: Capabilities | undefined): string | undefined {
+ *  Feather Dash if they can open it, else the platform. Undefined until
+ *  whoami answers.
+ *
+ *  Other installed apps never name the page: one every person can open
+ *  (Tasker grants All) is no one's in particular. Since #659 a reader of
+ *  another app with pages of its own alone is not an Admin user either (such
+ *  an app's Tables do not open the Admin), so their page carries the
+ *  platform's name. */
+function personalName(caps: Capabilities | undefined, apps: OpenableApp[] = [], installed: string[] = []): string | undefined {
   if (!caps) return undefined
-  if (caps.manage || caps.table_access) return ADMIN_NAME
-  // An installed app is opened through a Table grant, which already lets the
-  // person use Admin; the one app reached without one is Feather Dash.
-  if (caps.report) return INTERIM_APPS.feather_dash.title
+  if (caps.admin) return ADMIN_NAME
+  // #671: once an app is installed under Feather Dash's name, its readers
+  // belong to it; until then, the report role does (design D8).
+  if (installed.includes(DASH)) {
+    const opened = apps.find((entry) => entry.name === DASH)
+    if (opened) return opened.title
+  } else if (caps.report) return INTERIM_APPS[DASH].title
   return PLATFORM_NAME
 }
 
-function homeHref(context: string): string {
+/** Where the bar's name leads. An app installed under an interim name
+ *  replaces its interim page (#671): the interim root stands in only while
+ *  no app of that name is installed. */
+function homeHref(context: string, installed: boolean): string {
   if (context === ADMIN) return FEATHERBASE_ADMIN_DESTINATION.href
+  if (installed) return appHref(context)
   return INTERIM_APPS[context]?.root ?? appHref(context)
 }
 
@@ -105,8 +124,9 @@ const TAB_ICON: Record<AppTabIcon, LucideIcon> = {
 
 /** The tabs the app behind this bar declares: an interim app's from shared,
  *  an installed app's from the catalog (only apps the person can open). */
-function useAppTabs(context: string | undefined, enabled: boolean): AppTabLink[] {
-  const interim = context ? INTERIM_APPS[context] : undefined
+function useAppTabs(context: string | undefined, installed: boolean, enabled: boolean): AppTabLink[] {
+  // An app installed under an interim name replaces its interim page (#671).
+  const interim = context && !installed ? INTERIM_APPS[context] : undefined
   const catalog = useQuery({
     queryKey: ['app-catalog'],
     queryFn: () => api.get<{ name: string; title: string; href: string; tabs?: AppTabLink[] }[]>('/api/app_catalog'),
@@ -125,6 +145,7 @@ function currentTab(tabs: AppTabLink[], pathname: string): string | undefined {
 }
 
 export function TopBar({
+  app,
   home,
   forPerson,
   left,
@@ -132,6 +153,10 @@ export function TopBar({
   beforeRight,
   below,
 }: {
+  /** #650: the bar over an installed app's own page (the bar bundle): the app
+   *  the page belongs to, on whatever address it is opened. The app's page
+   *  keeps its own document title. */
+  app?: { name: string; title: string }
   /** The page's own side when the host is unlisted: `admin` (default) or an app. */
   home?: string
   /** On the Admin side, name the bar for where the person belongs (#501). */
@@ -145,46 +170,63 @@ export function TopBar({
   /** A second row under the bar's own (the Admin command bar on a phone). */
   below?: ReactNode
 }) {
-  const { context, brand } = useBarContext(home)
-  const caps = useWhoAmI().data?.capabilities
-  const name = !context ? undefined : context === ADMIN && forPerson ? personalName(caps) : nameOf(context, brand)
+  const address = useBarContext(app ? app.name : home)
+  const { brand } = address
+  const context = app ? app.name : address.context
+  const whoami = useWhoAmI().data
+  const caps = whoami?.capabilities
+  const apps = whoami?.apps
+  // An app's own page is an installed app's (#650). Elsewhere the link follows
+  // the installation, as the server's address routing does (#671): a disabled
+  // app's root says it is unavailable, never the interim page.
+  const installed = Boolean(app) || Boolean(context && whoami?.installed_apps?.includes(context))
+  const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps, whoami?.installed_apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
   // account page's own (item 3). The Portal and the no-access page on the
-  // Admin side keep the tab they were opened with.
-  const titlesTab = context !== ADMIN || home === ADMIN || forPerson
+  // Admin side keep the tab they were opened with, and an app's own page
+  // keeps the title its document gives it (#650).
+  const titlesTab = !app && (context !== ADMIN || home === ADMIN || forPerson)
   useEffect(() => {
     if (name && titlesTab) document.title = name
   }, [name, titlesTab])
   const isPhone = useMediaQuery(PHONE_QUERY)
-  const canUseAdmin = Boolean(caps && (caps.manage || caps.table_access))
+  const canUseAdmin = Boolean(caps && (caps.admin))
   // #501 item 2: only on an app's address. The Admin address, and a host the
   // list does not name (which holds the Admin), are where Admin already is.
+  // An app's own page is never in the Admin, on any address (#650).
   const onAppAddress = Boolean(brand?.opens && brand.opens !== ADMIN)
-  const offerAdmin = onAppAddress && canUseAdmin
-  const tabs = useAppTabs(context, isPhone && Boolean(caps))
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
-  const open = currentTab(tabs, pathname)
+  const offerAdmin = (onAppAddress || Boolean(app)) && canUseAdmin
+  // The app whose declared controls the bar draws (#642): the page's own app,
+  // else the app this address opens.
+  const controlsOf = app?.name ?? (onAppAddress ? brand?.opens : undefined)
+  const tabs = useAppTabs(context, installed, isPhone && Boolean(caps))
+  // Over an app's own page the bar's router is a private one, so the open tab
+  // follows the document's own address (#650).
+  const barAddress = useBarAddress()
+  const routerPath = useRouterState({ select: (state) => state.location.pathname })
+  const open = currentTab(tabs, app && barAddress?.pathname ? barAddress.pathname : routerPath)
 
   return (
     <>
       <PreviewBanner />
       <header
-        // On an app's address the bar frames the phone list of a declared control.
-        className={`${onAppAddress ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
+        // Where the bar draws an app's controls (on the app's address, or over
+        // the app's own page) it frames the phone list of a declared control.
+        className={`${controlsOf ? 'relative ' : ''}flex shrink-0 items-center gap-x-1 border-b border-border bg-surface px-2 py-1 sm:gap-4 sm:px-4 md:pl-0`}
         data-testid="top-bar"
       >
         {/* The name's block lines up with the Admin sidebar and, on a phone,
-            fills the row. An app's address has no sidebar, so there it keeps
+            fills the row. An app's address or page has no sidebar, so there it keeps
             to the name's width and the declared controls follow it, with the
             free space after them (#642). */}
         <div
-          className={`flex min-w-0 items-center gap-1 md:px-3 ${onAppAddress ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
+          className={`flex min-w-0 items-center gap-1 md:px-3 ${controlsOf ? 'md:shrink-0' : 'flex-1 sm:flex-none md:w-60 md:shrink-0'}`}
           data-testid="top-bar-left"
         >
-          {left ?? (context && name && <BarName context={context} name={name} />)}
+          {left ?? (context && name && <BarName href={homeHref(context, installed)} name={name} />)}
         </div>
-        {onAppAddress && caps && brand?.opens && <BarControls app={brand.opens} />}
+        {caps && controlsOf && <BarControls app={controlsOf} />}
         {children ?? <div className="hidden flex-1 sm:block" aria-hidden="true" />}
         <div className="ml-auto flex shrink-0 items-center gap-1 sm:ml-0 sm:gap-2" data-testid="top-bar-right">
           {caps && (
@@ -225,8 +267,7 @@ function PreviewBanner() {
 
 /** The mark and the name, linking to this address's home. One line; a long
  *  name is cut with an ellipsis rather than wrapped. */
-function BarName({ context, name }: { context: string; name: string }) {
-  const href = homeHref(context)
+function BarName({ href, name }: { href: string; name: string }) {
   return (
     <a
       href={href}
@@ -368,7 +409,9 @@ function AccountMenu({ inMenu }: { inMenu?: { offerAdmin: boolean } }) {
   useEffect(() => {
     if (!open) return
     function onDown(e: MouseEvent) {
-      if (wrapper.current && !wrapper.current.contains(e.target as Node)) setOpen(false)
+      // The event's path, not its target: over an app's page the bar is in a
+      // shadow root, where a document listener sees only the host (#650).
+      if (wrapper.current && !e.composedPath().includes(wrapper.current)) setOpen(false)
     }
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return

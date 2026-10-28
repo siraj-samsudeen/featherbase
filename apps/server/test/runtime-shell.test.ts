@@ -1,64 +1,52 @@
-// The Featherbase shell wrapped around an installed app's entry document: the
-// home mark and the application switcher, with the shell's stylesheet and script.
+// #650 (design D3): an installed app's entry document gets the platform's
+// shared top bar. The server adds only a host element, first in the body, and
+// the platform's bar script; the bar itself is drawn in the browser by the
+// web app's bar bundle, never by app code (ADR 0011).
 import { describe, expect, test } from 'vitest'
 import { composeRuntimeShell } from '../src/runtime-shell'
 
-describe('the runtime shell', () => {
-  test('app names and links in the switcher are escaped, and the current app is selected', () => {
-    const html = composeRuntimeShell('<html><head></head><body><main>app</main></body></html>', 'notes', [
-      { name: 'notes', title: 'Notes & "Ideas"', href: '/notes/' },
-      { name: 'odd', title: "<O'Brien>", href: '/odd/?a=1&b=2' },
-    ])
-    expect(html).toContain('<option value="/notes/" selected>Notes &amp; &quot;Ideas&quot;</option>')
-    expect(html).toContain('<option value="/odd/?a=1&amp;b=2">&lt;O&#39;Brien&gt;</option>')
-    expect(html).not.toContain("<O'Brien>")
+const app = { name: 'notes', title: 'Notes' }
+
+describe("an app's entry document", () => {
+  test("the bar's host is the body's first element and names the app", () => {
+    const html = composeRuntimeShell('<html><head></head><body class="x"><main>app</main></body></html>', app)
+    expect(html).toContain('<body class="x"><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar><main>app</main>')
   })
 
-  test('a document without head or body still gets the stylesheet and the shell first and the script last', () => {
-    const html = composeRuntimeShell('<main>bare</main>', 'notes', [])
-    expect(html.startsWith('<header class="fc-runtime-shell"')).toBe(true)
-    expect(html).toContain('<link rel="stylesheet" href="/featherbase/runtime-shell.css"><main>bare</main>')
-    expect(html.endsWith('<script src="/featherbase/runtime-shell.js" defer></script>')).toBe(true)
+  test("the app's title is escaped in the host", () => {
+    const html = composeRuntimeShell('<body></body>', { name: 'notes', title: `Notes & "<O'Brien>"` })
+    expect(html).toContain('data-title="Notes &amp; &quot;&lt;O&#39;Brien&gt;&quot;"')
   })
 
-  // #380 task 4.4: the tabs the open app declares, drawn by the shell for a phone.
-  test("the open app's declared tabs follow the shell as a labelled bar of links, escaped", () => {
-    const html = composeRuntimeShell('<html><head></head><body class="app"><main>app</main></body></html>', 'notes', [
-      { name: 'notes', title: 'Notes & "Ideas"', href: '/notes/', tabs: [
-        { label: 'Today', icon: 'home', href: '/notes/' },
-        { label: '<Mine>', icon: 'person', href: '/notes/mine?a=1&b=2' },
-      ] },
-      { name: 'odd', title: 'Odd', href: '/odd/', tabs: [{ label: 'Elsewhere', icon: 'list', href: '/odd/x' }] },
-    ])
-    expect(html).toContain('<body class="app" data-featherbase-runtime-shell data-featherbase-runtime-tabs>')
-    const nav = html.match(/<nav class="fc-runtime-tabs"[\s\S]*?<\/nav>/)?.[0] ?? ''
-    expect(nav).toContain('aria-label="Notes &amp; &quot;Ideas&quot;"')
-    expect([...nav.matchAll(/<a class="fc-runtime-tab" href="([^"]*)">/g)].map(m => m[1])).toEqual(['/notes/', '/notes/mine?a=1&amp;b=2'])
-    expect(nav).toContain('<span>&lt;Mine&gt;</span>')
-    expect(nav.match(/<svg /g)).toHaveLength(2)
-    expect(nav).not.toContain('Elsewhere')
-    // After the shell's header, before the app's own content.
-    expect(html.indexOf('</header>')).toBeLessThan(html.indexOf('<nav class="fc-runtime-tabs"'))
-    expect(html.indexOf('<nav class="fc-runtime-tabs"')).toBeLessThan(html.indexOf('<main>app</main>'))
+  test("the platform's bar script is loaded as a module at the end of the head", () => {
+    const html = composeRuntimeShell('<html><head><title>t</title></head><body></body></html>', app)
+    expect(html).toContain('<title>t</title><script type="module" src="/featherbase/bar.js"></script></head>')
   })
 
-  test('an app that declares no tabs gets no tab bar', () => {
-    const html = composeRuntimeShell('<html><body><main>app</main></body></html>', 'notes', [{ name: 'notes', title: 'Notes', href: '/notes/' }])
-    expect(html).not.toContain('fc-runtime-tabs')
-    expect(html).not.toContain('data-featherbase-runtime-tabs')
+  test('a document without head or body still gets the script and the host first', () => {
+    const html = composeRuntimeShell('<main>bare</main>', app)
+    expect(html).toBe('<script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar><main>bare</main>')
   })
 
-  test("a page with tabs and no viewport of its own gets the device's width, once", () => {
-    const tabs = [{ name: 'notes', title: 'Notes', href: '/notes/', tabs: [
-      { label: 'Today', icon: 'home' as const, href: '/notes/' }, { label: 'Mine', icon: 'person' as const, href: '/notes/mine' },
-    ] }]
-    const bare = composeRuntimeShell('<html><head><title>n</title></head><body></body></html>', 'notes', tabs)
-    expect(bare).toContain('<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet"')
-    const own = composeRuntimeShell('<html><head><meta name="viewport" content="width=500"></head><body></body></html>', 'notes', tabs)
+  test('a document with a head but no body gets the host right after the script', () => {
+    const html = composeRuntimeShell('<head><title>t</title></head><main>x</main>', app)
+    expect(html).toBe('<head><title>t</title><script type="module" src="/featherbase/bar.js"></script><featherbase-bar data-app="notes" data-title="Notes"></featherbase-bar></head><main>x</main>')
+  })
+
+  test("the old runtime-shell header is gone", () => {
+    const html = composeRuntimeShell('<html><head></head><body></body></html>', app)
+    expect(html).not.toMatch(/runtime-shell|<select|Switch application/)
+  })
+
+  // #380 task 4.4: the bar draws an app's phone tabs, which a page laid out
+  // 980px wide (no viewport of its own) would never show.
+  test("a page of an app with tabs and no viewport of its own gets the device's width, once", () => {
+    const bare = composeRuntimeShell('<html><head><title>n</title></head><body></body></html>', { ...app, tabs: true })
+    expect(bare).toContain('<title>n</title><meta name="viewport" content="width=device-width, initial-scale=1"><script type="module"')
+    const own = composeRuntimeShell('<html><head><meta name="viewport" content="width=500"></head><body></body></html>', { ...app, tabs: true })
     expect(own.match(/name="viewport"/g)).toHaveLength(1)
-    // No tabs, no change to the app's document.
-    const none = composeRuntimeShell('<html><head></head><body></body></html>', 'notes', [{ name: 'notes', title: 'Notes', href: '/notes/' }])
-    expect(none).not.toContain('viewport')
+    // No tabs, no change to the app's document beyond the bar.
+    expect(composeRuntimeShell('<html><head></head><body></body></html>', app)).not.toContain('viewport')
   })
 })
 

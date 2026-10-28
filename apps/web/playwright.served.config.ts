@@ -1,5 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 // #642 (E4): the SERVED stack (`pnpm --filter web e2e:served`). A page's frame
 // policy is a response header the API server sets on the document it serves,
@@ -51,7 +52,13 @@ export default defineConfig({
       PORT: String(port),
       DATABASE_URL: servedDatabaseUrl(),
       FEATHERBASE_ENV: 'test',
-      FEATHERBASE_APP_PATHS: '[]',
+      // #650: an app with its own page, to check the built bar bundle over it
+      // (e2e-served/app-page-bar.spec.ts), and the app that gives its picker
+      // its options.
+      FEATHERBASE_APP_PATHS: JSON.stringify([
+        fileURLToPath(new URL('../../runtime-apps/fixtures/bar-proof', import.meta.url)),
+        fileURLToPath(new URL('../../runtime-apps/fixtures/place-roster', import.meta.url)),
+      ]),
       ALLOW_MOCK_OAUTH: '1',
       PREAUTH_LOGIN_MAX: '10000',
       JOB_POLL_MS: '3600000',
