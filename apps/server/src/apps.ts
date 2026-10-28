@@ -240,11 +240,6 @@ export async function provisionGrants(
         'ValidationError',
         `Permission on ${p.table} names unknown role ${p.role} — declare it in the manifest's roles`,
       )
-    if (p.can_create && !p.can_write)
-      console.warn(
-        `[apps] ${manifest.name}: grant for ${p.role} on ${p.table} has can_create without can_write — ` +
-          `inserts strip every column the role cannot write, so created rows will be empty (add can_write)`,
-      )
     const tier = p.tier ?? 'basic'
     const [have] = await sql`
       select 1 from permission

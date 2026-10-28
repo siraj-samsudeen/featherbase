@@ -1,4 +1,4 @@
-import { describe, expect, vi } from 'vitest'
+import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { registerApp, installApp, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
@@ -178,10 +178,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     }
   })
 
-  test('can_create without can_write warns, and inserts really do strip every field (#45 trap)', async ({
-    createUser,
-  }) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  test('a can_create grant without can_write keeps what a new row was given (#608)', async ({ createUser }) => {
     registerApp(
       manifest({
         permissions: [{ table: DT, role: ROLE, can_read: true, can_create: true }],
@@ -189,20 +186,17 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     )
     try {
       await installApp(APP)
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('can_create without can_write'))
-
-      // The documented behaviour: the insert succeeds but every field is
-      // stripped to the role's WRITE tiers — the document arrives empty.
+      // #608 retired the #45 trap: an insert is judged by the create grant,
+      // so the row keeps its columns and nothing needs warning about.
       const user = await createUser({ roles: [ROLE] })
       const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
-        body: JSON.stringify({ title: 'will be stripped' }),
+        body: JSON.stringify({ title: 'kept' }),
       })
       expect(ins.status).toBe(201)
       const created = (await ins.json()) as { title: string | null }
-      expect(created.title ?? null).toBeNull()
+      expect(created.title).toBe('kept')
     } finally {
-      warn.mockRestore()
       await unwire()
     }
   })

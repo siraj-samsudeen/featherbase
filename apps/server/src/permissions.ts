@@ -280,7 +280,7 @@ export function checkUserPermissions(
 export async function permittedTiers(
   user: string,
   table: string,
-  action: 'read' | 'write',
+  action: 'read' | 'write' | 'create',
 ): Promise<Set<'basic' | 'restricted'>> {
   if (await isPrivileged(user)) return new Set(['basic', 'restricted'])
   const roles = await getRoles(user)
@@ -297,6 +297,13 @@ export async function permittedTiers(
     if (tier === 'restricted') tiers.add('basic')
   }
   return tiers
+}
+
+// #608: the columns a new row may set — those its creator's create or edit
+// grant reaches. A create-only grant carries no edit tier, yet what was typed
+// into a new row is what creating it means.
+export async function insertTiers(user: string, table: string): Promise<Set<'basic' | 'restricted'>> {
+  return new Set([...(await permittedTiers(user, table, 'create')), ...(await permittedTiers(user, table, 'write'))])
 }
 
 function allowsTier(tiers: Set<'basic' | 'restricted'>, tier: 'basic' | 'restricted'): boolean {

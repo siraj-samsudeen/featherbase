@@ -402,7 +402,12 @@ async function parentScopeCond(
 // opens the row itself. Columns are qualified so the predicate also holds
 // inside a 'related' subquery.
 // A list that names its Table (the row's panels and apps all do) builds that
-// one branch, without first reading which Tables the rows hang on.
+// one branch, without first reading which Tables the rows hang on. A row not
+// attached to one row (#609: a File on a whole Table, or on nothing) has no
+// row to defer to, so the grant on its own Table, already applied, governs.
+// A row of a source-bound Table is opened through the bound read gate, so
+// one passing that gate with no Data Scope narrowing it sees what hangs on
+// every row of it; anyone else reaches those through the row itself.
 async function attachedRowScopeCond(
   table: string,
   user: string,
@@ -415,16 +420,23 @@ async function attachedRowScopeCond(
   const targets = pinned !== undefined
     ? [pinned]
     : (await sql`select distinct ref_table from ${rel} where ref_table is not null`).map((r) => String(r.ref_table))
-  const branches: ReturnType<typeof sql>[] = []
+  const branches: ReturnType<typeof sql>[] = table === 'File' ? [sql`coalesce(${rel}.ref_name, '') = ''`] : []
+  const scopes = await getScopeMap(user)
   for (const target of targets) {
     const targetMeta = ROW_ATTACHED_TABLES.has(target) ? null : await getMeta(target).catch(() => null)
     if (!targetMeta) continue
     branches.push(sql`(${rel}.ref_table = ${target} and ${rel}.ref_name in (
       select share_name from share where share_table = ${target} and read = true
         and (person = ${user} or service_account = ${user})))`)
-    if (isBound(targetMeta)) continue
-    if ((await permissionScope(user, target, 'read')) === 'none') continue
+    const scope = await permissionScope(user, target, 'read')
+    if (scope === 'none') continue
     if (table === 'Version' && !(await seesEveryColumn(user, targetMeta))) continue
+    if (isBound(targetMeta)) {
+      const narrowed = scopes.has(target)
+        || targetMeta.columns.some((f) => f.column_type === 'Reference' && scopes.has(String(f.reference_table)))
+      if (scope === 'all' && !narrowed) branches.push(sql`${rel}.ref_table = ${target}`)
+      continue
+    }
     if (targetMeta.kind === 'settings') {
       branches.push(sql`${rel}.ref_table = ${target}`)
       continue
