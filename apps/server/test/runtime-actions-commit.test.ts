@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { sql } from '../src/db'
 import { discoverPackages, runPackageAction } from '../src/runtime-packages'
 import { installApp, uninstallApp } from '../src/apps'
-import { saveDoc } from '../src/document'
+import { deleteDoc, saveDoc } from '../src/document'
 import { createTable, deleteTable, tableRelation } from '../src/table-engine'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { app } from '../src/index'
@@ -14,6 +14,76 @@ import { app } from '../src/index'
 //      FEATHERBASE_ENV=test pnpm --filter server exec vitest run test/runtime-actions-commit.test.ts
 void app
 const prove = process.env.RUNTIME_ACTION_COMMIT_PROOF === '1' ? test : test.skip
+
+// #321 (owner decision 27-Oct-2026): a plain row is refused deletion while it
+// has comments, attachments or shares. A write racing the delete must either
+// wait for it and then find the row gone, or commit first and block it.
+prove('real commits: a plain row\'s activity writes and its deletion serialise', async () => {
+  const [identity] = await sql`select current_database() as name,
+    (select value from internal_metadata where key = 'environment') as environment`
+  expect(String(identity.name).endsWith('_actions_commit_e2e')).toBe(true)
+  expect(identity.environment).toBe('test')
+  const TABLE = 'Plain Race Proof'
+  await createTable({ name: TABLE, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  const controllers: TableController[] = []
+  const add = (controller: TableController) => { controllers.push(controller); registerController(controller) }
+  const clear = () => { for (const controller of controllers.splice(0)) unregisterController(controller) }
+  const waiting = async () => Number((await sql`select count(*) as n from pg_stat_activity
+    where datname = current_database() and wait_event = 'transactionid'`)[0].n)
+  try {
+    for (const first of ['delete', 'writers'] as const) {
+      await saveDoc(TABLE, { row_id: first, title: 'race' }, 'Administrator', 'insert')
+      let release!: () => void
+      const gate = new Promise<void>(resolve => { release = resolve })
+      let entered = 0
+      if (first === 'delete') add({ table: TABLE, hooks: { on_trash: async () => { entered++; await gate } } })
+      else for (const table of ['Comment', 'File', 'Share']) add({ table, hooks: { after_insert: async () => { entered++; await gate } } })
+      const settle = (promise: Promise<unknown>) => promise.then(value => ({ ok: true, value }), error => ({ ok: false, error }))
+      const writers = () => [
+        saveDoc('Comment', { ref_table: TABLE, ref_name: first, content: 'Keep this discussion' }, 'Administrator', 'insert'),
+        saveDoc('File', { ref_table: TABLE, ref_name: first, file_name: 'invoice-83.txt' }, 'Administrator', 'insert'),
+        saveDoc('Share', { share_table: TABLE, share_name: first, person: 'Administrator', read: true }, 'Administrator', 'insert'),
+      ].map(settle)
+      let deletion: Promise<any> | undefined
+      let writing: Promise<any>[] = []
+      try {
+        if (first === 'delete') {
+          deletion = settle(deleteDoc(TABLE, first, 'Administrator'))
+          await expect.poll(() => entered).toBe(1)
+          writing = writers()
+          await expect.poll(waiting).toBeGreaterThanOrEqual(3)
+        } else {
+          writing = writers()
+          await expect.poll(() => entered).toBe(3)
+          deletion = settle(deleteDoc(TABLE, first, 'Administrator'))
+          await expect.poll(waiting).toBeGreaterThanOrEqual(1)
+        }
+        release()
+        const deleted = await deletion
+        const written = await Promise.all(writing)
+        if (first === 'delete') {
+          expect(deleted).toMatchObject({ ok: true })
+          expect(written).toMatchObject([{ ok: false, error: { type: 'NotFoundError' } },
+            { ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'NotFoundError' } }])
+          expect(await sql`select row_id from comment where ref_table = ${TABLE} and ref_name = ${first}
+            union all select row_id from file where ref_table = ${TABLE} and ref_name = ${first}
+            union all select row_id from share where share_table = ${TABLE} and share_name = ${first}`).toHaveLength(0)
+        } else {
+          expect(written).toMatchObject([{ ok: true }, { ok: true }, { ok: true }])
+          expect(deleted).toMatchObject({ ok: false, error: { type: 'ValidationError', fields: { comments: '1', files: '1', shares: '1' } } })
+          expect(await sql`select row_id from ${sql(await tableRelation(TABLE))} where row_id = ${first}`).toHaveLength(1)
+        }
+      } finally { release(); await Promise.allSettled([deletion, ...writing]); clear() }
+    }
+  } finally {
+    clear()
+    await sql`delete from comment where ref_table = ${TABLE}`
+    await sql`delete from file where ref_table = ${TABLE}`
+    await sql`delete from share where share_table = ${TABLE}`
+    await sql`delete from version where ref_table = ${TABLE}`
+    await deleteTable(TABLE)
+  }
+})
 
 prove('real commits: both sides of core-link/reference deletion races; effects observe durable results', async () => {
   const [identity] = await sql`select current_database() as name,
