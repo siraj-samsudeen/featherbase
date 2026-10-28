@@ -111,7 +111,7 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
       const raised = await saveSystemRow('Import Conflict', { ref_table: meta.name, ref_name: saved.row_id, ...conflict, run_id: runId, closed: false }, user)
       await sql`update featherbase.import_conflict set created_at = clock_timestamp() where row_id = ${String(raised.row_id)}`
     }
-    const sources = plan?.source_values ?? Object.fromEntries(meta.columns.filter(c => Object.hasOwn(input, c.column_name)).map(c => [c.column_name, normalized(saved[c.column_name], c.column_type)]))
+    const sources = plan?.source_values ?? Object.fromEntries(meta.columns.filter(c => Object.hasOwn(input, c.column_name)).map(c => [c.column_name, normalized(input[c.column_name], c.column_type)]))
     // A source that now agrees with the person resolves its old disagreement.
     // A hand edit since an old offer makes that offer stale; a new conflict,
     // if any, above already carries the current correction.
