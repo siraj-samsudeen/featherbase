@@ -94,8 +94,8 @@ describe('app schema evolution', () => {
     await seed(admin)
     await upgrade(admin, '0.2.0')
     expect(await sql`select row_id, title, quantity, on_hold, grade, priority from evolve.item order by row_id`).toEqual([
-      { row_id: 'i1', title: 'Pallet jack', quantity: 3, on_hold: '1', grade: 'C', priority: 'Low' },
-      { row_id: 'i2', title: null, quantity: 7, on_hold: '0', grade: 'A', priority: 'Low' },
+      { row_id: 'i1', title: 'Pallet jack', quantity: 3, on_hold: 1, grade: 'C', priority: 'Low' },
+      { row_id: 'i2', title: null, quantity: 7, on_hold: 0, grade: 'A', priority: 'Low' },
     ])
     expect(await sql`select row_id, body from evolve.memo order by row_id`).toEqual([
       { row_id: 'n1', body: 'Count again on Monday' }, { row_id: 'n2', body: 'Shelf 4 is damaged' },

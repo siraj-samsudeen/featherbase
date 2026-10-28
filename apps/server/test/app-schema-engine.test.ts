@@ -37,7 +37,7 @@ describe('renameTable', () => {
   shopTest('rows are kept under the new name', async () => {
     await shop()
     await renameTable('shop.supplier', 'shop.vendor', 'shop')
-    expect(await sql`select row_id, code, rating from shop.vendor`).toEqual([{ row_id: 's1', code: 'ACME', rating: '4' }])
+    expect(await sql`select row_id, code, rating from shop.vendor`).toEqual([{ row_id: 's1', code: 'ACME', rating: 4 }])
   })
 
   shopTest('links from other Tables follow the rename', async () => {
@@ -122,7 +122,7 @@ describe('changeColumnType', () => {
     await createTable({ name: 'shop.flag', label: 'Flag', columns: [{ column_name: 'on_hold', label: 'On hold', column_type: 'Check' }] }, 'shop')
     await sql`insert into shop.flag (row_id, on_hold) values ('f1', true), ('f2', false)`
     await changeColumnType('shop.flag', 'on_hold', 'Int')
-    expect(await sql`select row_id, on_hold from shop.flag order by row_id`).toEqual([{ row_id: 'f1', on_hold: '1' }, { row_id: 'f2', on_hold: '0' }])
+    expect(await sql`select row_id, on_hold from shop.flag order by row_id`).toEqual([{ row_id: 'f1', on_hold: 1 }, { row_id: 'f2', on_hold: 0 }])
   })
 
   shopTest('the column definition records the new type', async () => {
