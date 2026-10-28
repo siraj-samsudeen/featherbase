@@ -95,7 +95,8 @@ export function tableSchemaToZod(columns: ColumnDef[]) {
     const base = baseSchema(f)
     shape[f.column_name] = z.preprocess(
       // An empty string is a JSON value; only the form's empty box means clear.
-      f.column_type === 'JSON' ? (v) => v : emptyToUndefined,
+      // An inherited function (#436) is still no value.
+      f.column_type === 'JSON' ? (v) => (typeof v === 'function' ? undefined : v) : emptyToUndefined,
       f.reqd
         ? base
         : base.optional(),
