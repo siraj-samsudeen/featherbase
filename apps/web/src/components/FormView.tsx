@@ -93,7 +93,10 @@ export function FormView({
   const clientScripts = useClientScripts(table)
   const valuesRef = useRef<Row>({})
   valuesRef.current = values
-  const onloadFired = useRef(false)
+  // The row onload last ran for: once per row opened, so the refetch after a
+  // save (or a refresh) doesn't run it again and re-dirty the form (#538).
+  const onloadFiredFor = useRef<string | null>(null)
+  const rowKey = `${table}/${name}`
 
   // RT-002: another session saving this document shows a refresh banner.
   // The user's own save is suppressed via a short window (their save
@@ -108,25 +111,36 @@ export function FormView({
     return doc.data ?? {}
   }, [doc.data, isNew])
 
+  // The baseline the form was last reset to. StrictMode replays effects on
+  // mount; resetting again to the SAME baseline would wipe what onload set
+  // in the first pass, and onload (once per row) wouldn't restore it.
+  const appliedBaseline = useRef<Row | null>(null)
   useEffect(() => {
+    if (appliedBaseline.current === baseline) return
+    appliedBaseline.current = baseline
     // Prefilled values on a new row count as edits (the form starts dirty,
     // so a pure-prefill save is possible), not as the saved baseline.
-    setValues(isNew && prefill ? { ...prefill } : baseline)
+    // valuesRef moves with it, so an onload firing in this same effect flush
+    // starts from the loaded row, not the empty pre-load one (#538).
+    const initial = isNew && prefill ? { ...prefill } : baseline
+    valuesRef.current = initial
+    setValues(initial)
     setErrors({})
-    onloadFired.current = false
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
 
-  // CUST-003: surface client-script compile errors; fire onload once the form
-  // and its scripts are ready.
+  // CUST-003: surface client-script compile errors; fire onload once the form,
+  // its scripts and (for an existing row) the row itself are ready — a
+  // set_value against the empty pre-load doc would blank the row (#538).
   useEffect(() => {
     if (clientScripts.errors.length) setScriptError(`Client script error: ${clientScripts.errors[0]}`)
   }, [clientScripts.errors])
+  const rowLoaded = isNew || doc.data !== undefined
   useEffect(() => {
-    if (onloadFired.current) return
+    if (onloadFiredFor.current === rowKey || !rowLoaded) return
     const onload = clientScripts.handlers.onload
     if (!onload) return
-    onloadFired.current = true
+    onloadFiredFor.current = rowKey
     try {
       onload({
         doc: valuesRef.current,
@@ -137,7 +151,7 @@ export function FormView({
       setScriptError(`Client script error (onload): ${err instanceof Error ? err.message : String(err)}`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientScripts.handlers, values])
+  }, [clientScripts.handlers, values, rowLoaded, rowKey])
 
   if (meta.isLoading || (!isNew && doc.isLoading))
     return <p className="text-sm text-ink-subtle">Loading…</p>
@@ -189,6 +203,13 @@ export function FormView({
   // opens for reading, with no Save, Delete or Rename, for everyone.
   const rowsReadOnly = isRowsReadOnly(m)
   const boundSource = m.data_source ?? null
+  // #324: rows named by whoever creates them ('prompt') need that name typed
+  // in on the new-row form; every other naming rule assigns the ID itself.
+  // #328: a writable binding with no mapped last-changed column saves with no
+  // revision check (last write wins), so an open row says so for as long as
+  // it is open. A new row has nothing at the source to overwrite.
+  const uncheckedSaves = Boolean(boundSource) && !isNew && !rowsReadOnly && !m.external_modified
+  const asksRowId = isNew && m.id_pattern === 'prompt' && !rowsReadOnly
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -261,8 +282,11 @@ export function FormView({
     // zod schema the server uses — invalid forms never reach the network.
     const schema = tableSchemaToZod(m.columns)
     const result = schema.safeParse(valuesRef.current)
-    if (!result.success) {
-      setErrors(zodFieldErrors(result.error))
+    const fieldErrors = result.success ? {} : zodFieldErrors(result.error)
+    if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
+      fieldErrors[ROW_ID_FIELD.column_name] = 'Row ID is required'
+    if (Object.keys(fieldErrors).length) {
+      setErrors(fieldErrors)
       setBanner('Please fix the highlighted fields')
       return
     }
@@ -274,14 +298,20 @@ export function FormView({
       if (!isNew) {
         payload.row_id = name
         payload.updated_at = baseline.updated_at
+      } else if (asksRowId) {
+        payload.row_id = String(payload.row_id).trim()
       } else {
         delete payload.row_id
       }
       suppressStaleUntil.current = Date.now() + 2000
-      const saved = await api.post<Row>('/api/save_row', { table, row: payload })
+      // A typed-in ID is a create, never an upsert: through save_row an ID
+      // already in use would be read as an update of that row (#324).
+      const saved = asksRowId
+        ? await api.post<Row>(`/api/table/${encodeURIComponent(table)}`, payload)
+        : await api.post<Row>('/api/save_row', { table, row: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['activity', table, name] })
       await refreshWaitingAfterSave(queryClient, table)
       // #414: a person's name is cached per id for the heading, breadcrumb
       // and Recent; a save may have changed it.
@@ -298,6 +328,8 @@ export function FormView({
       }
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrors(err.fields)
+      else if (asksRowId && err instanceof ApiError && err.type === 'ConflictError' && err.message.endsWith(' already exists'))
+        setErrors({ [ROW_ID_FIELD.column_name]: 'Already in use' })
       setBanner(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
       setSaving(false)
@@ -310,6 +342,7 @@ export function FormView({
     if (f.column_type === 'Section Break') sections.push([])
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
+  if (asksRowId) sections[0].unshift(ROW_ID_FIELD)
 
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
@@ -558,6 +591,16 @@ export function FormView({
           </button>
         </div>
       )}
+      {uncheckedSaves && (
+        <p
+          role="note"
+          className="mb-3 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm text-ink"
+          data-testid="unchecked-saves-notice"
+        >
+          {boundSource} doesn’t record when its rows last changed, so changes made there while you
+          edit are not detected. Saving replaces what is there.
+        </p>
+      )}
       {staleBanner && (
         <div
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-caution/40 bg-caution-tint px-3 py-2 text-sm"
@@ -629,6 +672,17 @@ export function FormView({
     </div>
   )
 }
+
+// #324: the Row ID input a new row gets when its creator names it. Not one of
+// the Table's own columns — the ID is a standard column — so it is described
+// here, as a required text field.
+const ROW_ID_FIELD = {
+  column_name: 'row_id',
+  label: 'Row ID',
+  column_type: 'Data',
+  reqd: true,
+  description: 'Rows in this table take the ID you type here. It must not already be in use.',
+} as ColumnDef
 
 function FieldControl({
   field,
@@ -919,7 +973,7 @@ function ChildGrid({
         <thead className="bg-subtle text-left">
           <tr>
             {cols.map((c) => (
-              <th key={c.column_name} className="border-b border-border px-2 py-1 text-xs font-medium text-ink-muted">
+              <th key={c.column_name} className={`border-b border-border px-2 py-1 text-xs font-medium text-ink-muted${c.column_type === 'Check' ? ' whitespace-nowrap' : ''}`}>
                 {c.label ?? c.column_name}
               </th>
             ))}
@@ -931,14 +985,18 @@ function ChildGrid({
             <tr key={rowKey(row)} className="border-b border-border last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
+                  <label className={c.column_type === 'Check' ? 'inline-flex size-control cursor-pointer items-center justify-center' : 'block'}>
                   <input
                     id={`${id}-${rowKey(row)}-${c.column_name}`}
                     aria-label={`${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`}
-                    value={String(row[c.column_name] ?? '')}
-                    onChange={(e) => setCell(i, c.column_name, e.target.value)}
-                    className="w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control"
+                    type={c.column_type === 'Check' ? 'checkbox' : 'text'}
+                    checked={c.column_type === 'Check' ? Boolean(row[c.column_name]) : undefined}
+                    value={c.column_type === 'Check' ? undefined : String(row[c.column_name] ?? '')}
+                    onChange={(e) => setCell(i, c.column_name, c.column_type === 'Check' ? e.target.checked : e.target.value)}
+                    className={c.column_type === 'Check' ? 'h-4 w-4' : 'w-full rounded border border-transparent px-1 py-0.5 hover:border-border focus:border-border-control'}
                     data-childfield={c.column_name}
                   />
+                  </label>
                 </td>
               ))}
               <td className="whitespace-nowrap px-1 text-center">

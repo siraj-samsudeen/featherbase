@@ -2,10 +2,12 @@
 // successful apply set are locked. Every save path refuses to change them,
 // except the apply itself (`instance-settings`) and the break-glass CLI
 // (`cli`). Nothing is locked before the first apply.
+import postgres from 'postgres'
 import { describe, expect } from 'vitest'
 import { INSTANCE_SETTINGS_FILE, INSTANCE_SETTINGS_TABLES, MANAGED_FIELD_HINT } from 'shared'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { applyInstanceSettings, managedScope } from '../src/instance-settings'
 import { BREAK_GLASS_ACTOR, lastApply, managedFieldsOf } from '../src/managed-settings'
 import { runAsSystemActor } from '../src/system-actor'
@@ -275,5 +277,66 @@ describe('a workflow step cannot rewrite a locked field', () => {
     })
     const [job] = await sql`select enabled from scheduled_job where row_id = 'disable_leavers'`
     expect(job.enabled).toBe(false)
+  })
+})
+
+// #493: a writer outside the save path takes the shared settings lock before
+// it checks the locked set. Proven by holding the lock exclusively from
+// another connection, as an apply does: the write must wait for it. That
+// connection only takes a lock and writes nothing, so the sandbox holds. That
+// the write then honours a locked set the apply committed meanwhile needs real
+// commits: managed-settings-commit.test.ts.
+const SETTINGS_LOCK = 'featherbase.instance_settings_lock'
+
+async function waitsForAnApply<T>(write: () => Promise<T>): Promise<T> {
+  const apply = postgres(config.databaseUrl, { max: 1, prepare: false })
+  let pending!: Promise<T>
+  try {
+    await apply.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtext(${SETTINGS_LOCK}))`
+      pending = write()
+      pending.catch(() => {})
+      await expect.poll(async () => (await tx`
+        select count(*)::int as n from pg_locks
+        where locktype = 'advisory' and mode = 'ShareLock' and not granted
+          and database = (select oid from pg_database where datname = current_database())
+          and objsubid = 1 and objid::bigint = (hashtext(${SETTINGS_LOCK})::bigint & 4294967295)`)[0].n, { timeout: 3000 }).toBe(1)
+    })
+  } finally {
+    await apply.end()
+  }
+  return pending
+}
+
+describe('direct writes wait for an apply in progress (#493)', () => {
+  test('a workflow action', async ({ admin }) => {
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Lock Wait Flow',
+        ref_table: 'Scheduled Job',
+        is_active: true,
+        state_field: 'enabled',
+        states: [{ state: 'true', target_status: 'draft' }, { state: 'false', target_status: 'draft' }],
+        transitions: [{ state: 'true', action: 'Switch off', next_state: 'false', allowed: 'System Manager' }],
+      },
+    })
+    await sql`update scheduled_job set enabled = true where row_id = 'disable_leavers'`
+    const { applyWorkflowAction } = await import('../src/workflow')
+    const moved = await waitsForAnApply(() => applyWorkflowAction('Scheduled Job', 'disable_leavers', 'Switch off', 'Administrator'))
+    expect(moved.enabled).toBe(false)
+  })
+
+  test("an assignment rule's stamp", async () => {
+    await saveDoc('Assignment Rule', {
+      row_id: 'Lock Wait Rule',
+      ref_table: 'Scheduled Job',
+      assign_to_field: 'description',
+      users: [{ user: 'Administrator' }],
+    })
+    const { evaluateAssignmentRules } = await import('../src/assignment-rules')
+    await waitsForAnApply(() => evaluateAssignmentRules('Scheduled Job', { row_id: 'disable_leavers' }))
+    const [job] = await sql`select description from scheduled_job where row_id = 'disable_leavers'`
+    expect(job.description).toBe('Administrator')
   })
 })

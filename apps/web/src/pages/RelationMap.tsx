@@ -106,12 +106,14 @@ export function RelationMap({
   const cy = H / 2 - NODE_H / 2
   const nodeY = (i: number) => 20 + i * (NODE_H + GAP)
 
-  function hop(table: string, rowName: string) {
+  // The trail records where the user is now (this map's own table and row),
+  // then the map moves to the picked row.
+  function hop(toTable: string, toRow: string) {
     const nextTrail = [...parsedTrail, [table, name] as [string, string]].slice(-8)
     setOpenGroup(null)
     navigate({
       to: '/featherbase/admin/map/$table/$name',
-      params: { table: table, name: rowName },
+      params: { table: toTable, name: toRow },
       search: { trail: JSON.stringify(nextTrail) },
     })
   }

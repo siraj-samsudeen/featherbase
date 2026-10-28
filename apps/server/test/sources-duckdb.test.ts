@@ -30,6 +30,8 @@ beforeAll(async () => {
   await conn.run(`create table kitchen (
     id integer, ratio double, price decimal(8,2), flag boolean, born date,
     seen timestamp, payload json, label varchar, at_time time)`)
+  // #625: a sequence an app's dataset query must not advance.
+  await conn.run(`create sequence probe`)
   conn.closeSync()
   inst.closeSync()
 })
@@ -117,6 +119,53 @@ describe('Read and write through a connected table: a warehouse', () => {
     expect(res.data.map((d) => [d.label.slice(0, 10), Number(d.value)])).toEqual(
       expect.arrayContaining([['2026-07-01', 2], ['2026-07-02', 1]]),
     )
+  })
+})
+
+// #625: an app's dataset query runs on a warehouse, limited to what a read may
+// see, on the same file and the same read-only connection the Admin browses with.
+describe('An app dataset query on a warehouse', () => {
+  const cfg = { name: 'duck-fixture', engine: 'duckdb' as const, url_env: DUCK_URL_ENV, root_path: null, default_schema: null,
+    access: 'read_only' as const, pool_max: 1, statement_timeout_ms: 10000, allowlist: null }
+  const columns = [{ name: 'store', type: 'text' }, { name: 'business_date', type: 'date' }, { name: 'amount', type: 'money' }]
+  const kklOnSecond = () => duckdbDriver.query!(cfg, 'select store, business_date, amount from daily_sales', columns, {
+    any: [[{ column: 'store', values: ['KKL'] }], [{ column: 'store', values: ['NOWHERE'] }]],
+    all: [{ column: 'business_date', values: ['2026-07-02'] }],
+  })
+  const KKL_ON_SECOND = [{ store: 'KKL', business_date: '2026-07-02', amount: '1200.00' }]
+
+  test('runs the declared query limited to the given places and filters', async () => {
+    invalidateSources()
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+  })
+
+  test('runs on a file the Admin has just browsed', async ({ admin }) => {
+    const name = await makeDuckSource(admin)
+    expect((await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(name)}`)).total).toBe(3)
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+  })
+
+  test('leaves the file browsable afterwards', async ({ admin }) => {
+    const name = await makeDuckSource(admin)
+    invalidateSources()
+    expect(await kklOnSecond()).toEqual(KKL_ON_SECOND)
+    expect((await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(name)}`)).total).toBe(3)
+    const ok = await admin.post<{ ok: boolean }>('/api/table/Data%20Source/duck-fixture:test_connection', {})
+    expect(ok.ok).toBe(true)
+  })
+
+  // Wrapping a query in a select does not stop it writing: nextval advances a sequence.
+  test('a query that would change the warehouse is refused', async () => {
+    await expect(duckdbDriver.query!(cfg, "select nextval('probe') as store", [{ name: 'store', type: 'integer' }]))
+      .rejects.toThrow(/read-only|read only/i)
+  })
+
+  // MotherDuck cannot be opened read-only; without a read-scaling token the
+  // query is refused before anything is dialled.
+  test('a MotherDuck source without a read-scaling token is refused', async () => {
+    process.env.DUCK_MD_URL = 'md:never_dialled'
+    await expect(duckdbDriver.query!({ ...cfg, name: 'duck-md', url_env: 'DUCK_MD_URL' }, 'select 1 as store', [{ name: 'store', type: 'integer' }]))
+      .rejects.toThrow(/read-scaling token/)
   })
 })
 

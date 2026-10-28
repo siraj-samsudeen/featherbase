@@ -6,7 +6,7 @@
 // driver reaches it through its own pool, so it must be committed and is
 // cleaned up in afterAll. Everything control-side (the Data Source row, the
 // bound table_def) happens inside the sandbox and rolls back per test.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { afterAll, beforeAll, describe, expect, vi } from 'vitest'
 import postgres from 'postgres'
 import { test, patchDoc } from './pg-test'
 import { EXTERNAL_DATABASE_URL } from './external-database'
@@ -74,6 +74,14 @@ beforeAll(async () => {
       id serial primary key,
       vehicle_id int,
       constraint fk_ref foreign key (vehicle_id) references ext_fixture.vehicle(id)
+    )`)
+  // #154: refusals the database makes itself. `status` is renamed on
+  // reflection (status is a Featherbase field).
+  await cli.unsafe(`
+    create table ext_fixture.gauge (
+      id serial primary key,
+      status text,
+      business_code int references ext_fixture.business(code)
     )`)
 })
 
@@ -306,6 +314,33 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await expect(
       admin.post('/api/table/Ext%20Tenant', { slug: 'acme' }),
     ).rejects.toMatchObject({ status: 417, fields: { slug: expect.stringContaining('unique') } })
+  })
+
+  test('a missing required value or a broken link comes back on its field, without the database text (#154)', async ({ admin }) => {
+    await makeSource(admin)
+    const res = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', {
+      schema: 'ext_fixture',
+      tables: ['gauge'],
+    })
+    const path = `/api/table/${encodeURIComponent(res.created[0].name)}`
+    // The database starts requiring it after the table was connected.
+    await cli.unsafe(`alter table ext_fixture.gauge alter column status set not null`)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const required = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ business_code: 1 }) })
+      expect(required.status).toBe(417)
+      const r = (await required.json()) as { error: { message: string; fields?: Record<string, string> } }
+      expect(r.error.fields).toEqual({ status_1: 'Required' })
+      expect(r.error.message).not.toMatch(/violates|null value/)
+      const broken = await admin.fetch(path, { method: 'POST', body: JSON.stringify({ status_1: 'ok', business_code: 999 }) })
+      expect(broken.status).toBe(417)
+      const b = (await broken.json()) as { error: { message: string; fields?: Record<string, string> } }
+      expect(b.error.fields).toEqual({ business_code: expect.any(String) })
+      expect(b.error.message).not.toMatch(/violates|foreign key/)
+    } finally {
+      warn.mockRestore()
+      await cli.unsafe(`alter table ext_fixture.gauge alter column status drop not null`)
+    }
   })
 
   test('delete removes the row on the source', async ({ admin }) => {
@@ -730,5 +765,29 @@ describe('Connect a data source: limiting which tables can be connected', () => 
         columns: [{ column_name: 'name', column_type: 'Data' }],
       }),
     ).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('asking for several tables when a later one is not allowed connects none of them', async ({ admin }) => {
+    await makeSource(admin, { table_allowlist: 'ext_fixture.tenant\next_fixture.vehicle' })
+    const refused = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['tenant', 'vehicle', 'business'] }),
+    })
+    expect(refused.status).toBe(403)
+    expect(((await refused.json()) as { error: { message: string } }).error.message).toContain('ext_fixture.business')
+    expect(await sql`select name from table_def where data_source = 'ext-fixture'`).toHaveLength(0)
+  })
+
+  test('skipped tables come back in the order they were asked for', async ({ admin }) => {
+    await makeSource(admin)
+    await reflectTenant(admin)
+    const res = await admin.post<{ skipped: { table: string; reason: string }[] }>(
+      '/api/table/Data%20Source/ext-fixture:reflect',
+      { schema: 'ext_fixture', tables: ['tenant', 'nope'] },
+    )
+    expect(res.skipped.map((s) => [s.table, s.reason])).toEqual([
+      ['tenant', 'Already reflected as Ext Tenant'],
+      ['nope', 'Not found on the source'],
+    ])
   })
 })

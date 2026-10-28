@@ -8,11 +8,14 @@ import { sql } from './db'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
 import { delegatedTestMode } from './delegated-login'
-import { checkVariables, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { checkVariables, currentEnvironment, readVariable, TEST_MODE_ENVIRONMENTS, type CheckVariablesOptions, type SettingsCondition } from './env'
+import { verifyPassword } from './auth'
 import { pendingMigrations } from './migrate'
 import { SECURITY_TABLES } from './security-tables'
 import { platformRelation } from './platform-schema'
 import { validateInstanceAddresses } from './instance-addresses'
+import { appSetupState } from './app-settings'
+import { shippedUpgrades, unshippedApps, upgradeLossWarning } from './runtime-packages'
 
 interface PreflightOptions {
   /** The environment the new server will run as (default: this process's). */
@@ -87,7 +90,13 @@ export async function preflightRelease(opts: PreflightOptions = {}): Promise<str
   }
   passed.push(await assertPublicationsPublishGeneratedColumns(pending))
   passed.push(...(await assertAccessConfiguration(environment, pending)))
+  passed.push(await assertOneScopeProvider())
+  passed.push(await assertInstalledAppsShipped())
+  passed.push(await assertNoOpenAppRoleBinding())
+  passed.push(...(await appsSetUp()))
+  passed.push(...(await appUpgradeLosses()))
   passed.push(await noticeRecipients())
+  passed.push(await administratorPasswordMatches())
   passed.push(`pending migrations: ${pending.length ? pending.join(', ') : 'none'}`)
   return passed
 }
@@ -179,6 +188,114 @@ export function publicationRefusal(blocking: BlockingPublication[]): string {
   return `${blocking.map((b) => `publication "${b.pubname}" covers ${b.schemaname}.${b.tablename}${b.has_column_list ? ' with a column list' : ''}`).join('; ')}: that table has (or after 0101 will have) stored generated columns and REPLICA IDENTITY FULL, so on PostgreSQL 18 every update to it fails unless the publication publishes them. Fix it first:\n${fixes.join('\n')}`
 }
 
+/** #559: exactly one enabled app may provide people's scope. Install and
+ *  enable refuse a second one; this catches an instance that got there any
+ *  other way. At run time two providers already mean no scope for anyone. */
+async function assertOneScopeProvider(): Promise<string> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return 'scope provider check skipped (no installed apps yet)'
+  const providers = (await sql`
+    select name from ${sql(apps.relation)} where enabled and manifest ? 'scopeProvider' order by name`).map((r) => String(r.name))
+  if (providers.length > 1)
+    throw new Error(`More than one enabled app provides people's scope: ${providers.join(', ')}. Disable all but one before releasing; until then no one has a scope.`)
+  return providers.length ? `one app provides people's scope: ${providers[0]}` : 'no app provides people\'s scope'
+}
+
+/** 5b. #642 (E7): an installed, enabled app whose exact version and
+ *  fingerprint this release does not ship refuses the release (and the
+ *  server's start, outside development), so the running release keeps serving
+ *  it. A disabled app serves nobody and never blocks. A row with no recorded
+ *  version is mid-recovery, which no image can serve. */
+export async function assertInstalledAppsShipped(): Promise<string> {
+  const found = await installedNotShipped()
+  if (!found) return 'shipped app check skipped (no app versions recorded yet)'
+  const { installed, missing } = found
+  if (missing.length)
+    throw new Error(missing.map(({ name, version }) =>
+      `App ${name} version ${version} is installed and enabled, but this release does not ship it. Ship ${name} ${version} in the image (FEATHERBASE_APP_PATHS), or disable the app, before releasing.`).join('\n'))
+  return installed.length
+    ? `every installed, enabled app ships in this release: ${installed.map(({ name, version }) => `${name} ${version}`).join(', ')}`
+    : 'no installed, enabled app to find in this release'
+}
+
+/** The same check at the server's start: a refusal, except on a developer's
+ *  server. There init.sh runs apps from their source folders, so editing an
+ *  app or switching branches changes its fingerprint; the server starts with
+ *  the app unavailable, as before #642, and each line says how to bring it
+ *  back. Answers those warning lines. */
+export async function installedAppsAtStart(environment = currentEnvironment()): Promise<string[]> {
+  if (environment !== 'development') {
+    await assertInstalledAppsShipped()
+    return []
+  }
+  return ((await installedNotShipped())?.missing ?? []).map(({ name, version }) =>
+    `WARNING: App ${name} version ${version} is installed and enabled, but this server does not have it, so it is unavailable. On a developer machine, add the folder holding ${name} ${version} to FEATHERBASE_APP_PATHS (init.sh sets it), or disable the app in Admin. A release refuses until it ships.`)
+}
+
+/** The installed, enabled apps with a recorded version, and those of them no
+ *  app on FEATHERBASE_APP_PATHS ships; null before 0095 records versions. */
+async function installedNotShipped() {
+  const apps = await locate('installed_app')
+  if (!apps || !['enabled', 'runtime_package', 'package_version', 'artifact_digest'].every((c) => apps.columns.has(c)))
+    return null
+  const rows = await sql`select name, package_version, artifact_digest, manifest from ${sql(apps.relation)}
+    where runtime_package and enabled and package_version is not null order by name`
+  const named = (row: Record<string, unknown>) => ({ name: String(row.name), version: String(row.package_version) })
+  const missing = await unshippedApps(rows, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  return { installed: rows.map(named), missing: missing.map(named) }
+}
+
+/** 5e. #651: a warning, never a refusal (the step's destructive: true is the
+ *  author's own declaration). For each installed app this release ships a
+ *  newer version of, what upgrading to it would remove here, counted per
+ *  instance before anything runs. Counts only: no value is ever printed. */
+async function appUpgradeLosses(): Promise<string[]> {
+  const apps = await locate('installed_app')
+  if (apps?.relation !== platformRelation('installed_app') ||
+      !['runtime_package', 'package_version', 'migration_ledger'].every((c) => apps.columns.has(c)))
+    return ['app upgrade loss check skipped (no app versions recorded yet)']
+  const installed = await sql`select name, package_version, migration_ledger from ${sql(apps.relation)}
+    where runtime_package and package_version is not null order by name`
+  const warnings: string[] = []
+  for (const upgrade of await shippedUpgrades(installed, JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) {
+    const warning = await upgradeLossWarning(upgrade)
+    if (warning) warnings.push(warning)
+  }
+  return warnings.length ? warnings : ['no app upgrade this release ships removes data here']
+}
+
+/** 5c. #620 (E2): a warning, never a refusal. An installed, enabled app that
+ *  lacks a required setting or one of its secrets answers "not set up yet"
+ *  until it gets them. Names only: no value is ever printed. */
+async function appsSetUp(): Promise<string[]> {
+  const apps = await locate('installed_app')
+  if (!apps || !['manifest', 'enabled'].every((c) => apps.columns.has(c))) return ['app setup check skipped (no installed apps yet)']
+  const settings = await locate('app_setting')
+  const sources = await locate('data_source')
+  const identifierSystems = await locate('identifier_system')
+  const warnings = (await appSetupState({ installed: apps.relation, settings: settings?.relation ?? null, sources: sources?.relation ?? null,
+    identifierSystems: identifierSystems?.relation ?? null }))
+    .flatMap(({ app, missing, optional }) => [
+      ...(missing.length ? [`WARNING: app ${app} is not set up yet: missing ${missing.join(', ')}. Set the setting in the instance settings file and the secret as a deployment variable.`] : []),
+      // #666: a missing optional secret holds up only what needs it.
+      ...(optional.length ? [`WARNING: app ${app} lacks ${optional.join(', ')}. Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.`] : []),
+    ])
+  return warnings.length ? warnings : ['every enabled app has its required settings and secrets']
+}
+
+/** 5d. #620 (D4): All is every signed-in person and Guest is anyone, so an
+ *  app role bound to either is open to everyone. The App Role Binding save
+ *  refuses it; this catches a row that got there any other way. */
+async function assertNoOpenAppRoleBinding(): Promise<string> {
+  const bindings = await locate('app_role_binding')
+  if (!bindings) return 'app role binding check skipped (no bindings yet)'
+  const open = await sql`select app, app_role, bound_role from ${sql(bindings.relation)}
+    where bound_role in ('All', 'Guest') order by app, app_role, bound_role`
+  if (open.length)
+    throw new Error(open.map((r) => `An app role binding gives ${String(r.app)}'s role ${String(r.app_role)} to ${String(r.bound_role)}, which opens it to everyone. Delete the binding in Admin before releasing.`).join('\n'))
+  return 'no app role is bound to All or Guest'
+}
+
 /** 6. #463: a warning, never a refusal (a new instance, dev and test start
  *  with only the built-in Administrator, which has no address). System
  *  notices go to enabled System Managers with an email address; with none
@@ -198,6 +315,26 @@ async function noticeRecipients(): Promise<string> {
     where p.row_id <> 'Administrator' and p.enabled ${current} and coalesce(trim(p.email), '') <> ''
     limit 1`
   return found ? 'a System Manager with an email address receives system alerts' : NO_NOTICE_RECIPIENTS_WARNING
+}
+
+/** 7. #467: a warning, never a refusal. ADMIN_PASSWORD only provisions a
+ *  null hash (admin-bootstrap.ts), so changing it rotates nothing; a set
+ *  value that is not the live password is a half-done rotation. Neither
+ *  value is ever printed. */
+export const ADMIN_PASSWORD_MISMATCH_WARNING =
+  "WARNING: ADMIN_PASSWORD is set but is not the Administrator's live password. Changing the variable does not rotate it. Run cli set-password Administrator --stdin (docs/DEPLOY.md, \"Rotating credentials\")."
+
+async function administratorPasswordMatches(): Promise<string> {
+  const configured = readVariable('ADMIN_PASSWORD')
+  if (!configured?.trim()) return 'ADMIN_PASSWORD is not set, so there is no Administrator password to compare'
+  // Before 0101 the table is still `user`.
+  const person = (await locate('person')) ?? (await locate('user'))
+  if (!person?.columns.has('password_hash')) return 'Administrator password check skipped (no Person table yet)'
+  const [admin] = await sql`select password_hash from ${sql(person.relation)} where row_id = 'Administrator'`
+  if (!admin?.password_hash) return 'the Administrator has no password yet; cli seed sets it from ADMIN_PASSWORD'
+  return verifyPassword(configured, String(admin.password_hash))
+    ? "ADMIN_PASSWORD is the Administrator's live password"
+    : ADMIN_PASSWORD_MISMATCH_WARNING
 }
 
 /** Addresses anyone can register: admitting them creates a person for any
@@ -241,10 +378,15 @@ async function assertAccessConfiguration(environment: string, pending: string[] 
   if (found) {
     const permission = found.columns
     const flags = ACTION_FLAGS.filter((a) => permission.has(`can_${a}`))
+    // #559: a Table marked as deciding scope is a security Table too (0131 on).
+    const definitions = await locate('table_def')
+    const marked = definitions?.columns.has('decides_scope')
+      ? (await sql`select name from ${sql(definitions.relation)} where decides_scope`).map((r) => String(r.name))
+      : []
     const rows = await sql`
       select row_id, role, ref_table, ${sql(flags.map((a) => `can_${a}`))}
       from ${sql(found.relation)}
-      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES])}
+      where role in ('All', 'Guest') and ref_table in ${sql(['Person', 'User', ...SECURITY_TABLES, ...marked])}
       order by role, ref_table, row_id`
     for (const r of rows) {
       const granted = flags.filter((a) => r[`can_${a}`] === true)

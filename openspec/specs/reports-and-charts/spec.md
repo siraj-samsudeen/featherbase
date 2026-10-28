@@ -12,7 +12,9 @@ read a Table's rows can build and run a report over it.
 
 Opening a Table's summary view SHALL let the user choose which columns show
 and group the rows by one of them, with a count and a running total for each
-group and for everything together.
+group and for everything together. The counts and totals SHALL cover every
+row that matches, even when the summary lists only the first part of them,
+and the summary SHALL then say how many it lists out of how many.
 
 #### Scenario: Group orders by status
 
@@ -21,11 +23,18 @@ group and for everything together.
 - **THEN** each status shows its orders, a count, and the sum of their Amount
 - **AND** the bottom shows the same count and sum across the whole summary
 
+#### Scenario: More orders than the summary lists
+
+- **WHEN** 501 orders match and the summary lists the first 500
+- **THEN** the summary says it shows the first 500 of 501
+- **AND** the counts and the sum of Amount, for each status and overall,
+  include all 501 orders
+
 ### Requirement: Export a summary exactly as shown
 
-The user SHALL be able to download the summary exactly as it appears on
-screen — the same columns, in the same groups, with the same totals shown
-there.
+The user SHALL be able to download the summary as it appears on screen — the
+same columns, in the same groups, with the same totals shown there — with
+every matching row, including any the summary does not list.
 
 #### Scenario: Download a grouped summary
 
@@ -33,6 +42,11 @@ there.
 - **THEN** the file has one row per order under its status group, each
   group's totals as shown on screen, and the grand total as shown on screen,
   in that order
+
+#### Scenario: Download a summary longer than the screen
+
+- **WHEN** 501 orders match and the user exports the summary
+- **THEN** the file has all 501 orders and the same totals as the screen
 
 ### Requirement: Save and rerun a summary
 
@@ -139,3 +153,39 @@ A person SHALL be refused a script report they cannot read, and what a script re
 
 - **WHEN** a person with no access to a script report tries to run it
 - **THEN** they are refused and nothing runs
+
+### Requirement: A scheduled email shows what its creator can see
+
+A scheduled report email SHALL show its recipients only the rows and columns
+the person who set up the schedule can see, whether it goes out on its
+schedule or is sent at once. Only its creator, or a System Manager, SHALL be
+able to change which report it sends or to whom. A schedule whose creator can
+no longer sign in SHALL send nothing, and the other schedules still go.
+
+#### Scenario: A planner's weekly report
+
+- **WHEN** a planner who may read only their own orders schedules a weekly
+  report of orders
+- **THEN** each recipient gets the planner's orders and no one else's
+
+#### Scenario: A colleague redirects the schedule
+
+- **WHEN** a colleague who may edit the planner's schedule changes its
+  recipients to an outside address
+- **THEN** the change is refused; only the planner or a System Manager may
+  change which report it sends or to whom
+
+#### Scenario: The creator has left
+
+- **WHEN** the person who set up a schedule is disabled and its time comes
+- **THEN** that report is not sent, and the other due reports are
+
+### Requirement: A scheduled email is never cut short
+
+A scheduled report email SHALL attach every row its creator can see, however
+many there are.
+
+#### Scenario: A long report
+
+- **WHEN** a scheduled report covers 601 rows
+- **THEN** the attachment holds all 601 and the email says so

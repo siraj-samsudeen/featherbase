@@ -12,6 +12,7 @@ import { cadenceSeconds } from './jobs'
 import { checkVariables, DEV_ENVIRONMENTS } from './env'
 import { lastApply } from './managed-settings'
 import { systemManagerEmails } from './system-notice'
+import { appSetupState } from './app-settings'
 
 export const HEALTH_CHECK_JOB = 'check_instance_health'
 
@@ -154,7 +155,7 @@ const overdueAfterMs = (cadence: string) => (2 * cadenceSeconds(cadence) + 600) 
 
 async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
   const rows = await sql`
-    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.updated_at,
+    select j.method, j.cadence, j.enabled, j.last_run_at, j.last_outcome, j.last_result, j.updated_at,
       (select e.error from job_execution e where e.method = j.method and e.outcome = 'error'
         order by e.started_at desc nulls last, e.created_at desc limit 1) as last_error
     from scheduled_job j order by j.method`
@@ -193,6 +194,16 @@ async function scheduledJobs(now: Date): Promise<HealthCheck[]> {
         fix: 'Open Jobs in Admin to see the error, fix its cause, then run the job again. The check passes after a run succeeds.',
       }
     }
+    // #464: a run that refused to act is treated like a failure.
+    if (r.last_outcome === 'refused') {
+      const reason = typeof r.last_result === 'string' && r.last_result.trim() ? `: ${r.last_result.trim().slice(0, 200)}` : '.'
+      return {
+        ...base,
+        ok: false,
+        message: `The last run refused to act${reason}`,
+        fix: 'Open Jobs in Admin to see why, fix its cause, then run the job again. The check passes after a run succeeds.',
+      }
+    }
     if (!lastRun) return { ...base, ok: true, message: 'Has not run yet.', fix: null }
     return { ...base, ok: true, message: `The last run succeeded (${fmtInstantIST(lastRun)}).`, fix: null }
   })
@@ -219,6 +230,72 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
   return { ...base, ok: true, message: 'The Administrator does not use the default password.', fix: null }
 }
 
+/** #620 (E2): one check per enabled app that declares settings or secrets.
+ *  Names what is missing, never a value. */
+async function appsSetUp(): Promise<HealthCheck[]> {
+  return (await appSetupState()).map(({ app, title, missing, optional }) => {
+    const base = {
+      key: `app-setup:${app}`,
+      title: `App set up: ${title}`,
+      severity: 'warning' as const,
+      why: 'An app that lacks a required setting, secret, data source or identifier system answers "not set up yet" instead of working.',
+    }
+    // #666: a missing optional secret holds up only the reads and actions
+    // that need it: still a warning, but the app is set up.
+    const lacking = optional.length ? `lacks ${optional.join(', ')}. Only those answer "not set up yet".` : ''
+    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: missing.length
+        ? `${title} answers "not set up yet": missing ${missing.join(', ')}.${lacking ? ` It also ${lacking}` : ''}`
+        : `${title} is set up, but ${lacking}`,
+      fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, add each data source in Admin (Data Source), and add each identifier system in Admin (Identifier System), then restart.',
+    }
+  })
+}
+
+/** How long a dropped place stays named after reads last met it. */
+const DROP_WINDOW = '7 days'
+
+/** #667: one check per enabled app with datasets. A scope place naming a
+ *  filter a dataset cannot apply adds nothing from it (fail closed); reads
+ *  record the drop by its keys, and this names the provider, the dataset and
+ *  the keys, never a person. A drop counts only while both apps still run the
+ *  versions it was seen under, and for a week after reads last met it. */
+async function placeDrops(): Promise<HealthCheck[]> {
+  const apps = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and jsonb_typeof(manifest->'datasets') = 'array' and jsonb_array_length(manifest->'datasets') > 0
+    order by name`
+  if (!apps.length) return []
+  const providers = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider'`
+  const provider = providers.length === 1 ? providers[0] : undefined
+  const drops = provider ? await sql`select d.app, d.dataset, d.filter_keys from dataset_place_drop d
+    join installed_app a on a.name = d.app and a.package_version = d.app_version
+    where d.provider = ${provider.name} and d.provider_version = ${provider.package_version}
+      and d.last_seen > now() - ${DROP_WINDOW}::interval
+    order by d.app, d.dataset, d.filter_keys` : []
+  return apps.map((row) => {
+    const app = String(row.name)
+    const title = String(row.title ?? app)
+    const base = {
+      key: `scope-place-drops:${app}`,
+      title: `Every place reaches the datasets: ${title}`,
+      severity: 'warning' as const,
+      why: 'A place that names a filter a dataset does not map adds nothing from that dataset, so the people it covers can see an empty report with no explanation.',
+    }
+    const mine = drops.filter((drop) => drop.app === app)
+    if (!mine.length) return { ...base, ok: true, message: `No place has been dropped from ${title}'s datasets.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: mine.map((drop) => `${String(drop.dataset)} drops places from ${String(provider!.title ?? provider!.name)} that name ${(drop.filter_keys as string[]).join(', ')}, which it cannot apply, so those places add nothing from it.`).join(' '),
+      fix: 'A place must use the dataset\'s filter keys: change the scope provider to name only filters each dataset maps, or map the filter in the dataset. A System Manager can see whose places are dropped with the person scope read (GET /api/people/<person>/scope?app=<app>).',
+    }
+  })
+}
+
 /** Every check, in the page's order. */
 export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<HealthCheck[]> {
   const environment = opts.environment ?? config.environment
@@ -228,6 +305,8 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     await settingsApplied(),
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
+    ...(await appsSetUp()),
+    ...(await placeDrops()),
     await administratorPassword(environment),
   ]
 }

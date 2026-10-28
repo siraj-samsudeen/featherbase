@@ -1,0 +1,25 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "placeroster",
+  "title": "Place roster proof",
+  "entryTable": "placeroster.position",
+  "server": "server.mjs",
+  "tables": [
+    {
+      "name": "placeroster.position",
+      "label": "position",
+      "id_pattern": "prompt",
+      "decides_scope": true,
+      "columns": [
+        { "column_name": "person", "column_type": "Data" },
+        { "column_name": "place", "column_type": "Data" },
+        { "column_name": "store", "column_type": "Data" },
+        { "column_name": "section", "column_type": "Data" },
+        { "column_name": "basis", "column_type": "Data" },
+        { "column_name": "assumed", "column_type": "Check" }
+      ]
+    }
+  ],
+  "scopeProvider": { "name": "positions", "tables": ["placeroster.position", "Roster Extra"] }
+}

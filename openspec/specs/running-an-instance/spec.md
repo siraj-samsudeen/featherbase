@@ -432,3 +432,37 @@ behind someone else's work.
 - **WHEN** someone else is using a table a pending change needs to alter
 - **THEN** the rehearsal stops within a few seconds and names the change that
   could not get the table, instead of waiting
+
+### Requirement: A preview deploy ends with its preview person, or fails
+
+A deploy's pre-deploy step SHALL run the release and then the preview seed as one command, and SHALL fail the deploy when either fails. Where preview sign-in is configured, a deploy that succeeds SHALL leave the person the preview link names in place; where it is not configured, the seed SHALL create nothing.
+
+#### Scenario: A preview deploy
+
+- **WHEN** an operator deploys with the preview sign-in key and person set
+- **THEN** the release runs, then the preview person and the demo Table are created, and the preview link signs in as that person
+
+#### Scenario: The preview seed fails
+
+- **WHEN** the release succeeds but the preview person cannot be created
+- **THEN** the deploy fails, and the old version keeps serving
+
+#### Scenario: Not a preview
+
+- **WHEN** an operator deploys without the preview variables
+- **THEN** the release runs and no preview person is created
+
+### Requirement: A release warns when the configured Administrator password is not the live one
+
+When the operator has set the Administrator password in the deployment settings, a release and its rehearsal SHALL warn, and go ahead, if that is not the Administrator's live password. Changing the setting never changes the live password, so the warning names the command that does. Neither password is ever shown.
+
+#### Scenario: A half-done password rotation
+
+- **WHEN** an operator changes the Administrator password setting but not the live password, and releases
+- **THEN** the release warns that the setting is not the live password and names the command that changes it
+- **AND** the release still completes, and neither password appears in its output
+
+#### Scenario: The setting matches
+
+- **WHEN** the setting holds the Administrator's live password
+- **THEN** the release says they match and gives no warning

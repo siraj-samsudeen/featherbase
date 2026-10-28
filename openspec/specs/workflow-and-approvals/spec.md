@@ -50,6 +50,13 @@ condition isn't met, the action SHALL be refused, even to an Administrator.
   the user takes that action
 - **THEN** the action is refused and the request stays in its current state
 
+#### Scenario: One broken condition doesn't hide the other actions
+
+- **WHEN** a request has two actions open from its state and one of them has a
+  condition that cannot be evaluated
+- **THEN** the user opening the request is offered the other action, and only
+  the broken one is hidden
+
 ### Requirement: A disallowed action changes nothing
 
 Taking an action that isn't available from the row's current state, or that
@@ -63,16 +70,24 @@ unchanged.
 
 ### Requirement: Entering a pending state notifies who can act next
 
-Moving a row into a state that still needs a decision SHALL email everyone
-who holds a role that can act on it from there, linking to the row and naming
-the actions open to them.
+A row that arrives in a state explicitly marked as waiting for approval,
+whether moved there by an action or created there, SHALL email everyone who
+holds a role that can act on it from there, linking to the row and naming the
+actions open to them. Unmarked states SHALL send no approval emails.
 
 #### Scenario: Submitting for approval notifies the approver
 
-- **WHEN** a user submits a request, moving it into a state that waits on an
+- **WHEN** a user submits a request, moving it into a state marked as waiting for an
   Approver
 - **THEN** each Approver gets an email linking to the request and naming the
   actions they can take on it
+
+#### Scenario: A request that starts out waiting notifies the approver
+
+- **WHEN** a workflow's first state is marked as waiting for an Approver and a
+  user creates a request
+- **THEN** each Approver gets an email linking to the new request and naming
+  the actions they can take on it
 
 #### Scenario: Nobody is emailed who can't or needn't act
 
@@ -85,6 +100,17 @@ the actions open to them.
 - **WHEN** an Approver approves a request, moving it to a state with no
   further actions
 - **THEN** no one is emailed
+
+#### Scenario: Ordinary work does not ask for approval
+
+- **WHEN** the user moves a request into an unmarked Draft or Rejected state with actions restricted to staff
+- **THEN** no staff member receives an approval email
+
+#### Scenario: Choose which states need approval
+
+- **WHEN** the user edits a workflow and marks a state as waiting for approval
+- **THEN** the choice is kept when the workflow is reopened
+- **AND** existing and newly added states remain unmarked until the user chooses otherwise
 
 ### Requirement: Finalise a row instead of leaving it open to change
 

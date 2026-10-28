@@ -32,6 +32,35 @@ export interface SourceConfig {
   statement_timeout_ms: number
   // Newline-separated "schema.table" entries; null = everything allowed.
   allowlist: string[] | null
+  // #625: the administrator says the token is a MotherDuck read-scaling
+  // (read-only) token, so an app's dataset query may run on it.
+  read_scaling_token?: boolean
+}
+
+// EDS-6: the shape of a write the data source refused for a constraint
+// reason. The codes are Postgres SQLSTATEs: the postgres driver passes its
+// own errors through as they are, and every other driver translates its
+// dialect into them (mysql: errno -> code). `column_name` is the SOURCE
+// column when the source names one; the dispatcher translates it to the
+// field (explainRefusal in dispatch.ts). `message` is the driver's raw text,
+// for the server log only.
+export const REFUSAL_CODE = {
+  unique: '23505',
+  notNull: '23502',
+  foreignKey: '23503',
+  check: '23514',
+  tooLong: '22001',
+  outOfRange: '22003',
+  invalidText: '22P02',
+} as const
+
+export interface SourceRefusal extends Error {
+  code: (typeof REFUSAL_CODE)[keyof typeof REFUSAL_CODE]
+  column_name?: string
+  constraint_name?: string
+  // Postgres's detail line, "Key (col, ...)=(value, ...) ..."; the mysql
+  // driver writes one for a unique refusal.
+  detail?: string
 }
 
 // The per-Table binding the dispatcher hands a driver, resolved from
@@ -89,6 +118,24 @@ export interface IntrospectedTable {
   columns: IntrospectedColumn[]
 }
 
+// #625 (design E3): which rows of an app's declared dataset query a read may
+// see. A row passes when it matches every condition in `all` and every
+// condition of at least one group in `any`. No group means no row: the
+// reader's scope fails closed. Values are compared as text.
+export interface DatasetCondition {
+  column: string // a declared column, validated against the declaration
+  values: string[]
+}
+/** A declared dataset column: its name and type (`date` is cast to a day). */
+export interface DatasetColumn {
+  name: string
+  type: string
+}
+export interface DatasetWhere {
+  any: DatasetCondition[][]
+  all: DatasetCondition[]
+}
+
 export interface SourceDriver {
   engine: SourceEngine
   // Whether the driver implements insert/update/remove at all. A source's
@@ -119,4 +166,8 @@ export interface SourceDriver {
   remove(bind: Binding, pk: string, expectModified: string | null): Promise<void | 'conflict' | 'missing'>
   // Drop any cached pool/instance for this source (config changed).
   dispose(sourceName: string): void
+  // #625: run an app's declared dataset query, read-only, limited to `where`
+  // (the whole result when omitted: a snapshot build). Engines without it
+  // cannot back a dataset.
+  query?(source: SourceConfig, text: string, columns: readonly DatasetColumn[], where?: DatasetWhere): Promise<SourceRow[]>
 }

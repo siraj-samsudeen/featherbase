@@ -188,18 +188,65 @@ describe('Assign a row to someone', () => {
     expect(note).toMatchObject({ ref_table: 'Asg Req Doc', ref_name: doc.row_id })
   })
 
-  // SPEC: Assign a row to someone — suspected defect, see report. The assign box
-  // on a row's form invites an email address (its placeholder is an address),
-  // but the server only knows a person by their opaque id, so an address is
-  // refused as "not found".
-  test.fails('a row can be assigned to a person by the email address the form invites', async ({ admin }) => {
+  // SPEC: Assign a row to someone. The assign box on a row's form invites an
+  // email address (#512), so an address finds the person it belongs to, in
+  // any letter case, and the assignment goes to that person's id.
+  test('a row can be assigned to a person by the email address the form invites', async ({ admin }) => {
     const doc = await world(admin)
     const [priya] = await sql`insert into person ${sql({ row_id: 'psn_asgreqpriya', created_by: 'Administrator', updated_by: 'Administrator', email: 'priya-asg@x.com', enabled: true })} returning row_id`
     expect(priya.row_id).toBe('psn_asgreqpriya')
     const res = await admin.fetch('/api/assign', {
       method: 'POST',
-      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'priya-asg@x.com' }),
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: ' Priya-ASG@x.com ' }),
     })
     expect(res.status).toBe(201)
+    const [todo] = await sql`select allocated_to from todo where reference_name = ${doc.row_id}`
+    expect(todo.allocated_to).toBe('psn_asgreqpriya')
+  })
+
+  // An address is looked up as the assigner, like the people picker: someone
+  // who may not read people can't use the box to learn whose address it is.
+  test('an assigner who may not read people cannot assign by email address', async ({ admin, createUser }) => {
+    const doc = await world(admin)
+    const reader = await createUser({ roles: ['Asg Req Reader'] })
+    await sql`insert into person ${sql({ row_id: 'psn_asgreqhiddenhiddenh', created_by: 'Administrator', updated_by: 'Administrator', email: 'hidden-asg@x.com', enabled: true })}`
+    const res = await reader.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'hidden-asg@x.com' }),
+    })
+    expect(res.status).toBe(404)
+    expect((await sql`select 1 from todo where reference_name = ${doc.row_id}`).length).toBe(0)
+  })
+
+  test('the address of a merged-away record does not assign to it', async ({ admin }) => {
+    const doc = await world(admin)
+    const row = (id: string, extra: Record<string, unknown>) => ({ row_id: id, created_by: 'Administrator', updated_by: 'Administrator', enabled: true, ...extra })
+    await sql`insert into person ${sql(row('psn_asgreqsurvivorsurvi', { email: 'kept-asg@x.com' }))}`
+    await sql`insert into person ${sql(row('psn_asgreqmergedmergedm', { email: 'old-asg@x.com', enabled: false, replaced_by: 'psn_asgreqsurvivorsurvi' }))}`
+    const res = await admin.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'old-asg@x.com' }),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  test('an assignee that is not text is refused as invalid, not a server error', async ({ admin }) => {
+    const doc = await world(admin)
+    const res = await admin.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 42 }),
+    })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ValidationError')
+  })
+
+  test('an email address that belongs to no one is refused as not found', async ({ admin }) => {
+    const doc = await world(admin)
+    const res = await admin.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'Asg Req Doc', row_id: doc.row_id, assign_to: 'nobody-asg@x.com' }),
+    })
+    expect(res.status).toBe(404)
+    expect((await sql`select 1 from todo where reference_name = ${doc.row_id}`).length).toBe(0)
   })
 })

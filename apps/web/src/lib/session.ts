@@ -8,14 +8,23 @@ import { api, getSessionUser, listResource } from './api'
 export interface Capabilities {
   manage: boolean // System Manager: build Tables, import, issue access tokens
   report: boolean // the Sales Target report
-  table_access: boolean // holds any Table grant of their own, or a shared row
+  admin: boolean // can use the Admin screens: manages them, or holds a Table grant of their own or a shared row
   own_grant: boolean // holds a Table grant of their own (not only a shared row)
   tables: string[] // Tables the person can read (empty for a System Manager: they read the Table list)
   creatable: string[] // Tables the person can add rows to
 }
 
+/** An installed app the person can open (#671). */
+export interface OpenableApp {
+  name: string
+  title: string
+}
+
 interface WhoAmI {
   capabilities: Capabilities
+  apps: OpenableApp[]
+  /** #671: every installed app's name, open or not (disabled, pending). */
+  installed_apps: string[]
   name: string
   email: string | null
   full_name: string | null
@@ -63,7 +72,7 @@ type ShellKind = 'loading' | 'failed' | 'admin' | 'report-only' | 'no-access'
 export function shellKindOf(q: { isError: boolean; data?: { capabilities?: Capabilities } }): ShellKind {
   const caps = q.data?.capabilities
   if (!caps) return q.isError ? 'failed' : 'loading'
-  if (caps.manage || caps.table_access) return 'admin'
+  if (caps.admin) return 'admin'
   return caps.report ? 'report-only' : 'no-access'
 }
 

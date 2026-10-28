@@ -6,9 +6,9 @@ import { assertNotAccessTarget } from '../security-tables'
 const controller: TableController = {
   table: 'Assignment Rule',
   hooks: {
-    validate: ({ row }) => {
+    validate: async ({ row }) => {
       if (typeof row.ref_table === 'string' && row.ref_table)
-        assertNotAccessTarget(row.ref_table, String(row.assign_to_field ?? '').trim(), 'An assignment rule')
+        await assertNotAccessTarget(row.ref_table, String(row.assign_to_field ?? '').trim(), 'An assignment rule')
     },
   },
 }

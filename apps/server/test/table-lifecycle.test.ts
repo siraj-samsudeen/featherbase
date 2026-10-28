@@ -1,6 +1,6 @@
 // docs/specs/0007-table-lifecycle.md — the contract half of the row
-// lifecycle (TLC-R2, TLC-R3) plus the two pins that hold the spec's
-// invariants against defects the Admin is about to build on top of.
+// lifecycle (TLC-R2, TLC-R3) plus the two invariants that keep a
+// definition write from losing data silently.
 //
 // Titles read as the rule they prove: the ID is the join key
 // check-evidence.mjs uses, and the sentence after it is what a reviewer
@@ -121,14 +121,15 @@ describe('TLC-R3: deleting a row', () => {
   })
 })
 
-// ------------------------------------------------------------- the pins
+// ------------------------------------------------------------- the invariants
 //
-// #250 remains pinned; #251's mismatched-name slice now refuses correctly.
-// Its destructive omitted-column/full-replacement semantics remain open.
+// #250: a remove-one/add-one definition is ambiguous, so it is refused and the
+// explicit rename_column operation is the way to rename (#249's decision).
+// #251: a definition write refuses a name or a removal it was not asked for.
 
-describe('TLC-I2 / TLC-I3: invariants the definition API violates today', () => {
-  test.fails(
-    'TLC-I2 / TLC-R6: renaming a column keeps its data readable under the new name (pins #250)',
+describe('TLC-I2 / TLC-I3: the definition API never loses data silently', () => {
+  test(
+    'TLC-I2 / TLC-R6: a rename typed as remove-plus-add is refused, and the rename operation keeps the data (#250)',
     async ({ admin }) => {
       await admin.post('/api/table_def', {
         name: NOTE,
@@ -138,14 +139,19 @@ describe('TLC-I2 / TLC-I3: invariants the definition API violates today', () => 
       await admin.post('/api/save_row', { table: NOTE, row: { row_id: 'note-1', title: 'first' } })
 
       // The ordinary edit: one column, one new name, nothing else touched.
-      await admin.put(`/api/table_def/${encodeURIComponent(NOTE)}`, {
-        columns: [{ column_name: 'headline', column_type: 'Data' }],
+      const res = await admin.fetch(`/api/table_def/${encodeURIComponent(NOTE)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ columns: [{ column_name: 'headline', column_type: 'Data' }] }),
       })
+      expect(res.status).toBe(417)
+      const body = await res.json()
+      expect(body.error.fields.title).toMatch(/1 row holds a value/)
+      expect(body.error.fields.title).toMatch(/rename_column/)
+      expect(body.error.fields.title).toMatch(/headline/)
+      expect((await admin.get<{ title: string }>(rowPath(NOTE, 'note-1'))).title).toBe('first')
 
-      const row = await admin.get<{ headline: string }>(rowPath(NOTE, 'note-1'))
-      // Today: headline is null and "first" is unreachable through every read
-      // path, because updateTable diffed the rename into a drop plus an add.
-      expect(row.headline).toBe('first')
+      await admin.post(`/api/table_def/${encodeURIComponent(NOTE)}/rename_column`, { from: 'title', to: 'headline' })
+      expect((await admin.get<{ headline: string }>(rowPath(NOTE, 'note-1'))).headline).toBe('first')
     },
   )
 

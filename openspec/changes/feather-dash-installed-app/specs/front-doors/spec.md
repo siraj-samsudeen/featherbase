@@ -81,6 +81,12 @@ them.
 - **THEN** they can reach their sign-in methods and sign out, as they would in the
   Admin screens
 
+#### Scenario: The app's own pages wear the same bar
+
+- **WHEN** a manager opens Feather Dash's report on its address
+- **THEN** the bar above the report looks and works as it does on their account
+  page, with the report below it
+
 ### Requirement: The address changes the look, not the access
 
 An address SHALL NOT grant or remove anything. What a person may see or do SHALL be

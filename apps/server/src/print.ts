@@ -31,7 +31,7 @@ function fmt(v: unknown): string {
 
 function interpolate(template: string, row: Row): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = row[key]
+    const v = Object.hasOwn(row, key) ? row[key] : undefined
     if (v == null) return ''
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
     return esc(v)
@@ -114,13 +114,15 @@ export async function renderPrintHtml(
   </style></head><body>${header}${body}${footer}</body></html>`
 }
 
+// A column the reader may not see is absent from the row (#341), so it is
+// left out here too rather than printed as a blank.
 function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, row: Row): string {
   const scalar = meta.columns.filter(
-    (f) => !['Sub-table', 'Section Break', 'Column Break'].includes(f.column_type) && !f.hidden,
+    (f) => !['Sub-table', 'Section Break', 'Column Break'].includes(f.column_type) && !f.hidden && f.column_name in row,
   )
-  const tables = meta.columns.filter((f) => f.column_type === 'Sub-table' && !f.hidden)
+  const tables = meta.columns.filter((f) => f.column_type === 'Sub-table' && !f.hidden && f.column_name in row)
   const rows = scalar
-    .map((f) => `<dt>${esc(f.label ?? f.column_name)}</dt><dd>${fmt(row[f.column_name])}</dd>`)
+    .map((f) => `<dt>${esc(f.label ?? f.column_name)}</dt><dd>${fmt(Object.hasOwn(row, f.column_name) ? row[f.column_name] : undefined)}</dd>`)
     .join('')
   const tableHtml = tables
     .map((tf) => {

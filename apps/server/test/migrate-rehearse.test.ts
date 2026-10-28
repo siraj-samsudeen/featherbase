@@ -69,6 +69,12 @@ describe('migrate:rehearse', () => {
   })
 })
 
+// The app-upgrade step that ends every rehearsal (#651) reads the platform's
+// installed-app list. A real legacy copy gets it from 0094 in the same
+// rehearsal; these fixtures stop short of 0094, so they carry an empty one.
+const APP_LIST = `create schema featherbase;
+  create table featherbase.installed_app (name text primary key, runtime_package boolean, package_version text, migration_ledger jsonb)`
+
 // #557: a restored snapshot can predate 0094, with its ledger in `public`.
 // The rehearsal applies its pending files the way the migrator would, so a
 // pre-0094 file runs against public storage, not the platform schema.
@@ -82,7 +88,7 @@ describe('migrate:rehearse on a database of its own', () => {
   it('a legacy database with its ledger in public rehearses a pre-0094 file, and keeps nothing', async () => {
     const all = (await sql`select name from migration order by name`).map((r) => String(r.name))
     const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
-      create table public.installed_app (name text primary key)`)
+      create table public.installed_app (name text primary key); ${APP_LIST}`)
     try {
       await scratch.db`insert into public.migration ${scratch.db(all.filter((f) => f !== '0089_app_enablement.sql').map((name) => ({ name })))}`
       const out = await rehearseOn(scratch)
@@ -94,7 +100,7 @@ describe('migrate:rehearse on a database of its own', () => {
       expect(await scratch.db`select 1 from public.migration where name = '0089_app_enablement.sql'`).toHaveLength(0)
       expect((await scratch.db`select column_name from information_schema.columns
         where table_schema = 'public' and table_name = 'installed_app'`).map((r) => r.column_name)).toEqual(['name'])
-      expect(await scratch.db`select to_regnamespace('featherbase') as s`).toEqual([{ s: null }])
+      expect(await scratch.db`select to_regclass('featherbase.migration') as m`).toEqual([{ m: null }])
     } finally {
       await scratch.close()
     }
@@ -114,7 +120,7 @@ describe('migrate:rehearse on a database of its own', () => {
   // its server's. The rehearsal holds each change's locks until it ends, so
   // pointed at a live database it would block the instance's users.
   const LEGACY_0089 = `create table public.migration (name text primary key, applied_at timestamptz not null default now());
-    create table public.installed_app (name text primary key)`
+    create table public.installed_app (name text primary key); ${APP_LIST}`
   async function legacyCopy() {
     const all = (await sql`select name from migration order by name`).map((r) => String(r.name))
     const scratch = await scratchDatabase(LEGACY_0089)

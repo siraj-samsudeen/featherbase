@@ -3,9 +3,10 @@ import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import type { WorkflowState } from '../src/workflow'
 
-// WF-004: transitioning a document INTO a state that still has outgoing
-// transitions makes it pending someone's action. The holders of those
+// WF-004: only a state explicitly marked as waiting for approval emails
+// the roles on its outgoing transitions. The holders of those
 // transitions' allowed roles are emailed a pending-approval message that
 // references the document and links to it.
 
@@ -17,7 +18,7 @@ const FLOW = 'Wf Notify Flow'
 // Per-test setup inside the sandbox transaction: the Table, role, perms,
 // approver user (via the createUser fixture — its minted token replaces the
 // legacy password login), and workflow. Returns the approver's client.
-async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestClient> {
+async function setup(admin: TestClient, createUser: CreateUserFn, waitsForApproval = true): Promise<TestClient> {
   await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
@@ -39,7 +40,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
       is_active: true,
       states: [
         { state: 'Draft', target_status: 'draft' },
-        { state: 'Pending', target_status: 'draft' },
+        { state: 'Pending', target_status: 'draft', waits_for_approval: waitsForApproval },
         { state: 'Approved', target_status: 'submitted' },
       ],
       transitions: [
@@ -52,6 +53,25 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
 }
 
 describe('WF-004: pending-approval notifications', () => {
+  test('an unmarked state with role-restricted actions sends no approval email', async ({ admin, createUser }) => {
+    await setup(admin, createUser, false)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'unmarked', title: 'Ordinary work' })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/unmarked:apply_workflow_action`, { action: 'Submit' })
+    const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'unmarked'`
+    expect(emails).toHaveLength(0)
+  })
+
+  test('approval marks default off and survive saving and reopening a workflow', async ({ admin, createUser }) => {
+    await setup(admin, createUser)
+    const path = `/api/table/Workflow/${encodeURIComponent(FLOW)}`
+    const saved = await admin.get<{ row_id: string; states: WorkflowState[] }>(path)
+    expect(saved.states.map((s) => s.waits_for_approval)).toEqual([false, true, false])
+    saved.states[1].waits_for_approval = false
+    await admin.post('/api/save_row', { table: 'Workflow', row: saved })
+    const reopened = await admin.get<{ states: WorkflowState[] }>(path)
+    expect(reopened.states.map((s) => s.waits_for_approval)).toEqual([false, false, false])
+  })
+
   test('entering a pending state queues an email to the approvers referencing the doc', async ({
     admin,
     createUser,
@@ -137,5 +157,75 @@ describe('WF-004: pending-approval notifications', () => {
     await approver.post(`/api/table/${encodeURIComponent(DT)}/wf-notify-3:apply_workflow_action`, { action: 'Submit' })
     const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-3'`
     expect(emails.map((e) => e.recipient)).toEqual(['wf-notify-other@x.com'])
+  })
+
+  // #336 (owner decision 26-Sep-2026): a row created straight into a state
+  // that waits on someone notifies them, as moving it there would.
+  describe('a row created in a pending state', () => {
+    async function setupStartsPending(admin: TestClient, createUser: CreateUserFn, waitsForApproval = true): Promise<TestClient> {
+      const approver = await setup(admin, createUser)
+      const flow = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+      // The first state now awaits the Approver: a new row is pending at once.
+      await admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
+          ...flow,
+          states: [
+            { state: 'Pending', target_status: 'draft', waits_for_approval: waitsForApproval },
+            { state: 'Approved', target_status: 'submitted' },
+          ],
+          transitions: [{ state: 'Pending', action: 'Approve', next_state: 'Approved', allowed: APPROVER_ROLE }],
+        },
+      })
+      return approver
+    }
+
+    test('emails the approvers, linking to the row', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser)
+      const created = await admin.post<{ workflow_state: string }>(`/api/table/${encodeURIComponent(DT)}`, {
+        row_id: 'wf-notify-new',
+        title: 'Created pending',
+      })
+      expect(created.workflow_state).toBe('Pending')
+
+      const emails = await sql`
+        select recipient, subject, body from email_queue
+        where ref_table = ${DT} and reference_name = 'wf-notify-new'`
+      expect(emails.map((e) => e.recipient)).toEqual([APPROVER])
+      expect(String(emails[0].subject)).toContain('Approval required')
+      expect(String(emails[0].body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-new`)
+      expect(String(emails[0].body)).toContain('Approve')
+    })
+
+    test('the approver who creates it is not emailed', async ({ admin, createUser }) => {
+      const approver = await setupStartsPending(admin, createUser)
+      await admin.post('/api/save_row', {
+        table: 'Permission',
+        row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_create: true },
+      })
+      await createUser({ email: 'wf-notify-peer@x.com', roles: [APPROVER_ROLE] })
+      await approver.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-own', title: 'Own request' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-own'`
+      expect(emails.map((e) => e.recipient)).toEqual(['wf-notify-peer@x.com'])
+    })
+
+    test('a row created in an unmarked state emails no one, even with role-restricted actions', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser, false)
+      await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-unmarked', title: 'Ordinary draft' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-unmarked'`
+      expect(emails).toEqual([])
+    })
+
+    test('a row created in a state with no further actions emails no one', async ({ admin, createUser }) => {
+      await setup(admin, createUser)
+      const flow = await admin.get<Record<string, unknown>>(`/api/table/Workflow/${encodeURIComponent(FLOW)}`)
+      await admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: { ...flow, states: [{ state: 'Logged', target_status: 'draft' }], transitions: [] },
+      })
+      await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-notify-final', title: 'Nothing to decide' })
+      const emails = await sql`select recipient from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-final'`
+      expect(emails).toEqual([])
+    })
   })
 })

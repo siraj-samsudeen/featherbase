@@ -73,9 +73,9 @@ whatever it's attached to before it opens.
 ### Requirement: An uploaded file never runs as part of Featherbase
 
 A file SHALL open in place only when it is a kind the browser shows without
-running anything, such as a picture, a PDF or plain text. Any other file, a
-web page or a drawing that can carry script among them, SHALL download
-instead.
+running anything, such as a picture, a PDF, plain text, or sound or video in a
+common format. Any other file, a web page or a drawing that can carry script
+among them, SHALL download instead.
 
 #### Scenario: An uploaded web page
 
@@ -91,6 +91,16 @@ instead.
 
 - **WHEN** a user opens an uploaded photo or PDF
 - **THEN** it shows in the browser as before
+
+#### Scenario: A video in a common format plays
+
+- **WHEN** a user opens an uploaded MP4 video or MP3 recording
+- **THEN** it plays in the browser
+
+#### Scenario: A file declared as an unusual kind of sound or video
+
+- **WHEN** someone uploads a file declared as a kind of sound or video that is not a common format
+- **THEN** the file downloads instead of opening
 
 ### Requirement: A private file opens through a short-lived link
 

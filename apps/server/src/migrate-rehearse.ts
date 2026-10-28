@@ -17,6 +17,8 @@ import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
 import { applyBatch, ensureLedger, planMigrations } from './migrate'
 import { invalidateMeta } from './meta'
+import { readVariable } from './env'
+import { rehearseAppUpgrades } from './runtime-packages'
 
 /** Where the rehearsal's report goes: the terminal, or a test's buffer. */
 type RehearsalOutput = (line: string) => void
@@ -85,6 +87,8 @@ export async function rehearse(
         await sql.unsafe(`set local lock_timeout = '${LOCK_TIMEOUT}'; set local statement_timeout = '${STATEMENT_TIMEOUT}'`)
         await ensureLedger(legacy)
         for (const batch of batches) await applyReporting(batch, legacy, out)
+        // #651: then each app upgrade this release ships, with what it removes.
+        for (const line of await rehearseAppUpgrades(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) out(line)
       } finally {
         invalidateMeta()
       }
