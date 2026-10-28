@@ -1,9 +1,9 @@
 ## 1. Reviewable design and prototype
 
 - [ ] 1.1 Review the planning PR with the owner, preserving the distinction between agreed rules and prototype defaults. Verify the decision trail links and ID — Name sample references are readable and internally consistent.
-- [ ] 1.2 Build the disposable local HTML prototype from design.md sections A–G: responsibility grant, employee edit, approval and inspectable sample rows. Verify Meera can grant RA6, Arun can propose CP1 and Meera can apply it without a live API or production data.
-- [ ] 1.3 Add isolated scenario controls for section/department scope, direct reports, date transfer, revocation, conflict, handover and acting-manager escalation. Verify each branch in design.md section H produces its stated result and reset restores the original seed.
-- [ ] 1.4 Use an independent UI verifier for the prototype at 1280px and 375px; return screenshots and a spec-versus-built table before owner review. Verify keyboard use, readable controls and no overflow.
+- [x] 1.2 Build the disposable local HTML prototype from design.md sections A–G: responsibility grant, employee edit, approval and inspectable sample rows. Verify Meera can grant RA6, Arun can propose CP1 and Meera can apply it without a live API or production data.
+- [x] 1.3 Add isolated scenario controls for section/department scope, direct reports, date transfer, revocation, conflict, handover and acting-manager escalation. Verify each branch in design.md section H produces its stated result and reset restores the original seed.
+- [x] 1.4 Use an independent UI verifier for the prototype at 1280px and 375px; return screenshots and a spec-versus-built table before owner review. Verify keyboard use, readable controls and no overflow.
 - [ ] 1.5 Walk the prototype with the owner and record accepted changes in these artifacts. Verify explicit decisions on the employee field set, bulk request behaviour, shared personal-record footprint and approver-only authority before enabling production implementation tasks.
 
 ## 2. Production design gate
