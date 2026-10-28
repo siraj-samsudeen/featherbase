@@ -193,6 +193,8 @@ test('a recreated Table never adopts or rewrites the old Table’s history', asy
   const [old] = await sql`select row_id, data from version where ref_table = ${table} and ref_name = 'A'`
   await admin.delete(`/api/table_def/${encodeURIComponent(table)}`)
   await makeTable(admin, { name: table, columns: ['code', 'city', 'phone'] })
+  // A new real transaction has a later birth; sandbox now() is fixed.
+  await sql`update table_def set created_at = clock_timestamp() where name = ${table}`
   await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'New North' }], context: { run_id: 'reborn' } })
   await load(admin, 'New East', 'reborn-second')
   expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'New East' })

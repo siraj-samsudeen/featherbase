@@ -7,6 +7,7 @@ import { getDoc, saveDoc, saveSystemRow } from './document'
 import { tableRelation } from './table-engine'
 import { assertDocPermission } from './permissions'
 import { permittedTiers, isSharedWith, stripUnwritableFields } from './permissions'
+import { assertManagedUnchanged, holdManagedSet } from './managed-settings'
 import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
@@ -89,10 +90,12 @@ async function annotateHistory(meta: TableMeta, row: Row, user: string, previous
 
 export async function saveImportedRow(meta: TableMeta, input: Row, user: string, runId: string, update: boolean): Promise<{ saved: Row; version?: string }> {
   return actionTransaction(async () => {
+    await holdManagedSet(sql, meta.name)
     let plan: ImportPlan | undefined
     if (update) {
       const [current] = await sql`select * from ${sql(await tableRelation(meta.name))} where ${sql(meta.row_key)} = ${String(input.row_id)} for update`
       if (!current) throw new AppError('NotFoundError', 'The imported row no longer exists')
+      await assertManagedUnchanged(sql, meta, String(input.row_id), current, { ...current, ...input }, user)
       // SaveDoc performs the complete write gate; preview/list use getDoc.
       plan = await planImport(meta, { ...current, row_id: current[meta.row_key] }, input, user)
     }
