@@ -42,6 +42,9 @@ interface ImportRunReport {
   updated: number
   inserted: number
   failed: ImportFailure[]
+  fields_updated: number
+  fields_kept: number
+  tracks_changes: boolean | null
 }
 
 // UPS-R2 × IMPORT_CHUNK: the server resolves keys against the database and
@@ -103,6 +106,9 @@ export async function sendImportRun(opts: {
   let valid = 0
   let updated = 0
   let inserted = 0
+  let fieldsUpdated = 0
+  let fieldsKept = 0
+  let tracksChanges: boolean | null = null
   const parts = Math.ceil(send.length / IMPORT_CHUNK)
   for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
     const chunk = send.slice(at, at + IMPORT_CHUNK)
@@ -110,6 +116,9 @@ export async function sendImportRun(opts: {
     opts.onChunk?.({ from: at + 1, to: at + chunk.length, total: send.length })
     const res = await api.post<{
       valid?: number
+      fields_updated?: number
+      fields_kept?: number
+      tracks_changes?: boolean
       updated?: number
       inserted?: number
       failed: { index: number; message: string; fields?: Record<string, string> }[]
@@ -119,6 +128,9 @@ export async function sendImportRun(opts: {
       ...(opts.upsert ?? {}),
       ...(opts.context ? { context: opts.context(part, parts) } : {}),
     })
+    fieldsUpdated += res.fields_updated ?? 0
+    fieldsKept += res.fields_kept ?? 0
+    if (res.tracks_changes !== undefined) tracksChanges = res.tracks_changes
     valid += res.valid ?? 0
     updated += res.updated ?? 0
     // A keyless dry run reports no per-action counts: every valid row is an
@@ -132,5 +144,5 @@ export async function sendImportRun(opts: {
   }
   failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
   if (!opts.dryRun) valid = inserted + updated
-  return { valid, updated, inserted, failed }
+  return { valid, updated, inserted, failed, fields_updated: fieldsUpdated, fields_kept: fieldsKept, tracks_changes: tracksChanges }
 }

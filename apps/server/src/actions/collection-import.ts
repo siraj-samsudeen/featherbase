@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { planImport, saveImportedRow } from '../import-corrections'
+import { getDoc } from '../document'
 import { createHash } from 'node:crypto'
 import { quoteIdent } from '../sql-identifier'
 import { AppError } from '../errors'
@@ -276,6 +279,8 @@ registerCollectionAction('import', {
       if (!resolutions) await assertPermission(user.row_id, table, 'create')
       const failed: FailedRow[] = []
       const actions: RowAction[] = []
+      let fieldsUpdated = 0
+      let fieldsKept = 0
       const seenNames = new Set<string>()
       for (const [index, row] of rows.entries()) {
         if (typeof row !== 'object' || row === null || Array.isArray(row)) {
@@ -295,6 +300,10 @@ registerCollectionAction('import', {
             // the mapped values as the update they will become. The insert
             // checks (name conflicts, reqd columns) do not apply.
             checkRowForUpdate(meta, row as Record<string, unknown>, resolution, upsert!)
+            const current = await getDoc(table, resolution.row_id!, user.row_id)
+            const plan = await planImport(meta, current, updateValues(row as Record<string, unknown>, upsert!, resolution), user.row_id)
+            fieldsUpdated += plan.fields_updated
+            fieldsKept += plan.conflicts.length
             actions.push('update')
             continue
           }
@@ -313,7 +322,7 @@ registerCollectionAction('import', {
           actions.push('fail')
         }
       }
-      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
       return {
         dry_run: true,
         valid: rows.length - failed.length,
@@ -321,17 +330,20 @@ registerCollectionAction('import', {
         inserted: actions.filter((a) => a === 'insert').length,
         failed,
         actions,
+        fields_updated: fieldsUpdated,
+        fields_kept: fieldsKept,
+        tracks_changes: meta.track_changes,
       }
     }
 
+    const context = typeof args.context === 'object' && args.context !== null ? args.context as Record<string, unknown> : {}
+    const runId = typeof context.run_id === 'string' && context.run_id ? context.run_id.slice(0, 140) : randomUUID()
     let inserted = 0
     let updated = 0
     const failed: FailedRow[] = []
     // RVT-R1 (spec 0005): record every row this part writes — id, action,
     // and the updated_at stamp the write left — so the run is revertable.
     const touched: TouchedRow[] = []
-    // The database's wall clock — the one that dates the version rows (#432).
-    const [{ runStart }] = await sql<{ runStart: Date }[]>`select clock_timestamp() as "runStart"`
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -345,23 +357,14 @@ registerCollectionAction('import', {
       try {
         if (resolution?.action === 'update') {
           const record = row as Record<string, unknown>
-          if (
-            upsert!.keyColumn !== ROW_KEY &&
-            record[ROW_KEY] != null &&
-            String(record[ROW_KEY]).trim() !== '' &&
-            String(record[ROW_KEY]).trim() !== resolution.row_id
-          )
-            // UPS-R3: changing an id via upsert does not exist — refusing is
-            // louder than silently dropping the file's id cell.
-            throw new AppError(
-              'ValidationError',
-              `row maps Row ID ${String(record[ROW_KEY]).trim()} but matches ${resolution.row_id}; an upsert cannot change a row's id`,
-            )
-          const saved = await saveDoc(table, updateValues(record, upsert!, resolution), user.row_id, 'upsert')
+          // Validate the incoming payload before protected fields are removed,
+          // exactly as the check step does. A conflict cannot legitimize bad data.
+          checkRowForUpdate(meta, record, resolution, upsert!)
+          const { saved, version } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true)
           updated++
-          touched.push(await touchedUpdate(table, saved, runStart))
+          touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })
         } else {
-          const saved = await saveDoc(table, row as Record<string, unknown>, user.row_id, 'insert')
+          const { saved } = await saveImportedRow(meta, row as Record<string, unknown>, user.row_id, runId, false)
           inserted++
           touched.push({
             row_id: String(saved[ROW_KEY]),
@@ -378,7 +381,7 @@ registerCollectionAction('import', {
         })
       }
     }
-    await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, args.context, touched)
+    await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     if (!upsert) return { inserted, failed }
     return { updated, inserted, failed }
   },
@@ -396,24 +399,6 @@ export interface TouchedRow {
 
 const stampOf = (v: unknown): string =>
   v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString()
-
-// Tie an update to the version row it just wrote. recordVersion skips no-op
-// updates, so "the newest version row, only if born in this request" is
-// exact: an older row fails the runStart check and the entry carries no
-// version — RVT-R3's `skipped: unchanged` at revert time.
-async function touchedUpdate(table: string, saved: Record<string, unknown>, runStart: Date): Promise<TouchedRow> {
-  const entry: TouchedRow = {
-    row_id: String(saved[ROW_KEY]),
-    action: 'updated',
-    stamp: stampOf(saved.updated_at),
-  }
-  const [v] = await sql`
-    select row_id, created_at from version
-    where ref_table = ${table} and ref_name = ${entry.row_id}
-    order by created_at desc limit 1`
-  if (v && (v.created_at as Date).getTime() >= runStart.getTime()) entry.version = String(v.row_id)
-  return entry
-}
 
 // The dry-run counterpart of an upsert update: validate the mapped values
 // the way the update will (partial schema — reqd columns may stay untouched
@@ -484,7 +469,8 @@ async function writeImportLog(
       part: int(ctx.part),
       parts: int(ctx.parts),
       // RVT-R1: the run identity (wizard-minted, shared across parts) and
-      // this part's written rows. A run without a run_id is not revertable.
+      // this part's written rows. A run the caller names no run_id for gets an
+      // unreturned one (UPS-R1 keeps the response shape), so it is not revertable.
       run_id: str(ctx.run_id),
       // #206: the file-import all of this run's targets belong to.
       batch_id: str(ctx.batch_id),

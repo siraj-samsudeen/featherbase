@@ -56,7 +56,9 @@ export async function rowForCaller(table: string, row: RowValues, user: string):
 // ref_name), so they are read through that row's access, not the grant on
 // their own Table alone. #609: so is a File attached to a row; one attached
 // to a whole Table, or to nothing, stays with the File grant.
-export const ROW_ATTACHED_TABLES = new Set(['Comment', 'Version', 'File'])
+export const SENSITIVE_HISTORY_TABLES = new Set(['Version', 'Import Conflict', 'Import Source'])
+
+export const ROW_ATTACHED_TABLES = new Set(['Comment', 'Version', 'File', 'Import Conflict', 'Import Source'])
 
 // #342: a Version's diff can carry any column of its row, so a reader whose
 // tiers stop short of a column the Table restricts reads its history only

@@ -1,3 +1,5 @@
+import { annotateHistory, latestVersion, mayResolve } from '../import-corrections'
+import { actionTransaction } from '../action-transaction'
 // Spec 0005: revert an import run, row by row. RVT-R2's contract:
 // POST /api/table/:table:import-revert { run_id, dry_run?, override? }.
 //
@@ -13,7 +15,7 @@
 // deletes, never raw SQL — so the revert itself is versioned (RVT-H1's
 // recovery path).
 import { AppError } from '../errors'
-import { deleteDoc, saveDoc } from '../document'
+import { deleteDoc, saveDoc, getDoc } from '../document'
 import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
@@ -161,6 +163,12 @@ registerCollectionAction('import-revert', {
 
     const plan = planRevert(recorded, current, override, meta.track_changes)
     await assertRevertPermitted(user.row_id, table, plan)
+    const conflicts = await sql`select ref_name, field from featherbase.import_conflict where ref_table = ${table} and run_id = ${runId} and closed is not true`
+    for (const conflict of conflicts) {
+      const row = await getDoc(table, String(conflict.ref_name), user.row_id)
+      if (!(await mayResolve(meta, row, String(conflict.field), user.row_id)))
+        throw new AppError('PermissionError', 'You cannot undo conflicts on this field of this row')
+    }
 
     if (args.dry_run)
       return {
@@ -197,7 +205,13 @@ registerCollectionAction('import-revert', {
       // planned against, as ISO so milliseconds survive (spec 0004 lesson).
       values.updated_at = r.current.updated_at.toISOString()
       try {
-        await saveDoc(table, values, user.row_id, 'upsert')
+        // The restore is the import's own undoing, not a person's correction:
+        // a later import of the same value updates the field again.
+        await actionTransaction(async () => {
+          const previous = await latestVersion(table, r.touched.row_id)
+          const saved = await saveDoc(table, values, user.row_id, 'upsert')
+          await annotateHistory(meta, saved, user.row_id, previous, { import_revert: runId })
+        })
         restored++
       } catch (err) {
         failed.push({ row_id: r.touched.row_id, message: err instanceof Error ? err.message : String(err) })
@@ -216,6 +230,7 @@ registerCollectionAction('import-revert', {
 
     // J1.5: the run's log entries record the revert. System-written like the
     // log itself; best-effort for the same reason writeImportLog is.
+    await sql`update featherbase.import_conflict set closed = true where ref_table = ${table} and run_id = ${runId}`
     const now = new Date().toISOString()
     for (const p of parts)
       await sql`

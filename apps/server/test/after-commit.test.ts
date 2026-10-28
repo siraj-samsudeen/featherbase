@@ -66,3 +66,23 @@ describe('afterCommitOf', () => {
     expect(ran).toEqual(['second'])
   })
 })
+
+describe('afterCommitOf, nested', () => {
+  // An inner scope is a savepoint. When it rolls back and the outer scope
+  // carries on (one import row failing among many), the effects the inner
+  // scope registered describe writes that never happened.
+  test('an inner scope that fails drops its own effects; the outer commit runs the rest', async () => {
+    const ran: string[] = []
+    await afterCommitOf(async () => {
+      await afterDocumentCommit(async () => { ran.push('outer') })
+      await expect(afterCommitOf(async () => {
+        await afterDocumentCommit(async () => { ran.push('rolled back') })
+        throw new Error('row refused')
+      })).rejects.toThrow('row refused')
+      await afterCommitOf(async () => {
+        await afterDocumentCommit(async () => { ran.push('kept') })
+      })
+    })
+    expect(ran).toEqual(['outer', 'kept'])
+  })
+})

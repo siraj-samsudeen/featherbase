@@ -17,7 +17,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApprovers
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -375,7 +375,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError) throw refused()
     throw err
   }
-  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
 }
 

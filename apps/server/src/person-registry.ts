@@ -151,6 +151,8 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   web_page: { '*': code, title: text, content: text },
   webhook: { '*': code },
   workflow: { '*': code },
+  import_source: { ref_table: code, ref_name: on('ref_table'), values: text, run_id: code },
+  import_conflict: { ref_table: code, ref_name: on('ref_table'), field: code, kept: text, incoming: text, editor: id, run_id: code },
   workflow_action: { ref_table: code, ref_name: on('ref_table'), action: code, from_state: code, to_state: code, actor: id },
   workflow_document_state: { '*': code },
   workflow_transition: { '*': code, condition: text },
