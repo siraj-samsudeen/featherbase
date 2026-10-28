@@ -361,10 +361,12 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
   const refName = row.ref_name ? String(row.ref_name) : ''
   if (!refTable || !refName) return
   const refused = () => new AppError('PermissionError', `No read permission on this ${table} row for ${user}`)
-  // Nothing is attached to a comment, an edit or a file (assertAttachedTarget),
-  // so one that claims to be is refused rather than followed — following it
-  // could loop, and the list leaves such rows out too.
-  if (ROW_ATTACHED_TABLES.has(refTable)) throw refused()
+  // A comment or file may sit on a comment, edit or file that is itself on a
+  // plain row, one level deep (assertAttachedTarget); a deeper chain, which
+  // only a direct write could leave, is refused rather than followed, so it
+  // can never loop. The list leaves rows on such Tables out (the row's own
+  // activity shows them).
+  if (ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName))) throw refused()
   const refMeta = await getMeta(refTable).catch(() => null)
   if (!refMeta) throw refused()
   try {
@@ -377,10 +379,19 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     throw refused()
 }
 
+// Whether a comment, edit or file is itself on another comment, edit or file.
+async function attachedToAttached(table: string, name: string): Promise<boolean> {
+  const [held] = await sql`
+    select ref_table, ref_name from ${sql(await tableRelation(table))} where row_id = ${name}`
+  return Boolean(held && ROW_ATTACHED_TABLES.has(String(held.ref_table ?? '')) && String(held.ref_name ?? ''))
+}
+
 // #609, #610: a comment or file is attached only to a row its writer may
 // open, and one already on a row is changed only by someone who may open that
-// row, so moving it elsewhere cannot carry it out of its row's reach. Nothing
-// is attached to another comment, edit or file. Judged on the row as written.
+// row, so moving it elsewhere cannot carry it out of its row's reach, and
+// only a privileged caller takes it off its row (which hands it to the File
+// grant). A row names its Table whenever it names a row, and one on a
+// comment, edit or file goes one level deep only. Judged on the row as written.
 async function assertAttachedTarget(
   meta: TableMeta,
   row: RowValues,
@@ -390,12 +401,17 @@ async function assertAttachedTarget(
 ) {
   if (!ROW_ATTACHED_TABLES.has(meta.name)) return
   const refTable = String(row.ref_table ?? '')
-  if (ROW_ATTACHED_TABLES.has(refTable) && String(row.ref_name ?? ''))
-    throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} row`)
+  const refName = String(row.ref_name ?? '')
+  if (refName && !refTable) throw new AppError('ValidationError', `A ${meta.name} on a row must name its Table`)
+  if (refName && ROW_ATTACHED_TABLES.has(refTable) && (await attachedToAttached(refTable, refName)))
+    throw new AppError('ValidationError', `A ${meta.name} cannot be attached to a ${refTable} that is itself attached to one`)
   if (trusted) return
   if (old) await assertAttachedRowReadable(meta.name, old, user)
-  if (!old || String(old.ref_table ?? '') !== refTable || String(old.ref_name ?? '') !== String(row.ref_name ?? ''))
-    await assertAttachedRowReadable(meta.name, row, user)
+  const moved = !old || String(old.ref_table ?? '') !== refTable || String(old.ref_name ?? '') !== refName
+  if (!moved) return
+  if (old && String(old.ref_name ?? '') && !refName && !(await isPrivileged(user)))
+    throw new AppError('PermissionError', `Only a System Manager can take a ${meta.name} off its row`)
+  await assertAttachedRowReadable(meta.name, row, user)
 }
 
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are

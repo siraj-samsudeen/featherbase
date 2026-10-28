@@ -6,7 +6,7 @@
 
 ## 2. Deleting a comment checks its row (#610)
 
-- [x] 2.1 Refuse deleting, editing or moving a comment or a file on a row the caller cannot open; nothing attaches to another comment, edit or file.
+- [x] 2.1 Refuse deleting, editing or moving a comment or a file on a row the caller cannot open; only a System Manager takes one off its row; one sits on another comment, edit or file one level deep at most.
 
 ## 3. A create-only grant keeps what was typed (#608)
 

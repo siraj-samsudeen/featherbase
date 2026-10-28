@@ -101,18 +101,38 @@ describe('#609: attaching follows the row too', () => {
     expect(res.status).toBe(403)
   })
 
-  test('nothing is attached to another file or comment, and one stored that way is refused, not followed', async ({ admin, createUser }) => {
+  test('a comment or file may sit on a file one level deep; a deeper chain is refused, and one stored that way is not followed', async ({ admin, createUser }) => {
     const { agent, files } = await setup(admin, createUser)
-    const res = await admin.fetch('/api/save_row', {
-      method: 'POST',
-      body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', file_url: '/files/rafd-y.pdf', ref_table: 'File', ref_name: files.mine } }),
+    // A comment on a file that is on the agent's row opens for the agent.
+    const note = await admin.post<Record<string, any>>('/api/save_row', {
+      table: 'Comment',
+      row: { ref_table: 'File', ref_name: files.mine, content: 'see page 2' },
     })
-    expect(res.status).toBe(417)
+    expect((await agent.fetch(COMMENT.rowUrl(note.row_id))).status).toBe(200)
+    // Nothing goes on that comment in turn.
+    const deeper = await admin.fetch('/api/save_row', {
+      method: 'POST',
+      body: JSON.stringify({ table: 'File', row: { file_name: 'y.pdf', file_url: '/files/rafd-y.pdf', ref_table: 'Comment', ref_name: note.row_id } }),
+    })
+    expect(deeper.status).toBe(417)
     // Two files pointing at each other, as only a direct write could leave them.
     await sql`update file set ref_table = 'File', ref_name = ${files.loose} where row_id = ${files.mine}`
     await sql`update file set ref_table = 'File', ref_name = ${files.mine} where row_id = ${files.loose}`
     expect((await agent.fetch(FILE.rowUrl(files.mine))).status).toBe(403)
     expect((await agent.fetch(FILE.rowUrl(files.mine), { method: 'DELETE' })).status).toBe(403)
+  })
+
+  test('a file is not moved onto a row the caller cannot open, nor taken off its row', async ({ admin, createUser }) => {
+    const { agent, theirs, files } = await setup(admin, createUser)
+    const move = async (ref: Record<string, string | null>) => {
+      const [cur] = await sql`select updated_at from file where row_id = ${files.mine}`
+      return agent.fetch(FILE.rowUrl(files.mine), { method: 'PATCH', body: JSON.stringify({ updated_at: cur.updated_at, ...ref }) })
+    }
+    expect((await move({ ref_name: theirs })).status).toBe(403)
+    expect((await move({ ref_name: null })).status).toBe(403)
+    const [after] = await sql`select ref_name from file where row_id = ${files.mine}`
+    expect(after.ref_name).not.toBe(theirs)
+    expect(after.ref_name).not.toBeNull()
   })
 
   test('the files on a source-bound row show to whoever may read every row of it', async ({ admin, createUser }) => {
@@ -123,6 +143,21 @@ describe('#609: attaching follows the row too', () => {
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', file_url: '/files/rafd-o.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
     expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual(['outside.pdf'])
+  })
+
+  test('the files on a source-bound row stay hidden from a reader of only some of its rows', async ({ admin, createUser }) => {
+    const { agent } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Rafd Outside', id_pattern: 'prompt', columns: [{ column_name: 'subject', column_type: 'Data' }] })
+    await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', file_url: '/files/rafd-o.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
+    await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
+    // Own rows only: a bound row has no creator, so it never opens.
+    await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true, own_rows_only: true })
+    expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual([])
+    // Every row, but narrowed by a Data Scope.
+    await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true, own_rows_only: false })
+    await admin.post('/api/save_row', { table: 'Data Scope', row: { person: agent.user, allow_table: 'Rafd Outside', for_value: 'o-2' } })
+    expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual([])
   })
 })
 
