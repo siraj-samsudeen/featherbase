@@ -29,20 +29,21 @@ type Row = Record<string, unknown>
 
 // #545: a JSON column's box holds text while the person types. On save, text
 // typed into it becomes the value it describes; text that isn't JSON is
-// refused at the field. A value the person didn't touch goes back as stored.
-function parseTypedJson(columns: ColumnDef[], values: Row, baseline: Row): { values: Row; errors: Record<string, string> } {
+// refused at the field. Only boxes the person typed in are read this way: a
+// stored value, a prefill or a value a client script set goes back as it is.
+function parseTypedJson(columns: ColumnDef[], values: Row, typed: ReadonlySet<string>): { values: Row; errors: Record<string, string> } {
   const out: Row = { ...values }
   const errors: Record<string, string> = {}
   for (const f of columns) {
-    if (f.column_type !== 'JSON') continue
-    const typed = values[f.column_name]
-    if (typeof typed !== 'string' || typed === baseline[f.column_name]) continue
-    if (!typed.trim()) {
+    if (f.column_type !== 'JSON' || !typed.has(f.column_name)) continue
+    const text = values[f.column_name]
+    if (typeof text !== 'string') continue
+    if (!text.trim()) {
       out[f.column_name] = null
       continue
     }
     try {
-      out[f.column_name] = JSON.parse(typed)
+      out[f.column_name] = JSON.parse(text)
     } catch {
       errors[f.column_name] = 'must be valid JSON'
     }
@@ -138,6 +139,8 @@ export function FormView({
   // mount; resetting again to the SAME baseline would wipe what onload set
   // in the first pass, and onload (once per row) wouldn't restore it.
   const appliedBaseline = useRef<Row | null>(null)
+  // #545: the JSON columns whose box the person typed in since the last load.
+  const typedJson = useRef(new Set<string>())
   useEffect(() => {
     if (appliedBaseline.current === baseline) return
     appliedBaseline.current = baseline
@@ -146,6 +149,7 @@ export function FormView({
     // valuesRef moves with it, so an onload firing in this same effect flush
     // starts from the loaded row, not the empty pre-load one (#538).
     const initial = isNew && prefill ? { ...prefill } : baseline
+    typedJson.current = new Set()
     valuesRef.current = initial
     setValues(initial)
     setErrors({})
@@ -206,6 +210,8 @@ export function FormView({
   }
 
   function setField(fieldname: string, value: unknown) {
+    // A value set here (by a client script, say) is a value, not typed text.
+    typedJson.current.delete(fieldname)
     const next = { ...valuesRef.current, [fieldname]: value }
     valuesRef.current = next
     setValues(next)
@@ -304,7 +310,7 @@ export function FormView({
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
     const schema = tableSchemaToZod(m.columns)
-    const json = parseTypedJson(m.columns, valuesRef.current, baseline)
+    const json = parseTypedJson(m.columns, valuesRef.current, typedJson.current)
     const result = schema.safeParse(json.values)
     const fieldErrors = { ...(result.success ? {} : zodFieldErrors(result.error)), ...json.errors }
     if (asksRowId && !String(valuesRef.current[ROW_ID_FIELD.column_name] ?? '').trim())
@@ -667,7 +673,10 @@ export function FormView({
                     managedHint={managedFields.has(f.column_name) ? managed.data?.hint : undefined}
                     value={values[f.column_name]}
                     error={errors[f.column_name]}
-                    onChange={(v) => setField(f.column_name, v)}
+                    onChange={(v) => {
+                      setField(f.column_name, v)
+                      if (f.column_type === 'JSON') typedJson.current.add(f.column_name)
+                    }}
                     meta={m}
                     values={values}
                     setField={setField}

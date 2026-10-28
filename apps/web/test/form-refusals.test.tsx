@@ -94,6 +94,28 @@ test('emptying a JSON column clears it', async ({ admin }) => {
   expect(await admin.get(`/api/table/${enc('Frf Note')}/note-3`)).toMatchObject({ extra: null })
 })
 
+// #596 review: a client script assigns a value, not typed JSON text, so the
+// form keeps what the script set rather than reading it as JSON.
+for (const [assigned, label] of [['plain words', 'text'], ['13', 'digits']] as const)
+  test(`a JSON value a client script sets is saved as it was set (${label})`, async ({ admin }) => {
+    await seedNotes(admin)
+    await admin.post('/api/save_row', {
+      table: 'Client Script',
+      row: {
+        row_id: `frf-json-${label}`,
+        ref_table: 'Frf Note',
+        enabled: true,
+        script: `featherbase.ui.form.on('Frf Note', { before_save: function (frm) { frm.set_value('extra', ${JSON.stringify(assigned)}) } })`,
+      },
+    })
+    await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+    await waitFor(() => expect(field('title')).toBeInTheDocument(), { timeout: 8000 })
+    fireEvent.change(field('title'), { target: { value: 'scripted' } })
+    await userEvent.click(screen.getByTestId('form-save'))
+    await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+    expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ title: 'scripted', extra: assigned })
+  })
+
 test('a stored JSON value saves unchanged when the person edits another field', async ({ admin }) => {
   await seedNotes(admin)
   await admin.post('/api/save_row', { table: 'Frf Note', row: { row_id: 'note-2', title: 'kept', extra: 'plain words' } })
