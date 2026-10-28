@@ -11,7 +11,7 @@ import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
 type Change = [string, unknown, unknown]
-interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; source_values?: Row; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
+interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
 export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row }
 const normalized = (value: unknown, type: string): unknown => {
@@ -36,7 +36,7 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
   const history = meta.track_changes ? await sql<History[]>`select row_id, created_by, created_at, data from version where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} order by created_at desc, row_id desc` : []
   // Pre-feature import versions already have a trustworthy link from their log.
   const logs = meta.track_changes ? await sql`select touched, created_at from import_log where ref_table = ${meta.name} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc` : []
-  const previousImports = logs.flatMap(l => (Array.isArray(l.touched) ? l.touched as { row_id: string; version?: string; action: string; source_values?: Row }[] : []).map(t => ({ ...t, observed_at: l.created_at as Date }))).filter(t => t.row_id === current.row_id)
+  const previousImports = logs.flatMap(l => (Array.isArray(l.touched) ? l.touched as { row_id: string; version?: string; action: string }[] : []).map(t => ({ ...t, observed_at: l.created_at as Date }))).filter(t => t.row_id === current.row_id)
   const observations = meta.track_changes ? await sql<{ values: Row }[]>`select values from featherbase.import_source where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= ${current.created_at as Date} order by created_at desc, row_id desc` : []
   const importedVersions = new Set(previousImports.flatMap(t => t.version ? [t.version] : []))
   for (const column of meta.columns) {
@@ -73,7 +73,7 @@ async function latestVersion(table: string, name: string): Promise<string | null
 
 async function annotateHistory(meta: TableMeta, row: Row, user: string, previous: string | null, extra: Row): Promise<string | undefined> {
   if (!meta.track_changes) return
-  const [version] = await sql`select row_id, data from version where ref_table = ${meta.name} and ref_name = ${String(row.row_id)} order by created_at desc limit 1`
+  const [version] = await sql`select row_id, data from version where ref_table = ${meta.name} and ref_name = ${String(row.row_id)} order by created_at desc, row_id desc limit 1`
   if (version && version.row_id !== previous) {
     await sql`update version set data = ${sql.json({ ...version.data, ...extra })} where row_id = ${version.row_id}`
     return String(version.row_id)
@@ -104,6 +104,16 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
       await saveSystemRow('Import Conflict', { ref_table: meta.name, ref_name: saved.row_id, ...conflict, run_id: runId, closed: false }, user)
     }
     const sources = plan?.source_values ?? Object.fromEntries(meta.columns.filter(c => Object.hasOwn(input, c.column_name)).map(c => [c.column_name, normalized(saved[c.column_name], c.column_type)]))
+    // A source that now agrees with the person resolves its old disagreement.
+    // A hand edit since an old offer makes that offer stale; a new conflict,
+    // if any, above already carries the current correction.
+    const open = await sql`select row_id, field, kept from featherbase.import_conflict where ref_table = ${meta.name} and ref_name = ${String(saved.row_id)} and closed is not true`
+    for (const conflict of open) {
+      const field = String(conflict.field)
+      const column = meta.columns.find(c => c.column_name === field)
+      if (column && Object.hasOwn(sources, field) && (same(sources[field], saved[field], column.column_type) || !same(conflict.kept, saved[field], column.column_type)))
+        await sql`update featherbase.import_conflict set closed = true where row_id = ${conflict.row_id}`
+    }
     const version = await annotateHistory(meta, saved, user, previous, { import_run: runId })
     if (meta.track_changes) {
       const observation = await saveSystemRow('Import Source', { ref_table: meta.name, ref_name: saved.row_id, values: sources, run_id: runId }, user)
@@ -113,11 +123,12 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
   })
 }
 
-async function mayResolve(meta: TableMeta, row: Row, field: string, user: string): Promise<boolean> {
+export async function mayResolve(meta: TableMeta, row: Row, field: string, user: string): Promise<boolean> {
+  const column = meta.columns.find(c => c.column_name === field)
+  if (!column || column.read_only) return false
   if (await isSharedWith(user, meta.name, String(row.row_id), 'write')) return true
   try { await assertDocPermission(user, meta.name, 'write', String(row.created_by)) } catch (e) { if (e instanceof AppError) return false; throw e }
-  const column = meta.columns.find(c => c.column_name === field)
-  return !!column && !column.read_only && (await permittedTiers(user, meta.name, 'write')).has(column.tier)
+  return (await permittedTiers(user, meta.name, 'write')).has(column.tier)
 }
 registerCollectionAction('import-conflicts', {
   effect: 'read', description: 'List readable import conflicts for this Table.',
@@ -151,7 +162,7 @@ registerCollectionAction('resolve-import-conflict', {
       if (!Object.hasOwn(row, String(conflict.field)) || !(await mayResolve(meta, row, String(conflict.field), user.row_id))) throw new AppError('PermissionError', 'You cannot edit this field of this row')
       const column = meta.columns.find(c => c.column_name === conflict.field)!
       if (!same(row[column.column_name], conflict.kept, column.column_type)) throw new AppError('ConflictError', 'This field changed after the conflict was raised; import again before resolving')
-        const previous = await latestVersion(table, String(row.row_id))
+      const previous = await latestVersion(table, String(row.row_id))
       // Both decisions pass through saveDoc for the same row/field write gates.
       const saved = await saveDoc(table, { row_id: row.row_id, updated_at: row.updated_at, [column.column_name]: args.decision === 'source' ? conflict.incoming : row[column.column_name] }, user.row_id)
       await annotateHistory(meta, saved, user.row_id, previous, { resolution: { field: column.column_name, decision: args.decision, incoming: conflict.incoming } })

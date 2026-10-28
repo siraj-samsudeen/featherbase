@@ -1,3 +1,5 @@
+import { mayResolve } from '../import-corrections'
+import { actionTransaction } from '../action-transaction'
 // Spec 0005: revert an import run, row by row. RVT-R2's contract:
 // POST /api/table/:table:import-revert { run_id, dry_run?, override? }.
 //
@@ -13,7 +15,7 @@
 // deletes, never raw SQL — so the revert itself is versioned (RVT-H1's
 // recovery path).
 import { AppError } from '../errors'
-import { deleteDoc, saveDoc } from '../document'
+import { deleteDoc, saveDoc, getDoc } from '../document'
 import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
@@ -104,7 +106,7 @@ registerCollectionAction('import-revert', {
     'deleted; rows edited after the import are skipped and named, unless ' +
     'listed in override. With dry_run: true, reports the plan and writes ' +
     'nothing. Returns { restored, deleted, skipped, failed }.',
-  handler: async ({ table, args, user }) => {
+  handler: async ({ table, args, user }) => actionTransaction(async () => {
     const runId = args.run_id
     if (typeof runId !== 'string' || !runId)
       throw new AppError('ValidationError', 'Expected { run_id }')
@@ -161,6 +163,12 @@ registerCollectionAction('import-revert', {
 
     const plan = planRevert(recorded, current, override, meta.track_changes)
     await assertRevertPermitted(user.row_id, table, plan)
+    const conflicts = await sql`select ref_name, field from featherbase.import_conflict where ref_table = ${table} and run_id = ${runId} and closed is not true`
+    for (const conflict of conflicts) {
+      const row = await getDoc(table, String(conflict.ref_name), user.row_id)
+      if (!(await mayResolve(meta, row, String(conflict.field), user.row_id)))
+        throw new AppError('PermissionError', 'You cannot undo conflicts on this field of this row')
+    }
 
     if (args.dry_run)
       return {
@@ -224,5 +232,5 @@ registerCollectionAction('import-revert', {
         set reverted_at = ${now} where row_id = ${String(p.row_id)}`.catch(() => {})
 
     return { restored, deleted, skipped: plan.skipped, failed }
-  },
+  }),
 })

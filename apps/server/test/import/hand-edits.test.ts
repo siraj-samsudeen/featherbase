@@ -152,3 +152,17 @@ test('equal typed JSON and Date values are unchanged and an empty clear remains 
   await patchDoc(admin, `${path}/A`, { city: 'South', updated_at: row.updated_at })
   expect(await admin.post(`${path}:import`, { rows: [{ code: 'A', details: { b: 2, a: 1 }, day: '2026-10-28' }], key_column: 'code', columns: ['code', 'city', 'details', 'day'], empty_cells: 'clear', dry_run: true })).toMatchObject({ fields_updated: 0, fields_kept: 1 })
 })
+test('an unchanged-only import cannot close conflicts through undo without row edit permission', async ({ admin, createUser }) => {
+  await correction(admin)
+  await load(admin, 'East', 'second')
+  const reader = await createUserWithRole(admin, createUser, { role: 'Undo Correction Reader', table, can_read: true })
+  await expect(reader.post(`${path}:import-revert`, { run_id: 'second' })).rejects.toMatchObject({ status: 403 })
+  expect((await conflicts(admin)).conflicts).toHaveLength(1)
+})
+test('a source that comes into agreement closes an old conflict', async ({ admin }) => {
+  await correction(admin)
+  await load(admin, 'East', 'second')
+  await load(admin, 'South', 'agrees')
+  expect((await conflicts(admin)).conflicts).toEqual([])
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
+})
