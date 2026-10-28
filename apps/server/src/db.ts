@@ -51,10 +51,12 @@ async function endingTransaction<T>(begin: () => Promise<T>): Promise<T> {
 
 // An app install composes normal metadata and document operations atomically.
 // Nested begin calls remain savepoints; never swap the process-wide delegate.
+// Like `sql.begin`, work deferred with whenTransactionEnds runs only once the
+// outermost transaction has ended.
 export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
   const current = transactions.getStore() ?? delegate
   const run = (tx: TxSql) => transactions.run(tx as unknown as Sql, fn)
-  return (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>
+  return endingTransaction(() => (current !== root ? (current as unknown as TxSql).savepoint(run) : root.begin(run)) as Promise<T>)
 }
 
 /** The current transaction WITHOUT platform-name

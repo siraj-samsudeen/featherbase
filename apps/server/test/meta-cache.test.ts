@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { sql } from '../src/db'
+import { sql, whenTransactionEnds, withTransaction } from '../src/db'
 import { getMeta, invalidateMeta, metaCacheStats } from '../src/meta'
 import type { TestClient } from 'feather-testing-postgres'
 
@@ -78,5 +78,27 @@ describe('a definition change clears the cache again once its transaction ends (
       throw new Error('roll back')
     }).catch(() => {})
     expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+  })
+
+  // App upgrades and installs (#651) and the migrator run in withTransaction.
+  test('a change inside withTransaction clears the cache again only once the outermost transaction ends', async ({ admin }) => {
+    await makeDT(admin)
+    await withTransaction(async () => {
+      // A nested begin ending is not the commit: its pending clear must wait.
+      await sql.begin(async () => { invalidateMeta(DT) })
+      expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+      await sql`update column_def set label = 'New Label' where parent = ${DT}`
+    })
+    expect((await getMeta(DT)).columns[0].label).toBe('New Label')
+  })
+
+  test('whenTransactionEnds inside withTransaction runs once, after it ends', async () => {
+    const ran: string[] = []
+    await withTransaction(async () => {
+      whenTransactionEnds(() => ran.push('ended'))
+      await withTransaction(async () => { whenTransactionEnds(() => ran.push('inner')) })
+      expect(ran).toEqual([])
+    })
+    expect(ran).toEqual(['ended', 'inner'])
   })
 })

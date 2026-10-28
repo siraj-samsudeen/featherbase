@@ -442,7 +442,7 @@ describe('the release guard and the rehearsal report losses per instance', () =>
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(1), fixture(2)]))
     const lines: string[] = []
     try {
-      await rehearse((line) => lines.push(line))
+      await rehearse((line) => lines.push(line), { allowLive: true })
     } finally { vi.unstubAllEnvs() }
     expect(lines).toContain('app evolve 0.1.0 to 0.2.0: rehearsed; it removes no data')
     expect(await sql`select to_regclass('evolve.supplier') as relation`).toEqual([{ relation: null }])
@@ -460,7 +460,7 @@ describe('the release guard and the rehearsal report losses per instance', () =>
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(2), directory]))
     const lines: string[] = []
     try {
-      await rehearse((line) => lines.push(line))
+      await rehearse((line) => lines.push(line), { allowLive: true })
     } finally { vi.unstubAllEnvs(); await rm(directory, { recursive: true, force: true }) }
     expect(lines).toContain('app evolve 0.2.0 to 0.3.0: the upgrade would fail: alterColumn evolve.item.title: 1 row holds no value; give the operation a backfill')
   })
@@ -472,7 +472,7 @@ describe('the release guard and the rehearsal report losses per instance', () =>
     vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify([fixture(2), fixture(3)]))
     const lines: string[] = []
     try {
-      await rehearse((line) => lines.push(line))
+      await rehearse((line) => lines.push(line), { allowLive: true })
     } finally { vi.unstubAllEnvs() }
     expect(lines).toContain('app evolve 0.2.0 to 0.3.0: rehearsed; it removes prune #1 dropColumn evolve.item.legacy_code: 2 values; prune #2 dropTable evolve.memo: 2 rows; prune #3 alterColumn evolve.item.grade: 1 value')
     expect(lines.join('\n')).not.toContain('Shelf 4')
