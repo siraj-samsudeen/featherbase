@@ -138,8 +138,8 @@ describe('on an address that opens an app', () => {
     expect(res.headers.get('location')).toBe(ROOT)
   })
 
-  test('the sign-in pages, the shell assets and the app root are served', async ({ api }) => {
-    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/runtime-shell.css', ROOT, `${ROOT}/`])
+  test("the sign-in pages, the bar's script and the app root are served", async ({ api }) => {
+    for (const path of ['/featherbase/login?next=x', '/featherbase/reset-password?key=k', '/featherbase/oauth-callback?code=c', '/featherbase/bar.js', ROOT, `${ROOT}/`])
       expect([path, (await get(api, `${DASH}${path}`)).status]).not.toEqual([path, 302])
   })
 
@@ -525,5 +525,128 @@ describe('an address that opens an installed app package', () => {
     const { body } = await signIn(api, OTHER, manager.usr)
     expect(body).toMatchObject({ landing: '/other/' })
     expect(body.handoff).toBeUndefined()
+  })
+})
+
+// #671: INTERIM_APPS stands in for Feather Dash only until an app of that name
+// is installed (design D8, "Interim target"). From then on its address opens
+// the app, names it, and signs its readers in to it.
+describe('an address whose app is installed under the interim name', () => {
+  const APP_ROOT = '/feather_dash/'
+  const get = (api: TestClient, url: string) => api.fetch(url, { headers: { accept: 'text/html' } })
+
+  /** The stand-in installed as feather_dash: readable by All, so anyone can
+   *  open it and no one gains a Table grant of their own by it. */
+  async function installDashApp(admin: TestClient) {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    const { resolve } = await import('node:path')
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/dash-stand-in')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'feather_dash' })
+  }
+
+  // The installed app stays loaded in this process after its rows roll back.
+  afterEach(async () => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await discoverPackages([])
+  })
+
+  test('/ redirects to the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  test('the interim page redirects to the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  test("the address's brand is the installed app's title", async ({ api, admin }) => {
+    await installDashApp(admin)
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in', opens: 'feather_dash' })
+  })
+
+  test('a person who can open the app, without the report role, lands on its root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    const reader = await personWith(admin, 'dash.app.reader', [])
+    const { body } = await signIn(api, DASH, reader.usr)
+    expect(body).toMatchObject({ landing: APP_ROOT })
+  })
+
+  test('with no list, a person who can open the app lands on its root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    config.instanceAddresses = null
+    const reader = await personWith(admin, 'dash.app.unlisted', [])
+    const { body } = await signIn(api, 'http://localhost', reader.usr)
+    expect(body).toMatchObject({ landing: APP_ROOT })
+  })
+
+  // Codex round 1 on #672: routing follows the installation recorded in the
+  // database, never whether this process is serving the app. A disabled,
+  // pending or locally unloaded app is still installed: its address keeps to
+  // the app's root, which answers that the app is unavailable.
+  const disable = (admin: TestClient) => admin.post('/api/set_app_enabled', { name: 'feather_dash', enabled: false })
+
+  test('a disabled app keeps / on the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  // Signed in: a signed-out visit to any app root is first sent to sign in.
+  test("a disabled app's root answers that the app is unavailable", async ({ admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    const res = await get(admin, `${DASH}${APP_ROOT}`)
+    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+  })
+
+  test("a disabled app's address is not named for the interim page", async ({ api, admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    expect(await (await api.fetch(`${DASH}/api/brand`)).json()).toMatchObject({ app_name: 'Dash stand-in' })
+  })
+
+  test('a person signing in while the app is disabled lands on the app root', async ({ api, admin }) => {
+    await installDashApp(admin)
+    await disable(admin)
+    const reader = await personWith(admin, 'dash.app.disabled', [])
+    const { body } = await signIn(api, DASH, reader.usr)
+    expect(body).toMatchObject({ landing: APP_ROOT })
+  })
+
+  test('an app pending activation, as a restarted process finds it, keeps / on the app root', async ({ api, admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await installDashApp(admin)
+    await sql`update installed_app set activation_pending = true where name = 'feather_dash'`
+    await discoverPackages([])
+    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  // Another replica, or this one before it loads the app: the database says
+  // installed while this process serves nothing. Both sides still agree on the
+  // app root, so no two processes can send a browser back and forth.
+  test('a process that has not loaded the installed app keeps the interim page on the app root', async ({ api, admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await installDashApp(admin)
+    await discoverPackages([])
+    expect((await get(api, `${DASH}${ROOT}`)).headers.get('location')).toBe(APP_ROOT)
+  })
+
+  test("a process that has not loaded the installed app answers at the app's root that it is unavailable", async ({ admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await installDashApp(admin)
+    await discoverPackages([])
+    const res = await get(admin, `${DASH}${APP_ROOT}`)
+    expect([res.status, res.headers.get('location')]).toEqual([404, null])
+  })
+
+  // A runtime app cannot be uninstalled through the API ("Use disable"), so the
+  // installation record is removed directly: with none, the interim is back.
+  test('once its installation record is gone, / goes to the interim page again', async ({ api, admin }) => {
+    const { discoverPackages } = await import('../src/runtime-packages')
+    await installDashApp(admin)
+    await discoverPackages([])
+    await sql`delete from installed_app where name = 'feather_dash'`
+    expect((await get(api, `${DASH}/`)).headers.get('location')).toBe(ROOT)
   })
 })

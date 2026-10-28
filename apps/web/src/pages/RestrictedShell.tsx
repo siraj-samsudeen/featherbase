@@ -9,6 +9,7 @@ import { useCapabilities } from '../lib/session'
 // capabilities the server computed for this session.
 //
 //   admin        a System Manager, or anyone holding a Table grant -> the Admin
+//                outside the Tables of apps with pages of their own (#659)
 //   report-only  the Sales Target report and nothing else        -> the report
 //   no-access    no role of use yet                               -> a plain page
 //

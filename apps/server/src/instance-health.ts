@@ -233,19 +233,65 @@ async function administratorPassword(environment: string): Promise<HealthCheck> 
 /** #620 (E2): one check per enabled app that declares settings or secrets.
  *  Names what is missing, never a value. */
 async function appsSetUp(): Promise<HealthCheck[]> {
-  return (await appSetupState()).map(({ app, title, missing }) => {
+  return (await appSetupState()).map(({ app, title, missing, optional }) => {
     const base = {
       key: `app-setup:${app}`,
       title: `App set up: ${title}`,
       severity: 'warning' as const,
-      why: 'An app that lacks a required setting, secret or data source answers "not set up yet" instead of working.',
+      why: 'An app that lacks a required setting, secret, data source or identifier system answers "not set up yet" instead of working.',
     }
-    if (!missing.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
+    // #666: a missing optional secret holds up only the reads and actions
+    // that need it: still a warning, but the app is set up.
+    const lacking = optional.length ? `lacks ${optional.join(', ')}. Only those answer "not set up yet".` : ''
+    if (!missing.length && !optional.length) return { ...base, ok: true, message: `${title} has every setting and secret it requires.`, fix: null }
     return {
       ...base,
       ok: false,
-      message: `${title} answers "not set up yet": missing ${missing.join(', ')}.`,
-      fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, and add each data source in Admin (Data Source), then restart.',
+      message: missing.length
+        ? `${title} answers "not set up yet": missing ${missing.join(', ')}.${lacking ? ` It also ${lacking}` : ''}`
+        : `${title} is set up, but ${lacking}`,
+      fix: 'Set each setting in the instance settings file (App Setting) and apply it, set each secret as a deployment variable, add each data source in Admin (Data Source), and add each identifier system in Admin (Identifier System), then restart.',
+    }
+  })
+}
+
+/** How long a dropped place stays named after reads last met it. */
+const DROP_WINDOW = '7 days'
+
+/** #667: one check per enabled app with datasets. A scope place naming a
+ *  filter a dataset cannot apply adds nothing from it (fail closed); reads
+ *  record the drop by its keys, and this names the provider, the dataset and
+ *  the keys, never a person. A drop counts only while both apps still run the
+ *  versions it was seen under, and for a week after reads last met it. */
+async function placeDrops(): Promise<HealthCheck[]> {
+  const apps = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and jsonb_typeof(manifest->'datasets') = 'array' and jsonb_array_length(manifest->'datasets') > 0
+    order by name`
+  if (!apps.length) return []
+  const providers = await sql`select name, package_version, manifest->>'title' as title from installed_app
+    where runtime_package and enabled and not activation_pending and manifest ? 'scopeProvider'`
+  const provider = providers.length === 1 ? providers[0] : undefined
+  const drops = provider ? await sql`select d.app, d.dataset, d.filter_keys from dataset_place_drop d
+    join installed_app a on a.name = d.app and a.package_version = d.app_version
+    where d.provider = ${provider.name} and d.provider_version = ${provider.package_version}
+      and d.last_seen > now() - ${DROP_WINDOW}::interval
+    order by d.app, d.dataset, d.filter_keys` : []
+  return apps.map((row) => {
+    const app = String(row.name)
+    const title = String(row.title ?? app)
+    const base = {
+      key: `scope-place-drops:${app}`,
+      title: `Every place reaches the datasets: ${title}`,
+      severity: 'warning' as const,
+      why: 'A place that names a filter a dataset does not map adds nothing from that dataset, so the people it covers can see an empty report with no explanation.',
+    }
+    const mine = drops.filter((drop) => drop.app === app)
+    if (!mine.length) return { ...base, ok: true, message: `No place has been dropped from ${title}'s datasets.`, fix: null }
+    return {
+      ...base,
+      ok: false,
+      message: mine.map((drop) => `${String(drop.dataset)} drops places from ${String(provider!.title ?? provider!.name)} that name ${(drop.filter_keys as string[]).join(', ')}, which it cannot apply, so those places add nothing from it.`).join(' '),
+      fix: 'A place must use the dataset\'s filter keys: change the scope provider to name only filters each dataset maps, or map the filter in the dataset. A System Manager can see whose places are dropped with the person scope read (GET /api/people/<person>/scope?app=<app>).',
     }
   })
 }
@@ -260,6 +306,7 @@ export async function runHealthChecks(opts: HealthCheckOptions = {}): Promise<He
     await settingsMatchFile(),
     ...(await scheduledJobs(opts.now ?? new Date())),
     ...(await appsSetUp()),
+    ...(await placeDrops()),
     await administratorPassword(environment),
   ]
 }

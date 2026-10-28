@@ -21,6 +21,9 @@ export type AppOperationDeclaration = {
   /** #625 (E5): a read whose handler runs after its authorization
    *  transaction has closed, so it may call out to a slow outside store. */
   outbound?: true
+  /** #666: the optional secrets this operation uses, by name. Only these
+   *  reach its handler, and it answers "not set up yet" while one is missing. */
+  needs?: string[]
 } & ({ policy: Extract<AppAccessPolicy, { kind: 'table' }> } | {
   policy: Extract<AppAccessPolicy, { kind: 'stores' }>
   scope: AppScopeSource
@@ -72,7 +75,15 @@ export interface RuntimeActionAuthorization {
 // declared, each marked as deciding scope, and returns the person's places;
 // the platform validates the answer against the scope shape.
 export interface AppScopeProviderContext {
-  readonly person: { readonly id: string; readonly email: string | null }
+  readonly person: {
+    readonly id: string
+    readonly email: string | null
+    /** #660: the person's values valid today in each identifier system the
+     *  manifest's `scopeProvider.identifiers` names, and no other system.
+     *  #662: each says whether another person holds it today too, and
+     *  nothing about who. */
+    readonly identifiers: Readonly<Record<string, readonly Readonly<{ value: string; shared: boolean }>[]>>
+  }
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
     list(table: string, args?: ActionListArgs): Promise<ActionRow[]>

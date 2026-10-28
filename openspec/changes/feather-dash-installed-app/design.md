@@ -45,6 +45,11 @@ test for any file is whether a second client would have to change it.
   inside one transaction. Install, preview → upgrade → activate are operator calls.
   Discovery serves the installed *exact* version, identified by a fingerprint of its
   files (`artifact_digest`). Upgrades refuse new Tables and new or wider grants.
+  *(27-Oct-2026, #651: no longer true for new Tables. An upgrade can now add,
+  remove and rename the app's own Tables and add, change, rename and remove
+  columns; a Table it adds arrives with the grants its version declares. Wider
+  grants on Tables the app already had are still refused. See the archived
+  OpenSpec change `app-schema-evolution`.)*
 - **Measured on dev, 26-Oct-2026** (two runs, a Team Leader):
 
   | | cached numbers | embed session | Dive frame loaded | Dive numbers drawn |
@@ -166,7 +171,9 @@ that fills it).
   floor manager, store manager) for display, and a confirmation status
   (`confirmed` / `assumed`) per filter value, which stage D shows (task 4.1). A place
   always names at least one filter value, and labels are unique within a scope. The
-  shape is a shared type, validated at the boundary.
+  shape is a shared type, validated at the boundary. A place must use the filter
+  keys the app's datasets map: a dataset drops a place naming any other key (E3,
+  #667).
 - **A `person_scope` operation policy** sits beside `table` and `stores`, with read
   and action roles like `stores`. The platform calls the provider fresh on every
   request, validates and freezes the answer, and hands it to the handler. A request
@@ -182,7 +189,34 @@ that fills it).
   exports the function under `scopeProviders`. The function gets the person and a
   read context limited to the Tables it declared, each of which must be marked as
   deciding scope and hold no Sub-tables (a row read would hand over undeclared child
-  rows). It reads as the platform, so a manager needs no read grant on the roster,
+  rows). It may also name identifier systems, `"identifiers": ["<system>", ...]`
+  (#660; for example the employee-code system, so a roster derivation can find a
+  person's rows by code). The person it gets then carries `identifiers`: for each
+  named system, and only those, the person's current values, read fresh on every
+  resolution and frozen with the rest. *Current* means valid today: started on or
+  before today, with no end or an end after today, where today is India's day (as
+  the leaver check counts it), so a value with a future start is not passed (owner
+  decision 27-Oct-2026, provisional, for review 28-Oct). Each value comes as
+  `{ value, shared }` (#662): `shared` is true when the same value in the same
+  system is valid today on another person, so a derivation can refuse a code that
+  cannot say whose rows are whose. Holders are counted by the person they resolve
+  to: a record merged away (`replaced_by`) counts as its survivor, so a person's own
+  replaced record is not someone else. Only the boolean is passed, never who else
+  holds the value or how many, and it is worked out in the same read as the values,
+  under the same locks. It gets nothing else about the person, and `identifiers` is
+  empty when it names none. A named system the
+  instance does not have, or has turned off (owner decision 27-Oct-2026,
+  provisional: a turned-off system passes no values and counts as missing), or has
+  made Secret (Codex round 1 on #661: a system made Secret after values were
+  recorded still holds them in plain, so a Secret system's values and hints never
+  reach an app, whatever is stored), answers
+  "not set up yet" before the provider runs, so no one gets a scope; the release
+  check and Instance health name it with the app's other missing setup. The
+  declared systems are locked (FOR SHARE) in the request's transaction before they
+  are checked and until the provider has answered (Codex round 2 on #661), so an
+  admin turning one off or making it Secret waits for requests in flight, and the
+  next request sees the change.
+  It reads as the platform, so a manager needs no read grant on the roster,
   and under the provider app's own installed version, whatever the consuming
   request named. Exactly one enabled app may provide the scope on an instance: a
   second is refused at install, enable, upgrade and activation, the release
@@ -228,6 +262,22 @@ that fills it).
   is withheld or replaced before it is answered, stored or logged.
 - The release check warns when an installed, enabled app lacks a required
   setting or secret (names only), and Instance health shows the same per app.
+- **Optional secrets (#666, as built).** A secret is a bare name (required) or
+  `{ "name": "EMBED_KEY", "optional": true }`. A read or action names the
+  optional secrets it uses in `needs: ["EMBED_KEY"]`; the load refuses a
+  `needs` entry the app does not declare. A missing optional secret makes only
+  the operations that need it answer "not set up yet"; a missing required
+  secret still holds up everything. A handler gets the required secrets and
+  the optional ones its operation needs; reaching for an optional secret it
+  does not need fails the operation (500, the server log names the secret),
+  even when the secret is set, so a forgotten `needs` shows up in development
+  rather than on an instance that lacks the secret. A withheld secret is still
+  one of the app's secrets: redaction, the answer check and the stored action
+  result keep in every declared secret that is set, whatever the handler was
+  given (Codex review on #670). The release check and
+  Instance health name a missing optional secret and the operations that need
+  it, as a warning that the rest of the app works. This lets an app with an
+  optional embed integration serve its plain view without the embed's secret.
 - Retires `SALES_TARGET_SHARED_ENV`, `readSharedEnv`, `TEST_ACCOUNTS` and the
   experiment's password seeding.
 
@@ -279,6 +329,47 @@ that fills it).
   the miss. `live(name, filters)` answers the same shape and is available only in
   an outbound read (E5). A dataset whose source the instance lacks answers "not set
   up yet", and Instance health and the release check name the missing data source.
+- **The rule: a place must use the dataset's filter keys** (#667, decision of
+  28-Oct-2026: options (a) and (c)). A provider emits places in the filter keys
+  the datasets map; a place naming any other key (a floor or a section, where the
+  dataset is per store and product category) is still dropped whole from that
+  dataset, never widened to the keys it does map. The drop is made visible, not
+  changed:
+  - `GET /api/people/:id/scope?app=<app>`, System Manager only (403 for anyone
+    else, the person themself included): `{ provider: { app, title }, problem,
+    places: [{ label, filters: [key…] }], datasets: [{ name, applied: [label…],
+    dropped: [{ place, keys: [key…] }] }] }`. `problem` is the fail-closed reason
+    when the person has no usable scope (`configuration`, `provider`, `scope`),
+    else null. Keys only, never a filter value, row or figure. The provider runs
+    as it does for a read; nothing is written except one Access Log row
+    (`view_person_scope`, the person and the app), and it records no drop.
+  - App reads record each drop by app, dataset, provider and the sorted set of
+    unappliable keys, with the two apps' versions (migration 0137,
+    `dataset_place_drop`; no person, place label or value; written at most once
+    an hour per drop). Codex round 1 on #678 shaped how:
+    - only the provider's own place keys are recorded, never keys a request
+      added by naming filters to narrow its places;
+    - the versions are those the read was authorized under;
+    - recording happens only once the read's answer stands (after its
+      transaction commits, or after an outbound read's final serving check),
+      on a transaction of its own, in one sorted order, with a 250 ms lock
+      timeout and a 2 s statement timeout; a failure is logged and never fails
+      the read;
+    - the hourly rule holds in the upsert's conflict clause, so racing
+      recordings write once.
+
+    Codex round 2 added two rules:
+    - only places that survived the request's narrowing are recorded, by
+      their provider-origin keys;
+    - each pair of versions keeps its own row (both are in the key), and
+      health reads only the current pair, so a late read under older
+      versions never hides a current warning. Instance health has one check per enabled app with
+    datasets, `scope-place-drops:<app>`, a warning naming the dataset, the
+    provider and the keys while both apps run the versions the drop was seen
+    under and for seven days after reads last met it. A static check is not
+    possible: a provider answers only for a person.
+  - Deferred, not built: a dataset-declared expansion of another key into its
+    own (option (b)), because a wrong expansion would widen what a person sees.
 
 **E4. Declared outside sites.** Manifest `"frameOrigins": ["https://embed-motherduck.com"]`.
 The platform allows them as frame sources only on that app's own pages. The global
@@ -366,12 +457,47 @@ reads it. An app never runs its own code in the bar (ADR 0011).
   list is the read's options in order (the current one ticked and bold). One
   option shows as plain text; none hides the control. The choice is written to
   the address through the router (`?<sets>=<value>`, a history entry, no
-  reload); with no valid choice in the address the picker shows the first
-  option and leaves the address alone (an open question for the owner on
-  #642: the app then sees no choice). On a phone the label is visually hidden
-  but stays the accessible name, and the value is cut with an ellipsis. On an
-  installed app's address the page that carries the shared bar today is the
-  account page; the app's own pages still carry the runtime shell's header.
+  reload). With no choice in the address, or one that is not among the reader's
+  options, the picker writes the first option into the address in place
+  (`history.replaceState`: no Back step, no reload) and announces it once, so
+  the app and a shared link always see an explicit choice; with one option it
+  writes that one, with none it writes nothing (owner decision 27-Oct-2026,
+  #650). On a phone the label is visually hidden
+  but stays the accessible name, and the value is cut with an ellipsis.
+- **As built, the bar over the app's own pages (#650).** The bar is drawn over
+  the app's own pages too (D3, "As built"), so the picker sits above the app's
+  content on any address that opens the app's page. There the choice goes into
+  the document's own address (`?<sets>=<value>`, a history entry, no reload), and
+  the app learns of it in two ways, both part of the extension-point catalogue:
+  - on load, from `location.search`;
+  - for each later choice, from one browser event on `window`,
+    **`featherbase:bar-change`**, whose `detail` is `{ key, value }`, both text
+    (for example `{ key: "store", value: "S103" }`). It fires once per choice,
+    after the address has changed, and once for the first option the bar
+    writes in on load. Moving through history fires the browser's own
+    `popstate` only.
+  - **An app must listen for the event, not only read the address on load.**
+    The bar writes the first option in on load *after* the app's own startup
+    script may already have read the address, so on a page opened with no
+    choice the first store reaches the app only through the event. The
+    recommended pattern: read `location.search` on load, then update on every
+    `featherbase:bar-change` (and on `popstate`, for Back and Forward):
+
+    ```js
+    let store = new URLSearchParams(location.search).get('store')
+    window.addEventListener('featherbase:bar-change', ({ detail }) => {
+      if (detail.key === 'store') store = detail.value // then redraw
+    })
+    ```
+  - **An app may change `?<sets>=` itself** with `history.pushState` or
+    `replaceState`; the bar follows (it observes those writes; Codex round 1
+    on #658). A valid value the app sets is not announced back to it. If the
+    app drops the key, or sets a value the reader does not have, the bar
+    writes the first option back in place and announces it once, as on load.
+  - **No platform module paints as it loads** (GitHub Codex on #658). In a
+    production build the theme code can share a chunk with the Admin and load
+    before the bar has chosen its own root, so painting at load time would
+    overwrite the app's `<html data-theme>`. Each entry paints as it starts.
 
 **E9. Platform version.** The manifest's `apiVersion` becomes `platformVersion`,
 dated by month (`2026-10`), outright and with no alias. Tasker and the fixtures
@@ -456,6 +582,37 @@ Portal and the restricted shell.
   - no bell until the app sends notifications.
 - #309 rejected a *package-chosen* presentation mode. Here the *address*, an
   instance setting, picks the contents.
+- **As built, an app's own pages (#650).** The runtime shell's server-drawn
+  header, its app switcher, `runtime-shell.css` and `runtime-shell.js` are
+  removed outright. The shell now adds two things to the app's entry document:
+  a `<featherbase-bar data-app data-title>` host, first in the body, and the
+  platform's bar script, `/featherbase/bar.js`. The app's assets, its frame
+  policy (E4), the client version header and identity are served as before.
+  - **How the bar gets in: the platform's bar bundle, not the app inside the
+    platform's page.** `/featherbase/bar.js` is a second entry of the web app
+    that renders the real `TopBar` into the host's shadow root, so there is one
+    bar implementation and the app keeps owning its document. Rejected: mounting
+    the app's page inside the platform's single-page app, which would take the
+    app's document, address and styling away from it and run its code in the
+    platform's page.
+  - **The bar stays the platform's, and the page stays the app's** (ADR 0011).
+    The bar's styles live in its shadow root and its theme is painted on its own
+    root, never on the app's `<html>`. Its router is private and in memory, so it
+    never reads or rewrites the app's address or history state. Every way out of
+    the bar (Sign-in methods, Log out, Open Admin) loads the platform's page in
+    full. App code must not reach into the bar's host.
+  - The bar is sticky at the top of the window, above the app's content, as
+    the runtime shell's header was. It publishes its height on the app's root as
+    **`--featherbase-bar-height`**, for an app that pins something to the window
+    below the bar. This replaces the shell's `--featherbase-runtime-shell-inset`,
+    with no alias, and joins the extension-point catalogue. Tasker 2.3.0 still
+    reads the retired name, so its phone inspector opens under the bar until a
+    new Tasker version reads the new one; its shipped files are left alone,
+    because an installed app is matched by fingerprint.
+  - On an app's own page the bar names the app on every address, draws the
+    app's declared controls, and offers "Open Admin" to people who can use
+    Admin, since the page is never the Admin. The app's page keeps its own
+    document title.
 - **Branding.** `/api/brand` answers with the opened app's title on an app's
   address. The login page and document title use it.
 
@@ -607,6 +764,10 @@ a request.
 A new optional column is an `addColumn` migration. A new Table or a wider grant is
 refused by the upgrade planner, so **1.0.0 already declares the request Table and
 every grant stage D needs**.
+*(27-Oct-2026, #651: the upgrade planner now accepts a new Table, with the grants
+its version declares, and every other schema change in `app-schema-evolution`;
+only a wider grant on a Table the app already had is still refused. 1.0.0 no
+longer has to declare Tables a later version needs.)*
 
 **Delivery** (owner decision 27-Oct-2026, Q2 = (a)). The client's repository
 builds a **client image on top of the platform's image**: it starts from a pinned
