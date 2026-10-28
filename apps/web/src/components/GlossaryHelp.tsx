@@ -13,7 +13,8 @@ export function GlossaryHelp({ table, column, className }: { table: string; colu
   const terms = termsDescribing(glossary.data?.terms, table, column)
   if (!terms.length) return null
   return (
-    <span className={cx('inline-flex align-middle', className)}>
+    // Negative margins: the "?" never makes its line (a field's label) taller.
+    <span className={cx('-my-1.5 inline-flex align-middle max-sm:-my-3', className)}>
       {terms.map((term) => <TermHelp key={term.id} term={term} />)}
     </span>
   )

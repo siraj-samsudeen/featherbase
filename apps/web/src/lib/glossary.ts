@@ -14,7 +14,8 @@ export interface GlossaryTerm {
   definition: string
   examples: string[]
   avoid: { word: string; reason: string | null }[]
-  describes: { table: string; column: string | null }[]
+  /** columnLabel: the column's label, as forms show it. */
+  describes: { table: string; column: string | null; columnLabel: string | null }[]
   /** An app's term someone here reworded. */
   editedHere: boolean
   /** …and the app has since shipped different wording of its own. */
@@ -22,7 +23,10 @@ export interface GlossaryTerm {
 }
 
 export interface Glossary {
+  /** A write grant: rewording a term. */
   canEdit: boolean
+  /** A create grant: adding one. */
+  canAdd: boolean
   terms: GlossaryTerm[]
 }
 

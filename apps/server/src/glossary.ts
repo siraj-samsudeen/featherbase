@@ -11,7 +11,7 @@
 // turned on, and still declares it, so a removed app's terms (and the
 // instance's rewording of them) come back with the app.
 import { z } from 'zod'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { saveDoc } from './document'
 import { AppError } from './errors'
 import { hasPermission } from './permissions'
@@ -25,11 +25,12 @@ export const glossaryDeclaration = z.object({
   terms: z.array(z.object({
     term: text.max(140),
     definition: text,
-    examples: z.array(text).optional(),
+    // One line each: the row keeps them one per line.
+    examples: z.array(text.regex(/^[^\r\n]*$/, 'An example is one line')).optional(),
     avoid: z.array(z.object({ word: text.max(140), reason: text.max(140).optional() }).strict()).optional(),
     describes: z.array(z.object({ table: text, column: text.optional() }).strict()).optional(),
   }).strict()),
-}).strict().refine(g => new Set(g.terms.map(t => t.term)).size === g.terms.length, 'Each glossary term is declared once')
+}).strict().refine(g => new Set(g.terms.map(t => t.term.toLocaleLowerCase())).size === g.terms.length, 'Each glossary term is declared once')
 
 type Declaration = z.infer<typeof glossaryDeclaration>
 type DeclaredTerm = Declaration['terms'][number]
@@ -139,8 +140,15 @@ export async function takeAppWording(id: string, user: string) {
   const [row] = await sql`select app_wording, updated_at from glossary_term where row_id = ${id}`
   if (!row) throw new AppError('NotFoundError', `Glossary Term ${id} not found`)
   if (!row.app_wording) throw new AppError('ValidationError', 'This term belongs to the instance; it has no app wording to take')
-  await saveDoc('Glossary Term', { row_id: id, updated_at: row.updated_at, ...asRow(row.app_wording as Wording) }, user)
-  await sql`update glossary_term set app_wording_changed = false where row_id = ${id}`
+  await withTransaction(() => saveDoc('Glossary Term', { row_id: id, updated_at: row.updated_at, ...asRow(row.app_wording as Wording) }, user))
+}
+
+/** After any save of a term: once its wording is the app's again, the mark
+ *  that the app's wording changed has been dealt with, and goes. */
+export async function settleAppWordingMark(id: string) {
+  const [row] = await sql`select app_wording from glossary_term where row_id = ${id} and app_wording_changed`
+  if (row && canonical((await wordingsOf([id])).get(id)) === canonical(row.app_wording))
+    await sql`update glossary_term set app_wording_changed = false where row_id = ${id}`
 }
 
 /** Everything the glossary shows `user`: the terms of every installed,
@@ -159,15 +167,20 @@ export async function readGlossary(user: string) {
   const rows = (await sql`select row_id, app, app_key, app_wording, app_wording_changed from glossary_term`)
     .filter(row => row.app == null || apps.get(String(row.app))?.keys.has(String(row.app_key)))
   const wordings = await wordingsOf(rows.map(row => String(row.row_id)))
+  // A described column is shown by its label, as forms show it.
+  const tables = [...new Set([...wordings.values()].flatMap(w => w.describes.filter(d => d.column).map(d => d.table)))]
+  const labels = new Map((tables.length ? await sql`select parent, column_name, label from column_def where parent in ${sql(tables)}` : [])
+    .map(c => [`${String(c.parent)}\u0000${String(c.column_name)}`, c.label == null ? null : String(c.label)]))
   const terms = rows.map((row) => {
     const wording = wordings.get(String(row.row_id))!
     const app = row.app == null ? null : String(row.app)
     const editedHere = app !== null && canonical(wording) !== canonical(row.app_wording)
-    return { id: String(row.row_id), ...wording, app, appTitle: app && apps.get(app)!.title,
+    const describes = wording.describes.map(d => ({ ...d, columnLabel: d.column && (labels.get(`${d.table}\u0000${d.column}`) ?? d.column) }))
+    return { id: String(row.row_id), ...wording, describes, app, appTitle: app && apps.get(app)!.title,
       editedHere, appWordingChanged: editedHere && row.app_wording_changed === true }
   })
   // The instance's own terms come after every app's.
   terms.sort((a, b) => Number(a.appTitle === null) - Number(b.appTitle === null) ||
     (a.appTitle ?? '').localeCompare(b.appTitle ?? '') || a.term.localeCompare(b.term))
-  return { canEdit: await hasPermission(user, 'Glossary Term', 'write'), terms }
+  return { canEdit: await hasPermission(user, 'Glossary Term', 'write'), canAdd: await hasPermission(user, 'Glossary Term', 'create'), terms }
 }

@@ -86,7 +86,7 @@ function TermCard({ term, canEdit }: { term: GlossaryTerm; canEdit: boolean }) {
                     search={{ filters: undefined }}
                     className="inline-flex min-h-8 items-center text-action underline underline-offset-2 [overflow-wrap:anywhere] max-sm:min-h-11"
                   >
-                    {d.column ? `${d.table}, ${d.column}` : d.table}
+                    {d.column ? `${d.table}, ${d.columnLabel ?? d.column}` : d.table}
                   </Link>
                 ))}
               </dd>
@@ -117,7 +117,7 @@ export function GlossaryPage() {
           <h1 className="text-lg font-semibold text-ink">{adminPageTitle('glossary')}</h1>
           <p className="text-sm text-ink-muted">The words this instance's apps use, and what they mean.</p>
         </div>
-        {data?.canEdit && (
+        {data?.canAdd && (
           <Link
             to="/featherbase/admin/$table/$name"
             params={{ table: GLOSSARY_TABLE, name: 'new' }}

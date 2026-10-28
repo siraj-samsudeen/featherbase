@@ -7,6 +7,10 @@ import { AppError } from '../errors'
 const controller: TableController = {
   table: 'Glossary Term',
   hooks: {
+    // Saved back to the app's wording: the "app's wording changed" mark goes.
+    after_save: async ({ row }) => {
+      await (await import('../glossary')).settleAppWordingMark(String(row.row_id))
+    },
     before_validate: async ({ row, tx }) => {
       if (!Array.isArray(row.describes)) return
       for (const link of row.describes as Record<string, unknown>[]) {

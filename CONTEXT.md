@@ -166,6 +166,17 @@ A public, optionally anonymous form over a whitelisted subset of one Table's
 Columns.
 _Avoid_: public form, survey
 
+**Glossary**:
+The words an instance's Apps use and what they mean, readable by everyone
+signed in. An App ships its terms; an instance adds its own and may reword an
+App's.
+_Avoid_: dictionary, help pages
+
+**Glossary term**:
+One word in the Glossary: a definition, with examples, words to avoid and the
+Tables or Columns it describes where they help.
+_Avoid_: definition entry, tooltip
+
 ## Platform, apps and instances
 
 These are the three layers of ADR 0011. Each layer knows only the layer below it.

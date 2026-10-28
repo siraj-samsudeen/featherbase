@@ -52,7 +52,7 @@ test('terms are grouped by app, A to Z, with the instance\'s own last (items 2, 
   expect(within(coverage).getByRole('link', { name: 'shelves.aisle' })).toHaveAttribute('href', '/featherbase/admin/shelves.aisle')
   expect(coverage).not.toHaveTextContent('Examples')
   expect(lead).toHaveTextContent('ExamplesAsha is Shelf Lead for aisle 4 on the morning shift.')
-  expect(within(lead).getByRole('link', { name: 'shelves.assignment, job' })).toBeInTheDocument()
+  expect(within(lead).getByRole('link', { name: 'shelves.assignment, Job' })).toBeInTheDocument()
 })
 
 test('search matches a term\'s name, avoid words and definition, and says when nothing matches (items 3, 9)', async ({ admin }) => {

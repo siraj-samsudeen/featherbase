@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { inAppTransaction, sql } from './db'
+import { inAppTransaction, sql, type TxSql } from './db'
 import { AppError } from './errors'
 import { assertNotSystemWritten } from './system-written'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
@@ -917,6 +917,7 @@ export async function renameColumn(
     // #651: an Admin override (a relabel, a hidden flag) belongs to the
     // column, not to its old name.
     await tx`update metadata_override set column_name = ${target} where table_name = ${meta.name} and column_name = ${from}`
+    await renameInGlossary(tx, meta.name, { table: meta.name, column: from }, { table: meta.name, column: target })
     await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
   })
 
@@ -926,6 +927,27 @@ export async function renameColumn(
     row_id: meta.name,
   }).catch(() => {})
   return getMeta(meta.name)
+}
+
+// #629: a glossary term describes Tables and columns by name, in its links
+// and in the app's wording it keeps to tell a reworded term from one that is
+// not. A rename carries both, or every term naming the old name would lose
+// its "?" and refuse its next save. Before migration 0138 there is nothing
+// to carry.
+async function renameInGlossary(tx: TxSql, table: string, from: { table: string; column?: string }, to: { table: string; column?: string }) {
+  const [{ ok }] = await tx`select to_regclass('featherbase.glossary_term') is not null as ok`
+  if (!ok) return
+  const key = from.column === undefined ? 'table' : 'column'
+  const before = from.column ?? from.table
+  const after = to.column ?? to.table
+  if (from.column === undefined) await tx`update glossary_link set link_table = ${after} where link_table = ${before}`
+  else await tx`update glossary_link set link_column = ${after} where link_table = ${table} and link_column = ${before}`
+  await tx`update glossary_term set app_wording = jsonb_set(app_wording, '{describes}', (
+      select jsonb_agg(case when d->>'table' = ${table} and d->>${key} = ${before}
+        then jsonb_set(d, array[${key}::text], to_jsonb(${after}::text)) else d end order by n)
+      from jsonb_array_elements(app_wording->'describes') with ordinality as e(d, n)))
+    where jsonb_typeof(app_wording->'describes') = 'array'
+      and app_wording->'describes' @> jsonb_build_array(jsonb_build_object('table', ${table}::text, ${key}::text, ${before}::text))`
 }
 
 // #651: where the platform keeps a Table's name outside its own definition,
@@ -1006,6 +1028,7 @@ export async function renameTable(from: string, to: string, ownerApp: string, us
       await tx.unsafe(`update ${relations.get(p.parent)} set ${quoteIdent(p.column_name)} = $1 where ${quoteIdent(p.column_name)} = $2`, [to, from])
     for (const [table, column] of TABLE_NAME_COLUMNS)
       await tx.unsafe(`update ${table} set ${quoteIdent(column)} = $1 where ${quoteIdent(column)} = $2`, [to, from])
+    await renameInGlossary(tx, from, { table: from }, { table: to })
     await tx`update home_page_link set label = ${to} where link_to = ${to} and label = ${from}`
     await tx`update installed_app set tables = (
         select jsonb_agg(case when value = to_jsonb(${from}::text) then to_jsonb(${to}::text) else value end order by ordinality)
