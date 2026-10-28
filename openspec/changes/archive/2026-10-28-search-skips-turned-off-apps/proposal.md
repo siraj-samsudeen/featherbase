@@ -10,12 +10,13 @@ until the app was turned back on.
 
 ## What Changes
 
-- Search leaves out the Tables of an app that is turned off or otherwise
-  unavailable, and answers from every other Table as before.
+- Search leaves out the Tables of an app that is turned off, awaiting
+  activation of an upgrade, or upgraded since the user's page loaded (which
+  answered 409 the same way), and answers from every other Table as before.
 - Turning the app back on makes its rows searchable again.
 
 ## Impact
 
-- `apps/server/src/search.ts`: the Tables search reads now skip an
-  unavailable app's Tables.
+- `apps/server/src/search.ts`: search skips a Table whose app
+  refuses the request, instead of failing.
 - Spec: `search-and-explore`, "Search only reaches what the user can read".

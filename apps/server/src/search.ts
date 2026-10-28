@@ -1,5 +1,5 @@
-import { activeApps } from './app-lifecycle'
 import { sql } from './db'
+import { AppError } from './errors'
 import { hasPermission } from './permissions'
 import { scopedWhere } from './query'
 
@@ -42,16 +42,9 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   // Source-bound Tables are excluded: they have no physical table here (the
   // old query 500'd the whole search the moment one existed), and fanning a
   // per-keystroke ilike out to every foreign store is not a typeahead's job.
-  // #648: so are a turned-off app's Tables. Reading one refuses with 403, and
-  // that refusal used to fail the whole search for everyone. Available means
-  // what assertAppAvailable requires: enabled, not pending activation, and
-  // its exact files loaded (activeApps).
-  const tables = (await sql`
-    select d.name, d.owner_app from table_def d
-    left join installed_app a on a.name = d.owner_app
-    where d.kind = 'table' and d.data_source is null
-      and (d.owner_app is null or (a.enabled and not a.activation_pending))
-    order by d.name`).filter((t) => t.owner_app == null || activeApps.has(String(t.owner_app)))
+  const tables = await sql`
+    select name, owner_app from table_def where kind = 'table' and data_source is null
+    order by name`
   // Stable sort: ordinary Tables first, registries last (#431).
   const isRegistry = (n: unknown) => (registryLabel(String(n)) ? 1 : 0)
   tables.sort((a, b) => isRegistry(a.name) - isRegistry(b.name))
@@ -60,7 +53,17 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   for (const t of tables) {
     if (hits.length >= TOTAL_CAP) break
     if (!(await hasPermission(user, t.name as string, 'read'))) continue
-    const { meta, table, where, cols } = await scopedWhere(t.name as string, user, [])
+    // #648: an app's Tables answer only while it is available to this
+    // request: switched on, not awaiting activation, and the version the
+    // client last loaded. When one refuses, search skips that Table instead
+    // of failing for everyone; assertAppAvailable stays the one judge.
+    const scoped = await scopedWhere(t.name as string, user, []).catch((error: unknown) => {
+      if (t.owner_app != null && error instanceof AppError &&
+          (error.type === 'PermissionError' || error.type === 'ConflictError')) return null
+      throw error
+    })
+    if (!scoped) continue
+    const { meta, table, where, cols } = scoped
     const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)

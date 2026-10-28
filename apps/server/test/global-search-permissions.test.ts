@@ -281,23 +281,45 @@ describe('search shows a handful of best matches, not everything', () => {
 
 // #648: one turned-off app used to fail the whole search with 403, so
 // Records vanished from Admin's search bar for everyone.
-describe('global search while an app is turned off', () => {
+describe('global search while an app is unavailable', () => {
   const ROSTER = resolve('../..', 'runtime-apps/fixtures/place-roster')
+  const tables = async (client: TestClient) =>
+    (await search(client, 'gs-648')).results.map((r) => r.table).sort()
 
-  test("skips the turned-off app's Tables, answers from the rest, and finds them again once it is back on", async ({ admin }) => {
+  async function rosterAndCustomer(admin: TestClient, createUser: CreateUserFn) {
     expect(await discoverPackages([ROSTER])).toEqual([])
     await admin.post('/api/install_app', { name: 'placeroster' })
     await admin.post('/api/save_row', { table: 'placeroster.position', row: { row_id: 'gs-648-roster', person: 'p', place: 'North' } })
     const t = await makeTable(admin, { name: 'Gs 648 Customer', id_pattern: 'prompt', columns: ['city'] })
     await admin.post(t.url, { row_id: 'gs-648-customer', city: 'x' })
-    expect((await search(admin, 'gs-648')).results.map((r) => r.table).sort())
-      .toEqual(['Gs 648 Customer', 'placeroster.position'])
+    const reader = await createUserWithRole(admin, createUser, { role: 'Gs 648 Reader', table: t.name, can_read: true })
+    await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'placeroster.position', role: 'Gs 648 Reader', can_read: true } })
+    expect(await tables(admin)).toEqual(['Gs 648 Customer', 'placeroster.position'])
+    expect(await tables(reader)).toEqual(['Gs 648 Customer', 'placeroster.position'])
+    return reader
+  }
 
+  test("skips a turned-off app's Tables, answers from the rest, and finds them again once it is back on", async ({ admin, createUser }) => {
+    const reader = await rosterAndCustomer(admin, createUser)
     await admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: false })
-    expect((await search(admin, 'gs-648')).results.map((r) => r.table)).toEqual(['Gs 648 Customer'])
+    expect(await tables(admin)).toEqual(['Gs 648 Customer'])
+    expect(await tables(reader)).toEqual(['Gs 648 Customer'])
 
     await admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: true })
-    expect((await search(admin, 'gs-648')).results.map((r) => r.table).sort())
-      .toEqual(['Gs 648 Customer', 'placeroster.position'])
+    expect(await tables(admin)).toEqual(['Gs 648 Customer', 'placeroster.position'])
+  })
+
+  test('skips an app awaiting activation of an upgrade', async ({ admin, createUser }) => {
+    await rosterAndCustomer(admin, createUser)
+    await sql`update installed_app set activation_pending = true where name = 'placeroster'`
+    expect(await tables(admin)).toEqual(['Gs 648 Customer'])
+  })
+
+  test("skips an upgraded app's Tables for a client still on its old version", async ({ admin, createUser }) => {
+    await rosterAndCustomer(admin, createUser)
+    // A migrated app's Tables answer only the client that loaded its current
+    // version; this client named none.
+    await sql`update installed_app set migration_ledger = '["0001"]'::jsonb where name = 'placeroster'`
+    expect(await tables(admin)).toEqual(['Gs 648 Customer'])
   })
 })
