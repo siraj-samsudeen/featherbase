@@ -336,6 +336,10 @@ A Table that keeps change history SHALL preserve a field whose latest change was
 - **WHEN** a corrected field receives its current value or the value the previous import supplied
 - **THEN** the correction stays and no new conflict is raised
 
+#### Scenario: An automation cannot overwrite a correction
+- **WHEN** a save automation would change a corrected field while a re-import updates that row
+- **THEN** that row is refused and reported, none of the emails, webhooks or other after-save work it started goes out, and the file's other rows still import
+
 ### Requirement: People resolve import conflicts
 The user SHALL be able to keep a correction or take the incoming value, with the decision recorded as their edit. Keeping suppresses the same incoming value on later imports; taking the source lets later imports update that field again.
 
