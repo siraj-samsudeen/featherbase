@@ -86,6 +86,7 @@ import { assertServerStart, readVariable } from './env'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
+import { readGlossary, takeAppWording } from './glossary'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1781,6 +1782,15 @@ app.get('/api/apps', async (c) => {
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// #629: the glossary everyone signed in reads, and an editor's way back to an
+// app's own wording of a term the instance reworded.
+app.get('/api/glossary', async (c) => c.json(await readGlossary(who(c))))
+app.post('/api/glossary/take_app_wording', async (c) => {
+  const { id } = (await c.req.json().catch(() => ({}))) as { id?: unknown }
+  if (typeof id !== 'string') throw new AppError('ValidationError', 'Expected { id }')
+  await takeAppWording(id, who(c))
+  return c.json({ ok: true })
+})
 // #642 (E8): the controls an app declared for the shared top bar, filled for
 // this person.
 app.get('/api/app_bar/:app', async (c) => {

@@ -14,6 +14,7 @@ import { ChecklistSwitch } from './ChecklistView'
 import { PrincipalName, usePrincipalLabels } from '../lib/people'
 import { Button, DataCards, NARROW_QUERY, Notice, Select, buttonClasses, cardClasses, inputClasses, pillClasses, touchLinkClasses, touchRowClasses, useMediaQuery, type DataColumn } from './ui'
 import { ArrowDown, ArrowUp } from './ui/icons'
+import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
 
@@ -435,7 +436,7 @@ export function ListView({
             {' / '}
             {table}
           </div>
-          <h1 className="text-xl font-semibold text-ink">{table}</h1>
+          <h1 className="text-xl font-semibold text-ink">{table}<GlossaryHelp table={table} className="ml-1" /></h1>
           <span className="text-xs text-ink-muted" data-testid="list-total">
             {fmtCount(total)} total
           </span>

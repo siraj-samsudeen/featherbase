@@ -551,6 +551,10 @@ export async function installApp(name: string): Promise<InstallResult> {
       // #620 (D4): the app's role suggestions, written once, here.
       const { roleDefaults } = (manifest.runtime_manifest ?? {}) as { roleDefaults?: Record<string, string[]> }
       await (await import('./app-role-bindings')).seedRoleBindings(name, roleDefaults, 'Administrator')
+      // #629: the app's glossary terms, under the app.
+      const glossaryModule = await import('./glossary')
+      const { glossary } = (manifest.runtime_manifest ?? {}) as { glossary?: Parameters<typeof glossaryModule.syncAppGlossary>[1] }
+      await glossaryModule.syncAppGlossary(name, glossary, 'Administrator')
       return result
     })
   })

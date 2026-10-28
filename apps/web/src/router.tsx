@@ -36,6 +36,7 @@ import { AccountLayout } from './pages/AccountLayout'
 import { FindPerson } from './pages/FindPerson'
 import { WaitingForAccess } from './pages/WaitingForAccess'
 import { InstanceHealth } from './pages/InstanceHealth'
+import { GlossaryPage } from './pages/Glossary'
 import { FirstRunSetup } from './pages/FirstRunSetup'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
@@ -568,6 +569,13 @@ const instanceHealthRoute = createRoute({
   ),
 })
 
+// #629: the glossary (everyone signed in; static segment, before $table).
+const glossaryRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'glossary',
+  component: GlossaryPage,
+})
+
 // #465 D9: first-run setup (the built-in Administrator only; the page itself
 // sends anyone else home).
 const setupRoute = createRoute({
@@ -790,5 +798,5 @@ export const routeTree = rootRoute.addChildren([
   salesTargetRoute,
   accountRoute.addChildren([signInMethodsRoute]),
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, setupRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, findPersonRoute, waitingForAccessRoute, instanceHealthRoute, glossaryRoute, setupRoute, tableRoute, docRoute]),
 ])

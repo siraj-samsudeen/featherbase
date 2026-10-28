@@ -100,6 +100,10 @@ const EXPLICIT: Record<string, Record<string, ColumnSpec>> = {
   email_rule: { '*': code, subject: text, message: text },
   email_sink: { '*': text },
   file: { file_name: text, file_url: code, mime_type: code, ref_table: code, ref_name: on('ref_table'), thumbnail_url: code },
+  // #629: glossary terms are prose about words; the rest name apps, Tables and columns.
+  glossary_term: { term: text, app: code, definition: text, examples: text, app_key: text, app_wording: text },
+  glossary_avoid_word: { word: text, reason: text },
+  glossary_link: { link_table: code, link_column: code },
   // #465 D8: a health check's changes of state; the message is prose.
   health_check_event: { check_key: code, severity: code, message: text },
   // The generated pair follows parent/parenttype (rewritten via `parent`).
