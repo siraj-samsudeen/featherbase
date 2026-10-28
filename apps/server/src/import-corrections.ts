@@ -13,11 +13,11 @@ type Row = Record<string, unknown>
 type Change = [string, unknown, unknown]
 interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
-export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row }
+export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row; protected_values: Row }
 const normalized = (value: unknown, type: string): unknown => {
   if (value == null) return null
   if (type === 'Date') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10)
-  if (type === 'Datetime') return new Date(String(value)).toISOString()
+  if (type === 'Datetime') return (value instanceof Date ? value : new Date(String(value))).toISOString()
   if (['Int', 'Float', 'Currency'].includes(type)) return Number(value)
   if (type === 'Check') return value === true || value === 1 || value === '1'
   return value
@@ -31,9 +31,10 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
   const allowed = shared ? input : stripUnwritableFields(meta.columns, await permittedTiers(user, meta.name, 'write'), input)
   const values: Row = { ...input }
   const source_values: Row = {}
+  const protected_values: Row = {}
   const conflicts: Conflict[] = []
   let fields_updated = 0
-  const history = meta.track_changes ? await sql<History[]>`select row_id, created_by, created_at, data from version where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} order by created_at desc, row_id desc` : []
+  const history = meta.track_changes ? await sql<History[]>`select row_id, created_by, created_at, data from version where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc, row_id desc` : []
   // Pre-feature import versions already have a trustworthy link from their log.
   const logs = meta.track_changes ? await sql`select touched, created_at from import_log where ref_table = ${meta.name} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc` : []
   const previousImports = logs.flatMap(l => (Array.isArray(l.touched) ? l.touched as { row_id: string; version?: string; action: string }[] : []).map(t => ({ ...t, observed_at: l.created_at as Date }))).filter(t => t.row_id === current.row_id)
@@ -43,9 +44,10 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
     const field = column.column_name
     if (!Object.hasOwn(allowed, field) || column.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(column.column_type)) continue
     source_values[field] = normalized(allowed[field], column.column_type)
-    if (same(current[field], allowed[field], column.column_type)) continue
     const latest = history.find(h => h.data.changed?.some(c => c[0] === field) || h.data.resolution?.field === field)
     const person = latest && !(latest.data.resolution?.field === field && latest.data.resolution.decision === 'source') && !latest.data.import_run && !importedVersions.has(latest.row_id)
+    if (person) protected_values[field] = normalized(current[field], column.column_type)
+    if (same(current[field], allowed[field], column.column_type)) continue
     if (person) {
       const observation = observations.find(o => Object.hasOwn(o.values, field))
       let supplied: unknown
@@ -63,17 +65,17 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
       if (!hasSupplied || !same(supplied, allowed[field], column.column_type)) conflicts.push({ field, kept: normalized(current[field], column.column_type), incoming: normalized(allowed[field], column.column_type), editor: latest.created_by, edited_at: latest.created_at })
     } else fields_updated++
   }
-  return { values, conflicts, fields_updated, source_values }
+  return { values, conflicts, fields_updated, source_values, protected_values }
 }
 
 async function latestVersion(table: string, name: string): Promise<string | null> {
-  const [version] = await sql`select row_id from version where ref_table = ${table} and ref_name = ${name} order by created_at desc, row_id desc limit 1`
+  const [version] = await sql`select row_id from version where ref_table = ${table} and ref_name = ${name} and created_at >= (select created_at from table_def where name = ${table}) order by created_at desc, row_id desc limit 1`
   return version ? String(version.row_id) : null
 }
 
 async function annotateHistory(meta: TableMeta, row: Row, user: string, previous: string | null, extra: Row): Promise<string | undefined> {
   if (!meta.track_changes) return
-  const [version] = await sql`select row_id, data from version where ref_table = ${meta.name} and ref_name = ${String(row.row_id)} order by created_at desc, row_id desc limit 1`
+  const [version] = await sql`select row_id, data from version where ref_table = ${meta.name} and ref_name = ${String(row.row_id)} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc, row_id desc limit 1`
   if (version && version.row_id !== previous) {
     await sql`update version set data = ${sql.json({ ...version.data, ...extra })} where row_id = ${version.row_id}`
     return String(version.row_id)
@@ -94,14 +96,17 @@ export async function saveImportedRow(meta: TableMeta, input: Row, user: string,
       // SaveDoc performs the complete write gate; preview/list use getDoc.
       plan = await planImport(meta, { ...current, row_id: current[meta.row_key] }, input, user)
     }
-    const previous = update ? await latestVersion(meta.name, String(input.row_id)) : null
+    const previous = await latestVersion(meta.name, String(input.row_id))
     const saved = await saveDoc(meta.name, plan?.values ?? input, user, update ? 'upsert' : 'insert')
+    for (const [field, kept] of Object.entries(plan?.protected_values ?? {})) {
+      const column = meta.columns.find(c => c.column_name === field)!
+      if (!same(saved[field], kept, column.column_type)) throw new AppError('ValidationError', 'An automation changed a protected import field')
+    }
     for (const conflict of plan?.conflicts ?? []) {
-      const column = meta.columns.find(c => c.column_name === conflict.field)!
-      if (!same(saved[conflict.field], conflict.kept, column.column_type)) throw new AppError('ValidationError', 'An automation changed a protected import field')
       // One current conflict per field. A newer source supersedes its earlier offer.
       await sql`update featherbase.import_conflict set closed = true where ref_table = ${meta.name} and ref_name = ${String(saved.row_id)} and field = ${conflict.field} and closed is not true`
-      await saveSystemRow('Import Conflict', { ref_table: meta.name, ref_name: saved.row_id, ...conflict, run_id: runId, closed: false }, user)
+      const raised = await saveSystemRow('Import Conflict', { ref_table: meta.name, ref_name: saved.row_id, ...conflict, run_id: runId, closed: false }, user)
+      await sql`update featherbase.import_conflict set created_at = clock_timestamp() where row_id = ${String(raised.row_id)}`
     }
     const sources = plan?.source_values ?? Object.fromEntries(meta.columns.filter(c => Object.hasOwn(input, c.column_name)).map(c => [c.column_name, normalized(saved[c.column_name], c.column_type)]))
     // A source that now agrees with the person resolves its old disagreement.

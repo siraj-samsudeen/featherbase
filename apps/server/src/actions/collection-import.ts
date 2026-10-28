@@ -323,7 +323,7 @@ registerCollectionAction('import', {
           actions.push('fail')
         }
       }
-      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed, fields_updated: 0, fields_kept: 0, tracks_changes: meta.track_changes }
       return {
         dry_run: true,
         valid: rows.length - failed.length,

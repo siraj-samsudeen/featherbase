@@ -166,3 +166,37 @@ test('a source that comes into agreement closes an old conflict', async ({ admin
   expect((await conflicts(admin)).conflicts).toEqual([])
   expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
 })
+test('timestamp milliseconds survive source comparison and conflict evidence', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code', 'at:Datetime'] })
+  await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', at: '2026-10-28T01:02:03.123Z' }] })
+  const row = await admin.get<Record<string, unknown>>(`${path}/A`)
+  await patchDoc(admin, `${path}/A`, { at: '2026-10-28T01:02:03.456Z', updated_at: row.updated_at })
+  expect(await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', at: '2026-10-28T01:02:03.456Z' }], dry_run: true })).toMatchObject({ fields_updated: 0, fields_kept: 0 })
+  await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', at: '2026-10-28T01:02:03.789Z' }] })
+  expect((await conflicts(admin)).conflicts).toMatchObject([{ kept: '2026-10-28T01:02:03.456Z', incoming: '2026-10-28T01:02:03.789Z' }])
+})
+test('an unchanged source cannot let an automation overwrite a protected correction', async ({ admin }) => {
+  await correction(admin)
+  await admin.post('/api/save_row', { table: 'Server Script', row: { row_id: 'correction-automation', script_type: 'Document Event', ref_table: table, event: 'before_save', script: 'doc.city = "Automation"', enabled: true } })
+  expect(await load(admin, 'North', 'unchanged')).toMatchObject({ updated: 0, failed: [{ index: 0, message: 'An automation changed a protected import field' }] })
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
+  expect((await conflicts(admin)).conflicts).toEqual([])
+})
+test('insert-mode preview also warns when history is off', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code'] })
+  await sql`update table_def set track_changes = false where name = ${table}`
+  invalidateMeta(table)
+  expect(await admin.post(`${path}:import`, { rows: [{ code: 'A' }], dry_run: true })).toMatchObject({ tracks_changes: false, fields_updated: 0, fields_kept: 0 })
+})
+test('a recreated Table never adopts or rewrites the old Table’s history', async ({ admin }) => {
+  await correction(admin)
+  const [old] = await sql`select row_id, data from version where ref_table = ${table} and ref_name = 'A'`
+  await admin.delete(`/api/table_def/${encodeURIComponent(table)}`)
+  await makeTable(admin, { name: table, columns: ['code', 'city', 'phone'] })
+  await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'New North' }], context: { run_id: 'reborn' } })
+  await load(admin, 'New East', 'reborn-second')
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'New East' })
+  expect((await conflicts(admin)).conflicts).toEqual([])
+  const [after] = await sql`select data from version where row_id = ${old.row_id}`
+  expect(after.data).toEqual(old.data)
+})
