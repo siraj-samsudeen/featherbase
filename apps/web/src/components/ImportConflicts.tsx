@@ -56,7 +56,7 @@ export function ImportConflicts({ table, meta }: { table: string; meta: TableMet
   return (
     <section aria-label="Import conflicts" id="import-conflicts" className="mb-4 min-w-0" data-testid="import-conflicts">
       <h2 className="mb-1 text-lg font-semibold text-ink">Import conflicts</h2>
-      <p className="mb-3 text-sm text-ink-muted">Your corrections were kept. Choose which value to use for each field.</p>
+      <p className="mb-3 text-sm text-ink-muted">Saved corrections were kept when incoming values differed.</p>
       {error && <Notice tone="negative" className="mb-3">{error}</Notice>}
       {conflicts.isPending && <p className="text-sm text-ink-muted" role="status">Loading conflicts…</p>}
       {conflicts.isError && <Notice tone="negative">Could not load import conflicts. <Button variant="quiet" onClick={() => void conflicts.refetch()}>Try again</Button></Notice>}

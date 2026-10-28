@@ -6,7 +6,7 @@ Protect corrections for tracked Tables across wizard and API. Do not add per-row
 
 ## Decisions
 - A metadata-generated system-written Import Conflict Table stores conflict evidence. Dedicated actions apply the parent row and column permission rules.
-- Each import row runs under its row lock in one transaction with its lifecycle save, version attribution and conflict creation. Import history retains incoming mapped values, including unchanged inserts.
+- Each import row runs under its row lock in one transaction with its lifecycle save, version attribution and conflict creation. Protected source history retains incoming mapped values, including unchanged inserts.
 - The latest change per field determines authorship. Resolution records the person and decision in history; adopting a source makes that field import-owned. Keeping a value remains person-owned while remembering the incoming value.
 - Preview uses the same decision helper without writes. Undo closes the run's conflicts and restores only changed version fields.
 - UI uses existing Shop Floor components: per-Table conflict list, Keep mine/Take the source actions, preview counts and warning for no history.

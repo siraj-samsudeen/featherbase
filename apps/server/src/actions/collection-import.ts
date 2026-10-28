@@ -358,18 +358,9 @@ registerCollectionAction('import', {
       try {
         if (resolution?.action === 'update') {
           const record = row as Record<string, unknown>
-          if (
-            upsert!.keyColumn !== ROW_KEY &&
-            record[ROW_KEY] != null &&
-            String(record[ROW_KEY]).trim() !== '' &&
-            String(record[ROW_KEY]).trim() !== resolution.row_id
-          )
-            // UPS-R3: changing an id via upsert does not exist — refusing is
-            // louder than silently dropping the file's id cell.
-            throw new AppError(
-              'ValidationError',
-              `row maps Row ID ${String(record[ROW_KEY]).trim()} but matches ${resolution.row_id}; an upsert cannot change a row's id`,
-            )
+          // Validate the incoming payload before protected fields are removed,
+          // exactly as the check step does. A conflict cannot legitimize bad data.
+          checkRowForUpdate(meta, record, resolution, upsert!)
           const { saved, version } = await saveImportedRow(meta, updateValues(record, upsert!, resolution), user.row_id, runId, true)
           updated++
           touched.push({ row_id: String(saved.row_id), action: 'updated', stamp: stampOf(saved.updated_at), ...(version ? { version } : {}) })

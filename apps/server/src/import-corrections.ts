@@ -161,7 +161,7 @@ registerCollectionAction('resolve-import-conflict', {
     return actionTransaction(async () => {
       const meta = await getMeta(table)
       // Lock parent first, as imports do, so resolution never deadlocks with import.
-      const [found] = await sql`select * from featherbase.import_conflict where row_id = ${String(args.conflict_id)} and ref_table = ${table}`
+      const [found] = await sql`select * from featherbase.import_conflict where row_id = ${String(args.conflict_id)} and ref_table = ${table} and created_at >= (select created_at from table_def where name = ${table})`
       if (!found) throw new AppError('NotFoundError', 'Import conflict not found')
       await sql`select 1 from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${String(found.ref_name)} for update`
       const [conflict] = await sql`select * from featherbase.import_conflict where row_id = ${String(args.conflict_id)} and closed is not true for update`

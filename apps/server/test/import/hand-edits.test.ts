@@ -202,3 +202,30 @@ test('a recreated Table never adopts or rewrites the old Table’s history', asy
   const [after] = await sql`select data from version where row_id = ${old.row_id}`
   expect(after.data).toEqual(old.data)
 })
+test('invalid incoming values are refused before protection in preview and commit alike', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code', 'amount:Int'] })
+  await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', amount: 1 }] })
+  const row = await admin.get<Record<string, unknown>>(`${path}/A`)
+  await patchDoc(admin, `${path}/A`, { amount: 2, updated_at: row.updated_at })
+  const args = { key_column: 'code', rows: [{ code: 'A', amount: 'invalid-number' }] }
+  const preview = await admin.post<{ failed: unknown[] }>(`${path}:import`, { ...args, dry_run: true })
+  const committed = await admin.post<{ failed: unknown[]; updated: number }>(`${path}:import`, args)
+  expect(preview.failed).toHaveLength(1)
+  expect(committed.failed).toEqual(preview.failed)
+  expect(committed.updated).toBe(0)
+  expect((await conflicts(admin)).conflicts).toEqual([])
+  expect(await admin.get(`${path}/A`)).toMatchObject({ amount: 2 })
+})
+test('an old conflict ID cannot change a new Table with the same name and row ID', async ({ admin }) => {
+  await correction(admin)
+  await load(admin, 'East', 'old-conflict')
+  const [old] = (await conflicts(admin)).conflicts
+  await admin.delete(`/api/table_def/${encodeURIComponent(table)}`)
+  await makeTable(admin, { name: table, columns: ['code', 'city'] })
+  // Model the real new transaction's later Table birth inside the sandbox.
+  await sql`update table_def set created_at = clock_timestamp() where name = ${table}`
+  await admin.post(`${path}`, { row_id: 'A', code: 'A', city: 'South' })
+  expect((await conflicts(admin)).conflicts).toEqual([])
+  await expect(admin.post(`${path}:resolve-import-conflict`, { conflict_id: old.id, decision: 'source' })).rejects.toMatchObject({ status: 404 })
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
+})
