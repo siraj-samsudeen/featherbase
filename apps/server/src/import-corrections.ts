@@ -13,7 +13,7 @@ import { registerCollectionAction } from './actions'
 
 type Row = Record<string, unknown>
 type Change = [string, unknown, unknown]
-interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
+interface History { row_id: string; created_by: string; created_at: Date; data: { changed?: Change[]; import_run?: string; import_revert?: string; resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown } } }
 interface Conflict { field: string; kept: unknown; incoming: unknown; editor: string; edited_at: Date }
 export interface ImportPlan { values: Row; conflicts: Conflict[]; fields_updated: number; source_values: Row; protected_values: Row }
 const normalized = (value: unknown, type: string): unknown => {
@@ -39,16 +39,18 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
   let fields_updated = 0
   const history = meta.track_changes ? await sql<History[]>`select row_id, created_by, created_at, data from version where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc, row_id desc` : []
   // Pre-feature import versions already have a trustworthy link from their log.
-  const logs = meta.track_changes ? await sql`select touched, created_at from import_log where ref_table = ${meta.name} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc` : []
+  // Only the logs that touched this row: a Table's whole log history is read once per imported row otherwise.
+  const logs = meta.track_changes ? await sql`select touched, created_at from import_log where ref_table = ${meta.name} and touched @> ${sql.json([{ row_id: String(current.row_id) }])} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc` : []
   const previousImports = logs.flatMap(l => (Array.isArray(l.touched) ? l.touched as { row_id: string; version?: string; action: string }[] : []).map(t => ({ ...t, observed_at: l.created_at as Date }))).filter(t => t.row_id === current.row_id)
-  const observations = meta.track_changes ? await sql<{ values: Row }[]>`select values from featherbase.import_source where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= ${current.created_at as Date} order by created_at desc, row_id desc` : []
+  // An undone import never supplied anything: its values are not the previous source.
+  const observations = meta.track_changes ? await sql<{ values: Row }[]>`select values from featherbase.import_source s where ref_table = ${meta.name} and ref_name = ${String(current.row_id)} and created_at >= ${current.created_at as Date} and not exists (select 1 from import_log l where l.ref_table = s.ref_table and l.run_id = s.run_id and l.reverted_at is not null) order by created_at desc, row_id desc` : []
   const importedVersions = new Set(previousImports.flatMap(t => t.version ? [t.version] : []))
   for (const column of meta.columns) {
     const field = column.column_name
     if (!Object.hasOwn(allowed, field) || column.read_only || ['Section Break', 'Column Break', 'Sub-table'].includes(column.column_type)) continue
     source_values[field] = normalized(allowed[field], column.column_type)
     const latest = history.find(h => h.data.changed?.some(c => c[0] === field) || h.data.resolution?.field === field)
-    const person = latest && !(latest.data.resolution?.field === field && latest.data.resolution.decision === 'source') && !latest.data.import_run && !importedVersions.has(latest.row_id)
+    const person = latest && !(latest.data.resolution?.field === field && latest.data.resolution.decision === 'source') && !latest.data.import_run && !latest.data.import_revert && !importedVersions.has(latest.row_id)
     if (person) protected_values[field] = normalized(current[field], column.column_type)
     if (same(current[field], allowed[field], column.column_type)) continue
     if (person) {
@@ -71,12 +73,12 @@ export async function planImport(meta: TableMeta, current: Row, input: Row, user
   return { values, conflicts, fields_updated, source_values, protected_values }
 }
 
-async function latestVersion(table: string, name: string): Promise<string | null> {
+export async function latestVersion(table: string, name: string): Promise<string | null> {
   const [version] = await sql`select row_id from version where ref_table = ${table} and ref_name = ${name} and created_at >= (select created_at from table_def where name = ${table}) order by created_at desc, row_id desc limit 1`
   return version ? String(version.row_id) : null
 }
 
-async function annotateHistory(meta: TableMeta, row: Row, user: string, previous: string | null, extra: Row): Promise<string | undefined> {
+export async function annotateHistory(meta: TableMeta, row: Row, user: string, previous: string | null, extra: Row): Promise<string | undefined> {
   if (!meta.track_changes) return
   const [version] = await sql`select row_id, data from version where ref_table = ${meta.name} and ref_name = ${String(row.row_id)} and created_at >= (select created_at from table_def where name = ${meta.name}) order by created_at desc, row_id desc limit 1`
   if (version && version.row_id !== previous) {

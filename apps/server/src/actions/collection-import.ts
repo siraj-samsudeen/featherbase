@@ -1,4 +1,3 @@
-import { actionTransaction } from '../action-transaction'
 import { randomUUID } from 'node:crypto'
 import { planImport, saveImportedRow } from '../import-corrections'
 import { getDoc } from '../document'
@@ -243,7 +242,7 @@ registerCollectionAction('import', {
     "({ updated, inserted, failed }); empty_cells 'keep'|'clear' picks what " +
     'an empty mapped cell does to a matched row. ' +
     'With dry_run: true, reports per-row actions and writes nothing.',
-  handler: async ({ table, args, user }) => actionTransaction(async () => {
+  handler: async ({ table, args, user }) => {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
       throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
@@ -385,7 +384,7 @@ registerCollectionAction('import', {
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
     if (!upsert) return { inserted, failed }
     return { updated, inserted, failed }
-  }),
+  },
 })
 
 // RVT-R1: the record of one written row. `version` names the version row an
@@ -470,12 +469,13 @@ async function writeImportLog(
       part: int(ctx.part),
       parts: int(ctx.parts),
       // RVT-R1: the run identity (wizard-minted, shared across parts) and
-      // this part's written rows. A run without a run_id is not revertable.
+      // this part's written rows. A run the caller names no run_id for gets an
+      // unreturned one (UPS-R1 keeps the response shape), so it is not revertable.
       run_id: str(ctx.run_id),
       // #206: the file-import all of this run's targets belong to.
       batch_id: str(ctx.batch_id),
       touched: touched.length ? touched : undefined,
     },
     user,
-  )
+  ).catch(() => {})
 }

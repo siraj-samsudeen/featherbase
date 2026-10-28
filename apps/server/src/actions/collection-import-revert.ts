@@ -1,4 +1,4 @@
-import { mayResolve } from '../import-corrections'
+import { annotateHistory, latestVersion, mayResolve } from '../import-corrections'
 import { actionTransaction } from '../action-transaction'
 // Spec 0005: revert an import run, row by row. RVT-R2's contract:
 // POST /api/table/:table:import-revert { run_id, dry_run?, override? }.
@@ -106,7 +106,7 @@ registerCollectionAction('import-revert', {
     'deleted; rows edited after the import are skipped and named, unless ' +
     'listed in override. With dry_run: true, reports the plan and writes ' +
     'nothing. Returns { restored, deleted, skipped, failed }.',
-  handler: async ({ table, args, user }) => actionTransaction(async () => {
+  handler: async ({ table, args, user }) => {
     const runId = args.run_id
     if (typeof runId !== 'string' || !runId)
       throw new AppError('ValidationError', 'Expected { run_id }')
@@ -205,7 +205,13 @@ registerCollectionAction('import-revert', {
       // planned against, as ISO so milliseconds survive (spec 0004 lesson).
       values.updated_at = r.current.updated_at.toISOString()
       try {
-        await saveDoc(table, values, user.row_id, 'upsert')
+        // The restore is the import's own undoing, not a person's correction:
+        // a later import of the same value updates the field again.
+        await actionTransaction(async () => {
+          const previous = await latestVersion(table, r.touched.row_id)
+          const saved = await saveDoc(table, values, user.row_id, 'upsert')
+          await annotateHistory(meta, saved, user.row_id, previous, { import_revert: runId })
+        })
         restored++
       } catch (err) {
         failed.push({ row_id: r.touched.row_id, message: err instanceof Error ? err.message : String(err) })
@@ -232,5 +238,5 @@ registerCollectionAction('import-revert', {
         set reverted_at = ${now} where row_id = ${String(p.row_id)}`.catch(() => {})
 
     return { restored, deleted, skipped: plan.skipped, failed }
-  }),
+  },
 })

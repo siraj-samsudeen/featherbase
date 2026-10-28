@@ -178,3 +178,7 @@ Undoing an import SHALL close the conflicts that import raised under spreadsheet
 #### Scenario: Undo a partially protected import
 - **WHEN** an import updated a phone number but kept a corrected city and raised a conflict, and the user undoes it
 - **THEN** the phone number returns to its prior value, the corrected city stays, and that import's conflict closes
+
+#### Scenario: Re-import after undo
+- **WHEN** an import changed North to East, the user undoes it, and a later import supplies East again
+- **THEN** the city becomes East without a conflict, because the undo was the import's own reversal, not a person's correction
