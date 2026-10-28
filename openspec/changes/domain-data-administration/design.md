@@ -44,6 +44,20 @@ per-model SQL, routes or forms.
 
 ## Decisions
 
+### Spec organisation: first adoption of #684
+
+This change adopts the folder convention recorded in
+[#684](https://github.com/siraj-samsudeen/featherbase/issues/684).
+`permissions-and-roles` and `workflow-and-approvals` span platform, app and
+instance responsibilities, so their existing root paths remain correct. Their
+delta paths match those main-spec paths. No capability move is needed here.
+
+Future area-specific capabilities use `platform/`, `app/`, `instance/` or
+`apps/<app-name>/` without repeating the namespace as a prefix. Existing specs
+are assessed as they are substantively worked on, not moved in a bulk sweep.
+The authoring convention lives in `openspec/config.yaml`; it changes organisation,
+not the behaviour in this change's delta specs or its implementation sequence.
+
 ### 1. Agreed vocabulary
 
 | Term | Meaning | Concrete names |

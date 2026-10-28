@@ -12,6 +12,18 @@ context: |
   Featherbase is a metadata-driven low-code app platform (TypeScript monorepo:
   apps/server, apps/web, runtime apps such as Tasker). Specs are read by
   product people and new contributors, not just programmers.
+  Capability paths follow #684: use platform/<capability> for platform-only
+  behaviour, app/<capability> for generic app lifecycle behaviour,
+  instance/<capability> for instance-only behaviour, and
+  apps/<app-name>/<capability> for a specific app belonging in this repository.
+  Shared capabilities stay at the specs root. Classify by what the capability
+  governs, not where its code runs; do not repeat the namespace as a name prefix.
+  Client-app specs stay in their private repositories (ADR 0013).
+  Adopt this incrementally: new specs follow it immediately; assess existing
+  specs when substantively working on them, without moving unrelated specs.
+  For a move, update the main spec, matching active delta paths, references and
+  affected tooling together; preserve archived history and leave no duplicate
+  old-path spec or compatibility alias. Run pnpm check:specs after a move.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
