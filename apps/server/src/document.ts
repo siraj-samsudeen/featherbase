@@ -7,7 +7,7 @@ import { sessionMayAddWayIn } from './session-context'
 import { appOperation } from './app-lifecycle'
 import { afterCommitOf, afterDocumentCommit } from './action-transaction'
 import { assertNothingRetained, repointRowActivity, retainedActivityCounts, retainedDocumentCounts } from './document-activity'
-import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
+import { ROW_KEY, defaultValueFor, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -191,11 +191,7 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
     if (own(out, f.column_name) != null) continue
     if (f.default_value == null) continue
-    if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
-      out[f.column_name] = Number(f.default_value)
-    else if (f.column_type === 'Check')
-      out[f.column_name] = f.default_value === '1' || f.default_value === 'true'
-    else out[f.column_name] = f.default_value
+    out[f.column_name] = defaultValueFor(f.column_type, f.default_value)
   }
   return out
 }

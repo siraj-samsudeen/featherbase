@@ -10,6 +10,8 @@ import { AppError } from './errors'
 import { logAccess } from './audit'
 import { coversPersonScope, narrowPersonScope, resolvePersonScope, NoPersonScope, type ScopeProviderBinding } from './person-scope'
 import { personScopeSchema } from 'shared'
+import { IDENTIFIER_SYSTEM_KEY } from './identifiers'
+import { secretName } from './app-settings'
 
 const name = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
 const text = z.string().min(1).refine(s => s.trim().length > 0)
@@ -32,14 +34,19 @@ const personScopePolicy = z.object({ kind: z.literal('person_scope'),
 // #625 (E5): a read declared outbound is authorized inside the transaction
 // and runs its handler after the transaction has closed.
 const outbound = z.literal(true).optional()
+// #666: the app's optional secrets this operation uses, by name. The load
+// checks each is a secret the manifest declares.
+const needs = z.array(secretName).refine(distinct, 'An operation names each secret it needs once').optional()
 const operationSchema = z.union([
-  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound }).strict(),
-  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound }).strict(),
-  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound }).strict(),
+  z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product, outbound, needs }).strict(),
+  z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional(), outbound, needs }).strict(),
+  z.object({ policy: personScopePolicy, authorization: z.object({ kind: z.literal('generic') }).strict(), outbound, needs }).strict(),
 ])
 /** #559: the manifest's `scopeProvider`: the server module's export under
- *  `scopeProviders`, and the Tables it reads. */
-export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).min(1).refine(distinct) }).strict()
+ *  `scopeProviders`, and the Tables it reads. #660: and the identifier
+ *  systems, by key, whose current values it gets for the person. */
+export const scopeProviderDeclaration = z.object({ name, tables: z.array(text).min(1).refine(distinct),
+  identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional() }).strict()
 export const readDeclaration = z.object({ version: z.literal(1), tables: z.array(text).refine(distinct),
   operations: z.record(name, operationSchema).refine(o => Object.keys(o).length > 0),
 }).strict()
@@ -177,17 +184,28 @@ const replaySchema = z.object({ version: z.literal(1), policy: z.enum(['table', 
 // request's `scope` names. Anything outside refuses the whole request.
 async function callerPlaces(request: AccessRequest, contribution: DeclaredAppOperation, payload: unknown) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) refuseAppAccess()
-  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) =>
-    refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider'))
+  // #660: "not set up yet" is answered as such; anything else refuses.
+  const scope = await resolvePersonScope(request.user, await contribution.scopeProvider?.()).catch((error: unknown) => {
+    if (error instanceof AppError && error.type === 'NotSetUpError') throw error
+    return refuseAppAccess(error instanceof NoPersonScope ? error.reason : 'provider')
+  })
   const places = narrowPersonScope(scope, (payload as Record<string, unknown>).scope)
   if (!places) refuseAppAccess()
-  return freezeJson(JSON.parse(canonicalJson(places)) as typeof places)
+  // #667: the filter keys of each place that survived narrowing, as the
+  // provider returned it. The request may have added keys by naming filters;
+  // these are the provider's. A place narrowed away never reaches a dataset
+  // (Codex round 2 on #678). Labels are unique within a scope.
+  const providerKeys = freezeJson(places.map((kept) =>
+    Object.keys(scope.find((place) => place.label === kept.label)!.filters).sort()))
+  return { places: freezeJson(JSON.parse(canonicalJson(places)) as typeof places), providerKeys }
 }
 
 // A context is valid only inside this callback and transaction. Never accept a
 // client context or keep this decision for another request.
 export function withAppAuthorization<T>(request: AccessRequest,
-  handler: (authorization: AppAuthorizationContext, payload: unknown, metadata: RuntimeActionAuthorization, replay: boolean) => Promise<T>): Promise<T> {
+  handler: (authorization: AppAuthorizationContext, payload: unknown, metadata: RuntimeActionAuthorization, replay: boolean,
+    /** #667: the provider's own place keys, for a person_scope operation. */
+    providerKeys?: readonly (readonly string[])[]) => Promise<T>): Promise<T> {
   return appOperation(async () => {
     try {
       return await (request.kind === 'action' ? actionTransaction : withTransaction)(async () => {
@@ -206,7 +224,8 @@ export function withAppAuthorization<T>(request: AccessRequest,
             { version: 1, policy: 'stores', storeTable: policy.storeTable, storeCodes }, false)
         }
         let payload = request.payload
-        const places = policy.kind === 'person_scope' ? await callerPlaces(request, contribution, payload) : undefined
+        const resolved = policy.kind === 'person_scope' ? await callerPlaces(request, contribution, payload) : undefined
+        const places = resolved?.places
         let requested: readonly string[] | undefined
         if (policy.kind === 'stores') {
           if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !('scope' in declaration)) refuseAppAccess()
@@ -268,7 +287,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
         // Final barrier after every possible authorization-fact lock wait.
         const final = await currentAccess(request, declaration)
         if (policy.kind === 'stores') subset(metadata.storeCodes, final)
-        return handler(authorization, payload, freezeJson(metadata), !!previous)
+        return handler(authorization, payload, freezeJson(metadata), !!previous, resolved?.providerKeys)
       })
     } catch (error) {
       // Outside the failed business transaction so the audit survives rollback.

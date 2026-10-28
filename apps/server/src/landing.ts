@@ -17,7 +17,8 @@ import { config } from './config'
 import { ADMIN, adminAddress, appRoot, matchAddress, type InstanceAddress } from './instance-addresses'
 import { mintHandoffTicket } from './oauth'
 import { getRoles, tableAccessFor } from './permissions'
-import { appCatalog } from './runtime-packages'
+import { appCatalog, appEntryTable } from './runtime-packages'
+import { isInstalled } from './apps'
 import { VIEWER_ROLE } from './sales-target'
 
 /** What a sign-in answer carries besides the session: a path on this address
@@ -29,19 +30,22 @@ interface Landing {
   handoff?: string
 }
 
-/** Can this person use Admin at all: manage it, or reach some Table in it.
+/** Can this person use Admin at all: manage it, or reach some Table in it
+ *  that no installed app with pages of its own owns (#659: tableAccessFor's
+ *  `admin` is the rule).
  *  The same facts /api/whoami's capabilities draw the shell from. */
 async function canUseAdmin(person: string): Promise<boolean> {
   const roles = await getRoles(person)
   if (person === 'Administrator' || roles.includes('System Manager')) return true
-  return (await tableAccessFor(person, roles)).any
+  return (await tableAccessFor(person, roles)).admin
 }
 
-/** Can this person open the app an address opens. Feather Dash's interim
- *  gate is today's report gate (design D8); an installed app is open to
- *  whoever its catalog lists. */
+/** Can this person open the app an address opens. Until an app named
+ *  feather_dash is installed (#671), Feather Dash's interim gate is today's
+ *  report gate (design D8); an installed app is open to whoever its catalog
+ *  lists, and to no one while it is disabled or not loaded here. */
 async function canOpenApp(person: string, app: string): Promise<boolean> {
-  if (app === 'feather_dash') return (await getRoles(person)).includes(VIEWER_ROLE)
+  if (app === 'feather_dash' && !(await isInstalled(app))) return (await getRoles(person)).includes(VIEWER_ROLE)
   return (await appCatalog(person)).some((entry) => entry.name === app)
 }
 
@@ -66,9 +70,9 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
 
   // An app's address.
   if (here && here.opens !== ADMIN) {
-    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens) }
+    if (await canOpenApp(person, here.opens)) return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
     if (handOff && list && (await canUseAdmin(person))) return handTo(session, here, adminAddress(list))
-    return { landing: appRoot(here.opens) }
+    return { landing: appRoot(here.opens, await isInstalled(here.opens)) }
   }
 
   if (await canUseAdmin(person)) return {}
@@ -81,8 +85,19 @@ export async function landingAfterSignIn(session: SignedInSession, host: string,
   // No list (development and test), or a host the list does not name: that
   // host is served as one address holding everything, as before #488, so a
   // report viewer opens the report right here.
-  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash') }
-  return {}
+  if (!here && (await canOpenApp(person, 'feather_dash'))) return { landing: appRoot('feather_dash', await isInstalled('feather_dash')) }
+
+  // #659: no Admin and no address handed them on, but an app they can open
+  // through a role of their own is served right here (the Admin address
+  // serves every app's root, as an unlisted host does): its root, the first by
+  // title when they have several. An app open to everyone (All) is no one's in
+  // particular, so it never claims a person with no role of use. Chosen from
+  // the catalog, so the platform names no app (ADR 0011).
+  const { readableByOwnRole } = await tableAccessFor(person, await getRoles(person))
+  const [first] = (await appCatalog(person))
+    .filter((entry) => readableByOwnRole.includes(appEntryTable(entry.name) ?? ''))
+    .sort((a, b) => a.title.localeCompare(b.title) || a.name.localeCompare(b.name))
+  return first ? { landing: appRoot(first.name, true) } : {}
 }
 
 const ADMIN_ROOT = '/featherbase/admin'

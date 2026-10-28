@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "feather_dash",
+  "title": "Dash stand-in",
+  "entryTable": "feather_dash.note",
+  "server": "server.mjs",
+  "client": "client",
+  "tables": [
+    {
+      "name": "feather_dash.note",
+      "label": "note",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "body", "column_type": "Data" }]
+    }
+  ],
+  "permissions": [{ "table": "feather_dash.note", "role": "All", "can_read": true }]
+}

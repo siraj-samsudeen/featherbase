@@ -27,7 +27,7 @@ import { countWaitingForAccess, listWaitingForAccess } from './waiting-for-acces
 import { announceDelegatedTestMode, checkWithProvider, delegatedLoginConfig, delegatedMethods, delegatedTestMode, linkedUser } from './delegated-login'
 import { claimedPurpose, googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, googleAvailable, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH, bindHandoffTicket, newHandoffNonce, nonceHash, ticketForTarget } from './oauth'
 import { sendInvitation } from './invitation-email'
-import { ADMIN, addressRedirect, interimAppTitle, linkAddress, matchAddress, requestHost } from './instance-addresses'
+import { ADMIN, addressRedirect, interimApp, linkAddress, matchAddress, requestHost } from './instance-addresses'
 import { USERNAME_RE, getIdentity, inviteGoogle, linkIdentity, listIdentities, listSignInMethods, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from './identities'
 import { assertPermission, assertSystemManager, getRoles, permissionScope, tableAccessFor } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -75,12 +75,12 @@ import { rateLimit } from './rate-limit'
 import { clientAddress, publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled, isInstalled, installedAppNames } from './apps'
 import { discoverPackages, packageTitle, appCatalog, appAsset, appBar, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { ACCOUNT_SIGN_IN_METHODS_PATH, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, adminPathTitle, appHref, ownFramePolicyPage } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
-import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
+import { composeRuntimeShell } from './runtime-shell'
 import { privacyNoticePage } from './privacy-notice'
 import { assertServerStart, readVariable } from './env'
 import helpdesk from './sample-apps/helpdesk'
@@ -181,7 +181,7 @@ app.get('/api/brand', async (c) => {
   // #488: on an address that opens an app, the sign-in page and the document
   // title carry the app's name; elsewhere the instance's.
   const opened = matchAddress(config.instanceAddresses, requestHost(c.req.url))?.opens
-  const appTitle = opened && opened !== ADMIN ? (interimAppTitle(opened) ?? packageTitle(opened)) : undefined
+  const appTitle = opened && opened !== ADMIN ? (interimApp(opened, await isInstalled(opened))?.title ?? packageTitle(opened)) : undefined
   return c.json({
     app_name: appTitle ?? s.app_name,
     // #489: what this address opens — `admin`, an app's name, or null for a
@@ -747,9 +747,10 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', rateLimit)
 
 // Lock the complete request, including internal SQL and post-commit work.
-// Lifecycle endpoints take the exclusive counterpart inside their handlers.
+// Lifecycle endpoints take the exclusive counterpart inside their handlers
+// (the upgrade preview too since #651: it runs the steps to count losses).
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/preview_app_upgrade', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
   try {
     // Do not await here: only synchronous identity parsing failures belong to
@@ -790,15 +791,14 @@ app.get('*', (c, next) => {
 // needs, nothing else. `/`, every other Featherbase page and every other app's
 // root go to the app's root. An address is presentation, never a security
 // boundary: every API call is authorized on its own merits on every address.
-app.get('*', (c, next) => {
+app.get('*', async (c, next) => {
   const entry = matchAddress(config.instanceAddresses, requestHost(c.req.url))
   if (!entry || entry.opens === ADMIN) return next()
-  const target = addressRedirect(entry, c.req.path)
+  // #671: by the installation every process shares, never this process's
+  // serving state, so replicas agree and a disabled app keeps its root.
+  const target = addressRedirect(entry, c.req.path, await isInstalled(entry.opens))
   return target ? c.redirect(target, 302) : next()
 })
-
-app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))
-app.get('/featherbase/runtime-shell.js', c => c.body(runtimeShellJs, 200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }))
 
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
@@ -846,7 +846,7 @@ app.get('*', async (c, next) => {
     }
     const html = bytes.toString('utf8')
     const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
-      : new TextEncoder().encode(composeRuntimeShell(html, name, catalog))
+      : new TextEncoder().encode(composeRuntimeShell(html, { name, title: catalog.find((entry) => entry.name === name)!.title }))
     return new Response(body, {
       headers: {
         'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
@@ -872,12 +872,18 @@ app.get('/api/whoami', async (c) => {
   // Table list itself, so none are sent here.
   const manage = user.row_id === 'Administrator' || roles.includes('System Manager')
   const access = manage
-    ? { readable: [], creatable: [], ownGrant: true, any: true }
+    ? { readable: [], creatable: [], ownGrant: true, admin: true }
     : await tableAccessFor(user.row_id, roles)
   return c.json({
     ...user,
     roles,
-    capabilities: { manage, report: roles.includes(VIEWER_ROLE), table_access: access.any, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    capabilities: { manage, report: roles.includes(VIEWER_ROLE), admin: access.admin, own_grant: access.ownGrant, tables: access.readable, creatable: access.creatable },
+    // #671: the installed apps this person can open, so the shared top bar can
+    // lead to and name them without asking an Admin endpoint.
+    apps: (await appCatalog(user.row_id)).map(({ name, title }) => ({ name, title })),
+    // Every installed app, open or not (disabled, pending): where the bar's
+    // name leads follows the installation, as the address routing does.
+    installed_apps: await installedAppNames(),
     theme: (row?.theme as string) || 'device',
     language: (row?.language as string) || 'en',
     // A preview deployment says so in the UI: anyone handed the link should
@@ -1169,6 +1175,15 @@ app.get('/api/people/:id/identities', async (c) => {
   // still shows its name on the Person form.
   const methods = (await listSignInMethods()).map((m) => ({ key: m.key, kind: m.kind, label: m.label || m.key, enabled: m.enabled }))
   return c.json({ identities: await listIdentities(user, { includeEnded: true }), has_password: row.has_password === true, methods })
+})
+
+// #667: why a person sees nothing from an app's datasets: the provider's
+// places for them, and which each dataset applies or drops. System Manager
+// only, the person themself included.
+app.get('/api/people/:id/scope', async (c) => {
+  await assertSystemManager(who(c))
+  const { explainPersonScope } = await import('./scope-explain')
+  return c.json(await explainPersonScope(who(c), c.req.param('id'), c.req.query('app') ?? ''))
 })
 
 // Instance settings as code (#465, D3): the instance repository's workflow

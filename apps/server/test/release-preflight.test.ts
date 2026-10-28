@@ -189,6 +189,36 @@ describe('release preflight: app settings and secrets', () => {
     expect(lines.join('\n')).not.toMatch(/R-77|token-value-620/)
   })
 
+  // #666: an optional secret holds up only the reads and actions that need it.
+  test('an enabled app missing only an optional secret warns, naming the secret and the reads that need it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupoptional', ${sql.json({ name: 'setupoptional',
+      secrets: ['SETUPOPT_TOKEN', { name: 'SETUPOPT_EMBED', optional: true }], reads: { operations: { quick_view: {}, embed: { needs: ['SETUPOPT_EMBED'] } } } })}, true, true)`
+    const lines = await withNamedVariable('SETUPOPT_TOKEN', 'token-opt-666', () => withNamedVariable('SETUPOPT_EMBED', undefined, () => preflightRelease({ environment: 'test' })))
+    expect(lines).toContain('WARNING: app setupoptional lacks optional secret SETUPOPT_EMBED (needed by read embed). Only those answer "not set up yet"; the rest of the app works. Set the secret as a deployment variable to turn them on.')
+  })
+
+  // #660: a scope provider's declared identifier system the instance lacks.
+  test('an enabled scope provider declaring an identifier system the instance lacks warns, naming it', async () => {
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-missing-code'] } })}, true, true)`
+    expect(await preflightRelease({ environment: 'test' }))
+      .toContain('WARNING: app setupprovider is not set up yet: missing identifier system setup-missing-code. Set the setting in the instance settings file and the secret as a deployment variable.')
+  })
+
+  test('an enabled scope provider declaring a turned-off identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, enabled) values ('setup-off-code', 'Setup off code', 'employee-record', false)`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-off-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain('missing identifier system setup-off-code is turned off.')
+  })
+
+  test('an enabled scope provider declaring a Secret identifier system warns, naming it', async () => {
+    await sql`insert into identifier_system (row_id, label, kind, sensitivity, match) values ('setup-secret-code', 'Setup secret code', 'national-id', 'Secret', 'Off')`
+    await sql`insert into installed_app (name, manifest, enabled, runtime_package) values ('setupprovider',
+      ${sql.json({ name: 'setupprovider', scopeProvider: { name: 'positions', tables: ['x'], identifiers: ['setup-secret-code'] } })}, true, true)`
+    expect((await preflightRelease({ environment: 'test' })).join('\n')).toContain("missing identifier system setup-secret-code is secret and can't be given to an app.")
+  })
+
   test('a disabled app is not checked', async () => {
     await install(false)
     expect(await withNamedVariable('SETUPCHECK_TOKEN', undefined, () => preflightRelease({ environment: 'test' })))
