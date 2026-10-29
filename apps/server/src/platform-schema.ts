@@ -10,14 +10,13 @@ const PLATFORM_RELATIONS = new Set([
   'dataset_miss', 'dataset_place_drop', 'dataset_snapshot', 'email_account', 'email_queue', 'email_rule',
   'email_sink', 'file', 'glossary_avoid_word', 'glossary_link', 'glossary_term', 'has_role', 'health_check_event', 'home_page', 'home_page_link', 'home_page_role',
   'import_log', 'installed_app', 'instance_settings_apply', 'internal_metadata', 'job_execution', 'letter_head',
-  'metadata_override', 'migration', 'notification_log', 'password_reset', 'patch_log',
+  'metadata_override', 'migration', 'notification_log', 'password_reset',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'revoked_session', 'role',
   'runtime_action_result',
   'sales_target_snapshot_name', 'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
   'service_level_agreement', 'share', 'sign_in_method', 'single_value', 'sla_priority', 'table_def',
-  'tag_link', 'todo', 'translation', 'user', 'user_event', 'user_identity', 'user_settings', 'version',
-  // person-rename (0101) and person-resolution (0102). `user` and
-  // `user_identity` stay listed: migrations before 0101 still name them.
+  'tag_link', 'todo', 'translation', 'user_event', 'user_settings', 'version',
+  // person-rename and person-resolution.
   'person', 'service_account', 'sign_in_identity', 'person_id_map',
   'identifier_system', 'person_identifier', 'person_identifier_fingerprint',
   'person_match', 'person_match_member', 'person_merge',

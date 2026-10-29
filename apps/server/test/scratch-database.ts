@@ -1,5 +1,6 @@
 // A disposable database of its own, for the migrator cases that need a fresh
-// one or a ledger shaped as no migrated database is. The migrator's
+// one, one installed before the baseline, or a ledger shaped as no migrated
+// database is. The migrator's
 // connection is fixed when `src/db` is first loaded, so each scratch database
 // loads a fresh copy of the module graph pointed at it; `dropScratchDatabases`
 // drops them all afterwards.
@@ -7,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { vi } from 'vitest'
 import { config } from '../src/config'
+import { processIO } from '../src/command-io'
 
 const admin = postgres(config.databaseUrl, { max: 1, onnotice: () => {} })
 const created: string[] = []
@@ -43,4 +45,24 @@ export async function scratchDatabase(setup = '') {
       await db.end({ timeout: 5 })
     },
   }
+}
+
+/** A database as an instance installed before the baseline has it (#692):
+ *  the platform's tables, every migration the baseline replaced in the
+ *  ledger, and the retired patch runner's record. Built by installing fresh,
+ *  then rewriting the ledger to the old one. */
+export async function scratchInstalledBeforeBaseline() {
+  const scratch = await scratchDatabase()
+  const log = console.log
+  console.log = () => {}
+  try {
+    if ((await scratch.migrate.main([], processIO)) !== 0) throw new Error('the scratch install failed')
+  } finally {
+    console.log = log
+  }
+  await scratch.db.unsafe(`delete from featherbase.migration;
+    create table featherbase.patch_log (patch text primary key, applied_at timestamptz not null default now());
+    insert into featherbase.patch_log (patch) values ('0001_file_ref_index')`)
+  await scratch.db`insert into featherbase.migration ${scratch.db(scratch.migrate.replacedByBaseline().map((name) => ({ name })))}`
+  return scratch
 }

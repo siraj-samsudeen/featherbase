@@ -3,23 +3,16 @@ import { sql } from './db'
 import { hashPassword } from './auth'
 import { readVariable } from './env'
 
-// Security supersession of migration 0006 (#130). Only explicit local
-// environments have a knowable default. Provisioning never rotates a hash.
-// Only a developer's own machine or a test run has a knowable default;
-// `staging` (a hosted trial instance) is production here.
+// The first Administrator's password (migration 0141; #130). Only a
+// developer's own machine or a test run has a knowable default; `staging` (a
+// hosted trial instance) is production here. Provisioning never rotates a hash.
 export async function bootstrapAdministrator(env: string = environment) {
   const configured = readVariable('ADMIN_PASSWORD')
   const password = configured?.trim() ? configured
     : ['development', 'test'].includes(env) ? 'admin' : null
   if (password === null) return
-  // Migration 0006 runs this long before 0101 renamed `user` to `person`.
-  const [renamed] = await sql`select to_regclass('featherbase.person') as r`
-  if (renamed?.r)
-    await sql`update person set password_hash = ${hashPassword(password)}
-      where row_id = 'Administrator' and password_hash is null`
-  else
-    await sql`update "user" set password_hash = ${hashPassword(password)}
-      where row_id = 'Administrator' and password_hash is null`
+  await sql`update person set password_hash = ${hashPassword(password)}
+    where row_id = 'Administrator' and password_hash is null`
 }
 
 // The default-password warning is now the "Administrator default password"

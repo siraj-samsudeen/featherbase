@@ -14,22 +14,22 @@ afterEach(() => {
 })
 
 describe('release', () => {
-  test('on an up-to-date database it applies nothing and reports the preflight, the patches and the health checks', async () => {
+  test('on an up-to-date database it applies nothing and reports the preflight and the health checks', async () => {
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
     expect(r.stdout).toMatch(/^preflight: /)
     expect(r.stdout).toContain('preflight: pending migrations: none\n')
-    expect(r.stdout).toContain('patches up to date (1 total)\n')
-    expect(r.stdout).not.toContain('applied patch')
     expect(r.stdout).toMatch(/\nhealth: passing /)
   })
 
-  test('applies a patch not yet recorded', async () => {
-    await sql`delete from patch_log where patch = '0001_file_ref_index'`
+  test('applies a migration not yet recorded', async () => {
+    await sql`delete from migration where name = '0143_drop_patch_log.sql'`
+    await sql.unsafe('create table featherbase.patch_log (patch text primary key)')
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain('applied patch 0001_file_ref_index\npatches up to date (1 total)\n')
-    expect(await sql`select 1 from patch_log where patch = '0001_file_ref_index'`).toHaveLength(1)
+    expect(r.stdout).toContain('preflight: pending migrations: 0143_drop_patch_log.sql\n')
+    expect(await sql`select 1 from migration where name = '0143_drop_patch_log.sql'`).toHaveLength(1)
+    expect(await sql`select to_regclass('featherbase.patch_log') as r`).toEqual([{ r: null }])
   })
 
   test('a failing health check is a warning on stderr, and the release still succeeds', async () => {
@@ -44,7 +44,6 @@ describe('release', () => {
     await sql.unsafe('alter table featherbase.job_execution rename to job_execution_moved')
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain('patches up to date (1 total)\n')
     expect(r.stderr).toBe('health: the checks could not run: relation "featherbase.job_execution" does not exist\n')
   })
 

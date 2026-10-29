@@ -83,7 +83,6 @@ for (const name of ['tasker', 'other', 'action-proof']) {
 }
 run('pnpm', ['--filter', 'server', 'e2e:reset'])
 run('pnpm', ['--filter', 'server', 'migrate'])
-run('pnpm', ['--filter', 'server', 'patches'])
 let server
 let browser
 async function start(configured) {
@@ -354,7 +353,6 @@ try {
   await stop()
   run('pnpm', ['--filter', 'server', 'e2e:reset'])
   run('pnpm', ['--filter', 'server', 'migrate'])
-  run('pnpm', ['--filter', 'server', 'patches'])
   const v1 = resolve(output, 'preserved-tasker-v1')
   await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), v1, { recursive: true })
   const v2 = paths[0]

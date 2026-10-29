@@ -21,47 +21,24 @@ describe('findDuplicateMigrationPrefixes', () => {
     expect(errors[0]).toContain('0002_b.ts')
   })
 
-  it('does not flag the grandfathered 0064 and 0069 pairs', () => {
-    const errors = findDuplicateMigrationPrefixes([
-      '0063_fix_literal_newline_choices.sql',
-      '0064_data_sources.ts',
-      '0064_user_event.ts',
-      '0065_saved_view.ts',
-      '0069_access_tokens.sql',
-      '0069_import_upsert_log.ts',
-      '0070_oauth_settings.ts',
-    ])
-    expect(errors).toEqual([])
-  })
-
   it('passes a list of files with unique prefixes', () => {
     const errors = findDuplicateMigrationPrefixes([
-      '0001_init.sql',
-      '0002_table.sql',
-      '0101_person_rename.ts',
-      '0101a_service_account_name_unique.sql',
+      '0140_baseline.sql',
+      '0141_administrator_password.ts',
+      '0142a_later.sql',
+      '0142_mock_google_sign_in.ts',
     ])
     expect(errors).toEqual([])
   })
 
-  it('treats 0101 and 0101a as distinct numbers, not a collision', () => {
-    // Same-batch sub-ordering (0101, 0101a, 0101b, ...) is a deliberate,
-    // pre-existing convention — not what this guard exists to catch.
-    const errors = findDuplicateMigrationPrefixes(['0101_person_rename.ts', '0101a_service_account_name_unique.sql'])
+  it('treats 0142 and 0142a as distinct numbers, not a collision', () => {
+    // A lettered sub-number orders a file right after its number on purpose;
+    // it is not what this guard exists to catch.
+    const errors = findDuplicateMigrationPrefixes(['0142_mock_google_sign_in.ts', '0142a_later.sql'])
     expect(errors).toEqual([])
   })
 
-  it('still fails loudly if a grandfathered number picks up a THIRD file', () => {
-    const errors = findDuplicateMigrationPrefixes([
-      '0064_data_sources.ts',
-      '0064_user_event.ts',
-      '0064_something_new.ts',
-    ])
-    expect(errors).toHaveLength(1)
-    expect(errors[0]).toContain('0064_something_new.ts')
-  })
-
-  it('the real migrations/ directory on disk has no unexpected duplicate numbers', () => {
+  it('the real migrations/ directory on disk has no duplicate numbers', () => {
     const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
     const files = readdirSync(dir).filter((f) => f.endsWith('.sql') || f.endsWith('.ts'))
     expect(findDuplicateMigrationPrefixes(files)).toEqual([])

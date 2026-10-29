@@ -2,7 +2,6 @@ import { describe, expect } from 'vitest'
 import { DISPLAY_DEFAULTS } from 'shared'
 import { sql } from '../src/db'
 import { getSystemSettings } from '../src/settings'
-import { up as indianDisplayDefaults } from '../migrations/0116_indian_display_defaults'
 import { test } from './pg-test'
 
 // SET-004: global System Settings drive rendering and session lifetime.
@@ -54,17 +53,6 @@ describe('SET-004: system settings', () => {
       ['currency', 'USD\nEUR\nGBP\nINR\nJPY', 'INR'],
       ['date_format', 'dd-mon-yyyy', 'dd-mon-yyyy'],
     ])
-  })
-
-  test('an install that chose a retired date format moves to DD-Mon-YYYY; a chosen currency is kept', async () => {
-    await reset()
-    for (const [field, value] of [['date_format', 'mm-dd-yyyy'], ['currency', 'USD']]) {
-      await sql`insert into single_value ${sql({ table_name: 'System Settings', field, value })}`
-    }
-    await indianDisplayDefaults()
-    const s = await getSystemSettings()
-    expect(s.date_format).toBe('dd-mon-yyyy')
-    expect(s.currency).toBe('USD')
   })
 
   test('/api/settings exposes only the display subset', async ({ admin }) => {

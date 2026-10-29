@@ -44,7 +44,7 @@ describe('the deploy config runs one pre-deploy command', () => {
     const output = execFileSync(process.execPath, ['--import', 'tsx', join(repo, 'apps', 'server', 'src', 'pre-deploy.ts')], {
       cwd: join(repo, 'apps', 'server'), env, timeout: 60_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     })
-    expect(output).toContain('patches up to date (1 total)\n')
+    expect(output).toContain('preflight: pending migrations: none\n')
     expect(output).toContain('preview sign-in is not configured here — nothing to seed\n')
   }, 60_000)
 })
@@ -54,8 +54,8 @@ describe('pre-deploy', () => {
     configurePreview()
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain('patches up to date (1 total)\n')
-    expect(r.stdout.indexOf('patches up to date')).toBeLessThan(r.stdout.indexOf('preview seed complete'))
+    expect(r.stdout).toContain('preflight: pending migrations: none\n')
+    expect(r.stdout.indexOf('preflight: pending migrations')).toBeLessThan(r.stdout.indexOf('preview seed complete'))
     const [person] = await sql`select row_id, enabled from person where lower(email) = ${PREVIEW_USER}`
     expect(person).toMatchObject({ enabled: true })
     expect(await sql`select 1 from table_def where name = 'Store Sections'`).toHaveLength(1)

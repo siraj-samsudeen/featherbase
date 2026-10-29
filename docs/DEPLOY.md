@@ -9,7 +9,7 @@ Every deploy is **release, then serve** — never the reverse, and never both
 in one process:
 
 ```sh
-# 1. Release: apply migrations + patches. Run ONCE per deploy, before any
+# 1. Release: apply migrations. Run ONCE per deploy, before any
 #    new-code instance serves traffic.
 pnpm --filter server release
 
@@ -328,22 +328,26 @@ variables:**
 5. `pnpm --filter server release` on the copy, then check the data the
    migration rewrites.
 
-### Pending: script API rename `featherbase` (0124)
+### The baseline
 
-The object Server Scripts and Client Scripts call is now `featherbase`
-(`featherbase.throw(msg)`, `featherbase.ui.form.on(table, handlers)`); the
-runtimes no longer define `frappe`. Migration **0124** rewrites the stored
-`script` source of every Server Script and Client Script, replacing `frappe.`
-member access in the code with `featherbase.`. Text inside strings, template
-text, comments and regular expressions is left alone, so a URL such as
-`https://frappe.io` keeps its value. It rewrites the trial's data, so rehearse
-it as above. The rehearsal prints how many scripts of each kind changed, and
-names any script it could not read as JavaScript (left unchanged, to edit by
-hand) and any that still name `frappe` outside a member access, such as a
-`typeof frappe` guard, whose meaning may have changed. Check those by hand. Then compare each changed script before and after
-(`select row_id, script from server_script` / `client_script`). A script that
-still fails afterwards with "frappe is not defined" builds the name some other
-way (for example `var f = frappe`) and needs editing by hand too.
+A new instance starts from `0140_baseline.sql`: the schema and starting rows
+the 139 migrations before it built, in one step (#692). The steps after it
+that read the instance's own variables (`ADMIN_PASSWORD` for the first
+Administrator, `ALLOW_MOCK_OAUTH` for the local Google mock) run as before.
+
+An instance whose ledger holds every migration the baseline replaced
+(`migrations/baseline-replaces.txt`) is adopted: the release records the
+baseline and those steps without running them, then applies the rest. Any
+other database (a partial ledger, or one still keeping its ledger in
+`public.migration`) is refused before anything changes; upgrade it first with
+the last platform release before the baseline, commit `e562331d`, then
+release again. `migrate:rehearse` on a restored copy shows which of the two
+happens.
+
+The baseline is generated, never edited:
+`pnpm --filter server baseline:generate` migrates a scratch database and
+writes it again (`apps/server/scripts/generate-baseline.ts` says what it
+leaves out and why). Run on the same migrations, it writes the same file.
 
 ## Backups and rollback
 

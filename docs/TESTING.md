@@ -244,8 +244,8 @@ say why in a comment; `page.goto` for incidental fixture navigation is fine.
 Coverage is per package, collected only by `pnpm test:coverage` (never by
 plain `pnpm test`) and scoped to each package's `src/` — v8 for server and
 shared, Istanbul for web. E2E is not attributable to these numbers, and the
-server's `migrations/` and `patches/` are excluded (a separate process applies
-them; shipped migrations are append-only history).
+server's `migrations/` are excluded (a separate process applies them; shipped
+migrations are append-only history).
 
 The floors live only in each package's `vitest.config.ts` `coverage.thresholds`
 and only rise. CI fails a suite that drops below. The server suite's three CI

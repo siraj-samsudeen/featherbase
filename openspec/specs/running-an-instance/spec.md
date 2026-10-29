@@ -15,8 +15,7 @@ the step an operator runs when new code goes live.
 ### Requirement: A release brings the database up to date
 
 A release SHALL apply every database change that has not been applied yet,
-then every pending one-off fix, and SHALL leave an instance that is already up
-to date as it was.
+and SHALL leave an instance that is already up to date as it was.
 
 #### Scenario: Releasing an older instance keeps its data
 
@@ -30,23 +29,6 @@ to date as it was.
 - **WHEN** an operator releases again with nothing new to apply
 - **THEN** nothing is applied a second time
 
-### Requirement: Each one-off fix runs once
-
-A one-off fix, called a patch, SHALL run exactly once per database, in order. If one fails,
-the patches before it SHALL stay applied and the failed one SHALL leave no
-trace, so it is tried again at the next release.
-
-#### Scenario: A patch is never repeated
-
-- **WHEN** the operator runs the patches several times
-- **THEN** each patch has run once, in its listed order
-
-#### Scenario: A patch fails
-
-- **WHEN** a patch fails part-way
-- **THEN** the run stops there, the patches before it stay applied, and neither
-  the failed patch's changes nor any later patch is applied
-
 ### Requirement: A failed database change changes nothing
 
 When a database change fails during a release, the instance SHALL be left as
@@ -59,26 +41,17 @@ point.
 - **THEN** nothing it did remains
 - **AND** the next release applies it once
 
-### Requirement: The person-record changes stand or fall together
-
-The database changes that move people onto their permanent records SHALL be
-applied as one step, so a failure in any of them leaves none of them applied.
-
-#### Scenario: One of the person changes fails
-
-- **WHEN** a release applies the person-record changes and one of them fails
-- **THEN** none of them is left applied
-
 ### Requirement: A release refuses an instance that skipped versions
 
-A release SHALL refuse an instance whose earlier database changes are not all
-recorded, and SHALL say which are missing, before changing anything.
+A release SHALL refuse an instance it cannot bring up to date, before changing
+anything, and SHALL say which earlier release can upgrade it first.
 
 #### Scenario: An instance with a gap in its history
 
 - **WHEN** an operator releases onto an instance that is missing one of its
   earlier database changes
-- **THEN** the release stops, names the missing change, and changes nothing
+- **THEN** the release stops, names the missing change and the release to
+  upgrade with first, and changes nothing
 
 ### Requirement: Two releases at once do not collide
 
@@ -466,3 +439,28 @@ When the operator has set the Administrator password in the deployment settings,
 
 - **WHEN** the setting holds the Administrator's live password
 - **THEN** the release says they match and gives no warning
+
+### Requirement: A new instance starts in one step
+
+A release onto an empty database SHALL build the platform from one starting
+point, the same as replaying its whole history would, without reporting that
+history.
+
+#### Scenario: Installing a new instance
+
+- **WHEN** an operator releases onto an empty database
+- **THEN** it has the same tables and starting records as an instance built
+  change by change, and the release lists only a few steps
+
+### Requirement: An instance installed before the starting point is taken over
+
+A release onto an instance that has every change the starting point replaced
+SHALL record the starting point as done without running it, and SHALL leave
+the instance's tables and rows as they were.
+
+#### Scenario: Releasing onto the live trial
+
+- **WHEN** an operator releases onto an instance that was fully up to date
+  before the starting point existed
+- **THEN** its people, settings and records are unchanged, and later releases
+  carry on from the starting point

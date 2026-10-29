@@ -607,11 +607,11 @@ describe('Running an Instance: the command line lists what it can do', () => {
       output = `${e.stdout ?? ''}${e.stderr ?? ''}`
     }
     expect(code).toBe(1)
-    expect(output).toMatch(/usage: cli <migrate\|patches\|/)
+    expect(output).toMatch(/usage: cli <migrate\|seed\|/)
   }, 60_000)
 
   test('no command lists the commands and succeeds', async () => {
-    expect(await cli([])).toMatch(/^usage: cli <migrate\|patches\|/)
+    expect(await cli([])).toMatch(/^usage: cli <migrate\|seed\|/)
   })
 })
 
@@ -670,26 +670,6 @@ describe('the command line, command by command', () => {
     const [before] = await sql`select count(*)::int as n from migration`
     expect(await runMain(main, ['migrate'])).toMatchObject({ code: 0, stderr: '' })
     expect(await sql`select count(*)::int as n from migration`).toEqual([before])
-  })
-
-  test('patches applies a patch not yet recorded, and reports the patch that fails', async () => {
-    await sql`delete from patch_log where patch = '0001_file_ref_index'`
-    await sql.unsafe('drop index if exists featherbase.file_ref_idx')
-    expect(await cli(['patches'])).toBe('applied patch 0001_file_ref_index\npatches up to date (1 total)\n')
-    expect(await sql`select to_regclass('featherbase.file_ref_idx') is not null as made`).toEqual([{ made: true }])
-    expect(await cli(['patches'])).toBe('patches up to date (1 total)\n')
-    await sql`delete from patch_log where patch = '0001_file_ref_index'`
-    await sql.unsafe('alter table featherbase.file rename to file_moved')
-    const f = await failure(['patches'])
-    expect(f?.stderr).toBe('error: relation "featherbase.file" does not exist\n')
-  })
-
-  test('identities:plan prints what migration 0100 would do, on a database before it', async () => {
-    // The pre-0101 names this plan reads (migration-0100.test.ts has the full shape).
-    await sql.unsafe(`alter table featherbase.person rename to "user";
-      alter table featherbase."user" add column user_type varchar(140) not null default 'human'`)
-    const out = await cli(['identities:plan'])
-    expect(out).toMatch(/^person-identities/)
   })
 
   test('migrate:rehearse runs in its own process: a bad argument, the database here (live, so only with --allow-live), and a database that is not there', async () => {

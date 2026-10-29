@@ -10,7 +10,6 @@ import { z } from 'zod'
 import { sql } from './db'
 import { readNamedVariable } from './env'
 import { AppError } from './errors'
-import { platformRelation } from './platform-schema'
 import { datasetSourceReadOnly } from './sources/read-only'
 
 const settingName = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
@@ -87,14 +86,9 @@ export async function loadAppSetup(app: string, declaration: AppSetupDeclaration
 /** Each enabled, installed app that declares settings, secrets, datasets or
  *  a scope provider's identifier systems, with the required ones it lacks, by
  *  name (`setting x`, `secret Y`, `identifier system z`). Never a
- *  value. The release check (before migrations) names where the tables are
- *  now, or that App Setting does not exist yet. */
-export async function appSetupState(where: { installed?: string; settings?: string | null; sources?: string | null; identifierSystems?: string | null } = {}): Promise<{ app: string; title: string; missing: string[]; optional: string[] }[]> {
-  const installed = where.installed ?? platformRelation('installed_app')
-  const settings = where.settings === undefined ? platformRelation('app_setting') : where.settings
-  const sources = where.sources === undefined ? platformRelation('data_source') : where.sources
-  const identifierSystems = where.identifierSystems === undefined ? platformRelation('identifier_system') : where.identifierSystems
-  const rows = await sql`select name, manifest from ${sql(installed)}
+ *  value. */
+export async function appSetupState(): Promise<{ app: string; title: string; missing: string[]; optional: string[] }[]> {
+  const rows = await sql`select name, manifest from installed_app
     where enabled and (manifest ? 'settings' or manifest ? 'secrets' or manifest ? 'datasets'
       or jsonb_typeof(manifest->'scopeProvider'->'identifiers') = 'array') order by name`
   const gaps: { app: string; title: string; missing: string[]; optional: string[] }[] = []
@@ -108,22 +102,21 @@ export async function appSetupState(where: { installed?: string; settings?: stri
     const neededBy = (secret: string) => [['read', declared.reads?.operations], ['action', declared.actions?.operations]]
       .flatMap(([kind, operations]) => Object.entries(operations ?? {}).filter(([, o]) => o?.needs?.includes(secret)).map(([name]) => `${kind} ${name}`))
     const required = (declared.settings ?? []).filter(s => s.required).map(s => s.name)
-    const filled = settings && required.length
-      ? new Set((await sql`select setting from ${sql(settings)} where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
+    const filled = required.length
+      ? new Set((await sql`select setting from app_setting where app = ${app} and coalesce(trim(value), '') <> ''`).map(r => String(r.setting)))
       : new Set<string>()
     // #625 (E3): a dataset names a Data Source the instance must declare.
     const wanted = [...new Set((declared.datasets ?? []).map(d => d.source))]
-    // Read as JSON: before migration 0136 a source has no read_scaling_token.
-    const found = sources && wanted.length
-      ? new Map((await sql`select row_id, to_jsonb(d) as source from ${sql(sources)} d where row_id in ${sql(wanted)}`)
+    const found = wanted.length
+      ? new Map((await sql`select row_id, to_jsonb(d) as source from data_source d where row_id in ${sql(wanted)}`)
         .map(r => [String(r.row_id), r.source as { engine: string; url_env: string | null; read_scaling_token?: boolean }]))
       : new Map<string, { engine: string; url_env: string | null; read_scaling_token?: boolean }>()
     // #660: a scope provider names the identifier systems it reads.
     const systems = declared.scopeProvider?.identifiers ?? []
     // A turned-off system is not set up either (owner decision 27-Oct-2026,
     // provisional), nor is a Secret one, which is never given to an app.
-    const foundSystems = identifierSystems && systems.length
-      ? new Map((await sql`select row_id, enabled, sensitivity from ${sql(identifierSystems)} where row_id in ${sql(systems)}`)
+    const foundSystems = systems.length
+      ? new Map((await sql`select row_id, enabled, sensitivity from identifier_system where row_id in ${sql(systems)}`)
         .map(r => [String(r.row_id), r.sensitivity === 'Secret' ? 'is secret and can\'t be given to an app' : r.enabled === true ? null : 'is turned off']))
       : new Map<string, string | null>()
     const missing = [

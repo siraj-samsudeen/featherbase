@@ -1,11 +1,11 @@
-// #130 in-process: the first-admin warning and the pre-rename provisioning
-// path. The subprocess cases in admin-bootstrap.test.ts prove the same on a
-// fresh database; these run in the sandbox, where DDL rolls back too.
+// #130 in-process: the first-admin warning. The subprocess cases in
+// admin-bootstrap.test.ts prove provisioning on a fresh database; these run
+// in the sandbox.
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { hashPassword, verifyPassword } from '../src/auth'
-import { bootstrapAdministrator, diagnoseAdminBootstrap } from '../src/admin-bootstrap'
+import { hashPassword } from '../src/auth'
+import { diagnoseAdminBootstrap } from '../src/admin-bootstrap'
 import { makePerson } from './fixtures'
 
 async function warnings(run: () => Promise<void>): Promise<string[]> {
@@ -40,19 +40,5 @@ describe('the first-admin bootstrap diagnosis', () => {
     const manager = await makePerson({ email: 'manager@example.com', full_name: 'Manager', roles: [{ role: 'System Manager' }] })
     await sql`update person set password_hash = ${hashPassword('pw-123456')} where row_id = ${manager}`
     expect(await warnings(() => diagnoseAdminBootstrap('production'))).toEqual([])
-  })
-})
-
-describe('provisioning before the person table was renamed', () => {
-  test('a null Administrator hash is set on the old `user` table, and a hash already there is kept', async () => {
-    await sql`alter table person rename to "user"`
-    await sql`update "user" set password_hash = null where row_id = 'Administrator'`
-    await bootstrapAdministrator('development')
-    const [set] = await sql`select password_hash from "user" where row_id = 'Administrator'`
-    expect(verifyPassword('admin', set.password_hash)).toBe(true)
-    await sql`update "user" set password_hash = ${hashPassword('kept-secret')} where row_id = 'Administrator'`
-    await bootstrapAdministrator('development')
-    const [kept] = await sql`select password_hash from "user" where row_id = 'Administrator'`
-    expect(verifyPassword('kept-secret', kept.password_hash)).toBe(true)
   })
 })

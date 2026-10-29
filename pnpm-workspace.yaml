@@ -1,3 +1,11 @@
 packages:
   - apps/*
   - packages/*
+
+# pnpm 10 runs no dependency's install script unless it is listed, and says
+# so on every install. esbuild's is allowed: it checks that its platform binary
+# matches (fetching it only if the optional dependency carrying it is missing),
+# a step esbuild's own install expects (#692). Declining it with
+# ignoredBuiltDependencies does not silence the notice in pnpm 10.33.
+onlyBuiltDependencies:
+  - esbuild
