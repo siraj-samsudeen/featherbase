@@ -69,6 +69,7 @@ export const ADMIN_STATIC_PAGES: readonly { slug: string; title: string; manage?
   { slug: 'access-tokens', title: 'Access tokens' },
   { slug: 'find-person', title: 'Find a person by identifier' },
   { slug: 'explore', title: 'Explore' },
+  { slug: 'glossary', title: 'Glossary' },
   { slug: 'waiting-for-access', title: 'Waiting for access', manage: true },
   { slug: 'instance-health', title: 'Instance health', manage: true },
 ]

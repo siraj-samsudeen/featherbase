@@ -32,9 +32,10 @@ import { KindIcon } from '../lib/kind-icons'
 import { NoAccessPage, REPORT_PATH, Waiting } from './RestrictedShell'
 import { WAITING_COUNT_QUERY_KEY } from './WaitingForAccess'
 import { HealthBanner, INSTANCE_HEALTH_PATH } from './InstanceHealth'
+import { GLOSSARY_PATH } from '../lib/glossary'
 import { useSetupOffer } from './FirstRunSetup'
 import { Select, StatusPill, buttonClasses, cardClasses, iconButtonClasses, inputClasses, touchRowClasses, useMediaQuery } from '../components/ui'
-import { Bell, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
+import { Bell, BookOpen, CalendarClock, Clock, Compass, Database, History, Key, ListChecks, Menu, ShieldLock, Table, UserRoundSearch, type LucideIcon } from '../components/ui/icons'
 import { fmtCount } from '../lib/inr'
 
 interface SearchHit {
@@ -720,6 +721,8 @@ function AdminShell() {
               // #100 pattern 4: the cross-filter Explore surface.
               { to: '/featherbase/admin/explore', search: { root: undefined, chain: undefined, select: undefined }, label: 'Explore', icon: Compass, testid: 'explore-link' },
               { to: '/featherbase/admin/all-tables', label: 'All tables', icon: Table, testid: 'all-tables-link' },
+              // #629: everyone signed in reads the glossary.
+              { to: GLOSSARY_PATH, label: 'Glossary', icon: BookOpen, testid: 'glossary-link' },
               // #206: an import is a thing you did, not just rows that appeared —
               // so it has a place to be found again.
               ...(canManage ? [{ to: '/featherbase/admin/imports', label: 'Past imports', icon: History, testid: 'past-imports-link' }] : []),

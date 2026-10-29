@@ -1,0 +1,91 @@
+{
+  "manifestVersion": 1,
+  "platformVersion": "2026-10",
+  "name": "shelves",
+  "title": "Shelves",
+  "entryTable": "shelves.assignment",
+  "tables": [
+    {
+      "name": "shelves.assignment",
+      "label": "Shelf Assignment",
+      "id_pattern": "hash",
+      "columns": [
+        {
+          "column_name": "person",
+          "label": "Person",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "job",
+          "label": "Job",
+          "column_type": "Data"
+        },
+        {
+          "column_name": "aisle",
+          "label": "Aisle",
+          "column_type": "Data"
+        }
+      ]
+    },
+    {
+      "name": "shelves.aisle",
+      "label": "Aisle",
+      "id_pattern": "prompt",
+      "columns": [
+        {
+          "column_name": "aisle_name",
+          "label": "Aisle name",
+          "column_type": "Data"
+        }
+      ]
+    }
+  ],
+  "permissions": [
+    {
+      "table": "shelves.assignment",
+      "role": "All",
+      "can_read": true
+    }
+  ],
+  "glossary": {
+    "version": 1,
+    "terms": [
+      {
+        "term": "Shelf Lead",
+        "definition": "The person who keeps one aisle's shelves full and tidy for a whole shift.",
+        "examples": [
+          "Asha is Shelf Lead for aisle 4 on the morning shift."
+        ],
+        "describes": [
+          {
+            "table": "shelves.assignment",
+            "column": "job"
+          }
+        ]
+      },
+      {
+        "term": "Coverage",
+        "definition": "The aisles a person is answerable for on a shift.",
+        "avoid": [
+          {
+            "word": "scope",
+            "reason": "reads as access rights"
+          }
+        ],
+        "describes": [
+          {
+            "table": "shelves.aisle"
+          }
+        ]
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "id": "glossary_wording",
+      "fromVersion": "1.0.0",
+      "toVersion": "1.1.0",
+      "operations": []
+    }
+  ]
+}

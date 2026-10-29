@@ -15,6 +15,7 @@ import type { ScopeProviderBinding } from './person-scope'
 import { loadAppSetup, secretEntries, secretsDeclaration, settingsDeclaration } from './app-settings'
 import { roleDefaultsDeclaration, validateRoleDefaults } from './app-role-bindings'
 import { datasetsDeclaration, forgetAppDatasets, registerAppDatasets } from './app-datasets'
+import { glossaryDeclaration, syncAppGlossary, validateGlossary } from './glossary'
 import { sql, withTransaction } from './db'
 import { logActivity } from './audit'
 import { invalidateMeta } from './meta'
@@ -111,6 +112,9 @@ const manifestSchema = z.object({
   // #642 (E8): the app's controls in the shared top bar.
   bar: z.array(barControl).optional(),
   tabs: tabsDeclaration.optional(),
+  // #629: the app's glossary terms, written under the app at install and
+  // upgrade.
+  glossary: glossaryDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -259,6 +263,7 @@ async function loadArtifact(directory: string): Promise<RuntimePackage> {
   validateMigrations(manifest.name, pkg.version, manifest.tables, manifest.migrations)
   const digest = await artifactDigest(root)
   validateRoleDefaults(manifest.roleDefaults, manifest.roles)
+  validateGlossary(manifest.glossary, manifest.tables, manifest.permissions)
   const names = new Set(manifest.tables.map((t) => t.name))
   if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
     throw new Error('Duplicate Tables or unknown entryTable')
@@ -547,6 +552,7 @@ export function upgradeApp(name: string, version: string, planId: string, actor 
           migration_ledger = ${sql.json(prepared.ledger)}, activation_pending = true,
           previous_artifact = ${sql.json({ version: prepared.prior.version, digest: prepared.prior.digest })},
           upgrade_plan = ${planId} where name = ${name}`
+        await syncAppGlossary(name, prepared.target.manifest.glossary, actor)
       }))
     } catch (error) {
       invalidateMeta()

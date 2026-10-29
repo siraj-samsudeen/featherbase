@@ -305,6 +305,7 @@ describe('#432: every write entry point is covered', () => {
     'PATCH /api/table/:table/:name': 'row',
     'DELETE /api/table/:table/:name': 'row',
     'POST /api/save_row': 'row',
+    'POST /api/glossary/take_app_wording': 'saveDoc on Glossary Term (#629), not system-written',
     'PUT /api/table_def/:name': 'structure',
     'PUT /api/table_def/:name/id_pattern': 'structure',
     'POST /api/table_def/:name/rename_column': 'structure',
