@@ -101,10 +101,10 @@ test.describe('coarse-pointer phone', () => {
 
   // KNOWN DEFECT, pinned (#650 follow-up). SPEC: a panel an app pins to the
   // window starts below the shared bar. The bar publishes its height as
-  // --featherbase-bar-height; Tasker 2.3.0 still reads the retired runtime
-  // shell's --featherbase-runtime-shell-inset (falling back to 0), so its phone
-  // inspector opens under the bar. Tasker's files are not changed here: an
-  // installed Tasker 2.3.0 is matched by fingerprint, and changed files under
+  // --featherbase-bar-height; Tasker 2.3.1 (like 2.3.0) still reads the
+  // retired runtime shell's --featherbase-runtime-shell-inset (falling back to
+  // 0), so its phone inspector opens under the bar. Tasker's files are not
+  // changed here: an installed Tasker is matched by fingerprint, and changed files under
   // the same version would stop the server booting. Fixed by a new Tasker
   // version that reads the bar's variable; then flip this to a plain test.
   test.fail("Tasker's inspector, pinned to the window, starts below the shared bar on a phone", async ({ session, request }) => {
