@@ -6,7 +6,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { makePerson } from './fixtures'
-import { configureGoogle } from './identity-fixtures'
+import { configureDelegated, configureGoogle } from './identity-fixtures'
 import { googleLink, googleSignIn, linkOutcome, redeemSession } from './google-mock'
 
 const COMPANY = 'example.com'
@@ -256,6 +256,25 @@ describe('a link whose claim was never recorded', () => {
     // Google off takes nothing away from them.
     await configureGoogle({ allowed_email_domains: COMPANY })
     expect((await setGoogle(admin, { enabled: false })).status).toBe(200)
+  })
+
+  test('widening the list, or changing another method, restricts nothing and is allowed', async ({ admin }) => {
+    await configureGoogle({ allowed_email_domains: COMPANY })
+    await googleOnlySm('sm.693.widen', 'uid_693_widen', 'g-693-widen', null)
+    expect((await setGoogle(admin, { allowed_email_domains: `${COMPANY},sister.test` })).status).toBe(200)
+    const [pw] = await sql`select updated_at, label from sign_in_method where row_id = 'password'`
+    const other = await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label: `${pw.label ?? 'Password'} (renamed)`, updated_at: pw.updated_at }),
+    })
+    expect(other.status).toBe(200)
+    // Another method turned off and on again restricts none of their Google ways in either.
+    await configureDelegated()
+    const [hr] = await sql`select updated_at from sign_in_method where row_id = 'stylehr'`
+    expect((await admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/stylehr`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: false, updated_at: hr.updated_at }),
+    })).status).toBe(200)
   })
 
   test('a recorded matching claim behaves as before: removing its domain is refused, a change that keeps it is allowed', async ({ admin }) => {

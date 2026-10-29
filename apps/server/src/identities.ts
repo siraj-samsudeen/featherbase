@@ -646,21 +646,42 @@ export async function assertNoAdminLockout(
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
         case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
       from sign_in_method
+    ), links as (
+      -- Each live link, judged before and after: possible (may work) and
+      -- proven (known to work), per keepsDomain.
+      select i.person_id,
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(before, 'possible')}) as possible_before,
+        exists (select 1 from m0 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(before, 'proven')}) as proven_before,
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(after, 'possible')}) as possible_after,
+        exists (select 1 from m1 m where m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
+          and ${keepsDomain(after, 'proven')}) as proven_after
+      from sign_in_identity i join privileged p on p.row_id = i.person_id
+      where i.subject is not null and i.ended_at is null
+    ), passwords as (
+      select p.row_id as person_id,
+        exists (select 1 from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) as before_ok,
+        exists (select 1 from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
+          where u.row_id = p.row_id and u.password_hash is not null) as after_ok
+      from privileged p
     ), ways as (
+      -- #693 (Codex round 5): refuse only when the change restricts one of
+      -- the person's possible ways in (it stops being possible, or now needs
+      -- a hosted-domain claim it did not need before and has none recorded)
+      -- AND leaves them no proven way in. Widening a list, or changing
+      -- another method, restricts nothing.
       select p.row_id,
-        (select count(*) from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain(before, 'possible')}) as before_n,
-        (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
-          where u.row_id = p.row_id and u.password_hash is not null) +
-        (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain(after, 'proven')}) as after_n
+        (select count(*) from links l where l.person_id = p.row_id
+          and l.possible_before and (not l.possible_after or (l.proven_before and not l.proven_after)))
+        + (select count(*) from passwords w where w.person_id = p.row_id and w.before_ok and not w.after_ok) as restricted_n,
+        (select count(*) from links l where l.person_id = p.row_id and l.proven_after)
+        + (select count(*) from passwords w where w.person_id = p.row_id and w.after_ok) as proven_after_n
       from privileged p
     )
-    select row_id from ways where before_n > 0 and after_n = 0 order by row_id`
+    select row_id from ways where restricted_n > 0 and proven_after_n = 0 order by row_id`
   if (rows.length)
     throw new AppError(
       'ValidationError',
