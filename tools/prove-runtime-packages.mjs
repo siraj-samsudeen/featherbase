@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
@@ -25,6 +25,7 @@ await mkdir(resolve(root, 'dist'), { recursive: true })
 const output = await mkdtemp(resolve(root, 'dist/runtime-proof-'))
 const core = resolve(output, 'core')
 const coverageDirectory = process.env.VITE_COVERAGE === 'true' ? resolve(root, 'coverage/tasker/packaged') : null
+if (coverageDirectory) await rm(coverageDirectory, { recursive: true, force: true })
 const coverageWrites = []
 async function collectContext(context) {
   if (!coverageDirectory) return
