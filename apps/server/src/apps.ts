@@ -156,7 +156,25 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
 
 // Wire an app's doc_events into the controller registry, tracking the created
 // controllers so uninstall can remove exactly them.
-function wireHooks(manifest: AppManifest): void {
+// #700, Codex standard review round 2: the app's jobs whose name it still
+// holds. A job row someone else now holds (deleted and re-created in Admin,
+// say) is skipped, logged, never wired: its handler must not run on a
+// schedule the app does not own. The app's other jobs still load.
+async function claimedJobs(manifest: AppManifest): Promise<Set<string>> {
+  const claimed = new Set<string>()
+  for (const ev of manifest.scheduler_events ?? []) {
+    try {
+      if (manifest.runtime_package) await assertJobClaimable(manifest.name, ev.method)
+      claimed.add(ev.method)
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error
+      console.warn(`[apps] ${manifest.name}: its job ${ev.method} was not loaded: ${error.message}`)
+    }
+  }
+  return claimed
+}
+
+function wireHooks(manifest: AppManifest, claimed?: Set<string>): void {
   if (wired.has(manifest.name)) return
   const controllers: TableController[] = []
   for (const [table, hooks] of Object.entries(manifest.doc_events ?? {})) {
@@ -172,6 +190,7 @@ function wireHooks(manifest: AppManifest): void {
   // a runtime app's handlers are registered as that app's, and never over a
   // handler someone else registered (refused when its files loaded).
   for (const ev of manifest.scheduler_events ?? []) {
+    if (claimed && !claimed.has(ev.method)) continue
     if (!manifest.runtime_package) registerJob(ev.method, ev.handler)
     else if ([null, manifest.name].includes(jobRegistrant(ev.method))) registerJob(ev.method, ev.handler, manifest.name)
   }
@@ -197,8 +216,9 @@ export function suspendRuntimeApp(name: string): void { unwireHooks(name) }
 // Ensure each scheduler_event has a Scheduled Job row (the manifest's cadence
 // is the default for a NEW row only — an edited row is the administrator's)
 // and a live queue entry to match.
-async function ensureSchedulerJobs(manifest: AppManifest): Promise<void> {
+async function ensureSchedulerJobs(manifest: AppManifest, claimed?: Set<string>): Promise<void> {
   for (const ev of manifest.scheduler_events ?? []) {
+    if (claimed && !claimed.has(ev.method)) continue
     cadenceSeconds(ev.cadence) // refuse an unknown cadence before writing anything
     // #700: a runtime app's job is its own row; a name Featherbase or another
     // app already schedules is refused, never adopted.
@@ -746,13 +766,11 @@ export async function loadInstalledApps(): Promise<void> {
       continue
     }
     if (manifest && !wired.has(manifest.name)) {
-      wireHooks(manifest)
-      // #700: a job row someone else now holds must not stop the instance
-      // booting; the app's other jobs and everything else still load.
-      await ensureSchedulerJobs(manifest).catch((error: unknown) => {
-        if (!manifest.runtime_package) throw error
-        console.warn(`[apps] ${manifest.name}: its scheduled jobs were not ensured: ${error instanceof Error ? error.message : String(error)}`)
-      })
+      // #700: ownership is checked before any handler is registered; a job
+      // row someone else now holds is skipped, and boot carries on.
+      const claimed = await claimedJobs(manifest)
+      wireHooks(manifest, claimed)
+      await ensureSchedulerJobs(manifest, claimed)
     }
   }
 }
@@ -773,8 +791,9 @@ export function setAppEnabled(name: string, enabled: boolean) {
     // queues them again; disabling withdraws their queue entries. The rows'
     // own on/off switch stays the administrator's (or the settings file's).
     if (enabled) {
-      wireHooks(manifest!)
-      await ensureSchedulerJobs(manifest!)
+      const claimed = await claimedJobs(manifest!)
+      wireHooks(manifest!, claimed)
+      await ensureSchedulerJobs(manifest!, claimed)
     } else unwireHooks(name)
     await syncAppJobs(name)
     return { name, enabled }

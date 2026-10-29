@@ -147,10 +147,17 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
         }),
       }),
       email: Object.freeze({
-        systemManagers: (message: { subject: string; body: string }) => need('email_system_managers', () => {
-          assertNoSecret(ready.kept, message)
-          return emailSystemManagers(actor, message)
-        }),
+        systemManagers: (message: { subject: string; body: string }) => {
+          // Read once, here, into the platform's own strings: what is checked
+          // is what is sent, whatever the app does to its object meanwhile
+          // (Codex round 2 on #701).
+          const mail = snapshotMessage(message)
+          return need('email_system_managers', () => {
+            const checked = validMessage(mail)
+            assertNoSecret(ready.kept, checked)
+            return emailSystemManagers(actor, checked)
+          })
+        },
       }),
       setResult: (text: string) => ctx.setResult(kept(text)),
       refuse: (reason: string) => ctx.refuse(kept(reason)),
@@ -209,17 +216,19 @@ async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
  *  re-enabled, disabled or promoted them since the job decided. Privileged
  *  people are never disabled. The job's actor holds System Manager only for
  *  this one save (system-actor.ts). */
-async function disablePerson(actor: string, person: string, reason: string): Promise<boolean> {
+export async function disablePerson(actor: string, person: string, reason: string): Promise<boolean> {
   if (typeof person !== 'string' || !person) throw new AppError('ValidationError', 'disable needs a person')
   if (typeof reason !== 'string' || !reason.trim()) throw new AppError('ValidationError', 'disable needs a reason')
   return withTransaction(async () => {
-    const [row] = await sql`
-      select p.updated_at, p.enabled,
-        (p.row_id = 'Administrator' or exists (
-          select 1 from has_role r where r.parent = p.row_id and r.parenttype = 'Person'
-            and r.role in ('System Manager', 'Administrator'))) as privileged
-      from person p where p.row_id = ${person} for update`
-    if (!row || !row.enabled || row.privileged) return false
+    // The row lock first, the roles after it in a statement of their own
+    // (Codex round 2 on #701): a lock that waits for a concurrent promotion
+    // returns the promoted row, but a role subquery in the same statement
+    // still reads the snapshot from before it waited.
+    const [row] = await sql`select updated_at, enabled from person where row_id = ${person} for update`
+    if (!row || !row.enabled || person === 'Administrator') return false
+    const [privileged] = await sql`select 1 from has_role where parent = ${person} and parenttype = 'Person'
+      and role in ('System Manager', 'Administrator') limit 1`
+    if (privileged) return false
     await runAsSystemActor(actor, () => saveDoc('Person', { row_id: person, updated_at: row.updated_at, enabled: false }, actor))
     await logActivity(actor, `disabled ${person}: ${reason.trim()}`.slice(0, 140))
     return true
@@ -227,9 +236,21 @@ async function disablePerson(actor: string, person: string, reason: string): Pro
 }
 
 /** `email_system_managers`: one message to each System Manager with an address. */
-async function emailSystemManagers(actor: string, message: { subject: string; body: string }): Promise<number> {
-  if (!message || typeof message.subject !== 'string' || !message.subject.trim() || typeof message.body !== 'string')
+/** An app's email, each property read exactly once at the call. Checked
+ *  only once the job is known to hold the grant. */
+function snapshotMessage(message: unknown): { readonly subject: unknown; readonly body: unknown } {
+  if (!message || typeof message !== 'object') return Object.freeze({ subject: undefined, body: undefined })
+  return Object.freeze({ subject: (message as { subject?: unknown }).subject, body: (message as { body?: unknown }).body })
+}
+
+/** The snapshot as the platform's own strings, or a refusal. */
+function validMessage(mail: { readonly subject: unknown; readonly body: unknown }): Readonly<{ subject: string; body: string }> {
+  if (typeof mail.subject !== 'string' || !mail.subject.trim() || typeof mail.body !== 'string')
     throw new AppError('ValidationError', 'An email needs a subject and a body')
+  return Object.freeze({ subject: mail.subject, body: mail.body })
+}
+
+async function emailSystemManagers(actor: string, message: Readonly<{ subject: string; body: string }>): Promise<number> {
   const managers = await systemManagerEmails()
   if (!managers.length) {
     await recordUndeliveredNotice(`${actor} email`)

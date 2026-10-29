@@ -22,6 +22,12 @@ const controller: TableController = {
       await syncScheduledJobs(String(row.method))
     },
     on_trash: async ({ row, tx }) => {
+      // #700: an app's job is the app's for as long as it is installed: it
+      // goes when the app is removed or an upgrade drops it, never by hand
+      // (a re-created row would no longer be the app's).
+      const [owned] = await tx`select owner_app from scheduled_job where row_id = ${String(row.row_id)}`
+      if (owned?.owner_app)
+        throw new AppError('ValidationError', `This job belongs to the app ${String(owned.owner_app)}. Switch it off here, or turn the app off; it is removed with the app`)
       await tx`delete from background_job where method = ${String(row.method)} and job_status = 'queued'`
     },
   },

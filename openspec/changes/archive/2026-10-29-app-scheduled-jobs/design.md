@@ -66,7 +66,13 @@ must match the declared names exactly, as for actions and reads.
   for that one save does the actor hold System Manager (the instance-settings
   pattern in `system-actor.ts`), so the version history and Activity Log name
   the job as the one who disabled them.
-- `email.systemManagers` refuses a message holding one of the app's secrets,
+- `people.disable` takes the Person row lock first and checks the Administrator
+  and System Manager roles in a separate statement under it, so a promotion
+  that commits while the disable waits is seen (Codex round 2).
+- `email.systemManagers` reads the subject and body once, at the call, and
+  checks and sends only that copy, so the app cannot swap a secret in while
+  the recipients are looked up (Codex round 2). It refuses a message holding
+  one of the app's secrets,
   queues one email per System Manager with an address, and records an
   undelivered notice when there is none.
 - An app's secrets stay in (Codex round 1): a run's result or refusal reason
@@ -86,6 +92,10 @@ must match the declared names exactly, as for actions and reads.
   that Featherbase or another app holds, or a handler someone else registered,
   refuses the install, which then leaves nothing behind. Rows are written
   after the install's ledger row, recording the owning app on each.
+- **Restart and enable**: ownership is checked before any handler is
+  registered. A job whose row someone else now holds is skipped and logged;
+  the app's other jobs load. Admin cannot delete an app's job row: it goes
+  with the app, or when an upgrade drops it.
 - **Disable** (interpretation of decision 4): the rows stay and keep their
   on/off switch, which belongs to the administrator or the settings file; the
   app's handlers are withdrawn and its queue entries removed, and a row whose

@@ -9,9 +9,10 @@ import { afterEach, describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { expectApiError } from './fixtures'
 import { sql } from '../src/db'
-import { drainJobs, registerJob } from '../src/jobs'
+import { drainJobs, jobRegistrant, registerJob, syncScheduledJobs } from '../src/jobs'
 import { discoverPackages, packageFailures } from '../src/runtime-packages'
-import { uninstallApp } from '../src/apps'
+import { loadInstalledApps, uninstallApp } from '../src/apps'
+import { deleteDoc } from '../src/document'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { newIdentifierId } from '../src/person-identifiers'
 import { withNamedVariable } from '../src/env'
@@ -64,6 +65,12 @@ const HANDLERS: Record<string, string> = {
   mail_then_overreach: `async mail_then_overreach(ctx) {
     await ctx.email.systemManagers({ subject: 'Before overreach', body: 'sent once' })
     await ctx.people.disable('psn_anyone', 'not allowed')
+  }`,
+  mail_swap: `async mail_swap(ctx) {
+    const message = { subject: 'Swap', body: 'original text' }
+    const sent = ctx.email.systemManagers(message)
+    message.body = 'token ' + ctx.secrets.FBJOBS_TOKEN
+    ctx.setResult('mailed ' + await sent)
   }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
@@ -382,6 +389,49 @@ describe("a job's secrets stay in", () => {
     expect(await sql`select attempt, outcome, error from job_execution where method = ${method}`)
       .toEqual([{ attempt: 1, outcome: 'error', error: `The job ${method} has not declared the grant disable_people` }])
     expect(await sql`select recipient from email_queue where subject = 'Before overreach'`).toEqual([{ recipient: 'once@example.test' }])
+  })
+})
+
+describe('what a job mails is what was checked', () => {
+  test('changing the message after handing it over changes nothing that is sent', async ({ admin, createUser }) => {
+    await createUser({ email: 'swap@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'mail_swap', cadence: 'daily', description: 'Mails, then edits its message.', grants: ['email_system_managers'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    expect(await sql`select recipient, body from email_queue where subject = 'Swap'`).toEqual([{ recipient: 'swap@example.test', body: 'original text' }])
+    expect(await leaksAnywhere()).toBe(false)
+  })
+})
+
+describe('an app job row stays the app\'s', () => {
+  const tidy: Job = { name: 'tidy', cadence: 'daily', description: 'Tidy notes.' }
+
+  test('Admin cannot delete it', async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await expect(deleteDoc('Scheduled Job', SWEEP, 'Administrator')).rejects.toMatchObject({ message: expect.stringContaining(`This job belongs to the app ${APP}`) })
+    expect(await row(SWEEP)).toMatchObject({ owner_app: APP })
+  })
+
+  test('after a restart, a job whose row someone else now holds is not loaded; the app\'s other jobs are', async ({ admin }) => {
+    const dir = await writeApp({ jobs: [sweep, tidy] })
+    expect(await discoverPackages([dir])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    // The row re-created without its owner, as a hand-made platform job.
+    await sql`delete from scheduled_job where method = ${SWEEP}`
+    await sql`insert into scheduled_job (row_id, method, cadence, enabled, description) values (${SWEEP}, ${SWEEP}, 'daily', true, 'Made by hand.')`
+    await sql`delete from background_job where job_status = 'queued'`
+    // A restart: the app's files are found again and its jobs reloaded.
+    expect(await discoverPackages([dir])).toEqual([])
+    await loadInstalledApps()
+    await syncScheduledJobs()
+    expect(jobRegistrant(SWEEP)).toBeNull()
+    expect(jobRegistrant(`${APP}.tidy`)).toBe(APP)
+    await runDue()
+    expect(calls()).toEqual([])
+    expect(await row(`${APP}.tidy`)).toMatchObject({ last_outcome: 'success', last_result: 'tidied' })
+    expect(await row(SWEEP)).toMatchObject({ owner_app: null, description: 'Made by hand.' })
   })
 })
 
