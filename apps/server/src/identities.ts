@@ -218,7 +218,8 @@ async function domainListsJson(db: Sql | TxSql, override?: { key: string; domain
  *    email domain;
  *  - 'proven' (what remains, and every last-way-in check): only a recorded
  *    matching claim proves a company domain works, so it does not count.
- *  Under `*` or a consumer domain no claim is needed either way. The link
+ *  Under `*` or a consumer domain no claim is needed either way. Any
+ *  non-empty list, `*` included, needs the link's verified address. The link
  *  list is DOMAIN_RULED_LINKS. */
 type WayInProof = 'possible' | 'proven'
 
@@ -229,11 +230,12 @@ function keepsDomain(lists: string, proof: WayInProof) {
     m.kind <> 'google'
     or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
     or jsonb_array_length(${list}) = 0
-    or ${list} ? '*'
     or (
+      -- A non-empty list, even *, admits only a verified address (stored only
+      -- when Google verified it), exactly as domainAdmitted does.
       coalesce(i.email, '') like '%_@_%'
-      and ${list} ? ${domain}
-      and (${domain} in ('gmail.com', 'googlemail.com') or lower(i.hosted_domain) = ${domain}
+      and (${list} ? '*' or ${list} ? ${domain})
+      and (${list} ? '*' or ${domain} in ('gmail.com', 'googlemail.com') or lower(i.hosted_domain) = ${domain}
         or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
     )
   )`

@@ -265,3 +265,48 @@ describe('a link whose claim was never recorded', () => {
     expect((await setGoogle(admin, { allowed_email_domains: `${COMPANY},other.test` })).status).toBe(200)
   })
 })
+
+// Codex review round 5 on #698: a non-empty list, even *, admits only a
+// verified address (domainAdmitted). A link that recorded no verified address
+// (email NULL) is no way in under any list, so nothing may rely on it.
+describe('a link with no verified address', () => {
+  const setGoogle = async (admin: TestClient, change: Record<string, unknown>) => {
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    return admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/google`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...change, updated_at: g.updated_at }),
+    })
+  }
+  const noEmailLink = (person: string, id: string, subject: string) =>
+    sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by, hosted_domain)
+      values (${id}, ${person}, 'google', ${subject}, null, 'self', '')`
+
+  test('setting an empty list to * cannot strand a Google-only System Manager whose link has none', async ({ admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const sm = await makePerson({ username: 'sm.693.noemail', roles: [{ role: 'System Manager' }] })
+    await noEmailLink(sm, 'uid_693_noemail', 'g-693-noemail')
+    const res = await setGoogle(admin, { allowed_email_domains: '*' })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+    expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: '' }])
+  })
+
+  test('under *, removing your own password is refused when the other way in has no verified address', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const { id, token } = await passwordSession(api, admin, 'pw.693.noemail')
+    await noEmailLink(id, 'uid_693_pw_noemail', 'g-693-pw-noemail')
+    const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
+    expect(res.status).toBe(409)
+    expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
+  })
+
+  test('under *, a link with a verified address still counts: the password can go and * can be set', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const sm = await makePerson({ username: 'sm.693.withemail', roles: [{ role: 'System Manager' }] })
+    await rawLink(sm, 'uid_693_withemail', 'g-693-withemail', 'sm.withemail@gmail.com', 'self', '')
+    expect((await setGoogle(admin, { allowed_email_domains: '*' })).status).toBe(200)
+    const { id, token } = await passwordSession(api, admin, 'pw.693.withemail')
+    await rawLink(id, 'uid_693_pw_withemail', 'g-693-pw-withemail', `pw.withemail@${COMPANY}`, 'self', '')
+    expect((await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+  })
+})
