@@ -124,12 +124,24 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     // one on its way out (withSecretsKept) and would otherwise be retried,
     // repeating what the job was allowed to do (Codex round 1 on #701).
     let refusedGrant: string | undefined
+    // Recorded, then final; the first refusal is what the run ends with.
+    const refuseAccess = async (what: string, recorded: string): Promise<never> => {
+      refusedGrant ??= `The job ${actor} has not declared ${what}`
+      await logAccess(actor, 'app_access_denied', { method: `${actor}:${recorded}`.slice(0, 140), required: true })
+      throw new FinalJobFailure(refusedGrant)
+    }
     const need = async <T>(grant: AppJobGrant, fn: () => Promise<T>): Promise<T> => {
-      if (!grants.has(grant)) {
-        refusedGrant ??= `The job ${actor} has not declared the grant ${grant}`
-        await logAccess(actor, 'app_access_denied', { method: `${actor}:${grant}`, required: true })
-        throw new FinalJobFailure(refusedGrant)
-      }
+      if (!grants.has(grant)) await refuseAccess(`the grant ${grant}`, grant)
+      return fn()
+    }
+    // A dataset the job does not declare is refused the same way (Codex
+    // standard review round 3 on #701): recorded, final, and the run fails
+    // even if the handler catches it.
+    const declaredDatasets = new Set(job.datasets ?? [])
+    const readable = appDatasets({ app, operation: job.name, user: actor, title: ready.title, declarations: datasets,
+      places: EVERY_PLACE, outbound: true }).datasets
+    const dataset = async <T>(name: unknown, fn: () => Promise<T>): Promise<T> => {
+      if (typeof name !== 'string' || !declaredDatasets.has(name)) await refuseAccess(`the dataset ${String(name)}`, `dataset:${String(name)}`)
       return fn()
     }
     // What the app writes into the run's record, its refusal alert or a
@@ -142,8 +154,10 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
       settings: ready.settings,
       secrets: ready.secrets,
-      datasets: appDatasets({ app, operation: job.name, user: actor, title: ready.title, declarations: datasets,
-        places: EVERY_PLACE, outbound: true }).datasets,
+      datasets: Object.freeze({
+        active: (name: string, filters?: Parameters<typeof readable.active>[1]) => dataset(name, () => readable.active(name, filters)),
+        live: (name: string, filters?: Parameters<typeof readable.live>[1]) => dataset(name, () => readable.live(name, filters)),
+      }),
       people: Object.freeze({
         list: () => need('read_people', () => listPeople(job.identifiers ?? [])),
         disable: (person: string, reason: string) => need('disable_people', () => {
@@ -337,8 +351,9 @@ export async function applyJobPlan(app: string, steps: JobPlanStep[], prior: Job
       })} on conflict (method) do nothing`
     } else if ('remove' in step) {
       const method = appJobMethod(app, step.remove.name)
-      await sql`delete from scheduled_job where method = ${method} and owner_app = ${app}`
-      await sql`delete from background_job where method = ${method} and job_status = 'queued'`
+      // Only a schedule the app owns, and only then its queued runs.
+      const gone = await sql`delete from scheduled_job where method = ${method} and owner_app = ${app} returning 1`
+      if (gone.length) await sql`delete from background_job where method = ${method} and job_status = 'queued'`
     } else {
       const method = appJobMethod(app, step.change.name)
       const before = prior.find((p) => p.name === step.change.name)!

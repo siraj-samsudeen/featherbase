@@ -69,6 +69,9 @@ must match the declared names exactly, as for actions and reads.
 - `people.disable` takes the Person row lock first and checks the Administrator
   and System Manager roles in a separate statement under it, so a promotion
   that commits while the disable waits is seen (Codex round 2).
+- A dataset the job does not declare is refused like an undeclared grant:
+  recorded in the Access Log, final, and the run fails even if the handler
+  catches the error.
 - `email.systemManagers` reads the subject and body once, at the call, and
   checks and sends only that copy, so the app cannot swap a secret in while
   the recipients are looked up (Codex round 2). It refuses a message holding
@@ -114,7 +117,9 @@ must match the declared names exactly, as for actions and reads.
   only where the row still holds the old default and the settings file does
   not manage that field. The jobs wait for activation like the rest of the app.
 - **Uninstall**: removes every row the app owns, by the owner recorded on the
-  row, and their pending runs. Runtime apps still cannot be removed through
+  row, and their pending runs; a row of the same name someone else holds, and
+  its queued runs, stay. An upgrade that drops a job withdraws its queued runs
+  only when the app owns that schedule. Runtime apps still cannot be removed through
   the API ("Use disable"); the internal removal path does this.
 
 ## Settings file

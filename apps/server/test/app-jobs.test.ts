@@ -72,6 +72,10 @@ const HANDLERS: Record<string, string> = {
     message.body = 'token ' + ctx.secrets.FBJOBS_TOKEN
     ctx.setResult('mailed ' + await sent)
   }`,
+  mail_then_read: `async mail_then_read(ctx) {
+    await ctx.email.systemManagers({ subject: 'Before reading', body: 'sent once' })
+    try { await ctx.datasets.active('exits') } catch { ctx.setResult('caught it') }
+  }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
@@ -285,6 +289,20 @@ describe("a job follows its app's lifecycle", () => {
       { status: 417, message: expect.stringContaining(`The job ${OVERREACH} would gain disable_people; a job cannot gain access in an upgrade`) })
   })
 
+  test("removing the app leaves a schedule of the same name that someone else holds, and its queued runs", async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    // Forced past the save path: the app's row replaced by a platform one, with a run queued.
+    await sql`delete from background_job where method = ${SWEEP}`
+    await sql`delete from scheduled_job where method = ${SWEEP}`
+    await sql`insert into scheduled_job (row_id, method, cadence, enabled, description) values (${SWEEP}, ${SWEEP}, 'daily', true, 'Theirs.')`
+    await sql`insert into background_job (row_id, method, payload, job_status, attempts, max_attempts, run_at, trigger)
+      values ('fbjobs-theirs', ${SWEEP}, '{}', 'queued', 0, 3, now() + interval '1 hour', 'schedule')`
+    await uninstallApp(APP)
+    expect(await row(SWEEP)).toMatchObject({ owner_app: null, description: 'Theirs.' })
+    expect(await queued(SWEEP)).toBe(1)
+  })
+
   test('removing the app removes its jobs and their pending runs', async ({ admin }) => {
     expect(await discoverPackages([await writeApp({ jobs: [sweep, overreach] })])).toEqual([])
     await admin.post('/api/install_app', { name: APP })
@@ -459,6 +477,23 @@ describe('an app job row stays the app\'s', () => {
     expect(calls()).toEqual([])
     expect(await row(`${APP}.tidy`)).toMatchObject({ last_outcome: 'success', last_result: 'tidied' })
     expect(await row(SWEEP)).toMatchObject({ owner_app: null, description: 'Made by hand.' })
+  })
+})
+
+describe('a dataset the job does not declare', () => {
+  test('is refused for good and recorded, even when the handler catches it: one attempt, one email', async ({ admin, createUser }) => {
+    await createUser({ email: 'reader@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'mail_then_read', cadence: 'daily', description: 'Mails, then reads a dataset it does not declare.', grants: ['email_system_managers'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    const method = `${APP}.mail_then_read`
+    expect(await sql`select attempt, outcome, error from job_execution where method = ${method}`)
+      .toEqual([{ attempt: 1, outcome: 'error', error: `The job ${method} has not declared the dataset exits` }])
+    expect((await sql`select job_status from background_job where method = ${method} order by created_at`).map((r) => r.job_status)).toEqual(['failed', 'queued'])
+    expect(await sql`select recipient from email_queue where subject = 'Before reading'`).toEqual([{ recipient: 'reader@example.test' }])
+    expect(await sql`select operation, method from access_log where "user" = ${method}`)
+      .toEqual([{ operation: 'app_access_denied', method: `${method}:dataset:exits` }])
   })
 })
 

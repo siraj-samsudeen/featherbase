@@ -719,7 +719,10 @@ async function uninstallAppImpl(name: string): Promise<{ name: string; removed: 
   // Unwire hooks first so no lifecycle event fires against a half-dropped table.
   unwireHooks(name)
   const manifest = available.get(name)
-  if (manifest) await dropSchedulerJobs(manifest)
+  // #700, Codex standard review round 3: a runtime app removes only the
+  // schedules it owns; a row of the same name someone else holds stays, with
+  // its queued runs. Code apps keep their by-name removal.
+  if (manifest && !manifest.runtime_package) await dropSchedulerJobs(manifest)
   await dropAppJobs(name)
 
   // Fixture rows go first — reverse declaration order, and before the app's
