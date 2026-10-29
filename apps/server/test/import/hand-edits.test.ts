@@ -287,3 +287,21 @@ test('a correction after an undo is not suppressed by the undone import’s sour
   expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
   expect((await conflicts(admin)).conflicts).toMatchObject([{ field: 'city', incoming: 'East' }])
 })
+test('a scripted import without a run_id is told the run ID that undoes it (#687)', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code', 'city'] })
+  const inserted = await admin.post<{ run_id: string }>(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'North' }] })
+  const updated = await admin.post<{ run_id: string }>(`${path}:import`, { key_column: 'code', rows: [{ code: 'A', city: 'East' }] })
+  expect(updated.run_id).toEqual(expect.any(String))
+  expect(updated.run_id).not.toBe(inserted.run_id)
+  expect(await admin.post(`${path}:import-revert`, { run_id: updated.run_id })).toMatchObject({ restored: 1 })
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'North' })
+})
+test('an unnamed scripted insert can be undone by its returned run ID (#687)', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code'] })
+  const result = await admin.post<{ run_id: string }>(`${path}:import`, { rows: [{ row_id: 'A', code: 'A' }] })
+  expect(await admin.post(`${path}:import-revert`, { run_id: result.run_id })).toMatchObject({ deleted: 1 })
+})
+test('a script that names its run gets that run ID back', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code'] })
+  expect(await admin.post(`${path}:import`, { rows: [{ code: 'A' }], context: { run_id: 'nightly-load' } })).toMatchObject({ run_id: 'nightly-load' })
+})

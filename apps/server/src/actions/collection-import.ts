@@ -237,9 +237,10 @@ function updateValues(
 registerCollectionAction('import', {
   effect: 'write',
   description:
-    'Bulk-insert rows ({ rows: [...] }); returns { inserted, failed }. ' +
+    'Bulk-insert rows ({ rows: [...] }); returns { inserted, failed, run_id }, ' +
+    'the run_id from context or a new one, which import-revert undoes. ' +
     'With key_column, upserts: rows matching an existing value update it ' +
-    "({ updated, inserted, failed }); empty_cells 'keep'|'clear' picks what " +
+    "({ updated, inserted, failed, run_id }); empty_cells 'keep'|'clear' picks what " +
     'an empty mapped cell does to a matched row. ' +
     'With dry_run: true, reports per-row actions and writes nothing.',
   handler: async ({ table, args, user }) => {
@@ -382,8 +383,9 @@ registerCollectionAction('import', {
       }
     }
     await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, { ...context, run_id: runId }, touched)
-    if (!upsert) return { inserted, failed }
-    return { updated, inserted, failed }
+    // #687: every writing run names its run ID, so the caller can undo it.
+    if (!upsert) return { inserted, failed, run_id: runId }
+    return { updated, inserted, failed, run_id: runId }
   },
 })
 
@@ -469,8 +471,8 @@ async function writeImportLog(
       part: int(ctx.part),
       parts: int(ctx.parts),
       // RVT-R1: the run identity (wizard-minted, shared across parts) and
-      // this part's written rows. A run the caller names no run_id for gets an
-      // unreturned one (UPS-R1 keeps the response shape), so it is not revertable.
+      // this part's written rows. A run the caller names no run_id for gets one,
+      // returned with the result (#687).
       run_id: str(ctx.run_id),
       // #206: the file-import all of this run's targets belong to.
       batch_id: str(ctx.batch_id),
