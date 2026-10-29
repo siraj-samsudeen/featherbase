@@ -74,7 +74,7 @@ describe('migrate: a new database', () => {
       const before = await relations()
       const r = await runMain(scratch.migrate.main, [])
       expect(r.code).toBe(1)
-      expect(r.stderr).toContain('Refusing to migrate: this database is not empty and has no Featherbase ledger (it holds public.someone_elses); use a new database.')
+      expect(r.stderr).toContain('Refusing to migrate: this database is not empty and has no Featherbase ledger (it holds table public.someone_elses); use a new database.')
       expect(await scratch.db`select to_regnamespace('featherbase') as r`).toEqual([{ r: null }])
       expect(await relations()).toEqual(before)
       await expect(scratch.migrate.pendingMigrations()).rejects.toThrow('use a new database')
@@ -89,7 +89,7 @@ describe('migrate: a new database', () => {
     try {
       const r = await runMain(scratch.migrate.main, [])
       expect(r.code).toBe(1)
-      expect(r.stderr).toContain('this database is not empty and has no Featherbase ledger (it holds featherbase.person)')
+      expect(r.stderr).toContain('this database is not empty and has no Featherbase ledger (it holds table featherbase.person)')
       expect(await ledger(scratch)).toEqual([])
       expect(await scratch.db`select to_regclass('featherbase.internal_metadata') as r`).toEqual([{ r: null }])
     } finally {
@@ -97,6 +97,43 @@ describe('migrate: a new database', () => {
     }
   }, 60_000)
 
+})
+
+// Empty means no object in any user schema: not only tables, and not only in
+// featherbase and public. Each refusal leaves no ledger and no platform schema.
+describe('migrate: what counts as not empty', () => {
+  const refused = async (setup: string, holds: string, featherbaseExisted = false) => {
+    const scratch = await scratchDatabase(setup)
+    try {
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain(`this database is not empty and has no Featherbase ledger (it holds ${holds}); use a new database.`)
+      expect(await scratch.db`select to_regclass('featherbase.migration') as m, to_regclass('featherbase.internal_metadata') as s`).toEqual([{ m: null, s: null }])
+      expect(await scratch.db`select to_regnamespace('featherbase') is not null as present`).toEqual([{ present: featherbaseExisted }])
+    } finally {
+      await scratch.close()
+    }
+  }
+
+  it('a table in a schema of its own, with public empty', () =>
+    refused('create schema business; create table business.orders (id int primary key)', 'schema business'), 60_000)
+
+  it('an enum in public', () =>
+    refused("create type public.order_state as enum ('open', 'closed')", 'type public.order_state'), 60_000)
+
+  it('a function in featherbase, which the baseline would collide with', () =>
+    refused('create schema featherbase; create function featherbase.fc_cancel_email_invites() returns int language sql as $$ select 1 $$',
+      'function featherbase.fc_cancel_email_invites', true), 60_000)
+
+  it('a database holding only an extension still counts as empty, and installs', async () => {
+    const scratch = await scratchDatabase('create extension btree_gist')
+    try {
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0, stderr: '' })
+      expect(await ledger(scratch)).toEqual(allMigrations())
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
 })
 
 describe('migrate: an installed database', () => {

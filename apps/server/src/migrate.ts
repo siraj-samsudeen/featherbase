@@ -67,21 +67,58 @@ export async function pendingMigrations(): Promise<string[]> {
   assertUniqueMigrationNumbers(files)
   const applied = await appliedMigrations()
   if (applied.size === 0) {
-    // No record at all: only an empty database is new. The runner's own
-    // ledger and environment stamp aside, and objects an extension owns.
-    const [found] = await sql`
-      select n.nspname || '.' || c.relname as relation from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('featherbase', 'public') and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
-        and (n.nspname, c.relname) not in (('featherbase', 'migration'), ('featherbase', 'internal_metadata'))
-        and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e')
-      limit 1`
+    // No record at all: only an empty database is new. Runs before anything
+    // is written, the ledger included (runMigrations, rehearse).
+    const found = await firstForeignObject()
     if (found)
       throw new Error(
-        `Refusing to migrate: this database is not empty and has no Featherbase ledger (it holds ${String(found.relation)}); ` +
+        `Refusing to migrate: this database is not empty and has no Featherbase ledger (it holds ${found}); ` +
           'use a new database. Nothing was changed.',
       )
   }
   return files.filter((f) => !applied.has(f))
+}
+
+/** The first object in a user schema, named, that makes this database not
+ *  empty: a schema other than public, a table, view or sequence, a function
+ *  or procedure, or a type (enum, domain, range, composite). System schemas,
+ *  objects an extension owns, and the runner's own ledger and environment
+ *  stamp (left by a run that failed before its first migration) do not
+ *  count. Null when there is none. */
+async function firstForeignObject(): Promise<string | null> {
+  const [row] = await sql`
+    with user_schema as (
+      select oid, nspname from pg_namespace
+      where nspname not in ('pg_catalog', 'information_schema')
+        and nspname not like 'pg\_toast%' and nspname not like 'pg\_temp%'
+    ),
+    extension_owned as (select classid, objid from pg_depend where deptype = 'e')
+    select 'schema ' || quote_ident(n.nspname) as object, 1 as rank from user_schema n
+      where n.nspname not in ('public', 'featherbase')
+        and not exists (select 1 from extension_owned e where e.classid = 'pg_namespace'::regclass and e.objid = n.oid)
+    union all
+    select case c.relkind when 'S' then 'sequence ' when 'v' then 'view ' when 'm' then 'view ' else 'table ' end
+        || quote_ident(n.nspname) || '.' || quote_ident(c.relname), 2
+      from pg_class c join user_schema n on n.oid = c.relnamespace
+      where c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+        and (n.nspname, c.relname) not in (('featherbase', 'migration'), ('featherbase', 'internal_metadata'))
+        and not exists (select 1 from extension_owned e where e.classid = 'pg_class'::regclass and e.objid = c.oid)
+    union all
+    select case p.prokind when 'p' then 'procedure ' else 'function ' end
+        || quote_ident(n.nspname) || '.' || quote_ident(p.proname), 3
+      from pg_proc p join user_schema n on n.oid = p.pronamespace
+      where not exists (select 1 from extension_owned e where e.classid = 'pg_proc'::regclass and e.objid = p.oid)
+    union all
+    select 'type ' || quote_ident(n.nspname) || '.' || quote_ident(t.typname), 4
+      from pg_type t join user_schema n on n.oid = t.typnamespace
+      -- A table's own row type and every array type come with something
+      -- already counted; a standalone composite type has a 'c' relation.
+      where (t.typrelid = 0 or exists (select 1 from pg_class c where c.oid = t.typrelid and c.relkind = 'c'))
+        and not exists (select 1 from pg_type a where a.typarray = t.oid)
+        and not exists (select 1 from extension_owned e where e.classid = 'pg_type'::regclass and e.objid = t.oid)
+    order by rank, object
+    limit 1`
+  return row ? String(row.object) : null
 }
 
 /** The platform schema and its ledger. */
