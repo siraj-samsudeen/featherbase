@@ -92,3 +92,26 @@ test('a Settings checkbox switched off reads ✓ → ✗', async ({ admin }) => 
     expect(diffs.at(-1)).toHaveTextContent('open_sundays: ✓ → ✗')
   })
 })
+
+test('import and resolution history says who imported and which decision the person made', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: T, columns: [
+    { column_name: 'title', label: 'Title', column_type: 'Data' },
+    { column_name: 'city', label: 'City', column_type: 'Data' },
+    { column_name: 'phone', label: 'Phone', column_type: 'Data' },
+  ] })
+  const path = `/api/table/${ENC}`
+  await admin.post(`${path}:import`, { rows: [{ title: 'North wing', city: 'North', phone: '111' }], context: { run_id: 'timeline-first' } })
+  const list = await admin.get<{ data: { row_id: string }[] }>(path)
+  const rowId = list.data[0].row_id
+  const row = await admin.get<Record<string, unknown>>(`${path}/${rowId}`)
+  await admin.post('/api/save_row', { table: T, row: { ...row, city: 'South' } })
+  await admin.post(`${path}:import`, { key_column: 'title', rows: [{ title: 'North wing', city: 'East', phone: '222' }], context: { run_id: 'timeline-next' } })
+  const { conflicts } = await admin.get<{ conflicts: { id: string }[] }>(`${path}:import-conflicts`)
+  await admin.post(`${path}:resolve-import-conflict`, { conflict_id: conflicts[0].id, decision: 'keep' })
+  await renderApp(`/featherbase/admin/${ENC}/${rowId}`, admin)
+  const timeline = await screen.findByTestId('activity-timeline', {}, { timeout: 8000 })
+  await waitFor(() => expect(timeline).toHaveTextContent('Administrator imported'))
+  expect(timeline).toHaveTextContent('timeline-next')
+  expect(timeline).toHaveTextContent('Administrator kept their correction')
+  expect(timeline).toHaveTextContent('City: kept the current value instead of East')
+})

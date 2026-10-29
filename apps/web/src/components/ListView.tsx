@@ -17,6 +17,7 @@ import { ArrowDown, ArrowUp } from './ui/icons'
 import { GlossaryHelp } from './GlossaryHelp'
 import { fmtCount } from '../lib/inr'
 import { failureMessage } from '../lib/import-run'
+import { ImportConflicts } from './ImportConflicts'
 
 export type Filter = [string, string, unknown]
 
@@ -113,6 +114,8 @@ export function ListView({
   // UI-013: per-user saved settings (sort, hidden columns, filters).
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
+  const [conflictsOpen, setConflictsOpen] = useState(false)
+  useEffect(() => setConflictsOpen(false), [table])
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsUnsaved, setSettingsUnsaved] = useState(false)
   // UI-012: bulk selection state.
@@ -540,6 +543,11 @@ export function ListView({
               Import
             </Link>
           )}
+          {meta.data?.kind === 'table' && !meta.data.data_source && !isSystemWritten(meta.data) && (
+            <Button aria-expanded={conflictsOpen} aria-controls="import-conflicts" onClick={() => setConflictsOpen((open) => !open)}>
+              Import conflicts
+            </Button>
+          )}
           {/* #209: add a column, or fix a misspelled one, without rebuilding
               the Table. Absent on system Tables (their columns are the
               platform's) and on bound ones (their storage is the source's). */}
@@ -637,6 +645,7 @@ export function ListView({
           )}
         </div>
       </div>
+      {conflictsOpen && meta.data && <ImportConflicts key={table} table={table} meta={meta.data} />}
       {settingsUnsaved && (
         <div className="mb-3" data-testid="list-settings-error">
           <Notice tone="negative">

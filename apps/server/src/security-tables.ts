@@ -53,18 +53,21 @@ export async function isSecurityTable(table: string): Promise<boolean> {
  *  on a new one: #473 — it lets a Google account link by address alone). */
 const PERSON_ACCESS_COLUMNS = ['roles', 'enabled', 'expects_google_sign_in'] as const
 
-/** Does writing `column` of `table` change who can do what? True for every
- *  column of a security Table and for a Person's access columns. Workflows
- *  and Assignment Rules write a column directly, outside the save path, so
- *  they may never target one. */
-export async function isAccessTarget(table: string, column: string): Promise<boolean> {
-  if (await isSecurityTable(table)) return true
-  return table === 'Person' && (PERSON_ACCESS_COLUMNS as readonly string[]).includes(column)
+/** Workflows and Assignment Rules write directly, outside the save path.
+ *  They may target neither access data nor an upload-managed storage path. */
+export async function directWriteRestriction(table: string, column: string): Promise<'access' | 'upload' | null> {
+  if (await isSecurityTable(table)
+    || (table === 'Person' && (PERSON_ACCESS_COLUMNS as readonly string[]).includes(column))) return 'access'
+  if (table === 'File' && column === 'file_url') return 'upload'
+  return null
 }
 
-export async function assertNotAccessTarget(table: string, column: string, what: string): Promise<void> {
-  if (await isAccessTarget(table, column))
-    throw new AppError('ValidationError', `${what} cannot write ${table}.${column}: it decides who can do what`, { [what === 'A workflow' ? 'state_field' : 'assign_to_field']: 'not an access column' })
+export async function assertDirectWriteAllowed(table: string, column: string, what: string): Promise<void> {
+  const restriction = await directWriteRestriction(table, column)
+  if (restriction)
+    throw new AppError('ValidationError',
+      `${what} cannot write ${table}.${column}: ${restriction === 'access' ? 'it decides who can do what' : 'it is managed by uploads'}`,
+      { [what === 'A workflow' ? 'state_field' : 'assign_to_field']: restriction === 'access' ? 'not an access column' : 'managed by uploads' })
 }
 
 export function securityRefusal(what: string): AppError {

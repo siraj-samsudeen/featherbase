@@ -17,7 +17,7 @@ import { getActiveWorkflow, stateField, rethrowWorkflowConflict, notifyApprovers
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
-import { FULL_READER, ROW_ATTACHED_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
+import { FULL_READER, ROW_ATTACHED_TABLES, SENSITIVE_HISTORY_TABLES, readerFor, restrictRow, seesEveryColumn, type Tiers } from './row-readers'
 import { assertNotSystemWritten } from './system-written'
 import { assertManagedUnchanged, assertNoManagedReference, assertRowNotManaged, holdManagedSet } from './managed-settings'
 import { assertSecurityWriter, isSecurityTable, securityRefusal } from './security-tables'
@@ -375,7 +375,7 @@ async function assertAttachedRowReadable(table: string, row: RowValues, user: st
     if (err instanceof AppError) throw refused()
     throw err
   }
-  if (table === 'Version' && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
+  if (SENSITIVE_HISTORY_TABLES.has(table) && !(await isSharedWith(user, refTable, refName, 'read')) && !(await seesEveryColumn(user, refMeta)))
     throw refused()
 }
 
@@ -752,6 +752,14 @@ interface SaveOptions {
   // created_by, which is what makes own_rows_only portals work. Never expose
   // this to callers that pass through arbitrary client input.
   skipPermissions?: boolean
+  // Only the upload route supplies the exact path returned by storage.
+  // Never derive this option from a client row or request body.
+  uploadedFileUrl?: string
+}
+
+function assertStoredFileUrl(meta: TableMeta, row: RowValues, allowed: unknown) {
+  if (meta.name === 'File' && String(row.file_url ?? '') !== String(allowed ?? ''))
+    throw new AppError('ValidationError', 'file_url is managed by uploads and cannot be assigned or changed')
 }
 
 export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
@@ -891,6 +899,7 @@ async function writeDoc(
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
       await assertAttachedTarget(meta, row, null, user, Boolean(opts.skipPermissions))
+      assertStoredFileUrl(meta, row, opts.uploadedFileUrl)
       // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
       // snapshotting template items into a new row, say) — re-pick from the
       // hooked row so what saves is what the chain left behind.
@@ -1178,6 +1187,7 @@ async function updateDoc(
       // is written — against the stored row.
       await assertAccessColumnsUnchanged(stx, meta, row, existing as RowValues, user, trusted, writeTiers)
       await assertAttachedTarget(meta, row, existing as RowValues, user, trusted)
+      assertStoredFileUrl(meta, row, existing.file_url)
       const dbRow = {
         ...columnValues(meta, row),
         updated_at: new Date(),

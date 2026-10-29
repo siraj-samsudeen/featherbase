@@ -105,6 +105,9 @@ interface SheetPlan {
   // counts data rows with nothing in any mapped column: they are sent
   // nowhere, so IMP-I1's arithmetic is disclosed, not silently absorbed.
   check: {
+    fields_updated?: number
+    fields_kept?: number
+    tracks_changes?: boolean | null
     valid: number
     updated: number
     inserted: number
@@ -1270,7 +1273,7 @@ export function ImportWizard() {
         if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
-        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0 }
+        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, tracks_changes: null as boolean | null }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
         for (const m of plan.members) {
           const sheet = memberSheet(plan, m)
@@ -1287,6 +1290,9 @@ export function ImportWizard() {
             upsert: upsertArgs(plan),
             columnLabel: headerLabel(sheet, plan),
           })
+          totals.fields_updated += report.fields_updated
+          totals.fields_kept += report.fields_kept
+          totals.tracks_changes = report.tracks_changes
           totals.valid += report.valid
           totals.updated += report.updated
           totals.inserted += report.inserted
@@ -2550,6 +2556,15 @@ export function ImportWizard() {
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
+                )}
+                {plan.check.tracks_changes === false && (
+                  <Notice tone="caution" className="mt-2">This Table does not keep change history. Imports overwrite existing values, including hand edits.</Notice>
+                )}
+                {plan.key != null && plan.check.fields_updated !== undefined && (
+                  <p className="mt-2 text-ink" data-testid={`iw-check-fields-${i}`}>
+                    {fmtCount(plan.check.fields_updated)} {plan.check.fields_updated === 1 ? 'field' : 'fields'} will update ·{' '}
+                    {fmtCount(plan.check.fields_kept ?? 0)} hand-edited {plan.check.fields_kept === 1 ? 'field' : 'fields'} will be kept and flagged.
+                  </p>
                 )}
                 {plan.check.skipped > 0 && (
                   <span className="ml-1 text-ink-muted" data-testid={`iw-check-skipped-${i}`}>

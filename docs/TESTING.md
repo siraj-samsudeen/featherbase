@@ -146,6 +146,13 @@ Every non-sandboxed test file says why in its header comment.
   apply commits while they wait (#493). Create a disposable database
   `featherbase_<worker>_settings_commit_e2e`, migrate it, and run the opt-in
   command in the test's header; CI runs it in shard 3. It keeps its records.
+- `apps/server/test/security-concurrency-commit.test.ts` proves concurrent
+  workflow actions have one winner (#572), conditions are checked after a
+  waiting edit commits, and comment/file/share saves serialize with parent
+  rename/delete in either order (#599). Create the disposable local database
+  `featherbase_security_concurrency_commit_e2e` and run the opt-in command in
+  its header. Global setup migrates it; the tests check its environment stamp
+  and keep their records. Never use a default development or test database.
 - `pnpm apps:prove` builds the runtime packages as npm tarballs, runs them on
   plain Node against compiled core through real restarts, and writes evidence
   to `dist/runtime-proof-*/`. It uses only `featherbase_runtime_proof_e2e`

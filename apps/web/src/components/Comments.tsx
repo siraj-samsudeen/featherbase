@@ -15,7 +15,11 @@ interface CommentRow {
 export interface VersionRow {
   created_by: string
   created_at: string
-  data: { changed?: [string, unknown, unknown][] } | null
+  data: {
+    changed?: [string, unknown, unknown][]
+    import_run?: string
+    resolution?: { field: string; decision: 'keep' | 'source'; incoming: unknown }
+  } | null
 }
 
 /** A row's comments and edits, oldest first — one query, read by this panel

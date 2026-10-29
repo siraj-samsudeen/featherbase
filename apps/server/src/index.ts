@@ -1661,6 +1661,8 @@ app.post('/api/upload_file', async (c) => {
       ...(refName ? { ref_name: refName } : {}),
     },
     who(c),
+    'insert',
+    { uploadedFileUrl: stored.file_url },
   )
   // thumbnail_url is a read_only, system-managed field, so it's set with a
   // direct write (the save lifecycle ignores client values for read_only
