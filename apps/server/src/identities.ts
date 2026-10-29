@@ -231,9 +231,11 @@ function keepsDomain(lists: string, proof: WayInProof) {
     or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
     or jsonb_array_length(${list}) = 0
     or (
-      -- A non-empty list, even *, admits only a verified address (stored only
-      -- when Google verified it), exactly as domainAdmitted does.
+      -- A non-empty list, even *, admits only a verified address, exactly as
+      -- domainAdmitted does: the last sign-in's verification (email_verified;
+      -- NULL on a row from before 0004, whose address was stored verified).
       coalesce(i.email, '') like '%_@_%'
+      and coalesce(i.email_verified, true)
       and (${list} ? '*' or ${list} ? ${domain})
       and (${list} ? '*' or ${domain} in ('gmail.com', 'googlemail.com') or lower(i.hosted_domain) = ${domain}
         or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
@@ -551,7 +553,7 @@ export async function removeOwnPassword(user: string): Promise<void> {
 /** Stamp a successful sign-in through an identity. */
 export async function touchIdentity(
   id: string,
-  attrs: { email?: string | null; display_name?: string | null; hosted_domain?: string | null } = {},
+  attrs: { email?: string | null; display_name?: string | null; hosted_domain?: string | null; email_verified?: boolean } = {},
 ) {
   const [before] = await sql`select email from sign_in_identity where id = ${id}`
   // #693: a kind that reports a hosted domain passes it on every sign-in, and
@@ -561,7 +563,8 @@ export async function touchIdentity(
     update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
       display_name = coalesce(${attrs.display_name ?? null}, display_name),
-      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? ''}::text else hosted_domain end
+      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? ''}::text else hosted_domain end,
+      email_verified = coalesce(${attrs.email_verified ?? null}::boolean, email_verified)
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
   if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {

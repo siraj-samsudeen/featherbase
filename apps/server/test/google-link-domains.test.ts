@@ -319,6 +319,23 @@ describe('a link with no verified address', () => {
     expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
   })
 
+  test('a link verified once, then signed in unverified under an empty list, cannot strand its owner when the list becomes *', async ({ admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    const sm = await makePerson({ username: 'sm.693.stale', roles: [{ role: 'System Manager' }] })
+    await rawLink(sm, 'uid_693_stale', 'g-693-stale', 'sm.stale@gmail.com', 'self', '')
+    await sql`update sign_in_identity set email_verified = true where id = 'uid_693_stale'`
+    const { completeSignIn } = await import('../src/sign-in')
+    const { methodOfKind } = await import('../src/identities')
+    const google = (await methodOfKind('google'))!
+    await completeSignIn(google, { status: 'verified', subject: 'g-693-stale', email: 'sm.stale@gmail.com', email_verified: false }, null)
+    expect(await sql`select email, email_verified from sign_in_identity where id = 'uid_693_stale'`).toEqual([
+      { email: 'sm.stale@gmail.com', email_verified: false },
+    ])
+    const res = await setGoogle(admin, { allowed_email_domains: '*' })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+  })
+
   test('under *, a link with a verified address still counts: the password can go and * can be set', async ({ api, admin }) => {
     await configureGoogle({ allowed_email_domains: '' })
     const sm = await makePerson({ username: 'sm.693.withemail', roles: [{ role: 'System Manager' }] })

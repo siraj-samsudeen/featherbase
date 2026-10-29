@@ -118,6 +118,13 @@ function claimOf(method: SignInMethod, v: VerifiedIdentity): string | null {
   return KINDS[method.kind].hostedDomain ? (v.hosted_domain ?? '') : null
 }
 
+/** #693: whether this sign-in's address was verified, for a kind that vouches
+ *  for addresses; NULL for any other kind. Recorded on every sign-in, so a
+ *  stale address kept for display is not taken as verified. */
+function verifiedOf(method: SignInMethod, v: VerifiedIdentity): boolean | null {
+  return KINDS[method.kind].verifiedEmail ? v.email_verified === true && Boolean(v.email) : null
+}
+
 async function linkedBySubject(method: SignInMethod, subject: string): Promise<Found | null> {
   // person-resolution D5: an ended identity never opens an account.
   const [row] = await sql`select id, person_id, linked_by from sign_in_identity where method = ${method.key} and subject = ${subject} and ended_at is null`
@@ -158,7 +165,7 @@ async function claimInvite(method: SignInMethod, v: VerifiedIdentity): Promise<F
       await sql`
         update sign_in_identity set subject = ${v.subject!}, pending_email = null, linked_at = now(),
           linked_by = 'first-sign-in', email = ${v.email!}, display_name = ${v.display_name ?? null},
-          hosted_domain = ${claimOf(method, v)}, last_used_at = now()
+          hosted_domain = ${claimOf(method, v)}, email_verified = ${verifiedOf(method, v)}, last_used_at = now()
         where id = ${String(invite.id)}`
       await writeThroughIdentity(String(invite.id))
       await consumeExpectedSignIn(String(invite.person_id), method)
@@ -212,6 +219,7 @@ async function claimExpectedSignIn(method: SignInMethod, v: VerifiedIdentity): P
         display_name: v.display_name ?? null,
         linked_by: 'expected-sign-in',
         hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
         last_used_at: new Date(),
       })}`
       await writeThroughIdentity(id)
@@ -277,6 +285,7 @@ async function newPerson(method: SignInMethod, v: VerifiedIdentity, opts: { test
         display_name: v.display_name ?? null,
         linked_by: 'new-person',
         hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
         last_used_at: new Date(),
       })}`
       await writeThroughIdentity(id)
@@ -338,6 +347,7 @@ export async function completeSignIn(
       display_name: v.display_name ?? null,
       // #693: the way-in counts need the claim the last sign-in carried.
       ...(KINDS[method.kind].hostedDomain ? { hosted_domain: v.hosted_domain ?? '' } : {}),
+      ...(KINDS[method.kind].verifiedEmail ? { email_verified: v.email_verified === true && Boolean(v.email) } : {}),
     })
   return issueSession(person.user, {
     method: method.key,
@@ -385,6 +395,7 @@ export async function linkVerifiedToSelf(method: SignInMethod, user: string, v: 
         display_name: v.display_name ?? null,
         linked_by: 'self',
         hosted_domain: claimOf(method, v),
+        email_verified: verifiedOf(method, v),
       })}`
       await writeThroughIdentity(id)
       await consumeExpectedSignIn(user, method)
