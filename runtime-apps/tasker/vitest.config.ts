@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     coverage: {
       provider: 'istanbul',
+      // Runtime artifact fingerprints include every file under the app root.
+      reportsDirectory: '../../coverage/tasker/unit',
       include: ['src/**/*.{ts,tsx}', 'public/**/*.js'],
       exclude: ['src/**/*.test.ts'],
       reporter: ['text', 'json', 'json-summary', 'html'],

@@ -11,7 +11,8 @@ import libReport from 'istanbul-lib-report'
 import reports from 'istanbul-reports'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-const baseline = path.join(root, 'coverage/coverage-final.json')
+const output = path.resolve(root, '../../coverage/tasker')
+const baseline = path.join(output, 'unit/coverage-final.json')
 const merged = libCoverage.createCoverageMap({})
 const sources = [path.join(root, 'src') + path.sep, path.join(root, 'public') + path.sep]
 for (const input of [baseline, ...process.argv.slice(2)]) {
@@ -33,5 +34,5 @@ for (const input of [baseline, ...process.argv.slice(2)]) {
   merged.merge(map)
   console.log(`${input}: ${map.files().length} Tasker source files`)
 }
-const context = libReport.createContext({ dir: path.join(root, 'coverage/merged'), coverageMap: merged })
+const context = libReport.createContext({ dir: path.join(output, 'merged'), coverageMap: merged })
 for (const name of ['text', 'json', 'json-summary', 'html']) reports.create(name).execute(context)
