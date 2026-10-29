@@ -106,6 +106,11 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
     const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
     if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
       throw new FinalJobFailure(`The app ${app} is disabled or unavailable, so its job ${job.name} did not run`)
+    // The schedule that queued this run must be the app's own (Codex round 3
+    // on #701): the app's code never runs on a row someone else holds.
+    const [schedule] = await sql`select owner_app from scheduled_job where method = ${actor}`
+    if (schedule?.owner_app !== app)
+      throw new FinalJobFailure(`The scheduled job ${actor} is not the app ${app}'s, so its code did not run`)
     let ready: Awaited<ReturnType<typeof readyAppSetup>>
     try {
       ready = await readyAppSetup(app, await setup(), job.needs)

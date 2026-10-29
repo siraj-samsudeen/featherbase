@@ -95,7 +95,10 @@ must match the declared names exactly, as for actions and reads.
 - **Restart and enable**: ownership is checked before any handler is
   registered. A job whose row someone else now holds is skipped and logged;
   the app's other jobs load. Admin cannot delete an app's job row: it goes
-  with the app, or when an upgrade drops it.
+  with the app, or when an upgrade drops it. A job's method is fixed once the
+  row exists, and Admin cannot add a row under an installed app's name. Each
+  run also checks that its schedule row is the app's own before the app's
+  code runs, so a row forced past the save path runs nothing (Codex round 3).
 - **Disable** (interpretation of decision 4): the rows stay and keep their
   on/off switch, which belongs to the administrator or the settings file; the
   app's handlers are withdrawn and its queue entries removed, and a row whose

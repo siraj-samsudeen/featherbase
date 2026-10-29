@@ -407,6 +407,33 @@ describe('what a job mails is what was checked', () => {
 describe('an app job row stays the app\'s', () => {
   const tidy: Job = { name: 'tidy', cadence: 'daily', description: 'Tidy notes.' }
 
+  test("Admin cannot move an app job's method, nor give another job the app's name", async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await expectApiError(admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: SWEEP, method: 'unused_name', updated_at: (await row(SWEEP)).updated_at } }),
+      { status: 417, message: expect.stringContaining("A scheduled job's method cannot be changed") })
+    await expectApiError(admin.post('/api/save_row', { table: 'Scheduled Job', row: { row_id: 'check_sla', method: SWEEP, updated_at: (await row('check_sla')).updated_at } }),
+      { status: 417, message: expect.stringContaining("A scheduled job's method cannot be changed") })
+    await expectApiError(admin.post('/api/save_row', { table: 'Scheduled Job', row: { method: `${APP}.extra`, cadence: 'hourly', enabled: true } }),
+      { status: 417, message: expect.stringContaining(`${APP}.extra is a job name of the app ${APP}`) })
+    expect(await row(SWEEP)).toMatchObject({ owner_app: APP })
+    expect(await row('check_sla')).toMatchObject({ owner_app: null })
+    await runDue()
+    expect(calls()).toEqual([{ job: SWEEP, gone: [] }])
+  })
+
+  test("the app's code never runs on a schedule row that is not the app's", async ({ admin }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    // Forced past the save path: the app's row moved aside, a platform row given its name.
+    await sql`update scheduled_job set method = 'moved_aside', row_id = 'moved_aside' where method = ${SWEEP}`
+    await sql`update scheduled_job set method = ${SWEEP} where method = 'check_sla'`
+    await runDue()
+    expect(calls()).toEqual([])
+    expect(await sql`select outcome, error from job_execution where method = ${SWEEP}`)
+      .toEqual([{ outcome: 'error', error: `The scheduled job ${SWEEP} is not the app ${APP}'s, so its code did not run` }])
+  })
+
   test('Admin cannot delete it', async ({ admin }) => {
     expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
     await admin.post('/api/install_app', { name: APP })
