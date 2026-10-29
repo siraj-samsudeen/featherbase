@@ -169,7 +169,7 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
 // ------------------------------------------------------------- capabilities
 
 /** `read_people`: every enabled, current person, with the current values of
- *  the identifier systems the job declares that are on and not secret. */
+ *  the identifier systems the job declares that are on and not secret, valid today. */
 async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
   const people = await sql`
     select p.row_id, p.full_name, p.email,
@@ -180,11 +180,13 @@ async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
     where p.enabled and not coalesce(p.built_in, false) and p.replaced_by is null
     order by p.row_id`
   const values = systems.length
-    // As a scope provider gets them (person-scope.ts): only a system that is
-    // on and not secret.
+    // As a scope provider gets them (currentIdentifiers in person-scope.ts):
+    // only a system that is on and not secret, and only values valid on
+    // India's today, so a future start is not handed out yet and a scheduled
+    // end still counts until it comes (Codex standard review on #701).
     ? await sql`select i.person_id, i.system, i.value from person_identifier i
         join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
-        where i.system in ${sql(systems)} and upper_inf(i.valid) and i.value is not null
+        where i.system in ${sql(systems)} and i.valid @> (now() at time zone 'Asia/Kolkata')::date and i.value is not null
         order by i.person_id, i.system, i.value`
     : []
   const byPerson = new Map<string, Record<string, string[]>>()

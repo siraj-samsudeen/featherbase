@@ -108,10 +108,10 @@ const row = async (method: string) => (await sql`select * from scheduled_job whe
 const queued = async (method: string) => (await sql`select * from background_job where method = ${method} and job_status = 'queued'`).length
 const enabled = async (person: string | null) => (await sql`select enabled from person where row_id = ${person}`)[0].enabled as boolean
 
-async function link(person: string | null, value: string) {
+async function link(person: string | null, value: string, valid = '[2020-01-01,)') {
   const [system] = await sql`select 1 from identifier_system where row_id = ${SYSTEM}`
   if (!system) await sql`insert into identifier_system (row_id, label, kind, sensitivity, match, enabled) values (${SYSTEM}, 'Jobs proof code', 'employee-record', 'Restricted', 'Off', true)`
-  await sql`insert into person_identifier ${sql({ id: newIdentifierId(), person_id: person, system: SYSTEM, assigner: '', value, valid: '[2020-01-01,)',
+  await sql`insert into person_identifier ${sql({ id: newIdentifierId(), person_id: person, system: SYSTEM, assigner: '', value, valid,
     verified: true, one_holder: false, one_per_person: false, source: 'test', recorded_by: 'test' } as unknown as Record<string, never>)}`
 }
 
@@ -142,6 +142,20 @@ describe('an app declares its scheduled jobs', () => {
     expect(await sql`select operation from activity_log where "user" = ${SWEEP}`).toEqual([{ operation: `disabled ${leaver.user}: their code says they left` }])
     expect(await sql`select recipient from email_queue where subject = 'Sweep summary'`).toEqual([{ recipient: 'boss@example.test' }])
     expect(await row(SWEEP)).toMatchObject({ last_outcome: 'success', last_result: 'disabled 1; mailed 1' })
+  })
+
+  test('a job sees only identifiers valid today: not one that starts later, but one that ends later', async ({ admin, createUser }) => {
+    expect(await discoverPackages([await writeApp({ jobs: [sweep] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    const starting = await createUser({ email: 'starting@example.test', roles: [] })
+    const ending = await createUser({ email: 'ending@example.test', roles: [] })
+    const [{ today }] = await sql`select (now() at time zone 'Asia/Kolkata')::date::text as today`
+    const later = (days: number) => new Date(Date.parse(`${today}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
+    await link(starting.user, 'LEFT', `[${later(30)},)`)
+    await link(ending.user, 'LEFT', `[2020-01-01,${later(30)})`)
+    await runDue()
+    expect(await enabled(starting.user)).toBe(true)
+    expect(await enabled(ending.user)).toBe(false)
   })
 
   test('a write the job did not declare is refused, recorded, and not retried', async ({ admin, createUser }) => {
