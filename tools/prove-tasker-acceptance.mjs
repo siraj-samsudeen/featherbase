@@ -350,8 +350,11 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   const originalFocus = (await api('/api/user_settings/Task%20Management%20Focus')).settings.task_ids.filter(id => id !== accident.row_id)
   await page.goto(`${origin}/tasker/`)
   await page.getByRole('button', { name: /^My Work/ }).click()
+  await expect(page.getByRole('button', { name: /^Remove from My Focus:/ })).toHaveCount(originalFocus.length)
   while (await page.getByRole('button', { name: /^Remove from My Focus:/ }).count()) {
+    const count = await page.getByRole('button', { name: /^Remove from My Focus:/ }).count()
     await page.getByRole('button', { name: /^Remove from My Focus:/ }).first().click()
+    await expect(page.getByRole('button', { name: /^Remove from My Focus:/ })).toHaveCount(count - 1)
   }
   await page.getByRole('button', { name: /^Inbox/ }).click()
   for (const row of [matching, ordinary]) await page.getByRole('button', { name: `Add to My Focus: ${row.task_title}`, exact: true }).click()
