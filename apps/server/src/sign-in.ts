@@ -17,6 +17,7 @@ import {
   consumeExpectedSignIn,
   disableLeaver,
   DOMAIN_RULED_LINKS,
+  GOOGLE_CONSUMER_DOMAINS,
   domainAllowed,
   foldName,
   listsDomains,
@@ -52,7 +53,7 @@ interface Found {
 
 export const NOT_PROVISIONED = 'Access not provisioned for this account. Contact IT.'
 export const ADDRESS_IN_USE = 'An account already uses this address. Contact your administrator.'
-const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
+const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
 
 export const GOOGLE_OFF = 'Google sign-in is not configured'
 /** #693: a person may link only an account the method's domains admit. */

@@ -346,3 +346,21 @@ describe('a link with no verified address', () => {
     expect((await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
   })
 })
+
+// Codex review round 8 on #698: the guard and sign-in share one consumer-domain
+// list. A consumer address needs no hosted-domain claim in either, so a
+// Google-only System Manager on gmail.com, with none recorded, both signs in
+// and is counted as a way in that removing gmail.com would end.
+describe('a listed consumer domain is read the same by sign-in and the guard', () => {
+  test('a gmail.com link with no claim signs in, and removing gmail.com is refused for its Google-only System Manager', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: `${COMPANY},gmail.com` })
+    const sm = await makePerson({ username: 'sm.693.consumer', roles: [{ role: 'System Manager' }] })
+    await rawLink(sm, 'uid_693_consumer', 'g-693-consumer', 'sm.consumer@gmail.com', 'self', '')
+    expect((await redeemSession(api, await googleSignIn(api, 'sm.consumer@gmail.com', { subject: 'g-693-consumer' }))).user.row_id).toBe(sm)
+    const res = await setDomains(admin, COMPANY)
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+    // Keeping gmail.com keeps them in: the change is allowed.
+    expect((await setDomains(admin, `gmail.com,${COMPANY},sister.test`)).status).toBe(200)
+  })
+})

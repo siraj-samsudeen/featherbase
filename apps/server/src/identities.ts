@@ -186,6 +186,11 @@ export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>
  *  administrator's decision for that account and is not re-checked. */
 export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
 
+/** Google's consumer (personal) domains: an address on one needs no
+ *  hosted-domain claim. The one list sign-in, the mock provider and the
+ *  way-in counts share (#693). */
+export const GOOGLE_CONSUMER_DOMAINS: readonly string[] = ['gmail.com', 'googlemail.com']
+
 /** #693: the one transaction lock every change that can reduce someone's ways
  *  in takes BEFORE it reads domain lists or counts credentials, so two such
  *  changes (narrowing a domain list, removing a password, unlinking) cannot
@@ -228,7 +233,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
   const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
     m.kind <> 'google'
-    or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
+    or coalesce(i.linked_by, '') <> all(${[...DOMAIN_RULED_LINKS]}::text[])
     or jsonb_array_length(${list}) = 0
     or (
       -- A non-empty list, even *, admits only a verified address, exactly as
@@ -237,7 +242,7 @@ function keepsDomain(lists: string, proof: WayInProof) {
       coalesce(i.email, '') like '%_@_%'
       and coalesce(i.email_verified, true)
       and (${list} ? '*' or ${list} ? ${domain})
-      and (${list} ? '*' or ${domain} in ('gmail.com', 'googlemail.com') or lower(i.hosted_domain) = ${domain}
+      and (${list} ? '*' or ${domain} = any(${[...GOOGLE_CONSUMER_DOMAINS]}::text[]) or lower(i.hosted_domain) = ${domain}
         or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
     )
   )`

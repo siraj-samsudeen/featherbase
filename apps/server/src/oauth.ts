@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { SessionUser } from './auth'
 import { AppError } from './errors'
-import { methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
+import { GOOGLE_CONSUMER_DOMAINS, methodOfKind, mockOAuthEnabled, methodUsable, type SignInMethod } from './identities'
 import { GOOGLE_OFF, type VerifiedIdentity } from './sign-in'
 import { readVariable } from './env'
 
@@ -211,7 +211,7 @@ export function mockApproveRedirect(state: string, redirectUri: string, email: s
   return `${redirectUri}?${p.toString()}`
 }
 
-const CONSUMER_DOMAINS = new Set(['gmail.com', 'googlemail.com'])
+const CONSUMER_DOMAINS = new Set(GOOGLE_CONSUMER_DOMAINS)
 
 /** Google's verify step: a VerifiedIdentity whose subject is the permanent
  *  account ID (`sub`); the email is display data and an admission signal. */
