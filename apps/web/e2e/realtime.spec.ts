@@ -10,14 +10,16 @@ import {
 } from './fixtures'
 
 const DT = 'Rt DT'
-const OTHER_USER = 'rt-user@x.com'
+let OTHER_USER = ''
 // person-rename: ids are minted (`psn_…`); the person signs in by email and is
 // mentioned by username. The id is read back after creation.
-const OTHER_USERNAME = 'rt.user'
+let OTHER_USERNAME = ''
 let OTHER_ID = ''
 const OTHER_PWD = 'rtpw12345'
 
-test.beforeAll(async ({ request }) => {
+test.beforeAll(async ({ request }, worker) => {
+  OTHER_USER = `rt-user-${worker.workerIndex}@x.com`
+  OTHER_USERNAME = `rt.user.${worker.workerIndex}`
   const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
@@ -99,10 +101,13 @@ test('RT-001: a doc created in one session appears in another session list', asy
   })
   await sessionA.visit('/featherbase/admin')
   await sessionA.step('the home feed receives a newly recorded row visit without a reload', async ({ page }) => {
+    // Notifications already subscribes to the personal channel. Its ACK
+    // does not mean the home feed has mounted or finished its initial read.
+    await expect(page.getByTestId('feed-item').first()).toBeVisible()
     await waitForRealtime(page, 'user:Administrator')
     const recorded = await a.request.post('/api/events', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { events: [{ kind: 'row', key: `row:${DT}:${uniq}`, label: uniq, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}` }] },
+      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}` }] },
     })
     expect(recorded.status()).toBe(200)
     await expect(page.getByTestId('activity-feed')).toContainText(uniq)

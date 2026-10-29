@@ -202,7 +202,6 @@ export function ListView({
         setSettingsLoaded(true)
       })
       .catch(
-        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; reading saved list settings answers for every signed-in person */
         () => setSettingsLoaded(true),
       )
     return () => {

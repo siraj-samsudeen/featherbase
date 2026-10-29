@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, ADMIN_PWD } from './fixtures'
+import { anonymousTest as test, test as signedInTest, expect, ADMIN_PWD, adminAuth } from './fixtures'
 
 // UI-001. The login form's fields ARE labelled,
 // so sign-in itself becomes DSL verbs; the sidebar/table-nav assertions stay
@@ -67,4 +67,35 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
     await page.goto('/admin')
     await expect(page).toHaveURL(/\/login/)
   })
+})
+
+signedInTest('a cached list remains usable when settings and recent-history reads lose the connection', async ({ session, page, request }) => {
+  const headers = await adminAuth(request)
+  const table = 'Offline Cached List'
+  const made = await request.post('/api/table_def', { headers, data: {
+    name: table, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
+  } })
+  expect(made.status()).toBe(201)
+  expect((await request.post('/api/save_row', { headers, data: { table, row: { title: 'Locally cached row' } } })).status()).toBe(201)
+  await session.visit(`/featherbase/admin/${encodeURIComponent(table)}`)
+    .assertHas('[data-testid="list-rows"]', { text: 'Locally cached row' })
+    .step('open the account page, then return with the connection lost', async () => {
+      await page.getByTestId('session-user').click()
+      await page.getByTestId('account-sign-in-methods').click()
+      await expect(page.getByTestId('sign-in-methods')).toBeVisible()
+      await page.context().setOffline(true)
+      const settings = page.waitForEvent('requestfailed', { predicate: (r) => r.url().includes('/api/user_settings/') })
+      const history = page.waitForEvent('requestfailed', { predicate: (r) => r.url().endsWith('/api/events/summary') })
+      const events = page.waitForEvent('requestfailed', { predicate: (r) => r.url().endsWith('/api/events') })
+      await page.goBack()
+      await Promise.all([settings, history, events])
+      await expect(page.getByTestId('list-rows')).toContainText('Locally cached row')
+      await expect(page.getByTestId('admin-sidebar')).toBeVisible()
+      await page.context().setOffline(false)
+      await page.getByTestId('col-title').click()
+      await expect.poll(async () => {
+        const result = await request.get(`/api/user_settings/${encodeURIComponent(table)}`, { headers })
+        return (await result.json()).settings?.sort
+      }).toEqual({ field: 'title', dir: 'asc' })
+    })
 })

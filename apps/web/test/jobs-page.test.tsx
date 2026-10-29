@@ -119,6 +119,8 @@ test('Run now queues one run without moving the schedule, and reads Queued until
   const kept = live.find((r) => r.trigger === 'schedule')!
   expect(kept.row_id).toBe(scheduled.row_id)
   expect(new Date(kept.run_at as string).getTime()).toBe(new Date(scheduled.run_at as string).getTime())
+  await waitFor(() => expect(screen.queryByText('Jp ok queued')).not.toBeInTheDocument(), { timeout: 8000 })
+  expect(within(ok).getByRole('button', { name: 'Run Jp ok now' })).toBeDisabled()
 })
 
 test('no scheduled jobs reads as an empty state, not an empty table (item 12)', async ({ admin }) => {

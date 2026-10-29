@@ -5,7 +5,12 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DuckDBInstance } from '@duckdb/node-api'
 import { sql } from 'server/src/db'
+import { invalidateSources } from 'server/src/sources/registry'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -132,20 +137,40 @@ test('a summary that fits on the page says nothing about rows left out', async (
 // A connected table whose source can't add up a column has no server totals:
 // the summary adds up the rows it lists, and says that is all they cover.
 test('without server totals, the summary says its totals cover only the rows listed', async ({ admin }) => {
-  await seed(admin)
-  const real = globalThis.fetch
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) =>
-    String(input).includes(':summary')
-      ? Response.json({ error: { type: 'ValidationError', message: 'sums are not supported here' } }, { status: 417 })
-      : real(input, init),
-  )
-  await openReport(admin)
-  await waitFor(() =>
-    expect(screen.getByTestId('report-shown-note')).toHaveTextContent(
+  const dir = mkdtempSync(join(tmpdir(), 'report-source-'))
+  process.env.REPORT_FIXTURE_URL = join(dir, 'sales.duckdb')
+  try {
+    const instance = await DuckDBInstance.create(process.env.REPORT_FIXTURE_URL)
+    const connection = await instance.connect()
+    await connection.run(`create table sales as select n as id,
+      case when n <= 300 then 'North' else 'South' end as region,
+      case when n <= 300 then 2 else 3 end as amount,
+      timestamp '2026-01-01' + n * interval '1 second' as updated_at from range(1, 502) t(n)`)
+    connection.closeSync()
+    instance.closeSync()
+    await admin.post('/api/table/Data%20Source', { row_id: 'report-fallback', engine: 'duckdb', url_env: 'REPORT_FIXTURE_URL', access: 'read_only' })
+    const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/report-fallback:reflect', { schema: 'sales.main', tables: ['sales'] })
+    expect(reflected.created).toHaveLength(1)
+    const blobs = captureDownloads()
+    await renderApp(`/featherbase/admin/${encodeURIComponent(reflected.created[0].name)}/view/report`, admin)
+    await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(500))
+    await waitFor(() => expect(screen.getByTestId('report-shown-note')).toHaveTextContent(
       'Showing the first 500 of 501 rows. The counts and totals cover only these 500; the export has all 501.',
-    ),
-  )
-  expect(screen.getByTestId('report-grand-total')).toHaveTextContent('Total (500)')
+    ))
+    expect(screen.getByTestId('report-grand-total')).toHaveTextContent('Total (500)')
+    await userEvent.click(screen.getByTestId('export-csv'))
+    await waitFor(() => expect(blobs).toHaveLength(1))
+    const lines = (await textOf(blobs[0])).trim().split('\n')
+    expect(lines).toHaveLength(503)
+    const amount = lines[0].split(',').findIndex((label) => label.toLowerCase().includes('amount'))
+    expect(amount).toBeGreaterThan(0)
+    expect(lines.at(-1)!.split(',')[0]).toBe('Total (501)')
+    expect(lines.at(-1)!.split(',')[amount]).toBe('1203')
+  } finally {
+    invalidateSources()
+    delete process.env.REPORT_FIXTURE_URL
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('an export that cannot read every row says so and downloads nothing', async ({ admin }) => {
@@ -177,6 +202,10 @@ test('a blank and a missing value are one empty group, with all its rows listed'
   // Saving normalizes an empty string to NULL. Persist both representations
   // to exercise distinct server groups that share the displayed empty label.
   await sql`update featherbase.rpt_totals_sale set area = '' where amount = 3`
+  // NULL sorts after the page boundary, so the displayed empty group must
+  // use server counts and sums, not coincidentally equal page-local values.
+  await sql`insert into featherbase.rpt_totals_sale (row_id, area, amount)
+    select 'report-extra-' || n, 'A', 2 from generate_series(1, 498) n`
   await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'area')
@@ -184,5 +213,5 @@ test('a blank and a missing value are one empty group, with all its rows listed'
   expect(within(groupHeader('(empty)')).getByTestId('group-sum-amount')).toHaveTextContent('8')
   // The stored empty string sorts before A; its later NULL group joins it.
   expect(screen.getAllByTestId('group-header').map((h) => h.dataset.group)).toEqual(['(empty)', 'A'])
-  expect(screen.getAllByTestId('report-row')).toHaveLength(3)
+  expect(screen.getAllByTestId('report-row')).toHaveLength(500)
 })
