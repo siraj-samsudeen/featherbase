@@ -71,7 +71,7 @@ test('removing an attachment someone else already removed says so', async ({ adm
   const rowId = await seedRow(admin)
   const file = (await admin.post('/api/save_row', {
     table: 'File',
-    row: { file_name: 'gone.txt', file_url: '/files/gone.txt', ref_table: DT, ref_name: rowId },
+    row: { file_name: 'gone.txt', ref_table: DT, ref_name: rowId },
   })) as { row_id: string }
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('attachments-panel')

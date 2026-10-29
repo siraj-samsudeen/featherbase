@@ -2,6 +2,7 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { app } from '../src/index'
 import { sql } from '../src/db'
+import { setUserPassword } from '../src/auth'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -12,6 +13,28 @@ function request(path: string, init: RequestInit = {}, ip = '192.0.2.10') {
 }
 
 describe('#245 public route admission', () => {
+  test('#575 IPv6 /64 shares source and credential budgets without truncating audit addresses', async ({ admin }) => {
+    vi.stubEnv('CLIENT_ADDRESS_HEADER', 'x-real-ip')
+    vi.stubEnv('PREAUTH_PASSWORD_MAX', '1')
+    vi.stubEnv('PREAUTH_LOGIN_MAX', '3')
+    const send = (address: string, usr = 'Nobody', pwd = 'wrong') => request('/api/login', {
+      method: 'POST', headers: { 'x-real-ip': address }, body: JSON.stringify({ usr, pwd }),
+    })
+    expect((await send('2001:db8:1234:5678::1')).status).toBe(401)
+    expect((await send('2001:0db8:1234:5678:ffff:ffff:ffff:ffff')).status).toBe(429)
+    expect((await send('2001:db8:1234:5679::1')).status).toBe(401)
+    expect((await send('2001:db8:1234:5678::2', 'Other')).status).toBe(401)
+    expect((await send('2001:db8:1234:5678::3', 'Different')).status).toBe(429)
+    const person = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Person', row: { email: 'ipv6-budget-audit@example.test', enabled: true },
+    })
+    await setUserPassword(person.row_id, 'ipv6-budget-audit-pass')
+    const full = '2001:db8:1234:5680:abcd:1234:5678:9abc'
+    expect((await send(full, 'ipv6-budget-audit@example.test', 'ipv6-budget-audit-pass')).status).toBe(200)
+    expect(await sql`select ip_address from activity_log where "user" = ${person.row_id} and operation = 'login'`)
+      .toEqual([{ ip_address: full }])
+  })
+
   test('equivalent mapped proxy spellings separate clients and share each client budget', async () => {
     vi.stubEnv('PREAUTH_LOGIN_MAX', '1')
     const proxies = ['::ffff:7f00:1', '127.0.0.1', '::ffff:127.0.0.1', '0:0:0:0:0:ffff:127.0.0.1']
