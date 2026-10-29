@@ -88,7 +88,6 @@ export default function SourceBrowser({ name }: { name: string }) {
   }
 
   async function reflect() {
-    if (!selected.size) return
     setBusy(true)
     setError(null)
     setReflectResult(null)
