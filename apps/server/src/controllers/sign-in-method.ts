@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, methodUsable, type MethodKind } from '../identities'
 import { usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
@@ -31,6 +31,12 @@ const controller: TableController = {
       if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: SIGN_IN_METHOD_KINDS.join(', ') })
       if (!isNew && old && row.kind !== undefined && row.kind !== old.kind)
         throw new AppError('ValidationError', 'A sign-in method cannot change kind', { kind: 'fixed once created' })
+      // #693: one reading of the list everywhere, so a typo is refused here
+      // rather than read one way by the lockout guard and another by sign-in.
+      if (row.allowed_email_domains !== undefined) {
+        const problem = domainListProblem(row.allowed_email_domains)
+        if (problem) throw new AppError('ValidationError', `Allowed email domains ${problem}`, { allowed_email_domains: problem })
+      }
       const newPerson = String(row.new_person ?? old?.new_person ?? 'refuse')
       if (newPerson === 'create' && !caps.trustedSubject)
         throw new AppError('ValidationError', 'This method cannot vouch for a permanent ID, so it cannot create accounts', {

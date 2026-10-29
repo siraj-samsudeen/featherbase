@@ -149,3 +149,43 @@ describe('the way-in counts need the hosted-domain claim for a company domain', 
     expect((await call(withClaim.token)).status).toBe(200)
   })
 })
+
+// Codex review round 2 on #698: one reading of the domain list everywhere. A
+// typo with a space inside an entry is refused when saved, so the lockout
+// guard and sign-in can never read it differently.
+describe('a malformed domain list is refused when saved', () => {
+  for (const [typo, says] of [
+    ['exam ple.com', '"exam ple.com" is not a domain such as example.com, or *'],
+    [`${COMPANY},`, 'has an empty entry: remove the extra comma'],
+    [`${COMPANY},,sister.test`, 'has an empty entry: remove the extra comma'],
+    ['example', '"example" is not a domain such as example.com, or *'],
+    ['@example.com', '"@example.com" is not a domain such as example.com, or *'],
+  ] as const) {
+    test(`"${typo}" is refused with a clear message, and the list is unchanged`, async ({ admin }) => {
+      await configureGoogle({ allowed_email_domains: COMPANY })
+      const res = await setDomains(admin, typo)
+      expect(res.status).toBe(417)
+      expect(((await res.json()) as { error: { message: string } }).error.message).toBe(`Allowed email domains ${says}`)
+      expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: COMPANY }])
+    })
+  }
+
+  test('a typo cannot strand a Google-only System Manager; their sign-in still works', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: COMPANY })
+    const sm = await makePerson({ username: 'sm.693.typo', roles: [{ role: 'System Manager' }] })
+    await rawLink(sm, 'uid_693_typo', 'g-693-typo', `sm.typo@${COMPANY}`, 'self', COMPANY)
+    expect((await setDomains(admin, 'exam ple.com')).status).toBe(417)
+    expect((await redeemSession(api, await googleSignIn(api, `sm.typo@${COMPANY}`, { subject: 'g-693-typo' }))).user.row_id).toBe(sm)
+  })
+
+  test('spaces around entries, mixed case and * are accepted and read the same everywhere', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '' })
+    expect((await setDomains(admin, ` Example.COM ,  sister.test `)).status).toBe(200)
+    const sm = await makePerson({ username: 'sm.693.spaced', roles: [{ role: 'System Manager' }] })
+    await rawLink(sm, 'uid_693_spaced', 'g-693-spaced', 'sm@sister.test', 'self', 'sister.test')
+    expect((await redeemSession(api, await googleSignIn(api, 'sm@sister.test', { subject: 'g-693-spaced' }))).user.row_id).toBe(sm)
+    // Dropping sister.test would strand them: the guard reads the same list.
+    expect((await setDomains(admin, ' Example.COM ')).status).toBe(417)
+    expect((await setDomains(admin, '*')).status).toBe(200)
+  })
+})

@@ -20,6 +20,7 @@ import {
   domainAllowed,
   foldName,
   listsDomains,
+  parseDomainList,
   methodOfKind,
   newIdentityId,
   normaliseEmail,
@@ -104,7 +105,7 @@ function domainAdmitted(method: SignInMethod, v: VerifiedIdentity): { ok: boolea
   if (!domainAllowed(method, v.email)) return { ok: false, reason: 'domain not allowed' }
   if (!KINDS[method.kind].hostedDomain) return { ok: true, reason: 'allowed domain' }
   const domain = v.email.split('@')[1] ?? ''
-  if (CONSUMER_DOMAINS.has(domain) || method.allowed_email_domains.split(',').map(foldName).includes('*'))
+  if (CONSUMER_DOMAINS.has(domain) || parseDomainList(method.allowed_email_domains).includes('*'))
     return { ok: true, reason: 'allowed domain' }
   return v.hosted_domain === domain
     ? { ok: true, reason: 'allowed company domain' }

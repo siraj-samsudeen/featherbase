@@ -142,10 +142,32 @@ export async function methodOfKind(kind: MethodKind): Promise<SignInMethod | nul
 }
 
 /** Is `email` on a domain this method admits? Empty admits nobody; `*` all. */
+/** The one reading of a method's allowed_email_domains (#693): comma-separated
+ *  entries, each trimmed and folded, blanks dropped. Sign-in, the way-in
+ *  counts and the lockout guard all use it, so they cannot disagree. */
+export function parseDomainList(value: string | null | undefined): string[] {
+  return String(value ?? '').split(',').map(foldName).filter(Boolean)
+}
+
+const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+/** Why a domain list cannot be saved, or null. Blank means no list. Each
+ *  entry must be `*` or a domain such as example.com: no empty entry and no
+ *  space inside one, which sign-in would read differently than intended. */
+export function domainListProblem(value: unknown): string | null {
+  const text = String(value ?? '')
+  if (!text.trim()) return null
+  for (const entry of text.split(',').map(foldName)) {
+    if (!entry) return 'has an empty entry: remove the extra comma'
+    if (entry !== '*' && !DOMAIN_RE.test(entry)) return `"${entry}" is not a domain such as example.com, or *`
+  }
+  return null
+}
+
 export function domainAllowed(method: SignInMethod, email: string): boolean {
   const match = /^[^\s@]+@([^\s@]+)$/.exec(foldName(email))
   if (!match) return false
-  const domains = method.allowed_email_domains.split(',').map(foldName).filter(Boolean)
+  const domains = parseDomainList(method.allowed_email_domains)
   if (!domains.length) return false
   return domains.includes('*') || domains.includes(match[1])
 }
@@ -153,7 +175,7 @@ export function domainAllowed(method: SignInMethod, email: string): boolean {
 /** Does the method name any allowed domains? An empty list means no domain
  *  rule at all. */
 export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>): boolean {
-  return method.allowed_email_domains.split(',').map(foldName).some(Boolean)
+  return parseDomainList(method.allowed_email_domains).length > 0
 }
 
 /** #693: links that rest on the method's domain rule rather than on an
@@ -164,23 +186,34 @@ export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>
  *  administrator's decision for that account and is not re-checked. */
 export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
 
+/** Each method's parsed domain list as JSON, for keepsDomain. `override`
+ *  stands in one method's list after a change (the lockout guard). */
+async function domainListsJson(db: Sql | TxSql, override?: { key: string; domains: string }): Promise<string> {
+  const rows = await db`select row_id, allowed_email_domains from sign_in_method`
+  const lists: Record<string, string[]> = {}
+  for (const r of rows) lists[String(r.row_id)] = parseDomainList(r.allowed_email_domains as string | null)
+  if (override) lists[override.key] = parseDomainList(override.domains)
+  return JSON.stringify(lists)
+}
+
 /** SQL twin of the #693 re-check (domainAdmitted in sign-in.ts), for the
  *  way-in counts: would link `i` through method `m` still sign in under that
- *  method's domain list? A company domain also needs the hosted-domain claim
- *  recorded at the link's last sign-in; a link with none recorded does not
- *  count. The link list is DOMAIN_RULED_LINKS. */
-function keepsDomain() {
-  const list = sql`string_to_array(lower(regexp_replace(coalesce(m.allowed_email_domains, ''), '[[:space:]]', '', 'g')), ',')`
+ *  method's list in `lists` (domainListsJson, so parsed once, in TypeScript)?
+ *  A company domain also needs the hosted-domain claim recorded at the link's
+ *  last sign-in; a link with none recorded does not count. The link list is
+ *  DOMAIN_RULED_LINKS. */
+function keepsDomain(lists: string) {
+  const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
+  const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
     m.kind <> 'google'
     or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
-    or cardinality(array_remove(${list}, '')) = 0
-    or '*' = any(${list})
+    or jsonb_array_length(${list}) = 0
+    or ${list} ? '*'
     or (
       coalesce(i.email, '') like '%_@_%'
-      and lower(split_part(i.email, '@', 2)) = any(${list})
-      and (lower(split_part(i.email, '@', 2)) in ('gmail.com', 'googlemail.com')
-        or lower(coalesce(i.hosted_domain, '')) = lower(split_part(i.email, '@', 2)))
+      and ${list} ? ${domain}
+      and (${domain} in ('gmail.com', 'googlemail.com') or lower(coalesce(i.hosted_domain, '')) = ${domain})
     )
   )`
 }
@@ -426,6 +459,7 @@ const usableWhere = (mock: boolean) =>
  *  count. `excluding` leaves one identity id (or 'password') out. */
 async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
   const mock = mockOAuthEnabled()
+  const lists = await domainListsJson(db)
   const [row] = await db`
     with p as (
       select (u.row_id = 'Administrator' or exists (
@@ -438,7 +472,7 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
           and not (m.kind = 'delegated_password' and (select privileged from p))
-          and ${keepsDomain()})::int as n`
+          and ${keepsDomain(lists)})::int as n`
   return Number(row.n)
 }
 
@@ -568,7 +602,9 @@ export async function assertNoAdminLockout(
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
   // #693: narrowing the domain list can end a link's sign-ins too.
-  const nextDomains = next?.allowed_email_domains ?? null
+  const before = await domainListsJson(db)
+  const after =
+    next?.allowed_email_domains !== undefined ? await domainListsJson(db, { key: methodKey, domains: next.allowed_email_domains }) : before
   const rows = await db`
     with privileged as (
       select u.row_id from person u
@@ -576,13 +612,11 @@ export async function assertNoAdminLockout(
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
     ), m0 as (
-      select row_id, kind, enabled, client_id, allowed_email_domains from sign_in_method
+      select row_id, kind, enabled, client_id from sign_in_method
     ), m1 as (
       select row_id, kind,
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
-        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id,
-        case when row_id = ${methodKey}::text and ${nextDomains}::text is not null then ${nextDomains}::text
-          else allowed_email_domains end as allowed_email_domains
+        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
       from sign_in_method
     ), ways as (
       select p.row_id,
@@ -590,12 +624,12 @@ export async function assertNoAdminLockout(
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
           where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain()}) as before_n,
+            and ${keepsDomain(before)}) as before_n,
         (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
           where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain()}) as after_n
+            and ${keepsDomain(after)}) as after_n
       from privileged p
     )
     select row_id from ways where before_n > 0 and after_n = 0 order by row_id`
