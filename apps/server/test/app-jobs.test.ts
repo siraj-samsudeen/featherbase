@@ -76,6 +76,12 @@ const HANDLERS: Record<string, string> = {
     await ctx.email.systemManagers({ subject: 'Before reading', body: 'sent once' })
     try { await ctx.datasets.active('exits') } catch { ctx.setResult('caught it') }
   }`,
+  read_declared: `async read_declared(ctx) {
+    const answers = []
+    for (const read of ['active', 'live'])
+      try { await ctx.datasets[read]('exits'); answers.push(read + ': answered') } catch (e) { answers.push(read + ': ' + e.message) }
+    ctx.setResult(answers.join('; '))
+  }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
@@ -477,6 +483,21 @@ describe('an app job row stays the app\'s', () => {
     expect(calls()).toEqual([])
     expect(await row(`${APP}.tidy`)).toMatchObject({ last_outcome: 'success', last_result: 'tidied' })
     expect(await row(SWEEP)).toMatchObject({ owner_app: null, description: 'Made by hand.' })
+  })
+})
+
+describe('a dataset the job declares', () => {
+  test('reaches the platform\'s dataset reads, cached and live, with no refusal', async ({ admin }) => {
+    const datasets = { datasets: [{ name: 'exits', source: 'fbjobs-absent-source', query: 'select code, store from exits',
+      columns: [{ name: 'code', type: 'text' }, { name: 'store', type: 'text' }], keys: ['code'], filters: { store: 'store' } }] }
+    const job: Job = { name: 'read_declared', cadence: 'daily', description: 'Reads its own dataset.', datasets: ['exits'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: datasets })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    // Its source is not connected here, so both reads say so, as an app's reads do.
+    expect(await row(`${APP}.read_declared`)).toMatchObject({ last_outcome: 'success',
+      last_result: 'active: Jobs proof is not set up yet. An administrator needs to finish setting it up.; live: Jobs proof is not set up yet. An administrator needs to finish setting it up.' })
+    expect(await sql`select 1 from access_log where "user" = ${`${APP}.read_declared`}`).toEqual([])
   })
 })
 
