@@ -1,32 +1,57 @@
 ## Context
 
-See proposal.md for the owner's reversal of retirement and the intended first trial. Tasker 2.3.0 declares All grants on its own tables and Comment, loads the oldest 500 tasks, and uses its own pre-Shop Floor stylesheet. Existing failing tests pin the missing-task, author-name and phone-inspector defects. These are implementation gaps, not approved changes to expected behaviour.
+See proposal.md and #563 for the owner decisions of 28–29-Oct-2026. The earlier plan's team-visible personal tasks are superseded. Existing Tasker uses All grants, a 500-task read cap and old visual styles. The owner chose Attention first in conversation; the carousel's last selected variant does not override that choice.
 
 ## Goals / Non-Goals
 
-**Goals:** preserve task behaviour and data, enforce explicit membership consistently, and bring the app under current platform presentation and release contracts.
+**Goals:** preserve useful workflows, enforce creator-only privacy, support team discussion and subtasks, and make recurrence predictable. Deliver all work in one PR; use incremental commits and verification internally.
 
-**Non-goals:** a new tenancy model, private tasks, per-project permissions, store-based scope, changes to the meaning of task states, or a platform dependency on Tasker internals.
+**Non-goals:** a rewrite, private projects, separate teams, nested subtask trees, or importing Tasker-specific policy into the platform. The mockup is throwaway and is not promoted directly to production.
 
 ## Decisions
 
-1. **Revise the app and preserve its tests.** A rewrite would recreate existing behaviour without resolving the platform integration work. Keep current task/project identities and data. Record an append-only amendment to ADR 0013 before implementation; the historical decision remains intact.
-2. **Authorize on the server through declared app contracts.** Use explicit membership rather than All grants, including catalog entry, direct row access, actions, comments/history and supporting people reads. Do not rely on navigation to enforce access. Coordinate any missing generic grant capability with #617 rather than adding Tasker-specific platform branches. Preserve existing private user settings and current deletion safeguards.
-3. **Reuse the platform's design system through supported app-facing exports.** Avoid a second copy of tokens or formatters and do not import private web internals. Where an export is missing, define the generic app-facing seam before adoption. Include Tasker's source in appropriate design guard checks. Retain workflows while the owner agrees concrete navigation, labels and phone layouts in #563; no UI checklist is approved by this document.
-4. **Repair existing promises before adding workflows.** Remove silent collection truncation with correct paging across tasks and supporting data; do not merely raise the cap. Resolve activity authors to names and adopt shared time formatting. Retain the failing regression assertions and turn the pins into ordinary passing tests when fixed.
-5. **Keep release identity truthful.** Publish a new app version with the required migration ledger and fingerprint verification. Do not change the contents of an installed 2.3.0 artifact in place.
+### Access and sharing
+
+Use explicit membership and a mandatory row privacy boundary that runs before administrative bypass, ordinary grants and explicit shares. The creator identity comes from authenticated server state and is immutable. Creator-only privacy covers direct reads/writes, lists/counts, search, reports/exports, references, realtime, comments/history, files, actions and background processing. It is an application access promise, not encryption against a server/database operator.
+
+Private tasks may be created only for oneself. Assigning private work to another person is refused until the parent is shared. Moving a private task into a shared project shares its description, subtasks, discussion and history atomically, without a confirmation prompt. A shared task cannot return to private ownership. Project moves remain possible; projectless legacy shared work needs migration inspection before classification. Sharing is a one-way state transition, not an inference from a nullable project alone.
+
+Use declared app contracts. Resolve the required generic policy seam with codebase-design and #617 before coding it; do not rely on own_rows_only, which currently permits administrative bypass. Never copy the old checklist's manager access model.
+
+### Daily workspace
+
+My Work opens by default; explicit task/project links retain their destinations. Attention first places questions addressed to the current user and replies to their questions above Focus and other assigned tasks. Anyone questions remain visible as open team questions. Private capture goes to the creator's Inbox; project-local creation is shared. Focus and saved preferences stay private.
+
+Reuse supported Shop Floor exports, including tokens, controls, formatters and shell positioning. Extend generic app-facing exports where needed rather than importing platform internals or copying tokens. Use the numbered UI checklist in #563 and independent screenshots at 1280px and 375px, in light and dark.
+
+### Subtasks and discussion
+
+Represent subtasks as metadata-defined tasks linked to a parent, not checkbox-only embedded notes. Limit depth to one and inherit the parent's visibility. Each subtask has responsibility, status and discussion. The parent completion check locks and validates current child state in the same transaction; it cannot race a child being added or reopened. Progress shows child completion without automatically finishing the parent. Preserve Done versus Cancelled distinctions.
+
+Conversations belong to a task or subtask. Each root is an update or question; replies belong directly to that root, without deeper nesting. Questions name a respondent or anyone. A response creates an asker-review state; reading is separate from resolution. Only the asker resolves or reopens. A follow-up from the asker on an unresolved question returns it to waiting for a reply. Ordinary updates have unread state but need no resolution. Do not duplicate free-standing chat or conflate task status with question status.
+
+### Recurrence
+
+Use a recurring definition and separate occurrence records; snapshot task instructions and subtask structure so past history is not rewritten. Carry assignments and privacy; new subtasks start unchecked, and comments/history are not copied to the next occurrence. Sharing an occurrence must not create a loophole that makes that same occurrence private again.
+
+A series has at most one active occurrence. Fixed schedules skip slots that fall while work remains active and resume at the next future slot after completion. After-completion schedules calculate the next occurrence from the completion time. Use the platform scheduler through declared extension points and an idempotent occurrence key with transaction-safe admission; retries and concurrent workers cannot duplicate occurrences.
+
+### Repairs and delivery
+
+Fix silent truncation through real paging, not a larger limit. Resolve activity authors to names. Retain the assertions in existing defect pins and convert them to ordinary tests only when fixed. Publish a new app version with truthful fingerprints and a data-preserving migration ledger. One PR carries every stage and the final spec archive; do not merge partial feature PRs.
 
 ## Risks / Trade-offs
 
-- Tightened membership can lock out former users → require explicit instance membership setup and verify member, non-member and revoked-member requests before trial; never silently enrol all users.
-- Old platform-wide grants can survive an app manifest edit → add a convergence migration and prove fresh and upgraded databases. Preserve task data; do not revive #563's deletion instructions.
-- A themed host can hide an unthemed app → inspect the app itself in light/dark at 1280px and 375px, using an independent verifier and an owner-agreed checklist.
-- App-contract work in #617 may be unfinished → resolve the required grant seam before access implementation, with hidden-logic review; do not treat every #617 enhancement as a prerequisite.
+- Privacy can leak through a secondary read surface → enumerate those paths and prove denial for ordinary members, Administrator and System Manager, including files and existing shares.
+- Old personal tasks were shared and could have been created for someone else → inspect real installed data before choosing a migration mapping; never silently declare historically shared work private or discard it.
+- Recurrence has calendar edge cases → settle cancellation, timezone and month-end semantics before recurrence implementation; these are not implied by choosing both modes.
+- The old checklist provides reusable concepts, not Tasker subtasks → reuse immediate completion, progress and template snapshots; keep Tasker assignment/discussion and privacy separate.
+- A mockup cannot prove access → use real database integration tests and independent browser verification.
 
 ## Migration Plan
 
-Before implementation, boot and smoke-test the checkout and inspect the target's installed app state. Prepare a new Tasker version, migrate legacy grants without losing work, and explicitly configure the initial members. Prove retained tasks, projects, activity and preferences on fresh and upgraded local databases. Rehearse any data-changing shared-instance migration on a restored snapshot with the target environment. Deploy only under docs/DEPLOY.md; test the exact deployed commit with ordinary members. Recovery must preserve the tightened access boundary, not restore broad All grants.
+Boot and smoke-test before implementation. Inventory installed versions and existing tasks; preserve identities, activity, relationships and settings. Add convergence migrations for legacy grants and new metadata, then explicitly configure membership. Prove fresh and upgraded local databases and rehearse changes on a restored target snapshot before any shared-instance rollout. Recovery must not restore broad grants or weaken private visibility. Follow docs/DEPLOY.md and seek the required production approval separately.
 
-## Open Questions
+## Decisions still needed before affected work
 
-The owner will review the concrete screen arrangement and labels before UI implementation; the product workflows and membership model above remain fixed. Initial trial participants and the target instance will be selected before rollout.
+Audit existing data before deciding how to classify historically team-visible personal tasks. Before implementing recurrence, agree what cancellation does to a series, the schedule timezone, month-end rules and whether sharing an occurrence changes future occurrences. Before implementing parent reopening, agree how reopening a subtask behaves when the parent is already Done. These are explicit checkpoints, not permission to guess or blockers to independent work.
