@@ -3,12 +3,16 @@
 // B-M3). Every row this file writes carries a unique prefix and is removed in
 // finally.
 import { randomUUID } from 'node:crypto'
+import postgres from 'postgres'
 import { expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { methodOfKind, unlinkIdentity } from '../src/identities'
+import { methodOfKind, removeOwnPassword, unlinkIdentity } from '../src/identities'
+import { saveDoc } from '../src/document'
+import { loadControllers } from '../src/controllers'
 import { resolveVerified } from '../src/sign-in'
 
 async function cleanup(prefix: string) {
+  await sql`delete from has_role where parent like ${prefix + '%'}`
   await sql`delete from sign_in_identity where person_id like ${prefix + '%'}`
   await sql`delete from activity_log where "user" like ${prefix + '%'}`
   await sql`delete from person_identifier where person_id like ${prefix + '%'}`
@@ -156,5 +160,52 @@ it('a database failure while creating a first-time person is raised, and no pers
     expect(await sql`select 1 from sign_in_identity where subject = ${'g-nul-' + tag}`).toHaveLength(0)
   } finally {
     await sql`delete from person where email = ${address}`
+  }
+}, 30_000)
+
+// #693, Codex review round 3: narrowing the domain list counts the password,
+// and removing the password counts Google under the old list. Without one
+// shared lock both could pass and commit, leaving no way in.
+it('narrowing the domain list racing a System Manager removing their password: exactly one is refused', async () => {
+  const p = `psn_conc${randomUUID().slice(0, 8)}`
+  const prev = process.env.ALLOW_MOCK_OAUTH
+  process.env.ALLOW_MOCK_OAUTH = '1' // Google counts as a way in
+  // The Sign In Method controller (its lockout guard) runs on saveDoc only once loaded.
+  await loadControllers()
+  const [before] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+  try {
+    await sql`update sign_in_method set allowed_email_domains = 'example.com,sister.test' where row_id = 'google'`
+    await person(p)
+    await sql`update person set password_hash = 'x' where row_id = ${p}`
+    await sql`insert into has_role ${sql({ row_id: `hr_${p}`, parent: p, parenttype: 'Person', parentfield: 'roles', role: 'System Manager' })}`
+    await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', subject: `g-${p}`, email: `${p}@sister.test`, linked_by: 'self', hosted_domain: 'sister.test' })}`
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    // Force the overlap: a third connection holds the tables both changes
+    // write only AFTER their checks, so without the shared lock both checks
+    // run against the state before either commits.
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    const held = gate.begin(async (t) => {
+      await t`lock table featherbase.activity_log, featherbase.version in exclusive mode`
+      await new Promise((r) => setTimeout(r, 1500))
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const racing = Promise.allSettled([
+      saveDoc('Sign In Method', { row_id: 'google', allowed_email_domains: 'example.com', updated_at: g.updated_at }, 'Administrator'),
+      removeOwnPassword(p),
+    ])
+    await held
+    await gate.end()
+    const results = await racing
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const [after] = await sql`select password_hash is not null as has_password from person where row_id = ${p}`
+    const [domains] = await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`
+    // Either the list kept sister.test or the password stayed: never neither.
+    expect(after.has_password || domains.allowed_email_domains === 'example.com,sister.test').toBe(true)
+    expect(after.has_password && domains.allowed_email_domains === 'example.com,sister.test').toBe(false)
+  } finally {
+    await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
+    if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
+    else process.env.ALLOW_MOCK_OAUTH = prev
+    await cleanup(p)
   }
 }, 30_000)

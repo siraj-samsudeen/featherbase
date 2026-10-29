@@ -1,6 +1,6 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
-import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, methodUsable, type MethodKind } from '../identities'
+import { KINDS, METHOD_TABLE, SIGN_IN_METHOD_KINDS, assertNoAdminLockout, domainListProblem, lockWaysIn, methodUsable, type MethodKind } from '../identities'
 import { usableServiceUrl, wireFrom } from '../delegated-login'
 
 // person-identities (D2): a Sign In Method row is configuration. Its policy
@@ -26,6 +26,8 @@ const controller: TableController = {
   table: METHOD_TABLE,
   hooks: {
     before_validate: async ({ row, old, isNew, tx }) => {
+      // #693: every Sign In Method change takes the ways-in lock first.
+      await lockWaysIn(tx)
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
       const caps = KINDS[kind]
       if (!caps) throw new AppError('ValidationError', `Unknown kind "${kind}"`, { kind: SIGN_IN_METHOD_KINDS.join(', ') })
@@ -96,6 +98,7 @@ const controller: TableController = {
       usableCheck()
     },
     on_trash: async ({ row, tx }) => {
+      await lockWaysIn(tx)
       if (row.kind === 'password')
         throw new AppError('ValidationError', 'The password sign-in method cannot be deleted; turn it off instead')
       await assertNoAdminLockout(String(row.row_id), null, tx)

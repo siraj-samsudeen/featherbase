@@ -186,6 +186,17 @@ export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>
  *  administrator's decision for that account and is not re-checked. */
 export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
 
+/** #693: the one transaction lock every change that can reduce someone's ways
+ *  in takes BEFORE it reads domain lists or counts credentials, so two such
+ *  changes (narrowing a domain list, removing a password, unlinking) cannot
+ *  each count the other's way in and both commit. Re-entrant within a
+ *  transaction; held until it ends. Rare administrator actions, so short. */
+export const WAYS_IN_LOCK_KEY = 693_0001
+
+export async function lockWaysIn(db: Sql | TxSql): Promise<void> {
+  await db`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+}
+
 /** Each method's parsed domain list as JSON, for keepsDomain. `override`
  *  stands in one method's list after a change (the lockout guard). */
 async function domainListsJson(db: Sql | TxSql, override?: { key: string; domains: string }): Promise<string> {
@@ -199,9 +210,11 @@ async function domainListsJson(db: Sql | TxSql, override?: { key: string; domain
 /** SQL twin of the #693 re-check (domainAdmitted in sign-in.ts), for the
  *  way-in counts: would link `i` through method `m` still sign in under that
  *  method's list in `lists` (domainListsJson, so parsed once, in TypeScript)?
- *  A company domain also needs the hosted-domain claim recorded at the link's
- *  last sign-in; a link with none recorded does not count. The link list is
- *  DOMAIN_RULED_LINKS. */
+ *  A company domain also needs the hosted-domain claim from the link's last
+ *  sign-in to match: '' records that Google sent none (does not count); NULL
+ *  means never recorded (a link from before migration 0004), which counts on
+ *  its email domain alone, since sign-in checks Google's fresh claim and
+ *  refusing a change is the safe side. The link list is DOMAIN_RULED_LINKS. */
 function keepsDomain(lists: string) {
   const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
   const domain = sql`lower(split_part(i.email, '@', 2))`
@@ -213,7 +226,7 @@ function keepsDomain(lists: string) {
     or (
       coalesce(i.email, '') like '%_@_%'
       and ${list} ? ${domain}
-      and (${domain} in ('gmail.com', 'googlemail.com') or lower(coalesce(i.hosted_domain, '')) = ${domain})
+      and (${domain} in ('gmail.com', 'googlemail.com') or i.hosted_domain is null or lower(i.hosted_domain) = ${domain})
     )
   )`
 }
@@ -409,6 +422,7 @@ export async function updateIdentity(
   const method = (await getSignInMethod(current.method))!
   return guarded(
     async (t) => {
+      if (change.person_id !== undefined) await lockWaysIn(t)
       const [locked] = await t`select ${identityFields()} from sign_in_identity where id = ${id} for update`
       if (!locked || locked.ended_at) throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
       const signInName =
@@ -458,6 +472,7 @@ const usableWhere = (mock: boolean) =>
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
 async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+  await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const lists = await domainListsJson(db)
   const [row] = await db`
@@ -491,6 +506,7 @@ async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: st
 export async function unlinkIdentity(id: string, actor: string, opts: { self?: string } = {}): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
+    await lockWaysIn(t)
     const [current] = await t`select person_id, method, subject from sign_in_identity where id = ${id} and ended_at is null`
     if (!current || (opts.self && current.person_id !== opts.self))
       throw new AppError('NotFoundError', `Linked sign-in ${id} not found`)
@@ -513,6 +529,7 @@ export async function unlinkIdentity(id: string, actor: string, opts: { self?: s
 export async function removeOwnPassword(user: string): Promise<void> {
   await sql.begin(async (tx) => {
     const t = tx as unknown as Sql
+    await lockWaysIn(t)
     await t`select 1 from person where row_id = ${user} for update`
     if ((await waysIn(user, t, 'password')) === 0)
       throw new AppError('ConflictError', 'This is your last way to sign in. Add another one first.')
@@ -528,13 +545,13 @@ export async function touchIdentity(
 ) {
   const [before] = await sql`select email from sign_in_identity where id = ${id}`
   // #693: a kind that reports a hosted domain passes it on every sign-in, and
-  // its absence is recorded too (a personal account has none).
+  // its absence is recorded too, as '' (a personal account has none).
   const hd = attrs.hosted_domain !== undefined
   await sql`
     update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
       display_name = coalesce(${attrs.display_name ?? null}, display_name),
-      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? null}::text else hosted_domain end
+      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? ''}::text else hosted_domain end
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
   if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {
@@ -598,6 +615,7 @@ export async function assertNoAdminLockout(
   next: { enabled: boolean; client_id: string; allowed_email_domains?: string } | null,
   db: Sql | TxSql = sql,
 ) {
+  await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
