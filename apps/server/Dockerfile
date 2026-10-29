@@ -46,6 +46,9 @@ RUN npm run build
 # Upgrades refuse a predecessor they cannot find. 2.2.0: #437 (2.3.0 withdraws
 # a grant). 2.3.0: #695 (2.3.1 upgrades Tasker's dev tools, which changes its
 # package.json and lockfile, so its fingerprint).
+# Tasker 2.1.0, and a 2.2.0 installed before b1eefe8c (22-Oct-2026), match no
+# shipped artifact: the person rename edited those versions' files in place.
+# Such an instance needs a reinstall (the dev/prod go-live is a fresh one).
 FROM node:22-slim AS tasker-2.2-build
 WORKDIR /app/runtime-apps/tasker
 COPY runtime-apps/fixtures/tasker-v2.2/package.json runtime-apps/fixtures/tasker-v2.2/package-lock.json ./

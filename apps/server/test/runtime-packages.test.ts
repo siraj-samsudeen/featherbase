@@ -1,4 +1,4 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { join, resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os'
 import { test as base } from './pg-test'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { taskerClient } from './tasker-client'
+import { currentTasker, currentTaskerVersion, shippedPredecessors, shippedTasker } from './shipped-tasker'
+import { assertInstalledAppsShipped } from '../src/release-preflight'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -372,43 +374,65 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     }
   })
 
-  // #437: 2.3.0 withdraws the everyone-reads-Person grant; 2.1 and 2.2 upgrade
-  // through it. #695: 2.3.1 changes only Tasker's dev tools, which changes its
-  // fingerprint, so 2.3.0 is a shipped predecessor too. The image ships 2.2.0
-  // and 2.3.0 beside the current version, as init.sh does.
-  const fixture = (name: string) => resolve('../..', 'runtime-apps/fixtures', name)
-  const currentTasker = resolve('../..', 'runtime-apps/tasker')
-  const shippedTasker = [fixture('tasker-v2.2'), fixture('tasker-v2.3'), currentTasker]
-  const currentVersion = JSON.parse(readFileSync(resolve(currentTasker, 'package.json'), 'utf8')).version as string
+  // #437: 2.3.0 withdraws the everyone-reads-Person grant. #695: 2.3.1 changes
+  // only Tasker's dev tools, which changes its fingerprint, so 2.3.0 is a
+  // shipped predecessor too. Every test here discovers exactly what the image
+  // ships (shipped-tasker.ts reads it from the Dockerfile), never a fixture the
+  // release lacks.
   const everyoneReadsPerson = () => sql`select 1 from permission where owner_app = 'tasker' and role = 'All' and ref_table = 'Person'`
   async function taskerGrants() {
     const [app] = await sql`select perms from installed_app where name = 'tasker'`
     return sql`select ref_table from permission where row_id in ${sql(app.perms as string[])} order by 1`
   }
 
-  for (const [predecessor, from] of [['tasker-v2.1', '2.1.0'], ['tasker-v2.2', '2.2.0']] as const)
-    test(`changed Tasker package upgrades from its exact shipped predecessor (${predecessor})`, async ({ admin }) => {
-      expect(await discoverPackages([fixture(predecessor)])).toEqual([])
-      await admin.post('/api/install_app', { name: 'tasker' })
-      expect(await discoverPackages([fixture(predecessor), ...shippedTasker])).toEqual([])
-      await loadInstalledApps()
-      expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${from}`])
-      expect(await everyoneReadsPerson()).toHaveLength(1)
-      const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: currentVersion })
-      expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
-      await admin.post('/api/upgrade_app', { name: 'tasker', version: currentVersion, planId: plan.planId })
-      await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: currentVersion })
-      expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${currentVersion}`])
-      expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
-      expect(await everyoneReadsPerson()).toHaveLength(0)
-      expect(await taskerGrants()).toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
-      // The withdrawal is on the record.
-      expect(await sql`select operation from activity_log where operation like ${`app_grant_withdrawn tasker@${currentVersion}: All on Person%`}`).toHaveLength(1)
-    })
+  test('the release ships Tasker 2.2.0 and 2.3.0 beside the current version, and init.sh runs the same ones', () => {
+    expect(shippedPredecessors.map(p => p.version)).toEqual(['2.2.0', '2.3.0'])
+    expect(shippedTasker.at(-1)).toBe(currentTasker)
+    const initSh = readFileSync(resolve('../..', 'init.sh'), 'utf8')
+    const initTasker = [...initSh.matchAll(/"\$PWD\/(runtime-apps\/(?:fixtures\/)?tasker[^"]*)"/g)].map(m => resolve('../..', m[1]))
+    expect(initTasker).toEqual(shippedTasker)
+  })
+
+  // 2.2.0 still declares the everyone-reads-Person grant, so upgrading it withdraws that.
+  test('changed Tasker package upgrades from its exact shipped predecessor (2.2.0)', async ({ admin }) => {
+    const from = '2.2.0'
+    const { directory } = shippedPredecessors.find(p => p.version === from)!
+    // Installed by the release that shipped it.
+    expect(await discoverPackages([directory])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    expect(await discoverPackages(shippedTasker)).toEqual([])
+    await loadInstalledApps()
+    expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${from}`])
+    expect(await everyoneReadsPerson()).toHaveLength(1)
+    const plan = await admin.post<{ planId: string; permissions: unknown[] }>('/api/preview_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
+    expect(plan.permissions).toEqual([{ withdraw: { table: 'Person', role: 'All', can_read: true } }])
+    await admin.post('/api/upgrade_app', { name: 'tasker', version: currentTaskerVersion, planId: plan.planId })
+    await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
+    expect(await admin.get('/api/runtime_app_versions')).toEqual([`tasker@${currentTaskerVersion}`])
+    expect(await admin.get('/api/app_catalog')).toContainEqual({ name: 'tasker', title: 'Tasker', href: '/tasker/' })
+    expect(await everyoneReadsPerson()).toHaveLength(0)
+    expect(await taskerGrants()).toEqual([{ ref_table: 'Comment' }, { ref_table: 'tasker.project' }, { ref_table: 'tasker.task' }])
+    // The withdrawal is on the record.
+    expect(await sql`select operation from activity_log where operation like ${`app_grant_withdrawn tasker@${currentTaskerVersion}: All on Person%`}`).toHaveLength(1)
+  })
+
+  // #695: the 2.1 fixture was edited in place by the person rename (b1eefe8c),
+  // so no shipped artifact matches a real 2.1.0 install. The release refuses
+  // such an instance by name rather than taking Tasker away from it.
+  test('an instance with Tasker 2.1.0 installed, which this release does not ship, is refused by preflight, naming it', async ({ admin }) => {
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/tasker-v2.1')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    vi.stubEnv('FEATHERBASE_APP_PATHS', JSON.stringify(shippedTasker))
+    try {
+      await expect(assertInstalledAppsShipped())
+        .rejects.toThrow('App tasker version 2.1.0 is installed and enabled, but this release does not ship it.')
+    } finally { vi.unstubAllEnvs() }
+  })
 
   test('an instance with Tasker 2.3.0 installed upgrades to 2.3.1, its grants and rows unchanged', async ({ admin }) => {
-    expect(currentVersion).toBe('2.3.1')
-    expect(await discoverPackages([fixture('tasker-v2.3')])).toEqual([])
+    expect(currentTaskerVersion).toBe('2.3.1')
+    // Installed by the release that shipped it.
+    expect(await discoverPackages([shippedPredecessors.find(p => p.version === '2.3.0')!.directory])).toEqual([])
     await admin.post('/api/install_app', { name: 'tasker' })
     // A 2.3.0 client saves a task before the upgrade.
     const saved = await admin.fetch('/api/save_row', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': 'tasker@2.3.0' },
