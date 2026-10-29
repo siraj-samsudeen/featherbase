@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
@@ -24,6 +24,37 @@ const env = { ...process.env, DATABASE_URL: database, FEATHERBASE_ENV: 'test', P
 await mkdir(resolve(root, 'dist'), { recursive: true })
 const output = await mkdtemp(resolve(root, 'dist/runtime-proof-'))
 const core = resolve(output, 'core')
+const coverageDirectory = process.env.VITE_COVERAGE === 'true' ? resolve(root, 'coverage/tasker/packaged') : null
+const coverageWrites = []
+async function collectContext(context) {
+  if (!coverageDirectory) return
+  await mkdir(coverageDirectory, { recursive: true })
+  await context.exposeBinding('__saveTaskerCoverage', async (_source, json) => {
+    const map = Object.fromEntries(Object.entries(JSON.parse(json)).filter(([file]) => file.includes('/runtime-apps/tasker/')))
+    if (!Object.keys(map).length) return
+    const write = writeFile(resolve(coverageDirectory, `${randomUUID()}.json`), JSON.stringify(map))
+    coverageWrites.push(write)
+    await write
+  })
+  await context.addInitScript(() => {
+    const key = '__taskerPackagedCoverage'
+    const previous = sessionStorage.getItem(key)
+    if (previous) {
+      sessionStorage.removeItem(key)
+      void window.__saveTaskerCoverage(previous)
+    }
+    addEventListener('pagehide', () => {
+      if (window.__coverage__) sessionStorage.setItem(key, JSON.stringify(window.__coverage__))
+    })
+  })
+}
+async function flushContext(context) {
+  if (!coverageDirectory) return
+  for (const page of context.pages()) await page.evaluate(async () => {
+    if (window.__coverage__) await window.__saveTaskerCoverage(JSON.stringify(window.__coverage__))
+  })
+  await Promise.all(coverageWrites)
+}
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, { cwd, env, stdio: 'inherit' })
   assert.equal(result.status, 0, `${command} ${args.join(' ')} failed`)
@@ -44,7 +75,7 @@ async function digest(directory) {
 
 // Freeze core FIRST. tsc preserves boot-discovered controller/job modules.
 run('pnpm', ['--filter', 'web', 'build'])
-run('pnpm', ['--filter', 'server', 'exec', 'tsc', '--noEmit', 'false', '--outDir', resolve(core, 'apps/server')])
+run('pnpm', ['--filter', 'server', 'exec', 'tsc', '--noEmit', 'false', '--outDir', resolve(core, 'apps/server/src')])
 run('pnpm', ['--filter', 'shared', 'exec', 'tsc', '--noEmit', 'false', '--outDir', resolve(core, 'packages/shared')])
 // tsc keeps extensionless imports. Make emitted JS resolve files rather than
 // same-named controller/job directories; the source tree is never rewritten.
@@ -85,13 +116,26 @@ run('pnpm', ['--filter', 'server', 'e2e:reset'])
 run('pnpm', ['--filter', 'server', 'migrate'])
 let server
 let browser
-async function start(configured) {
+async function start(configured, refusedApps = []) {
+  let diagnostics = ''
   server = spawn(process.execPath, [resolve(core, 'apps/server/src/index.js')], {
-    cwd: resolve(root, 'apps/server'), env: { ...env, FEATHERBASE_APP_PATHS: JSON.stringify(configured) }, stdio: 'inherit',
+    cwd: resolve(root, 'apps/server'), env: { ...env, FEATHERBASE_APP_PATHS: JSON.stringify(configured) }, stdio: ['ignore', 'inherit', 'pipe'],
+  })
+  server.stderr.on('data', (chunk) => {
+    diagnostics += chunk.toString()
+    process.stderr.write(chunk)
   })
   for (let attempt = 0; attempt < 100; attempt++) {
+    if (refusedApps.length && server.exitCode !== null) {
+      assert.notEqual(server.exitCode, 0, 'Missing installed code must refuse startup')
+      for (const app of refusedApps) assert(diagnostics.includes(`App ${app} is installed and enabled, but this release does not ship it`), diagnostics)
+      return
+    }
     assert.equal(server.exitCode, null, 'Frozen server exited before ready')
-    if (await fetch(`${origin}/api/ping`).then(r => r.ok).catch(() => false)) return
+    if (await fetch(`${origin}/api/ping`).then(r => r.ok).catch(() => false)) {
+      assert.equal(refusedApps.length, 0, 'Server started without its exact installed app artifact')
+      return
+    }
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   throw new Error('Frozen server did not become ready')
@@ -132,7 +176,7 @@ try {
   const retainedSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-retained', title: 'Retain 47 units' } }, 201)
   for (const file_name of ['invoice-17.txt', 'photo-43.png'])
     await api('/api/save_row', { table: 'File', row: { file_name, ref_table: 'actionproof.work', ref_name: retainedSource.row_id } }, 201)
-  await api('/api/save_row', { table: 'Share', row: { share_table: 'actionproof.work', share_name: retainedSource.row_id, user: 'Administrator', read: true } }, 201)
+  await api('/api/save_row', { table: 'Share', row: { share_table: 'actionproof.work', share_name: retainedSource.row_id, person: 'Administrator', read: true } }, 201)
   const retentionRequest = { idempotencyKey: 'packaged-retention', payload: { source: retainedSource.row_id, updatedAt: retainedSource.updated_at, explain: true } }
   await api('/api/app_actions/actionproof/transform', { idempotencyKey: 'retention-rollback', payload: { ...retentionRequest.payload, fail: true } }, 500)
   const retentionResult = await api('/api/app_actions/actionproof/discard', retentionRequest)
@@ -151,6 +195,7 @@ try {
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  await collectContext(context)
   const page = await context.newPage()
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
   const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=${selectedTask}`
@@ -162,17 +207,27 @@ try {
     await target.locator('button[type=submit]').click()
     await expect(target).toHaveURL(deepLink)
     await expect(target.getByRole('region', { name: 'Task detail content' })).toContainText('Triage supplier invoice mismatch')
+    if (coverageDirectory) assert(await target.evaluate(() =>
+      Object.keys(window.__coverage__ ?? {}).some((file) => file.endsWith('/tasker/src/main.tsx'))),
+    'Packaged Tasker has no source instrumentation; rebuild with VITE_COVERAGE=true')
     await target.screenshot({ path: resolve(output, screenshot), fullPage: true })
   }
   await proveSignedOutReturn(page, deepLink, 'signed-out-deep-link-return.png')
   const slashlessContext = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  await collectContext(slashlessContext)
   try {
     await proveSignedOutReturn(await slashlessContext.newPage(), deepLink.replace('/tasker/?', '/tasker?'), 'signed-out-slashless-return.png')
-  } finally { await slashlessContext.close() }
-  await page.goto(`${origin}/admin/User?proof=compatibility#deep-link`)
-  await expect(page).toHaveURL(`${origin}/featherbase/admin/User?proof=compatibility#deep-link`)
-  await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/tasker/')
+  } finally { await flushContext(slashlessContext); await slashlessContext.close() }
+  await page.goto(`${origin}/admin/Person?proof=compatibility#deep-link`)
+  await expect(page).toHaveURL(`${origin}/featherbase/admin/Person?proof=compatibility#deep-link`)
+  // Runtime host-shell E2E covers navigation. The retired switcher is not
+  // part of the current shared bar; packaged acceptance enters its app URL.
+  await page.goto(`${origin}/tasker/`)
   await expect(page).toHaveURL(`${origin}/tasker/`)
+  await expect(page.getByRole('combobox', { name: 'Switch application' })).toHaveCount(0)
+  await page.getByTestId('open-admin').click()
+  await expect(page).toHaveURL(/\/featherbase\/admin(?:\/|$)/)
+  await page.goto(`${origin}/tasker/`)
   await proveTaskerAcceptance({ page, api, expect, output, origin })
   await expect(page.getByText('Triage supplier invoice mismatch')).toBeVisible()
   await expect(page.getByText('Collect ideas for the Monday review')).toBeVisible()
@@ -318,7 +373,7 @@ try {
   assert.deepEqual((await api('/api/app_catalog')).map(a => a.name), ['other'])
   let other = await api(`/api/table/other.task/${task.row_id}`)
   other = await api('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } }, 201)
-  assert.equal(other.validation_runs, '2')
+  assert.equal(other.validation_runs, 2)
   await stop()
   await start(paths)
   assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
@@ -328,15 +383,13 @@ try {
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).task_state, 'In progress')
   other = await api('/api/save_row', { table: 'other.task', row: { ...other, quantity: 19 } }, 201)
-  assert.equal(other.validation_runs, '3')
+  assert.equal(other.validation_runs, 3)
   await page.reload()
   await expect(page.getByText('Package-delivered stock review')).toBeVisible()
   await stop()
-  await start([paths[1]])
-  await api('/api/app_actions/actionproof/transform', actionRequest, 403)
-  await api('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } }, 403)
-  assert((await api('/api/apps')).installed.some(a => a.name === 'tasker' && !a.available && !a.active))
-  await stop()
+  // #642 E7: outside development, missing exact installed code refuses boot;
+  // it is not a healthy server returning unavailable-app responses.
+  await start([paths[1]], [`tasker version ${taskerPackage.version}`, 'actionproof version 1.1.0'])
   await start(paths)
   assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
   await writeFile(resolve(output, 'action-evidence.json'), JSON.stringify({
@@ -477,9 +530,8 @@ try {
   await expect(attachment).toHaveCount(0)
   assert.equal((await page.request.get(`${origin}${fileUrl}`)).status(), 404)
   await stop()
-  await start([v1, ...paths.slice(1)]) // Prior artifact is not a rollback for committed schema.
-  await api('/api/table/tasker.project', undefined, 403)
-  await stop()
+  // A prior artifact is not a rollback for the committed installed version.
+  await start([v1, ...paths.slice(1)], [`tasker version ${taskerPackage.version}`])
   await start(upgradePaths)
   assert.equal((await api(`/api/table/tasker.project/${projectId}`)).description, description)
   assert.equal(await digest(v1), v1Digest, 'Prior artifact was modified')
@@ -495,6 +547,10 @@ try {
   await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, seededScenarios: TASKER_SCENARIOS, seededRows: seeded, journeys: ['install', 'seed', 'inbox-content', 'projects-content', 'project-rename', 'private-project-tabs', 'together', 'private-focus-order', 'urgent-and-not-urgent', 'blocked-explanation', 'invalid-dual-destination', 'capture', 'self-assign', 'complete', 'undo-state-restoration', 'integrated-comment-history', 'three-detail-modes', 'inspect-responsive', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['seeded-inbox.png', 'seeded-my-work.png', 'together.png', 'desktop.png', 'inspector.png', 'focus-detail.png', 'compact-detail.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))
   console.log(`PKG-J1 PKG-J2 PASS — frozen core unchanged; evidence: ${output}`)
 } finally {
-  await browser?.close()
-  await stop()
+  try {
+    if (browser) for (const context of browser.contexts()) await flushContext(context)
+  } finally {
+    await browser?.close()
+    await stop()
+  }
 }
