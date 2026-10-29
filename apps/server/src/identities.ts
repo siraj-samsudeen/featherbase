@@ -150,6 +150,35 @@ export function domainAllowed(method: SignInMethod, email: string): boolean {
   return domains.includes('*') || domains.includes(match[1])
 }
 
+/** Does the method name any allowed domains? An empty list means no domain
+ *  rule at all. */
+export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>): boolean {
+  return method.allowed_email_domains.split(',').map(foldName).some(Boolean)
+}
+
+/** #693: links that rest on the method's domain rule rather than on an
+ *  administrator's decision: a person linking themselves, a person created by
+ *  the rule, and a first sign-in for someone marked as expecting it. While the
+ *  method lists allowed domains, a sign-in through one of these must still be
+ *  admitted by them. An administrator's link or a claimed invite is that
+ *  administrator's decision for that account and is not re-checked. */
+export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
+
+/** SQL twin of the #693 re-check, for the way-in counts: does link `i`
+ *  through method `m` still pass that method's domain list? Only the address's
+ *  domain is checked here; Google's hosted-domain claim is not stored. The
+ *  link list is DOMAIN_RULED_LINKS. */
+function keepsDomain() {
+  const list = sql`string_to_array(lower(regexp_replace(coalesce(m.allowed_email_domains, ''), '[[:space:]]', '', 'g')), ',')`
+  return sql`(
+    m.kind <> 'google'
+    or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
+    or cardinality(array_remove(${list}, '')) = 0
+    or '*' = any(${list})
+    or (coalesce(i.email, '') like '%_@_%' and lower(split_part(i.email, '@', 2)) = any(${list}))
+  )`
+}
+
 // ------------------------------------------------------------- identities
 
 interface Identity {
@@ -402,7 +431,8 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
         where u.row_id = ${user} and u.password_hash is not null and ${excluding ?? ''}::text <> 'password')::int
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
-          and not (m.kind = 'delegated_password' and (select privileged from p)))::int as n`
+          and not (m.kind = 'delegated_password' and (select privileged from p))
+          and ${keepsDomain()})::int as n`
   return Number(row.n)
 }
 
@@ -518,12 +548,14 @@ export async function disableLeaver(user: string, methodKey: string): Promise<vo
  *  `next` is the method's state after the change; null = deleted. */
 export async function assertNoAdminLockout(
   methodKey: string,
-  next: { enabled: boolean; client_id: string } | null,
+  next: { enabled: boolean; client_id: string; allowed_email_domains?: string } | null,
   db: Sql | TxSql = sql,
 ) {
   const mock = mockOAuthEnabled()
   const nextEnabled = next?.enabled === true
   const nextClient = next?.client_id ?? ''
+  // #693: narrowing the domain list can end a link's sign-ins too.
+  const nextDomains = next?.allowed_email_domains ?? null
   const rows = await db`
     with privileged as (
       select u.row_id from person u
@@ -531,22 +563,26 @@ export async function assertNoAdminLockout(
         and (u.row_id = 'Administrator' or exists (
           select 1 from has_role r where r.parent = u.row_id and r.role in ('System Manager', 'Administrator')))
     ), m0 as (
-      select row_id, kind, enabled, client_id from sign_in_method
+      select row_id, kind, enabled, client_id, allowed_email_domains from sign_in_method
     ), m1 as (
       select row_id, kind,
         case when row_id = ${methodKey}::text then ${nextEnabled}::boolean else enabled end as enabled,
-        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id
+        case when row_id = ${methodKey}::text then ${nextClient}::text else client_id end as client_id,
+        case when row_id = ${methodKey}::text and ${nextDomains}::text is not null then ${nextDomains}::text
+          else allowed_email_domains end as allowed_email_domains
       from sign_in_method
     ), ways as (
       select p.row_id,
         (select count(*) from person u join m0 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null) as before_n,
+          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
+            and ${keepsDomain()}) as before_n,
         (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
-          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null) as after_n
+          where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
+            and ${keepsDomain()}) as after_n
       from privileged p
     )
     select row_id from ways where before_n > 0 and after_n = 0 order by row_id`

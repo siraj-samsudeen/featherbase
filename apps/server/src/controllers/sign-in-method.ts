@@ -74,12 +74,16 @@ const controller: TableController = {
       if (isNew || !old) return usableCheck()
       const enabledChanged = row.enabled !== undefined && truthy(old.enabled) !== truthy(row.enabled)
       const clientChanged = row.client_id !== undefined && String(row.client_id ?? '') !== String(old.client_id ?? '')
-      if (!enabledChanged && !clientChanged) return usableCheck()
+      // #693: links ruled by the domain list stop signing in when it narrows.
+      const domainsChanged =
+        row.allowed_email_domains !== undefined && String(row.allowed_email_domains ?? '') !== String(old.allowed_email_domains ?? '')
+      if (!enabledChanged && !clientChanged && !domainsChanged) return usableCheck()
       await assertNoAdminLockout(
         String(old.row_id),
         {
           enabled: row.enabled !== undefined ? truthy(row.enabled) : truthy(old.enabled),
           client_id: String((row.client_id !== undefined ? row.client_id : old.client_id) ?? ''),
+          allowed_email_domains: String((row.allowed_email_domains !== undefined ? row.allowed_email_domains : old.allowed_email_domains) ?? ''),
         },
         tx,
       )
