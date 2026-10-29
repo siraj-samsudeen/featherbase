@@ -313,7 +313,6 @@ export function TaskManagementPage() {
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
     const trimmed = title.trim()
-    if (!trimmed) return
     setSaving(true)
     setError(null)
     try {
@@ -445,7 +444,6 @@ export function TaskManagementPage() {
 
   async function createSavedView(name: string, scope: SavedTaskViewScope) {
     const trimmed = name.trim()
-    if (!trimmed) return
     if (savedViews.some((savedView) => savedView.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
       setError(`A saved view named “${trimmed}” already exists`)
       return
@@ -468,7 +466,6 @@ export function TaskManagementPage() {
 
   async function renameSavedView(savedView: SavedTaskView, name: string) {
     const trimmed = name.trim()
-    if (!trimmed) return
     if (savedViews.some((candidate) => candidate.id !== savedView.id && candidate.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
       setError(`A saved view named “${trimmed}” already exists`)
       return
@@ -495,7 +492,6 @@ export function TaskManagementPage() {
 
   async function createProject() {
     const name = projectName.trim()
-    if (!name) return
     setCreatingProject(true)
     setError(null)
     try {
@@ -1135,7 +1131,6 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   if (draft) return <form className="mb-3 flex gap-2" onSubmit={async (event) => {
     event.preventDefault()
     const next = draft.project_name.trim()
-    if (!next) return
     try { await onRename(draft, next); setDraft(null) } catch { /* parent shows error */ }
   }}>
     <label className="sr-only" htmlFor="rename-project">Project name</label>
@@ -1187,11 +1182,10 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     setDraft(null); setError('')
     requestAnimationFrame(() => editButton.current?.focus())
   }
-  async function patch(patch: Partial<Task>) {
-    if (!task.data) return
+  async function patch(patch: Partial<Task>, updatedAt: string) {
     setSaving(true); setError('')
     try {
-      await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: task.data.updated_at })
+      await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: updatedAt })
       await onSaved()
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not update task') }
     finally { setSaving(false) }
@@ -1254,20 +1248,20 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
-        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value })}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
-        <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null })}>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
+        <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null }, task.data.updated_at)}>
           <option value="">Unassigned</option>{people.map(user => <option key={user.row_id}>{user.row_id}</option>)}
         </select></label>
         <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
           const [kind, value] = event.target.value.split(':', 2)
-          void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null })
+          void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }, task.data.updated_at)
         }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
           {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
-          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me })}>Take it</button>}
-          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent })}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done })}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
+          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</button>}
+          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
+          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
         </div>
       </fieldset>
       {mode === 'compact' ? <div className="tasker-compact-summary">
@@ -1280,7 +1274,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
         // Keep the draft's original revision even if another action refetches this row.
         event.preventDefault(); setSaving(true); setError('')
-        if (!draft?.task_title.trim()) { setSaving(false); return }
         try {
           const saved = await api.patch<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
             ...draft, task_title: draft.task_title.trim(),
@@ -1319,7 +1312,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <form className="mb-5 flex gap-2" onSubmit={async (event) => {
           event.preventDefault()
           const content = comment.trim()
-          if (!content) return
           setSaving(true); setError('')
           try {
             await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
