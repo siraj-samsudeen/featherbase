@@ -1636,6 +1636,9 @@ function SavedViewsBar({
   const [nudgeGone, setNudgeGone] = useState(false)
   const [applyCount, setApplyCount] = useState(0)
   const [nudgeName, setNudgeName] = useState('')
+  const [naming, setNaming] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
 
   const views = useQuery({
     queryKey: ['saved-views', table],
@@ -1650,6 +1653,9 @@ function SavedViewsBar({
   // Every arrival at a non-empty filter state counts as one application.
   useEffect(() => {
     setNudgeGone(false)
+    setNaming(false)
+    setNudgeName('')
+    setSaveError('')
     if (!user || !sig) {
       setApplyCount(0)
       return
@@ -1696,19 +1702,31 @@ function SavedViewsBar({
     /* ignore */
   }
   const showNudge = Boolean(sig && applyCount >= NUDGE_THRESHOLD && !matching && !dismissed && !nudgeGone)
+  const showForm = Boolean(sig && (naming || showNudge))
 
   async function saveView() {
+    if (!sig || saving) return
     const label = nudgeName.trim() || `${table} view`
-    await api.post('/api/saved_views', { table: table, label, filters })
+    setSaving(true)
+    setSaveError('')
     try {
-      const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<string, unknown>
-      delete store[`${table}|${sig}`]
-      localStorage.setItem(countKey, JSON.stringify(store))
-    } catch {
-      /* ignore */
+      await api.post('/api/saved_views', { table, label, filters })
+      try {
+        const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<string, unknown>
+        delete store[`${table}|${sig}`]
+        localStorage.setItem(countKey, JSON.stringify(store))
+      } catch {
+        /* ignore */
+      }
+      setNudgeGone(true)
+      setNaming(false)
+      setNudgeName('')
+      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Couldn't save this view. Try again.")
+    } finally {
+      setSaving(false)
     }
-    setNudgeGone(true)
-    void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
   }
 
   function dismissNudge() {
@@ -1722,7 +1740,7 @@ function SavedViewsBar({
     setNudgeGone(true)
   }
 
-  if (list.length === 0 && !showNudge) return null
+  if (list.length === 0 && !sig) return null
 
   return (
     <div className="mb-3" data-testid="saved-views-bar">
@@ -1787,28 +1805,51 @@ function SavedViewsBar({
           })}
         </div>
       )}
-      {showNudge && (
-        <div
+      {sig && !showForm && (
+        <button type="button" onClick={() => setNaming(true)} data-testid="save-view-open" className={buttonClasses({ className: 'mt-2' })}>
+          Save view
+        </button>
+      )}
+      {showForm && (
+        <form
+          onSubmit={(event) => { event.preventDefault(); void saveView() }}
           className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-action/40 bg-action-tint px-3 py-2 text-sm"
-          data-testid="filter-nudge"
+          data-testid="saved-view-form"
         >
-          <span className="text-ink">
-            That's <b>{applyCount}×</b> for this filter in a week — save it as a view?
-          </span>
-          <input
-            value={nudgeName}
-            onChange={(e) => setNudgeName(e.target.value)}
-            placeholder={`${table} view`}
-            data-testid="nudge-name"
-            className={inputClasses('!w-44 !py-0.5 text-xs')}
-          />
-          <button type="button" onClick={() => void saveView()} data-testid="nudge-save" className={buttonClasses({ variant: 'primary', className: '!py-0.5 text-xs' })}>
-            Save view
+          {showNudge && (
+            <span className="text-ink" data-testid="filter-nudge">
+              That's <b>{applyCount}×</b> for this filter in a week — save it as a view?
+            </span>
+          )}
+          <label className="flex min-w-0 flex-wrap items-center gap-2 text-ink">
+            View name
+            <input
+              value={nudgeName}
+              onChange={(e) => setNudgeName(e.target.value)}
+              placeholder={`${table} view`}
+              data-testid="nudge-name"
+              disabled={saving}
+              className={inputClasses('w-44 max-w-full')}
+            />
+          </label>
+          <button type="submit" disabled={saving} data-testid="nudge-save" className={buttonClasses({ variant: 'primary' })}>
+            {saving ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" onClick={dismissNudge} data-testid="nudge-dismiss" className={buttonClasses({ className: '!py-0.5 text-xs' })}>
-            Not now
+          <button type="button" disabled={saving} onClick={() => {
+            setNaming(false)
+            setNudgeName('')
+            setSaveError('')
+            setNudgeGone(true)
+          }} className={buttonClasses()}>
+            Cancel
           </button>
-        </div>
+          {showNudge && (
+            <button type="button" disabled={saving} onClick={dismissNudge} data-testid="nudge-dismiss" className={buttonClasses()}>
+              Not now
+            </button>
+          )}
+          {saveError && <p role="alert" data-testid="saved-view-error" className="w-full break-words text-sm text-negative">{saveError}</p>}
+        </form>
       )}
     </div>
   )

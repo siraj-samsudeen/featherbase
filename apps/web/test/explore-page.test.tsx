@@ -57,3 +57,24 @@ test('opening a row from Explore opens it in the peek panel and leaves Explore a
   await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
   await waitFor(() => expect(screen.getByTestId('explore-pane2-count')).toHaveTextContent('3'))
 })
+
+for (const activation of ['click', 'Enter', ' '] as const) {
+  test(`last-pane ${activation} opens Peek and preserves the upstream selection after closing`, async ({ admin }) => {
+    await seed(admin)
+    await renderApp(`/featherbase/admin/explore?root=${enc('Ex Supplier')}&chain=${chain}`, admin)
+    const pane1 = await screen.findByTestId('explore-pane1')
+    fireEvent.click(within(pane1).getByText('Acme'))
+    await waitFor(() => expect(screen.getByTestId('explore-pane2-count')).toHaveTextContent('2'))
+    const row = within(screen.getByTestId('explore-pane2')).getAllByTestId('explore-row')[0]
+    if (activation === 'click') fireEvent.click(row)
+    else fireEvent.keyDown(row, { key: activation })
+    const panel = await screen.findByTestId('peek-panel-0')
+    await waitFor(() => expect(within(panel).getByTestId('peek-title')).toHaveTextContent('po-'))
+    fireEvent.click(within(panel).getByTestId('peek-close'))
+    await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
+    expect(pane1.querySelector('[data-selected]')).not.toBeNull()
+    expect(screen.getByTestId('explore-pane2-count')).toHaveTextContent('2')
+    expect(screen.getByTestId('explore-pane2-sum')).toHaveTextContent('150')
+    expect(screen.getAllByTestId('explore-chip')).toHaveLength(1)
+  })
+}

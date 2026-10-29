@@ -3,6 +3,7 @@ import { rowDisplayTitle } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { scopedWhere } from './query'
+import { principalNames } from './people-directory'
 
 // Home cleanup: what a person reads for each referenced row (Home tiles,
 // Recent, the activity feed). Scoped like a list read — a row the caller may
@@ -43,9 +44,20 @@ export async function rowTitles(user: string, refs: RowRef[]): Promise<RowTitle[
     // Only the columns this caller may read take part in the title.
     const readable = { ...meta, columns: meta.columns.filter((c) => cols.has(c.column_name)) }
     const titleMeta = { ...readable, title_column: meta.title_column && cols.has(meta.title_column) ? meta.title_column : null }
+    const principalTitle = titleMeta.columns.find((c) => c.column_name === titleMeta.title_column
+      && c.column_type === 'Reference' && (c.reference_table === 'Person' || c.reference_table === 'Service Account'))
+    // Resolve only a readable title column, through the same permission-aware
+    // directory as principal labels elsewhere. Batch all rows in this Table.
+    const names = principalTitle
+      ? await principalNames(rows.map((row) => String(row[principalTitle.column_name] ?? '')).filter(Boolean), user)
+      : {}
     for (const row of rows) {
       const rowId = String(row[meta.row_key])
-      out.push({ table, row_id: rowId, title: rowDisplayTitle(titleMeta, row, rowId) })
+      const principal = principalTitle && row[principalTitle.column_name]
+      const titled = principal && principalTitle
+        ? { ...row, [principalTitle.column_name]: names[String(principal)] ?? 'Unnamed person' }
+        : row
+      out.push({ table, row_id: rowId, title: rowDisplayTitle(titleMeta, titled, rowId) })
     }
   }
   return out

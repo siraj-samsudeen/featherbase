@@ -310,12 +310,14 @@ function AdminShell() {
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
-  const sidebarRecent = user
+  const sidebarCandidates = user
     ? uniqueByDisplay(recentActions(user.row_id, 20).filter((e) => e.kind !== 'search')).slice(0, SIDEBAR_RECENT_CAP)
     : []
+  const recentSlots = sidebarCandidates.slice(0, 3)
   const sidebarFrequent = user
-    ? uniqueByDisplay([...sidebarRecent, ...frequentActions(user.row_id, 12)]).slice(sidebarRecent.length, SIDEBAR_RECENT_CAP)
+    ? uniqueByDisplay([...recentSlots, ...frequentActions(user.row_id, 12)]).slice(recentSlots.length, recentSlots.length + 2)
     : []
+  const sidebarRecent = sidebarFrequent.length ? recentSlots : sidebarCandidates
 
   function recordSearch(q: string) {
     if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })

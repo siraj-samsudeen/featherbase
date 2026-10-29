@@ -1862,7 +1862,7 @@ export function ImportWizard() {
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
           <div key={sheet.sheetName + i} className={cardClasses('mb-4 p-3')} data-testid={`iw-sheet-${i}`}>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               {/* The counts describe the FILE's sheet, never the target
                   Table — say so, since sheet and Table often share a name
                   and the Table's own count sits beside the picker. */}
@@ -1889,7 +1889,7 @@ export function ImportWizard() {
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className={labelClasses('m-0')}>Import into</span>
                 <TargetPicker
                   i={i}
@@ -2651,7 +2651,7 @@ export function ImportWizard() {
           {error}
         </p>
       )}
-      {runOutcome && (
+      {runOutcome && !needsFile && (
         <p
           className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-negative' : 'text-positive'}`}
           data-testid="iw-done"

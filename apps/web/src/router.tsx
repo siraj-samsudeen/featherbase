@@ -763,7 +763,7 @@ const mapRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'map/$table/$name',
   validateSearch: (search: Record<string, unknown>) => ({
-    trail: searchString(search.trail),
+    trail: search.trail,
   }),
   component: MapPage,
 })

@@ -202,10 +202,10 @@ export function ExploreView({
             table={root}
             filters={pane1Filters}
             selected={sel1}
-            onToggle={(n) => {
+            onToggle={step2 ? (n) => {
               setSel1(toggle(sel1, n))
               setSel2(new Set())
-            }}
+            } : undefined}
             testid="explore-pane1"
           />
         )}
@@ -214,7 +214,7 @@ export function ExploreView({
             table={step2.table}
             filters={pane2Filters}
             selected={sel2}
-            onToggle={(n) => setSel2(toggle(sel2, n))}
+            onToggle={step3 ? (n) => setSel2(toggle(sel2, n)) : undefined}
             testid="explore-pane2"
           />
         )}
@@ -223,7 +223,6 @@ export function ExploreView({
             table={step3.table}
             filters={pane3Filters}
             selected={new Set<string>()}
-            onToggle={() => {}}
             testid="explore-pane3"
           />
         )}
@@ -334,7 +333,7 @@ function Pane({
   table: string
   filters: Filter[]
   selected: Set<string>
-  onToggle: (name: string) => void
+  onToggle?: (name: string) => void
   testid: string
 }) {
   const meta = useMeta(table)
@@ -404,7 +403,10 @@ function Pane({
             columns={displayColumns}
             settings={settings}
             selected={selected.has(String(r.row_id))}
-            onToggle={() => onToggle(String(r.row_id))}
+            onToggle={() => {
+              if (onToggle) onToggle(String(r.row_id))
+              else if (peek.available) peek.push({ kind: 'record', table, name: String(r.row_id) })
+            }}
             onPeek={
               peek.available
                 ? () => peek.push({ kind: 'record', table, name: String(r.row_id) })
@@ -452,7 +454,11 @@ function PaneRow({
       role="button"
       tabIndex={0}
       onClick={onToggle}
-      onKeyDown={(e) => e.key === 'Enter' && onToggle()}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return
+        e.preventDefault()
+        onToggle()
+      }}
       data-testid="explore-row"
       data-selected={selected || undefined}
       className={`group block w-full cursor-pointer border-b border-l-[3px] border-b-border px-3 py-1.5 text-left last:border-b-0 ${

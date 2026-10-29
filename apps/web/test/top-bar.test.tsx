@@ -372,6 +372,20 @@ test('the no-access page has no Log out outside the Account menu', async ({ crea
   expect(screen.queryByText('Log out')).toBeNull()
 })
 
+test('the no-access Admin address names the platform in the bar and tab, retaining Account actions', async ({ createUser }) => {
+  onAddressThatOpens('admin')
+  document.title = 'Featherbase Admin'
+  const nobody = await createUser({ roles: [] })
+  await renderApp('/featherbase/admin', nobody)
+  await screen.findByTestId('no-access')
+  await settledBar()
+  await waitFor(async () => expect(await barName()).toHaveTextContent(/^Featherbase$/))
+  expect(document.title).toBe('Featherbase')
+  const menu = await openAccountMenu()
+  expect(within(menu).getByRole('menuitem', { name: 'Sign-in methods' })).toBeInTheDocument()
+  expect(within(menu).getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument()
+})
+
 // ---- 7. the Sales Target page's identity line ---------------------------------
 
 test("the Sales Target page's identity line sits below the bar, not in it", async ({ admin }) => {

@@ -59,11 +59,13 @@ test('when the rows were not kept, the saved-work banner counts the Tables alrea
   await user.click(screen.getByTestId('iw-ov-continue'))
   await user.click(await screen.findByTestId('iw-import-one'))
   await screen.findByTestId('iw-import-one-done', {}, { timeout: 10_000 })
+  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('Imported 1; 1 still to import.'))
   first.unmount()
 
   // As if the workbook had been too large to keep: the decisions stay, the rows do not.
   sessionStorage.removeItem(IMPORT_DATA_KEY)
   await renderApp('/featherbase/admin/import', admin)
   await waitFor(() => expect(screen.getByTestId('iw-resume')).toHaveTextContent('Your work on two.xlsx is saved. 2 Tables planned, 1 already imported.'))
+  expect(screen.queryByTestId('iw-done')).not.toBeInTheDocument()
   clearSession()
 })

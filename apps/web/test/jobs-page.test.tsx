@@ -34,6 +34,7 @@ test('every scheduled job is listed with its name, switch, schedule and last run
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Jobs' })).toBeInTheDocument()
   expect(screen.getByText('Scheduled jobs run on their own. A run that fails or refuses emails every System Manager.')).toBeInTheDocument()
+  expect(screen.getByText('Switching a job on queues a run immediately.')).toBeInTheDocument()
 
   const ok = await entry('jp_ok')
   expect(ok).toHaveTextContent('Jp ok')

@@ -119,20 +119,33 @@ test('from an item, the purchases that carry it through their lines', async ({ a
   expect(pane2).not.toHaveTextContent('po-2')
 })
 
-// Merged web coverage (ADR 0012): the last pane narrows nothing further, so
-// clicking one of its rows picks nothing; and the list's Explore split button
-// opens a chain of the dependents ticked in it.
-test('a row in the last pane is not picked when clicked', async ({ admin }) => {
+// The final pane opens details rather than making a selection (#546).
+test('a row in the third pane opens Peek without changing either upstream selection', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/explore', admin)
   await pick(await screen.findByTestId('explore-root'), 'Ec Supplier')
   await pick(await screen.findByTestId('explore-step2'), 'Ec Purchase · supplier')
   await pick(await screen.findByTestId('explore-step3'), 'Ec Line (Lines)')
   await waitFor(() => expect(count('pane3')).toHaveTextContent('4'))
+  fireEvent.click(within(screen.getByTestId('explore-pane1')).getByText('Acme'))
+  await waitFor(() => expect(count('pane2')).toHaveTextContent('2'))
+  fireEvent.click(within(screen.getByTestId('explore-pane2')).getAllByText('po-2')[0])
+  await waitFor(() => expect(count('pane3')).toHaveTextContent('1'))
+  const chips = screen.getByTestId('explore-chips').textContent
   const [line] = within(screen.getByTestId('explore-pane3')).getAllByTestId('explore-row')
   fireEvent.click(line)
   expect(line).not.toHaveAttribute('data-selected')
-  expect(screen.getByTestId('explore-chips')).toHaveTextContent('No selection')
+  const panel = await screen.findByTestId('peek-panel-0')
+  const expected = await admin.get<{ data: { row_id: string }[] }>(
+    `/api/table/Ec%20Line?fields=${encodeURIComponent(JSON.stringify(['row_id']))}&filters=${encodeURIComponent(JSON.stringify([['parent', '=', 'po-2']]))}`,
+  )
+  expect(expected.data).toHaveLength(1)
+  expect(within(panel).getByTestId('peek-title')).toHaveTextContent(expected.data[0].row_id)
+  fireEvent.click(within(panel).getByTestId('peek-close'))
+  await waitFor(() => expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument())
+  expect(screen.getByTestId('explore-chips').textContent).toBe(chips)
+  expect(count('pane2')).toHaveTextContent('2')
+  expect(count('pane3')).toHaveTextContent('1')
 })
 
 test("the list's Explore button opens a chain of the dependents ticked under it", async ({ admin }) => {

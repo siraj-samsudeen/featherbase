@@ -97,3 +97,14 @@ test('the precision setting is capped at the currency\'s ISO 4217 minor unit', (
 test('a plain decimal groups the Indian way', () => {
   expect(formatNumber(1234567.5, 2)).toBe('12,34,567.50')
 })
+
+test.each([
+  [{ shelf: 3 }, '{"shelf":3}'],
+  [[{ shelf: 9 }, false], '[{"shelf":9},false]'],
+  ['{"legacy":"text"}', '{"legacy":"text"}'],
+  [false, 'false'],
+  [0, '0'],
+  [null, ''],
+])('JSON formatting preserves the value %j', (value, shown) => {
+  expect(formatValue('JSON', value, DEFAULT_SETTINGS)).toBe(shown)
+})

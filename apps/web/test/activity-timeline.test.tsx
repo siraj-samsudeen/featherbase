@@ -54,6 +54,24 @@ test('a Date change reads as the days, and money the Indian way', async ({ admin
   expect(screen.getByTestId('activity-time')).toHaveClass('whitespace-nowrap')
 })
 
+test('nested JSON history shows both saved values and allows long values to wrap', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: T, columns: [
+    { column_name: 'extra', label: 'Extra', column_type: 'JSON' },
+  ] })
+  const before = { shelf: 3, nested: { bins: ['old', 'west'] } }
+  const after = { shelf: 9, nested: { bins: ['east'], note: 'long-value-'.repeat(60) } }
+  const row = await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', { table: T, row: { extra: before } })
+  await admin.post('/api/save_row', { table: T, row: { ...row, extra: after } })
+  const diff = await diffLines(admin, row.row_id)
+  await waitFor(() => expect(diff).toHaveTextContent(`extra: ${JSON.stringify(before)} → ${JSON.stringify(after)}`))
+  expect(diff).not.toHaveTextContent('[object Object]')
+  for (const value of [before, after]) {
+    const shown = within(diff).getByText(JSON.stringify(value))
+    expect(shown).not.toHaveClass('whitespace-nowrap')
+    expect(shown).toHaveClass('break-all')
+  }
+})
+
 test('a Date change recorded as a UTC timestamp before #421 also reads as the days', async ({ admin }) => {
   const rowId = await editedRow(admin)
   await sql`

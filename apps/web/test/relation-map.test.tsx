@@ -38,7 +38,7 @@ test('the map shows what a row points to and what points back, with a count', as
 
 async function hopOrderToCustomerToOtherOrder(admin: Parameters<typeof renderApp>[1]) {
   await seed(admin)
-  await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
+  const view = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
   // order -> its customer
   fireEvent.click(await screen.findByTestId('map-forward-Rm Customer'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
@@ -47,13 +47,19 @@ async function hopOrderToCustomerToOtherOrder(admin: Parameters<typeof renderApp
   const rows = await screen.findAllByTestId('map-row')
   fireEvent.click(rows.find((r) => r.textContent?.includes('Second order'))!)
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Second order'))
+  return view
 }
 
 test('clicking a related row re-centres the map on it, and the trail names where the user came from', async ({ admin }) => {
-  await hopOrderToCustomerToOtherOrder(admin)
+  const { router } = await hopOrderToCustomerToOtherOrder(admin)
   const trail = screen.getByTestId('map-trail')
-  expect(within(trail).getByTestId('map-trail-0')).toHaveTextContent('ord-1')
-  expect(within(trail).getByTestId('map-trail-1')).toHaveTextContent('cust-1')
+  await waitFor(() => expect(within(trail).getByTestId('map-trail-0')).toHaveTextContent('First order'))
+  await waitFor(() => expect(within(trail).getByTestId('map-trail-1')).toHaveTextContent('Asha Stores'))
+  await waitFor(() => expect(trail).toHaveTextContent('Second order'))
+  const { location } = router.state as { location: { searchStr: string } }
+  expect(JSON.parse(new URLSearchParams(location.searchStr).get('trail')!)).toEqual([
+    ['Rm Order', 'ord-1'], ['Rm Customer', 'cust-1'],
+  ])
 })
 
 // SPEC: The relationship map remembers the trail. Each stop on the trail is
@@ -64,6 +70,53 @@ test('the trail leads back to the original order in one click', async ({ admin }
   fireEvent.click(within(screen.getByTestId('map-trail')).getByTestId('map-trail-0'))
   await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('First order'), { timeout: 3000 })
   expect(screen.getByTestId('map-forward-Rm Customer')).toHaveTextContent('cust-1')
+})
+
+test('a copied single-encoded trail restores titles and a removed stop safely falls back to its id', async ({ admin }) => {
+  await seed(admin)
+  const trail = JSON.stringify([['Rm Order', 'removed-order'], ['Rm Customer', 'cust-1']])
+  const { router } = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-2?trail=${enc(trail)}`, admin)
+  await waitFor(() => expect(screen.getByTestId('map-trail-1')).toHaveTextContent('Asha Stores'))
+  const { location } = router.state as { location: { searchStr: string } }
+  expect(JSON.parse(new URLSearchParams(location.searchStr).get('trail')!)).toEqual(JSON.parse(trail))
+  expect(screen.getByTestId('map-trail-0')).toHaveTextContent('removed-order')
+  fireEvent.click(screen.getByTestId('map-trail-1'))
+  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
+  expect(screen.getByTestId('map-trail-0')).toHaveTextContent('removed-order')
+})
+
+test('the narrow layout exposes every backlink count and its rows through buttons', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/table_def', {
+    name: 'Rm Note', id_pattern: 'prompt',
+    columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: 'Rm Customer' }],
+  })
+  await admin.post('/api/save_row', { table: 'Rm Note', row: { row_id: 'note-1', customer: 'cust-1' } })
+  await renderApp(`/featherbase/admin/map/${enc('Rm Customer')}/cust-1`, admin)
+  const narrow = within(await screen.findByTestId('map-narrow'))
+  const orders = await narrow.findByTestId('map-narrow-group-Rm Order')
+  expect(orders).toHaveTextContent('2')
+  expect(await narrow.findByTestId('map-narrow-group-Rm Note')).toHaveTextContent('1')
+  fireEvent.click(orders)
+  expect(orders).toHaveAttribute('aria-expanded', 'true')
+  expect(await screen.findAllByTestId('map-row')).toHaveLength(2)
+  fireEvent.click(orders)
+  expect(orders).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByTestId('map-group-rows')).not.toBeInTheDocument()
+})
+
+test('the narrow layout keeps a single link walkable and an empty map understandable', async ({ admin }) => {
+  await seed(admin)
+  const linked = await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/ord-1`, admin)
+  fireEvent.click(await screen.findByTestId('map-narrow-forward-Rm Customer'))
+  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('Asha Stores'))
+  linked.unmount()
+  await admin.post('/api/table_def', { name: 'Rm Alone', id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] })
+  await admin.post('/api/save_row', { table: 'Rm Alone', row: { row_id: 'alone-1', title: 'Unconnected row' } })
+  await renderApp(`/featherbase/admin/map/${enc('Rm Alone')}/alone-1`, admin)
+  await waitFor(() => expect(screen.getByTestId('map-center')).toHaveTextContent('alone-1'))
+  expect(within(screen.getByTestId('map-narrow')).getByText('No related rows')).toBeInTheDocument()
+  expect(screen.getByTestId('map-open-form')).toBeInTheDocument()
 })
 
 // A sub-table on the map (ADR 0012 merged coverage showed it untaken): its
