@@ -190,10 +190,10 @@ describe('a malformed domain list is refused when saved', () => {
   })
 })
 
-// Codex review round 3 on #698: a link from before migration 0004 has no claim
-// recorded (NULL). Sign-in checks Google's fresh claim, so such a link may
-// well work: the guard counts it on its email domain alone and refuses a
-// change that would end it, rather than allow one that strands its owner.
+// Codex review rounds 3-4 on #698: a link from before migration 0004 has no
+// claim recorded (NULL). It may still work (sign-in checks Google's fresh
+// claim), so a change that would take it away is refused; but it never proves
+// a company-domain way in remains, so nothing may rely on it either.
 describe('a link whose claim was never recorded', () => {
   async function googleOnlySm(username: string, id: string, subject: string, claim: string | null) {
     const sm = await makePerson({ username, roles: [{ role: 'System Manager' }] })
@@ -207,30 +207,51 @@ describe('a link whose claim was never recorded', () => {
       body: JSON.stringify({ ...change, updated_at: g.updated_at }),
     })
   }
+  const refusesNaming = async (res: Response, who: string) => {
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${who}`)
+  }
 
   test('blocks turning Google off and removing its domain for a Google-only System Manager', async ({ admin }) => {
     await configureGoogle({ allowed_email_domains: COMPANY })
     const sm = await googleOnlySm('sm.693.unrecorded', 'uid_693_unrecorded', 'g-693-unrecorded', null)
-    for (const change of [{ enabled: false }, { allowed_email_domains: 'other.test' }]) {
-      const res = await setGoogle(admin, change)
-      expect(res.status).toBe(417)
-      expect(((await res.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
-    }
+    await refusesNaming(await setGoogle(admin, { enabled: false }), sm)
+    await refusesNaming(await setGoogle(admin, { allowed_email_domains: 'other.test' }), sm)
     expect(await sql`select enabled, allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([
       { enabled: true, allowed_email_domains: COMPANY },
     ])
   })
 
+  test('under *, narrowing to the company domain is refused: a possible way in is lost and none is proven', async ({ admin }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const sm = await googleOnlySm('sm.693.star', 'uid_693_star', 'g-693-star', null)
+    await refusesNaming(await setGoogle(admin, { allowed_email_domains: COMPANY }), sm)
+    expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: '*' }])
+  })
+
+  test('removing your own password is refused when the other way in is an unrecorded company link', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: COMPANY })
+    const { id, token } = await passwordSession(api, admin, 'pw.693.unrecorded')
+    await rawLink(id, 'uid_693_pw_unrecorded', 'g-693-pw-unrecorded', `pw.unrecorded@${COMPANY}`, 'self', null)
+    const res = await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
+    expect(res.status).toBe(409)
+    expect(await sql`select password_hash is not null as kept from person where row_id = ${id}`).toEqual([{ kept: true }])
+  })
+
+  test('under *, an unrecorded link needs no claim, so the password can go', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: '*' })
+    const { id, token } = await passwordSession(api, admin, 'pw.693.star')
+    await rawLink(id, 'uid_693_pw_star', 'g-693-pw-star', `pw.star@${COMPANY}`, 'self', null)
+    expect((await api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })).status).toBe(200)
+  })
+
   test('once a sign-in records that Google sent no claim, the recorded-claim rule decides', async ({ api, admin }) => {
     await configureGoogle({ allowed_email_domains: '*' })
     const sm = await googleOnlySm('sm.693.recorded', 'uid_693_recorded', 'g-693-recorded', null)
-    // Unrecorded: narrowing '*' to the company domain keeps it on its email domain.
     // A personal account on the company address signs in under '*', recording ''.
     await redeemSession(api, await googleSignIn(api, `sm.693.recorded@${COMPANY}`, { subject: 'g-693-recorded', hd: '' }))
     expect(await sql`select hosted_domain from sign_in_identity where id = 'uid_693_recorded'`).toEqual([{ hosted_domain: '' }])
-    const narrowed = await setGoogle(admin, { allowed_email_domains: COMPANY })
-    expect(narrowed.status).toBe(417)
-    expect(((await narrowed.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+    await refusesNaming(await setGoogle(admin, { allowed_email_domains: COMPANY }), sm)
     // Under the company domain that link cannot sign in at all, so turning
     // Google off takes nothing away from them.
     await configureGoogle({ allowed_email_domains: COMPANY })
@@ -240,9 +261,7 @@ describe('a link whose claim was never recorded', () => {
   test('a recorded matching claim behaves as before: removing its domain is refused, a change that keeps it is allowed', async ({ admin }) => {
     await configureGoogle({ allowed_email_domains: COMPANY })
     const sm = await googleOnlySm('sm.693.matching', 'uid_693_matching', 'g-693-matching', COMPANY)
-    const removed = await setGoogle(admin, { allowed_email_domains: 'other.test' })
-    expect(removed.status).toBe(417)
-    expect(((await removed.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+    await refusesNaming(await setGoogle(admin, { allowed_email_domains: 'other.test' }), sm)
     expect((await setGoogle(admin, { allowed_email_domains: `${COMPANY},other.test` })).status).toBe(200)
   })
 })

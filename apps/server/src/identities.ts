@@ -211,11 +211,18 @@ async function domainListsJson(db: Sql | TxSql, override?: { key: string; domain
  *  way-in counts: would link `i` through method `m` still sign in under that
  *  method's list in `lists` (domainListsJson, so parsed once, in TypeScript)?
  *  A company domain also needs the hosted-domain claim from the link's last
- *  sign-in to match: '' records that Google sent none (does not count); NULL
- *  means never recorded (a link from before migration 0004), which counts on
- *  its email domain alone, since sign-in checks Google's fresh claim and
- *  refusing a change is the safe side. The link list is DOMAIN_RULED_LINKS. */
-function keepsDomain(lists: string) {
+ *  sign-in to match: '' records that Google sent none (never counts). NULL
+ *  means never recorded (a link from before migration 0004) and is judged
+ *  asymmetrically, so a doubt always refuses the change:
+ *  - 'possible' (what a change takes away): it may work, so it counts on its
+ *    email domain;
+ *  - 'proven' (what remains, and every last-way-in check): only a recorded
+ *    matching claim proves a company domain works, so it does not count.
+ *  Under `*` or a consumer domain no claim is needed either way. The link
+ *  list is DOMAIN_RULED_LINKS. */
+type WayInProof = 'possible' | 'proven'
+
+function keepsDomain(lists: string, proof: WayInProof) {
   const list = sql`coalesce(${lists}::text::jsonb -> m.row_id::text, '[]'::jsonb)`
   const domain = sql`lower(split_part(i.email, '@', 2))`
   return sql`(
@@ -226,7 +233,8 @@ function keepsDomain(lists: string) {
     or (
       coalesce(i.email, '') like '%_@_%'
       and ${list} ? ${domain}
-      and (${domain} in ('gmail.com', 'googlemail.com') or i.hosted_domain is null or lower(i.hosted_domain) = ${domain})
+      and (${domain} in ('gmail.com', 'googlemail.com') or lower(i.hosted_domain) = ${domain}
+        or (i.hosted_domain is null and ${proof === 'possible'}::boolean))
     )
   )`
 }
@@ -471,7 +479,7 @@ const usableWhere = (mock: boolean) =>
 
 /** How many working ways in a person has right now. Pending invites never
  *  count. `excluding` leaves one identity id (or 'password') out. */
-async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promise<number> {
+async function waysIn(user: string, db: Sql | TxSql, excluding?: string, proof: WayInProof = 'proven'): Promise<number> {
   await lockWaysIn(db)
   const mock = mockOAuthEnabled()
   const lists = await domainListsJson(db)
@@ -487,7 +495,7 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
       + (select count(*) from sign_in_identity i join sign_in_method m on m.row_id = i.method and ${usableWhere(mock)}
         where i.person_id = ${user} and i.subject is not null and i.ended_at is null and i.id <> ${excluding ?? ''}::text
           and not (m.kind = 'delegated_password' and (select privileged from p))
-          and ${keepsDomain(lists)})::int as n`
+          and ${keepsDomain(lists, proof)})::int as n`
   return Number(row.n)
 }
 
@@ -495,7 +503,7 @@ async function waysIn(user: string, db: Sql | TxSql, excluding?: string): Promis
 async function assertUserKeepsWayIn(user: string, db: Sql | TxSql, excluding: string): Promise<void> {
   const c = await candidate(user, db)
   if (!c?.privileged || !c.enabled) return
-  if ((await waysIn(user, db)) > 0 && (await waysIn(user, db, excluding)) === 0)
+  if ((await waysIn(user, db, undefined, 'possible')) > 0 && (await waysIn(user, db, excluding)) === 0)
     throw new AppError('ValidationError', `This would lock out ${user}: it is their only way to sign in.`)
 }
 
@@ -642,12 +650,12 @@ export async function assertNoAdminLockout(
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m0 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
           where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain(before)}) as before_n,
+            and ${keepsDomain(before, 'possible')}) as before_n,
         (select count(*) from person u join m1 m on m.kind = 'password' and ${usableWhere(mock)}
           where u.row_id = p.row_id and u.password_hash is not null) +
         (select count(*) from sign_in_identity i join m1 m on m.row_id = i.method and m.kind <> 'delegated_password' and ${usableWhere(mock)}
           where i.person_id = p.row_id and i.subject is not null and i.ended_at is null
-            and ${keepsDomain(after)}) as after_n
+            and ${keepsDomain(after, 'proven')}) as after_n
       from privileged p
     )
     select row_id from ways where before_n > 0 and after_n = 0 order by row_id`
