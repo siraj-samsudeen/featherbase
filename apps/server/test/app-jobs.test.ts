@@ -14,6 +14,7 @@ import { discoverPackages, packageFailures } from '../src/runtime-packages'
 import { uninstallApp } from '../src/apps'
 import { applyInstanceSettings } from '../src/instance-settings'
 import { newIdentifierId } from '../src/person-identifiers'
+import { withNamedVariable } from '../src/env'
 
 const APP = 'fbjobsa'
 const SWEEP = `${APP}.sweep`
@@ -26,6 +27,8 @@ interface Job {
   description: string
   grants?: string[]
   identifiers?: string[]
+  datasets?: string[]
+  needs?: string[]
 }
 
 const sweep: Job = {
@@ -52,6 +55,16 @@ const HANDLERS: Record<string, string> = {
     await ctx.people.disable(someone.person, 'not allowed')
   }`,
   tidy: `async tidy(ctx) { ctx.setResult('tidied') }`,
+  leak_result: `async leak_result(ctx) { ctx.setResult('used token ' + ctx.secrets.FBJOBS_TOKEN) }`,
+  leak_refusal: `async leak_refusal(ctx) { ctx.refuse('upstream refused token ' + ctx.secrets.FBJOBS_TOKEN) }`,
+  leak_reason: `async leak_reason(ctx) {
+    const [someone] = (await ctx.people.list()).filter((p) => !p.privileged)
+    await ctx.people.disable(someone.person, 'token ' + ctx.secrets.FBJOBS_TOKEN)
+  }`,
+  mail_then_overreach: `async mail_then_overreach(ctx) {
+    await ctx.email.systemManagers({ subject: 'Before overreach', body: 'sent once' })
+    await ctx.people.disable('psn_anyone', 'not allowed')
+  }`,
   hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
@@ -67,7 +80,7 @@ afterEach(async () => {
   ;(globalThis as { __fbjobsCalls?: unknown[] }).__fbjobsCalls = []
 })
 
-async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; migrations?: unknown[]; settings?: unknown[] }) {
+async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; migrations?: unknown[]; settings?: unknown[]; extra?: Record<string, unknown> }) {
   // Inside the server directory, where the test runner can import from.
   const dir = await mkdtemp(resolve('test/.app-jobs-'))
   dirs.push(dir)
@@ -77,7 +90,7 @@ async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; mi
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify({
     manifestVersion: 1, platformVersion: '2026-10', name, title: 'Jobs proof', entryTable: `${name}.note`, server: 'server.mjs',
     tables: [{ name: `${name}.note`, label: 'Note', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] }],
-    jobs: opts.jobs, migrations: opts.migrations ?? [], ...(opts.settings ? { settings: opts.settings } : {}),
+    jobs: opts.jobs, migrations: opts.migrations ?? [], ...(opts.settings ? { settings: opts.settings } : {}), ...opts.extra,
   }))
   await writeFile(join(dir, 'server.mjs'), server(opts.jobs))
   return dir
@@ -292,6 +305,96 @@ describe('a job name belongs to one owner', () => {
     expect((await failures([{ ...sweep, grants: ['delete_everything'] }]))[0]).toContain('A job grant must be one of read_people, disable_people, email_system_managers')
     expect(await failures([{ ...sweep, name: 'missing' }])).toEqual(['Package handlers and authorization callbacks must match declared names'])
     expect(await failures([{ ...overreach, grants: [], identifiers: [SYSTEM] }])).toEqual(['The job overreach names identifier systems, which only a job granted read_people reads'])
+  })
+})
+
+const TOKEN = 'fbjobs-secret-7d2e91'
+const SECRETS = { secrets: ['FBJOBS_TOKEN'] }
+const withToken = <T>(run: () => Promise<T>) => withNamedVariable('FBJOBS_TOKEN', TOKEN, run)
+// Everywhere a job's words are kept: run records, its schedule, mail, the
+// activity log and the queue.
+async function leaksAnywhere() {
+  const places = [
+    await sql`select result, error from job_execution`,
+    await sql`select last_result from scheduled_job`,
+    await sql`select subject, body from email_queue`,
+    await sql`select operation from activity_log`,
+    await sql`select error from background_job`,
+  ]
+  return JSON.stringify(places).includes(TOKEN)
+}
+
+describe("a job's secrets stay in", () => {
+  test('a result holding a secret is withheld from the run record', async ({ admin }) => {
+    const job: Job = { name: 'leak_result', cadence: 'daily', description: 'Puts its token in its result.' }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    expect(await row(`${APP}.leak_result`)).toMatchObject({ last_outcome: 'success', last_result: "The app's message was withheld: it held one of the app's secrets" })
+    expect(await leaksAnywhere()).toBe(false)
+  })
+
+  test('a refusal holding a secret reaches neither the run record nor the alert email', async ({ admin, createUser }) => {
+    await createUser({ email: 'alerted@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'leak_refusal', cadence: 'daily', description: 'Refuses, naming its token.' }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    expect(await row(`${APP}.leak_refusal`)).toMatchObject({ last_outcome: 'refused' })
+    expect((await sql`select 1 from email_queue where recipient = 'alerted@example.test'`).length).toBeGreaterThan(0)
+    expect(await leaksAnywhere()).toBe(false)
+  })
+
+  test('a disable reason holding a secret is refused before anyone is disabled', async ({ admin, createUser }) => {
+    const target = await createUser({ email: 'kept@example.test', roles: [] })
+    const job: Job = { name: 'leak_reason', cadence: 'daily', description: 'Disables, giving its token as the reason.', grants: ['read_people', 'disable_people'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    expect(await enabled(target.user)).toBe(true)
+    expect(await row(`${APP}.leak_reason`)).toMatchObject({ last_outcome: 'error' })
+    expect(await leaksAnywhere()).toBe(false)
+  })
+
+  test('an undeclared capability stays final when the app has a secret: one attempt, one email', async ({ admin, createUser }) => {
+    await createUser({ email: 'once@example.test', roles: ['System Manager'] })
+    const job: Job = { name: 'mail_then_overreach', cadence: 'daily', description: 'Mails, then tries to disable someone.', grants: ['email_system_managers'] }
+    expect(await discoverPackages([await writeApp({ jobs: [job], extra: SECRETS })])).toEqual([])
+    await withToken(() => admin.post('/api/install_app', { name: APP }))
+    await withToken(runDue)
+    const method = `${APP}.mail_then_overreach`
+    // Failed for good, and only the next scheduled occurrence is queued: no retry.
+    expect((await sql`select job_status from background_job where method = ${method} order by created_at`).map((r) => r.job_status)).toEqual(['failed', 'queued'])
+    expect(await sql`select attempt, outcome, error from job_execution where method = ${method}`)
+      .toEqual([{ attempt: 1, outcome: 'error', error: `The job ${method} has not declared the grant disable_people` }])
+    expect(await sql`select recipient from email_queue where subject = 'Before overreach'`).toEqual([{ recipient: 'once@example.test' }])
+  })
+})
+
+describe('an upgrade cannot widen what a kept job reads', () => {
+  const tidy: Job = { name: 'tidy', cadence: 'daily', description: 'Tidy notes.' }
+  const v2 = (job: Job, extra: Record<string, unknown>) => writeApp({ version: '2.0.0', jobs: [job], extra,
+    migrations: [{ id: 'jobs_v2', fromVersion: '1.0.0', toVersion: '2.0.0', operations: [] }] })
+
+  test('a kept job may not gain a dataset', async ({ admin }) => {
+    const datasets = { datasets: [{ name: 'exits', source: 'fbjobs-warehouse', query: 'select code, store from exits',
+      columns: [{ name: 'code', type: 'text' }, { name: 'store', type: 'text' }], keys: ['code'], filters: { store: 'store' } }] }
+    const v1 = await writeApp({ jobs: [tidy], extra: datasets })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    expect(await discoverPackages([v1, await v2({ ...tidy, datasets: ['exits'] }, datasets)])).toEqual([])
+    await expectApiError(admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }),
+      { status: 417, message: expect.stringContaining(`The job ${APP}.tidy would gain the dataset exits; a job cannot gain access in an upgrade`) })
+  })
+
+  test('a kept job may not gain an optional secret', async ({ admin }) => {
+    const secrets = { secrets: [{ name: 'FBJOBS_OPTIONAL', optional: true }] }
+    const v1 = await writeApp({ jobs: [tidy], extra: secrets })
+    expect(await discoverPackages([v1])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    expect(await discoverPackages([v1, await v2({ ...tidy, needs: ['FBJOBS_OPTIONAL'] }, secrets)])).toEqual([])
+    await expectApiError(admin.post('/api/preview_app_upgrade', { name: APP, version: '2.0.0' }),
+      { status: 417, message: expect.stringContaining(`The job ${APP}.tidy would gain the secret FBJOBS_OPTIONAL; a job cannot gain access in an upgrade`) })
   })
 })
 

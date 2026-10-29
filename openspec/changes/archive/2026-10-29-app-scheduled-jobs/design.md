@@ -69,6 +69,14 @@ must match the declared names exactly, as for actions and reads.
 - `email.systemManagers` refuses a message holding one of the app's secrets,
   queues one email per System Manager with an address, and records an
   undelivered notice when there is none.
+- An app's secrets stay in (Codex round 1): a run's result or refusal reason
+  holding one is replaced by the withheld message before it reaches the run
+  record, the schedule or the refusal alert; a disable reason holding one is
+  refused before anything is written.
+- An undeclared capability stays a final failure even when the app has
+  secrets: the platform keeps its own refusal message and re-raises it after
+  redaction, and a handler that catches the refusal and carries on still
+  fails, so nothing the job was allowed to do repeats on a retry.
 - The app is trusted code with no sandbox (ADR 0011): the grants bound what the
   platform hands the job, not what Node lets its module do.
 
@@ -86,7 +94,8 @@ must match the declared names exactly, as for actions and reads.
   administrator's choice and drifted from a settings file that manages it.
 - **Enable**: re-creates any missing row and queues the app's jobs again.
 - **Upgrade**: the preview lists `add`, `change` and `remove` steps for jobs. A
-  kept job may lose grants or identifier systems but never gain one (refused,
+  kept job may lose grants, identifier systems, datasets or optional secrets
+  but never gain one (refused,
   like a widened table grant, #437); a new job arrives with the grants its
   version declares. A changed default cadence or description reaches a row
   only where the row still holds the old default and the settings file does

@@ -13,7 +13,7 @@ import { AppError } from './errors'
 import { activeApps } from './app-lifecycle'
 import { CADENCE_SECONDS, FinalJobFailure, jobRegistrant, type JobHandler } from './jobs'
 import { appDatasets, type DatasetDeclaration } from './app-datasets'
-import { assertNoSecret, readyAppSetup, secretName, withSecretsKept, type AppSetup } from './app-settings'
+import { WITHHELD_MESSAGE, assertNoSecret, holdsSecret, readyAppSetup, secretName, withSecretsKept, type AppSetup } from './app-settings'
 import { IDENTIFIER_SYSTEM_KEY } from './identifiers'
 import { saveDoc } from './document'
 import { logAccess, logActivity } from './audit'
@@ -114,12 +114,24 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
       if (error instanceof AppError && error.type === 'NotSetUpError') return ctx.refuse(error.message)
       throw error
     }
+    // An undeclared capability ends the run for good. Kept here, in the
+    // platform's own words, because the app's error is redacted into a plain
+    // one on its way out (withSecretsKept) and would otherwise be retried,
+    // repeating what the job was allowed to do (Codex round 1 on #701).
+    let refusedGrant: string | undefined
     const need = async <T>(grant: AppJobGrant, fn: () => Promise<T>): Promise<T> => {
       if (!grants.has(grant)) {
+        refusedGrant ??= `The job ${actor} has not declared the grant ${grant}`
         await logAccess(actor, 'app_access_denied', { method: `${actor}:${grant}`, required: true })
-        throw new FinalJobFailure(`The job ${actor} has not declared the grant ${grant}`)
+        throw new FinalJobFailure(refusedGrant)
       }
       return fn()
+    }
+    // What the app writes into the run's record, its refusal alert or a
+    // person's activity never carries one of its secrets.
+    const kept = (text: unknown) => {
+      const line = String(text)
+      return holdsSecret(ready.kept.values, line) ? WITHHELD_MESSAGE : line
     }
     const context: RuntimeJobContext = Object.freeze({
       job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
@@ -129,7 +141,10 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
         places: EVERY_PLACE, outbound: true }).datasets,
       people: Object.freeze({
         list: () => need('read_people', () => listPeople(job.identifiers ?? [])),
-        disable: (person: string, reason: string) => need('disable_people', () => disablePerson(actor, person, reason)),
+        disable: (person: string, reason: string) => need('disable_people', () => {
+          assertNoSecret(ready.kept, reason)
+          return disablePerson(actor, person, reason)
+        }),
       }),
       email: Object.freeze({
         systemManagers: (message: { subject: string; body: string }) => need('email_system_managers', () => {
@@ -137,10 +152,17 @@ function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler,
           return emailSystemManagers(actor, message)
         }),
       }),
-      setResult: (text: string) => ctx.setResult(String(text)),
-      refuse: (reason: string) => ctx.refuse(String(reason)),
+      setResult: (text: string) => ctx.setResult(kept(text)),
+      refuse: (reason: string) => ctx.refuse(kept(reason)),
     })
-    await withSecretsKept(ready.kept, async () => { await handler(context) })
+    try {
+      await withSecretsKept(ready.kept, async () => { await handler(context) })
+    } catch (error) {
+      if (refusedGrant) throw new FinalJobFailure(refusedGrant)
+      throw error
+    }
+    // A handler that caught the refusal and carried on still fails, for good.
+    if (refusedGrant) throw new FinalJobFailure(refusedGrant)
   }
 }
 
@@ -234,10 +256,18 @@ export function planJobChanges(app: string, prior: JobDeclaration[], target: Job
       steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)] } })
       continue
     }
-    const wider = [...jobGrants(job)].filter((g) => !jobGrants(before).has(g))
-    const moreIdentifiers = (job.identifiers ?? []).filter((s) => !(before.identifiers ?? []).includes(s))
-    if (wider.length || moreIdentifiers.length)
-      throw new AppError('ValidationError', `The job ${appJobMethod(app, job.name)} would gain ${[...wider, ...moreIdentifiers].join(', ')}; ` +
+    // Grants, identifier systems, datasets and optional secrets are all
+    // access: a kept job may only lose them.
+    const gained = (now: readonly string[] | undefined, had: readonly string[] | undefined) =>
+      (now ?? []).filter((item) => !(had ?? []).includes(item))
+    const wider = [
+      ...gained([...jobGrants(job)], [...jobGrants(before)]),
+      ...gained(job.identifiers, before.identifiers),
+      ...gained(job.datasets, before.datasets).map((d) => `the dataset ${d}`),
+      ...gained(job.needs, before.needs).map((n) => `the secret ${n}`),
+    ]
+    if (wider.length)
+      throw new AppError('ValidationError', `The job ${appJobMethod(app, job.name)} would gain ${wider.join(', ')}; ` +
         'a job cannot gain access in an upgrade')
     const change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[] } = { name: job.name }
     if (job.cadence !== before.cadence) change.cadence = job.cadence
