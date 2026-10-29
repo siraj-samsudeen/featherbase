@@ -99,15 +99,9 @@ test.describe('coarse-pointer phone', () => {
       })
   })
 
-  // KNOWN DEFECT, pinned (#650 follow-up). SPEC: a panel an app pins to the
-  // window starts below the shared bar. The bar publishes its height as
-  // --featherbase-bar-height; Tasker still reads the
-  // retired runtime shell's --featherbase-runtime-shell-inset (falling back to
-  // 0), so its phone inspector opens under the bar. Tasker's files are not
-  // changed here: an installed Tasker is matched by fingerprint, and changed files under
-  // the same version would stop the server booting. Fixed by a new Tasker
-  // version that reads the bar's variable; then flip this to a plain test.
-  test.fail("Tasker's inspector, pinned to the window, starts below the shared bar on a phone", async ({ session, request }) => {
+  // #650, fixed in #702: pinned panels consume the shared bar's published
+  // height, so their top controls remain reachable by real pointer input.
+  test("Tasker's inspector, pinned to the window, starts below the shared bar on a phone", async ({ session, request }) => {
     const headers = await ensureRuntimeApp(request, 'tasker')
     const saved = await request.post('/api/save_row', {
       headers,
@@ -122,18 +116,17 @@ test.describe('coarse-pointer phone', () => {
         .visit('/tasker/')
         .clickLink('Host shell mobile proof')
         .step("the inspector is pinned at the bar's height, not at the window's top", async ({ page }: { page: Page }) => {
-          // Measured from the styles, not from where things happen to be
-          // drawn: whether the bar is in view depends on how far the page was
-          // scrolled (Tasker's own styles make its body the scroll container,
-          // so the sticky bar scrolls with the page), and the bar may cover
-          // the Inspector button, so it is pressed without aiming.
           await expect(page.getByTestId('top-bar')).toHaveCount(1)
           const barHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height').trim())
           expect(barHeight).toMatch(/^\d+px$/)
-          await page.getByRole('button', { name: 'Inspector' }).dispatchEvent('click')
+          await page.getByRole('button', { name: 'Inspector' }).click()
           await expect(page.locator('.tasker-inspector')).toBeVisible()
           expect(await page.locator('.tasker-inspector').evaluate((el) => getComputedStyle(el).top)).toBe(barHeight)
         })
+        .clickLink('Close')
+        .assertHas('.tasker-inspector', { count: 0 })
+        .clickLink('Host shell mobile proof')
+        .assertHas('.tasker-inspector', { count: 1 })
     } finally {
       await deleteTask(request, headers, task.row_id)
     }
