@@ -478,11 +478,6 @@ export function TaskManagementPage() {
 
   async function deleteSavedView(savedView: SavedTaskView) {
     await saveViews(savedViews.filter((candidate) => candidate.id !== savedView.id))
-    if (activeSavedViewId === savedView.id) {
-      setActiveSavedViewId(null)
-      setTaskViewSetup(emptyTaskViewSetup())
-      location.hash = ''
-    }
   }
 
   async function renameProject(project: Project, project_name: string) {
@@ -1395,7 +1390,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     setExplaining(null)
   }
 
-  if (!tasks.length) return <Empty text="Nothing here yet." />
   return <div className="tasker-task-list">
     <div className="tasker-task-guide" aria-hidden="true">
       <span />
