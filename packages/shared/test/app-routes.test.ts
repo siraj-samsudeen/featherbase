@@ -1,11 +1,19 @@
 import { describe, expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks } from '../src/index'
+import { APP_ROOT_PATTERN, APP_TAB_ICONS, APP_TAB_LABEL_MAX, APP_TAB_PATH, FEATHERBASE_ADMIN_DESTINATION, INTERIM_APPS, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref, appTabLinks, ownFramePolicyPage } from '../src/index'
 
 test('the canonical Featherbase Admin destination has its product label and path', () => {
   expect(FEATHERBASE_ADMIN_DESTINATION).toEqual({
     label: 'Featherbase Admin',
     href: '/featherbase/admin',
   })
+})
+
+test('only the exact report page, with an optional trailing slash, has its own frame policy', () => {
+  expect(ownFramePolicyPage('/featherbase/sales-target')).toBe('/featherbase/sales-target')
+  expect(ownFramePolicyPage('/featherbase/sales-target/')).toBe('/featherbase/sales-target')
+  for (const path of ['/', '', '/featherbase/admin', '/featherbase/sales-target-extra', '/featherbase/sales-target/nested', '/featherbase/sales-target//']) {
+    expect(ownFramePolicyPage(path)).toBeNull()
+  }
 })
 
 test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
@@ -53,6 +61,15 @@ test('only the System Manager pages need manage (#465, #476 recents rule)', () =
 // #380 task 4.4: an interim app's tabs are typed only, not validated like a
 // manifest's, so the same rules are pinned here.
 describe('interim app tabs', () => {
+  test('tab paths allow lower-case relative segments, never a route outside the app', () => {
+    for (const path of ['', 'inbox', '1', 'my-work/2026_10', 'reports/daily']) {
+      expect(path).toMatch(APP_TAB_PATH)
+    }
+    for (const path of ['/inbox', '../admin', 'inbox/../admin', 'inbox/', 'inbox//daily', 'Inbox', 'a/B', '_private', 'a/_private', 'a?b', 'a#b', 'a\nb']) {
+      expect(path).not.toMatch(APP_TAB_PATH)
+    }
+  })
+
   test('every interim app declares no tabs or 2-5 drawable tabs under its own root', () => {
     for (const [name, interim] of Object.entries(INTERIM_APPS)) {
       const tabs = interim.tabs ?? []

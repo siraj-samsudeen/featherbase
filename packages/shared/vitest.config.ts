@@ -17,18 +17,13 @@ export default defineConfig({
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
-      // Ratchet toward 100% (#226 ruling): only raise, never lower.
-      // Measured 2026-08-28 at lines/statements 21.30%, functions 85.71% —
-      // a number the config itself blamed on `src/import.ts` being driven
-      // only from the server and web suites, which coverage cannot credit
-      // across packages. #197 closed that gap by moving those pure tests
-      // into this suite, where docs/TESTING.md's decision tree puts
-      // I/O-free code: re-measured 2026-08-28 at lines/statements 99.10%,
-      // functions 97.14%, rounded DOWN to the whole percent.
+      // Every executable line and function is exercised by this package's
+      // own public-contract tests (#702); keep new source in the denominator.
       thresholds: {
-        lines: 99,
-        statements: 99,
-        functions: 97,
+        lines: 100,
+        statements: 100,
+        functions: 100,
+        branches: 99,
       },
     },
   },
