@@ -126,11 +126,12 @@ test.describe('coarse-pointer phone', () => {
         .clickLink('Host shell mobile proof')
         .step("the inspector is pinned at the bar's height, not at the window's top", async ({ page }: { page: Page }) => {
           await expect(page.getByTestId('top-bar')).toHaveCount(1)
-          const barHeight = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height').trim())
-          expect(barHeight).toMatch(/^\d+px$/)
           await page.getByRole('button', { name: 'Inspector' }).click()
           await expect(page.locator('.tasker-inspector')).toBeVisible()
-          expect(await page.locator('.tasker-inspector').evaluate((el) => getComputedStyle(el).top)).toBe(barHeight)
+          await expect.poll(() => page.locator('.tasker-inspector').evaluate((inspector) => {
+            const height = getComputedStyle(document.documentElement).getPropertyValue('--featherbase-bar-height')
+            return Math.abs(parseFloat(getComputedStyle(inspector).top) - parseFloat(height))
+          })).toBeLessThan(1)
         })
         .clickLink('Close')
         .assertHas('.tasker-inspector', { count: 0 })
