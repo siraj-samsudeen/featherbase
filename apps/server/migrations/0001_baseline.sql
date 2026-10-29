@@ -1518,6 +1518,7 @@ CREATE TABLE featherbase.sign_in_identity (
     ended_at timestamp with time zone,
     ended_reason text,
     invitation_sent_at timestamp with time zone,
+    hosted_domain character varying(255),
     CONSTRAINT sign_in_identity_ended_reason CHECK ((((ended_at IS NULL) = (ended_reason IS NULL)) AND ((ended_reason IS NULL) OR (ended_reason = ANY (ARRAY['left'::text, 'moved'::text, 'unlinked'::text]))))),
     CONSTRAINT sign_in_identity_subject_or_pending CHECK (((subject IS NULL) = (pending_email IS NOT NULL)))
 );

@@ -164,10 +164,11 @@ export function listsDomains(method: Pick<SignInMethod, 'allowed_email_domains'>
  *  administrator's decision for that account and is not re-checked. */
 export const DOMAIN_RULED_LINKS = ['self', 'new-person', 'expected-sign-in'] as const
 
-/** SQL twin of the #693 re-check, for the way-in counts: does link `i`
- *  through method `m` still pass that method's domain list? Only the address's
- *  domain is checked here; Google's hosted-domain claim is not stored. The
- *  link list is DOMAIN_RULED_LINKS. */
+/** SQL twin of the #693 re-check (domainAdmitted in sign-in.ts), for the
+ *  way-in counts: would link `i` through method `m` still sign in under that
+ *  method's domain list? A company domain also needs the hosted-domain claim
+ *  recorded at the link's last sign-in; a link with none recorded does not
+ *  count. The link list is DOMAIN_RULED_LINKS. */
 function keepsDomain() {
   const list = sql`string_to_array(lower(regexp_replace(coalesce(m.allowed_email_domains, ''), '[[:space:]]', '', 'g')), ',')`
   return sql`(
@@ -175,7 +176,12 @@ function keepsDomain() {
     or coalesce(i.linked_by, '') not in ('self', 'new-person', 'expected-sign-in')
     or cardinality(array_remove(${list}, '')) = 0
     or '*' = any(${list})
-    or (coalesce(i.email, '') like '%_@_%' and lower(split_part(i.email, '@', 2)) = any(${list}))
+    or (
+      coalesce(i.email, '') like '%_@_%'
+      and lower(split_part(i.email, '@', 2)) = any(${list})
+      and (lower(split_part(i.email, '@', 2)) in ('gmail.com', 'googlemail.com')
+        or lower(coalesce(i.hosted_domain, '')) = lower(split_part(i.email, '@', 2)))
+    )
   )`
 }
 
@@ -482,12 +488,19 @@ export async function removeOwnPassword(user: string): Promise<void> {
 }
 
 /** Stamp a successful sign-in through an identity. */
-export async function touchIdentity(id: string, attrs: { email?: string | null; display_name?: string | null } = {}) {
+export async function touchIdentity(
+  id: string,
+  attrs: { email?: string | null; display_name?: string | null; hosted_domain?: string | null } = {},
+) {
   const [before] = await sql`select email from sign_in_identity where id = ${id}`
+  // #693: a kind that reports a hosted domain passes it on every sign-in, and
+  // its absence is recorded too (a personal account has none).
+  const hd = attrs.hosted_domain !== undefined
   await sql`
     update sign_in_identity set last_used_at = now(),
       email = coalesce(${attrs.email ?? null}, email),
-      display_name = coalesce(${attrs.display_name ?? null}, display_name)
+      display_name = coalesce(${attrs.display_name ?? null}, display_name),
+      hosted_domain = case when ${hd}::boolean then ${attrs.hosted_domain ?? null}::text else hosted_domain end
     where id = ${id}`
   // person-resolution D5: the address mirror follows the provider's.
   if (attrs.email && before && String(before.email ?? '').toLowerCase() !== attrs.email.toLowerCase()) {

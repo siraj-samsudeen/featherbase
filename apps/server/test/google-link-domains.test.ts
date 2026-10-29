@@ -21,9 +21,17 @@ async function passwordSession(api: TestClient, admin: TestClient, username: str
 const googleLinksOf = (person: string) =>
   sql`select subject, linked_by from sign_in_identity where person_id = ${person} and method = 'google' and ended_at is null`
 
-async function rawLink(person: string, id: string, subject: string, email: string, linkedBy: string) {
-  await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by)
-    values (${id}, ${person}, 'google', ${subject}, ${email}, ${linkedBy})`
+async function rawLink(person: string, id: string, subject: string, email: string, linkedBy: string, hostedDomain: string | null = null) {
+  await sql`insert into sign_in_identity (id, person_id, method, subject, email, linked_by, hosted_domain)
+    values (${id}, ${person}, 'google', ${subject}, ${email}, ${linkedBy}, ${hostedDomain})`
+}
+
+async function setDomains(admin: TestClient, domains: string) {
+  const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+  return admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/google`, {
+    method: 'PATCH',
+    body: JSON.stringify({ allowed_email_domains: domains, updated_at: g.updated_at }),
+  })
 }
 
 describe('a person links Google to themselves under allowed domains', () => {
@@ -32,7 +40,12 @@ describe('a person links Google to themselves under allowed domains', () => {
     const { id, token } = await passwordSession(api, admin, 'link.ok')
     expect(linkOutcome(await googleLink(api, token, `link.ok@${COMPANY}`, { subject: 'g-link-ok' }))).toBe('linked')
     expect(await googleLinksOf(id)).toEqual([{ subject: 'g-link-ok', linked_by: 'self' }])
+    expect(await sql`select hosted_domain from sign_in_identity where subject = 'g-link-ok'`).toEqual([{ hosted_domain: COMPANY }])
     expect((await redeemSession(api, await googleSignIn(api, `link.ok@${COMPANY}`, { subject: 'g-link-ok' }))).user.row_id).toBe(id)
+    // Each sign-in records the claim it carried, including none.
+    await configureGoogle({ allowed_email_domains: '' })
+    await redeemSession(api, await googleSignIn(api, `link.ok@${COMPANY}`, { subject: 'g-link-ok', hd: '' }))
+    expect(await sql`select hosted_domain from sign_in_identity where subject = 'g-link-ok'`).toEqual([{ hosted_domain: null }])
   })
 
   test('an account from another domain is refused with its own code, and nothing is written', async ({ api, admin }) => {
@@ -80,7 +93,7 @@ describe('signing in through an existing link re-checks the domains', () => {
   test('narrowing the list may not lock out a System Manager whose only way in it would end', async ({ admin }) => {
     await configureGoogle({ allowed_email_domains: `${COMPANY},sister.test` })
     const sm = await makePerson({ username: 'sm.693.sister', roles: [{ role: 'System Manager' }] })
-    await rawLink(sm, 'uid_693_sm', 'g-693-sm', 'sm@sister.test', 'self')
+    await rawLink(sm, 'uid_693_sm', 'g-693-sm', 'sm@sister.test', 'self', 'sister.test')
     const narrow = async () => {
       const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
       return admin.fetch(`/api/table/${encodeURIComponent('Sign In Method')}/google`, {
@@ -97,5 +110,42 @@ describe('signing in through an existing link re-checks the domains', () => {
     // With another way in (a password), the same change goes through.
     await admin.post('/api/set_password', { user: sm, password: 'sm-693-pw-1' })
     expect((await narrow()).status).toBe(200)
+  })
+})
+
+// Codex review on #698: the way-in counts must use the sign-in rule itself,
+// so a company address without a recorded matching hosted-domain claim is
+// not a way in once the list names that company domain.
+describe('the way-in counts need the hosted-domain claim for a company domain', () => {
+  for (const before of ['', '*']) {
+    test(`narrowing '${before}' to the company domain cannot lock out a Google-only System Manager whose account has no claim`, async ({ admin }) => {
+      await configureGoogle({ allowed_email_domains: before })
+      const sm = await makePerson({ username: `sm.693.nohd${before ? '.star' : ''}`, roles: [{ role: 'System Manager' }] })
+      await rawLink(sm, `uid_693_nohd${before ? '_star' : ''}`, 'g-693-nohd', `sm@${COMPANY}`, 'self', null)
+      const refused = await setDomains(admin, COMPANY)
+      expect(refused.status).toBe(417)
+      expect(((await refused.json()) as { error: { message: string } }).error.message).toContain(`would lock out ${sm}`)
+      expect(await sql`select allowed_email_domains from sign_in_method where row_id = 'google'`).toEqual([{ allowed_email_domains: before }])
+    })
+
+    test(`with the matching claim recorded, narrowing '${before}' to the company domain is allowed`, async ({ admin }) => {
+      await configureGoogle({ allowed_email_domains: before })
+      const sm = await makePerson({ username: `sm.693.hd${before ? '.star' : ''}`, roles: [{ role: 'System Manager' }] })
+      await rawLink(sm, `uid_693_hd${before ? '_star' : ''}`, 'g-693-hd', `sm@${COMPANY}`, 'self', COMPANY)
+      expect((await setDomains(admin, COMPANY)).status).toBe(200)
+    })
+  }
+
+  test('removing your own password does not count a company-address link without the claim', async ({ api, admin }) => {
+    await configureGoogle({ allowed_email_domains: COMPANY })
+    const noClaim = await passwordSession(api, admin, 'pw.693.nohd')
+    await rawLink(noClaim.id, 'uid_693_pw_nohd', 'g-693-pw-nohd', `pw.nohd@${COMPANY}`, 'self', null)
+    const call = (token: string) => api.fetch('/api/me/password', { method: 'DELETE', headers: { authorization: `Bearer ${token}` } })
+    expect((await call(noClaim.token)).status).toBe(409)
+    expect(await sql`select password_hash is not null as kept from person where row_id = ${noClaim.id}`).toEqual([{ kept: true }])
+    // With the matching claim recorded, the link is a way in and the password can go.
+    const withClaim = await passwordSession(api, admin, 'pw.693.hd')
+    await rawLink(withClaim.id, 'uid_693_pw_hd', 'g-693-pw-hd', `pw.hd@${COMPANY}`, 'self', COMPANY)
+    expect((await call(withClaim.token)).status).toBe(200)
   })
 })
