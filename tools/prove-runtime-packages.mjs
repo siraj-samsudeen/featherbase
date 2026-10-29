@@ -118,8 +118,10 @@ let server
 let browser
 async function start(configured, refusedApps = []) {
   let diagnostics = ''
-  server = spawn(process.execPath, [resolve(core, 'apps/server/src/index.js')], {
-    cwd: resolve(root, 'apps/server'), env: { ...env, FEATHERBASE_APP_PATHS: JSON.stringify(configured) }, stdio: ['ignore', 'inherit', 'pipe'],
+  const preload = coverageDirectory ? ['--import', resolve(root, 'tools/collect-runtime-proof-coverage.mjs')] : []
+  server = spawn(process.execPath, [...preload, resolve(core, 'apps/server/src/index.js')], {
+    cwd: resolve(root, 'apps/server'), env: { ...env, FEATHERBASE_APP_PATHS: JSON.stringify(configured),
+      ...(coverageDirectory ? { RUNTIME_PROOF_COVERAGE_DIRECTORY: coverageDirectory } : {}) }, stdio: ['ignore', 'inherit', 'pipe'],
   })
   server.stderr.on('data', (chunk) => {
     diagnostics += chunk.toString()
@@ -144,7 +146,8 @@ async function stop() {
   if (!server || server.exitCode !== null) return
   const exited = once(server, 'exit')
   server.kill('SIGTERM')
-  await exited
+  const [code, signal] = await exited
+  assert(code === 0 || signal === 'SIGTERM', 'Proof server shutdown (including coverage flush) failed')
 }
 let token
 async function api(path, body, status = 200, appVersion = `tasker@${taskerPackage.version},actionproof@1.1.0`) {

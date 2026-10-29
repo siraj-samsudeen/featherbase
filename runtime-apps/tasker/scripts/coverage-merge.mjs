@@ -15,6 +15,9 @@ const output = path.resolve(root, '../../coverage/tasker')
 const baseline = path.join(output, 'unit/coverage-final.json')
 const merged = libCoverage.createCoverageMap({})
 const sources = [path.join(root, 'src') + path.sep, path.join(root, 'public') + path.sep]
+const inventory = sources.flatMap(directory => fs.readdirSync(directory, { recursive: true })
+  .filter(file => /\.[tj]sx?$/.test(file) && !/\.test\.[tj]sx?$/.test(file) && !file.endsWith('.d.ts'))
+  .map(file => path.join(directory, file))).sort()
 const groups = [[baseline]]
 const args = process.argv.slice(2)
 for (let index = 0; index < args.length; index++) {
@@ -34,6 +37,9 @@ for (const inputs of groups) {
     const raw = JSON.parse(fs.readFileSync(input, 'utf8'))
     const map = await libSourceMaps.createSourceMapStore().transformCoverage(libCoverage.createCoverageMap(raw))
     map.filter((file) => sources.some((prefix) => file.startsWith(prefix)) && !/\.test\.[tj]sx?$/.test(file))
+    if (input === baseline && JSON.stringify(map.files().sort()) !== JSON.stringify(inventory)) {
+      throw new Error('Tasker baseline does not match production source inventory; rerun test:coverage')
+    }
     matchingFiles += map.files().length
     for (const file of map.files()) {
       const data = map.fileCoverageFor(file).data
