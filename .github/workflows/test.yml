@@ -6,7 +6,7 @@
 # replaces the role/database bootstrap that init.sh performs on a developer
 # machine (init.sh assumes brew or pg_ctlcluster, neither of which applies
 # here). Everything else the app needs in the database is created by
-# `pnpm --filter server migrate` + `patches`, exactly as init.sh runs them;
+# `pnpm --filter server migrate`, exactly as init.sh runs it;
 # the RLS suite creates its own login role for the run. The e2e specs seed
 # their own documents.
 #
@@ -253,7 +253,6 @@ jobs:
       - name: Migrate and patch database
         run: |
           pnpm --filter server migrate
-          pnpm --filter server patches
 
       # The suite's config pins fileParallelism: false and a shared
       # globalSetup that empties tab_background_job — do not parallelize
@@ -283,7 +282,6 @@ jobs:
           createdb --maintenance-db="$DATABASE_URL" featherbase_issue279_access_commit_e2e
           export DATABASE_URL="${DATABASE_URL%/*}/featherbase_issue279_access_commit_e2e"
           pnpm --filter server migrate
-          pnpm --filter server patches
           APP_ACCESS_COMMIT_PROOF=1 pnpm --filter server test test/app-access-commit.test.ts
 
       # #544: the other committed-concurrency proofs, each on its own
@@ -296,7 +294,6 @@ jobs:
           for db in featherbase_ci_actions_commit_e2e featherbase_ci2_actions_commit_e2e featherbase_ci_settings_commit_e2e; do
             createdb --maintenance-db="$DATABASE_URL" "$db"
             DATABASE_URL="${DATABASE_URL%/*}/$db" pnpm --filter server migrate
-            DATABASE_URL="${DATABASE_URL%/*}/$db" pnpm --filter server patches
           done
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci_actions_commit_e2e" RUNTIME_ACTION_COMMIT_PROOF=1 pnpm --filter server test test/runtime-actions-commit.test.ts
           DATABASE_URL="${DATABASE_URL%/*}/featherbase_ci2_actions_commit_e2e" TASKER_UPGRADE_ACTION_PROOF=1 pnpm --filter server test test/tasker-upgrade-action-commit.test.ts
@@ -347,7 +344,6 @@ jobs:
       - name: Migrate and patch database
         run: |
           pnpm --filter server migrate
-          pnpm --filter server patches
 
       # `test:coverage` REPLACES the plain `test` rather than being added
       # beside it: instrumenting a suite once costs about 15% of wall clock
@@ -443,7 +439,6 @@ jobs:
       - name: Migrate and patch database
         run: |
           pnpm --filter server migrate
-          pnpm --filter server patches
 
       - name: Run the release preflight suite on PostgreSQL 18
         run: pnpm --filter server test test/release-preflight.test.ts
@@ -490,7 +485,7 @@ jobs:
 
       # No migrate step and no boot step: in isolated mode
       # (E2E_ISOLATED=1, set by the `e2e` script) Playwright owns the whole
-      # stack. It resets its own database, migrates and patches it, then
+      # stack. It resets its own database, migrates it, then
       # starts the API and web servers on their own ports and tears them down
       # after. Booting a second stack here would only race with that one.
 

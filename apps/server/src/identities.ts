@@ -178,8 +178,6 @@ const identityFields = () =>
   sql`id, person_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at,
     ended_at, ended_reason, subject_kind, invitation_sent_at`
 
-export { newPersonId } from './opaque-id'
-
 /** The one id generator for linked identities. */
 export function newIdentityId(): string {
   return 'uid_' + randomBytes(9).toString('base64url')

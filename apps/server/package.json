@@ -8,7 +8,7 @@
     "release": "tsx src/release.ts",
     "pre-deploy": "tsx src/pre-deploy.ts",
     "migrate": "tsx src/migrate.ts",
-    "patches": "tsx src/run-patches.ts",
+    "baseline:generate": "tsx scripts/generate-baseline.ts",
     "cli": "tsx src/cli.ts",
     "lint:sql": "tsx scripts/check-sql-escapes.ts",
     "lint:env": "tsx scripts/check-env-reads.ts",
@@ -23,7 +23,7 @@
     "test:smoke": "tsx src/smoke.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "e2e:reset": "tsx scripts/reset-e2e-db.ts",
-    "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx src/run-patches.ts && tsx watch src/index.ts",
+    "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx watch src/index.ts",
     "seed:sales-target": "tsx scripts/seed-sales-target.ts"
   },
   "dependencies": {

@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
 import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
-import { applyBatch, ensureLedger, planMigrations } from './migrate'
+import { adoptBaseline, applyMigrationFile, ensureLedger, planMigrations } from './migrate'
 import { invalidateMeta } from './meta'
 import { readVariable } from './env'
 import { rehearseAppUpgrades } from './runtime-packages'
@@ -52,17 +52,18 @@ export async function assertNotLive(client: typeof sql = sql): Promise<void> {
   )
 }
 
-/** Apply one batch the way the migrator does, with what its up() logs sent
+/** Apply one file the way the migrator does, with what its up() logs sent
  *  to `out`. A savepoint of its own, as the migrator gives it a transaction. */
-async function applyReporting(batch: string[], legacy: boolean, out: RehearsalOutput) {
+async function applyReporting(file: string, out: RehearsalOutput) {
   const log = console.log
   console.log = (...args: unknown[]) => out(format(...args))
   try {
-    await withTransaction(() => applyBatch(batch, legacy, (file) => out(`applied ${file}`)))
+    await withTransaction(() => applyMigrationFile(file))
+    out(`applied ${file}`)
   } catch (err) {
     // 55P03 lock_not_available: say which change could not get its lock.
     if ((err as { code?: string }).code === '55P03')
-      throw new Error(`${batch.join(', ')} waited more than ${LOCK_TIMEOUT} for a lock another session holds, so the rehearsal stopped: ${(err as Error).message}`)
+      throw new Error(`${file} waited more than ${LOCK_TIMEOUT} for a lock another session holds, so the rehearsal stopped: ${(err as Error).message}`)
     throw err
   } finally {
     console.log = log
@@ -78,15 +79,18 @@ export async function rehearse(
 ): Promise<void> {
   if (!allowLive) await assertNotLive()
   await assertDatabaseEnvironment()
-  const { legacy, batches } = await planMigrations()
-  const pending = batches.flat()
+  const { adopt, pending } = await planMigrations()
   out(`migrate:rehearse — in a rolled-back transaction; pending: ${pending.length ? pending.join(', ') : 'none'}`)
   try {
     await withTransaction(async () => {
       try {
         await sql.unsafe(`set local lock_timeout = '${LOCK_TIMEOUT}'; set local statement_timeout = '${STATEMENT_TIMEOUT}'`)
-        await ensureLedger(legacy)
-        for (const batch of batches) await applyReporting(batch, legacy, out)
+        await ensureLedger()
+        if (adopt.length) {
+          await adoptBaseline(adopt)
+          out(`adopted the baseline: recorded ${adopt.join(', ')} without running them`)
+        }
+        for (const file of pending) await applyReporting(file, out)
         // #651: then each app upgrade this release ships, with what it removes.
         for (const line of await rehearseAppUpgrades(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) out(line)
       } finally {

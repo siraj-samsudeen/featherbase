@@ -65,10 +65,10 @@ export default defineConfig({
     // Collected only by `pnpm test:coverage` (vitest run --coverage), never by
     // the default `pnpm test` — day-to-day runs stay fast.
     //
-    // Scope is `src/` and nothing else. `migrations/` and `patches/` sit
-    // outside it by construction: they are applied once by a separate `tsx
-    // src/migrate.ts` process before the suite starts, so no test process ever
-    // loads them and they would report a permanent, unfixable 0%. They are
+    // Scope is `src/` and nothing else. `migrations/` sits outside it by
+    // construction: they are applied once by a separate `tsx src/migrate.ts`
+    // process before the suite starts, so no test process ever loads them and
+    // they would report a permanent, unfixable 0%. They are
     // also append-only history — a shipped migration is never edited — so
     // "cover it with a test" is not a thing one can do to them.
     //

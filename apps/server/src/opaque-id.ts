@@ -24,11 +24,6 @@ export function opaqueId(prefix: string, length = 20): string {
 export const PERSON_ID_PREFIX = 'psn_'
 export const SERVICE_ACCOUNT_ID_PREFIX = 'svc_'
 
-/** A new person's permanent id. `row_id` is the warehouse person_id. */
-export function newPersonId(): string {
-  return opaqueId(PERSON_ID_PREFIX)
-}
-
 /** A new service account's permanent id. */
 export function newServiceAccountId(): string {
   return opaqueId(SERVICE_ACCOUNT_ID_PREFIX)

@@ -149,9 +149,8 @@ EOF
   fi
 fi
 
-# --- 3. Migrations + patches -----------------------------------------------
+# --- 3. Migrations ---------------------------------------------------------
 pnpm --filter server migrate
-pnpm --filter server patches
 
 # --- 3b. The TEST database, which is a different database -------------------
 # The suites default to `featherbase_test`, never the database this dev server

@@ -1,6 +1,16 @@
-// Minimal ordered-SQL migration runner. Files in ./migrations run once, in
-// name order, recorded in the `migration` table. One-off recorded patches are
-// a separate system (PLAT-003, src/patches.ts).
+// Ordered migration runner. Files in ./migrations run once, in name order,
+// each in its own transaction, recorded in `featherbase.migration`.
+//
+// The first file is a baseline (#692): 0140_baseline.sql builds what the
+// migrations listed in migrations/baseline-replaces.txt built. So a database
+// is one of three kinds, told apart before anything is written:
+//   empty                      the baseline and every later file run;
+//   has every replaced one     (installed before the baseline) the baseline,
+//                              and the steps after it that redo what the
+//                              replaced migrations did, are recorded without
+//                              running; the rest run;
+//   anything else              refused: it is upgraded first with the last
+//                              release before the baseline.
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,9 +19,19 @@ import { _getUnqualifiedSql, sql, withTransaction } from './db'
 import { processIO, type CommandIO } from './command-io'
 import { invalidateMeta } from './meta'
 import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
-import { bootstrapAdministrator } from './admin-bootstrap'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
+
+export const BASELINE = '0140_baseline.sql'
+
+/** The baseline and the steps after it that a database installed before the
+ *  baseline has already had: 0141 sets the first Administrator's password
+ *  (0006 did), 0142 enables Google sign-in for the mock provider (0100 did). */
+export const ADOPTED_WITH_BASELINE: readonly string[] = [BASELINE, '0141_administrator_password.ts', '0142_mock_google_sign_in.ts']
+
+/** The last platform release that can upgrade a database the baseline cannot
+ *  adopt: main just before #692. */
+export const LAST_RELEASE_BEFORE_BASELINE = 'e562331d'
 
 // The migration files on disk, in the order they apply.
 function migrationFiles(): string[] {
@@ -20,74 +40,31 @@ function migrationFiles(): string[] {
     .sort()
 }
 
-/**
- * Migrations present on disk but not recorded in this database.
- *
- * Separated from running them so a caller can ASK without acting — the check
- * that turns "a wall of confusing failures" into one sentence naming the
- * files. Rails calls the equivalent `needs_migration?`; Prisma exposes it as
- * `migrate status` exiting non-zero.
- */
-export async function pendingMigrations(): Promise<string[]> {
-  const { applied } = await readLedger()
-  return migrationFiles().filter((f) => !applied.has(f))
+/** The migrations the baseline replaces (migrations/baseline-replaces.txt). */
+export function replacedByBaseline(): string[] {
+  return readFileSync(join(dir, 'baseline-replaces.txt'), 'utf8')
+    .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'))
 }
 
-/** Where this database records its migrations, and what it has recorded. The
- *  ledger is `public.migration` on a legacy database (before 0094 moved the
- *  platform into its own schema), `featherbase.migration` after. */
-async function readLedger(): Promise<{ legacy: boolean; applied: Set<string> }> {
-  const [present] = await sql`
-    select to_regclass('public.migration') as legacy,
-      to_regclass('featherbase.migration') as current`
-  if (present?.legacy && present?.current)
-    throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
-  const relation = present?.current ? 'featherbase.migration' : present?.legacy ? 'public.migration' : null
-  const applied = new Set(relation ? (await sql.unsafe(`select name from ${relation}`)).map((r) => r.name as string) : [])
-  return { legacy: Boolean(present?.legacy), applied }
-}
-
-// migrations/ is numbered by hand — nothing stops two files from claiming the
-// same number. Both apply silently (whichever sorts first "wins" the slot,
-// the other becomes a duplicate under a number nobody actually chose).
-// Pre-existing collisions found in the repo on 2026-08-11 (issue #149) — both
-// pairs are additive on disjoint tables, already applied in real checkouts,
-// and must NOT be renumbered. Do not add to this list without the same
-// scrutiny; any new collision is a bug and must fail the guard below.
-const GRANDFATHERED_DUPLICATE_PREFIXES: readonly (readonly string[])[] = [
-  ['0064_data_sources.ts', '0064_user_event.ts'],
-  ['0069_access_tokens.sql', '0069_import_upsert_log.ts'],
-]
-
-// The "number" is everything before the first underscore, so `0101` and
-// `0101a` (a deliberate same-batch sub-ordering — see
-// 0101a_service_account_name_unique.sql) are distinct; only an exact repeat
-// collides.
+// The "number" is everything before the first underscore, so `0142` and
+// `0142a` would be distinct; only an exact repeat collides.
 function migrationPrefix(file: string): string {
   const prefix = file.split('_', 1)[0]
   if (!/^\d/.test(prefix)) throw new Error(`migration file "${file}" has no numeric prefix`)
   return prefix
 }
 
-// Pure and DB-free so it's unit-testable: takes a directory listing, returns
-// one message per colliding number (empty when every number is unique).
+// migrations/ is numbered by hand, so nothing stops two files from claiming
+// the same number (#149). Pure and DB-free so it's unit-testable: takes a
+// directory listing, returns one message per colliding number.
 export function findDuplicateMigrationPrefixes(files: string[]): string[] {
   const byPrefix = new Map<string, string[]>()
   for (const file of files) {
     const prefix = migrationPrefix(file)
     byPrefix.set(prefix, [...(byPrefix.get(prefix) ?? []), file])
   }
-  const errors: string[] = []
-  for (const [prefix, group] of byPrefix) {
-    if (group.length < 2) continue
-    const sorted = [...group].sort()
-    const isGrandfathered = GRANDFATHERED_DUPLICATE_PREFIXES.some(
-      (pair) => pair.length === sorted.length && pair.every((f, i) => f === sorted[i]),
-    )
-    if (isGrandfathered) continue
-    errors.push(`migration number "${prefix}" is claimed by more than one file: ${group.join(', ')}`)
-  }
-  return errors
+  return [...byPrefix].filter(([, group]) => group.length > 1)
+    .map(([prefix, group]) => `migration number "${prefix}" is claimed by more than one file: ${group.join(', ')}`)
 }
 
 /** The migrator's guard: refuses a listing where two files claim one number. */
@@ -96,145 +73,123 @@ export function assertUniqueMigrationNumbers(files: string[]): void {
   if (errors.length > 0) throw new Error(`duplicate migration numbers:\n${errors.join('\n')}`)
 }
 
-/** Migrations that apply as ONE transaction (person-resolution review A-M1):
- *  the person release is all-or-nothing, so a failure in 0102 cannot leave
- *  0100's identities or 0101's re-id committed without it (#399: prod is at
- *  0099, so 0100 is part of the release). Members must be adjacent in name order. */
-export const ONE_TRANSACTION: readonly (readonly string[])[] = [
-  ['0100_person_identities.ts', '0101_person_rename.ts', '0101a_service_account_name_unique.sql', '0102_person_resolution.ts'],
-]
-
-/** The pending files, batched: each alone, except the pending members of a
- *  ONE_TRANSACTION group, which share one batch. Pure, for the unit test. */
-export function migrationBatches(pending: string[]): string[][] {
-  const batches: string[][] = []
-  let open: readonly string[] | null = null
-  for (const file of pending) {
-    const group = ONE_TRANSACTION.find((g) => g.includes(file)) ?? null
-    if (group && group === open) batches[batches.length - 1].push(file)
-    else batches.push([file])
-    open = group
-  }
-  return batches
+function upgradeFirst(reason: string): Error {
+  return new Error(
+    `Refusing to migrate: ${reason} This release starts from a baseline and can only adopt a database that has every ` +
+      `migration the baseline replaces. Upgrade this database first with the last platform release before the baseline ` +
+      `(commit ${LAST_RELEASE_BEFORE_BASELINE}), then run this release again. Nothing was changed.`,
+  )
 }
 
-/** Apply one migration file and record it, inside the caller's transaction
- *  (the migrator's per-file transaction, or the rolled-back rehearsal of
- *  `cli migrate:rehearse`). */
-export async function applyMigrationFile(file: string): Promise<void> {
-  await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
-  if (file.endsWith('.sql')) {
-    let body = readFileSync(join(dir, file), 'utf8')
-    if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
-      body = body
-        .replaceAll('set search_path = public', 'set search_path = pg_catalog')
-        .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
-        .replaceAll('from permission p', 'from featherbase.permission p')
-        .replaceAll('join has_role hr', 'join featherbase.has_role hr')
-    }
-    await sql.unsafe(body)
-  } else {
-    // .ts migrations export up(); they use the engine itself (createTable,
-    // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
-    // #130 security supersession: retain the shipped migration as history,
-    // but never execute its known-password production fallback on a fresh DB.
-    if (file === '0006_admin_password.ts') await bootstrapAdministrator()
-    else {
-      const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-      await mod.up()
-    }
-  }
-  const [after] = await sql`
-    select to_regclass('public.migration') as legacy,
-      to_regclass('featherbase.migration') as current`
-  if (Boolean(after.legacy) === Boolean(after.current))
-    throw new Error('Migration must leave exactly one platform migration ledger')
-  const target = after.current ? 'featherbase.migration' : 'public.migration'
-  await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
-  invalidateMeta()
+/** The migrations this database records. Refuses the legacy ledger. */
+async function appliedMigrations(): Promise<Set<string>> {
+  const [present] = await sql`
+    select to_regclass('public.migration') as legacy, to_regclass('featherbase.migration') as current`
+  if (present?.legacy)
+    throw upgradeFirst('this database records its migrations in public.migration, from before 0094 moved the platform into its own schema.')
+  if (!present?.current) return new Set()
+  return new Set((await sql`select name from migration`).map((r) => r.name as string))
 }
 
-/** What a release would apply here, checked before anything changes: the
- *  pending files in batches, and whether the ledger is still the legacy one. */
-export async function planMigrations(): Promise<{ legacy: boolean; batches: string[][] }> {
-  const { legacy, applied } = await readLedger()
+/** What a run would do here, decided before anything changes: the files to
+ *  record without running (adopting the baseline) and the files to apply. */
+export async function planMigrations(): Promise<{ adopt: string[]; pending: string[] }> {
   const files = migrationFiles()
   assertUniqueMigrationNumbers(files)
-  // Earlier TS migrations invoke today's qualified engine, not the historical
-  // one. Reject unsupported ledgers before creating any destination storage.
-  if (legacy) {
-    const missing = files.filter((file) => file < '0088_runtime_storage.sql' && !applied.has(file))
-    if (missing.length) throw new Error(
-      `Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n${missing.join('\n')}`,
-    )
+  const applied = await appliedMigrations()
+  const notApplied = (f: string) => !applied.has(f)
+  if (applied.has(BASELINE)) return { adopt: [], pending: files.filter(notApplied) }
+  const replaced = replacedByBaseline()
+  if (applied.size === 0) {
+    // No record at all: only a database with nothing of the platform's in it
+    // is new (the runner's own ledger and environment stamp aside). Anything
+    // else lost its ledger, and the baseline would collide with it.
+    const [found] = await sql`
+      select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'featherbase' and c.relname not in ('migration', 'internal_metadata')
+        and c.relkind in ('r', 'p', 'v', 'm', 'S')
+      union all select 'public.site' where to_regclass('public.site') is not null
+      limit 1`
+    if (found) throw upgradeFirst(`this database holds platform tables (${String(found.relname)}) but records no migration.`)
+    return { adopt: [], pending: files }
   }
-  return { legacy, batches: migrationBatches(files.filter((f) => !applied.has(f))) }
+  const missing = replaced.filter(notApplied)
+  if (missing.length)
+    throw upgradeFirst(
+      `this database has ${replaced.length - missing.length} of the ${replaced.length} migrations the baseline replaces; ` +
+        `it lacks ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}.`,
+    )
+  const adopt = ADOPTED_WITH_BASELINE.filter(notApplied)
+  return { adopt, pending: files.filter((f) => notApplied(f) && !adopt.includes(f)) }
 }
 
-/** The platform schema, and on a database that is not legacy its ledger. */
-export async function ensureLedger(legacy: boolean): Promise<void> {
+/** Migrations on disk that this database has not had, adopted ones aside.
+ *  Asks without acting, and refuses a database this release cannot migrate. */
+export async function pendingMigrations(): Promise<string[]> {
+  return (await planMigrations()).pending
+}
+
+/** The platform schema and its ledger. */
+export async function ensureLedger(): Promise<void> {
   await sql.unsafe('create schema if not exists featherbase')
-  if (!legacy) await sql.unsafe(`create table if not exists featherbase.migration (
+  await sql.unsafe(`create table if not exists featherbase.migration (
     name text primary key,
     applied_at timestamptz not null default now()
   )`)
 }
 
-/** Apply one batch from `planMigrations` and record it, inside the caller's
- *  transaction: the migrator's per-batch one, or the rolled-back rehearsal of
- *  `cli migrate:rehearse`, so both apply a file the same way. `applied` hears
- *  of each member as it is recorded. */
-export async function applyBatch(batch: string[], legacy: boolean, applied: (file: string) => void = () => {}): Promise<void> {
-  const [file] = batch
-  // 0088–0093 require public storage; 0094 needs their columns and prototype
-  // conversion before it can move that storage. Never rewrite shipped SQL.
-  if (legacy && file < '0094_featherbase_schema.sql') {
-    const tx = _getUnqualifiedSql()
-    await tx.unsafe('set local search_path = public, pg_temp')
-    await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
-    await tx`insert into public.migration (name) values (${file})`
-    invalidateMeta()
-    applied(file)
-    return
-  }
-  for (const member of batch) {
-    await applyMigrationFile(member)
-    // Each member validates against the metadata the previous one left.
-    invalidateMeta()
-    applied(member)
-  }
+/** Record the baseline (and the steps it stands for) without running it, on a
+ *  database that has every migration it replaces. */
+export async function adoptBaseline(files: readonly string[]): Promise<void> {
+  for (const file of files) await sql`insert into migration (name) values (${file})`
 }
 
-// Runs pending migrations. Does NOT close the DB connection — the caller owns
-// its lifecycle (the CLI keeps it open for the rest of the command).
-export async function runMigrations() {
+/** Apply one migration file and record it, inside the caller's transaction
+ *  (the migrator's per-file one, or the rolled-back rehearsal of
+ *  `cli migrate:rehearse`). A .sql file runs as written, its names resolved
+ *  in the platform schema; a .ts file exports up() and uses the engine. */
+export async function applyMigrationFile(file: string): Promise<void> {
+  if (file.endsWith('.sql')) {
+    const tx = _getUnqualifiedSql()
+    await tx.unsafe('set local search_path = featherbase, pg_temp')
+    await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
+  } else {
+    const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+    await mod.up()
+  }
+  await sql`insert into migration (name) values (${file})`
+  // The next file validates against what this one left.
+  invalidateMeta()
+}
+
+// Runs pending migrations, saying what it did on `out`. Does NOT close the DB
+// connection — the caller owns its lifecycle (the CLI keeps it open for the
+// rest of the command).
+export async function runMigrations(out: (line: string) => void) {
   // Before writing anything: is this database ours to migrate? An unstamped
   // (brand-new) database passes and is claimed below; one belonging to
   // another environment stops the run here, before any DDL.
   await assertDatabaseEnvironment()
-  const { legacy, batches } = await planMigrations()
-  await ensureLedger(legacy)
-  for (const batch of batches) {
-    await withTransaction(() => applyBatch(batch, legacy))
-    // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
-    // Workflow Transition.condition); drop the per-process meta cache so the
-    // NEXT migration validates against what is actually in the database. A
-    // fresh-database run otherwise crashes at the first save that uses a
-    // column added this way — caught by CI's first-ever run.
-    invalidateMeta()
-    for (const member of batch) console.log(`applied ${member}${batch.length > 1 ? ` (one transaction: ${batch.join(', ')})` : ''}`)
+  const { adopt, pending } = await planMigrations()
+  await ensureLedger()
+  if (adopt.length) {
+    await withTransaction(() => adoptBaseline(adopt))
+    out(`adopted the baseline: recorded ${adopt.join(', ')} without running them (this database has every migration the baseline replaces)`)
   }
-  // Claim (or re-affirm) the database for this environment. Re-stamping every
-  // run keeps databases created before 0081 correct too.
+  for (const file of pending) {
+    await withTransaction(() => applyMigrationFile(file))
+    out(`applied ${file}`)
+  }
+  // Claim (or re-affirm) the database for this environment.
   await stampEnvironment()
-  console.log(`migrations up to date (${migrationFiles().length} total)`)
+  out(`migrations up to date (${migrationFiles().length} total)`)
 }
 
 /** `tsx src/migrate.ts`: resolves to the process's exit code. The caller owns
  *  the database connection: the entry point below ends it. */
 export async function main(_argv: string[] = [], io: CommandIO = processIO): Promise<number> {
   try {
-    await runMigrations()
+    await runMigrations((line) => io.out(line))
     return 0
   } catch (err) {
     io.err(format(err))

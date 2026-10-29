@@ -160,10 +160,7 @@ async function contained(root: string, name: string): Promise<string> {
 }
 
 // Shipped files, never operator directory spelling, identify an artifact.
-// `transform` may rewrite a file's bytes (by its path relative to the root)
-// before hashing; only migration 0125 uses it, to fingerprint files as they
-// were before a rename.
-export async function artifactDigest(root: string, transform?: (file: string, bytes: Buffer) => Buffer) {
+export async function artifactDigest(root: string) {
   const hash = createHash('sha256')
   async function walk(directory: string) {
     for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -173,7 +170,7 @@ export async function artifactDigest(root: string, transform?: (file: string, by
       if (entry.isDirectory()) await walk(file)
       else {
         const bytes = await readFile(file)
-        hash.update(canonical([relative(root, file), (transform ? transform(relative(root, file), bytes) : bytes).toString('base64')]))
+        hash.update(canonical([relative(root, file), bytes.toString('base64')]))
       }
     }
   }
@@ -244,12 +241,6 @@ async function readArtifact(directory: string) {
   const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
   const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
   return { root, pkg: pkg as { name: string; version: string }, manifest }
-}
-
-/** An app directory's name, version and resolved root (migration 0125). */
-export async function artifactIdentity(directory: string) {
-  const { root, pkg, manifest } = await readArtifact(directory)
-  return { name: manifest.name, version: pkg.version, root }
 }
 
 // One app directory, validated and loaded: its manifest, fingerprint and

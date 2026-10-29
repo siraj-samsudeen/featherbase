@@ -1,6 +1,5 @@
 // Not sandboxed: independent pools must contend on committed counters to
 // prove deployment-wide admission. An owned schema is dropped in finally.
-import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { expect, it } from 'vitest'
@@ -32,7 +31,8 @@ it('#245 admits exactly the shared budget across independent pools, resets expir
   const db = pools[0]
   try {
     await control.unsafe(`create schema "${schema}"`)
-    await db.unsafe(readFileSync(new URL('../migrations/0084_pre_auth_buckets.sql', import.meta.url), 'utf8'))
+    // The platform's own table, with its key, check and index, in a schema of its own.
+    await control.unsafe(`create table "${schema}".pre_auth_bucket (like featherbase.pre_auth_bucket including all)`)
     const batch = () => Promise.all(Array.from({ length: 60 }, (_, i) => admit('shared', 7, 60_000, pools[i % pools.length])))
     const first = await batch()
     expect(first.filter((r) => r.revision !== null)).toHaveLength(7)

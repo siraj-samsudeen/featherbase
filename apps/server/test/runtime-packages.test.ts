@@ -170,18 +170,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
       expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
-      // Recreate the pre-0092 upgrade state: Tasker created the basic grant,
-      // Other adopted it without a ledger entry, and neither grant had an
-      // owner. The migration must recover both independent declarations.
-      const [adopted] = await sql`
-        delete from permission
-        where owner_app = 'other' and ref_table = 'Comment' and tier = 'basic'
-        returning row_id`
-      await sql`
-        update installed_app set perms = perms - ${String(adopted.row_id)}
-        where name = 'other'`
-      await sql`update permission set owner_app = null where owner_app in ('tasker', 'other')`
-      await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
+      // Each package owns its own declaration of the shared grant.
       expect(await sql`
         select owner_app, tier from permission
         where ref_table = 'Comment' and owner_app in ('tasker', 'other')

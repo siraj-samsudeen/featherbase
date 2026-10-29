@@ -65,10 +65,10 @@ export async function setup() {
 
   await assertDatabaseEnvironment()
   // The suite opts into the mock Google provider (vitest.config.ts `env`), but
-  // that only reaches the test workers. Migration 0100 turns Google on only
+  // that only reaches the test workers. Migration 0142 turns Google on only
   // when it can work, so the migrating process must see the same opt-in.
   if (process.env.ALLOW_MOCK_OAUTH === undefined) process.env.ALLOW_MOCK_OAUTH = '1'
-  await runMigrations()
+  await runMigrations(console.log)
   const pending = await pendingMigrations()
   if (pending.length > 0)
     throw new Error(

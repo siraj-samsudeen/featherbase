@@ -6,7 +6,6 @@
 //                                     rehearses against another database (a restored snapshot).
 //                                     Refuses a database other sessions are connected to (it looks
 //                                     live) unless --allow-live
-//   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-person <username-or-email> <password> [--full-name "Name"] [--roles "System Manager,All"]
@@ -20,7 +19,6 @@
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
-//   cli identities:plan               print what migration 0100 (person-identities) will do; read-only
 //   cli people:resolve <csv> [--dry-run]
 //                                     after the person release: move each StyleHR sign-in from its
 //                                     employee code to its record number (warehouse file); idempotent
@@ -62,7 +60,6 @@ import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
 import { sql } from './db'
 import { processIO, type CommandIO } from './command-io'
-import { formatPlan, planPersonIdentities } from './person-identities-migration'
 import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
@@ -72,8 +69,6 @@ import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
 import { logActivity } from './audit'
 import { runMigrations } from './migrate'
-import { runPatches } from './patches'
-import { patches } from '../patches/index'
 
 // --- tiny flag parser: collects --key value, repeatable keys become arrays,
 // bare --flags become boolean true, everything else is a positional. --------
@@ -487,14 +482,8 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
 
   switch (cmd) {
     case 'migrate':
-      await runMigrations()
+      await runMigrations((line) => io.out(line))
       break
-    case 'patches': {
-      const newly = await runPatches(patches)
-      if (newly.length) for (const n of newly) io.out(`applied patch ${n}`)
-      io.out(`patches up to date (${patches.length} total)`)
-      break
-    }
     case 'seed':
       await cmdSeed(io)
       break
@@ -518,11 +507,6 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       break
     case 'revoke-token':
       await cmdRevokeToken(io, positional)
-      break
-    case 'identities:plan':
-      // Read-only (review minor 10): computes what migration 0100 would do from
-      // the data as it is, with the parity check, and changes nothing.
-      io.out(formatPlan(await planPersonIdentities()))
       break
     case 'migrate:rehearse':
       return cmdMigrateRehearse(rest)
@@ -628,7 +612,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|patches|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|identities:plan|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

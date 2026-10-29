@@ -65,9 +65,9 @@ describe('platform SQL relation mapping', () => {
 
   it('qualifies DDL targets and references but leaves the public site registry explicit', () => {
     expect(qualifyPlatformSql(
-      'create table if not exists role (id text references "user"); create unique index role_id on role(id); select * from public.site',
+      'create table if not exists role (id text references "person"); create unique index role_id on role(id); select * from public.site',
     )).toBe(
-      'create table if not exists "featherbase".role (id text references "featherbase"."user"); create unique index role_id on "featherbase".role(id); select * from public.site',
+      'create table if not exists "featherbase".role (id text references "featherbase"."person"); create unique index role_id on "featherbase".role(id); select * from public.site',
     )
   })
 })

@@ -1,6 +1,3 @@
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
@@ -179,49 +176,6 @@ async function failPasswordWrites(person: string) {
   await sql`delete from person where row_id = ${person}`
 }
 
-const MIGRATIONS = fileURLToPath(new URL('../migrations/', import.meta.url))
-
-describe('#137 R2: the access_token guard reaches databases that already ran 0069', () => {
-  test('the guard is a migration of its own, and it fires only on a squatter', async () => {
-    // Which file carries the guard?
-    const carriers = readdirSync(MIGRATIONS).filter(
-      (f) => f.endsWith('.sql') && readFileSync(join(MIGRATIONS, f), 'utf8').includes('credential store'),
-    )
-    expect(carriers).toHaveLength(1)
-    const [guardFile] = carriers
-
-    // THE POINT: runMigrations() skips any file already recorded in the
-    // `migration` table. Every checkout that has access tokens recorded
-    // 0069 when they landed, so a guard written INTO 0069 can never run
-    // again there — and on a fresh database it is vacuous, because
-    // access_token cannot pre-exist the migration that creates it. Only a
-    // later, not-yet-recorded file converges a real developer database.
-    expect(guardFile).not.toMatch(/^0069/)
-    expect(readFileSync(join(MIGRATIONS, '0069_access_tokens.sql'), 'utf8')).not.toMatch(
-      /raise exception/i,
-    )
-
-    const body = readFileSync(join(MIGRATIONS, guardFile), 'utf8')
-
-    // Against the real credential store the guard is a no-op.
-    await sql.begin(async (tx) => {
-      await tx.unsafe(body)
-    })
-
-    // Against a squatting table — what a Table named "Access Token" compiles
-    // to — it refuses, and says how to fix it. (Wrapped in a savepoint so the
-    // deliberate failure does not poison the surrounding test transaction.)
-    await expect(
-      sql.begin(async (tx) => {
-        await tx.unsafe(`set local search_path = featherbase, public`)
-        await tx.unsafe(`alter table access_token rename to access_token_real`)
-        await tx.unsafe(`create table access_token (id varchar(140) primary key, label varchar(140))`)
-        await tx.unsafe(body)
-      }),
-    ).rejects.toThrow(/credential store/)
-  })
-})
-
 describe('#137 R2: the token list never hides a credential', () => {
   test('a token whose owner row has vanished is still listed, and still revocable', async ({
     admin,
@@ -389,21 +343,19 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
 
 describe('#137 R2: the reserved set covers every engine-owned raw table', () => {
   test('no user Table may compile onto a raw platform table', async () => {
-    // The first cut listed three names by hand; the database has eleven such
+    // The first cut listed three names by hand; the database has ten such
     // tables. Deriving the set means this list is a witness, not a duplicate
     // of the implementation — a new raw table is covered the day it lands.
-    // (`internal_metadata` joined in 0081; `patch_log` only became reliable
-    // here in 0079, which stopped it being created lazily on first use.)
     const raw = (
       await sql`
         select t.table_name from information_schema.tables t
         where ((t.table_schema = 'featherbase' and t.table_name in
                  ('access_token','installed_app','internal_metadata','migration','password_reset',
-                  'patch_log','series','single_value','tag_link','user_settings'))
+                  'series','single_value','tag_link','user_settings'))
                or (t.table_schema = 'public' and t.table_name = 'site'))
         order by 1`
     ).map((r) => r.table_name as string)
-    expect(raw.length).toBe(11)
+    expect(raw.length).toBe(10)
 
     for (const physical of raw) {
       // 'single_value' -> 'Single Value': the inverse of tableName().
