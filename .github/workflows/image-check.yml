@@ -6,7 +6,7 @@
 #   - the `platform` target (what publish-image.yml publishes) holds no app
 #     and sets no FEATHERBASE_APP_PATHS;
 #   - the default target (what Railway builds) still holds Tasker and its
-#     predecessor, with today's FEATHERBASE_APP_PATHS;
+#     shipped predecessors (2.2.0, 2.3.0), with today's FEATHERBASE_APP_PATHS;
 #   - the platform image runs the release and passes `cli boot-check`
 #     against a throwaway Postgres;
 #   - a throwaway client image FROM it, adding the `other` fixture app with
@@ -105,14 +105,14 @@ jobs:
       - name: The default image still holds Tasker
         run: |
           app_paths=$(docker image inspect featherbase-default:ci --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^FEATHERBASE_APP_PATHS=//p')
-          expected='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker"]'
+          expected='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker-2.3.0","/app/runtime-apps/tasker"]'
           [ "$app_paths" = "$expected" ] || { echo "FEATHERBASE_APP_PATHS=$app_paths, expected $expected"; exit 1; }
-          for app in tasker tasker-2.2.0; do
+          for app in tasker tasker-2.2.0 tasker-2.3.0; do
             for file in package.json featherbase.json dist; do
               docker run --rm featherbase-default:ci test -e "/app/runtime-apps/$app/$file" || { echo "missing /app/runtime-apps/$app/$file"; exit 1; }
             done
           done
-          echo "default image: Tasker and Tasker 2.2.0 present; FEATHERBASE_APP_PATHS=$app_paths"
+          echo "default image: Tasker, Tasker 2.2.0 and Tasker 2.3.0 present; FEATHERBASE_APP_PATHS=$app_paths"
 
       # --network host: the Postgres service listens on the runner's 5432.
       - name: The platform image releases and passes boot-check
