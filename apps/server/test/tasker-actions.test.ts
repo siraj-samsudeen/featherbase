@@ -6,6 +6,7 @@ import { discoverPackages } from '../src/runtime-packages'
 import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
+import { expectApiError } from './fixtures'
 
 const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(taskerClient(admin)),
@@ -22,6 +23,23 @@ const envelope = (task: Record<string, unknown>, confirm = false) => ({
 })
 const promote = '/api/app_actions/tasker/promote'
 const discard = '/api/app_actions/tasker/delete_accidental'
+
+test.for([
+  null,
+  {},
+  { row_id: '', updated_at: '2026-10-29T00:00:00Z' },
+  { row_id: 'task', updated_at: '' },
+  { row_id: 'task' },
+  { updated_at: '2026-10-29T00:00:00Z' },
+  { row_id: 'task', updated_at: '2026-10-29T00:00:00Z', confirm: 'yes' },
+])('task actions reject malformed input %j before writing', async (payload, { admin }) => {
+  await install()
+  for (const action of [promote, discard])
+    await expectApiError(admin.post(action, { idempotencyKey: crypto.randomUUID(), payload }),
+      { status: 417, message: expect.stringContaining('Choose a task and its current revision') })
+  expect(await sql`select row_id from tasker.project`).toEqual([])
+  expect(await sql`select row_id from tasker.task`).toEqual([])
+})
 
 test('simple promotion copies optional Markdown, removes original and replays once', async ({ admin, createUser }) => {
   await install()

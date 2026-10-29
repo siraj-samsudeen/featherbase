@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
 import { getList } from '../src/query'
-import { createTable } from '../src/table-engine'
+import { createTable, updateTable } from '../src/table-engine'
 
 // SET-001: Settings Tables (kind: 'settings') store one instance in the EAV
 // store, apply defaults, and never create a table.
@@ -24,6 +24,19 @@ async function setup() {
 }
 
 describe('SET-001: settings tables', () => {
+  test('removing a settings field keeps the remaining settings readable without a physical table', async () => {
+    await setup()
+    await saveDoc(DT, { title: 'Configured', count: 42 }, 'Administrator')
+    const definition = { name: DT, kind: 'settings', columns: [{ column_name: 'count', column_type: 'Int' }] }
+    await expect(updateTable(DT, definition)).rejects.toMatchObject({
+      type: 'ValidationError', fields: { title: expect.stringContaining('name it in remove_columns') },
+    })
+    await updateTable(DT, definition, { remove_columns: ['title', 'active', 'rate'] })
+    const doc = await getDoc(DT, DT, 'Administrator')
+    expect(doc.count).toBe(42)
+    expect(doc).not.toHaveProperty('title')
+  })
+
   test('creates no table for a settings Table', async () => {
     await setup()
     const [t] = await sql`select to_regclass('set_srv_single') as t`

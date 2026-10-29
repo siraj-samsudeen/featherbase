@@ -136,6 +136,9 @@ describe('one email per episode, not per run', () => {
     await runDue(1)
     const subject = `${JOB_ALERT_SUBJECT.failed}: Alert probe`
     expect(await sql`select recipient from email_queue where subject = ${subject}`).toEqual([])
+    expect(await scheduledRow()).toEqual({ last_outcome: 'error', last_result: 'still down' })
+    expect(await sql`select job_status, attempts from background_job where method = ${METHOD}`)
+      .toEqual([{ job_status: 'failed', attempts: 1 }])
 
     _setJobAlertSender(null)
     await enqueue(METHOD, {}, { trigger: 'manual', maxAttempts: 1 })

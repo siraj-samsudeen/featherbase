@@ -240,6 +240,13 @@ describe('an app secret', () => {
     expect(logged).toEqual(['{"token":"[secret withheld]"}'])
   })
 
+  test('an error whose message getter throws cannot leak the app secret', async () => {
+    const failure = { get message(): string { throw new Error(PLAIN) } }
+    await expect(withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => { throw failure }))
+      .rejects.toThrow("The app's message was withheld: it held one of the app's secrets")
+    expect(logged.join('\n')).not.toContain(PLAIN)
+  })
+
   test('outside an app handler the console is left alone', async () => {
     await withSecretsKept(keptSecrets({ TOKEN: PLAIN }), async () => {})
     console.log('count', 3, { a: 1 })
@@ -311,4 +318,3 @@ describe('the settings file sets app settings', () => {
       { status: 403, message: expect.stringMatching(/set in the instance settings file/) })
   })
 })
-

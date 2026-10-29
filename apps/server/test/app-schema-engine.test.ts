@@ -395,6 +395,15 @@ describe('round 2: valid upgrades that used to fail', () => {
     await expect(run({ kind: 'alterColumn', table: 'shop.supplier', column: 'badge', backfill: 'none', from: { unique: null }, to: { unique: true } }))
       .rejects.toThrow(/cannot repeat a value/)
   })
+
+  shopTest('turning unique on after a valid backfill enforces uniqueness on later writes', async () => {
+    await registered()
+    await run({ kind: 'addColumn', table: 'shop.supplier', column: { column_name: 'badge', label: 'Badge', column_type: 'Data' } })
+    await run({ kind: 'alterColumn', table: 'shop.supplier', column: 'badge', backfill: 'first', from: { unique: null }, to: { unique: true } })
+    expect(await sql`select badge from shop.supplier`).toEqual([{ badge: 'first' }])
+    await expect(sql.begin(tx => tx`insert into shop.supplier (row_id, code, badge) values ('s2', 'BOLT', 'first')`))
+      .rejects.toMatchObject({ code: '23505' })
+  })
 })
 
 describe('deleteTable for the owning app', () => {

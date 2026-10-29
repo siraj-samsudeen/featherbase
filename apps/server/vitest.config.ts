@@ -82,21 +82,25 @@ export default defineConfig({
       // (CI sets MYSQL_TEST_URL; a laptop usually does not). Measuring it
       // without one would report a permanent gap that says nothing about the
       // code, so it is counted exactly when its tests can run.
-      exclude: process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts'],
+      exclude: [
+        // ADR 0012: this boundary needs the hosted MotherDuck service and a
+        // live token. Token validation and query construction remain covered.
+        'src/motherduck-hosted.ts',
+        ...(process.env.MYSQL_TEST_URL ? [] : ['src/sources/mysql-driver.ts']),
+      ],
       reporter: ['text', 'json-summary'],
       // Without this a single failing test suppresses the report entirely
       // (v8's default), which hides the numbers exactly when they are most
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
       // ADR 0012 (26-Oct-2026): every line and function a real caller can
-      // reach is tested. Functions are gated at 100. Lines and statements sit
-      // just below it only for release-preflight's PostgreSQL 18 checks, which
-      // run in CI's separate pg18 job rather than in these shards. Branches are
-      // reported, not chased: the floor is the measured figure, rounded down,
-      // and only rises.
+      // reach is tested. CI merges the shards and PostgreSQL 18 release
+      // checks before applying these gates, with MYSQL_TEST_URL set so the
+      // MySQL driver remains in the denominator. Branches are reported, not
+      // chased: the floor only rises.
       thresholds: {
-        lines: 99.5,
-        statements: 99.5,
+        lines: 100,
+        statements: 100,
         functions: 100,
         branches: 90,
       },

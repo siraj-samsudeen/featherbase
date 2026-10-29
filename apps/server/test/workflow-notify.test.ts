@@ -1,9 +1,9 @@
-import { describe, expect } from 'vitest'
+import { describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import type { WorkflowState } from '../src/workflow'
+import { notifyApproversOfNewRow, type WorkflowState } from '../src/workflow'
 
 // WF-004: only a state explicitly marked as waiting for approval emails
 // the roles on its outgoing transitions. The holders of those
@@ -195,6 +195,28 @@ describe('WF-004: pending-approval notifications', () => {
       expect(String(emails[0].subject)).toContain('Approval required')
       expect(String(emails[0].body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-new`)
       expect(String(emails[0].body)).toContain('Approve')
+    })
+
+    test('a notification storage outage is logged against the saved row without undoing it', async ({ admin, createUser }) => {
+      await setupStartsPending(admin, createUser)
+      const row = await admin.post<Record<string, unknown>>(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'mail-outage', title: 'Keep this row' })
+      const errors = vi.spyOn(console, 'error')
+      const rollback = new Error('restore notification storage')
+      try {
+        // The exported post-save operation runs after the document commit.
+        // Isolate the outage in a savepoint, restoring its schema afterwards.
+        await expect(sql.begin(async tx => {
+          await tx`drop table featherbase.email_account`
+          await notifyApproversOfNewRow(DT, row, 'Administrator')
+          expect(errors.mock.calls).toContainEqual([
+            `[workflow] ${DT} mail-outage: approvers not notified:`, expect.objectContaining({ code: '42P01' }),
+          ])
+          throw rollback
+        })).rejects.toBe(rollback)
+      } finally {
+        errors.mockRestore()
+      }
+      expect(await admin.get(`/api/table/${encodeURIComponent(DT)}/mail-outage`)).toMatchObject({ title: 'Keep this row', workflow_state: 'Pending' })
     })
 
     test('the approver who creates it is not emailed', async ({ admin, createUser }) => {

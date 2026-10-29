@@ -816,7 +816,6 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
       if (!survivors.length) await deleteStored(url)
     } catch {
-      /* v8 ignore next 2 -- a database failure on the survivor check after the committed delete; deleteStored itself never throws, so only a mocked driver could reach it */
       console.warn('Table deleted; attachment cleanup could not complete')
     }
   }

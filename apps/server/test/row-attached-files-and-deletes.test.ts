@@ -3,6 +3,8 @@ import { test } from './pg-test'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 import { createUserWithRole, grantRole, tableRef } from './fixtures'
 import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
+import { tableRelation } from '../src/table-engine'
 
 // #609: a file attached to a row is only as visible as that row, whatever
 // the reader's grant on File says. A file on a whole Table, or on nothing,
@@ -68,6 +70,24 @@ const fileNames = async (client: TestClient, filters: [string, string, unknown][
     .data.map((f) => f.file_name as string)
 
 describe('#609: files follow the row they are attached to', () => {
+  test('a parent storage failure is reported as an error, not as a permission refusal', async ({ admin, createUser }) => {
+    const { agent, files } = await setup(admin, createUser)
+    await sql`drop table ${sql(await tableRelation(PLAIN))}`
+    const response = await agent.fetch(FILE.rowUrl(files.mine))
+    expect(response.status).toBe(500)
+    expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
+  })
+
+  test('opening a history row cannot reveal a parent field outside the reader tier', async ({ admin, createUser }) => {
+    const { agent, mine } = await setup(admin, createUser)
+    await sql`update column_def set tier = 'restricted' where parent = ${PLAIN} and column_name = 'subject'`
+    invalidateMeta(PLAIN)
+    await grantRole(admin, { role: ROLE, table: 'Version', can_read: true })
+    await sql`insert into version (row_id, ref_table, ref_name, data) values ('rafd-sensitive', ${PLAIN}, ${mine}, ${sql.json({ changed: [['subject', 'old', 'secret']] })})`
+    expect((await agent.fetch('/api/table/Version/rafd-sensitive')).status).toBe(403)
+    expect(await agent.get(`/api/table/${encodeURIComponent(PLAIN)}/${mine}`)).not.toHaveProperty('subject')
+  })
+
   test('a broad File grant lists only the files on rows the reader may open, plus table and loose files', async ({ admin, createUser }) => {
     const { agent } = await setup(admin, createUser)
     const all = await fileNames(agent)
@@ -93,6 +113,21 @@ describe('#609: files follow the row they are attached to', () => {
 })
 
 describe('#609: attaching follows the row too', () => {
+  test('a file with no attachments of its own can move onto another file', async ({ admin, createUser }) => {
+    const { agent, files } = await setup(admin, createUser)
+    const current = await admin.get<Record<string, unknown>>(FILE.rowUrl(files.loose))
+    await admin.fetch(FILE.rowUrl(files.loose), { method: 'PATCH', body: JSON.stringify({ updated_at: current.updated_at, ref_table: 'File', ref_name: files.mine }) })
+    expect(await agent.get(FILE.rowUrl(files.loose))).toMatchObject({ ref_table: 'File', ref_name: files.mine })
+  })
+
+  test('files on settings follow the settings read grant', async ({ admin, createUser }) => {
+    const { agent } = await setup(admin, createUser)
+    await admin.post('/api/table_def', { name: 'Rafd Settings', kind: 'settings', columns: [{ column_name: 'title', column_type: 'Data' }] })
+    await grantRole(admin, { role: ROLE, table: 'Rafd Settings', can_read: true })
+    await admin.post('/api/save_row', { table: 'File', row: { file_name: 'settings.pdf', ref_table: 'Rafd Settings', ref_name: 'Rafd Settings' } })
+    expect(await fileNames(agent, [['ref_table', '=', 'Rafd Settings']])).toEqual(['settings.pdf'])
+  })
+
   test('a File row cannot be saved onto a row the writer cannot open', async ({ admin, createUser }) => {
     const { agent, theirs } = await setup(admin, createUser)
     const res = await agent.fetch('/api/save_row', {
@@ -157,6 +192,7 @@ describe('#609: attaching follows the row too', () => {
     await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true })
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
+    invalidateMeta('Rafd Outside')
     expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual(['outside.pdf'])
   })
 
@@ -166,6 +202,7 @@ describe('#609: attaching follows the row too', () => {
     await admin.post('/api/save_row', { table: 'Rafd Outside', row: { row_id: 'o-1', subject: 'Outside' } })
     await admin.post('/api/save_row', { table: 'File', row: { file_name: 'outside.pdf', ref_table: 'Rafd Outside', ref_name: 'o-1' } })
     await sql`update table_def set data_source = 'outside-db' where name = 'Rafd Outside'`
+    invalidateMeta('Rafd Outside')
     // Own rows only: a bound row has no creator, so it never opens.
     await grantRole(admin, { role: ROLE, table: 'Rafd Outside', tier: 'basic', can_read: true, own_rows_only: true })
     expect(await fileNames(agent, [['ref_table', '=', 'Rafd Outside']])).toEqual([])
@@ -217,6 +254,3 @@ describe('#610: removing a comment or a file needs access to its row', () => {
     expect(await sql`select 1 from file where row_id = ${files.theirs}`).toHaveLength(1)
   })
 })
-
-
-
