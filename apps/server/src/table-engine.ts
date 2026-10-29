@@ -53,7 +53,7 @@ const PG_TYPES: Record<string, string | null> = {
 // type to the cast that converts stored values (null when the stored type does
 // not change). Anything else is refused: add a new column, copy the data,
 // then drop the old one.
-export const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
   Int: { Float: 'double precision' },
   Data: { Text: 'text', 'Long Text': 'text', Choice: 'text' },
   Text: { 'Long Text': null },
