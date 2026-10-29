@@ -19,6 +19,7 @@ for (const input of [baseline, ...process.argv.slice(2)]) {
   const raw = JSON.parse(fs.readFileSync(input, 'utf8'))
   const map = await libSourceMaps.createSourceMapStore().transformCoverage(libCoverage.createCoverageMap(raw))
   map.filter((file) => sources.some((prefix) => file.startsWith(prefix)) && !/\.test\.[tj]sx?$/.test(file))
+  if (map.files().length === 0) throw new Error(`No Tasker source coverage in ${input}; check checkout paths and source maps`)
   for (const file of map.files()) {
     const data = map.fileCoverageFor(file).data
     // JSON writes remapped Infinity columns as null. Location-based merging
@@ -29,6 +30,15 @@ for (const input of [baseline, ...process.argv.slice(2)]) {
       ...Object.values(data.branchMap).flatMap((b) => [b.loc, ...b.locations]),
     ]) {
       for (const end of [loc?.start, loc?.end]) if (end?.column === null) end.column = Infinity
+    }
+  }
+  for (const file of map.files()) {
+    if (!merged.files().includes(file)) continue
+    const previous = merged.fileCoverageFor(file).data
+    const current = map.fileCoverageFor(file).data
+    for (const kind of ['statementMap', 'fnMap', 'branchMap']) {
+      if (JSON.stringify(Object.values(previous[kind])) !== JSON.stringify(Object.values(current[kind])))
+        throw new Error(`Incompatible ${kind} for ${file} in ${input}; use the same Istanbul instrumentation, not V8 counters`)
     }
   }
   merged.merge(map)

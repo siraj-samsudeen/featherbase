@@ -9,7 +9,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --noEmit && vite build && esbuild src/server.ts --bundle --format=esm --platform=node --sourcemap --outfile=dist/server.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "coverage:merged": "node scripts/coverage-merge.mjs",
@@ -29,6 +29,7 @@
     "@vitest/coverage-istanbul": "4.1.12",
     "esbuild": "^0.25.0",
     "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-instrument": "6.0.3",
     "istanbul-lib-report": "3.0.1",
     "istanbul-lib-source-maps": "5.0.6",
     "istanbul-reports": "3.2.0",
