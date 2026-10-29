@@ -90,7 +90,7 @@ async function firstForeignObject(): Promise<string | null> {
     with user_schema as (
       select oid, nspname from pg_namespace
       where nspname not in ('pg_catalog', 'information_schema')
-        and nspname not like 'pg\_toast%' and nspname not like 'pg\_temp%'
+        and left(nspname, 8) <> 'pg_toast' and left(nspname, 7) <> 'pg_temp'
     ),
     extension_owned as (select classid, objid from pg_depend where deptype = 'e')
     select 'schema ' || quote_ident(n.nspname) as object, 1 as rank from user_schema n

@@ -118,6 +118,11 @@ describe('migrate: what counts as not empty', () => {
   it('a table in a schema of its own, with public empty', () =>
     refused('create schema business; create table business.orders (id int primary key)', 'schema business'), 60_000)
 
+  // Only the system's pg_toast*/pg_temp* schemas are skipped: a name that merely
+  // looks like one (an underscore is a LIKE wildcard) still counts.
+  it('a table in a schema whose name only resembles a system one', () =>
+    refused('create schema pgxtemp_business; create table pgxtemp_business.orders (id int primary key)', 'schema pgxtemp_business'), 60_000)
+
   it('an enum in public', () =>
     refused("create type public.order_state as enum ('open', 'closed')", 'type public.order_state'), 60_000)
 
