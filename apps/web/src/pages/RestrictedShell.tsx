@@ -43,7 +43,7 @@ export function NoAccessPage() {
   const name = personName()
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
-      <TopBar />
+      <TopBar forPerson />
       <main className="flex flex-1 items-center justify-center p-4">
         <Card className="w-full max-w-sm" data-testid="no-access">
           <EmptyState

@@ -183,8 +183,8 @@ export function TopBar({
   const name = app ? app.title : !context ? undefined : context === ADMIN && forPerson ? personalName(caps, apps, whoami?.installed_apps) : nameOf(context, brand)
   // The browser tab carries the bar's name: an app's on its pages and
   // address, "Featherbase Admin" on the Admin screens (#501 item 1), and the
-  // account page's own (item 3). The Portal and the no-access page on the
-  // Admin side keep the tab they were opened with, and an app's own page
+  // person's own on account/no-access pages (item 3, #552). The Portal on the
+  // Admin side keeps the tab it was opened with, and an app's own page
   // keeps the title its document gives it (#650).
   const titlesTab = !app && (context !== ADMIN || home === ADMIN || forPerson)
   useEffect(() => {

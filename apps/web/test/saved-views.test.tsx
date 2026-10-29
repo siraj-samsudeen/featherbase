@@ -4,7 +4,7 @@
 // in apps/server/test/saved-views.test.ts; this file proves what the person
 // sees and can do on the list.
 
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
 import { test, expect, renderApp } from './pg-test'
 
@@ -115,8 +115,49 @@ test('Changing a saved view means saving over it: a view\'s chip offers no renam
   await admin.post('/api/saved_views', { table: 'Sv Fixed', label: 'Open ones', filters: OPEN })
   await open(admin, 'Sv Fixed', OPEN)
   const bar = await screen.findByTestId('saved-views-bar')
+  await within(bar).findByTestId('saved-view-chip')
   const controls = within(bar).getAllByRole('button').map((b) => b.getAttribute('data-testid'))
-  expect(controls.sort()).toEqual(['saved-view-chip', 'saved-view-delete', 'saved-view-share'])
+  expect(controls.sort()).toEqual(['save-view-open', 'saved-view-chip', 'saved-view-delete', 'saved-view-share'])
+})
+
+test('first-use filters can be saved, cancelled and reopened after remount without waiting for a nudge', async ({ admin }) => {
+  await seed(admin, 'Sv First')
+  await open(admin, 'Sv First')
+  await waitFor(() => expect(cellTexts()).toHaveLength(3))
+  expect(screen.queryByRole('button', { name: 'Save view' })).not.toBeInTheDocument()
+  cleanup()
+  await open(admin, 'Sv First', OPEN)
+  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Cancelled' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.queryByRole('textbox', { name: 'View name' })).not.toBeInTheDocument()
+  expect((await admin.get<{ views: unknown[] }>('/api/saved_views?table=Sv%20First')).views).toEqual([])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Save view' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'First open items' } })
+  fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+  expect(await screen.findByTestId('saved-view-chip')).toHaveTextContent('First open items')
+  const saved = await admin.get<{ views: { label: string; filters: unknown; shared: boolean }[] }>('/api/saved_views?table=Sv%20First')
+  expect(saved.views).toMatchObject([{ label: 'First open items', filters: OPEN, shared: false }])
+  cleanup()
+  await open(admin, 'Sv First', CLOSED)
+  fireEvent.click(await screen.findByTestId('saved-view-chip'))
+  await waitFor(() => expect(cellTexts()).toEqual(['Open', 'Open']))
+})
+
+test('a refused view save stays visible and can be corrected through the same form', async ({ admin }) => {
+  await seed(admin, 'Sv Refused')
+  await open(admin, 'Sv Refused', OPEN)
+  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'x'.repeat(101) } })
+  fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+  expect(await screen.findByTestId('saved-view-error')).toHaveAttribute('role', 'alert')
+  expect(screen.getByRole('textbox', { name: 'View name' })).toHaveValue('x'.repeat(101))
+  expect((await admin.get<{ views: unknown[] }>('/api/saved_views?table=Sv%20Refused')).views).toEqual([])
+  fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Corrected' } })
+  fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+  expect(await screen.findByTestId('saved-view-chip')).toHaveTextContent('Corrected')
+  expect(screen.queryByTestId('saved-view-error')).not.toBeInTheDocument()
 })
 
 function seedApplications(userId: string, table: string, filters: unknown, n: number) {
@@ -133,6 +174,7 @@ test('Featherbase offers to save a filter you keep reusing: the third applicatio
 
   const nudge = await screen.findByTestId('filter-nudge')
   expect(nudge).toHaveTextContent('3×')
+  expect(screen.getAllByRole('textbox', { name: 'View name' })).toHaveLength(1)
   fireEvent.change(screen.getByTestId('nudge-name'), { target: { value: 'Open stuff' } })
   fireEvent.click(screen.getByTestId('nudge-save'))
 

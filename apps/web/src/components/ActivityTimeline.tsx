@@ -82,8 +82,8 @@ export function ActivityTimeline({ table, name }: { table: string; name: string 
                   {e.changes.map(([column, from, to], j) => (
                     <li key={j}>
                       <span className="font-medium text-ink">{column}</span>:{' '}
-                      <span className="whitespace-nowrap">{fmt(column, from)}</span> →{' '}
-                      <span className="whitespace-nowrap">{fmt(column, to)}</span>
+                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-nowrap'}>{fmt(column, from)}</span> →{' '}
+                      <span className={columnType(column) === 'JSON' ? 'break-all' : 'whitespace-nowrap'}>{fmt(column, to)}</span>
                     </li>
                   ))}
                 </ul>

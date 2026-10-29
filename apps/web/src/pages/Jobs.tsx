@@ -268,6 +268,7 @@ export function Jobs() {
         <p className="text-sm text-ink-muted">
           Scheduled jobs run on their own. A run that fails or refuses emails every System Manager.
         </p>
+        <p className="text-sm text-ink-muted">Switching a job on queues a run immediately.</p>
       </div>
       <section aria-labelledby="scheduled-jobs-heading" className="space-y-2">
         <h2 id="scheduled-jobs-heading" className="text-base font-semibold text-ink">Scheduled jobs</h2>
@@ -290,4 +291,3 @@ export function Jobs() {
     </div>
   )
 }
-
