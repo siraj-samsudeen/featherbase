@@ -35,7 +35,7 @@ describe('#130 production bootstrap', () => {
         const [first] = await db`select password_hash from featherbase.person where row_id = 'Administrator'`
         if (expected === null) expect(first.password_hash).toBeNull()
         else expect(verifyPassword(expected, first.password_hash)).toBe(true)
-        // Recorded migrations must not replay 0141, and deliberate seed must
+        // Recorded migrations must not replay 0002, and deliberate seed must
         // use the same safe policy, not directly import the retired seed.
         await run(['src/migrate.ts'])
         await run(['src/cli.ts', 'seed'])

@@ -459,7 +459,7 @@ export async function updateTable(
       id_pattern: def.id_pattern ?? existing.id_pattern,
       title_column: def.title_column ?? null,
       description: def.description ?? null,
-      // Only when given: migrations before 0131 update Tables without the column.
+      // Only when given: an update that leaves it out keeps the Table's choice.
       ...(def.decides_scope !== undefined ? { decides_scope: def.decides_scope } : {}),
       updated_at: new Date(),
     })} where name = ${name}`
@@ -480,8 +480,7 @@ export async function updateTable(
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
       }
-      // Only touch source_column when a value exists — pre-0064 migrations
-      // that call updateTable run before the column does (fresh databases).
+      // source_column is kept when the update leaves it out.
       const sourceColumn = f.source_column ?? (old ? old.source_column : null)
       if (sourceColumn != null) row.source_column = sourceColumn
       // Likewise a description (0121): kept when the update leaves it out,
@@ -653,10 +652,6 @@ export async function createTable(
   }
 
   await sql.begin(async (tx) => {
-    // The binding keys exist only from migration 0064 on. Include them only
-    // when actually binding, so the pre-0064 migrations (0005…) that call
-    // createTable still work on a FRESH database mid-chain — omitting the
-    // keys entirely keeps the INSERT valid against the older shape.
     const tableRow: Record<string, unknown> = {
       name: def.name,
       module: def.module ?? 'Core',
@@ -667,7 +662,6 @@ export async function createTable(
       description: def.description ?? null,
       system: def.system ?? false,
     }
-    // Only when marked: migrations before 0131 create Tables without the column.
     if (def.decides_scope) tableRow.decides_scope = true
     if (qualified) {
       tableRow.label = def.label ?? def.name.split('.')[1]
@@ -703,7 +697,6 @@ export async function createTable(
         tier: f.tier ?? 'basic',
       }
       if (f.source_column != null) columnRow.source_column = f.source_column
-      // Only when given: migrations before 0121 create Tables without it.
       if (f.description != null) columnRow.description = f.description
       await tx`insert into column_def ${tx(columnRow as Record<string, never>)}`
     }
@@ -932,11 +925,8 @@ export async function renameColumn(
 // #629: a glossary term describes Tables and columns by name, in its links
 // and in the app's wording it keeps to tell a reworded term from one that is
 // not. A rename carries both, or every term naming the old name would lose
-// its "?" and refuse its next save. Before migration 0138 there is nothing
-// to carry.
+// its "?" and refuse its next save.
 async function renameInGlossary(tx: TxSql, table: string, from: { table: string; column?: string }, to: { table: string; column?: string }) {
-  const [{ ok }] = await tx`select to_regclass('featherbase.glossary_term') is not null as ok`
-  if (!ok) return
   const key = from.column === undefined ? 'table' : 'column'
   const before = from.column ?? from.table
   const after = to.column ?? to.table

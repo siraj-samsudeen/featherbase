@@ -41,18 +41,6 @@ point.
 - **THEN** nothing it did remains
 - **AND** the next release applies it once
 
-### Requirement: A release refuses an instance that skipped versions
-
-A release SHALL refuse an instance it cannot bring up to date, before changing
-anything, and SHALL say which earlier release can upgrade it first.
-
-#### Scenario: An instance with a gap in its history
-
-- **WHEN** an operator releases onto an instance that is missing one of its
-  earlier database changes
-- **THEN** the release stops, names the missing change and the release to
-  upgrade with first, and changes nothing
-
 ### Requirement: Two releases at once do not collide
 
 When two releases of the same instance start together, the second SHALL wait for the
@@ -372,19 +360,18 @@ sign-in key placed in the connection's web address SHALL NOT count.
 
 An operator SHALL be able to try every pending database change on a copy of
 an instance, with nothing kept afterwards, and read what each change reported.
-The rehearsal SHALL run each change as the release would, on a copy of any
-version this release can bring up to date.
+The rehearsal SHALL run each change as the release would.
 
 #### Scenario: A copy of an instance last released long ago
 
 - **WHEN** the operator rehearses on a copy of an instance released many
-  versions ago, whose changes the release still knows how to bring up to date
+  versions ago
 - **THEN** each pending change runs and reports as it would in the release
 - **AND** the copy is left exactly as it was
 
 #### Scenario: A copy the release would refuse
 
-- **WHEN** the operator rehearses on a copy too old for this release to upgrade
+- **WHEN** the operator rehearses on a database the release would refuse
 - **THEN** the rehearsal refuses with the same reason the release would give
 
 ### Requirement: A rehearsal does not hold up a live instance
@@ -443,24 +430,22 @@ When the operator has set the Administrator password in the deployment settings,
 ### Requirement: A new instance starts in one step
 
 A release onto an empty database SHALL build the platform from one starting
-point, the same as replaying its whole history would, without reporting that
-history.
+point, and SHALL list only a few steps.
 
 #### Scenario: Installing a new instance
 
 - **WHEN** an operator releases onto an empty database
-- **THEN** it has the same tables and starting records as an instance built
-  change by change, and the release lists only a few steps
+- **THEN** it has every table and starting record the platform needs, and the
+  release lists only a few steps
 
-### Requirement: An instance installed before the starting point is taken over
+### Requirement: A release refuses a database it did not install
 
-A release onto an instance that has every change the starting point replaced
-SHALL record the starting point as done without running it, and SHALL leave
-the instance's tables and rows as they were.
+A release SHALL refuse a database that has no record of Featherbase's changes
+but already holds tables, before changing anything, and SHALL say to use a new
+database.
 
-#### Scenario: Releasing onto the live trial
+#### Scenario: Pointing a release at someone else's database
 
-- **WHEN** an operator releases onto an instance that was fully up to date
-  before the starting point existed
-- **THEN** its people, settings and records are unchanged, and later releases
-  carry on from the starting point
+- **WHEN** an operator releases onto a database that already holds tables but
+  was never installed by Featherbase
+- **THEN** the release stops, says to use a new database, and changes nothing

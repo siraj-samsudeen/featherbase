@@ -113,7 +113,7 @@ export interface TableMeta {
   // #432: rows are written by the server's own code alone; every public write
   // path refuses the Table for every principal (system-written.ts).
   system_written?: boolean
-  // #559: the Table's rows decide which places people cover (from 0131 on).
+  // #559: the Table's rows decide which places people cover.
   decides_scope?: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes
@@ -345,9 +345,8 @@ export async function getMeta(name: string): Promise<TableMeta> {
 
   // #432: system-written belongs to the storage, not to the definition's own
   // flag — any Table that resolves to a system-written Table's relation is
-  // system-written too, whatever its kind or letter case. (The column exists
-  // from 0113 on; earlier migrations load meta without it.)
-  if ('system_written' in dt && !meta.system_written) {
+  // system-written too, whatever its kind or letter case.
+  if (!meta.system_written) {
     const relation = resolvedRelation(dt as { name: string })
     const owners = await sql<{ name: string; physical_schema: string | null; physical_relation: string | null }[]>`
       select name, physical_schema, physical_relation from table_def where system_written`

@@ -22,8 +22,6 @@ interface AdminIdentity {
   /** person-resolution D5: an ended link stays as history. */
   ended_at?: string | null
   ended_reason?: string | null
-  /** `employee-code` until the roster supplies the HR record number (C4). */
-  subject_kind?: string
   /** #430: when a pending invite's email last went out; null = never. */
   invitation_sent_at?: string | null
 }
@@ -149,11 +147,6 @@ export function PersonSignInMethods({ user }: { user: string }) {
               {i.subject == null && i.invitation_sent_at && (
                 <span className="block text-sm text-ink-muted" data-testid={`invitation-sent-${i.id}`}>
                   invitation emailed {fmtInstantIST(i.invitation_sent_at)}
-                </span>
-              )}
-              {i.subject_kind === 'employee-code' && (
-                <span className="block text-sm text-ink-muted" data-testid={`unresolved-${i.id}`}>
-                  Awaiting its record number — signs in by employee code until the roster supplies it.
                 </span>
               )}
             </span>

@@ -1,6 +1,6 @@
-// A disposable database of its own, for the migrator cases that need a fresh
-// one, one installed before the baseline, or a ledger shaped as no migrated
-// database is. The migrator's
+// A disposable database of its own, for the migrator cases that need an
+// empty one, an installed one, or one that is not empty but has no ledger.
+// The migrator's
 // connection is fixed when `src/db` is first loaded, so each scratch database
 // loads a fresh copy of the module graph pointed at it; `dropScratchDatabases`
 // drops them all afterwards.
@@ -47,11 +47,8 @@ export async function scratchDatabase(setup = '') {
   }
 }
 
-/** A database as an instance installed before the baseline has it (#692):
- *  the platform's tables, every migration the baseline replaced in the
- *  ledger, and the retired patch runner's record. Built by installing fresh,
- *  then rewriting the ledger to the old one. */
-export async function scratchInstalledBeforeBaseline() {
+/** A database installed fresh, with every migration applied. */
+export async function scratchInstalled() {
   const scratch = await scratchDatabase()
   const log = console.log
   console.log = () => {}
@@ -60,9 +57,5 @@ export async function scratchInstalledBeforeBaseline() {
   } finally {
     console.log = log
   }
-  await scratch.db.unsafe(`delete from featherbase.migration;
-    create table featherbase.patch_log (patch text primary key, applied_at timestamptz not null default now());
-    insert into featherbase.patch_log (patch) values ('0001_file_ref_index')`)
-  await scratch.db`insert into featherbase.migration ${scratch.db(scratch.migrate.replacedByBaseline().map((name) => ({ name })))}`
   return scratch
 }

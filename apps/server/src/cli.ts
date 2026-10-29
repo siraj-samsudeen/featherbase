@@ -19,9 +19,6 @@
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
 //   cli list-tokens [<principal>]
 //   cli revoke-token <token-id>
-//   cli people:resolve <csv> [--dry-run]
-//                                     after the person release: move each StyleHR sign-in from its
-//                                     employee code to its record number (warehouse file); idempotent
 //   cli mail:test <to>                send one test message through the configured transport (SMTP when
 //                                     SMTP_HOST is set, otherwise the Email Sink); exits 1 if delivery fails
 //   cli settings:set <field> --stdin [--table <Table> --row <row id>]
@@ -510,17 +507,6 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       break
     case 'migrate:rehearse':
       return cmdMigrateRehearse(rest)
-    case 'people:resolve': {
-      // The flag may come before or after the file.
-      const file = rest.find((a) => !a.startsWith('--'))
-      if (!file) throw new Error('usage: cli people:resolve <stylehr_record_ids.csv> [--dry-run]')
-      const dryRun = rest.includes('--dry-run')
-      const { assertDatabaseEnvironment } = await import('./db-environment')
-      await assertDatabaseEnvironment()
-      const { formatResolveReport, runPeopleResolve } = await import('./people-resolve')
-      io.out(formatResolveReport(await runPeopleResolve(file, { dryRun }), { dryRun }))
-      break
-    }
     case 'boot-check': {
       // Read-only. Exactly these, with the target's real variables:
       //  1. the server's start-up refusal (index.ts): the variable registry
@@ -612,7 +598,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|people:resolve|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

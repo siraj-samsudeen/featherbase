@@ -250,8 +250,8 @@ describe('the freeze: employee codes by hand until the roster sync runs (review 
 
     const { configureDelegated } = await import('./identity-fixtures')
     await configureDelegated()
-    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, subject_kind, linked_by)
-      values ('uid_joiner_20001', ${p}, 'stylehr', 'RR-20001', 'new.joiner', 'employee-code', 'Administrator')`
+    await sql`insert into sign_in_identity (id, person_id, method, subject, sign_in_name, linked_by)
+      values ('uid_joiner_20001', ${p}, 'stylehr', 'RR-20001', 'new.joiner', 'Administrator')`
     const { vi } = await import('vitest')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', 'trust-any-password')
     try {

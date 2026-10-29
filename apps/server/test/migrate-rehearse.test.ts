@@ -7,8 +7,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { parseRehearseOptions, rehearse } from '../src/migrate-rehearse'
-import { ADOPTED_WITH_BASELINE } from '../src/migrate'
-import { dropScratchDatabases, scratchDatabase, scratchInstalledBeforeBaseline } from './scratch-database'
+import { dropScratchDatabases, scratchDatabase, scratchInstalled } from './scratch-database'
 
 afterAll(dropScratchDatabases, 60_000)
 
@@ -46,35 +45,36 @@ describe('migrate:rehearse', () => {
   })
 
   test('pending migrations run in order with what each reported, then roll back with the ledger untouched', async () => {
-    await sql`delete from featherbase.migration where name in ('0142_mock_google_sign_in.ts', '0143_drop_patch_log.sql')`
-    await sql.unsafe('create table featherbase.patch_log (patch text primary key)')
+    await sql`delete from featherbase.migration where name in ('0002_administrator_password.ts', '0003_mock_google_sign_in.ts')`
+    await sql`update sign_in_method set enabled = false where row_id = 'google'`
     const before = await ledger()
     const log = console.log
     const out = await run()
     expect(out).toBe([
-      'migrate:rehearse — in a rolled-back transaction; pending: 0142_mock_google_sign_in.ts, 0143_drop_patch_log.sql',
-      'applied 0142_mock_google_sign_in.ts',
-      'applied 0143_drop_patch_log.sql',
+      'migrate:rehearse — in a rolled-back transaction; pending: 0002_administrator_password.ts, 0003_mock_google_sign_in.ts',
+      'applied 0002_administrator_password.ts',
+      'applied 0003_mock_google_sign_in.ts',
       'migrate:rehearse — rolled back; nothing was changed',
     ].join('\n'))
     expect(await ledger()).toEqual(before)
-    expect(await sql`select to_regclass('featherbase.patch_log') as r`).toEqual([{ r: 'featherbase.patch_log' }])
+    expect(await sql`select enabled from sign_in_method where row_id = 'google'`).toEqual([{ enabled: false }])
     expect(console.log).toBe(log)
   })
 
   test('a migration that fails stops the rehearsal with its error, and nothing is changed', async () => {
-    await sql`delete from featherbase.migration where name = '0143_drop_patch_log.sql'`
-    await sql.unsafe('create table featherbase.patch_log (patch text primary key); create view featherbase.patch_log_names as select patch from featherbase.patch_log')
+    await sql`delete from featherbase.migration where name = '0003_mock_google_sign_in.ts'`
+    await sql.unsafe(`create function featherbase.refuse_sign_in_method_update() returns trigger language plpgsql as $$
+      begin raise exception 'this test refuses every sign-in method change'; end $$;
+      create trigger refuse_update before update on featherbase.sign_in_method for each row execute function featherbase.refuse_sign_in_method_update()`)
     const before = await ledger()
     const log = console.log
-    await expect(run()).rejects.toThrow('cannot drop table patch_log because other objects depend on it')
+    await expect(run()).rejects.toThrow('this test refuses every sign-in method change')
     expect(console.log).toBe(log)
     expect(await ledger()).toEqual(before)
   })
 })
 
-// #557: a restored snapshot of an instance installed before the baseline
-// (#692) rehearses its adoption: the baseline recorded, the rest applied.
+// #557: a restored copy of an installed instance rehearses what it lacks.
 describe('migrate:rehearse on a database of its own', () => {
   async function rehearseOn(scratch: Awaited<ReturnType<typeof scratchDatabase>>, allowLive = true): Promise<string> {
     const lines: string[] = []
@@ -82,32 +82,39 @@ describe('migrate:rehearse on a database of its own', () => {
     return lines.join('\n')
   }
 
-  it('a copy installed before the baseline rehearses its adoption, and keeps nothing', async () => {
-    const scratch = await scratchInstalledBeforeBaseline()
+  /** An installed copy whose last migration is not recorded yet. */
+  async function behind() {
+    const scratch = await scratchInstalled()
+    await scratch.db`delete from featherbase.migration where name = '0003_mock_google_sign_in.ts'`
+    await scratch.db`update featherbase.sign_in_method set enabled = false where row_id = 'google'`
+    return scratch
+  }
+
+  it('a copy one migration behind rehearses it, and keeps nothing', async () => {
+    const scratch = await behind()
     try {
       const before = await scratch.db`select count(*)::int as n from featherbase.migration`
       expect(await rehearseOn(scratch)).toBe([
-        'migrate:rehearse — in a rolled-back transaction; pending: 0143_drop_patch_log.sql',
-        `adopted the baseline: recorded ${ADOPTED_WITH_BASELINE.join(', ')} without running them`,
-        'applied 0143_drop_patch_log.sql',
+        'migrate:rehearse — in a rolled-back transaction; pending: 0003_mock_google_sign_in.ts',
+        'applied 0003_mock_google_sign_in.ts',
         'migrate:rehearse — rolled back; nothing was changed',
       ].join('\n'))
       expect(await scratch.db`select count(*)::int as n from featherbase.migration`).toEqual(before)
-      expect(await scratch.db`select to_regclass('featherbase.patch_log') as r`).toEqual([{ r: 'featherbase.patch_log' }])
+      expect(await scratch.db`select enabled from featherbase.sign_in_method where row_id = 'google'`).toEqual([{ enabled: false }])
     } finally {
       await scratch.close()
     }
   }, 120_000)
 
   it("what a migration reports comes before its applied line, and the console is put back", async () => {
-    const scratch = await scratchInstalledBeforeBaseline()
+    const scratch = await behind()
     try {
-      // No shipped migration after the baseline reports anything, so this one
-      // is made to: the rehearsal must carry a report, whoever writes it.
+      // No shipped migration reports anything, so this one is made to: the
+      // rehearsal must carry a report, whoever writes it.
       vi.resetModules()
       vi.doMock('../src/migrate', async (original) => {
         const real = await original<typeof import('../src/migrate')>()
-        return { ...real, applyMigrationFile: async (file: string) => { console.log('dropped %s', 'patch_log'); await real.applyMigrationFile(file) } }
+        return { ...real, applyMigrationFile: async (file: string) => { console.log('enabled %s', 'google'); await real.applyMigrationFile(file) } }
       })
       vi.stubEnv('DATABASE_URL', scratch.url)
       const { rehearse } = await import('../src/migrate-rehearse')
@@ -121,10 +128,9 @@ describe('migrate:rehearse on a database of its own', () => {
         vi.doUnmock('../src/migrate')
         await reporting.end({ timeout: 5 })
       }
-      expect(lines.slice(1, 4)).toEqual([
-        `adopted the baseline: recorded ${ADOPTED_WITH_BASELINE.join(', ')} without running them`,
-        'dropped patch_log',
-        'applied 0143_drop_patch_log.sql',
+      expect(lines.slice(1, 3)).toEqual([
+        'enabled google',
+        'applied 0003_mock_google_sign_in.ts',
       ])
       expect(console.log).toBe(log)
     } finally {
@@ -133,10 +139,9 @@ describe('migrate:rehearse on a database of its own', () => {
   }, 120_000)
 
   it('a database the migrator refuses is refused, as the migrator refuses it', async () => {
-    const scratch = await scratchDatabase(`create table public.migration (name text primary key, applied_at timestamptz not null default now());
-      insert into public.migration (name) values ('0001_init.sql')`)
+    const scratch = await scratchDatabase('create table public.someone_elses (id int primary key)')
     try {
-      await expect(rehearseOn(scratch)).rejects.toThrow('Refusing to migrate: this database records its migrations in public.migration')
+      await expect(rehearseOn(scratch)).rejects.toThrow('Refusing to migrate: this database is not empty and has no Featherbase ledger')
     } finally {
       await scratch.close()
     }
@@ -146,26 +151,26 @@ describe('migrate:rehearse on a database of its own', () => {
   // its server's. The rehearsal holds each change's locks until it ends, so
   // pointed at a live database it would block the instance's users.
   it('a database another session is connected to is refused before anything runs, unless --allow-live', async () => {
-    const scratch = await scratchInstalledBeforeBaseline()
+    const scratch = await behind()
     try {
       await expect(rehearseOn(scratch, false)).rejects.toThrow(
         /^Refusing to rehearse: 1 other session is connected to this database, so it looks like a live instance, not a restored copy\./,
       )
       await expect(rehearseOn(scratch, false)).rejects.toThrow('pass --allow-live if you truly mean it')
-      expect(await rehearseOn(scratch, true)).toContain('applied 0143_drop_patch_log.sql')
+      expect(await rehearseOn(scratch, true)).toContain('applied 0003_mock_google_sign_in.ts')
     } finally {
       await scratch.close()
     }
   }, 120_000)
 
   it('a copy nobody else is connected to rehearses without --allow-live', async () => {
-    const scratch = await scratchInstalledBeforeBaseline()
+    const scratch = await behind()
     await scratch.db.end()
     const check = postgres(scratch.url, { max: 1, onnotice: () => {} })
     try {
       // The check connection opens only after the rehearsal, so it is alone.
-      expect(await rehearseOn(scratch, false)).toContain('applied 0143_drop_patch_log.sql')
-      expect(await check`select 1 from featherbase.migration where name = '0143_drop_patch_log.sql'`).toHaveLength(0)
+      expect(await rehearseOn(scratch, false)).toContain('applied 0003_mock_google_sign_in.ts')
+      expect(await check`select 1 from featherbase.migration where name = '0003_mock_google_sign_in.ts'`).toHaveLength(0)
     } finally {
       await check.end({ timeout: 5 })
       await scratch.close()
@@ -173,17 +178,17 @@ describe('migrate:rehearse on a database of its own', () => {
   }, 120_000)
 
   it('a change that has to wait for a lock fails within seconds instead of queueing', async () => {
-    const scratch = await scratchInstalledBeforeBaseline()
+    const scratch = await behind()
     try {
       await scratch.db.begin(async (tx) => {
-        await tx`lock table featherbase.patch_log in access share mode`
+        await tx`lock table featherbase.sign_in_method in share mode`
         const started = Date.now()
         await expect(rehearseOn(scratch)).rejects.toThrow(
-          '0143_drop_patch_log.sql waited more than 2s for a lock another session holds, so the rehearsal stopped: canceling statement due to lock timeout',
+          '0003_mock_google_sign_in.ts waited more than 2s for a lock another session holds, so the rehearsal stopped: canceling statement due to lock timeout',
         )
         expect(Date.now() - started).toBeLessThan(10_000)
       })
-      expect(await scratch.db`select to_regclass('featherbase.patch_log') as r`).toEqual([{ r: 'featherbase.patch_log' }])
+      expect(await scratch.db`select enabled from featherbase.sign_in_method where row_id = 'google'`).toEqual([{ enabled: false }])
     } finally {
       await scratch.close()
     }

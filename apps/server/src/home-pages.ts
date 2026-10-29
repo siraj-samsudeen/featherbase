@@ -10,8 +10,7 @@
 //     POST /api/table_def and from app installs so a table a user builds NEVER
 //     vanishes from navigation: its module's home page is created on demand
 //     and the table's link appended. Deliberately NOT called inside
-//     createTable itself — mid-chain migrations (0037–0057) create engine
-//     tables before the `system` flag exists and must not seed spurious pages.
+//     createTable itself, so creating a Table never seeds a page by accident.
 //
 // Role-based visibility is PRESENTATION/NAVIGATION SCOPING ONLY, not a
 // security boundary: a page with an empty roles list is visible to everyone,

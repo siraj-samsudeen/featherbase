@@ -7,7 +7,7 @@
 # A synthetic +91 test phone (person-identifiers.test.ts) whose 12 digits happen to
 # pass Verhoeff, so the Aadhaar rule (not the mobile rule) needs this entry.
 919847099999
-# The tail of a random column id in the migration baseline (0140_baseline.sql)
+# The tail of a random column id in the migration baseline (0001_baseline.sql)
 # whose 12 digits happen to pass Verhoeff.
 310666246659
 

@@ -114,30 +114,6 @@ version, fully working, with nothing partially changed.
 - **AND** the app keeps running on its old version as if the upgrade had
   never been attempted
 
-### Requirement: Task work from before Tasker existed carries into it
-
-An account that already had tasks and projects before Tasker existed as an
-installed app SHALL, on upgrading to a Featherbase release that includes
-Tasker, keep every one of them exactly as it was — id, references, comments,
-files, shares and who's responsible for each — now living inside Tasker
-instead of the built-in place they used to be. If Tasker's own storage
-already has something in the way, that upgrade SHALL refuse rather than
-merge or overwrite either side.
-
-#### Scenario: Nothing is lost in the handover
-
-- **WHEN** an account with existing tasks and projects upgrades to a release
-  that includes Tasker
-- **THEN** every task and project keeps its id, its comments and files, and
-  who it's shared with, now inside Tasker
-
-#### Scenario: A collision is refused, not merged
-
-- **WHEN** Tasker's own storage already holds something where that existing
-  work would land
-- **THEN** the upgrade refuses
-- **AND** neither side's data is changed
-
 ### Requirement: An app's tables belong only to it
 
 Two apps SHALL be able to use the very same name for one of their own tables
