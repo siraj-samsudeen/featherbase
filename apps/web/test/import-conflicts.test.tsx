@@ -46,6 +46,49 @@ test('a Table exposes the kept correction and lets the user keep it or adopt the
   expect(await screen.findByText('No open import conflicts.')).toBeInTheDocument()
 })
 
+test('a conflict changed after opening is refused without overwriting the newer correction', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: TABLE, columns: [
+    { column_name: 'code', column_type: 'Data' },
+    { column_name: 'city', column_type: 'Data' },
+  ] })
+  await admin.post(`${path}:import`, { rows: [{ code: 'C1', city: 'North' }] })
+  const { data: [first] } = await admin.get<{ data: { row_id: string }[] }>(path)
+  const rowPath = `${path}/${first.row_id}`
+  const edit = async (city: string) => {
+    const row = await admin.get<Record<string, unknown>>(rowPath)
+    await admin.post('/api/save_row', { table: TABLE, row: { ...row, city } })
+  }
+  await edit('South')
+  await admin.post(`${path}:import`, { key_column: 'code', rows: [{ code: 'C1', city: 'East' }] })
+  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
+  const panel = await screen.findByRole('region', { name: 'Import conflicts' })
+  await within(panel).findByText('South')
+  await edit('West')
+  await user.click(within(panel).getByRole('button', { name: 'Take the source' }))
+  expect(await within(panel).findByText('This field changed after the conflict was raised; import again before resolving')).toBeInTheDocument()
+  expect(await admin.get(rowPath)).toMatchObject({ city: 'West' })
+  expect(within(panel).getByRole('button', { name: 'Take the source' })).toBeEnabled()
+})
+
+test('a conflict read for a deleted Table can be retried after the Table is recreated', async ({ admin }) => {
+  const meta = { name: TABLE, columns: [{ column_name: 'city', column_type: 'Data' }] }
+  await admin.post('/api/table_def', meta)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  const open = await screen.findByRole('button', { name: 'Import conflicts' })
+  await admin.delete(`/api/table_def/${encodeURIComponent(TABLE)}`)
+  const user = userEvent.setup()
+  await user.click(open)
+  const panel = await screen.findByRole('region', { name: 'Import conflicts' })
+  expect(await within(panel).findByText('Could not load import conflicts.')).toBeInTheDocument()
+  expect(within(panel).queryByText('No open import conflicts.')).not.toBeInTheDocument()
+  await admin.post('/api/table_def', meta)
+  await user.click(within(panel).getByRole('button', { name: 'Try again' }))
+  expect(await within(panel).findByText('No open import conflicts.')).toBeInTheDocument()
+  expect(within(panel).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+})
+
 test('the import check explains updated and protected fields before committing', async ({ admin }) => {
   const { clearSession } = await import('../src/lib/import-session')
   clearSession()

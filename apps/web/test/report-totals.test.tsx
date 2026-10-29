@@ -5,6 +5,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
+import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -102,6 +103,19 @@ test('the export has every matching row and the same totals', async ({ admin }) 
   expect(lines[1]).toBe('North (300),,600')
   expect(lines[302]).toBe('South (201),,603')
   expect(lines.at(-1)).toBe('Total (501),,1203')
+
+  // Ungrouped export reads pages by id but must restore newest-change-first
+  // order. Put the lexically last id first by date: sorting by id would fail.
+  const [newest] = await sql<{ row_id: string }[]>`select row_id from featherbase.rpt_totals_sale order by row_id desc limit 1`
+  await sql`update featherbase.rpt_totals_sale set updated_at = '2099-01-01T00:00:00Z' where row_id = ${newest.row_id}`
+  await userEvent.selectOptions(screen.getByTestId('report-groupby'), '')
+  await userEvent.click(screen.getByTestId('export-csv'))
+  await waitFor(() => expect(blobs).toHaveLength(2))
+  const ungrouped = (await textOf(blobs[1])).split('\n')
+  expect(ungrouped).toHaveLength(503)
+  expect(ungrouped[1].split(',')[0]).toBe(newest.row_id)
+  expect(new Set(ungrouped.slice(1, -1).map((line) => line.split(',')[0])).size).toBe(501)
+  expect(ungrouped.at(-1)).toBe('Total (501),,1203')
 })
 
 test('a summary that fits on the page says nothing about rows left out', async ({ admin }) => {
@@ -158,11 +172,17 @@ test('a blank and a missing value are one empty group, with all its rows listed'
       { column_name: 'amount', column_type: 'Int', label: 'Amount', in_list_view: true },
     ],
   })
-  for (const area of ['A', '', null]) await admin.post('/api/save_row', { table: T, row: { area, amount: 1 } })
+  for (const [area, amount] of [['A', 2], ['', 3], [null, 5]])
+    await admin.post('/api/save_row', { table: T, row: { area, amount } })
+  // Saving normalizes an empty string to NULL. Persist both representations
+  // to exercise distinct server groups that share the displayed empty label.
+  await sql`update featherbase.rpt_totals_sale set area = '' where amount = 3`
   await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
   await screen.findByTestId('report-view', {}, { timeout: 8000 })
   await userEvent.selectOptions(screen.getByTestId('report-groupby'), 'area')
   await waitFor(() => expect(within(groupHeader('(empty)')).getByTestId('group-count')).toHaveTextContent('(2)'))
-  expect(screen.getAllByTestId('group-header').map((h) => h.dataset.group)).toEqual(['A', '(empty)'])
+  expect(within(groupHeader('(empty)')).getByTestId('group-sum-amount')).toHaveTextContent('8')
+  // The stored empty string sorts before A; its later NULL group joins it.
+  expect(screen.getAllByTestId('group-header').map((h) => h.dataset.group)).toEqual(['(empty)', 'A'])
   expect(screen.getAllByTestId('report-row')).toHaveLength(3)
 })

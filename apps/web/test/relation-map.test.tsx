@@ -153,3 +153,10 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
   expect(parent).toHaveTextContent('inv-1')
   expect(screen.queryByTestId('map-group-Rm Line')).not.toBeInTheDocument()
 })
+
+test('a map deep link to a missing row says what could not be loaded', async ({ admin }) => {
+  await seed(admin)
+  await renderApp(`/featherbase/admin/map/${enc('Rm Order')}/gone`, admin)
+  expect(await screen.findByText('Cannot load Rm Order gone')).toBeInTheDocument()
+  expect(screen.queryByTestId('relation-map')).not.toBeInTheDocument()
+})

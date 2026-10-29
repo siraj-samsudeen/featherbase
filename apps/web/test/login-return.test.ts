@@ -17,6 +17,8 @@ describe('login return path', () => {
     'https://attacker.example/tasker/',
     '//attacker.example/tasker/',
     '/\\attacker.example/tasker/',
+    '/%5Cattacker.example/tasker/',
+    '/\t/attacker.example/tasker/',
     '/api/whoami',
     '/admin/User',
     '/login',

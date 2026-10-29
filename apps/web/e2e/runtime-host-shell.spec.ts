@@ -19,6 +19,15 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'other')
 })
 
+// Deliberate deep link: an installed app can ship another HTML document
+// whose relative scripts must resolve beside that document, not the SPA root.
+test("an app's nested help document loads its own relative script", async ({ session }) => {
+  await session.visit('/tasker/help/index.html').assertText('Tasker help')
+  await session.step('the nested document script executes', async ({ page }) => {
+    await expect(page.locator('body')).toHaveAttribute('data-tasker-help', 'ready')
+  })
+})
+
 test("an app keeps its deep address under the shared bar, and Open Admin leaves for the Admin", async ({ session, request }) => {
   const taskerHeaders = await ensureRuntimeApp(request, 'tasker')
   const saved = await request.post('/api/save_row', {

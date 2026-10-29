@@ -31,9 +31,8 @@ export default defineConfig({
     },
     // Collected only by `pnpm test:coverage`, never by the default `pnpm test`.
     //
-    // Scope is the app's own `src/`, test files excluded. `main.tsx` is the
-    // Vite entry point — it mounts the router into a real DOM document and is
-    // exercised by the browser, never by jsdom — so it is out of scope here.
+    // Include every source entry, even main.tsx: the browser supplies its
+    // hits, while this report supplies zeroes for files neither suite loads.
     //
     // Istanbul, not v8 (ADR 0012): the Playwright run is Istanbul-instrumented
     // through vite-plugin-istanbul, and the two runs merge into one report only
@@ -45,7 +44,7 @@ export default defineConfig({
     coverage: {
       provider: 'istanbul',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/main.tsx'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/*.d.ts'],
       reporter: ['text', 'json-summary', ['json', { file: '../.nyc_output/jsdom.json' }]],
       // Without this a single failing test suppresses the report entirely
       // (v8's default), which hides the numbers exactly when they are most

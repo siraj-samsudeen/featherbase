@@ -95,7 +95,7 @@ const coverage = process.env.VITE_COVERAGE === 'true'
   ? [
       istanbul({
         include: 'src/**',
-        exclude: ['src/**/*.test.*', 'src/main.tsx'],
+        exclude: ['src/**/*.test.*'],
         extension: ['.ts', '.tsx'],
         requireEnv: true,
         forceBuildInstrument: false,
