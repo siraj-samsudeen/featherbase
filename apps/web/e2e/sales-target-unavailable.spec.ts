@@ -30,7 +30,7 @@ const ASSIGNMENT_TABLE_DEF = {
   ],
 }
 
-async function viewer(request: APIRequestContext): Promise<string> {
+async function viewer(request: APIRequestContext, stores: string[] = []): Promise<string> {
   const headers = await adminAuth(request)
   const meta = await request.get(`/api/table/${encodeURIComponent(ASSIGNMENT_TABLE_DEF.name)}:meta`, { headers })
   if (meta.status() === 404) {
@@ -48,6 +48,13 @@ async function viewer(request: APIRequestContext): Promise<string> {
   const { row_id } = (await made.json()) as { row_id: string }
   const set = await request.post('/api/set_password', { headers, data: { user: row_id, password: PASSWORD } })
   if (!set.ok()) throw new Error(`set password: ${set.status()}`)
+  for (const plant_code of stores) {
+    const assignment = await request.post('/api/save_row', { headers, data: {
+      table: ASSIGNMENT_TABLE_DEF.name,
+      row: { employee: row_id, plant_code, material_group: String(Date.now()).slice(-9) },
+    } })
+    expect(assignment.status(), await assignment.text()).toBe(201)
+  }
   return email
 }
 
@@ -71,6 +78,39 @@ async function scriptEmbedSession(page: Page) {
 }
 
 const noSidewaysScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+
+test('losing the connection while switching stores reports both failures and permits a real retry', async ({ session, page, request }) => {
+  const email = await viewer(request, ['9901', '9902'])
+  await session.step('load the reader and their stores from the real server', async () => {
+    await page.goto('/login')
+    await page.fill('input[name=email]', email)
+    await page.fill('input[name=password]', PASSWORD)
+    await page.click('button[type=submit]')
+    await expect(page.getByTestId('store-switcher')).toBeVisible()
+    await expect(page.getByTestId('snapshot-report')).not.toHaveAttribute('data-state', 'loading')
+  })
+  await session.step('a store change with no connection reports both unavailable reads', async () => {
+    await page.context().setOffline(true)
+    await page.getByTestId('store-switcher').selectOption('9902')
+    await expect(page.getByTestId('snapshot-error')).toContainText(PLAIN_NUMBERS)
+    await expect(page.getByTestId('embed-state')).toContainText(PLAIN)
+    await expect(page.getByTestId('store-switcher')).toHaveValue('9902')
+  })
+  await session.step('restoring the connection retries both real endpoints without signing in again', async () => {
+    await page.context().setOffline(false)
+    const numbers = page.waitForResponse((r) => r.url().includes('/api/sales_target/report?store=9902'))
+    const embed = page.waitForResponse((r) => r.url().includes('/api/sales_target/embed_session?store=9902'))
+    await page.getByTestId('snapshot-error').getByRole('button', { name: 'Try again' }).click()
+    // This isolated instance has no warehouse or live embed configured. The
+    // recovered transport reaches those real endpoints, not a fabricated success.
+    expect((await numbers).status()).toBe(500)
+    expect((await embed).ok()).toBe(true)
+    await expect(page.getByTestId('snapshot-error')).toContainText(PLAIN_NUMBERS)
+    await expect(page.getByTestId('snapshot-error').getByRole('button', { name: 'Try again' })).toBeEnabled()
+    await expect(page.getByTestId('embed-state')).toHaveAttribute('data-state', 'not-configured')
+    await expect(page.getByTestId('store-switcher')).toHaveValue('9902')
+  })
+})
 
 for (const width of [1280, 375]) {
   test(`at ${width}px the unavailable card is plain, and Try again reopens the report in place`, async ({ session, page, request }) => {
