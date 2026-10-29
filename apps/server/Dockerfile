@@ -41,30 +41,6 @@ COPY runtime-apps/tasker/featherbase.json runtime-apps/tasker/index.html runtime
 COPY runtime-apps/tasker/src src
 RUN npm run build
 
-# The shipped predecessors, rebuilt from their retained sources with the same
-# recipe, so an instance on either finds its exact artifact and can upgrade.
-# Upgrades refuse a predecessor they cannot find. 2.2.0: #437 (2.3.0 withdraws
-# a grant). 2.3.0: #695 (2.3.1 upgrades Tasker's dev tools, which changes its
-# package.json and lockfile, so its fingerprint).
-# Tasker 2.1.0, and a 2.2.0 installed before b1eefe8c (22-Oct-2026), match no
-# shipped artifact: the person rename edited those versions' files in place.
-# Such an instance needs a reinstall (the dev/prod go-live is a fresh one).
-FROM node:22-slim AS tasker-2.2-build
-WORKDIR /app/runtime-apps/tasker
-COPY runtime-apps/fixtures/tasker-v2.2/package.json runtime-apps/fixtures/tasker-v2.2/package-lock.json ./
-RUN npm ci --ignore-scripts
-COPY runtime-apps/fixtures/tasker-v2.2/featherbase.json runtime-apps/fixtures/tasker-v2.2/index.html runtime-apps/fixtures/tasker-v2.2/tsconfig.json runtime-apps/fixtures/tasker-v2.2/vite.config.ts ./
-COPY runtime-apps/fixtures/tasker-v2.2/src src
-RUN npm run build
-
-FROM node:22-slim AS tasker-2.3-build
-WORKDIR /app/runtime-apps/tasker
-COPY runtime-apps/fixtures/tasker-v2.3/package.json runtime-apps/fixtures/tasker-v2.3/package-lock.json ./
-RUN npm ci --ignore-scripts
-COPY runtime-apps/fixtures/tasker-v2.3/featherbase.json runtime-apps/fixtures/tasker-v2.3/index.html runtime-apps/fixtures/tasker-v2.3/tsconfig.json runtime-apps/fixtures/tasker-v2.3/vite.config.ts ./
-COPY runtime-apps/fixtures/tasker-v2.3/src src
-RUN npm run build
-
 # ---- Stage 3: the platform image -------------------------------------------
 # The server, the built SPA and the start command, with no app and no
 # FEATHERBASE_APP_PATHS. This is the image published to GHCR by commit
@@ -99,18 +75,13 @@ EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
 
 # ---- Stage 4: this repository's own server image (the default target) ------
-# The platform image plus Tasker and its shipped predecessors, for this
-# repository's Railway services until #563 retires Tasker. NODE_ENV, EXPOSE and CMD come
-# from the platform stage.
+# The platform image plus Tasker, for this repository's Railway services until
+# #563 retires Tasker. NODE_ENV, EXPOSE and CMD come from the platform stage.
 FROM platform
 COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
 COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
 COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
-COPY --from=tasker-2.2-build /app/runtime-apps/tasker/package.json runtime-apps/tasker-2.2.0/package.json
-COPY --from=tasker-2.2-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker-2.2.0/featherbase.json
-COPY --from=tasker-2.2-build /app/runtime-apps/tasker/dist runtime-apps/tasker-2.2.0/dist
-COPY --from=tasker-2.3-build /app/runtime-apps/tasker/package.json runtime-apps/tasker-2.3.0/package.json
-COPY --from=tasker-2.3-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker-2.3.0/featherbase.json
-COPY --from=tasker-2.3-build /app/runtime-apps/tasker/dist runtime-apps/tasker-2.3.0/dist
 
-ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker-2.2.0","/app/runtime-apps/tasker-2.3.0","/app/runtime-apps/tasker"]'
+# When a later Tasker version ships, the version installed on the instances
+# is built beside it and listed here too, so an upgrade can find it.
+ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker"]'

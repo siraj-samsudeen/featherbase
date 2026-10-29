@@ -330,19 +330,16 @@ variables:**
 
 ### The baseline
 
-A new instance starts from `0140_baseline.sql`: the schema and starting rows
-the 139 migrations before it built, in one step (#692). The steps after it
-that read the instance's own variables (`ADMIN_PASSWORD` for the first
-Administrator, `ALLOW_MOCK_OAUTH` for the local Google mock) run as before.
+Every instance is a fresh install: a new instance starts from
+`0001_baseline.sql`, the platform's schema and starting rows in one step. The
+two steps after it read the instance's own variables (`ADMIN_PASSWORD` for the
+first Administrator, `ALLOW_MOCK_OAUTH` for the local Google mock). Later
+changes ship as new numbered migrations and apply in order.
 
-An instance whose ledger holds every migration the baseline replaced
-(`migrations/baseline-replaces.txt`) is adopted: the release records the
-baseline and those steps without running them, then applies the rest. Any
-other database (a partial ledger, or one still keeping its ledger in
-`public.migration`) is refused before anything changes; upgrade it first with
-the last platform release before the baseline, commit `e562331d`, then
-release again. `migrate:rehearse` on a restored copy shows which of the two
-happens.
+The release refuses a database that has no Featherbase ledger
+(`featherbase.migration`) but is not empty, before anything changes: point it
+at a new database instead. There is no path from an older installation; one
+is wiped and installed fresh.
 
 The baseline is generated, never edited:
 `pnpm --filter server baseline:generate` migrates a scratch database and
@@ -670,9 +667,7 @@ and remove it at the end of the trial.
 
 Until the roster feed (data-warehouse#4336) writes employee codes, a System
 Manager records them by hand on the Person's **Identifiers** panel, each with a
-note. Bulk employee-code to StyleHR record-number files go through
-`pnpm --filter server cli people:resolve <csv> --dry-run`, then again without
-`--dry-run` (one transaction; idempotent). Find a person with *Admin → Person
+note. Find a person with *Admin → Person
 →* **Find by code** (`/featherbase/admin/find-person`).
 
 - **Leaver.** Find them, turn **Enabled** off (ends every session and way in),

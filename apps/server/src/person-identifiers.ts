@@ -547,11 +547,11 @@ async function openRow(person: string, systemKey: string, value: string, source:
  *  `email` row for an address the provider verified. */
 async function identityTargets(identityId: string, db: Db) {
   const [i] = await db`
-    select i.person_id, i.subject, i.subject_kind, i.email, m.kind, m.identifier_system
+    select i.person_id, i.subject, i.email, m.kind, m.identifier_system
     from sign_in_identity i join sign_in_method m on m.row_id = i.method where i.id = ${identityId}`
   if (!i || i.subject == null) return { person: null as string | null, targets: [] as [string, string][] }
   const targets: [string, string][] = []
-  if (i.identifier_system && i.subject_kind === 'record-id') targets.push([String(i.identifier_system), String(i.subject)])
+  if (i.identifier_system) targets.push([String(i.identifier_system), String(i.subject)])
   if (i.kind === 'google' && i.email) targets.push(['email', String(i.email)])
   return { person: String(i.person_id), targets }
 }

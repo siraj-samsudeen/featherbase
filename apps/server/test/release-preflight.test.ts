@@ -408,7 +408,7 @@ it('a production-labelled database with test mode set refuses BEFORE migrating',
     }
     expect(failed).toBe(true)
     expect(output).toMatch(/release failed — aborting: DELEGATED_LOGIN_TEST_MODE is set on a "production" server/)
-    expect(output).not.toMatch(/applied 0140/)
+    expect(output).not.toMatch(/applied 0001/)
     const [ledger] = await db`select to_regclass('featherbase.migration') as m, to_regclass('public.migration') as p`
     expect(ledger).toEqual({ m: null, p: null })
   } finally {
@@ -431,7 +431,7 @@ it('a release that does not ship an installed, enabled app refuses BEFORE migrat
       cwd: server, encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test' },
     })
-    await db`delete from featherbase.migration where name = '0143_drop_patch_log.sql'`
+    await db`delete from featherbase.migration where name = '0003_mock_google_sign_in.ts'`
     await db.unsafe(`insert into featherbase.installed_app (name, manifest, runtime_package, package_version, artifact_digest)
       values ('acme_board', '{"name": "acme_board"}', true, '1.2.0', 'fingerprint-of-1.2.0')`)
     const before = await db`select * from featherbase.installed_app`
@@ -449,7 +449,7 @@ it('a release that does not ship an installed, enabled app refuses BEFORE migrat
     }
     expect(failed).toBe(true)
     expect(output).toMatch(/release failed — aborting: App acme_board version 1\.2\.0 is installed and enabled, but this release does not ship it/)
-    expect(await db`select name from featherbase.migration where name = '0143_drop_patch_log.sql'`).toEqual([])
+    expect(await db`select name from featherbase.migration where name = '0003_mock_google_sign_in.ts'`).toEqual([])
     expect(await db`select * from featherbase.installed_app`).toEqual(before)
   } finally {
     await db.end()
@@ -644,8 +644,8 @@ describe('release preflight: the btree_gist extension the baseline creates', () 
       env: { ...process.env, DATABASE_URL: url.toString(), FEATHERBASE_ENV: 'test', NODE_ENV: 'test', ADMIN_PASSWORD: '', DELEGATED_LOGIN_TEST_MODE: '', FEATHERBASE_APP_PATHS: '[]' },
     })
     expect(output).toContain('preflight: btree_gist available for the baseline\n')
-    expect(output).toContain('preflight: pending migrations: 0140_baseline.sql, ')
-    expect(output).toContain('applied 0140_baseline.sql\n')
+    expect(output).toContain('preflight: pending migrations: 0001_baseline.sql, ')
+    expect(output).toContain('applied 0001_baseline.sql\n')
   }, 90_000)
 
   test('on an installed database the check is not repeated', async () => {

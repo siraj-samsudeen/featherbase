@@ -225,10 +225,6 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          # The release regression runs the exact production-era source, not
-          # a hand-maintained approximation of its schema.
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -250,7 +246,7 @@ jobs:
       - name: Install Chromium for server-side PDF tests
         run: pnpm --filter server exec playwright install --with-deps chromium
 
-      - name: Migrate and patch database
+      - name: Migrate database
         run: |
           pnpm --filter server migrate
 
@@ -341,7 +337,7 @@ jobs:
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 
-      - name: Migrate and patch database
+      - name: Migrate database
         run: |
           pnpm --filter server migrate
 
@@ -436,7 +432,7 @@ jobs:
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 
-      - name: Migrate and patch database
+      - name: Migrate database
         run: |
           pnpm --filter server migrate
 

@@ -23,13 +23,13 @@ describe('release', () => {
   })
 
   test('applies a migration not yet recorded', async () => {
-    await sql`delete from migration where name = '0143_drop_patch_log.sql'`
-    await sql.unsafe('create table featherbase.patch_log (patch text primary key)')
+    await sql`delete from migration where name = '0003_mock_google_sign_in.ts'`
+    await sql`update sign_in_method set enabled = false where row_id = 'google'`
     const r = await runMain(main, [])
     expect(r.code).toBe(0)
-    expect(r.stdout).toContain('preflight: pending migrations: 0143_drop_patch_log.sql\n')
-    expect(await sql`select 1 from migration where name = '0143_drop_patch_log.sql'`).toHaveLength(1)
-    expect(await sql`select to_regclass('featherbase.patch_log') as r`).toEqual([{ r: null }])
+    expect(r.stdout).toContain('preflight: pending migrations: 0003_mock_google_sign_in.ts\n')
+    expect(await sql`select 1 from migration where name = '0003_mock_google_sign_in.ts'`).toHaveLength(1)
+    expect(await sql`select enabled from sign_in_method where row_id = 'google'`).toEqual([{ enabled: true }])
   })
 
   test('a failing health check is a warning on stderr, and the release still succeeds', async () => {

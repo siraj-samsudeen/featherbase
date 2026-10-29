@@ -1,4 +1,4 @@
-/* Regenerate the migration baseline (#692).
+/* Regenerate the migration baseline (#692, #697).
  *
  *   pnpm --filter server baseline:generate [--admin-url <url>] [--out <file>]
  *
@@ -13,7 +13,7 @@
  * The file must not depend on where it was generated, so:
  *   - The scratch run has no deployment variables: environment production, no
  *     ADMIN_PASSWORD, no ALLOW_MOCK_OAUTH, no apps. The steps that read them
- *     run after the baseline on every install (0141, 0142).
+ *     run after the baseline on every install (0002, 0003).
  *   - Every timestamp in a seed row is the install's own clock, so it is
  *     written as now(). The script refuses a seed timestamp from before the
  *     scratch run started: that one would be a real value.
@@ -25,10 +25,10 @@
  *     psql-only \restrict lines are dropped; rows are ordered by primary key.
  * Run twice on the same migrations, it writes the same file.
  *
- * Cutting a NEW baseline later is more than rerunning this: the migrations it
- * absorbs are listed in migrations/baseline-replaces.txt and removed, and
- * src/migrate.ts names the steps after the baseline that an adopted database
- * already has.
+ * Every install is a fresh one, so the baseline is rewritten in place: a
+ * schema change that no installed instance has yet can be folded in by adding
+ * it as a migration, regenerating, and deleting that migration. Once an
+ * instance is installed, a change ships as a new numbered migration instead.
  */
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url'
 import postgres from 'postgres'
 
 const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url))
-const SCHEMAS = ['featherbase', 'meta', 'public']
+const SCHEMAS = ['featherbase', 'public']
 // The runner's own records, never a migration's.
 const RUNNER_TABLES = new Set(['featherbase.migration', 'featherbase.internal_metadata'])
 const SECRET_COLUMN = /password|secret|token|hash/i
@@ -179,8 +179,8 @@ export async function generateBaseline(adminUrl: string): Promise<string> {
         '--exclude-table=featherbase.migration', `--dbname=${target.toString()}`,
       ], { PATH: process.env.PATH }), section)
       return [
-        "-- The platform's schema and seed rows: what the migrations listed in",
-        '-- baseline-replaces.txt built on an empty database. Generated, never edited:',
+        "-- The platform's schema and seed rows, as every install starts from them.",
+        '-- Generated, never edited:',
         '-- `pnpm --filter server baseline:generate` (scripts/generate-baseline.ts).',
         '',
         LOCAL_PREAMBLE,
@@ -207,7 +207,7 @@ export async function generateBaseline(adminUrl: string): Promise<string> {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2)
   const option = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined)
-  const out = option('--out') ?? resolve(SERVER_DIR, 'migrations/0140_baseline.sql')
+  const out = option('--out') ?? resolve(SERVER_DIR, 'migrations/0001_baseline.sql')
   writeFileSync(out, await generateBaseline(option('--admin-url') ?? 'postgres://postgres:postgres@127.0.0.1:5432/postgres'))
   console.log(`wrote ${out}`)
 }

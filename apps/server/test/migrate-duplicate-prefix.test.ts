@@ -23,18 +23,18 @@ describe('findDuplicateMigrationPrefixes', () => {
 
   it('passes a list of files with unique prefixes', () => {
     const errors = findDuplicateMigrationPrefixes([
-      '0140_baseline.sql',
-      '0141_administrator_password.ts',
-      '0142a_later.sql',
-      '0142_mock_google_sign_in.ts',
+      '0001_baseline.sql',
+      '0002_administrator_password.ts',
+      '0003a_later.sql',
+      '0003_mock_google_sign_in.ts',
     ])
     expect(errors).toEqual([])
   })
 
-  it('treats 0142 and 0142a as distinct numbers, not a collision', () => {
+  it('treats 0003 and 0003a as distinct numbers, not a collision', () => {
     // A lettered sub-number orders a file right after its number on purpose;
     // it is not what this guard exists to catch.
-    const errors = findDuplicateMigrationPrefixes(['0142_mock_google_sign_in.ts', '0142a_later.sql'])
+    const errors = findDuplicateMigrationPrefixes(['0003_mock_google_sign_in.ts', '0003a_later.sql'])
     expect(errors).toEqual([])
   })
 

@@ -1,7 +1,7 @@
 // The release's preflight (person-resolution review A-M1): every refusal that
 // does not depend on the data runs BEFORE the first migration, so a release
 // that would stop part-way stops before it starts. A database the migrator
-// would refuse (one it cannot adopt into the baseline, #692) is refused here.
+// would refuse (not empty, with no ledger) is refused here.
 import { sql } from './db'
 import { config, environmentDeclared } from './config'
 import { assertDatabaseEnvironment, storedEnvironment } from './db-environment'
@@ -310,8 +310,8 @@ const SIGN_UP_ENVIRONMENTS = ['development', 'test']
 const ACTION_FLAGS = ['read', 'write', 'create', 'delete', 'submit', 'cancel', 'amend'] as const
 
 /** Whether the platform is installed here. Preflight runs before the
- *  migrations, and the migrator accepts only a new database or one with the
- *  whole baseline (#692), so a database has every platform table or none. */
+ *  migrations, and the migrator accepts only an empty database or one it has
+ *  migrated from the baseline, so a database has every platform table or none. */
 async function installed(): Promise<boolean> {
   const [found] = await sql`select to_regclass(${platformRelation('table_def')}) is not null as installed`
   return Boolean(found?.installed)

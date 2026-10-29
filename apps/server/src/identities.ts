@@ -168,15 +168,13 @@ interface Identity {
    *  and stays as history. */
   ended_at: string | null
   ended_reason: 'left' | 'moved' | 'unlinked' | null
-  /** `employee-code` until the roster supplies the HR record number (C4). */
-  subject_kind: 'record-id' | 'employee-code'
   /** #430: when a pending invite's email last went out; null = never. */
   invitation_sent_at: string | null
 }
 
 const identityFields = () =>
   sql`id, person_id, method, subject, sign_in_name, email, display_name, pending_email, linked_at, linked_by, last_used_at,
-    ended_at, ended_reason, subject_kind, invitation_sent_at`
+    ended_at, ended_reason, invitation_sent_at`
 
 /** The one id generator for linked identities. */
 export function newIdentityId(): string {
@@ -361,7 +359,6 @@ export async function updateIdentity(
           person_id: change.person_id!,
           method: locked.method as string,
           subject: locked.subject as string | null,
-          subject_kind: locked.subject_kind as string,
           sign_in_name: signInName,
           email: locked.email as string | null,
           display_name: locked.display_name as string | null,

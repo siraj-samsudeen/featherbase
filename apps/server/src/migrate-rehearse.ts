@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { format } from 'node:util'
 import { sql, withTransaction } from './db'
 import { assertDatabaseEnvironment } from './db-environment'
-import { adoptBaseline, applyMigrationFile, ensureLedger, planMigrations } from './migrate'
+import { applyMigrationFile, ensureLedger, pendingMigrations } from './migrate'
 import { invalidateMeta } from './meta'
 import { readVariable } from './env'
 import { rehearseAppUpgrades } from './runtime-packages'
@@ -79,17 +79,13 @@ export async function rehearse(
 ): Promise<void> {
   if (!allowLive) await assertNotLive()
   await assertDatabaseEnvironment()
-  const { adopt, pending } = await planMigrations()
+  const pending = await pendingMigrations()
   out(`migrate:rehearse — in a rolled-back transaction; pending: ${pending.length ? pending.join(', ') : 'none'}`)
   try {
     await withTransaction(async () => {
       try {
         await sql.unsafe(`set local lock_timeout = '${LOCK_TIMEOUT}'; set local statement_timeout = '${STATEMENT_TIMEOUT}'`)
         await ensureLedger()
-        if (adopt.length) {
-          await adoptBaseline(adopt)
-          out(`adopted the baseline: recorded ${adopt.join(', ')} without running them`)
-        }
         for (const file of pending) await applyReporting(file, out)
         // #651: then each app upgrade this release ships, with what it removes.
         for (const line of await rehearseAppUpgrades(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])) out(line)

@@ -17,7 +17,6 @@ import { main } from '../src/cli'
 import { invalidateMeta } from '../src/meta'
 import { captureIO, runMain } from './command-io'
 import { test } from './pg-test'
-import { configureDelegated } from './identity-fixtures'
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const DT = 'Cli Test Widget'
@@ -681,19 +680,6 @@ describe('the command line, command by command', () => {
     missing.pathname = '/featherbase_no_such_database_cli'
     expect((await runMain(main, ['migrate:rehearse', '--database-url', missing.toString()])).code).toBe(1)
   }, 120_000)
-
-  test('people:resolve needs a file, and a dry run of an empty one moves nobody', async () => {
-    expect((await failure(['people:resolve', '--dry-run']))?.stderr).toBe('error: usage: cli people:resolve <stylehr_record_ids.csv> [--dry-run]\n')
-    const dir = mkdtempSync(join(tmpdir(), 'featherbase-resolve-cli-'))
-    try {
-      writeFileSync(join(dir, 'ids.csv'), 'employee_code,assigner,stylehr_record_id\n')
-      await configureDelegated()
-      const out = await cli(['people:resolve', '--dry-run', join(dir, 'ids.csv')])
-      expect(out).toMatch(/^people:resolve \(dry run — rolled back\): 0 live StyleHR sign-ins\n {2}moved to the record number: 0 none\n/)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
 
   test('seed-pack applies a named pack, and needs `apply <name>`', async () => {
     expect((await failure(['seed-pack', 'jeyarama']))?.stderr).toBe('error: usage: cli seed-pack apply <name>\n')
