@@ -92,9 +92,9 @@ async function runDue() {
 const calls = () => (globalThis as { __fbjobsCalls?: unknown[] }).__fbjobsCalls ?? []
 const row = async (method: string) => (await sql`select * from scheduled_job where method = ${method}`)[0]
 const queued = async (method: string) => (await sql`select * from background_job where method = ${method} and job_status = 'queued'`).length
-const enabled = async (person: string) => (await sql`select enabled from person where row_id = ${person}`)[0].enabled as boolean
+const enabled = async (person: string | null) => (await sql`select enabled from person where row_id = ${person}`)[0].enabled as boolean
 
-async function link(person: string, value: string) {
+async function link(person: string | null, value: string) {
   const [system] = await sql`select 1 from identifier_system where row_id = ${SYSTEM}`
   if (!system) await sql`insert into identifier_system (row_id, label, kind, sensitivity, match, enabled) values (${SYSTEM}, 'Jobs proof code', 'employee-record', 'Restricted', 'Off', true)`
   await sql`insert into person_identifier ${sql({ id: newIdentifierId(), person_id: person, system: SYSTEM, assigner: '', value, valid: '[2020-01-01,)',
