@@ -27,3 +27,6 @@ apps/web/coverage-merged/
 
 # migration-0125.test.ts scratch copies (removed when the test finishes)
 apps/server/test/.migration-0125-*/
+
+# app-jobs.test.ts scratch packages (removed when each test finishes)
+apps/server/test/.app-jobs-*/

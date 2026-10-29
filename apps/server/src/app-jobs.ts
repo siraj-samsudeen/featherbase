@@ -1,0 +1,297 @@
+// #700: an app's scheduled jobs. A runtime app declares each job in its
+// manifest (`jobs`: name, default cadence, description, grants) and exports
+// its handler from its server module under `jobs`. The platform registers it
+// as `<app>.<job>`, keeps one Scheduled Job row for it while the app is
+// installed, and runs it as the job's own system actor. That actor holds no
+// role: what the handler may do is exactly the capabilities its grants name,
+// each one a narrow platform operation, and an undeclared one is refused and
+// recorded in the Access Log.
+import { z } from 'zod'
+import { APP_JOB_GRANTS, type AppJobGrant, type AppJobPerson, type RuntimeJobContext, type RuntimeJobHandler, type PersonScope } from 'shared'
+import { sql, withTransaction } from './db'
+import { AppError } from './errors'
+import { activeApps } from './app-lifecycle'
+import { CADENCE_SECONDS, FinalJobFailure, jobRegistrant, type JobHandler } from './jobs'
+import { appDatasets, type DatasetDeclaration } from './app-datasets'
+import { assertNoSecret, readyAppSetup, secretName, withSecretsKept, type AppSetup } from './app-settings'
+import { IDENTIFIER_SYSTEM_KEY } from './identifiers'
+import { saveDoc } from './document'
+import { logAccess, logActivity } from './audit'
+import { queueEmail } from './email'
+import { recordUndeliveredNotice, systemManagerEmails } from './system-notice'
+import { runAsSystemActor } from './system-actor'
+
+const distinct = (values: string[]) => new Set(values).size === values.length
+const identifier = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)
+const CADENCES = Object.keys(CADENCE_SECONDS) as [string, ...string[]]
+
+const jobSchema = z.object({
+  name: identifier,
+  cadence: z.enum(CADENCES, { errorMap: () => ({ message: `A job's cadence must be one of ${CADENCES.join(', ')}` }) }),
+  description: z.string().trim().min(1),
+  grants: z.array(z.enum(APP_JOB_GRANTS, { errorMap: () => ({ message: `A job grant must be one of ${APP_JOB_GRANTS.join(', ')}` }) }))
+    .refine(distinct, 'A job names each grant once').optional(),
+  // The identifier systems, by key, whose values `read_people` hands it.
+  identifiers: z.array(z.string().regex(IDENTIFIER_SYSTEM_KEY)).refine(distinct).optional(),
+  // The app's own datasets the job reads.
+  datasets: z.array(identifier).refine(distinct).optional(),
+  // The app's optional secrets the job uses (#666).
+  needs: z.array(secretName).refine(distinct).optional(),
+}).strict()
+
+/** The manifest's `jobs`. */
+export const jobsDeclaration = z.array(jobSchema)
+  .refine((jobs) => distinct(jobs.map((job) => job.name)), 'Each job has a name of its own')
+
+export type JobDeclaration = z.infer<typeof jobSchema>
+
+/** A job's registered name: also its Scheduled Job, and the actor it runs as. */
+export const appJobMethod = (app: string, job: string) => `${app}.${job}`
+
+/** A job's grants, as the set it runs with. */
+export const jobGrants = (job: Pick<JobDeclaration, 'grants'>) => new Set<AppJobGrant>(job.grants ?? [])
+
+/** Checked when an app's files are loaded, before anything is registered. */
+export function validateAppJobs(app: string, manifest: {
+  jobs?: JobDeclaration[]
+  server?: string
+  datasets?: readonly { name: string }[]
+  secrets?: unknown
+}, declaredSecrets: Set<string>): void {
+  const jobs = manifest.jobs ?? []
+  if (!jobs.length) return
+  if (!manifest.server) throw new Error('Declared jobs require a server module')
+  const datasets = new Set((manifest.datasets ?? []).map((d) => d.name))
+  for (const job of jobs) {
+    if (job.identifiers?.length && !jobGrants(job).has('read_people'))
+      throw new Error(`The job ${job.name} names identifier systems, which only a job granted read_people reads`)
+    for (const dataset of job.datasets ?? [])
+      if (!datasets.has(dataset)) throw new Error(`The job ${job.name} reads the dataset ${dataset}, which the app does not declare in its datasets`)
+    for (const secret of job.needs ?? [])
+      if (!declaredSecrets.has(secret)) throw new Error(`The job ${job.name} needs the secret ${secret}, which the app does not declare in its secrets`)
+    const method = appJobMethod(app, job.name)
+    const registrant = jobRegistrant(method)
+    if (registrant && registrant !== app)
+      throw new Error(`The job ${job.name} would be registered as ${method}, which ${registrant === 'platform' ? 'Featherbase' : `the app ${registrant}`} already uses`)
+  }
+}
+
+// A job has no places: it reads every row of the datasets it declares.
+const EVERY_PLACE: PersonScope = Object.freeze([Object.freeze({ label: 'every place', filters: Object.freeze({}) })])
+
+interface BindRequest {
+  app: string
+  jobs: JobDeclaration[]
+  handlers: Map<string, RuntimeJobHandler>
+  setup: () => Promise<AppSetup>
+  datasets: readonly DatasetDeclaration[]
+}
+
+/** The app's jobs as scheduler events: each handler wrapped so it runs as
+ *  its own system actor, with only the capabilities its grants name. */
+export function bindAppJobs({ app, jobs, handlers, setup, datasets }: BindRequest) {
+  return jobs.map((job) => ({
+    method: appJobMethod(app, job.name),
+    cadence: job.cadence,
+    description: job.description,
+    handler: runAppJob(app, job, handlers.get(job.name)!, setup, datasets.filter((d) => job.datasets?.includes(d.name))),
+  }))
+}
+
+function runAppJob(app: string, job: JobDeclaration, handler: RuntimeJobHandler, setup: () => Promise<AppSetup>,
+  datasets: readonly DatasetDeclaration[]): JobHandler {
+  const actor = appJobMethod(app, job.name)
+  const grants = jobGrants(job)
+  return async (_payload, ctx) => {
+    const [installed] = await sql`select enabled, activation_pending from installed_app where name = ${app}`
+    if (!installed?.enabled || installed.activation_pending || !activeApps.has(app))
+      throw new FinalJobFailure(`The app ${app} is disabled or unavailable, so its job ${job.name} did not run`)
+    let ready: Awaited<ReturnType<typeof readyAppSetup>>
+    try {
+      ready = await readyAppSetup(app, await setup(), job.needs)
+    } catch (error) {
+      // Not set up is a refusal, not a failure to retry a minute later.
+      if (error instanceof AppError && error.type === 'NotSetUpError') return ctx.refuse(error.message)
+      throw error
+    }
+    const need = async <T>(grant: AppJobGrant, fn: () => Promise<T>): Promise<T> => {
+      if (!grants.has(grant)) {
+        await logAccess(actor, 'app_access_denied', { method: `${actor}:${grant}`, required: true })
+        throw new FinalJobFailure(`The job ${actor} has not declared the grant ${grant}`)
+      }
+      return fn()
+    }
+    const context: RuntimeJobContext = Object.freeze({
+      job: Object.freeze({ name: actor, run: ctx.job.row_id, trigger: ctx.job.trigger }),
+      settings: ready.settings,
+      secrets: ready.secrets,
+      datasets: appDatasets({ app, operation: job.name, user: actor, title: ready.title, declarations: datasets,
+        places: EVERY_PLACE, outbound: true }).datasets,
+      people: Object.freeze({
+        list: () => need('read_people', () => listPeople(job.identifiers ?? [])),
+        disable: (person: string, reason: string) => need('disable_people', () => disablePerson(actor, person, reason)),
+      }),
+      email: Object.freeze({
+        systemManagers: (message: { subject: string; body: string }) => need('email_system_managers', () => {
+          assertNoSecret(ready.kept, message)
+          return emailSystemManagers(actor, message)
+        }),
+      }),
+      setResult: (text: string) => ctx.setResult(String(text)),
+      refuse: (reason: string) => ctx.refuse(String(reason)),
+    })
+    await withSecretsKept(ready.kept, async () => { await handler(context) })
+  }
+}
+
+// ------------------------------------------------------------- capabilities
+
+/** `read_people`: every enabled, current person, with the current values of
+ *  the identifier systems the job declares that are on and not secret. */
+async function listPeople(systems: string[]): Promise<AppJobPerson[]> {
+  const people = await sql`
+    select p.row_id, p.full_name, p.email,
+      (p.row_id = 'Administrator' or exists (
+        select 1 from has_role r where r.parent = p.row_id and r.parenttype = 'Person'
+          and r.role in ('System Manager', 'Administrator'))) as privileged
+    from person p
+    where p.enabled and not coalesce(p.built_in, false) and p.replaced_by is null
+    order by p.row_id`
+  const values = systems.length
+    // As a scope provider gets them (person-scope.ts): only a system that is
+    // on and not secret.
+    ? await sql`select i.person_id, i.system, i.value from person_identifier i
+        join identifier_system s on s.row_id = i.system and s.enabled and s.sensitivity <> 'Secret'
+        where i.system in ${sql(systems)} and upper_inf(i.valid) and i.value is not null
+        order by i.person_id, i.system, i.value`
+    : []
+  const byPerson = new Map<string, Record<string, string[]>>()
+  for (const v of values) {
+    const held = byPerson.get(String(v.person_id)) ?? {}
+    ;(held[String(v.system)] ??= []).push(String(v.value))
+    byPerson.set(String(v.person_id), held)
+  }
+  return people.map((p) => ({
+    person: String(p.row_id),
+    full_name: (p.full_name as string | null) ?? null,
+    email: (p.email as string | null) ?? null,
+    privileged: p.privileged === true,
+    identifiers: Object.fromEntries(systems.map((system) => [system, byPerson.get(String(p.row_id))?.[system] ?? []])),
+  }))
+}
+
+/** `disable_people`: a normal row save, so the change is versioned and the
+ *  person's sessions end. Re-read under a row lock: someone may have
+ *  re-enabled, disabled or promoted them since the job decided. Privileged
+ *  people are never disabled. The job's actor holds System Manager only for
+ *  this one save (system-actor.ts). */
+async function disablePerson(actor: string, person: string, reason: string): Promise<boolean> {
+  if (typeof person !== 'string' || !person) throw new AppError('ValidationError', 'disable needs a person')
+  if (typeof reason !== 'string' || !reason.trim()) throw new AppError('ValidationError', 'disable needs a reason')
+  return withTransaction(async () => {
+    const [row] = await sql`
+      select p.updated_at, p.enabled,
+        (p.row_id = 'Administrator' or exists (
+          select 1 from has_role r where r.parent = p.row_id and r.parenttype = 'Person'
+            and r.role in ('System Manager', 'Administrator'))) as privileged
+      from person p where p.row_id = ${person} for update`
+    if (!row || !row.enabled || row.privileged) return false
+    await runAsSystemActor(actor, () => saveDoc('Person', { row_id: person, updated_at: row.updated_at, enabled: false }, actor))
+    await logActivity(actor, `disabled ${person}: ${reason.trim()}`.slice(0, 140))
+    return true
+  })
+}
+
+/** `email_system_managers`: one message to each System Manager with an address. */
+async function emailSystemManagers(actor: string, message: { subject: string; body: string }): Promise<number> {
+  if (!message || typeof message.subject !== 'string' || !message.subject.trim() || typeof message.body !== 'string')
+    throw new AppError('ValidationError', 'An email needs a subject and a body')
+  const managers = await systemManagerEmails()
+  if (!managers.length) {
+    await recordUndeliveredNotice(`${actor} email`)
+    return 0
+  }
+  for (const to of managers) await queueEmail({ to, subject: message.subject, body: message.body })
+  return managers.length
+}
+
+// ------------------------------------------------------------- upgrades
+
+export type JobPlanStep =
+  | { add: { name: string; cadence: string; description: string; grants: AppJobGrant[] } }
+  | { change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[] } }
+  | { remove: { name: string } }
+
+/** What an upgrade does to the app's jobs. A job the upgrade keeps may lose
+ *  grants or identifier systems, never gain one: like a widened table grant
+ *  (#437), that needs a reviewed install. A job the upgrade adds arrives with
+ *  the grants its version declares, listed in the preview. */
+export function planJobChanges(app: string, prior: JobDeclaration[], target: JobDeclaration[]): JobPlanStep[] {
+  const steps: JobPlanStep[] = []
+  for (const job of target) {
+    const before = prior.find((p) => p.name === job.name)
+    if (!before) {
+      steps.push({ add: { name: job.name, cadence: job.cadence, description: job.description, grants: [...jobGrants(job)] } })
+      continue
+    }
+    const wider = [...jobGrants(job)].filter((g) => !jobGrants(before).has(g))
+    const moreIdentifiers = (job.identifiers ?? []).filter((s) => !(before.identifiers ?? []).includes(s))
+    if (wider.length || moreIdentifiers.length)
+      throw new AppError('ValidationError', `The job ${appJobMethod(app, job.name)} would gain ${[...wider, ...moreIdentifiers].join(', ')}; ` +
+        'a job cannot gain access in an upgrade')
+    const change: { name: string; cadence?: string; description?: string; grants?: AppJobGrant[] } = { name: job.name }
+    if (job.cadence !== before.cadence) change.cadence = job.cadence
+    if (job.description !== before.description) change.description = job.description
+    if (jobGrants(before).size !== jobGrants(job).size) change.grants = [...jobGrants(job)]
+    if (Object.keys(change).length > 1) steps.push({ change })
+  }
+  for (const job of prior)
+    if (!target.some((t) => t.name === job.name)) steps.push({ remove: { name: job.name } })
+  return steps
+}
+
+/** An app may claim a job name only if no one else holds it: not a Scheduled
+ *  Job of Featherbase's or another app's, nor a handler someone else
+ *  registered. Checked before the app's handler is registered or its row
+ *  written. */
+export async function assertJobClaimable(app: string, method: string): Promise<void> {
+  const [row] = await sql`select owner_app from scheduled_job where method = ${method}`
+  if (row && row.owner_app !== app)
+    throw new AppError('ConflictError', `The job ${method} is already a scheduled job of ${row.owner_app ? `the app ${String(row.owner_app)}` : 'Featherbase'}`)
+  const registrant = jobRegistrant(method)
+  if (registrant && registrant !== app)
+    throw new AppError('ConflictError', `The job ${method} is already registered by ${registrant === 'platform' ? 'Featherbase' : `the app ${registrant}`}`)
+}
+
+/** Write an upgrade's job steps, in its transaction. A changed default reaches
+ *  a row only where the row still holds the old default and the instance
+ *  settings file does not manage that field: an administrator's or the file's
+ *  choice is never overwritten. */
+export async function applyJobPlan(app: string, steps: JobPlanStep[], prior: JobDeclaration[], actor: string): Promise<void> {
+  const { managedFieldsOf } = await import('./managed-settings')
+  for (const step of steps) {
+    if ('add' in step) {
+      const method = appJobMethod(app, step.add.name)
+      await assertJobClaimable(app, method)
+      await sql`insert into scheduled_job ${sql({
+        row_id: method, created_by: actor, updated_by: actor, method, cadence: step.add.cadence,
+        enabled: true, description: step.add.description, owner_app: app,
+      })} on conflict (method) do nothing`
+    } else if ('remove' in step) {
+      const method = appJobMethod(app, step.remove.name)
+      await sql`delete from scheduled_job where method = ${method} and owner_app = ${app}`
+      await sql`delete from background_job where method = ${method} and job_status = 'queued'`
+    } else {
+      const method = appJobMethod(app, step.change.name)
+      const before = prior.find((p) => p.name === step.change.name)!
+      const [row] = await sql`select row_id, cadence, description from scheduled_job where method = ${method} and owner_app = ${app}`
+      if (!row) continue
+      const locked = await managedFieldsOf('Scheduled Job', String(row.row_id))
+      const updates: Record<string, string> = {}
+      if (step.change.cadence && row.cadence === before.cadence && !locked.includes('cadence')) updates.cadence = step.change.cadence
+      if (step.change.description && row.description === before.description && !locked.includes('description')) updates.description = step.change.description
+      if (Object.keys(updates).length)
+        await sql`update scheduled_job set ${sql({ ...updates, updated_by: actor })}, updated_at = now() where method = ${method}`
+    }
+  }
+}
