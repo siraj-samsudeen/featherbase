@@ -344,7 +344,7 @@ export function inferTableDef(
       column_name,
       // IMP-012: labels are normalized, not copied verbatim — a file with
       // "Zone ID" next to "Reg_District_ID" yields consistent labels.
-      label: prettifyLabel(String(headers[i] ?? '')) || prettifyLabel(column_name),
+      label: prettifyLabel(String(headers[i])) || prettifyLabel(column_name),
       column_type,
       ...(choices ? { choices } : {}),
       reqd: false,
@@ -470,7 +470,7 @@ export function mergeSheetHeaders(sheetHeaders: string[][]): MergedColumn[] {
       if (!column) {
         column = {
           key,
-          label: prettifyLabel(raw) || prettifyLabel(folded) || `Column ${columnIndex + 1}`,
+          label: prettifyLabel(raw) || `Column ${columnIndex + 1}`,
           spellings: [],
           from: sheetHeaders.map(() => -1),
         }
