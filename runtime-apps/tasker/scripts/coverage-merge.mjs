@@ -69,3 +69,8 @@ for (const inputs of groups) {
 }
 const context = libReport.createContext({ dir: path.join(output, 'merged'), coverageMap: merged })
 for (const name of ['text', 'json', 'json-summary', 'html']) reports.create(name).execute(context)
+const summary = merged.getCoverageSummary()
+for (const metric of ['lines', 'statements', 'functions']) {
+  if (summary[metric].covered !== summary[metric].total)
+    throw new Error(`Tasker ${metric} coverage must be 100%: ${summary[metric].covered}/${summary[metric].total}`)
+}
