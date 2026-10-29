@@ -25,8 +25,15 @@ function parseSettings(v: unknown): Record<string, unknown> | null {
 const controller: TableController = {
   table: METHOD_TABLE,
   hooks: {
+    // #693: every Sign In Method write takes the ways-in lock BEFORE its row
+    // is locked. An identity move takes the same lock and then waits on this
+    // row (its foreign key), so the reverse order would deadlock.
+    before_lock: async ({ tx }) => {
+      await lockWaysIn(tx)
+    },
     before_validate: async ({ row, old, isNew, tx }) => {
-      // #693: every Sign In Method change takes the ways-in lock first.
+      // Already held from before_lock; taken again (re-entrant) in case a
+      // write path reaches the hooks without it.
       await lockWaysIn(tx)
       const kind = String(row.kind ?? old?.kind ?? '') as MethodKind
       const caps = KINDS[kind]

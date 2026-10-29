@@ -876,6 +876,7 @@ async function writeDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdManagedSet(stx, meta.name)
+      await runHooks('before_lock', { row: { ...values }, meta, user, isNew: true, tx: stx })
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
@@ -1139,6 +1140,7 @@ async function updateDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       await holdManagedSet(stx, meta.name)
+      await runHooks('before_lock', { row: { ...values, [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
@@ -1291,6 +1293,7 @@ async function setStatus(
   const tbl = await tableRelation(table)
   const [saved] = await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
+    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1424,6 +1427,7 @@ async function deleteDocImpl(
   await afterCommitOf(() => sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     await holdManagedSet(stx, meta.name)
+    await runHooks('before_lock', { row: { [meta.row_key]: name }, meta, user, isNew: false, tx: stx })
     const [existing] = await tx`
       select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
@@ -1611,6 +1615,7 @@ async function renameDocImpl(
   await sql.begin(async (tx) => {
     const tbl = await tableRelation(table)
     await holdManagedSet(tx as unknown as typeof sql, null)
+    await runHooks('before_lock', { row: { [meta.row_key]: oldName }, meta, user, isNew: false, tx: tx as unknown as typeof sql })
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)

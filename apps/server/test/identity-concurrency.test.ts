@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import postgres from 'postgres'
 import { expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { methodOfKind, removeOwnPassword, unlinkIdentity } from '../src/identities'
+import { WAYS_IN_LOCK_KEY, methodOfKind, removeOwnPassword, unlinkIdentity, updateIdentity } from '../src/identities'
 import { saveDoc } from '../src/document'
 import { loadControllers } from '../src/controllers'
 import { resolveVerified } from '../src/sign-in'
@@ -206,6 +206,47 @@ it('narrowing the domain list racing a System Manager removing their password: e
     await sql`update sign_in_method set allowed_email_domains = ${before.allowed_email_domains} where row_id = 'google'`
     if (prev === undefined) delete process.env.ALLOW_MOCK_OAUTH
     else process.env.ALLOW_MOCK_OAUTH = prev
+    await cleanup(p)
+  }
+}, 30_000)
+
+// #693, Codex review round 7: a Sign In Method edit must take the ways-in lock
+// BEFORE it locks its row. An identity move takes that lock and then inserts
+// a link whose foreign key waits on the method row; in the other order the
+// two deadlock. A third connection holds the lock so the move queues for it
+// first and the edit second, the interleaving that deadlocked.
+it('an identity move racing a Sign In Method edit: both complete, neither deadlocks', async () => {
+  const p = `psn_conc${randomUUID().slice(0, 8)}`
+  const q = `${p}b`
+  await loadControllers()
+  const [before] = await sql`select label from sign_in_method where row_id = 'google'`
+  try {
+    await person(p)
+    await person(q)
+    await sql`insert into sign_in_identity ${sql({ id: `uid_${p}`, person_id: p, method: 'google', subject: `g-${p}`, email: `${p}@example.com`, linked_by: 'test' })}`
+    const gate = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} })
+    let release: () => void = () => {}
+    const holding = new Promise<void>((r) => (release = r))
+    const held = gate.begin(async (t) => {
+      await t`select pg_advisory_xact_lock(${WAYS_IN_LOCK_KEY}::bigint)`
+      await holding
+    })
+    await new Promise((r) => setTimeout(r, 200))
+    const move = updateIdentity(`uid_${p}`, { person_id: q }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    const [g] = await sql`select updated_at from sign_in_method where row_id = 'google'`
+    const edit = saveDoc('Sign In Method', { row_id: 'google', label: `Google ${p}`, updated_at: g.updated_at }, 'Administrator')
+    await new Promise((r) => setTimeout(r, 300))
+    release()
+    await held
+    await gate.end()
+    const results = await Promise.allSettled([move, edit])
+    const errors = results.filter((r) => r.status === 'rejected').map((r) => (r as PromiseRejectedResult).reason)
+    expect(errors.map((e) => (e as { code?: string }).code)).not.toContain('40P01')
+    expect(errors).toEqual([])
+    expect(await sql`select person_id from sign_in_identity where subject = ${`g-${p}`} and ended_at is null`).toEqual([{ person_id: q }])
+  } finally {
+    await sql`update sign_in_method set label = ${before.label} where row_id = 'google'`
     await cleanup(p)
   }
 }, 30_000)
