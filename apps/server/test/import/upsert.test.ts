@@ -64,8 +64,9 @@ describe('UPS-R1: the import boundary learns update', () => {
       rows: [{ zone: 'Alpha' }, { zone: 'Alpha' }],
     })
     // Two same-zone rows both INSERT — no matching without a key — and the
-    // response shape carries no `updated`.
-    expect(res).toEqual({ inserted: 2, failed: [] })
+    // response shape carries no `updated`. Every writing run names its run
+    // ID so it can be undone (#687, owner decision 29-Oct-2026).
+    expect(res).toEqual({ inserted: 2, failed: [], run_id: expect.any(String) })
     expect('updated' in res).toBe(false)
   })
 

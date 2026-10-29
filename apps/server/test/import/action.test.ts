@@ -32,7 +32,7 @@ describe('IMP-005: bulk import', () => {
         { title: 'third' },
       ],
     })
-    expect(res).toEqual({ inserted: 3, failed: [] })
+    expect(res).toEqual({ inserted: 3, failed: [], run_id: expect.any(String) })
 
     const list = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(

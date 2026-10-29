@@ -106,6 +106,11 @@ rows it updated get their prior values back.
 - **WHEN** an import added a row, and the import is undone
 - **THEN** that row is removed
 
+#### Scenario: A scripted import can be undone
+
+- **WHEN** a script imports rows without naming the run
+- **THEN** the import's answer names the run, and undoing that run reverses it
+
 ### Requirement: Undo skips what changed since, unless told otherwise
 
 Undoing an import SHALL leave alone any row someone has changed since the
