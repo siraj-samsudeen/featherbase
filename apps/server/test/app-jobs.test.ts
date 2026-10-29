@@ -52,6 +52,7 @@ const HANDLERS: Record<string, string> = {
     await ctx.people.disable(someone.person, 'not allowed')
   }`,
   tidy: `async tidy(ctx) { ctx.setResult('tidied') }`,
+  hold: `async hold(ctx) { calls.push({ job: ctx.job.name }); ctx.refuse('the feed is stale') }`,
 }
 const server = (jobs: Job[]) => `export const platformVersion = '2026-10'
 const calls = (globalThis.__fbjobsCalls ??= [])
@@ -66,7 +67,7 @@ afterEach(async () => {
   ;(globalThis as { __fbjobsCalls?: unknown[] }).__fbjobsCalls = []
 })
 
-async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; migrations?: unknown[] }) {
+async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; migrations?: unknown[]; settings?: unknown[] }) {
   // Inside the server directory, where the test runner can import from.
   const dir = await mkdtemp(resolve('test/.app-jobs-'))
   dirs.push(dir)
@@ -76,7 +77,7 @@ async function writeApp(opts: { name?: string; version?: string; jobs: Job[]; mi
   await writeFile(join(dir, 'featherbase.json'), JSON.stringify({
     manifestVersion: 1, platformVersion: '2026-10', name, title: 'Jobs proof', entryTable: `${name}.note`, server: 'server.mjs',
     tables: [{ name: `${name}.note`, label: 'Note', id_pattern: 'prompt', columns: [{ column_name: 'body', column_type: 'Data' }] }],
-    jobs: opts.jobs, migrations: opts.migrations ?? [],
+    jobs: opts.jobs, migrations: opts.migrations ?? [], ...(opts.settings ? { settings: opts.settings } : {}),
   }))
   await writeFile(join(dir, 'server.mjs'), server(opts.jobs))
   return dir
@@ -143,6 +144,23 @@ describe('an app declares its scheduled jobs', () => {
       .toEqual([{ user: OVERREACH, operation: 'app_access_denied', method: `${OVERREACH}:disable_people` }])
     // The schedule carries on; the refused run is not retried a minute later.
     expect((await sql`select job_status from background_job where method = ${OVERREACH} order by created_at`).map((r) => r.job_status)).toEqual(['failed', 'queued'])
+  })
+
+  test('a job that declines to act ends its run as refused', async ({ admin }) => {
+    const hold: Job = { name: 'hold', cadence: 'daily', description: 'Refuses on a stale feed.' }
+    expect(await discoverPackages([await writeApp({ jobs: [hold] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    expect(await row(`${APP}.hold`)).toMatchObject({ last_outcome: 'refused', last_result: 'the feed is stale' })
+  })
+
+  test('a job of an app that is not set up yet is refused without running its handler', async ({ admin }) => {
+    const hold: Job = { name: 'hold', cadence: 'daily', description: 'Refuses on a stale feed.' }
+    expect(await discoverPackages([await writeApp({ jobs: [hold], settings: [{ name: 'feed_id', required: true }] })])).toEqual([])
+    await admin.post('/api/install_app', { name: APP })
+    await runDue()
+    expect(calls()).toEqual([])
+    expect(await row(`${APP}.hold`)).toMatchObject({ last_outcome: 'refused', last_result: expect.stringContaining('is not set up yet') })
   })
 
   test('the job actor holds no role outside its grants', async ({ admin }) => {
