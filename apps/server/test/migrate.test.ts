@@ -60,9 +60,32 @@ describe('migrate: a new database', () => {
       await scratch.close()
     }
   }, 60_000)
+
+  it('a pre-0094 platform restored without its ledger is refused, before changing anything', async () => {
+    const scratch = await scratchDatabase('create table public.table_def (name text primary key)')
+    try {
+      const r = await runMain(scratch.migrate.main, [])
+      expect(r.code).toBe(1)
+      expect(r.stderr).toContain('Refusing to migrate: this database holds platform tables (public.table_def) but records no migration.')
+      expect(await scratch.db`select to_regnamespace('featherbase') as r`).toEqual([{ r: null }])
+    } finally {
+      await scratch.close()
+    }
+  }, 60_000)
 })
 
 describe('migrate: a database installed before the baseline', () => {
+  it('gets the retired patch\'s index if the patch runner never ran there', async () => {
+    const scratch = await installedBeforeBaseline()
+    try {
+      await scratch.db`drop index featherbase.file_ref_idx`
+      expect(await runMain(scratch.migrate.main, [])).toMatchObject({ code: 0 })
+      expect(await scratch.db`select to_regclass('featherbase.file_ref_idx') is not null as present`).toEqual([{ present: true }])
+    } finally {
+      await scratch.close()
+    }
+  }, 120_000)
+
   it('is adopted: the baseline is recorded without running, and only patch_log goes', async () => {
     const scratch = await installedBeforeBaseline()
     try {

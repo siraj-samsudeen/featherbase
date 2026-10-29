@@ -33,6 +33,13 @@ export const ADOPTED_WITH_BASELINE: readonly string[] = [BASELINE, '0141_adminis
  *  adopt: main just before #692. */
 export const LAST_RELEASE_BEFORE_BASELINE = 'e562331d'
 
+/** Relations only a pre-0094 platform database has in public: 0094's move
+ *  set, the registry it left behind, and the pre-0055 names. */
+const LEGACY_PUBLIC_RELATIONS = [
+  'site', 'table_def', 'column_def', 'tab_doctype', 'tab_docfield', 'access_token', 'installed_app',
+  'internal_metadata', 'password_reset', 'patch_log', 'pre_auth_bucket', 'single_value', 'tag_link', 'user_settings',
+]
+
 // The migration files on disk, in the order they apply.
 function migrationFiles(): string[] {
   return readdirSync(dir)
@@ -108,7 +115,10 @@ export async function planMigrations(): Promise<{ adopt: string[]; pending: stri
       select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'featherbase' and c.relname not in ('migration', 'internal_metadata')
         and c.relkind in ('r', 'p', 'v', 'm', 'S')
-      union all select 'public.site' where to_regclass('public.site') is not null
+      union all
+      -- Before 0094 the platform lived in public: these names are its.
+      select 'public.' || c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relname in ${sql(LEGACY_PUBLIC_RELATIONS)}
       limit 1`
     if (found) throw upgradeFirst(`this database holds platform tables (${String(found.relname)}) but records no migration.`)
     return { adopt: [], pending: files }
