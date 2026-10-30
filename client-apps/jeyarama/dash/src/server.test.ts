@@ -30,13 +30,11 @@ interface Options {
   monthThrows?: boolean
 }
 const DIVE = { dive_id: 'dive-made-up', dive_version: '7', embed_service_account: 'svc-made-up' }
-/** The Sales Target Dive pinned at v12, the first version known to read the compact state (#4453). */
+/** The Sales Target Dive. The shipped map lists it at v13 only; v12 is an older, wording-only version. */
 const SALES_DIVE = '9022f10f-be83-4fba-a729-5399c18d150e'
 const V12 = { ...DIVE, dive_id: SALES_DIVE, dive_version: '12' }
-/**
- * The compact path, tested with a map naming that Dive at 12. The SHIPPED map is empty until the
- * owner publishes and a 0.9.1 lists the version publish_dive.py prints (#4453).
- */
+const V13 = { ...DIVE, dive_id: SALES_DIVE, dive_version: '13' }
+/** A made-up map naming that Dive at 12, to test the compact path apart from the shipped map. */
 const KNOWN = { [SALES_DIVE]: [12] }
 
 function context({ places = [place('9901 / Section: Sarees', '9901', ['010101001'])], rows = [row('9901', '010101001')], payload = {}, settings = DIVE,
@@ -370,15 +368,23 @@ describe('the embed_session read', () => {
 // The compact whole-store state is sent only to a Dive the app knows reads it, by Dive id AND
 // version; any other pin (or a setting that claims otherwise) gets the legacy state (#4453).
 describe('the state format, from the pinned Dive', () => {
-  // Shipped empty: every pin gets the legacy state until 0.9.1 lists the Dive's published version
-  // (the follow-up in the README and #4453). Listing a number before it is published could name
-  // an older Dive, which reads a missing material_groups as every store.
-  it('ships with no Dive known to read the compact state', () => {
-    expect(COMPACT_DIVES).toEqual({})
+  // 0.10.1 lists the published cached-first Sales Target Dive, v13, and nothing else: v12 on
+  // MotherDuck is an older wording-only version, which reads a missing material_groups as every store.
+  it('ships knowing only the Sales Target Dive at 13', () => {
+    expect(COMPACT_DIVES).toEqual({ [SALES_DIVE]: [13] })
   })
 
-  it('gives the Sales Target Dive at 12 the legacy state with the shipped map', () => {
-    expect(stateFormat(SALES_DIVE, '12')).toBe('legacy')
+  it.each([
+    ['13', 'compact'],
+    ['12', 'legacy'],
+    ['11', 'legacy'],
+  ])('gives the Sales Target Dive at %s the %s state with the shipped map', (version, format) => {
+    expect(stateFormat(SALES_DIVE, version)).toBe(format)
+  })
+
+  it('gives a whole-store reader the compact state with v13 pinned, as shipped', async () => {
+    const s = await stateWith(V13)
+    expect([s.material_groups, s.sections]).toEqual([undefined, { Sarees: [10101001] }])
   })
 
   it.each([
