@@ -45,6 +45,10 @@
 //                                     put environments' variable reports (one key, one run) side by
 //                                     side; exits 1 while a rule is broken or a required variable is
 //                                     set on some environments only
+//   cli install-app <name>            install an app this server ships (a registered app or a package on
+//                                     FEATHERBASE_APP_PATHS). Already installed: says so and succeeds; on a
+//                                     development database its files are re-pinned if they changed but its
+//                                     version and manifest did not
 //   cli seed-pack apply <name>        apply an organisation's identifier systems (e.g. jeyarama); idempotent
 //   cli boot-check                    run the server's start-up refusal and the release preflight with this
 //                                     process's environment (rehearse a target's real variables); read-only
@@ -68,7 +72,7 @@ import { MIN_PASSWORD_LENGTH } from './password-reset'
 import { createServiceAccount } from './service-accounts'
 import { logActivity } from './audit'
 import { runMigrations } from './migrate'
-import { readNamedVariable } from './env'
+import { readNamedVariable, readVariable } from './env'
 
 // --- tiny flag parser: collects --key value, repeatable keys become arrays,
 // bare --flags become boolean true, everything else is a positional. --------
@@ -373,6 +377,40 @@ function referencedVariables(value: unknown, out: Record<string, string> = {}): 
   return out
 }
 
+/** #703: the install the API offers, from a shell, so a fresh database can be
+ *  set up with no server running. Safe to repeat. */
+async function cmdInstallApp(io: CommandIO, positional: string[]) {
+  const [name] = positional
+  if (!name || positional.length !== 1) throw new Error('usage: cli install-app <name>')
+  const { registerApp, installApp, isInstalled, getAvailableApps } = await import('./apps')
+  const { discoverPackages, selectedPackageIdentity } = await import('./runtime-packages')
+  const { default: helpdesk } = await import('./sample-apps/helpdesk')
+  const { default: checklists } = await import('./sample-apps/checklists')
+  registerApp(helpdesk)
+  registerApp(checklists)
+  await discoverPackages(JSON.parse(readVariable('FEATHERBASE_APP_PATHS') ?? '[]') as string[])
+  if (!getAvailableApps().includes(name))
+    throw new Error(`no app ${name} on this server (it has: ${getAvailableApps().join(', ')}); add its folder to FEATHERBASE_APP_PATHS`)
+  if (!(await isInstalled(name))) {
+    await installApp(name)
+    io.out(`installed ${name}`)
+    return
+  }
+  const shipped = selectedPackageIdentity(name)
+  const [row] = await sql`select package_version, artifact_digest from installed_app where name = ${name}`
+  if (!shipped || row.artifact_digest === shipped.digest) {
+    io.out(`${name} is already installed`)
+    return
+  }
+  const [stamp] = await sql`select value from internal_metadata where key = 'environment'`
+  const [same] = await sql`select (manifest - 'packageName' - 'packageVersion' - 'migrations') = (${sql.json(shipped.manifest as never)}::jsonb - 'migrations') as same
+    from installed_app where name = ${name}`
+  if (stamp?.value !== 'development' || row.package_version !== shipped.version || same?.same !== true)
+    throw new Error(`${name} on this database is not the ${name} in its folder. Upgrade it, or on a development database recreate the database`)
+  await sql`update installed_app set artifact_digest = ${shipped.digest} where name = ${name}`
+  io.out(`${name} is already installed; re-pinned to its folder as it is now`)
+}
+
 async function cmdSettingsApply(io: CommandIO, flags: Record<string, string | string[] | boolean>) {
   const file = flags.file
   if (typeof file !== 'string') throw new Error('usage: cli settings:apply --file <instance-settings.json> [--environment <name>] [--dry-run]')
@@ -571,6 +609,9 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       io.out(smtp ? `mail:test: sent a test message via SMTP ${smtp.host}:${smtp.port}` : 'mail:test: SMTP_HOST is unset; the test message went to the Email Sink')
       break
     }
+    case 'install-app':
+      await cmdInstallApp(io, positional)
+      break
     case 'settings:set':
       await cmdSettingsSet(io, positional, flags)
       break
@@ -616,7 +657,7 @@ async function runCommand(argv: string[], io: CommandIO): Promise<number> {
       await cmdConsole(io)
       break
     default:
-      io.out('usage: cli <migrate|seed|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
+      io.out('usage: cli <migrate|seed|install-app|create-table|create-person|set-password|create-service-account|issue-token|list-tokens|revoke-token|migrate:rehearse|leavers:check|settings:set|settings:apply|settings:export|settings:variables|settings:compare|mail:test|seed-pack|boot-check|console> [...]')
       return cmd ? 1 : 0
   }
   return 0

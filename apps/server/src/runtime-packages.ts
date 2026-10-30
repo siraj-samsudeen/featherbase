@@ -199,6 +199,13 @@ function selectPackage(pkg: RuntimePackage) {
   registerAppDatasets(pkg.name, pkg.manifest.datasets)
 }
 
+/** #703: what this process found on the app path for `name`, for a developer's
+ *  re-pin (cli install-app). */
+export function selectedPackageIdentity(name: string): { version: string; digest: string; manifest: unknown } | null {
+  const pkg = packages.get(name)
+  return pkg ? { version: pkg.app.runtime_identity?.version ?? '', digest: pkg.digest, manifest: pkg.manifest } : null
+}
+
 export async function verifySelectedRuntimePackage(name: string) {
   const pkg = await verifyArtifact(packages.get(name))
   const [row] = await sql`select * from installed_app where name = ${name}`
