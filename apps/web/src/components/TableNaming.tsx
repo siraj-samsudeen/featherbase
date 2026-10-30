@@ -20,8 +20,7 @@ export function TableNaming({ table }: { table: string }) {
     if (meta.data) setPattern(meta.data.id_pattern)
   }, [meta.data])
 
-  async function save() {
-    if (pattern === null) return
+  async function save(pattern: string) {
     setSaving(true)
     setError(null)
     try {
@@ -62,7 +61,7 @@ export function TableNaming({ table }: { table: string }) {
             className={buttonClasses({ variant: 'primary' })}
             data-testid="naming-save"
             disabled={saving || !dirty}
-            onClick={() => void save()}
+            onClick={() => void save(pattern)}
           >
             {saving ? 'Saving…' : 'Save'}
           </button>

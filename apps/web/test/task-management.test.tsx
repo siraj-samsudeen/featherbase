@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { sql } from 'server/src/db'
+import { issueSession } from 'server/src/auth'
 import { resolve } from 'node:path'
 import { describe, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -23,7 +24,8 @@ const APP = 'tasker'
 function renderTasker(as: TestClient) {
   if (!as.token || !as.user) throw new Error('Tasker fixture requires a signed-in user')
   setSession(as.token, { row_id: as.user, email: as.user, full_name: null })
-  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return { ...render(<QueryClientProvider client={client}><TaskManagementPage /></QueryClientProvider>), client }
 }
 
 async function install() {
@@ -65,6 +67,223 @@ test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ a
       assigned_to: null,
     })
   } finally {
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('an ended session refuses edits and restores private preferences without losing drafts', async ({ admin }) => {
+  await install()
+  const bridgedFetch = globalThis.fetch
+  let release!: () => void
+  const initialPreference = new Promise<void>(resolve => { release = resolve })
+  try {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Retained work' } })
+    const project = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Retained project' } })
+    const session = await issueSession('Administrator')
+    // Controls can render before this real preference read returns. Rollback
+    // must restore the semantic default, not setQueryData(key, undefined).
+    globalThis.fetch = async (input, init) => {
+      const response = await bridgedFetch(input, init)
+      if (init?.method === 'GET' && String(input).includes('/api/user_settings/Task%20Management%20Focus')) await initialPreference
+      return response
+    }
+    renderTasker({ ...admin, token: session.token })
+    const user = userEvent.setup()
+    await screen.findByRole('link', { name: 'Retained work' })
+    expect((await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${session.token}` } })).status).toBe(200)
+
+    await user.click(screen.getByRole('button', { name: 'Add to My Focus: Retained work' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    expect(await screen.findByRole('button', { name: 'Add to My Focus: Retained work' })).toBeInTheDocument()
+    expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: null })
+    release()
+    globalThis.fetch = bridgedFetch
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'State for Retained work' }), 'In progress')
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired session'))
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_state: 'Not started' })
+
+    await user.click(screen.getByRole('button', { name: 'Save view' }))
+    await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Unsaved view')
+    await user.click(screen.getByRole('button', { name: 'Save private view' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    expect(screen.getByRole('textbox', { name: 'View name' })).toHaveValue('Unsaved view')
+    expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: null })
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: 'Retained project' }))
+    await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired session'))
+    expect(await screen.findByRole('button', { name: '☆ Add to tabs' })).toBeInTheDocument()
+    expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({ settings: null })
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Rename project' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), 'Unsaved project{Enter}')
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired session'))
+    expect(screen.getByRole('textbox', { name: 'Rename project' })).toHaveValue('Unsaved project')
+    expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ project_name: 'Retained project' })
+    await user.click(screen.getByRole('button', { name: 'Projects' }))
+    await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Not created{Enter}')
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Invalid or expired session'))
+    expect(screen.getByRole('textbox', { name: 'New project' })).toHaveValue('Not created')
+    expect((await admin.get('/api/table/tasker.project') as { data: unknown[] }).data).toHaveLength(1)
+
+    setSession(admin.token!, { row_id: 'Administrator', email: 'Administrator', full_name: null })
+    await user.click(screen.getByRole('button', { name: /^Inbox/ }))
+    await user.click(screen.getByRole('link', { name: 'Retained work' }))
+    await screen.findByRole('button', { name: 'Edit task' })
+    setSession(session.token, { row_id: 'Administrator', email: 'Administrator', full_name: null })
+    const details = within(screen.getByRole('region', { name: 'Task detail content' }))
+    await user.click(details.getByRole('button', { name: 'Mark Done' }))
+    expect(await details.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    expect(details.getByRole('combobox', { name: 'Task state' })).toHaveValue('Not started')
+    await user.type(details.getByRole('textbox', { name: 'Add comment' }), 'Keep my draft{Enter}')
+    expect(await details.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    expect(details.getByRole('textbox', { name: 'Add comment' })).toHaveValue('Keep my draft')
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_state: 'Not started', is_done: false })
+    expect(await admin.get(`/api/activity/tasker.task/${task.row_id}`)).toMatchObject({ comments: [] })
+    await user.click(details.getByRole('button', { name: 'Focus' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument())
+    expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: null })
+    setSession(admin.token!, { row_id: 'Administrator', email: 'Administrator', full_name: null })
+    await user.click(screen.getByRole('button', { name: 'Focus' }))
+    expect(await screen.findByRole('dialog', { name: 'Focused task details' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'focus' } }))
+  } finally {
+    release()
+    globalThis.fetch = bridgedFetch
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test.for([true, false])('late preference rejection preserves a newer successful write: %s', async (newerSucceeds, { admin }) => {
+  await install()
+  const bridgedFetch = globalThis.fetch
+  let release!: () => void
+  const responseGate = new Promise<void>(resolve => { release = resolve })
+  let received!: () => void
+  const firstResponse = new Promise<void>(resolve => { received = resolve })
+  try {
+    const first = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'First preference' } })
+    const second = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Second preference' } })
+    const session = await issueSession('Administrator')
+    renderTasker({ ...admin, token: session.token })
+    const user = userEvent.setup()
+    await screen.findByRole('link', { name: 'Second preference' })
+    await fetch('/api/logout', { method: 'POST', headers: { Authorization: `Bearer ${session.token}` } })
+    let delayed = false
+    // Delay delivery of a genuine server refusal; do not fabricate a response.
+    globalThis.fetch = async (input, init) => {
+      const response = await bridgedFetch(input, init)
+      if (!delayed && init?.method === 'PUT' && String(input).includes('/api/user_settings/Task%20Management%20Focus')) {
+        delayed = true
+        expect(response.status).toBe(401)
+        received()
+        await responseGate
+      }
+      return response
+    }
+    await user.click(screen.getByRole('button', { name: 'Add to My Focus: First preference' }))
+    await firstResponse
+    if (newerSucceeds) setSession(admin.token!, { row_id: 'Administrator', email: 'Administrator', full_name: null })
+    await user.click(screen.getByRole('button', { name: 'Add to My Focus: Second preference' }))
+    release()
+    if (newerSucceeds) {
+      await waitFor(async () => expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: { task_ids: [first.row_id, second.row_id] } }))
+    } else expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid or expired session')
+    for (const title of ['First preference', 'Second preference']) {
+      expect(await screen.findByRole('button', { name: `${newerSucceeds ? 'Remove from' : 'Add to'} My Focus: ${title}` })).toBeInTheDocument()
+    }
+    if (!newerSucceeds) expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: null })
+  } finally {
+    release()
+    globalThis.fetch = bridgedFetch
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test.for(['reverse writes', 'stale read'])('preference cache matches persisted truth after %s', async (race, { admin }) => {
+  await install()
+  const bridgedFetch = globalThis.fetch
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  let held!: () => void
+  const holding = new Promise<void>(resolve => { held = resolve })
+  let delivered!: () => void
+  const delivery = new Promise<void>(resolve => { delivered = resolve })
+  try {
+    const first = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Earlier choice' } })
+    const second = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Later choice' } })
+    const project = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Independent preference' } })
+    let delayed = false
+    globalThis.fetch = async (input, init) => {
+      const target = String(input).includes('/api/user_settings/Task%20Management%20Focus')
+      if (!delayed && target && init?.method === (race === 'reverse writes' ? 'PUT' : 'GET')) {
+        delayed = true
+        const stale = race === 'stale read' ? await bridgedFetch(input, init) : null
+        held()
+        await gate
+        const response = stale ?? await bridgedFetch(input, init)
+        delivered()
+        return response
+      }
+      return bridgedFetch(input, init)
+    }
+    const { client } = renderTasker(admin)
+    const user = userEvent.setup()
+    await screen.findByRole('link', { name: 'Earlier choice' })
+    if (race === 'stale read') await holding
+    await user.click(screen.getByRole('button', { name: 'Add to My Focus: Earlier choice' }))
+    if (race === 'reverse writes') {
+      await holding
+      await user.click(screen.getByRole('button', { name: 'Add to My Focus: Later choice' }))
+      expect(screen.getByRole('button', { name: 'Remove from My Focus: Later choice' })).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Independent preference' }))
+      await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+      await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({ settings: { project_ids: [project.row_id] } }))
+      await user.click(screen.getByRole('button', { name: /^Inbox/ }))
+    } else {
+      await waitFor(async () => expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: { task_ids: [first.row_id] } }))
+    }
+    release()
+    await delivery
+    await waitFor(() => expect(client.isFetching()).toBe(0))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove from My Focus: Earlier choice' })).toBeInTheDocument())
+    const ids = race === 'reverse writes' ? [first.row_id, second.row_id] : [first.row_id]
+    await waitFor(async () => expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: { task_ids: ids } }))
+    expect(await screen.findByRole('button', { name: `${race === 'reverse writes' ? 'Remove from' : 'Add to'} My Focus: Later choice` })).toBeInTheDocument()
+  } finally {
+    release()
+    globalThis.fetch = bridgedFetch
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('a lost preference response refetches the committed value instead of rolling it back', async ({ admin }) => {
+  await install()
+  const bridgedFetch = globalThis.fetch
+  try {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Confirmed by refetch' } })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await screen.findByRole('link', { name: 'Confirmed by refetch' })
+    globalThis.fetch = async (input, init) => {
+      const response = await bridgedFetch(input, init)
+      if (init?.method === 'PUT' && String(input).includes('/api/user_settings/Task%20Management%20Focus')) {
+        expect(response.status).toBe(200)
+        throw new TypeError('Connection lost after the server committed')
+      }
+      return response
+    }
+    await user.click(screen.getByRole('button', { name: 'Add to My Focus: Confirmed by refetch' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not update My Focus')
+    expect(screen.getByRole('button', { name: 'Remove from My Focus: Confirmed by refetch' })).toBeInTheDocument()
+    expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: { task_ids: [task.row_id] } })
+  } finally {
+    globalThis.fetch = bridgedFetch
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -204,6 +423,10 @@ test('find_and_reuse_task_view: compound project criteria stay visible and save 
     expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Save view' }))
+    await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Discarded view')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: null })
+    await user.click(screen.getByRole('button', { name: 'Save view' }))
     await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Urgent open stock work')
     await user.click(screen.getByRole('button', { name: 'Save private view' }))
     expect(await screen.findByRole('heading', { name: 'Urgent open stock work' })).toBeInTheDocument()
@@ -234,8 +457,17 @@ test('find_and_reuse_task_view: compound project criteria stay visible and save 
     expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Clear search' }))
     expect(await screen.findByText('Reconcile receiving variance')).toBeInTheDocument()
+    await user.type(savedViewSearch, 'does not exist')
+    await user.click(screen.getByRole('button', { name: 'Clear all filters' }))
+    expect(screen.queryByRole('button', { name: 'Remove Urgent filter' })).not.toBeInTheDocument()
+    expect(screen.getByRole('searchbox')).toHaveValue('does not exist')
+    expect((await admin.get('/api/user_settings/tasker.saved-views') as typeof stored).settings.views).toEqual(stored.settings.views)
 
     await user.click(screen.getByRole('button', { name: /Views/ }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename saved view' }), ' discarded')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(await screen.findByText('Urgent open stock work')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Rename' }))
     const rename = screen.getByRole('textbox', { name: 'Rename saved view' })
     await user.clear(rename)
@@ -255,9 +487,39 @@ test('find_and_reuse_task_view: compound project criteria stay visible and save 
   }
 })
 
-test('personal_destination_assigns_owner: Inbox work moved to Personal tasks assigns its owner', async ({ admin }) => {
+test('saved view names reject case-insensitive collisions on creation and rename', async ({ admin }) => {
   await install()
   try {
+    const setup = { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } }
+    const views = [
+      { id: 'first', name: 'First view', scope: { kind: 'inbox' }, setup },
+      { id: 'second', name: 'Second view', scope: { kind: 'inbox' }, setup },
+    ]
+    await admin.put('/api/user_settings/tasker.saved-views', { views })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await screen.findByRole('option', { name: 'Second view' })
+    await user.click(await screen.findByRole('button', { name: 'Save view' }))
+    await user.type(screen.getByRole('textbox', { name: 'View name' }), ' FIRST VIEW ')
+    await user.click(screen.getByRole('button', { name: 'Save private view' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('A saved view named “FIRST VIEW” already exists')
+    await user.click(screen.getByRole('button', { name: /^Views/ }))
+    await user.click(screen.getAllByRole('button', { name: 'Rename' })[0])
+    await user.clear(screen.getByRole('textbox', { name: 'Rename saved view' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename saved view' }), ' SECOND VIEW ')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('A saved view named “SECOND VIEW” already exists')
+    expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: { views } })
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('personal_destination_assigns_owner: Inbox work moved to Personal tasks assigns its owner', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const colleague = await createUser({ roles: [] })
     const task = (await admin.post('/api/save_row', {
       table: 'tasker.task',
       row: { task_title: 'Prepare my weekly notes' },
@@ -279,6 +541,12 @@ test('personal_destination_assigns_owner: Inbox work moved to Personal tasks ass
       assigned_to: 'Administrator',
       task_state: 'Not started',
     })
+    await user.click(screen.getByRole('button', { name: /^Personal tasks/ }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Personal tasks owner' }), colleague.user!)
+    await user.type(screen.getByRole('textbox', { name: 'Add personal task' }), 'My follow-up{Enter}')
+    expect(await screen.findByRole('link', { name: 'My follow-up' })).toBeInTheDocument()
+    const fields = encodeURIComponent(JSON.stringify(['task_title', 'personal_tasks_owner', 'assigned_to']))
+    expect((await admin.get<{ data: Record<string, unknown>[] }>(`/api/table/tasker.task?fields=${fields}`)).data.find(row => row.task_title === 'My follow-up')).toMatchObject({ personal_tasks_owner: colleague.user, assigned_to: colleague.user })
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
@@ -312,10 +580,9 @@ test('personal_worklist_flow: My Focus is ordered, private, and does not duplica
 
     expect(await screen.findAllByText('Assigned and focused')).toHaveLength(1)
     expect(screen.getAllByText('Focused only')).toHaveLength(1)
-    const settings = (await admin.get('/api/user_settings/Task%20Management%20Focus')) as {
-      settings: { task_ids: string[] }
-    }
-    expect(settings.settings.task_ids).toEqual([focusedOnly.row_id, assigned.row_id])
+    await waitFor(async () => expect(await admin.get('/api/user_settings/Task%20Management%20Focus')).toEqual({
+      settings: { task_ids: [focusedOnly.row_id, assigned.row_id] },
+    }))
     expect(await member.get('/api/user_settings/Task%20Management%20Focus')).toEqual({
       settings: { task_ids: [focusedOnly.row_id] },
     })
@@ -426,13 +693,19 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
     expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+    await user.click(await screen.findByRole('button', { name: 'Move project Stock review — September tab left' }))
+    await user.click(screen.getByRole('button', { name: 'Move project Stock review — September tab right' }))
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({ settings: { project_ids: [first.row_id] } }))
     await user.click(screen.getByRole('button', { name: 'Store opening readiness' }))
     await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
     await user.click(screen.getByRole('button', { name: 'Move project Store opening readiness tab left' }))
-    expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({
       settings: { project_ids: [second.row_id, first.row_id] },
-    })
+    }))
     expect(await member.get('/api/user_settings/tasker.projects')).toEqual({ settings: null })
+    await user.click(within(document.querySelector('.tasker-project-tabs') as HTMLElement).getByRole('button', { name: 'Stock review — September' }))
+    expect(await screen.findByRole('heading', { name: 'Stock review — September' })).toBeInTheDocument()
+    expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Together' }))
     expect(await screen.findByRole('heading', { name: /Unassigned 1/ })).toBeInTheDocument()
@@ -684,7 +957,7 @@ test('task_detail_flow: one task switches among three detail modes with comments
     expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Add comment' })).not.toBeInTheDocument()
     expect(screen.getByText('Open Inspector to edit or join the discussion.')).toBeInTheDocument()
-    expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } })
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } }))
   } finally {
     location.hash = ''
     await uninstallApp(APP).catch(() => {})
@@ -822,7 +1095,7 @@ test('task details do not carry unsaved text into another task', async ({ admin 
 test('task_list_surface: every task row exposes the same shared and private controls', async ({ admin }) => {
   await install()
   try {
-    await admin.post('/api/save_row', {
+    const task = await admin.post<{ row_id: string }>('/api/save_row', {
       table: 'tasker.task',
       row: { task_title: 'Review blocked transfer', task_state: 'Blocked', urgent: true },
     })
@@ -833,6 +1106,13 @@ test('task_list_surface: every task row exposes the same shared and private cont
     expect(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' })).toHaveValue('')
     expect(screen.getByRole('button', { name: 'Remove urgent flag from Review blocked transfer' })).toHaveTextContent('Urgent')
     expect(screen.getByRole('button', { name: 'Add to My Focus: Review blocked transfer' })).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' }), 'Administrator')
+    await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: 'Administrator', urgent: true }))
+    await user.click(screen.getByRole('button', { name: 'Remove urgent flag from Review blocked transfer' }))
+    await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: 'Administrator', urgent: false, task_state: 'Blocked' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' }), '')
+    await waitFor(async () => expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: null, urgent: false, task_state: 'Blocked' }))
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
@@ -947,12 +1227,20 @@ describe('Saved views stay within their list', () => {
       await admin.put('/api/user_settings/tasker.saved-views', { views: [{
         id: 'pop-up', name: 'Pop-up store work', scope: { kind: 'all' },
         setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [gone.row_id] } },
+      }, {
+        id: 'former-owner', name: 'Former colleague personal list', scope: { kind: 'personal', owner: 'former@example.test' },
+        setup: { search: '', filters: { states: [], responsiblePeople: [], urgencies: [], projects: [] } },
+      }, {
+        id: 'former-assignee', name: 'Former colleague assignments', scope: { kind: 'all' },
+        setup: { search: '', filters: { states: [], responsiblePeople: ['former@example.test'], urgencies: [], projects: [] } },
       }] })
       renderTasker(admin)
       const user = userEvent.setup()
 
       await user.click(await screen.findByRole('button', { name: /Views/ }))
       expect(await screen.findByText('One or more projects are unavailable')).toBeInTheDocument()
+      expect(screen.getByText('Person unavailable')).toBeInTheDocument()
+      expect(screen.getByText('One or more people are unavailable')).toBeInTheDocument()
       await user.click(screen.getByRole('button', { name: /Pop-up store work/ }))
       expect(await screen.findByRole('heading', { name: 'Pop-up store work' })).toBeInTheDocument()
       expect(screen.queryByText('Hang 11 shelf labels')).not.toBeInTheDocument()

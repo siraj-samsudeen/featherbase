@@ -13,7 +13,7 @@
 
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe } from 'vitest'
+import { describe, vi } from 'vitest'
 import { sql } from 'server/src/db'
 import { test, expect, renderApp } from './pg-test'
 
@@ -225,6 +225,36 @@ test('a source larger than one page merges all of its rows, not the first page',
   expect(page.total).toBe(523)
 // 520 rows through the real server: slower than the suite default on a busy
 // machine (#527), so this one test gets more time; no assertion changes.
+}, 30_000)
+
+test('a source emptied between pages finishes with the rows already read', async ({ admin }) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  await admin.post(`/api/table/${encodeURIComponent(SRC)}:import`, {
+    rows: Array.from({ length: 499 }, (_, i) => ({ zone_name: `Concurrent ${i}`, pop: i })),
+  })
+  await openMerge(admin)
+  await chooseTarget(user)
+  const real = globalThis.fetch
+  const concurrent = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    const url = new URL(String(input), 'http://localhost')
+    if (url.pathname === `/api/table/${encodeURIComponent(SRC)}` &&
+        url.searchParams.get('limit_page_length') === '500' && url.searchParams.get('limit_start') === '0') {
+      // A real first page, followed by a concurrent deletion in the same
+      // disposable sandbox. The following page is a real empty server read.
+      await sql`delete from featherbase.tm_source_zones`
+    }
+    return response
+  })
+  try {
+    await user.click(screen.getByTestId('tm-go'))
+    expect(await screen.findByTestId('tm-outcome', undefined, { timeout: 30_000 })).toHaveTextContent('Merged 500 rows')
+    expect(await admin.get(`/api/table/${encodeURIComponent(SRC)}:count`)).toEqual({ count: 0 })
+    expect(await admin.get(`/api/table/${encodeURIComponent(DST)}:count`)).toEqual({ count: 501 })
+  } finally {
+    concurrent.mockRestore()
+  }
 }, 30_000)
 
 describe('Merged values are converted to fit, or the row is reported as failed', () => {

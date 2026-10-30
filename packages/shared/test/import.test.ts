@@ -145,6 +145,12 @@ describe('IMP-002: inferColumnType', () => {
 })
 
 describe('IMP-003: inferTableDef', () => {
+  test('a blank header gets a readable positional label', () => {
+    expect(inferTableDef('Inventory', [''], [['item']]).columns).toEqual([
+      { column_name: 'col_1', label: 'Col 1', column_type: 'Data', reqd: false, in_list_view: true },
+    ])
+  })
+
   test('builds a full table payload with labels from original headers', () => {
     const def = inferTableDef(
       'Order',
@@ -339,6 +345,12 @@ describe('IMP-009: autoMapColumns / scoreTableMatch', () => {
     expect(autoMapColumns(['qty', 'Quantity'], targets)).toEqual(['qty', null])
   })
 
+  test('unlabelled targets still match by name, and empty inputs have no match quality', () => {
+    expect(autoMapColumns(['Qty', 'Quantity'], [{ column_name: 'qty' }])).toEqual(['qty', null])
+    expect(tableMatchQuality(['Qty'], [])).toEqual({ score: 0, coverage: 0, mapped: 0 })
+    expect(tableMatchQuality(['', '---'], targets)).toEqual({ score: 0, coverage: 0, mapped: 0 })
+  })
+
   test('scoreTableMatch is the mapped fraction, ignoring blank headers', () => {
     expect(scoreTableMatch(['Customer Name', 'Qty', 'Ship Date'], targets)).toBe(1)
     expect(scoreTableMatch(['Customer Name', 'Qty', 'Unrelated'], targets)).toBeCloseTo(2 / 3)
@@ -360,7 +372,7 @@ describe('#387: a Datetime wall time goes on the wire as the instant it names', 
   test('a date-only value is local midnight on the importing clock', () => {
     expect(wire('2024-10-21')).toBe(new Date(2024, 9, 21).toISOString())
   })
-  test.each(['2024-10-21T12:00:00+05:30', '2024-10-21T06:30:00Z', '1900-02-29T12:00:00', '2024-10-21T25:00', 'soon'])(
+  test.each(['2024-10-21T12:00:00+05:30', '2024-10-21T06:30:00Z', '1900-02-29T12:00:00', '2024-10-21T25:00', 'prefix2024-10-21T12:00', 'soon'])(
     '%s is sent as typed (zoned, impossible, or not a date-time)',
     (cell) => expect(wire(cell)).toBe(cell),
   )
@@ -382,6 +394,22 @@ describe('IMP-004: coerceRows', () => {
     expect(rows).toEqual([
       { values: { title: 'A', qty: '3', active: true, due: '2026-01-15' }, sourceIndex: 0 },
       { values: { title: 'B', active: false, due: '2026-02-01' }, sourceIndex: 1 },
+    ])
+  })
+
+  test('native spreadsheet values preserve booleans, numbers, instants and local text dates', () => {
+    expect(coerceRows([
+      { column_name: 'active', column_type: 'Check' },
+      { column_name: 'qty', column_type: 'Int' },
+      { column_name: 'when', column_type: 'Datetime' },
+      { column_name: 'label', column_type: 'Data' },
+      { column_name: 'text_date', column_type: 'Text' },
+    ], [
+      [false, 0, new Date('2026-01-15T10:20:30Z'), 42, new Date(2026, 0, 15, 9, 8, 7)],
+      [true, -3, new Date('2026-12-31T23:59:00Z'), 'kept', 'typed'],
+    ])).toEqual([
+      { values: { active: false, qty: 0, when: '2026-01-15T10:20:30.000Z', label: '42', text_date: '2026-01-15T09:08:07' }, sourceIndex: 0 },
+      { values: { active: true, qty: -3, when: '2026-12-31T23:59:00.000Z', label: 'kept', text_date: 'typed' }, sourceIndex: 1 },
     ])
   })
 
@@ -429,10 +457,10 @@ describe('mergeSheetHeaders', () => {
 
   test('two headers folding together WITHIN one sheet stay two columns', () => {
     // The sheet really has two columns; folding them would drop one.
-    const merged = mergeSheetHeaders([['Floor', 'floor']])
-    expect(merged).toHaveLength(2)
-    expect(merged[0].from).toEqual([0])
-    expect(merged[1].from).toEqual([1])
+    const merged = mergeSheetHeaders([['Floor', 'floor', 'FLOOR']])
+    expect(merged).toHaveLength(3)
+    expect(new Set(merged.map((column) => column.key)).size).toBe(3)
+    expect(mergeSheetRows(merged, [[['Ground', 'First', 'Second']]])).toEqual([['Ground', 'First', 'Second']])
   })
 
   test('blank headers in different sheets are not the same column', () => {
@@ -533,6 +561,15 @@ describe('applyColumnCombines', () => {
       ['STR-009', 'Fresh'],
       ['Anna Nagar', 'Dairy'],
     ])
+  })
+
+  test('a sheet with neither combined source keeps its row and an empty combined cell', () => {
+    const columns = applyColumnCombines(
+      mergeSheetHeaders([['Store Code', 'Zone'], ['Store Name', 'Zone'], ['Zone']]),
+      [{ name: 'Store', keys: ['store_code', 'store_name'], rule: 'first' }],
+    )
+    expect(mergeSheetRows(columns, [[['STR-009', 'Fresh']], [['Anna Nagar', 'Dairy']], [['Frozen']]]))
+      .toEqual([['STR-009', 'Fresh'], ['Anna Nagar', 'Dairy'], [null, 'Frozen']])
   })
 
   test("'first' is priority WITH fallback — the other fills only empty cells", () => {

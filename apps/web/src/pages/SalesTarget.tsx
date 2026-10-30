@@ -302,7 +302,6 @@ function SalesTargetReport() {
           } catch {
             // A client-side fetch failure: nothing reached the server, so nothing is logged.
             if (!current(preSignal)) return
-            /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
             setPre({ kind: 'error' })
           }
         })()
@@ -338,7 +337,6 @@ function SalesTargetReport() {
         else setEmbed({ kind: 'error' })
       } catch (err) {
         if (!embedSignal || !current(embedSignal)) return
-        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; an abort returns above @preserve */
         setEmbed({ kind: 'error' })
       }
     })()

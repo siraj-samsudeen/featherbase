@@ -11,7 +11,8 @@
   ]}, {"id": "explicit_action_policies", "fromVersion": "2.0.0", "toVersion": "2.1.0", "operations": []},
   {"id": "runtime_host_shell", "fromVersion": "2.1.0", "toVersion": "2.2.0", "operations": []},
   {"id": "withdraw_everyone_person_read", "fromVersion": "2.2.0", "toVersion": "2.3.0", "operations": []},
-  {"id": "dev_tool_upgrade", "fromVersion": "2.3.0", "toVersion": "2.3.1", "operations": []}],
+  {"id": "dev_tool_upgrade", "fromVersion": "2.3.0", "toVersion": "2.3.1", "operations": []},
+  {"id": "coverage_tooling", "fromVersion": "2.3.1", "toVersion": "2.3.2", "operations": []}],
   "tables": [
     {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
       "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true},

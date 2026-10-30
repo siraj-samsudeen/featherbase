@@ -119,6 +119,8 @@ test('Run now queues one run without moving the schedule, and reads Queued until
   const kept = live.find((r) => r.trigger === 'schedule')!
   expect(kept.row_id).toBe(scheduled.row_id)
   expect(new Date(kept.run_at as string).getTime()).toBe(new Date(scheduled.run_at as string).getTime())
+  await waitFor(() => expect(screen.queryByText('Jp ok queued')).not.toBeInTheDocument(), { timeout: 8000 })
+  expect(within(ok).getByRole('button', { name: 'Run Jp ok now' })).toBeDisabled()
 })
 
 test('no scheduled jobs reads as an empty state, not an empty table (item 12)', async ({ admin }) => {
@@ -126,6 +128,40 @@ test('no scheduled jobs reads as an empty state, not an empty table (item 12)', 
   await sql`delete from scheduled_job`
   await renderApp('/featherbase/admin/jobs', admin)
   expect(await screen.findByText('No scheduled jobs', {}, { timeout: 10_000 })).toBeInTheDocument()
+})
+
+test('Run now explains a revoked permission and does not leave the button queued', async ({ admin, createUser }) => {
+  await seed()
+  const manager = await createUser({ email: 'former-manager.jobs@example.test', roles: ['System Manager'] })
+  await renderApp('/featherbase/admin/jobs', manager)
+  const ok = await entry('jp_ok')
+  const person = await admin.get<Record<string, unknown>>(`/api/table/Person/${manager.user}`)
+  await admin.post('/api/save_row', { table: 'Person', row: { ...person, roles: [] } })
+  const run = within(ok).getByRole('button', { name: 'Run Jp ok now' })
+  await userEvent.click(run)
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Could not run Jp ok:.*System Manager/)
+  expect(run).toBeEnabled()
+  expect(run).not.toHaveTextContent('Queued')
+  expect(await sql`select 1 from background_job where method = 'jp_ok' and trigger = 'manual'`).toHaveLength(0)
+})
+
+test('a refused schedule read offers a retry that recovers after access returns', async ({ admin, createUser }) => {
+  await seed()
+  const manager = await createUser({ email: 'schedule-reader@example.test', roles: ['System Manager'] })
+  await renderApp('/featherbase/admin', manager)
+  const jobs = await screen.findByTestId('jobs-link')
+  const setRoles = async (roles: { role: string }[]) => {
+    const person = await admin.get<Record<string, unknown>>(`/api/table/Person/${manager.user}`)
+    await admin.post('/api/save_row', { table: 'Person', row: { ...person, roles } })
+  }
+  await setRoles([])
+  await userEvent.click(jobs)
+  const schedules = await screen.findByRole('region', { name: 'Scheduled jobs' })
+  expect(await within(schedules).findByText('The scheduled jobs could not be loaded.')).toBeInTheDocument()
+  await setRoles([{ role: 'System Manager' }])
+  await userEvent.click(within(schedules).getByRole('button', { name: 'Try again' }))
+  expect(await entry('jp_ok')).toHaveTextContent('Rebuild the report snapshots.')
+  expect(within(schedules).queryByText('The scheduled jobs could not be loaded.')).not.toBeInTheDocument()
 })
 
 test('the sidebar links to Jobs for a System Manager (item 1)', async ({ admin }) => {

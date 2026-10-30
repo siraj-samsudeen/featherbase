@@ -93,7 +93,7 @@ jobs:
             reason="PR carries the run-e2e label"; e2e=true
           else
             matched=$(git diff --name-only HEAD^1 HEAD | grep -E \
-              '^(apps/web/|packages/|runtime-apps/|client-apps/|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
+              '^(apps/web/|packages/|runtime-apps/|client-apps/|tools/(prove-runtime-packages|prove-tasker-acceptance|collect-runtime-proof-coverage)\.mjs$|tools/vitest\.runtime-components\.config\.ts$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|package\.json$|\.github/workflows/test\.yml$)' || true)
             if [ -n "$matched" ]; then
               reason="PR touches the e2e surface: $(echo "$matched" | head -5 | tr '\n' ' ')"; e2e=true
             else
@@ -366,12 +366,29 @@ jobs:
         run: |
           pnpm --filter shared test:coverage
           pnpm --filter web test:coverage
+          npm run test:coverage --prefix runtime-apps/tasker
+
+      - name: Collect runtime component coverage against the real server
+        run: pnpm --filter web exec vitest run --config ../../tools/vitest.runtime-components.config.ts
+
+      - name: Upload component and runtime unit coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: component-coverage
+          path: |
+            apps/web/.nyc_output/jsdom.json
+            coverage/tasker/unit/coverage-final.json
+            coverage/tasker/components/coverage-final.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
   # The verdict for the unit layer, under the name merge automation waits
   # on. Merging needs no database: Vitest replays the shards' results and
   # coverage from their blob reports without running globalSetup.
   unit:
-    needs: [checks, unit-server, unit-web]
+    needs: [checks, unit-server, unit-web, release-preflight-pg18, coverage-merged]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -380,9 +397,11 @@ jobs:
         if: >-
           needs.checks.result != 'success' ||
           needs.unit-server.result != 'success' ||
-          needs.unit-web.result != 'success'
+          needs.unit-web.result != 'success' ||
+          needs.release-preflight-pg18.result != 'success' ||
+          (needs.coverage-merged.result != 'success' && needs.coverage-merged.result != 'skipped')
         run: |
-          echo "checks=${{ needs.checks.result }} unit-server=${{ needs.unit-server.result }} unit-web=${{ needs.unit-web.result }}"
+          echo "checks=${{ needs.checks.result }} unit-server=${{ needs.unit-server.result }} unit-web=${{ needs.unit-web.result }} pg18=${{ needs.release-preflight-pg18.result }} coverage=${{ needs.coverage-merged.result }}"
           exit 1
 
       - uses: actions/checkout@v4
@@ -406,6 +425,9 @@ jobs:
       # Fails below the server's coverage.thresholds, exactly as the
       # unsharded `test:coverage` did.
       - name: Merge server shards and enforce coverage thresholds
+        env:
+          # Keep the driver in the denominator. Merging never connects.
+          MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
         run: pnpm --filter server exec vitest run --merge-reports --coverage
 
   # Production runs PostgreSQL 18.6, where the release preflight has checks
@@ -456,8 +478,23 @@ jobs:
         run: |
           pnpm --filter server migrate
 
-      - name: Run the release preflight suite on PostgreSQL 18
-        run: pnpm --filter server test test/release-preflight.test.ts
+      - name: Run the release preflight suite on PostgreSQL 18 with coverage
+        run: >-
+          pnpm --filter server exec vitest run test/release-preflight.test.ts --coverage
+          --coverage.thresholds.lines=0 --coverage.thresholds.statements=0
+          --coverage.thresholds.functions=0 --coverage.thresholds.branches=0
+          --reporter=default --reporter=blob
+          --outputFile.blob=.vitest-reports/release-pg18.json
+
+      - name: Upload PostgreSQL 18 coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-blob-pg18
+          path: apps/server/.vitest-reports/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
       # `pnpm apps:prepare` above built and unit-tested each client app.
       - name: Run Feather Dash's platform tests (client-apps/jeyarama/dash)
@@ -470,7 +507,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.e2e != 'false') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:17
@@ -513,8 +550,50 @@ jobs:
       # playwright.config.ts pins workers: 1 (specs share one server and
       # database) — keep it. The trace flag is CI-only so failures leave
       # something inspectable in test-results/ for the artifact below.
-      - name: Run e2e suite
-        run: pnpm --filter web e2e --trace retain-on-failure
+      - name: Run e2e suite with coverage
+        run: pnpm --filter web coverage:e2e --trace retain-on-failure
+
+      - name: Collect runtime HTTP coverage
+        run: >-
+          pnpm --filter server exec vitest run
+          --config ../../runtime-apps/tasker/vitest.integration.config.ts
+
+      # The development seed checks PostgreSQL's actual server address.
+      # Docker port forwarding is not loopback from PostgreSQL's perspective.
+      - name: Start loopback PostgreSQL for the packaged seed proof
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql
+          PG_BIN=$(dirname "$(find /usr/lib/postgresql -name initdb | sort -V | tail -1)")
+          "$PG_BIN/initdb" -D "$RUNNER_TEMP/runtime-proof-pg" -U postgres --auth=trust
+          "$PG_BIN/pg_ctl" -D "$RUNNER_TEMP/runtime-proof-pg" -l "$RUNNER_TEMP/runtime-proof-pg.log" -o "-h 127.0.0.1 -p 5433 -k $RUNNER_TEMP" -w start
+
+      - name: Prove packaged runtime journeys with coverage
+        env:
+          VITE_COVERAGE: 'true'
+          RUNTIME_PROOF_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5433/featherbase_runtime_proof_e2e
+        run: pnpm apps:prove
+
+      - name: Upload runtime integration coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-integration-coverage
+          path: |
+            coverage/tasker/integration/
+            coverage/tasker/packaged/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload browser coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-coverage
+          path: apps/web/.nyc_output/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
       # #642: frame policies are response headers, which only the API server
       # serving the BUILT web app sets (the stack above serves pages from the
@@ -537,4 +616,66 @@ jobs:
             apps/web/test-results/
             apps/web/playwright-report/
           if-no-files-found: ignore
+          retention-days: 7
+
+  # One source-level web report, not separate component/browser percentages.
+  # On a server-only PR e2e may be skipped; main always runs both suites.
+  coverage-merged:
+    needs: [unit-web, e2e]
+    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require successful component and browser suites
+        if: needs.unit-web.result != 'success' || needs.e2e.result != 'success'
+        run: exit 1
+
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: component-coverage
+          path: .
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: browser-coverage
+          path: apps/web/.nyc_output
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-integration-coverage
+          path: coverage/tasker
+
+      - name: Install runtime coverage reporter
+        run: npm ci --prefix runtime-apps/tasker --no-audit --no-fund
+
+      - name: Merge component and browser coverage
+        run: pnpm --filter web coverage:merged
+
+      - name: Merge runtime unit, HTTP, browser and packaged coverage
+        run: >-
+          npm run coverage:merged --prefix runtime-apps/tasker --
+          --browser-dir "$PWD/apps/web/.nyc_output"
+          "$PWD"/coverage/tasker/components/coverage-final.json
+          "$PWD"/coverage/tasker/integration/*.json
+          "$PWD"/coverage/tasker/packaged/*.json
+
+      - name: Upload merged source coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-source-coverage
+          path: |
+            apps/web/coverage-merged/
+            coverage/tasker/merged/
+          if-no-files-found: error
           retention-days: 7

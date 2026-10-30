@@ -93,6 +93,23 @@ test('7: a Table without history warns in preview and keeps overwrite semantics'
   expect((await admin.get<Record<string, unknown>>(`${path}/A`)).city).toBe('East')
   expect((await conflicts(admin)).conflicts).toEqual([])
 })
+
+test('turning history on after the first import preserves corrections without inventing source conflicts', async ({ admin }) => {
+  await makeTable(admin, { name: table, columns: ['code', 'city'] })
+  await sql`update table_def set track_changes = false where name = ${table}`
+  invalidateMeta(table)
+  await admin.post(`${path}:import`, { rows: [{ row_id: 'A', code: 'A', city: 'North' }] })
+  await sql`update table_def set track_changes = true where name = ${table}`
+  invalidateMeta(table)
+  const original = await admin.get<Record<string, unknown>>(`${path}/A`)
+  await patchDoc(admin, `${path}/A`, { city: 'South', updated_at: original.updated_at })
+  await load(admin, 'North', 'unchanged-after-history')
+  expect(await admin.get(`${path}/A`)).toMatchObject({ city: 'South' })
+  expect((await conflicts(admin)).conflicts).toEqual([])
+  await load(admin, 'East', 'changed-after-history')
+  expect((await conflicts(admin)).conflicts).toMatchObject([{ field: 'city', incoming: 'East' }])
+})
+
 test('8: undo restores only changed fields and closes that import’s conflicts', async ({ admin }) => {
   await correction(admin)
   await load(admin, 'East', 'second', { phone: '222' })

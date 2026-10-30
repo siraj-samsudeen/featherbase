@@ -315,6 +315,16 @@ describe('the check on a live instance', () => {
     expect(seeded).toBeUndefined()
     expect((await runLeaverCheck({ today: TODAY })).plan).toBeNull()
   })
+
+  test('the scheduled check without StyleHR records a successful no-op rather than a refusal', async () => {
+    await loadJobs()
+    await sql`delete from background_job`
+    const job = await enqueue(LEAVER_CHECK_JOB, {})
+    await sql`update background_job set run_at = now() where row_id = ${job}`
+    expect(await runOneJob()).toBe(true)
+    expect(await sql`select outcome, result from job_execution where job = ${job}`)
+      .toEqual([{ outcome: 'success', result: 'leaver check: nothing to report; no summary sent' }])
+  })
 })
 
 describe('the leaver plan as printed for logs', () => {

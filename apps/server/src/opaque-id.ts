@@ -22,12 +22,9 @@ export function opaqueId(prefix: string, length = 20): string {
 }
 
 export const PERSON_ID_PREFIX = 'psn_'
-export const SERVICE_ACCOUNT_ID_PREFIX = 'svc_'
+const SERVICE_ACCOUNT_ID_PREFIX = 'svc_'
 
 /** A new service account's permanent id. */
 export function newServiceAccountId(): string {
   return opaqueId(SERVICE_ACCOUNT_ID_PREFIX)
 }
-
-/** The two built-in persons keep their ids and are never re-keyed (A-B3). */
-export const BUILT_IN_PERSONS = ['Administrator', 'Guest'] as const

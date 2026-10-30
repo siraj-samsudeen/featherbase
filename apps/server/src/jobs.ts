@@ -180,15 +180,11 @@ async function scheduledJob(method: string): Promise<{ cadence: string; enabled:
 
 // Loaded on first use: job-alerts reaches email.ts, which registers its own
 // job against this module at import, so a static import would be a cycle.
-// Never throws: the run is already recorded and its recurrence queued, and a
-// mail problem must not turn a finished run back into a failed one.
+// alertJobProblem owns mail failures: the run is already recorded and its
+// recurrence queued, so it never undoes a finished run for a mail problem.
 async function alertProblem(p: import('./job-alerts').JobProblem): Promise<void> {
-  try {
-    const { alertJobProblem } = await import('./job-alerts')
-    await alertJobProblem(p)
-  } catch (err) {
-    console.warn(JSON.stringify({ event: 'job_alert_failed', method: p.method, error: err instanceof Error ? err.message : String(err) }))
-  }
+  const { alertJobProblem } = await import('./job-alerts')
+  await alertJobProblem(p)
 }
 
 // Claim and run a single due job. Returns true if one was processed.

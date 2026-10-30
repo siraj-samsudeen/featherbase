@@ -124,9 +124,8 @@ export function AccessTokens() {
     },
   })
 
-  async function copyToken() {
-    if (!issued) return
-    await navigator.clipboard.writeText(issued.token)
+  async function copyToken(token: string) {
+    await navigator.clipboard.writeText(token)
     setCopied(true)
   }
 
@@ -318,7 +317,7 @@ export function AccessTokens() {
               {issued.token}
             </code>
             <div className="flex justify-end gap-2">
-              <button className={buttonClasses()} data-testid="copy-secret" onClick={() => void copyToken()}>
+              <button className={buttonClasses()} data-testid="copy-secret" onClick={() => void copyToken(issued.token)}>
                 {copied ? 'Copied ✓' : 'Copy'}
               </button>
               <button className={buttonClasses({ variant: 'primary' })} data-testid="secret-done" onClick={() => setIssued(null)}>

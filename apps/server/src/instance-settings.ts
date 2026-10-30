@@ -77,7 +77,7 @@ export async function managedScope(): Promise<ScopeEntry[]> {
 const rowSchema = z.object({ row_id: z.string().min(1) }).catchall(z.unknown())
 const settingsBlock = z.record(z.union([z.array(rowSchema), z.record(z.unknown())]))
 
-export const instanceSettingsFileSchema = z
+const instanceSettingsFileSchema = z
   .object({
     settings: settingsBlock,
     environments: z.record(z.object({ settings: settingsBlock.optional() }).strict()).optional(),

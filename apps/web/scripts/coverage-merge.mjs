@@ -16,6 +16,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import libCoverage from 'istanbul-lib-coverage'
 import libSourceMaps from 'istanbul-lib-source-maps'
+import ts from 'typescript'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const input = path.join(root, '.nyc_output')
@@ -23,8 +24,8 @@ const output = path.join(root, '.coverage', 'merged.json')
 const src = path.join(root, 'src') + path.sep
 
 const files = fs.existsSync(input) ? fs.readdirSync(input).filter((f) => f.endsWith('.json')) : []
-if (files.length === 0) {
-  console.error(`no coverage in ${input} — run test:coverage and/or coverage:e2e first`)
+if (!files.includes('jsdom.json') || !files.some((f) => f.startsWith('e2e-'))) {
+  console.error(`incomplete coverage in ${input} — run both test:coverage and coverage:e2e first`)
   process.exit(1)
 }
 
@@ -49,11 +50,27 @@ const merged = libCoverage.createCoverageMap({})
 for (const f of files.sort()) {
   const raw = JSON.parse(fs.readFileSync(path.join(input, f), 'utf8'))
   const map = await libSourceMaps.createSourceMapStore().transformCoverage(libCoverage.createCoverageMap(raw))
-  // Scope matches vitest.config.ts: the app's own src/, tests and main.tsx out.
-  map.filter((file) => file.startsWith(src) && !/\.test\.[tj]sx?$/.test(file) && file !== path.join(src, 'main.tsx'))
+  // Browser-only entry points belong in the denominator too.
+  map.filter((file) => file.startsWith(src) && !/\.test\.[tj]sx?$/.test(file) && !file.endsWith('.d.ts'))
   merged.merge(normalise(map))
   console.log(`${f}: ${map.files().length} files`)
 }
+
+// Vitest supplies zero counters for unvisited source. Refuse a partial input
+// that silently omits executable files; type declarations and pure re-export
+// barrels have no Istanbul counters and are identified by syntax, not names.
+const missing = fs.readdirSync(src, { recursive: true })
+  .filter((file) => /\.tsx?$/.test(file) && !/\.d\.ts$|\.test\.tsx?$/.test(file))
+  .map((file) => path.join(src, file))
+  .filter((file) => !merged.files().includes(file))
+  .filter((file) => {
+    const source = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest)
+    return source.statements.some((statement) => !(
+      ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement) ||
+      ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement) || ts.isEmptyStatement(statement)
+    ))
+  })
+if (missing.length) throw new Error(`coverage is missing executable source:\n${missing.join('\n')}`)
 fs.mkdirSync(path.dirname(output), { recursive: true })
 fs.writeFileSync(output, JSON.stringify(merged))
 console.log(`merged ${files.length} inputs (${merged.files().length} source files) into ${path.relative(root, output)}`)

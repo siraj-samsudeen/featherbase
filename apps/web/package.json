@@ -7,7 +7,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "coverage:e2e": "E2E_ISOLATED=1 E2E_COVERAGE=1 playwright test",
+    "coverage:e2e": "VITE_COVERAGE=true npm --prefix ../../runtime-apps/tasker run build && E2E_ISOLATED=1 E2E_COVERAGE=1 playwright test",
     "coverage:merged": "node scripts/coverage-merge.mjs && nyc report --temp-dir .coverage --reporter=text-summary --reporter=json-summary --reporter=html --report-dir coverage-merged",
     "smoke": "playwright test e2e/smoke.spec.ts",
     "e2e": "E2E_ISOLATED=1 playwright test",
@@ -24,6 +24,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@duckdb/node-api": "1.5.4-r.1",
     "@playwright/test": "^1.50.0",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/dom": "^10.4.0",

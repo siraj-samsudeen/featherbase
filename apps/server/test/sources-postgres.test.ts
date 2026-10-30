@@ -380,6 +380,29 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     expect(rows).toHaveLength(0)
   })
 
+  test.for([
+    ['23502', "column = 'hidden_required'", 'The data source needs a value for hidden_required, which this table does not show'],
+    ['23502', "detail = 'no column supplied'", 'The data source needs a value this save did not give'],
+    ['23503', "detail = 'custom link check'", 'Ext Gauge links to a row the data source does not have'],
+    ['23514', "detail = 'custom business rule'", 'These values break one of the data source\'s rules'],
+    ['22001', "detail = 'custom width check'", 'Value too long for a field'],
+    ['22003', "detail = 'custom range check'", 'Value out of range for a field'],
+  ])('a source trigger refusal %s without a mapped field stays a readable validation error', async ([code, diagnostic, message], { admin }) => {
+    await makeSource(admin)
+    await admin.post('/api/table/Data%20Source/ext-fixture:reflect', { schema: 'ext_fixture', tables: ['gauge'] })
+    // Real source triggers need not name a mapped column or constraint.
+    // Their database-specific diagnostics must never become the UI message.
+    await cli.unsafe(`create or replace function ext_fixture.refuse_gauge() returns trigger language plpgsql as $$ begin raise exception using errcode = '${code}', message = 'private source diagnostic', ${diagnostic}; end $$`)
+    await cli.unsafe('create trigger refuse_gauge before insert on ext_fixture.gauge for each row execute function ext_fixture.refuse_gauge()')
+    try {
+      const response = await admin.fetch('/api/table/Ext%20Gauge', { method: 'POST', body: JSON.stringify({ status_1: 'new' }) })
+      expect(response.status).toBe(417)
+      expect(await response.json()).toMatchObject({ error: { type: 'ValidationError', message } })
+    } finally {
+      await cli.unsafe('drop trigger refuse_gauge on ext_fixture.gauge')
+    }
+  })
+
   // SPEC: A row with comments, history, attachments or shares can't be
   // deleted (row-deletion), #321. A connected row's comments live here.
   test('delete is refused while the connected row has comments', async ({ admin }) => {

@@ -175,6 +175,11 @@ test('a label is changed without touching the column or its data', async ({ admi
   await openEditor(admin)
 
   const label = await screen.findByTestId('ce-label-glor')
+  const originalLabel = (await meta(admin)).columns.find((c) => c.column_name === 'glor')?.label
+  await user.clear(label)
+  await user.type(label, '   ')
+  await user.click(screen.getByTestId('ce-label-save-glor'))
+  expect((await meta(admin)).columns.find((c) => c.column_name === 'glor')?.label).toBe(originalLabel)
   await user.clear(label)
   await user.type(label, 'Floor')
   await user.click(screen.getByTestId('ce-label-save-glor'))

@@ -46,6 +46,15 @@ async function setupSensitiveTitle(
 }
 
 describe('global search permissions', () => {
+  test('a scope storage failure is not disguised as an empty search result', async ({ admin, createUser }) => {
+    const table = await makeTable(admin, { name: 'Gs Broken Scope', columns: ['title'] })
+    const reader = await createUserWithRole(admin, createUser, { role: 'Gs Broken Scope Reader', table: table.name, can_read: true })
+    await sql`drop table data_scope`
+    const response = await reader.fetch('/api/search?q=anything')
+    expect(response.status).toBe(500)
+    expect(await response.json()).toMatchObject({ error: { type: 'InternalError' } })
+  })
+
   test('own-row limits protect both ID and title matches', async ({ admin, createUser }) => {
     const table = await makeTable(admin, {
       name: 'Gs Own Customer',

@@ -504,18 +504,6 @@ describe('delegated sign-in test mode', () => {
     expect(logged.map((r) => r.row).join('\n')).not.toContain(typed)
   })
 
-  test('a server that is not development or test refuses to start with test mode set', async () => {
-    const { assertTestModeAllowed } = await import('../src/delegated-login')
-    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
-    expect(() => assertTestModeAllowed('production')).toThrow(/development, test or staging/)
-    expect(() => assertTestModeAllowed('development')).not.toThrow()
-    expect(() => assertTestModeAllowed('test')).not.toThrow()
-    // A hosted trial instance runs as staging: test mode starts there.
-    expect(() => assertTestModeAllowed('staging')).not.toThrow()
-    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', '1')
-    expect(() => assertTestModeAllowed('production')).not.toThrow()
-  })
-
   test('the server start itself refuses test mode on a production server and names the switch; staging starts', async () => {
     const { assertServerStart } = await import('../src/env')
     vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', TRUST)
@@ -531,6 +519,10 @@ describe('delegated sign-in test mode', () => {
     expect(refusal('production')).toMatch(/development, test or staging/)
     // Any other refusal a bare test environment has is not about test mode.
     expect(refusal('staging')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
+    expect(refusal('development')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
+    expect(refusal('test')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
+    vi.stubEnv('DELEGATED_LOGIN_TEST_MODE', '1')
+    expect(refusal('production')).not.toContain('DELEGATED_LOGIN_TEST_MODE')
   })
 
   test('staging is production in every other respect: no default Administrator password', async () => {

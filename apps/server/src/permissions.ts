@@ -13,18 +13,6 @@ export async function getRoles(principal: string): Promise<string[]> {
   if (principal === 'Guest') return ['Guest']
   // The server's own actor (system-actor.ts), only inside its operation.
   if (isActingSystemActor(principal)) return ['All', 'System Manager']
-  // Migrations before App Role Binding's own (0133) resolve roles too.
-  if (!bindingsExist) {
-    const [{ ok }] = await sql`select to_regclass('featherbase.app_role_binding') is not null as ok`
-    if (!ok) {
-      const rows = await sql`
-        select role from has_role
-        where parent = ${principal} and parenttype in ('Person', 'Service Account')
-        order by role`
-      return ['All', ...rows.map((r) => r.role as string)]
-    }
-    bindingsExist = true
-  }
   // One round trip: the roles held directly (app null), then the app roles
   // bound to them (#620, D4). getRoles runs on nearly every permission check.
   const rows = await sql`
@@ -57,7 +45,6 @@ export const PLATFORM_ROLES: readonly string[] = ['Administrator', 'System Manag
 /** Roles no binding may carry an app role through: every signed-in person
  *  holds All, and anyone holds Guest. */
 export const OPEN_ROLES: readonly string[] = ['All', 'Guest']
-let bindingsExist = false
 
 // PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh

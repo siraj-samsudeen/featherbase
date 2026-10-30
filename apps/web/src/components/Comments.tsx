@@ -90,8 +90,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
     setMention(m ? { q: m[1], at: caret - m[0].length } : null)
   }
 
-  function applyMention(user: string) {
-    if (!mention) return
+  function applyMention(user: string, mention: { q: string; at: number }) {
     const fold = (n: string | null) => (n ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
     const named = user.startsWith('[') ? fold(user.slice(1, -1)) : null
     const twins = named ? (users.data?.data ?? []).filter((u) => fold(u.full_name) === named).length : 0
@@ -110,7 +109,6 @@ export function Comments({ table, name }: { table: string; name: string }) {
 
   async function post() {
     const content = draft.trim()
-    if (!content) return
     setPosting(true)
     setError(null)
     try {
@@ -184,7 +182,7 @@ export function Comments({ table, name }: { table: string; name: string }) {
             {candidates.map((u) => (
               <button
                 key={u.row_id}
-                onClick={() => applyMention(mentionToken(u))}
+                onClick={() => applyMention(mentionToken(u), mention)}
                 data-testid="mention-option"
                 className="block w-full px-3 py-1 text-left text-sm hover:bg-action-tint"
               >

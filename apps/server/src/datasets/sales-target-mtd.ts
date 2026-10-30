@@ -1,7 +1,7 @@
 import { sql } from '../db'
 import { registerDataset, type SnapshotRecord } from '../dataset-snapshot'
 import { currentPeriod } from '../sales-target'
-import { readMotherDuck } from '../motherduck-reader'
+import { readMotherDuck } from '../motherduck-hosted'
 
 // The sales-target dataset: `experiments/issue_3755/shared/dive.tsx`'s rows query
 // with its personalisation predicate removed, widened by #4344 to every sale (not

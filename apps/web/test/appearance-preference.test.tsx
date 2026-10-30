@@ -1,9 +1,11 @@
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, render, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { api, clearSession, setSession } from '../src/lib/api'
 import { followDevice, useTheme } from '../src/lib/theme'
+import { useThemeChoice } from '../src/lib/theme-choice'
+import { test as databaseTest } from './pg-test'
 
 // The theme preference's write queue (#380: the theme is the one appearance
 // preference). jsdom has no matchMedia, so `device` paints light here; the
@@ -21,6 +23,38 @@ function deferred() {
   const promise = new Promise<unknown>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
+
+test('a theme consumer without its provider reports the missing ThemeChoiceProvider', () => {
+  function Consumer() {
+    return <span>{useThemeChoice().theme}</span>
+  }
+  expect(() => render(<Consumer />)).toThrow('useThemeChoice needs ThemeChoiceProvider above it')
+})
+
+databaseTest('leaving while the first identity read is pending prevents the queued theme write', async ({ admin }) => {
+  if (!admin.token) throw new Error('The signed-in fixture needs a session token')
+  setSession(admin.token, { row_id: 'Administrator', email: 'admin@example.test', full_name: null })
+  const identity = await admin.get('/api/whoami')
+  const gate = deferred()
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  // Hold delivery of a real server response in the query cache, not a mocked
+  // transport: a click and departure can both precede that response.
+  const reading = qc.fetchQuery({ queryKey: ['whoami'], queryFn: async () => {
+    await gate.promise
+    return identity
+  } })
+  const post = vi.spyOn(api, 'post') // call-through: any accidental write still hits the server
+  const { result, unmount } = renderHook(() => useTheme(), {
+    wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+  })
+  await act(async () => result.current.set('dark'))
+  expect(result.current.theme).toBe('dark')
+  unmount()
+  await act(async () => { gate.resolve(undefined); await reading })
+  expect(post).not.toHaveBeenCalled()
+  expect(await admin.get('/api/whoami')).toEqual(identity)
+  qc.clear()
+})
 
 function mount(cached = true) {
   setSession('test-token', { row_id: 'Appearance A', email: 'a@example.test', full_name: null })

@@ -294,9 +294,9 @@ describe("a client app whose artifact is not loaded after a restart", () => {
       })
     }
 
-  test("an installation whose own-pages declaration cannot be read is treated as an app's, never as ordinary Tables", async ({ admin, createUser }) => {
+  test.for([null, '{invalid', JSON.stringify({ client: { entry: 'index.html' } })])("an installation whose own-pages declaration is stored as %j never exposes ordinary Tables", async (manifest, { admin, createUser }) => {
     await installAppWithReaderRole(admin)
-    await sql`update installed_app set manifest = null where name = 'feather_dash'`
+    await sql`update installed_app set manifest = ${manifest === null ? null : sql.json(manifest)} where name = 'feather_dash'`
     const reader = await createUser({ email: 'unreadable.manifest.659@example.com', roles: [ROLE] })
     expect((await capsOf(reader)).admin).toBe(false)
   })

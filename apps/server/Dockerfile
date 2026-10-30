@@ -39,6 +39,8 @@ COPY runtime-apps/tasker/package.json runtime-apps/tasker/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY runtime-apps/tasker/featherbase.json runtime-apps/tasker/index.html runtime-apps/tasker/tsconfig.json runtime-apps/tasker/vite.config.ts ./
 COPY runtime-apps/tasker/src src
+COPY runtime-apps/tasker/public public
+COPY runtime-apps/tasker/scripts/build-server.mjs scripts/build-server.mjs
 RUN npm run build
 
 # ---- Stage 3: the platform image -------------------------------------------

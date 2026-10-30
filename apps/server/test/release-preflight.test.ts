@@ -652,6 +652,16 @@ describe('release preflight: the btree_gist extension the baseline creates', () 
     expect(await preflightRelease({ environment: 'test' })).not.toContain('btree_gist available for the baseline')
   })
 
+  test('before the first installation the preflight reports the baseline and its extension prerequisite', async () => {
+    // The sandbox rolls this schema removal back; the normal release's
+    // subprocess proof above verifies the actual subsequent installation.
+    await sql`drop schema featherbase cascade`
+    await sql`drop schema public cascade`
+    const lines = await preflightRelease({ environment: 'test' })
+    expect(lines).toContain('btree_gist available for the baseline')
+    expect(lines).toContainEqual(expect.stringMatching(/^pending migrations: 0001_baseline.sql,/))
+  })
+
   test('a server that does not ship the extension, or a role that may not create it, is refused with the fix', async () => {
     const { assertBtreeGist } = await import('../src/release-preflight')
     expect(() => assertBtreeGist({ installed: true, available: false, can_create: false })).not.toThrow()

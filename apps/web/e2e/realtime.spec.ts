@@ -10,14 +10,16 @@ import {
 } from './fixtures'
 
 const DT = 'Rt DT'
-const OTHER_USER = 'rt-user@x.com'
+let OTHER_USER = ''
 // person-rename: ids are minted (`psn_…`); the person signs in by email and is
 // mentioned by username. The id is read back after creation.
-const OTHER_USERNAME = 'rt.user'
+let OTHER_USERNAME = ''
 let OTHER_ID = ''
 const OTHER_PWD = 'rtpw12345'
 
-test.beforeAll(async ({ request }) => {
+test.beforeAll(async ({ request }, worker) => {
+  OTHER_USER = `rt-user-${worker.workerIndex}@x.com`
+  OTHER_USERNAME = `rt.user.${worker.workerIndex}`
   const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
@@ -54,6 +56,19 @@ test('RT-001: a doc created in one session appears in another session list', asy
   const ctxB = await browser.newContext()
   const a = await ctxA.newPage()
   const b = await ctxB.newPage()
+  // Keep the browser's real sockets and protocol; expose only a way to cut
+  // their transport. Chromium's offline emulation leaves established WS up.
+  await b.addInitScript(() => {
+    const sockets: WebSocket[] = []
+    const NativeSocket = window.WebSocket
+    window.WebSocket = class extends NativeSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols)
+        if (new URL(url, location.href).pathname === '/ws') sockets.push(this)
+      }
+    }
+    Object.assign(window, { cutRealtimeConnection: () => sockets.forEach((socket) => socket.close()) })
+  })
   const sessionA = createSession(a)
   const sessionB = createSession(b)
 
@@ -62,9 +77,14 @@ test('RT-001: a doc created in one session appears in another session list', asy
 
   // Both watch the list; wait for B's list to render and its realtime
   // socket to connect+subscribe before A creates.
-  await sessionA.visit(`/admin/${encodeURIComponent(DT)}`)
-  await sessionB.visit(`/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-total"]')
+  await sessionA.visit(`/featherbase/admin/${encodeURIComponent(DT)}`)
+  await sessionB.visit(`/featherbase/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-total"]')
   await sessionB.step('wait for the realtime subscription to the list channel', () => waitForRealtime(b, `list:${DT}`))
+  await sessionB.step('a connection loss clears subscriptions, and reconnect restores them without reloading', async () => {
+    await b.evaluate(() => (window as unknown as { cutRealtimeConnection(): void }).cutRealtimeConnection())
+    await expect(b.locator('html')).toHaveAttribute('data-realtime-channels', '[]')
+    await waitForRealtime(b, `list:${DT}`)
+  })
   const uniq = `rt-live-${Date.now()}`
 
   // A creates a doc via the API (its own session); B's list should update
@@ -78,6 +98,19 @@ test('RT-001: a doc created in one session appears in another session list', asy
 
   await sessionB.step('the list updates with no reload', async ({ page }) => {
     await expect(page.getByTestId('list-rows')).toContainText(uniq, { timeout: 10_000 })
+  })
+  await sessionA.visit('/featherbase/admin')
+  await sessionA.step('the home feed receives a newly recorded row visit without a reload', async ({ page }) => {
+    // Notifications already subscribes to the personal channel. Its ACK
+    // does not mean the home feed has mounted or finished its initial read.
+    await expect(page.getByTestId('feed-item').first()).toBeVisible()
+    await waitForRealtime(page, 'user:Administrator')
+    const recorded = await a.request.post('/api/events', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { events: [{ kind: 'row', key: `row:${DT}/${uniq}`, label: uniq, sub: DT, path: `/featherbase/admin/${encodeURIComponent(DT)}/${uniq}` }] },
+    })
+    expect(recorded.status()).toBe(200)
+    await expect(page.getByTestId('activity-feed')).toContainText(uniq)
   })
   await ctxA.close()
   await ctxB.close()

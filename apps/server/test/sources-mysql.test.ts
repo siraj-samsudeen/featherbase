@@ -857,6 +857,37 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
     }
   })
 
+  test('an update whose trigger moves its key rolls back instead of losing the saved row', async () => {
+    await cli.query("create table ext_mysql.moving_key (id int primary key, note text)")
+    await cli.query("insert into ext_mysql.moving_key values (1, 'original')")
+    await cli.query('create trigger ext_mysql.move_key before update on ext_mysql.moving_key for each row set NEW.id = OLD.id + 1')
+    try {
+      await expect(mysqlDriver.update(bindFor('moving_key', 'id'), '1', { note: 'changed' }, null)).rejects.toMatchObject({
+        type: 'DataSourceError', message: expect.stringContaining('updated row 1 not found on re-read'),
+      })
+      const [rows] = await cli.query('select id, note from ext_mysql.moving_key')
+      expect(rows).toEqual([{ id: 1, note: 'original' }])
+    } finally {
+      await cli.query('drop table ext_mysql.moving_key')
+    }
+  })
+
+  test('a read or write that cannot acquire a connection reports the source without leaking its password', async () => {
+    process.env.EXT_MYSQL_WRITE_DEAD_URL = 'mysql://nobody:private-password@127.0.0.1:59998/nope'
+    const bind = bindFor('plain', 'id')
+    bind.source = { ...bind.source, name: 'dead-writer', url_env: 'EXT_MYSQL_WRITE_DEAD_URL' }
+    try {
+      for (const operation of [() => mysqlDriver.getDoc(bind, '1'), () => mysqlDriver.update(bind, '1', { note: 'changed' }, null)]) {
+        const failure = await operation().catch(error => error)
+        expect(failure).toMatchObject({ type: 'DataSourceError', message: expect.stringContaining('dead-writer') })
+        expect(failure.message).not.toContain('private-password')
+      }
+    } finally {
+      await mysqlDriver.dispose('dead-writer')
+      delete process.env.EXT_MYSQL_WRITE_DEAD_URL
+    }
+  })
+
   // #155: run `concurrent` (another writer, through the unsandboxed CLI
   // connection) right after the driver's own statement matching `after`, and
   // give it a moment to land before the driver carries on. A driver that
@@ -885,6 +916,22 @@ describe.skipIf(!MYSQL_URL)('mysql: writing rows in more shapes', () => {
       for (const spy of spies) spy.mockRestore()
     }
   }
+
+  test('a generated key removed by concurrent DDL refuses the insert and leaves no orphan', async () => {
+    await cli.query('create table ext_mysql.changed_key (id int primary key auto_increment, note text)')
+    try {
+      await withWriterAfter(
+        /select extra as extra from information_schema.columns/,
+        'alter table ext_mysql.changed_key modify id int not null default 42',
+        () => expect(mysqlDriver.insert(bindFor('changed_key', 'id'), { note: 'unaddressable' }, null))
+          .rejects.toMatchObject({ type: 'DataSourceError', message: expect.stringContaining('database gave it no number') }),
+      )
+      const [rows] = await cli.query('select * from ext_mysql.changed_key')
+      expect(rows).toEqual([])
+    } finally {
+      await cli.query('drop table ext_mysql.changed_key')
+    }
+  })
 
   test('a save returns the row it wrote, even when another writer changes it straight after', async () => {
     const bind = bindFor('plain', 'id')

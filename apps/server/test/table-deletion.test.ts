@@ -356,6 +356,24 @@ describe('DEL-R7: attachments', () => {
     }
   })
 
+  test('DEL-R7: unavailable attachment registry after deletion retains bytes without refusing the deletion', async ({ admin }) => {
+    await makeTable(admin)
+    const { file_url } = await saveUpload(Buffer.from('retain on uncertainty'), 'outage.txt', false)
+    try {
+      await sql`insert into file (row_id, ref_table, file_url) values ('outage-file', ${DT}, ${file_url})`
+      await sql.unsafe(`create function pg_temp.hide_file_registry() returns trigger language plpgsql as $$
+        begin alter table featherbase.file rename to unavailable_file_registry; return old; end $$`)
+      await sql.unsafe(`create trigger hide_file_registry after delete on featherbase.table_def
+        for each row when (old.name = 'Deletion Target') execute function pg_temp.hide_file_registry()`)
+      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
+      expect(await physicalExists(DT)).toBe(false)
+      expect(readFileSync(bytesPath(file_url)).toString()).toBe('retain on uncertainty')
+      expect(await sql`select row_id from featherbase.unavailable_file_registry where row_id = 'outage-file'`).toEqual([])
+    } finally {
+      await deleteStored(file_url)
+    }
+  })
+
   test('DEL-R7: File registry rows sweep with the Table and the bytes are gone', async ({
     admin,
   }) => {

@@ -49,6 +49,52 @@ describe('task view criteria', () => {
     expect(taskViewSetupEquals(saved, reordered)).toBe(false)
   })
 
+  it.each(['states', 'responsiblePeople', 'urgencies', 'projects'] as const)(
+    'detects a changed %s filter without modifying the saved setup', (dimension) => {
+      const saved = emptyTaskViewSetup()
+      saved.filters = {
+        states: ['Blocked', 'In progress'], responsiblePeople: ['Shahul', 'Asha'],
+        urgencies: ['urgent', 'not_urgent'], projects: ['stock', 'opening'],
+      }
+      const before = structuredClone(saved)
+      const changed = structuredClone(saved)
+      changed.filters[dimension].reverse()
+      expect(taskViewSetupEquals(saved, changed)).toBe(true)
+      changed.filters[dimension].pop()
+      expect(taskViewSetupEquals(saved, changed)).toBe(false)
+      expect(saved).toEqual(before)
+    },
+  )
+
+  it('combines search with unassigned, non-urgent and project filters', () => {
+    const setup = emptyTaskViewSetup()
+    setup.search = '  PHOTOGRAPH  '
+    setup.filters.responsiblePeople = [UNASSIGNED]
+    setup.filters.urgencies = ['not_urgent']
+    setup.filters.projects = ['stock']
+    expect(filterTasks(tasks, setup).map((task) => task.id)).toEqual(['b'])
+    setup.filters.projects = ['opening']
+    expect(filterTasks(tasks, setup)).toEqual([])
+    expect(filterTasks(tasks, emptyTaskViewSetup())).toEqual(tasks)
+  })
+
+  it('restores every saved-view scope but not an incomplete project or personal scope', () => {
+    const scopes = [
+      { kind: 'all' }, { kind: 'inbox' }, { kind: 'work' }, { kind: 'together' },
+      { kind: 'project', projectId: 'stock' }, { kind: 'personal', owner: 'Asha' },
+    ]
+    const views = scopes.map((scope, index) => ({
+      id: `view-${index}`, name: `View ${index}`, scope, setup: emptyTaskViewSetup(),
+    }))
+    expect(parseSavedTaskViews({ views: [...views,
+      { ...views[0], scope: { kind: 'project' } },
+      { ...views[0], scope: { kind: 'personal' } },
+      { ...views[0], name: '   ' },
+    ] })).toEqual(views)
+    expect(parseSavedTaskViews(null)).toEqual([])
+    expect(parseSavedTaskViews({ views: {} })).toEqual([])
+  })
+
   it('keeps unavailable person and project criteria restrictive', () => {
     const missingPerson = emptyTaskViewSetup()
     missingPerson.filters.responsiblePeople = ['Former teammate']

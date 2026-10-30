@@ -3,7 +3,7 @@ import { filterReadFields, isSharedWith, permittedTiers } from './permissions'
 
 type RowValues = Record<string, unknown>
 export type Tiers = Set<'basic' | 'restricted'>
-export const allTiers = (): Tiers => new Set(['basic', 'restricted'])
+const allTiers = (): Tiers => new Set(['basic', 'restricted'])
 
 // #341: the tiers one reader holds on a row and on each of its sub-tables.
 export interface RowReader {

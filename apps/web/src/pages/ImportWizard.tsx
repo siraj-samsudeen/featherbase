@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, calendarDay, coerceRows, combineOverlap, idPatternFor, inferTableDef, isLocalMidnight, localIso, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -378,7 +378,6 @@ const PREVIEW_ROWS = 50
 /** A sheet cell as the preview shows it: a date as its calendar day (#387), never via toISOString(). */
 export function previewCell(v: unknown): string {
   if (v == null) return ''
-  if (v instanceof Date) return isLocalMidnight(v) ? calendarDay(v) : localIso(v).replace('T', ' ')
   return String(v)
 }
 
@@ -1262,15 +1261,13 @@ export function ImportWizard() {
     }
   }
 
-  // #202: `only` scopes a rehearsal to one target — you check what you are
-  // looking at. Omitted, it still rehearses every mapped target.
-  async function runCheck(only?: number) {
+  // #202: the Check button rehearses the active existing-Table target.
+  async function runCheck(only: number) {
     setError(null)
     setBusy('Checking…')
     try {
       for (const [i, plan] of plans.entries()) {
-        if (only !== undefined && i !== only) continue
-        if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
+        if (i !== only) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
         const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0, fields_updated: 0, fields_kept: 0, tracks_changes: null as boolean | null }
@@ -1517,7 +1514,6 @@ export function ImportWizard() {
   // no one member's sheet name speaks for it.
   function targetLabel(i: number): string {
     const plan = plans[i]
-    if (!plan) return ''
     if (plan.members.length > 1) return plan.table || 'Merged Table'
     return sheets[i]?.sheetName || plan.table
   }
@@ -1525,7 +1521,6 @@ export function ImportWizard() {
   // Rows this one target will send, for its own Import button.
   function targetRows(i: number): number {
     const plan = plans[i]
-    if (!plan) return 0
     return plan.members.reduce((n, m) => n + countDataRows(sheets[m]?.rows ?? []), 0)
   }
 

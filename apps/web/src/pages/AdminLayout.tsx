@@ -58,7 +58,6 @@ connectEventSink({
   currentUser: () => getSessionUser()?.row_id ?? null,
   post: (events) => {
     void api.post('/api/events', { events }).catch(
-      /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the recorder only sends batches the server accepts */
       () => {},
     )
   },
@@ -167,7 +166,6 @@ function AdminShell() {
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
       .then((res) => mergeServerEntries(user.row_id, res.entries))
       .catch(
-        /* istanbul ignore next -- network failure only: the request itself rejected (no answer), which no suite can produce against the in-process server or the e2e stack without stubbing fetch; the summary answers for every signed-in person */
         () => {},
       )
   }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps

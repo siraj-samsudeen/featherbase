@@ -501,6 +501,18 @@ describe('a cached dataset read', () => {
 })
 
 describe('a live dataset read', () => {
+  test('identical source rows keep their multiplicity in live and cached answers', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    await fillWarehouse([SALES[0], SALES[0], SALES[1]])
+    await position(admin, reader.user!, 'North', 'N1', 'kids')
+    await buildSnapshot('datasetproof.sales')
+    app.hooks.run = async (context: Context) => ({ cached: await context.datasets.active('sales'), live: await context.datasets.live('sales') })
+    const { result } = await reader.post<{ result: Record<'cached' | 'live', { rows: unknown[] }> }>(read + 'outside', { payload: {} })
+    const expected = [row('N1', 'kids', '2026-10-01', 100.50, 3, 'north kids'), row('N1', 'kids', '2026-10-01', 100.50, 3, 'north kids'), row('N1', 'kids', '2026-10-02', 20.25, 1, 'north kids')]
+    expect(result.live.rows).toEqual(expected)
+    expect(result.cached.rows).toEqual(expected)
+  })
+
   test('answers the same rows, in the same shape and with the same totals, as the cached read', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)
     await position(admin, reader.user!, 'North', 'N1', 'kids')
@@ -1017,6 +1029,15 @@ describe('a place a dataset cannot apply', () => {
   })
 
   const dropsCheck = async () => (await runHealthChecks()).find(check => check.key === 'scope-place-drops:datasetproof')
+
+  test('turning off the provider stops reporting drops from its old answers', async ({ admin, createUser }) => {
+    const { reader, app } = await setup(admin, createUser)
+    app.hooks.run = (context: Context) => context.datasets.active('sales')
+    await withPlaces(FLOOR_PLACES, () => reader.post(read + 'inside', { payload: {} }))
+    expect(await dropsCheck()).toMatchObject({ ok: false })
+    await admin.post('/api/set_app_enabled', { name: 'placeroster', enabled: false })
+    expect(await dropsCheck()).toMatchObject({ ok: true, message: "No place has been dropped from Dataset proof's datasets." })
+  })
 
   test('after a read drops a place, Instance health names the provider, the dataset and the keys', async ({ admin, createUser }) => {
     const { reader, app } = await setup(admin, createUser)

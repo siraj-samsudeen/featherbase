@@ -134,6 +134,9 @@ export function TaskManagementPage() {
   const [activeSavedViewId, setActiveSavedViewId] = useState(hashSavedViewId)
   const [taskViewSetup, setTaskViewSetup] = useState<TaskViewSetup>(emptyTaskViewSetup)
   const previousSurface = useRef('')
+  const preferenceWrites = useRef(new Map<string, {
+    saved: unknown; pending: number; tail: Promise<void>; uncertain: boolean
+  }>())
 
   useEffect(() => {
     const change = () => {
@@ -310,7 +313,6 @@ export function TaskManagementPage() {
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
     const trimmed = title.trim()
-    if (!trimmed) return
     setSaving(true)
     setError(null)
     try {
@@ -340,14 +342,47 @@ export function TaskManagementPage() {
     }
   }
 
+  async function writePreference(name: string, query: string, settings: unknown) {
+    const key = ['task-management', query]
+    // A read started before this write must not replace its confirmed value.
+    await queryClient.cancelQueries({ queryKey: key })
+    const writes = preferenceWrites.current.get(query) ?? {
+      saved: queryClient.getQueryData(key) ?? { settings: null },
+      pending: 0, tail: Promise.resolve(), uncertain: false,
+    }
+    preferenceWrites.current.set(query, writes)
+    // Preserve user order at the server while showing the latest choice now.
+    const previous = writes.tail
+    let advance!: () => void
+    writes.tail = new Promise<void>(resolve => { advance = resolve })
+    writes.pending++
+    const optimistic = queryClient.setQueryData(key, { settings })
+    try {
+      await previous
+      await api.put(`/api/user_settings/${encodeURIComponent(name)}`, settings)
+      writes.saved = { settings }
+    } catch (err) {
+      // A refusal did not persist. A lost response or server error might have.
+      const refused = err instanceof ApiError && err.status !== undefined && err.status < 500
+      writes.uncertain ||= !refused
+      if (refused && queryClient.getQueryData(key) === optimistic) queryClient.setQueryData(key, writes.saved)
+      throw err
+    } finally {
+      if (--writes.pending === 0) {
+        preferenceWrites.current.delete(query)
+        queryClient.setQueryData(key, writes.saved)
+        if (writes.uncertain) await queryClient.invalidateQueries({ queryKey: key })
+      }
+      advance()
+    }
+  }
+
   async function saveFocus(ids: string[]) {
     setError(null)
-    queryClient.setQueryData(['task-management', 'focus'], { settings: { task_ids: ids } })
     try {
-      await api.put(`/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`, { task_ids: ids })
+      await writePreference(FOCUS_SETTINGS, 'focus', { task_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update My Focus')
-      await queryClient.invalidateQueries({ queryKey: ['task-management', 'focus'] })
     }
   }
 
@@ -366,12 +401,10 @@ export function TaskManagementPage() {
 
   async function saveStarredProjects(ids: string[]) {
     setError(null)
-    queryClient.setQueryData(['task-management', 'project-preferences'], { settings: { project_ids: ids } })
     try {
-      await api.put(`/api/user_settings/${encodeURIComponent(PROJECT_SETTINGS)}`, { project_ids: ids })
+      await writePreference(PROJECT_SETTINGS, 'project-preferences', { project_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update project tabs')
-      await queryClient.invalidateQueries({ queryKey: ['task-management', 'project-preferences'] })
     }
   }
 
@@ -391,30 +424,26 @@ export function TaskManagementPage() {
   }
 
   async function setDetailMode(mode: DetailMode) {
-    queryClient.setQueryData(['task-management', 'detail-preferences'], { settings: { mode } })
+    setError(null)
     try {
-      await api.put(`/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`, { mode })
+      await writePreference(PREFERENCE_SETTINGS, 'detail-preferences', { mode })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save detail view')
-      await queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-preferences'] })
     }
   }
 
   async function saveViews(next: SavedTaskView[]) {
     setError(null)
-    queryClient.setQueryData(['task-management', 'saved-views'], { settings: { views: next } })
     try {
-      await api.put(`/api/user_settings/${encodeURIComponent(SAVED_VIEWS_SETTINGS)}`, { views: next })
+      await writePreference(SAVED_VIEWS_SETTINGS, 'saved-views', { views: next })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save task views')
-      await queryClient.invalidateQueries({ queryKey: ['task-management', 'saved-views'] })
       throw err
     }
   }
 
   async function createSavedView(name: string, scope: SavedTaskViewScope) {
     const trimmed = name.trim()
-    if (!trimmed) return
     if (savedViews.some((savedView) => savedView.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
       setError(`A saved view named “${trimmed}” already exists`)
       return
@@ -437,7 +466,6 @@ export function TaskManagementPage() {
 
   async function renameSavedView(savedView: SavedTaskView, name: string) {
     const trimmed = name.trim()
-    if (!trimmed) return
     if (savedViews.some((candidate) => candidate.id !== savedView.id && candidate.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
       setError(`A saved view named “${trimmed}” already exists`)
       return
@@ -447,11 +475,6 @@ export function TaskManagementPage() {
 
   async function deleteSavedView(savedView: SavedTaskView) {
     await saveViews(savedViews.filter((candidate) => candidate.id !== savedView.id))
-    if (activeSavedViewId === savedView.id) {
-      setActiveSavedViewId(null)
-      setTaskViewSetup(emptyTaskViewSetup())
-      location.hash = ''
-    }
   }
 
   async function renameProject(project: Project, project_name: string) {
@@ -469,7 +492,6 @@ export function TaskManagementPage() {
 
   async function createProject() {
     const name = projectName.trim()
-    if (!name) return
     setCreatingProject(true)
     setError(null)
     try {
@@ -888,9 +910,11 @@ function TaskViewToolbar({
   async function submitSavedView(event: React.FormEvent) {
     event.preventDefault()
     const scope = scopeKind === 'all' ? { kind: 'all' as const } : currentScope
-    await onCreate(name, scope)
-    setName('')
-    setSavingAsNew(false)
+    try {
+      await onCreate(name, scope)
+      setName('')
+      setSavingAsNew(false)
+    } catch { /* parent shows the failure; retain the draft */ }
   }
 
   return <div className="tasker-view-controls">
@@ -933,7 +957,9 @@ function TaskViewToolbar({
         Filter{chips.filter((chip) => chip.remove).length ? ` (${chips.filter((chip) => chip.remove).length})` : ''}
       </button>
       {activeSavedView && dirty && <>
-        <button type="button" className="fc-btn" onClick={() => void onUpdate(activeSavedView)}>Update view</button>
+        <button type="button" className="fc-btn" onClick={async () => {
+          try { await onUpdate(activeSavedView) } catch { /* parent shows the failure */ }
+        }}>Update view</button>
         <button type="button" className="fc-btn" onClick={onReset}>Reset</button>
       </>}
       <button type="button" className="fc-btn" onClick={() => setSavingAsNew((open) => !open)}>
@@ -1061,8 +1087,10 @@ function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, on
       return <article key={savedView.id}>
         {renaming === savedView.id ? <form onSubmit={async (event) => {
           event.preventDefault()
-          await onRename(savedView, name)
-          setRenaming(null)
+          try {
+            await onRename(savedView, name)
+            setRenaming(null)
+          } catch { /* parent shows the failure; retain the draft */ }
         }}>
           <label className="sr-only" htmlFor={`rename-view-${savedView.id}`}>Rename saved view</label>
           <input id={`rename-view-${savedView.id}`} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
@@ -1076,8 +1104,10 @@ function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, on
           </button>
           <div className="tasker-saved-view-actions">
             <button type="button" className="fc-btn" onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</button>
-            <button type="button" className="fc-btn" onClick={() => {
-              if (window.confirm(`Delete private saved view “${savedView.name}”?`)) void onDelete(savedView)
+            <button type="button" className="fc-btn" onClick={async () => {
+              if (window.confirm(`Delete private saved view “${savedView.name}”?`)) {
+                try { await onDelete(savedView) } catch { /* parent shows the failure */ }
+              }
             }}>Delete</button>
           </div>
         </>}
@@ -1101,7 +1131,6 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   if (draft) return <form className="mb-3 flex gap-2" onSubmit={async (event) => {
     event.preventDefault()
     const next = draft.project_name.trim()
-    if (!next) return
     try { await onRename(draft, next); setDraft(null) } catch { /* parent shows error */ }
   }}>
     <label className="sr-only" htmlFor="rename-project">Project name</label>
@@ -1153,11 +1182,10 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     setDraft(null); setError('')
     requestAnimationFrame(() => editButton.current?.focus())
   }
-  async function patch(patch: Partial<Task>) {
-    if (!task.data) return
+  async function patch(patch: Partial<Task>, updatedAt: string) {
     setSaving(true); setError('')
     try {
-      await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: task.data.updated_at })
+      await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: updatedAt })
       await onSaved()
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not update task') }
     finally { setSaving(false) }
@@ -1220,20 +1248,20 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
-        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value })}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
-        <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null })}>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value }, task.data.updated_at)}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
+        <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null }, task.data.updated_at)}>
           <option value="">Unassigned</option>{people.map(user => <option key={user.row_id}>{user.row_id}</option>)}
         </select></label>
         <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
           const [kind, value] = event.target.value.split(':', 2)
-          void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null })
+          void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }, task.data.updated_at)
         }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
           {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
         </select></label>
         <div className="tasker-detail-signals">
-          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me })}>Take it</button>}
-          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent })}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done })}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
+          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me }, task.data.updated_at)}>Take it</button>}
+          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent }, task.data.updated_at)}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
+          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done }, task.data.updated_at)}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
         </div>
       </fieldset>
       {mode === 'compact' ? <div className="tasker-compact-summary">
@@ -1246,7 +1274,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
         // Keep the draft's original revision even if another action refetches this row.
         event.preventDefault(); setSaving(true); setError('')
-        if (!draft?.task_title.trim()) { setSaving(false); return }
         try {
           const saved = await api.patch<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
             ...draft, task_title: draft.task_title.trim(),
@@ -1285,7 +1312,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <form className="mb-5 flex gap-2" onSubmit={async (event) => {
           event.preventDefault()
           const content = comment.trim()
-          if (!content) return
           setSaving(true); setError('')
           try {
             await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
@@ -1356,7 +1382,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     setExplaining(null)
   }
 
-  if (!tasks.length) return <Empty text="Nothing here yet." />
   return <div className="tasker-task-list">
     <div className="tasker-task-guide" aria-hidden="true">
       <span />

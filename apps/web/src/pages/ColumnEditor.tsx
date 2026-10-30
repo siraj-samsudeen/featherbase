@@ -158,7 +158,6 @@ export function ColumnEditor() {
   const problem = newColumnProblem(adding, def)
 
   function addColumn() {
-    if (problem) return
     put.mutate(
       [
         ...def.columns,

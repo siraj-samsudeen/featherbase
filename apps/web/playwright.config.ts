@@ -111,6 +111,7 @@ const coverage = process.env.E2E_COVERAGE === '1'
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: coverage ? './e2e/coverage-setup.ts' : undefined,
   timeout: coverage ? 60_000 : 30_000,
   // One worker, for the same reason the vitest suites set
   // `fileParallelism: false`: every spec drives the one shared server and

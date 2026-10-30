@@ -29,7 +29,7 @@ import { shadowCss } from './style'
 //   `--featherbase-bar-height`, for an app that pins something to the top of
 //   the window below the bar.
 
-export const BAR_HEIGHT_VARIABLE = '--featherbase-bar-height'
+const BAR_HEIGHT_VARIABLE = '--featherbase-bar-height'
 
 interface Options {
   /** Load a platform page in full (tests watch it instead). */
@@ -50,9 +50,6 @@ export function mountBar(host: HTMLElement, { leave = (href) => window.location.
 
   const history = createMemoryHistory({ initialEntries: ['/'] })
   history.push = (href) => leave(href)
-  history.replace = (href) => {
-    if (href !== '/') leave(href)
-  }
   const router = createRouter({ routeTree: createRootRoute({ component: () => <Bar app={app} /> }), history })
   const queryClient = new QueryClient({
     defaultOptions: {

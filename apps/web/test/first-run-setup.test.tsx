@@ -95,7 +95,8 @@ test('another System Manager is never offered the setup (item 18)', async ({ cre
   await renderApp('/featherbase/admin/all-tables', manager)
   await screen.findByTestId('all-tables-link')
   expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument()
-  await renderApp('/featherbase/admin/setup', manager)
+  const { router } = await renderApp('/featherbase/admin/setup', manager)
+  await waitFor(() => expect((router.state as { location: { pathname: string } }).location.pathname).toBe('/featherbase/admin'))
   await waitFor(() => expect(screen.queryByTestId('first-run-setup')).not.toBeInTheDocument())
 })
 

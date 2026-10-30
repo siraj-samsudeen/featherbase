@@ -80,6 +80,21 @@ test('with no terms, the page says so (item 9)', async ({ admin }) => {
   expect(await screen.findByText('No terms yet.')).toBeInTheDocument()
 })
 
+test('a failed glossary read can be retried after access is restored without leaving the page', async ({ admin, createUser }) => {
+  await addTerm(admin, { term: 'Planogram', definition: 'The drawing of what goes on each shelf.' })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Glossary Retry Reader' } })
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Glossary Retry Reader', can_read: true } })
+  const reader = await createUser({ email: 'glossary-retry@example.test', roles: ['Glossary Retry Reader'] })
+  await sql`update permission set can_read = false where ref_table = 'Glossary Term'`
+  await renderApp('/featherbase/admin/glossary', reader)
+  expect(await screen.findByText('The glossary could not be loaded.')).toBeInTheDocument()
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Glossary Term', role: 'Glossary Retry Reader', can_read: true } })
+  await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  expect(await screen.findByRole('heading', { level: 3, name: 'Planogram' })).toBeInTheDocument()
+  expect(screen.getByText('The drawing of what goes on each shelf.')).toBeInTheDocument()
+  expect(screen.queryByText('The glossary could not be loaded.')).not.toBeInTheDocument()
+})
+
 test('an editor can add and edit terms; a reader cannot (items 1, 8)', async ({ admin, createUser }) => {
   await installShelves(admin)
   const { unmount } = await renderApp('/featherbase/admin/glossary', admin)
@@ -137,6 +152,12 @@ test('a described field opens its term in place, and Escape closes it back to th
   expect(panel).toHaveTextContent('Avoid: auditor (sounds like finance)')
   expect(within(panel).getByRole('link', { name: 'Open in the glossary' }).getAttribute('href')).toMatch(/^\/featherbase\/admin\/glossary#term-/)
   expect(counted).not.toHaveFocus()
+  await user.keyboard('{ArrowRight}')
+  expect(panel).toBeInTheDocument()
+  await user.click(counted)
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  await user.click(help)
+  await screen.findByRole('dialog', { name: 'Counter' })
   await user.keyboard('{Escape}')
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(help).toHaveFocus()

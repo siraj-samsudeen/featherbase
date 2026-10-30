@@ -15,7 +15,7 @@ import { AppError } from './errors'
 import { currentEnvironment, DEV_ENVIRONMENTS, isSet, readNamedVariable, readVariable, VARIABLES, type Variable, type VariableName } from './env'
 
 /** Long enough that nobody without the run's key can guess it. */
-export const MIN_KEY_LENGTH = 32
+const MIN_KEY_LENGTH = 32
 const MAX_KEY_LENGTH = 512
 
 /** Whether a variable's presence matters in this environment: required stops

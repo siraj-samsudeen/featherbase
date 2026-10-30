@@ -7,7 +7,6 @@ import { createRoot } from 'react-dom/client'
 import '../index.css'
 import { Gallery } from './Gallery'
 
-/* istanbul ignore next -- entry point: mounts the gallery into gallery.html's #root; no suite loads gallery.html (jsdom tests render <Gallery /> directly, e2e drives the app's own index.html) @preserve */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <Gallery />

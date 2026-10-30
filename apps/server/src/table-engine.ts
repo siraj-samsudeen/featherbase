@@ -53,7 +53,7 @@ const PG_TYPES: Record<string, string | null> = {
 // type to the cast that converts stored values (null when the stored type does
 // not change). Anything else is refused: add a new column, copy the data,
 // then drop the old one.
-export const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+const SAFE_TYPE_CHANGES: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
   Int: { Float: 'double precision' },
   Data: { Text: 'text', 'Long Text': 'text', Choice: 'text' },
   Text: { 'Long Text': null },
@@ -816,7 +816,6 @@ export async function deleteTable(name: string, user = 'Administrator', opts: { 
       const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
       if (!survivors.length) await deleteStored(url)
     } catch {
-      /* v8 ignore next 2 -- a database failure on the survivor check after the committed delete; deleteStored itself never throws, so only a mocked driver could reach it */
       console.warn('Table deleted; attachment cleanup could not complete')
     }
   }

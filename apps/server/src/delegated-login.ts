@@ -17,11 +17,10 @@
 // The password is held for one outbound request and never stored, logged,
 // thrown or echoed. Failures are logged as label + outcome only.
 import { sql } from './db'
-import { config } from './config'
 import { AppError } from './errors'
 import { INVALID_CREDENTIALS } from './auth'
 import { listSignInMethods, type SignInMethod } from './identities'
-import { checkVariables, switchedOn, TEST_MODE_PHRASE } from './env'
+import { switchedOn, TEST_MODE_PHRASE } from './env'
 
 // person-identities: the connected service is a Sign In Method row of kind
 // `delegated_password`, and the person is found through a linked identity,
@@ -146,14 +145,6 @@ export async function delegatedLoginConfig(key: string): Promise<DelegatedLoginC
 export { TEST_MODE_PHRASE }
 export function delegatedTestMode(): boolean {
   return switchedOn('DELEGATED_LOGIN_TEST_MODE')
-}
-
-/** Any other server refuses to start with test mode set, and says why. The
- *  rule is the registry's `forbidden-in-production` tier (env.ts); this is
- *  that tier for the one variable. */
-export function assertTestModeAllowed(environment: string = config.environment): void {
-  const refusal = checkVariables({ environment }).forbidden.find((r) => r.startsWith('DELEGATED_LOGIN_TEST_MODE '))
-  if (refusal) throw new Error(refusal)
 }
 
 /** Say once, at boot, that the provider is being skipped — same reasoning as announcePreviewLogin. */
