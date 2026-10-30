@@ -509,9 +509,12 @@ describe('release preflight: deployment variables', () => {
   // and goes ahead; the refusal is at the point of use (#482 decision).
   test("a data source's missing url_env warns at release, and the source refuses its queries", async () => {
     await sql`insert into data_source (row_id, engine, url_env) values ('fb_test_warehouse', 'postgres', 'FB_TEST_WAREHOUSE_URL')`
-    for (const environment of ['production', 'development'])
-      expect(await preflightRelease({ environment })).toEqual(expect.arrayContaining([
-        expect.stringMatching(new RegExp(`^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "${environment}" server \\(the url_env of data source fb_test_warehouse\\)`))]))
+    expect(await preflightRelease({ environment: 'production' })).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^WARNING: FB_TEST_WAREHOUSE_URL is not set on a "production" server \(the url_env of data source fb_test_warehouse\)/)]))
+    // A developer's machine has no warehouse to point it at (#703): noted, not warned.
+    const local = await preflightRelease({ environment: 'development' })
+    expect(local.filter((line) => line.startsWith('WARNING: FB_TEST_WAREHOUSE_URL'))).toEqual([])
+    expect(local).toContain('FB_TEST_WAREHOUSE_URL unset, allowed on a "development" server (the url_env of data source fb_test_warehouse)')
     vi.stubEnv('FB_TEST_WAREHOUSE_URL', '  ')
     const { resolveUrl } = await import('../src/sources/registry')
     expect(() => resolveUrl({ name: 'fb_test_warehouse', engine: 'postgres', url_env: 'FB_TEST_WAREHOUSE_URL' } as Parameters<typeof resolveUrl>[0]))
