@@ -53,6 +53,12 @@ client-apps/<client>-<app>/   one folder per client app, flat: jeyarama-dash,
   never are**. The `check:sensitive` guard covers the client folders too.
 - A client app keeps its own `CLAUDE.md` for rules only that client needs, such
   as number and date formats.
+- A client app arrives as a **snapshot of its current files, without its git
+  history**. The history stays in the client's repository, and the import
+  commit names the source commit. Go-live is a fresh install, so no instance
+  upgrades from an earlier version. The first client app enters as
+  `jeyarama-dash` **0.1.0**, with no upgrade history.
+- This repository keeps its own history.
 
 ### 2. Each client has a small private instance repository
 
@@ -164,6 +170,12 @@ sets the target time and lists what leaves the required set.
   - OpenSpec stays the behaviour contract.
 - **`CLAUDE.md` invariant 5** ("client-specific material lives only in that
   client's private repository") is rewritten to match when the move lands.
+- **ADRs are no longer append-only.**
+  - An ADR that stops matching the code is corrected in place with a dated
+    note.
+  - It is deleted once its content lives somewhere better; git keeps it.
+  - `CLAUDE.md` is changed in this ADR's PR.
+  - A one-off pass over the existing ADRs follows as its own issue.
 
 ## Options considered
 
@@ -173,6 +185,7 @@ sets the target time and lists what leaves the required set.
 | Embed this repository in the client's as a git submodule | Same pin and two PRs, plus submodule friction in every agent worktree |
 | Put instances in this repository too (`instances/<client>/`) | Host names, mail setup and privacy wording would be public, and a client's operators would need write access here. Splitting a folder out of a public repository later leaves its history public forever |
 | A private copy for every client, the first one included | Each platform feature born from a client app would need a private PR and then a cherry-pick PR here, plus weekly syncs |
+| Restart this repository with clean history: a new repository and the old one made private, or a rewrite in place | Considered on 30-Oct-2026. The owner chose to keep the history. Outdated material is pruned from the files instead (see below) |
 
 ## Consequences
 
