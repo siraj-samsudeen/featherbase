@@ -184,15 +184,37 @@ other `.sh` scripts are bash, for macOS and Linux; `pnpm dev` does not use them.
 
 ### macOS and Linux
 
-You need Node 24, PostgreSQL running with the login `postgres` / `postgres` (or
-your own `DATABASE_URL` in `.env.local`), and `corepack enable`. Then:
+You need [Git](https://git-scm.com/downloads), [Node 24](https://nodejs.org/en/download)
+and PostgreSQL running on this machine (on a Mac, `brew install postgresql@18` then
+`brew services start postgresql@18`; on Linux, your distribution's package).
+
+The command logs in to Postgres as `postgres` with the password `postgres`. A default
+install doesn't have that login, so create it once:
 
 ```bash
+# macOS (Homebrew)
+createuser -s postgres
+```
+
+```bash
+# Linux
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+```
+
+Or put your own login in `DATABASE_URL` in `.env.local`. Then:
+
+```bash
+corepack enable
+git clone https://github.com/siraj-samsudeen/featherbase.git
+cd featherbase
 pnpm dev jeyarama/dash --made-up-data
 ```
 
-Sign in as it prints, and open the link. Ctrl-C stops it. To start clean,
-`dropdb fb_jeyarama_dash`.
+Sign in as it prints, and open the link. Ctrl-C stops it. To start clean:
+
+```bash
+dropdb -h 127.0.0.1 -U postgres fb_jeyarama_dash
+```
 
 ### What the command does
 
