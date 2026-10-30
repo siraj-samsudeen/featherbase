@@ -6,6 +6,7 @@
 
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import { fireEvent } from '@testing-library/dom'
+import { getToken } from '../src/lib/api'
 import { test, expect, renderApp } from './pg-test'
 
 
@@ -143,6 +144,18 @@ test('first-use filters can be saved, cancelled and reopened after remount witho
   await open(admin, 'Sv First', CLOSED)
   fireEvent.click(await screen.findByTestId('saved-view-chip'))
   await waitFor(() => expect(cellTexts()).toEqual(['Open', 'Open']))
+})
+
+test('an expired session hides its saved-view controls rather than exposing the old person’s state', async ({ admin }) => {
+  await seed(admin, 'Sv Expired')
+  await open(admin, 'Sv Expired', OPEN)
+  fireEvent.click(await screen.findByRole('button', { name: 'Save view' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'View name' }), { target: { value: 'Private draft' } })
+  await admin.post('/api/logout', {})
+  fireEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+  await waitFor(() => expect(getToken()).toBeNull())
+  await waitFor(() => expect(screen.queryByTestId('saved-views-bar')).not.toBeInTheDocument())
+  expect(screen.queryByDisplayValue('Private draft')).not.toBeInTheDocument()
 })
 
 test('a refused view save stays visible and can be corrected through the same form', async ({ admin }) => {

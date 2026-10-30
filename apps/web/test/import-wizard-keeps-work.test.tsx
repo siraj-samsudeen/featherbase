@@ -6,7 +6,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as XLSX from 'xlsx'
 import { test, expect, renderApp } from './pg-test'
-import { IMPORT_DATA_KEY, clearSession } from '../src/lib/import-session'
+import { IMPORT_DATA_KEY, IMPORT_DECISIONS_KEY, clearSession } from '../src/lib/import-session'
 
 function uploadWorkbook(sheets: Record<string, unknown[][]>, name: string) {
   const wb = XLSX.utils.book_new()
@@ -56,6 +56,44 @@ test('the way back to the sheet overview closes once a Table has been imported (
   await renderApp('/featherbase/admin/import', admin)
   await screen.findByTestId('iw-sheets-fixed', {}, { timeout: 8000 })
   expect(screen.queryByTestId('iw-back-to-overview')).not.toBeInTheDocument()
+  clearSession()
+})
+
+test('incomplete stored sheet details do not crash the resumed overview or column step', async ({ admin }) => {
+  clearSession()
+  const user = userEvent.setup()
+  const first = await renderApp('/featherbase/admin/import', admin)
+  await drop(uploadWorkbook(TWO, 'two.xlsx'))
+  await screen.findByTestId('iw-ov-master')
+  first.unmount()
+
+  // Storage is a separate, fallible input from the workbook parser. A saved
+  // row's headings can be missing even though fresh workbooks never have it.
+  const data = JSON.parse(sessionStorage.getItem(IMPORT_DATA_KEY)!)
+  const originalHeaders = data.sheets[1].headers
+  data.sheets[1].headers = ['']
+  sessionStorage.setItem(IMPORT_DATA_KEY, JSON.stringify(data))
+  const overview = await renderApp('/featherbase/admin/import', admin)
+  expect(await screen.findByTestId('iw-ov-row-1')).toHaveTextContent('no column names in the header row')
+  overview.unmount()
+
+  data.sheets[1].headers = originalHeaders
+  sessionStorage.setItem(IMPORT_DATA_KEY, JSON.stringify(data))
+  const restored = await renderApp('/featherbase/admin/import', admin)
+  await user.click(await screen.findByTestId('iw-ov-master'))
+  await user.click(screen.getByTestId('iw-ov-continue'))
+  await screen.findByTestId('iw-step-of')
+  restored.unmount()
+  const decisions = JSON.parse(sessionStorage.getItem(IMPORT_DECISIONS_KEY)!)
+  decisions.plans.pop()
+  sessionStorage.setItem(IMPORT_DECISIONS_KEY, JSON.stringify(decisions))
+  await renderApp('/featherbase/admin/import', admin)
+  expect(await screen.findByTestId('iw-step-of')).toHaveTextContent('One Table — Ikw A')
+  await user.click(screen.getByTestId('iw-import'))
+  await waitFor(async () => {
+    const rows = await admin.get<{ data: Record<string, unknown>[] }>('/api/table/Ikw%20A?fields=["ikw_aisle"]')
+    expect(rows.data).toMatchObject([{ ikw_aisle: 1 }])
+  })
   clearSession()
 })
 

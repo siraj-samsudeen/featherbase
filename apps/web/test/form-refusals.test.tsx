@@ -38,6 +38,22 @@ test('a row that is not there says it cannot be loaded', async ({ admin }) => {
   expect(screen.queryByTestId('form-save')).not.toBeInTheDocument()
 })
 
+test('a requirement added after the form opened is reported at the field without losing the draft', async ({ admin }) => {
+  await seedNotes(admin)
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await waitFor(() => expect(field('body')).toBeInTheDocument())
+  const meta = await admin.get<{ columns: { column_name: string }[] }>(`/api/table/${enc('Frf Note')}:meta`)
+  await admin.put(`/api/table_def/${enc('Frf Note')}`, {
+    ...meta,
+    columns: meta.columns.map((c) => c.column_name === 'body' ? { ...c, reqd: true } : c),
+  })
+  fireEvent.change(field('title'), { target: { value: 'unsaved draft' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  expect(await screen.findByTestId('error-body')).toHaveTextContent(/required/i)
+  expect(field('title')).toHaveValue('unsaved draft')
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ title: 'first', body: null })
+})
+
 test('long text typed into a Text column is saved', async ({ admin }) => {
   const user = userEvent.setup()
   await seedNotes(admin)
@@ -115,6 +131,25 @@ for (const [assigned, label] of [['plain words', 'text'], ['13', 'digits']] as c
     await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
     expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ title: 'scripted', extra: assigned })
   })
+
+test('a JSON change handler can replace typed text with a structured value before saving', async ({ admin }) => {
+  await seedNotes(admin)
+  await admin.post('/api/save_row', {
+    table: 'Client Script',
+    row: {
+      row_id: 'frf-json-change', ref_table: 'Frf Note', enabled: true,
+      script: `featherbase.ui.form.on('Frf Note', { extra: function (frm) {
+        if (typeof frm.doc.extra === 'string') frm.set_value('extra', { corrected: true, count: 7 })
+      } })`,
+    },
+  })
+  await renderApp(`/featherbase/admin/${enc('Frf Note')}/note-1`, admin)
+  await waitFor(() => expect(field('extra')).toBeInTheDocument())
+  fireEvent.change(field('extra'), { target: { value: 'replace me' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(await admin.get(`/api/table/${enc('Frf Note')}/note-1`)).toMatchObject({ extra: { corrected: true, count: 7 } })
+})
 
 test('a stored JSON value saves unchanged when the person edits another field', async ({ admin }) => {
   await seedNotes(admin)

@@ -32,6 +32,11 @@ function onClock<T>(tz: string, fn: () => T): T {
 const datetimeWire = (cell: string) => coerceRows([{ column_name: 'when', column_type: 'Datetime' }], [[cell]])[0].values.when
 
 describe('Excel dates in IST (+05:30)', () => {
+  test('a numeric cell with only a text format remains numeric rather than becoming a calendar date', async () => {
+    const [sheet] = await parseWorkbook(workbookFile([[45586, '@'], [45586, 'yyyy-mm-dd']]))
+    expect(sheet.rows).toEqual([[45586], ['2024-10-21']])
+  })
+
   test('the clock really is IST', () => {
     expect(new Date(2024, 9, 21).getTimezoneOffset()).toBe(-330)
   })

@@ -17,6 +17,7 @@
 // the write inside the transaction, where rollback can undo it.
 
 import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const DT = 'Ls Settings'
@@ -79,6 +80,33 @@ test('unchecking a column in the picker removes its header', async ({ admin }) =
   expect(screen.getByTestId('col-title')).toBeInTheDocument()
 
   await settledSettings(admin, { sort: null, hiddenCols: ['city'] })
+  screen.getByTestId('list-col-toggle-city').click()
+  await waitFor(() => expect(screen.getByTestId('col-city')).toBeInTheDocument())
+  await settledSettings(admin, { sort: null, hiddenCols: [] })
+})
+
+test('a click before saved settings arrive cannot overwrite the saved configuration', async ({ admin }) => {
+  await seedList(admin)
+  await admin.put(`/api/user_settings/${encodeURIComponent(DT)}`, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    if (String(input).includes(`/api/user_settings/${encodeURIComponent(DT)}`) && (!init?.method || init.method === 'GET')) await gate
+    return response
+  })
+  try {
+    await openList(admin)
+    screen.getByTestId('col-rank').click()
+    await waitFor(() => expect(firstRowText()).toContain('bravo'))
+    release()
+    await waitFor(() => expect(firstRowText()).toContain('alpha'))
+    await settledSettings(admin, { sort: { field: 'rank', dir: 'desc' }, hiddenCols: [] })
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
 })
 
 test('clicking a column header sorts the rows by it, ascending first', async ({ admin }) => {

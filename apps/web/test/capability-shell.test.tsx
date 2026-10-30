@@ -1,7 +1,8 @@
 // #410: the shell shows only what the person can use. Three layouts, driven
 // by `capabilities` from /api/whoami — computed on the server, never guessed
 // from role names in the browser.
-import { cleanup, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { afterEach, vi } from 'vitest'
 import { sql } from 'server/src/db'
@@ -10,6 +11,8 @@ import { ACCOUNT_SIGN_IN_METHODS_PATH } from 'shared'
 import { resolve } from 'node:path'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { shellKindOf } from '../src/lib/session'
+import { setSession } from '../src/lib/api'
+import { ManageOnly } from '../src/pages/RestrictedShell'
 import { test, expect, renderApp } from './pg-test'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -40,6 +43,14 @@ async function seed(admin: Admin) {
 // Management tools are System Manager only. Access tokens are self-service (#131), so they stay.
 const ADMIN_ONLY_TESTIDS = ['new-table-link', 'import-data-link', 'past-imports-link']
 
+test('management content stays hidden until the server confirms the current person can manage', async ({ admin }) => {
+  setSession(admin.token!, { row_id: admin.user!, email: null, full_name: null })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><ManageOnly><button>Manage instance</button></ManageOnly></QueryClientProvider>)
+  expect(screen.queryByRole('button', { name: 'Manage instance' })).not.toBeInTheDocument()
+  expect(await screen.findByRole('button', { name: 'Manage instance' })).toBeInTheDocument()
+})
+
 test('a System Manager keeps the whole Admin shell', async ({ admin }) => {
   await seed(admin)
   await renderApp('/featherbase/admin/all-tables', admin)
@@ -60,6 +71,17 @@ test('a person with a Table grant sees no management tools and only the Tables t
   expect(screen.queryByRole('link', { name: 'Back Office' })).not.toBeInTheDocument()
   // The Table list itself is refused to this person; the shell must not ask.
   expect(urls.filter((u) => u.startsWith('/api/table/Table'))).toEqual([])
+})
+
+test('a Person reader without management access cannot see administrative sign-in controls', async ({ admin, createUser }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', { table: 'Permission', row: { ref_table: 'Person', role: 'Shelf Clerk', can_read: true } })
+  const clerk = await createUser({ email: 'person.reader@example.com', roles: ['Shelf Clerk'] })
+  const urls = recordCalls()
+  await renderApp(`/featherbase/admin/Person/${encodeURIComponent(clerk.user!)}`, clerk)
+  await screen.findByTestId('form-view')
+  expect(screen.queryByTestId('user-sign-in-methods')).not.toBeInTheDocument()
+  expect(urls.filter((u) => u.includes('/identities') || u === '/api/me/sign_in_methods')).toEqual([])
 })
 
 test('a viewer-only person is taken to the report: no Admin chrome, no Admin calls', async ({ admin, createUser }) => {

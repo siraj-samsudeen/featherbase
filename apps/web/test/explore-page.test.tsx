@@ -66,6 +66,8 @@ for (const activation of ['click', 'Enter', ' '] as const) {
     fireEvent.click(within(pane1).getByText('Acme'))
     await waitFor(() => expect(screen.getByTestId('explore-pane2-count')).toHaveTextContent('2'))
     const row = within(screen.getByTestId('explore-pane2')).getAllByTestId('explore-row')[0]
+    fireEvent.keyDown(row, { key: 'ArrowRight' })
+    expect(screen.queryByTestId('peek-panel-0')).not.toBeInTheDocument()
     if (activation === 'click') fireEvent.click(row)
     else fireEvent.keyDown(row, { key: activation })
     const panel = await screen.findByTestId('peek-panel-0')

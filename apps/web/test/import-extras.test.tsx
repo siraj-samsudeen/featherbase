@@ -58,6 +58,10 @@ test('the target picker: Escape closes it, Enter takes the best match, and New T
   const target = await screen.findByTestId('iw-target-0', undefined, { timeout: 8000 })
 
   await user.click(target)
+  await user.click(screen.getByRole('heading', { name: 'Import Data' }))
+  expect(screen.queryByTestId('iw-target-menu-0')).not.toBeInTheDocument()
+
+  await user.click(target)
   await user.keyboard('{Escape}')
   expect(screen.queryByTestId('iw-target-menu-0')).not.toBeInTheDocument()
 

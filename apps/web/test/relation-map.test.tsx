@@ -1,6 +1,7 @@
 // The relationship map (spec: search-and-explore). A row's neighbourhood: what it points to,
 // what points back with a count, re-centring on a related row, and the trail back.
 import { configure, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 configure({ asyncUtilTimeout: 10_000 })
@@ -141,17 +142,33 @@ test('a sub-table shows as a collection of its rows, and a row of it points back
     table: 'Rm Invoice',
     row: { row_id: 'inv-1', title: 'March invoice', lines: [{ item: 'Saree', qty: 2 }, { item: 'Shawl', qty: 1 }] },
   })
-  await renderApp(`/featherbase/admin/map/${enc('Rm Invoice')}/inv-1`, admin)
-  const lines = await screen.findByTestId('map-group-Rm Line')
-  expect(lines).toHaveTextContent('2')
-  fireEvent.click(lines)
-  const rows = await within(await screen.findByTestId('map-group-rows')).findAllByTestId('map-row')
-  expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Saree'), expect.stringContaining('Shawl')])
-  fireEvent.click(rows[0])
-  // Re-centred on the line: it points up at its invoice.
-  const parent = await screen.findByTestId('map-forward-Rm Invoice')
-  expect(parent).toHaveTextContent('inv-1')
-  expect(screen.queryByTestId('map-group-Rm Line')).not.toBeInTheDocument()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    if (String(input).includes('/api/table/Rm%20Line:meta')) await gate
+    return response
+  })
+  try {
+    await renderApp(`/featherbase/admin/map/${enc('Rm Invoice')}/inv-1`, admin)
+    const lines = await screen.findByTestId('map-group-Rm Line')
+    expect(lines).toHaveTextContent('2')
+    fireEvent.click(lines)
+    const group = await screen.findByTestId('map-group-rows')
+    expect(within(group).queryAllByTestId('map-row')).toHaveLength(0)
+    release()
+    const rows = await within(group).findAllByTestId('map-row')
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining('Saree'), expect.stringContaining('Shawl')])
+    fireEvent.click(rows[0])
+    // Re-centred on the line: it points up at its invoice.
+    const parent = await screen.findByTestId('map-forward-Rm Invoice')
+    expect(parent).toHaveTextContent('inv-1')
+    expect(screen.queryByTestId('map-group-Rm Line')).not.toBeInTheDocument()
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
 })
 
 test('a map deep link to a missing row says what could not be loaded', async ({ admin }) => {

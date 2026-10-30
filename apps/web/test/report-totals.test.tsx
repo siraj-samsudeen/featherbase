@@ -123,6 +123,29 @@ test('the export has every matching row and the same totals', async ({ admin }) 
   expect(ungrouped.at(-1)).toBe('Total (501),,1203')
 })
 
+test('check values and absent text retain their meaning in the report and CSV', async ({ admin }) => {
+  await admin.post('/api/table_def', {
+    name: T,
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'ready', column_type: 'Check', label: 'Ready', in_list_view: true },
+      { column_name: 'notes', column_type: 'Data', label: 'Notes', in_list_view: true },
+    ],
+  })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 'ready', ready: true } })
+  await admin.post('/api/save_row', { table: T, row: { row_id: 'waiting', ready: false, notes: 'Pending' } })
+  const blobs = captureDownloads()
+  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  await screen.findByText('Pending')
+  expect(screen.getByText('✓')).toBeInTheDocument()
+  expect(screen.getByText('—')).toBeInTheDocument()
+  await userEvent.click(screen.getByTestId('export-csv'))
+  await waitFor(() => expect(blobs).toHaveLength(1))
+  const [header, ...rows] = (await textOf(blobs[0])).split('\n')
+  expect(header).toBe('Name,Ready,Notes')
+  expect(rows.sort()).toEqual(['ready,true,', 'waiting,false,Pending'])
+})
+
 test('a summary that fits on the page says nothing about rows left out', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: T,

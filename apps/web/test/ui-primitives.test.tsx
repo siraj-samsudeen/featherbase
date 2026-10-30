@@ -184,6 +184,12 @@ describe('Skeleton', () => {
 describe('Toast', () => {
   afterEach(() => vi.useRealTimers())
 
+  test('a consumer without its provider reports the missing ToastProvider', () => {
+    expect(() => render(<Trigger tone="positive" message="Saved" />)).toThrow(
+      'useToast needs a <ToastProvider> above it',
+    )
+  })
+
   function Trigger({ tone, message, label = 'Go' }: { tone: 'positive' | 'negative'; message: string; label?: string }) {
     const toast = useToast()
     return <Button onClick={() => toast({ tone, message })}>{label}</Button>

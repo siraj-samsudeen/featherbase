@@ -61,6 +61,12 @@ async function openReport(admin: Admin, search = '') {
   await waitFor(() => expect(screen.getAllByTestId('report-row')).toHaveLength(2))
 }
 
+test('a report for a removed Table explains that it cannot load instead of showing an empty report', async ({ admin }) => {
+  await renderApp(`/featherbase/admin/${ENC}/view/report`, admin)
+  expect(await screen.findByText(`Cannot load ${T}`)).toBeInTheDocument()
+  expect(screen.queryByTestId('export-csv')).not.toBeInTheDocument()
+})
+
 test('with no column marked for the list, the report shows the first three columns', async ({ admin }) => {
   await seed(admin, false)
   await openReport(admin)

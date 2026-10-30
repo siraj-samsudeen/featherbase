@@ -8,6 +8,34 @@ import { invalidateMeta } from 'server/src/meta'
 const TABLE = 'Import Correction UI'
 const path = `/api/table/${encodeURIComponent(TABLE)}`
 
+test('conflicts distinguish a cleared correction from structured JSON values', async ({ admin }) => {
+  await admin.post('/api/table_def', { name: TABLE, columns: [
+    { column_name: 'code', column_type: 'Data' },
+    { column_name: 'city', column_type: 'Data', label: 'City' },
+    { column_name: 'details', column_type: 'JSON', label: 'Details' },
+  ] })
+  await admin.post(`${path}:import`, { rows: [{ code: 'C1', city: 'North', details: { zone: 'original' } }] })
+  const { data: [first] } = await admin.get<{ data: { row_id: string }[] }>(path)
+  const rowPath = `${path}/${first.row_id}`
+  const row = await admin.get<Record<string, unknown>>(rowPath)
+  await admin.post('/api/save_row', { table: TABLE, row: { ...row, city: null, details: { zone: 'mine' } } })
+  await admin.post(`${path}:import`, {
+    key_column: 'code', rows: [{ code: 'C1', city: 'East', details: { zone: 'source' } }],
+  })
+  await renderApp(`/featherbase/admin/${encodeURIComponent(TABLE)}`, admin)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Import conflicts' }))
+  const panel = await screen.findByRole('region', { name: 'Import conflicts' })
+  expect(await within(panel).findByText('Empty')).toBeInTheDocument()
+  expect(within(panel).getByText('East')).toBeInTheDocument()
+  expect(within(panel).getByText('{"zone":"mine"}')).toBeInTheDocument()
+  expect(within(panel).getByText('{"zone":"source"}')).toBeInTheDocument()
+  const details = within(panel).getByRole('heading', { name: 'Details' }).closest('article')!
+  await user.click(within(details).getByRole('button', { name: 'Take the source' }))
+  await waitFor(() => expect(within(panel).queryByText('{"zone":"source"}')).not.toBeInTheDocument())
+  expect(await admin.get(rowPath)).toMatchObject({ city: null, details: { zone: 'source' } })
+})
+
 test('a Table exposes the kept correction and lets the user keep it or adopt the source', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: TABLE,

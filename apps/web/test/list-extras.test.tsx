@@ -5,6 +5,7 @@
 // page reached.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import { test, expect, renderApp } from './pg-test'
 
 const T = 'Lx Order'
@@ -49,6 +50,9 @@ test('a text filter applies on Enter and on leaving the box; the filter bar adds
   await waitFor(() => expect(listedIds()).toBe(3))
 
   await user.selectOptions(screen.getByTestId('filter-field'), 'customer')
+  await user.type(screen.getByTestId('filter-value'), '   {Enter}')
+  expect(listedIds()).toBe(3)
+  await user.clear(screen.getByTestId('filter-value'))
   await user.type(screen.getByTestId('filter-value'), 'Ravi{Enter}')
   await waitFor(() => expect(listedIds()).toBe(1))
 })
@@ -56,12 +60,40 @@ test('a text filter applies on Enter and on leaving the box; the filter bar adds
 test("an expanded row totals its money column", async ({ admin }) => {
   const user = userEvent.setup()
   await seed(admin)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const real = globalThis.fetch
+  const delayed = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const response = await real(input, init)
+    if (String(input).includes('/api/table/Lx%20Line:meta')) await gate
+    return response
+  })
+  try {
+    await renderApp(`/featherbase/admin/${ENC}`, admin)
+    await screen.findByTestId('list-view', {}, { timeout: 10_000 })
+    await user.click((await screen.findAllByTestId('row-expand'))[0])
+    await waitFor(() => expect(screen.getByTestId('expanded-row')).not.toHaveTextContent('Loading…'))
+    expect(screen.queryByTestId('inline-children-lines')).not.toBeInTheDocument()
+    release()
+    const lines = await screen.findByTestId('inline-children-lines')
+    await waitFor(() => expect(lines).toHaveTextContent('Σ Price: '))
+    expect(lines.textContent).toMatch(/Σ Price: ₹\s?1,500\.50/)
+  } finally {
+    release()
+    delayed.mockRestore()
+  }
+})
+
+test('expanding a row deleted after the list loaded reports the missing row', async ({ admin }) => {
+  await seed(admin)
   await renderApp(`/featherbase/admin/${ENC}`, admin)
-  await screen.findByTestId('list-view', {}, { timeout: 10_000 })
-  await user.click((await screen.findAllByTestId('row-expand'))[0])
-  const lines = await screen.findByTestId('inline-children-lines')
-  await waitFor(() => expect(lines).toHaveTextContent('Σ Price: '))
-  expect(lines.textContent).toMatch(/Σ Price: ₹\s?1,500\.50/)
+  await waitFor(() => expect(listedIds()).toBe(3))
+  const row = screen.getByRole('checkbox', { name: 'Select Ashok' }).closest('tr')!
+  const name = 'o-3'
+  await admin.delete(`/api/table/${ENC}/${encodeURIComponent(name)}`)
+  await userEvent.click(within(row).getByTestId('row-expand'))
+  expect(await screen.findByText(`Cannot load ${name}`)).toBeInTheDocument()
+  expect(screen.queryByTestId('inline-children-lines')).not.toBeInTheDocument()
 })
 
 test('a bulk edit the server refuses names the field and why, and leaves the rows as they were', async ({ admin }) => {
@@ -70,6 +102,9 @@ test('a bulk edit the server refuses names the field and why, and leaves the row
   await renderApp(`/featherbase/admin/${ENC}`, admin)
   await screen.findByTestId('list-view', {}, { timeout: 10_000 })
   await waitFor(() => expect(listedIds()).toBe(3))
+  await user.click(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')[0])
+  await user.click(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')[0])
+  expect(screen.queryByTestId('bulk-edit-field')).not.toBeInTheDocument()
   await user.click(within(screen.getByTestId('list-rows')).getAllByTestId('row-check')[0])
   await user.selectOptions(await screen.findByTestId('bulk-edit-field'), 'customer')
   // Customer is required: clearing it is refused.

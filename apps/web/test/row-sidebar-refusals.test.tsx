@@ -47,6 +47,10 @@ test('a tag typed and entered on a row deleted meanwhile is refused, and nothing
   await openRow(admin, rowId)
   const panel = await screen.findByTestId('tags-panel')
   await waitFor(() => expect(panel).toHaveTextContent('No tags'))
+  await user.type(within(panel).getByTestId('tag-input'), '   {Enter}')
+  expect(within(panel).queryAllByTestId('tag-chip')).toHaveLength(0)
+  expect(within(panel).queryByTestId('tag-error')).not.toBeInTheDocument()
+  await user.clear(within(panel).getByTestId('tag-input'))
   await admin.delete(`/api/table/${ENC}/${rowId}`)
   // Enter adds, the same as the Add button.
   await user.type(within(panel).getByTestId('tag-input'), 'urgent{Enter}')

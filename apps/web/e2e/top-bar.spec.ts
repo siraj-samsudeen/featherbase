@@ -47,7 +47,11 @@ test('the Admin bar remains named and usable when its public brand endpoint fail
       await expect(page.getByTestId('admin-sidebar')).toBeVisible()
       // Login's StrictMode effects plus the bar's initial read and two retries.
       await expect.poll(() => failures).toBeGreaterThanOrEqual(5)
-      await expect(page.getByTestId('top-bar-name')).toHaveText('Featherbase Admin')
+      // With installed apps this is a picker: its textContent includes every
+      // option, but the label the person sees is the selected destination.
+      await expect.poll(() => page.getByTestId('top-bar-name').evaluate((element) =>
+        element instanceof HTMLSelectElement ? element.selectedOptions[0]?.textContent : element.textContent,
+      )).toBe('Featherbase Admin')
       await page.getByTestId('session-user').click()
       await expect(page.getByTestId('logout')).toBeVisible()
     })

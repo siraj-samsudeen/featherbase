@@ -23,6 +23,34 @@ const BOOK = {
   'By Name': [['Iws Name', 'Iws Zone'], ['T Nagar', 'Dairy']],
 }
 
+test('a failed row remains explained when saved decisions survive without the workbook rows', async ({ admin }) => {
+  clearSession()
+  await admin.post('/api/table_def', { name: 'Iws Counts', columns: [{ column_name: 'count', column_type: 'Int' }] })
+  const user = userEvent.setup()
+  const first = await renderApp('/featherbase/admin/import', admin)
+  fireEvent.change(await screen.findByTestId('iw-file-input'), { target: { files: [uploadWorkbook({
+    'Iws Counts': [['count'], ['many']],
+    'Other': [['Iws Other'], ['next']],
+  })] } })
+  await user.click(await screen.findByTestId('iw-ov-master'))
+  await user.click(screen.getByTestId('iw-ov-continue'))
+  await user.click(await screen.findByTestId('iw-import-one'))
+  const result = await screen.findByTestId('iw-result-0')
+  expect(result).toHaveTextContent('Imported 0 rows into Iws Counts; 1 failed (first: row 2:')
+  const reason = result.textContent!.split('row 2: ')[1].split(')')[0]
+  expect(reason).toMatch(/count/i)
+  await waitFor(() => expect(screen.getByTestId('iw-done')).toHaveTextContent('Imported 1; 1 still to import.'))
+  first.unmount()
+  sessionStorage.removeItem(IMPORT_DATA_KEY)
+  await renderApp('/featherbase/admin/import', admin)
+  await screen.findByTestId('iw-resume')
+  const resumed = screen.getByTestId('iw-result-0')
+  expect(resumed).toHaveTextContent(`1 failed (first: ${reason})`)
+  expect(resumed).not.toHaveTextContent('row 2:')
+  expect(await admin.get('/api/table/Iws%20Counts')).toMatchObject({ total: 0 })
+  clearSession()
+})
+
 test('separate after merge, and a combine whose sheet holds both columns asks for a rule; Clear drops the pick', async ({ admin }) => {
   clearSession()
   const user = userEvent.setup()

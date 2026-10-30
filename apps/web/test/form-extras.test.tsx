@@ -56,6 +56,9 @@ test('a yes/no, a date, a date-time and the order of sub-table rows are saved as
   await screen.findByTestId('form-view', {}, { timeout: 8000 })
   await waitFor(() => expect(field('done')).toBeInTheDocument())
 
+  await user.click((await screen.findAllByRole('button', { name: 'Move row up' }))[0])
+  await user.click(screen.getAllByRole('button', { name: 'Move row down' })[1])
+  expect([...document.querySelectorAll<HTMLInputElement>('[data-childfield="step"]')].map((input) => input.value)).toEqual(['first', 'second'])
   await user.click(field('done'))
   fireEvent.change(field('due'), { target: { value: '2026-11-05' } })
   fireEvent.change(field('met_at'), { target: { value: '2026-11-05T09:30' } })
@@ -78,6 +81,25 @@ test('a yes/no, a date, a date-time and the order of sub-table rows are saved as
     expect(again.due).toBeNull()
     expect(again.met_at).toBeNull()
   })
+})
+
+test('an invalid date-time set by a client script stays editable instead of breaking the form', async ({ admin }) => {
+  await seed(admin)
+  await admin.post('/api/save_row', {
+    table: 'Client Script',
+    row: {
+      row_id: 'fx-invalid-datetime', ref_table: 'Fx Visit', enabled: true,
+      script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('met_at', 'not-a-date') } })`,
+    },
+  })
+  await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
+  await screen.findByTestId('form-view')
+  await waitFor(() => expect(screen.getByTestId('form-status')).toHaveTextContent('Not saved'))
+  expect(field('met_at')).toHaveValue('')
+  fireEvent.change(field('met_at'), { target: { value: '2026-11-05T09:30' } })
+  await userEvent.click(screen.getByTestId('form-save'))
+  await waitFor(() => expect(screen.getByTestId('form-banner')).toHaveTextContent('Saved'))
+  expect(new Date(String((await stored(admin)).met_at)).toISOString()).toBe(new Date('2026-11-05T09:30').toISOString())
 })
 
 test('the ↗ beside a linked row opens that row', async ({ admin }) => {
@@ -125,7 +147,10 @@ test('a client script runs on load against the loaded row, keeping its values', 
       row_id: 'fx-onload',
       ref_table: 'Fx Visit',
       enabled: true,
-      script: `featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('note', 'opened ' + frm.doc.row_id) } })`,
+      script: `
+        featherbase.ui.form.on('Fx Visit', { onload: function (frm) { frm.set_value('note', 'opened ' + frm.doc.row_id) } })
+        featherbase.ui.form.on('Fx Store', { onload: function (frm) { frm.set_value('note', 'wrong table') } })
+      `,
     },
   })
   await renderApp(`/featherbase/admin/${enc('Fx Visit')}/visit-1`, admin)
