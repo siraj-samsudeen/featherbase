@@ -363,7 +363,6 @@ function RunPane({
 
   const saveNote = (itemName: string, text: string) => {
     setNoteDraft(null)
-    if (!binding.noteCol) return
     return saveItems(
       items.map((i) => (String(i.row_id) === itemName ? { ...i, [binding.noteCol!]: text } : i)),
     )

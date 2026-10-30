@@ -136,7 +136,6 @@ export function TableMerge() {
   }
 
   async function merge() {
-    if (!targetMeta.data || !mapped.length) return
     setError(null)
     setOutcome(null)
     setBusy('Reading rows…')
@@ -182,7 +181,7 @@ export function TableMerge() {
       const runId = crypto.randomUUID()
       const batchId = crypto.randomUUID()
       const report = await sendImportRun({
-        table: targetMeta.data.name,
+        table: target,
         rows,
         context: (part, parts) => ({
           // Provenance in the language of the Import Log: where these rows

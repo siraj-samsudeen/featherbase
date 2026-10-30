@@ -1704,7 +1704,6 @@ function SavedViewsBar({
   const showForm = Boolean(sig && (naming || showNudge))
 
   async function saveView() {
-    if (!sig || saving) return
     const label = nudgeName.trim() || `${table} view`
     setSaving(true)
     setSaveError('')

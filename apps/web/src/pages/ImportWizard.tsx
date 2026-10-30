@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, calendarDay, coerceRows, combineOverlap, idPatternFor, inferTableDef, isLocalMidnight, localIso, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
+import { applyColumnCombines, autoMapImportColumns, retiredColumnNotice, coerceRows, combineOverlap, idPatternFor, inferTableDef, mergeSheetHeaders, mergeSheetRows, scoreTableMatch, seriesPrefix, shouldAutoMatch, tableMatchQuality, tableNameFromFile, type CoercedRow, type ColumnCombine, type InferredTableDef, type TableMatchQuality } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
@@ -378,7 +378,6 @@ const PREVIEW_ROWS = 50
 /** A sheet cell as the preview shows it: a date as its calendar day (#387), never via toISOString(). */
 export function previewCell(v: unknown): string {
   if (v == null) return ''
-  if (v instanceof Date) return isLocalMidnight(v) ? calendarDay(v) : localIso(v).replace('T', ' ')
   return String(v)
 }
 
