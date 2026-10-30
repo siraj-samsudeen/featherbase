@@ -402,7 +402,6 @@ export function ListView({
   }
 
   async function bulkEdit() {
-    if (!bulkField) return
     setBulkBusy(true)
     setBulkError(null)
     const columnType = editableColumns.find((f) => f.column_name === bulkField)?.column_type
