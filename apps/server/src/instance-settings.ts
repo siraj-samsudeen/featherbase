@@ -15,7 +15,7 @@ import { actionTransaction } from './action-transaction'
 import { runAsSystemActor } from './system-actor'
 import { INSTANCE_SETTINGS_ACTOR, holdManagedSet, holdManagedSetExclusive, lastApply, recordApply, type ManagedPath, type ManagedValue } from './managed-settings'
 import { config } from './config'
-import { declaredAppSecrets } from './app-settings'
+import { declaredAppSecretNames, declaredAppSecrets } from './app-settings'
 import { DEV_ENVIRONMENTS, SETTINGS_CONDITIONS, VARIABLES, isSet, readVariable, type Variable, type VariableName } from './env'
 
 /** Who an apply's saves are recorded as (D4). */
@@ -361,7 +361,7 @@ export async function applyInstanceSettings(input: unknown, opts: ApplyOptions):
   const hiddenValues = new Map<string, string>()
   const secretNames = new Set([
     ...(VARIABLES as readonly Variable[]).filter((v) => v.secret).map((v) => v.name as string),
-    ...(await declaredAppSecrets()).map((s) => s.name),
+    ...(await declaredAppSecretNames()),
   ])
 
   // 1. The shape, the names and the types, before anything is read or saved.

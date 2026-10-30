@@ -537,6 +537,17 @@ describe('a decimal setting', () => {
 describe('values from variables (#703)', () => {
   const file = (name: unknown) => ({ settings: { 'System Settings': { app_name: { env: name } } } }) as unknown as InstanceSettingsFile
 
+  test('refuses a variable an installed app declares as a secret, even when this server has it unset', async () => {
+    const name = 'declared_secret_proof'
+    await sql`insert into installed_app ${sql({ name, manifest: sql.json({ secrets: ['UNSET_APP_SECRET'] }) } as never)}`
+    try {
+      await expect(applyInstanceSettings(file('UNSET_APP_SECRET'), { by: 'Administrator', env: { UNSET_APP_SECRET: 'made-up-credential-71' } }))
+        .rejects.toThrow(/UNSET_APP_SECRET, which holds a secret/)
+    } finally {
+      await sql`delete from installed_app where name = ${name}`
+    }
+  })
+
   test('a value is read, saved, locked, and never shown', async () => {
     const secretLooking = 'made-up-value-40417'
     const result = await applyInstanceSettings(file('SOME_NAME'), { by: 'Administrator', env: { SOME_NAME: secretLooking } })
